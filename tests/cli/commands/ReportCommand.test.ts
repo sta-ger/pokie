@@ -461,7 +461,7 @@ describe("ReportCommand outcome-source project routing", () => {
         const outcomeSourceAnalyzer = stubAnalyzer(new Error("disk exploded"));
         const command = new ReportCommand(createStubReadFile({}), undefined, undefined, resolveProject, outcomeSourceAnalyzer);
 
-        await expect(command.run(["missing.json"])).rejects.toThrow(/Could not analyze outcome source at "missing\.json": disk exploded.*pokie outcomesource inspect/);
+        await expect(command.run(["missing.json"])).rejects.toThrow(/Could not analyze outcome source at "missing\.json": disk exploded.*pokie report <path> --format json/);
     });
 
     it("writes the same canonical JSON analysis to --out for a resolved Stake adapter", async () => {
@@ -492,7 +492,7 @@ describe("ReportCommand outcome-source project routing", () => {
 });
 
 // Real, non-stubbed end-to-end coverage: "pokie report" pointed straight at a real, on-disk outcome-library
-// bundle (built by "pokie outcomelibrary build", not mocked) resolves and renders it through the same
+// bundle (written by "pokie export <config.json> --to outcomes", not mocked) resolves and renders it through the same
 // OutcomeSourceProjectAnalyzer/canonical-reader path the unit tests above stub out.
 describe("ReportCommand (integration, real outcome-library bundle)", () => {
     let bundleDir: string;

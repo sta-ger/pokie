@@ -8,6 +8,11 @@ import {registerCliCommands} from "../../cli/registerCliCommands.js";
 const TEST_VERSION = "1.3.0";
 const COVERAGE_MAP_PATH = path.join(__dirname, "..", "..", "docs", "evidence", "p7-01-cli-inventory", "coverage-map.json");
 const CLI_DOCS_PATH = path.join(__dirname, "..", "..", "docs", "cli.md");
+const MAINTAINED_DOCS_PATHS = [
+    CLI_DOCS_PATH,
+    path.join(__dirname, "..", "..", "docs", "outcome-library-bundle.md"),
+    path.join(__dirname, "..", "..", "docs", "weighted-outcome-library.md"),
+];
 
 function registeredCommands(): CliCommandHandling[] {
     return registerCliCommands({
@@ -50,10 +55,15 @@ describe("residual public CLI surface", () => {
         expect(coverage.initialInventory.rootCommands).toEqual(commandNames);
         expect(coverage.initialInventory.nestedVerbs).toEqual(nestedVerbs);
         for (const command of publicCommands) {
-            expect(command.getCommanderCommand().helpInformation()).toContain(`Usage: ${command.getName()}`);
+            const help = command.getCommanderCommand().helpInformation();
+            expect(help).toContain(`Usage: ${command.getName()}`);
+            expect(help).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
             expect(docs).toContain(`pokie ${command.getName()}`);
         }
-        expect(docs).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
+        for (const maintainedDocsPath of MAINTAINED_DOCS_PATHS) {
+            expect(fs.readFileSync(maintainedDocsPath, "utf8")).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
+        }
+        expect(fs.readFileSync(MAINTAINED_DOCS_PATHS[1], "utf8")).toContain("cli.md#pokie-export-configjson---to-outcomes---out-dir---dry-run");
     });
 
     it.each([
@@ -68,5 +78,6 @@ describe("residual public CLI surface", () => {
 
         expect(message).toMatch(expected);
         expectActionable(message);
+        expect(message).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
     });
 });

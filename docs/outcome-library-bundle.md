@@ -18,7 +18,7 @@ ever has to hold a whole mode's outcomes in memory at once:
 - **The writer streams from an `Iterable`/`AsyncIterable` source** — one canonical-JSON line per outcome, written
   directly to disk as it arrives, hashed incrementally in the same pass. A caller with millions of outcomes can
   hand the writer an async generator reading from a database cursor or a JSONL file on disk (see `pokie
-  outcomelibrary build`'s `outcomesPath` config below) without ever building the equivalent
+  export <config.json> --to outcomes`'s `outcomesPath` config below) without ever building the equivalent
   `WeightedOutcomeLibrary` in memory first.
 - **The reader supports four genuinely different access patterns**, none of which require loading everything:
   - `iterateModeOutcomes` — full sequential streaming, one outcome in memory at a time.
@@ -340,7 +340,7 @@ object to read it from, and `schemaVersion` is optional). Exactly one of `librar
 per mode. The bundle validator prints every issue and returns a non-zero exit code if any is `error`-severity;
 its deep mode runs the expensive full-content check.
 
-See [CLI](cli.md#pokie-outcomelibrary-build-configjson) for full option details.
+See [CLI](cli.md#pokie-export-configjson---to-outcomes---out-dir---dry-run) for full option details.
 
 ## Programmatic usage
 

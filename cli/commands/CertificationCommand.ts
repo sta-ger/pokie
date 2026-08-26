@@ -136,7 +136,7 @@ export class CertificationCommand implements CliCommandHandling {
         parent
             .command("build")
             .description("Build a canonical certification/evidence bundle on top of an outcome-library bundle.")
-            .argument("<bundleDir>", "an existing outcome-library bundle directory (see \"pokie outcomelibrary build\")")
+            .argument("<bundleDir>", "an existing outcome-library bundle directory (create one with \"pokie export <config.json> --to outcomes --out <bundleDir>\")")
             .argument("<config.json>", "lists one sample source per mode -- see docs/certification-evidence-bundle.md")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--out <dir>", "output directory (default: a \"certification\" sibling of <config.json>)")

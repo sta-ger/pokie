@@ -1191,7 +1191,7 @@ Options:
 - `--out <dir>` — where to write the bundle (default: `<config.json>`'s directory plus `/outcomelibrary`).
 - `--dry-run` — validate the outcome-library source and destination without writing anything.
 
-Published atomically as a whole directory (temp-dir-then-swap, same discipline as `stakeengine export`): a write
+Published atomically as a whole directory (temp-dir-then-swap, the same discipline as `pokie export <config.json> --to adapter`): a write
 failure never leaves partial files behind and never alters an existing `--out` in place, and a mode dropped from
 the source no longer leaves a stale `index_<name>.json`/`outcomes_<name>.jsonl` behind. On any error-level
 `ValidationIssue` (an invalid outcome, a duplicate/case-colliding mode name), nothing is written and the exit
@@ -1262,7 +1262,7 @@ Options:
 
 Refuses to write anything (the source bundle's own deep validation is run first) if the source bundle doesn't
 validate cleanly, or if a requested mode isn't present in it — the same "no partial bundle" guarantee
-`outcomelibrary build` gives, published atomically the same way. On any error, the exit code is non-zero and
+`pokie export <config.json> --to outcomes` gives, published atomically the same way. On any error, the exit code is non-zero and
 nothing is written.
 
 ## `pokie certification verify <certDir> --source <bundleDir>`

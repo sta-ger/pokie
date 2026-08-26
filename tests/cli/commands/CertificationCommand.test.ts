@@ -77,6 +77,15 @@ describe("CertificationCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
+    it("advertises the public outcome-bundle export workflow in build help", () => {
+        const command = new CertificationCommand("1.3.0", createStubBuilder(successResult));
+
+        const help = command.getCommanderCommand().commands.find((candidate) => candidate.name() === "build")!.helpInformation();
+
+        expect(help).toContain("pokie export <config.json> --to outcomes --out <bundleDir>");
+        expect(help).not.toMatch(/pokie outcomelibrary\b/);
+    });
+
     it("rejects when run with no subcommand", async () => {
         const command = new CertificationCommand("1.3.0");
 

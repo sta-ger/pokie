@@ -317,8 +317,8 @@ pokie build <project> --target outcomeLibrary
 runtime through `generateExactWeightedOutcomeLibrary`, exactly as described in "Generating" above. This is a
 different workflow from outcome-bundle export (see [Outcome Library Bundle](outcome-library-bundle.md#cli-usage)):
 that export never loads or executes a `PokieGame` at all — it only bundles `WeightedOutcomeLibrary` JSON (or JSONL
-outcome streams) that some earlier step, such as `generate`, already produced. `validate` likewise only ever
-inspects an already-built bundle. `generate` is the one outcomelibrary verb that runs a live game.
+outcome streams) that some earlier step, such as `generate`, already produced. Bundle readers likewise only ever
+inspect an already-built bundle. `generate` is the public workflow that runs a live game.
 
 `build --target outcomeLibrary` is the equivalent project-to-bundle workflow. `--exact` is the default; its explicit
 form and `--sample <n> --seed <string>` make the choice visible in automation. The sampled form is passed through the

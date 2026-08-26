@@ -93,7 +93,7 @@ export class ReportCommand implements CliCommandHandling {
             } catch (error) {
                 throw new Error(
                     `Could not analyze outcome source at "${reportPath}": ${error instanceof Error ? error.message : String(error)}. ` +
-                    'Run "pokie outcomesource inspect <path>" for source diagnostics.',
+                    'Run "pokie report <path> --format json" for source diagnostics.',
                 );
             }
             this.emit(this.renderOutcomeSource(format, reportPath, outcomeSourceReport), out, format === "json");
