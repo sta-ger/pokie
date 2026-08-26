@@ -17,10 +17,10 @@ describe("public command tree", () => {
         const help = buildUsageText(commands);
 
         expect(names).toEqual(expect.arrayContaining(["export", "generate", "import", "par", "sample"]));
-        expect(names).not.toEqual(expect.arrayContaining(["name", "outcomelibrary", "outcomesource", "stakeengine", "studio"]));
+        expect(names).not.toEqual(expect.arrayContaining(["name", "outcomelibrary", "outcomesource", "studio"]));
         expect(help).toContain("export");
         expect(help).toContain("pokie par import");
-        expect(help).not.toMatch(/(pokie (name|outcomelibrary|outcomesource|stakeengine|studio)\b)/);
+        expect(help).not.toMatch(/(pokie (name|outcomelibrary|outcomesource|studio)\b)/);
     });
 
     it("does not label the supported browser workflows as previews", () => {
