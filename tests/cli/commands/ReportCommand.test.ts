@@ -13,6 +13,7 @@ import {
 import fs from "fs";
 import os from "os";
 import path from "path";
+import zlib from "zlib";
 import {ReportCommand} from "../../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
@@ -54,6 +55,24 @@ function createStubReadFile(files: Record<string, string>): (file: string) => st
         }
         return files[file];
     };
+}
+
+// This fixture intentionally does not use StakeEngineExporter: report must accept the public Stake outcome
+// schema from another producer, including arbitrary per-mode filenames and event vocabulary, without relying
+// on POKIE's reconstruction-only manifest.
+function writeForeignStakeOutcomeDirectory(dir: string): void {
+    fs.writeFileSync(
+        path.join(dir, "index.json"),
+        JSON.stringify({modes: [{name: "base", cost: 1, events: "vendor-books.zst", weights: "vendor-lookup.csv"}]}),
+    );
+    fs.writeFileSync(path.join(dir, "vendor-lookup.csv"), "0,900,0\n1,100,150\n");
+    const books = [
+        {id: 0, payoutMultiplier: 0, events: [{index: 0, type: "vendorAnticipation"}]},
+        {id: 1, payoutMultiplier: 150, events: [{index: 0, type: "vendorMultiplier", value: 2}]},
+    ]
+        .map((line) => JSON.stringify(line))
+        .join("\n") + "\n";
+    fs.writeFileSync(path.join(dir, "vendor-books.zst"), zlib.zstdCompressSync(Buffer.from(books, "utf-8")));
 }
 
 describe("ReportCommand", () => {
@@ -514,6 +533,57 @@ describe("ReportCommand (integration, real outcome-library bundle)", () => {
         expect(report.descriptor.limitations.join("\n")).not.toMatch(/PreGeneratedOutcomeSourceConflictError/);
 
         logSpy.mockRestore();
+    });
+});
+
+describe("ReportCommand (integration, manifest-less Stake Engine outcome directory)", () => {
+    let stakeDir: string;
+
+    beforeEach(() => {
+        stakeDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-report-foreign-stake-test-"));
+    });
+
+    afterEach(() => {
+        fs.rmSync(stakeDir, {recursive: true, force: true});
+    });
+
+    it("reports an independently supplied compatible directory through the canonical reader instead of trying to read the directory as sim JSON", async () => {
+        writeForeignStakeOutcomeDirectory(stakeDir);
+        const reportFile = path.join(stakeDir, "analysis.json");
+        const command = new ReportCommand();
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        try {
+            await command.run([stakeDir, "--format", "json", "--out", reportFile]);
+
+            const printed = JSON.parse(logSpy.mock.calls[0][0]) as OutcomeSourceProjectReport;
+            const written = JSON.parse(fs.readFileSync(reportFile, "utf-8")) as OutcomeSourceProjectReport;
+            expect(fs.existsSync(path.join(stakeDir, "pokie-manifest.json"))).toBe(false);
+            expect(printed).toEqual(written);
+            expect(printed).toMatchObject({rootPath: path.resolve(stakeDir), descriptor: {kind: "stakeEngine"}, issues: []});
+            expect(printed.modes[0]).toMatchObject({modeName: "base", analysis: {outcomeCount: 2, hitFrequency: 0.1}});
+            expect(printed.modes[0].analysis?.rtp).toBeCloseTo(0.15, 10);
+        } finally {
+            logSpy.mockRestore();
+        }
+    });
+
+    it("renders canonical structural diagnostics for a malformed manifest-less Stake directory", async () => {
+        fs.writeFileSync(path.join(stakeDir, "index.json"), "{not valid JSON");
+        const command = new ReportCommand();
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        try {
+            await command.run([stakeDir, "--format", "json"]);
+
+            const printed = JSON.parse(logSpy.mock.calls[0][0]) as OutcomeSourceProjectReport;
+            expect(printed.modes).toEqual([]);
+            expect(printed.issues).toEqual(
+                expect.arrayContaining([expect.objectContaining({code: "stakeengine-standalone-index-invalid-json", severity: "error"})]),
+            );
+        } finally {
+            logSpy.mockRestore();
+        }
     });
 });
 

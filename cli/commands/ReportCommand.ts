@@ -6,6 +6,8 @@ import {
     OutcomeSourceProjectAnalyzer,
     OutcomeSourceProjectAnalyzing,
     OutcomeSourceProjectReport,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
     describeProjectType,
     type ProjectType,
     ProjectResolving,
@@ -15,6 +17,7 @@ import {
     SimulationReportSet,
 } from "pokie";
 import fs from "fs";
+import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {renderOutcomeSourceHtml, renderOutcomeSourceMarkdown} from "./internal/renderOutcomeSourceReport.js";
@@ -82,7 +85,7 @@ export class ReportCommand implements CliCommandHandling {
         }
         const {reportPath, format, out} = parsedArgs;
 
-        const project = await this.resolveProjectSafely(reportPath);
+        const project = (await this.resolveProjectSafely(reportPath)) ?? this.recognizeStandaloneStakeOutcomeDirectory(reportPath);
         if (project?.type === "outcomeLibrary" || project?.type === "stakeAdapter") {
             let outcomeSourceReport: OutcomeSourceProjectReport;
             try {
@@ -247,6 +250,30 @@ export class ReportCommand implements CliCommandHandling {
         } catch {
             return undefined;
         }
+    }
+
+    // ProjectTargetResolver intentionally recognizes only POKIE-produced Stake exports: its result feeds
+    // reconstruction and other project operations that require pokie-manifest.json provenance. Reporting is
+    // different: the standalone Stake reader is explicitly designed for a compatible foreign directory, so
+    // recognize the minimal on-disk intent signal here and route it through that same canonical reader. Merely
+    // finding index.json is deliberate -- malformed contents must reach the reader to produce its actionable
+    // structural diagnostics rather than falling through to readReportJson() and exposing EISDIR.
+    private recognizeStandaloneStakeOutcomeDirectory(reportPath: string): PokieProject | undefined {
+        const rootPath = path.resolve(reportPath);
+        try {
+            if (!fs.statSync(rootPath).isDirectory() || !fs.statSync(path.join(rootPath, "index.json")).isFile()) {
+                return undefined;
+            }
+        } catch {
+            return undefined;
+        }
+
+        return {
+            type: "stakeAdapter",
+            rootPath,
+            capabilities: PROJECT_TYPE_CAPABILITIES.stakeAdapter,
+            provenance: 'recognized compatible Stake Engine outcome directory ("index.json"; no pokie-manifest.json required)',
+        };
     }
 
     // A source's canonical analysis is attempted before JSON parsing in run(). If it failed, retain the
