@@ -55,6 +55,33 @@ describe("ClientCommand", () => {
         );
     });
 
+    it("turns a busy browser UI port into a concise recovery step", async () => {
+        const portInUse = Object.assign(new Error("listen EADDRINUSE"), {
+            code: "EADDRINUSE",
+            address: "127.0.0.1",
+            port: 3100,
+        });
+        const command = new ClientCommand(
+            () => ({start: () => Promise.reject(portInUse), stop: () => Promise.resolve()}),
+            "/fake/client/root",
+        );
+
+        await expect(command.run(["./game", "--no-open"])).rejects.toThrow(
+            /Stop the process using it, or retry with --port <number> \(or --port 0 for an available port\)/,
+        );
+    });
+
+    it("turns a non-port browser UI listener failure into scoped recovery guidance", async () => {
+        const command = new ClientCommand(
+            () => ({start: () => Promise.reject(new Error("bind failed at /private/runtime/socket")), stop: () => Promise.resolve()}),
+            "/fake/client/root",
+        );
+
+        await expect(command.run(["./game", "--no-open"])).rejects.toThrow(
+            /^POKIE client UI could not start its local listener\. Check the configured host and port, then retry with --port <number> \(or --port 0 for an available port\)\.$/,
+        );
+    });
+
     it("throws a descriptive error when --host has no value", async () => {
         const command = new ClientCommand();
 
@@ -117,6 +144,8 @@ describe("ClientCommand", () => {
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("http://127.0.0.1:3100");
         expect(printed).toContain("http://127.0.0.1:3000");
+        expect(printed).toContain('start it separately (e.g. "pokie serve") or use "pokie dev"');
+        expect(printed).toContain("not a casino backend or RGS");
 
         logSpy.mockRestore();
     });

@@ -10,10 +10,11 @@ import {
     PokieGame,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolution, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {openBrowser} from "../openBrowser.js";
 import {waitForHealth} from "../waitForHealth.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {describeLocalServerStartError, describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
 
 type DevOptions = {
     packageRoot: string;
@@ -94,7 +95,7 @@ export class DevCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return 'Run "pokie serve" and "pokie client" together, opening a browser UI.';
+        return 'Run "pokie serve" and "pokie client" together as a local/dev reference setup (not a casino backend/RGS).';
     }
 
     public getCommanderCommand(): Command {
@@ -111,13 +112,7 @@ export class DevCommand implements CliCommandHandling {
             }
             throw error;
         }
-        const resolution = await this.resolveRuntimePackageRoot(options.packageRoot);
-        let game: PokieGame;
-        try {
-            game = await this.loadGame(resolution.runtimePath);
-        } finally {
-            await resolution.release();
-        }
+        const game = await this.loadRuntimeGame(options.packageRoot);
 
         // If any step from here on throws — the client server failing to bind its port, or the API
         // never becoming healthy — every server already started for this run must still be stopped
@@ -136,7 +131,12 @@ export class DevCommand implements CliCommandHandling {
                 sessionCapturePolicyMode: "full",
                 pokieVersion: this.pokieVersion,
             });
-            const apiAddress = await apiServer.start();
+            let apiAddress;
+            try {
+                apiAddress = await apiServer.start();
+            } catch (error) {
+                throw describeLocalServerStartError(error, "POKIE dev API server", "--port");
+            }
             startedServers.push(apiServer);
 
             const clientServer = this.createClientServer(this.clientRoot, {
@@ -144,7 +144,12 @@ export class DevCommand implements CliCommandHandling {
                 port: options.clientPort,
                 apiAddress,
             });
-            const clientAddress = await clientServer.start();
+            let clientAddress;
+            try {
+                clientAddress = await clientServer.start();
+            } catch (error) {
+                throw describeLocalServerStartError(error, "POKIE client UI", "--client-port");
+            }
             startedServers.push(clientServer);
 
             await this.waitForHealthImpl(`http://${apiAddress.host}:${apiAddress.port}/health`);
@@ -183,9 +188,9 @@ export class DevCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<packageRoot>", "an existing POKIE game package")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--port <number>", "port for the API server (default: an available port)", (value: string) => this.parsePortValue(value, "--port"))
+            .option("--port <number>", "port for the API server (default: 3000; pass 0 for an available port)", (value: string) => this.parsePortValue(value, "--port"))
             .option("--host <string>", "host for the API server (default: loopback only)")
-            .option("--client-port <number>", "port for the client UI server (default: an available port)", (value: string) => this.parsePortValue(value, "--client-port"))
+            .option("--client-port <number>", "port for the client UI server (default: 3100; pass 0 for an available port)", (value: string) => this.parsePortValue(value, "--client-port"))
             .option("--client-host <string>", "host for the client UI server (default: loopback only)")
             .option("--no-open", "do not open a browser pointed at the client UI")
             .action(
@@ -220,6 +225,29 @@ export class DevCommand implements CliCommandHandling {
             } catch {
                 // Best-effort cleanup; the original startup error is what the caller of run() sees.
             }
+        }
+    }
+
+    // Resolver/materialization, package loading, and resolution cleanup are one local-runtime
+    // preparation boundary. None should leak their implementation error through the public command.
+    private async loadRuntimeGame(packageRoot: string): Promise<PokieGame> {
+        let resolution: RuntimePackageResolution | undefined;
+        try {
+            resolution = await this.resolveRuntimePackageRoot(packageRoot);
+            const game = await this.loadGame(resolution.runtimePath);
+            const release = resolution.release();
+            resolution = undefined;
+            await release;
+            return game;
+        } catch (error) {
+            if (resolution !== undefined) {
+                try {
+                    await resolution.release();
+                } catch {
+                    // The actionable package diagnostic is more useful than cleanup internals.
+                }
+            }
+            throw describeRuntimePackageLoadError(packageRoot, error);
         }
     }
 

@@ -92,6 +92,84 @@ describe("DevCommand", () => {
         );
     });
 
+    it("turns an invalid package load into a validate-and-retry recovery step", async () => {
+        const command = new DevCommand(() => Promise.reject(new Error("missing pokie.entry")));
+
+        await expect(command.run(["./broken-game", "--no-open"])).rejects.toThrow(
+            /^Could not load a POKIE game package from "\.\/broken-game"\. Run `pokie validate "\.\/broken-game"` to diagnose the package, then retry\.$/,
+        );
+    });
+
+    it("turns a non-port API listener failure into a scoped recovery step", async () => {
+        const command = new DevCommand(
+            () => Promise.resolve(createFakeGame(manifest)),
+            () => ({start: () => Promise.reject(new Error("bind failed at /private/runtime/socket")), stop: () => Promise.resolve()}),
+            {clientRoot: "/fake/client/root", process: new FakeProcess() as unknown as NodeJS.Process},
+        );
+
+        await expect(command.run(["./game", "--no-open"])).rejects.toThrow(
+            /^POKIE dev API server could not start its local listener\. Check the configured host and port, then retry with --port <number> \(or --port 0 for an available port\)\.$/,
+        );
+    });
+
+    it("turns a busy API port into a concise recovery step", async () => {
+        const portInUse = Object.assign(new Error("listen EADDRINUSE"), {
+            code: "EADDRINUSE",
+            address: "127.0.0.1",
+            port: 3000,
+        });
+        const command = new DevCommand(
+            () => Promise.resolve(createFakeGame(manifest)),
+            () => ({start: () => Promise.reject(portInUse), stop: () => Promise.resolve()}),
+            {clientRoot: "/fake/client/root", process: new FakeProcess() as unknown as NodeJS.Process},
+        );
+
+        await expect(command.run(["./game", "--no-open"])).rejects.toThrow(
+            /Stop the process using it, or retry with --port <number> \(or --port 0 for an available port\)/,
+        );
+    });
+
+    it("stops the API and explains how to recover when the browser UI port is busy", async () => {
+        const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 3000});
+        const portInUse = Object.assign(new Error("listen EADDRINUSE"), {
+            code: "EADDRINUSE",
+            address: "127.0.0.1",
+            port: 3100,
+        });
+        const command = new DevCommand(
+            () => Promise.resolve(createFakeGame(manifest)),
+            () => apiServer,
+            {
+                createClientServer: () => ({start: () => Promise.reject(portInUse), stop: () => Promise.resolve()}),
+                clientRoot: "/fake/client/root",
+                process: new FakeProcess() as unknown as NodeJS.Process,
+            },
+        );
+
+        await expect(command.run(["./game", "--no-open"])).rejects.toThrow(
+            /retry with --client-port <number> \(or --client-port 0 for an available port\)/,
+        );
+        expect(apiServer.stopCalls).toBe(1);
+    });
+
+    it("stops the API and turns a non-port UI listener failure into scoped recovery guidance", async () => {
+        const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 3000});
+        const command = new DevCommand(
+            () => Promise.resolve(createFakeGame(manifest)),
+            () => apiServer,
+            {
+                createClientServer: () => ({start: () => Promise.reject(new Error("bind failed at /private/runtime/socket")), stop: () => Promise.resolve()}),
+                clientRoot: "/fake/client/root",
+                process: new FakeProcess() as unknown as NodeJS.Process,
+            },
+        );
+
+        await expect(command.run(["./game", "--no-open"])).rejects.toThrow(
+            /^POKIE client UI could not start its local listener\. Check the configured host and port, then retry with --client-port <number> \(or --client-port 0 for an available port\)\.$/,
+        );
+        expect(apiServer.stopCalls).toBe(1);
+    });
+
     it("starts both servers, waits for health, and opens the browser by default", async () => {
         const game = createFakeGame(manifest);
         const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 3000});
@@ -286,7 +364,9 @@ describe("DevCommand", () => {
             process: new FakeProcess() as unknown as NodeJS.Process,
         });
 
-        await expect(command.run(["./sample-slot", "--no-open"])).rejects.toThrow(clientServerStartError);
+        await expect(command.run(["./sample-slot", "--no-open"])).rejects.toThrow(
+            /^POKIE client UI could not start its local listener\. Check the configured host and port, then retry with --client-port <number> \(or --client-port 0 for an available port\)\.$/,
+        );
 
         expect(apiServer.stopCalls).toBe(1);
     });
@@ -482,14 +562,16 @@ describe("DevCommand runtime package materialization boundary", () => {
         expect(loadCalls).toEqual([resolvedRuntimePath]);
     });
 
-    it("propagates a materialization failure without ever loading the game or starting any server", async () => {
+    it("turns a materialization failure into recovery guidance without loading the game or starting any server", async () => {
         const resolveRuntimePackageRoot = () => Promise.reject(new Error("dependencies phase failed"));
         const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
         const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 3000});
 
         const command = new DevCommand(loadGame, () => apiServer, {clientRoot: "/fake/client/root"}, resolveRuntimePackageRoot);
 
-        await expect(command.run(["/blueprints/raw-game.json", "--no-open"])).rejects.toThrow(/dependencies phase failed/);
+        await expect(command.run(["/blueprints/raw-game.json", "--no-open"])).rejects.toThrow(
+            /^Could not load a POKIE game package from "\/blueprints\/raw-game\.json"\. Run `pokie validate "\/blueprints\/raw-game\.json"` to diagnose the package, then retry\.$/,
+        );
         expect(loadGame).not.toHaveBeenCalled();
         expect(apiServer.startCalls).toBe(0);
     });
