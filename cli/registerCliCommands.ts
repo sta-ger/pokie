@@ -14,8 +14,6 @@ import {InitCommand} from "./commands/InitCommand.js";
 import {ImportCommand} from "./commands/ImportCommand.js";
 import {InspectCommand} from "./commands/InspectCommand.js";
 import {InternalStudioCommand} from "./commands/InternalStudioCommand.js";
-import {OutcomeLibraryCommand} from "./commands/OutcomeLibraryCommand.js";
-import {OutcomeSourceCommand} from "./commands/OutcomeSourceCommand.js";
 import {ParCommand} from "./commands/ParCommand.js";
 import {ReelCommand} from "./commands/ReelCommand.js";
 import {ReplayCommand} from "./commands/ReplayCommand.js";
@@ -23,7 +21,6 @@ import {ReportCommand} from "./commands/ReportCommand.js";
 import {ServeCommand} from "./commands/ServeCommand.js";
 import {SampleCommand} from "./commands/SampleCommand.js";
 import {SimCommand} from "./commands/SimCommand.js";
-import {StakeEngineCommand} from "./commands/StakeEngineCommand.js";
 import {StudioCommand} from "./commands/StudioCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
 import {createMaterializingRuntimePackageResolver} from "./materialize/materializeRuntimePackage.js";
@@ -72,8 +69,6 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
         new InitCommand(version, undefined, withLocalPokieInstall(pokiePackageRoot)),
         new ImportCommand(version),
         new InspectCommand(),
-        new OutcomeLibraryCommand(version),
-        new OutcomeSourceCommand(),
         new ParCommand(version),
         new ReelCommand(),
         new ReplayCommand(
@@ -93,7 +88,6 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
             undefined,
             createMaterializingRuntimePackageResolver(version, SIM_OPERATION, pokiePackageRoot),
         ),
-        new StakeEngineCommand(version),
         new InternalStudioCommand(new StudioCommand(version, pokiePackageRoot, {studioRoot})),
         new ValidateCommand(
             undefined,

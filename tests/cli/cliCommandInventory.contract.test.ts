@@ -61,12 +61,12 @@ import {isCommanderHelpDisplay} from "../../cli/commands/internal/CommanderCliAd
 
 const TEST_VERSION = "1.3.0";
 
-// Mirrors cli/pokie.ts's own `commands` array 1:1 (same classes, same order, same names) — the one
-// place that registry is duplicated for testing, since cli/pokie.ts itself can't be imported
-// directly (its readOwnVersion()/ownClientRoot()/ownStudioRoot() need import.meta.url, and its
-// module body calls run() unconditionally on import — see cli/pokie.ts's own comments and
-// ClientCommand's/DevCommand's doc comments on the same point). Keep this list's names/order in
-// sync with cli/pokie.ts whenever a command is added, renamed, or reordered there.
+// This is the legacy-handler argument contract, deliberately separate from the production command
+// tree. A few handlers remain implementation details behind capability-oriented commands (for
+// example, GenerateCommand delegates to OutcomeLibraryCommand); their parser regression coverage
+// stays here without advertising their storage-format namespaces as public CLI commands. The real
+// public tree is registered only by registerCliCommands() and is checked by
+// residualPublicSurface.contract.test.ts plus the recursive help block below.
 //
 // Every command here is otherwise unstubbed (real production defaults for every dependency) — this
 // is the registry CLI_CONTRACT_CASES' "invalid" cases run through, since none of them ever reach an
@@ -2007,22 +2007,8 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
     return registry;
 }
 
-describe("CLI command registry (cli/pokie.ts's `commands` array, mirrored here)", () => {
+describe("legacy CLI handler argument contracts", () => {
     const commands = registerCommands();
-
-    it("registers stakeengine in the production CLI factory", () => {
-        const productionCommands = registerCliCommands({
-            version: TEST_VERSION,
-            pokiePackageRoot: "/fake/pokie/root",
-            clientRoot: "/fake/pokie/root/dist/cli/client",
-            studioRoot: "/fake/pokie/root/dist/cli/studio-client",
-        });
-        const stakeEngine = productionCommands.filter((command) => command.getName() === "stakeengine");
-        const descriptor = CLI_COMMAND_DESCRIPTORS.find((candidate) => candidate.name === "stakeengine");
-
-        expect(stakeEngine).toHaveLength(1);
-        expect(stakeEngine[0].getDescription()).toBe(descriptor?.description);
-    });
 
     it("has exactly the names the inventory expects, in the same order, with no duplicates", () => {
         expect(commands.map((command) => command.getName())).toEqual(CLI_COMMAND_DESCRIPTORS.map((d) => d.name));
