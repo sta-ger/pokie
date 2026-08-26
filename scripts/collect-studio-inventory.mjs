@@ -516,8 +516,8 @@ async function main() {
         await observeAction("Home after closing a project", operation, () => renderedText("Design Your Game"));
         operation = await click("Projects", () => activeSection("Projects"));
         await observeAction("Projects registry after creating a project", operation, () => activeSection("Projects"));
-        operation = {...await click("Open", () => renderedActionExists("Close project")), coverageId: "managed-project-open"};
         try {
+            operation = {...await click("Open", () => renderedActionExists("Close project")), coverageId: "managed-project-open"};
             await observeAction("Managed project Open opens the project workspace", operation, () => renderedActionExists("Close project"));
             operation = await click("Close project", () => renderedActionExists("Confirm"));
             await observeAction("Managed project workspace closes", operation, () => renderedActionExists("Confirm"));
@@ -526,12 +526,24 @@ async function main() {
             operation = await click("Projects", () => activeSection("Projects"));
             await observeAction("Projects registry after opening managed project", operation, () => activeSection("Projects"));
         } catch (error) {
-            recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-NO-VISIBLE-RESULT", "Managed project Open", "P8-02", `CDP mouse input was delivered, but the enabled managed-project Open control produced no workspace, loading, or error result within the bounded observation window: ${error.message}`, undefined, "managed-project-open");
+            recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-NO-VISIBLE-RESULT", "Managed project Open", "P8-02", `The clean rendered registry did not expose an Open-to-workspace transition that browser input could complete: ${error.message}`, undefined, "managed-project-open");
         }
-        operation = {...await activate("Remove", () => renderedActionExists("Cancel")), coverageId: "managed-project-remove-confirm"};
-        await observeAction("Managed project Remove opens a non-destructive confirmation", operation, () => renderedActionExists("Cancel"));
-        operation = {...await activate("Cancel", () => !renderedActionExists("Cancel")), coverageId: "managed-project-remove-cancel"};
-        await observeAction("Managed project Remove is cancelled", operation, () => !renderedActionExists("Cancel"));
+        try {
+            operation = {...await activate("Remove", () => renderedActionExists("Cancel")), coverageId: "managed-project-remove-confirm"};
+            await observeAction("Managed project Remove opens a non-destructive confirmation", operation, () => renderedActionExists("Cancel"));
+        } catch (error) {
+            recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CONFIRMATION", "Managed project Remove confirmation", "P8-02", `The managed-project Remove confirmation was not reachable from the rendered registry without a managed project: ${error.message}`, undefined, "managed-project-remove-confirm");
+        }
+        if (await renderedActionExists("Cancel")) {
+            try {
+                operation = {...await activate("Cancel", () => !renderedActionExists("Cancel")), coverageId: "managed-project-remove-cancel"};
+                await observeAction("Managed project Remove is cancelled", operation, () => !renderedActionExists("Cancel"));
+            } catch (error) {
+                recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CANCEL", "Managed project Remove cancellation", "P8-02", `The rendered Remove confirmation could not be cancelled through browser input: ${error.message}`, undefined, "managed-project-remove-cancel");
+            }
+        } else {
+            recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CANCEL", "Managed project Remove cancellation", "P8-02", "Remove confirmation was not rendered, so its Cancel control could not be reached from the clean managed-project registry.", undefined, "managed-project-remove-cancel");
+        }
         recordFinding("P8-01-F-IMPORT-NATIVE-PICKER", "Import Project host native picker", "P8-02", "The browser collector can observe Browse controls but a headless clean-profile run cannot select a host-native file-picker result.");
         recordFinding("P8-01-F-IMPORT-DETECT", "Import Project Detect", "P8-02", "Detect requires a user-provided package, outcome library, export, blueprint, or PAR-sheet path; the clean run does not fabricate an external artifact.", "DOC-03");
         recordFinding("P8-01-F-IMPORT-REGISTER", "Import Project Register", "P8-02", "Register is offered only after a successful detection of a user-provided external artifact, which is unavailable in this clean run.");
