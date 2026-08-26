@@ -336,9 +336,11 @@ async function main() {
             if (focusBefore?.label !== label) throw new Error(`Could not reach rendered action with browser keyboard focus: ${label}`);
             const started = Date.now();
             await dispatchKey(" ", "Space", 32);
+            await wait(30);
+            if (!await result()) await dispatchKey("Enter", "Enter", 13);
             const focusAfter = await activeControl();
             note(`ACT keyboard-focus-and-activation=${JSON.stringify(label)} focusBefore=${JSON.stringify(focusBefore)} focusAfter=${JSON.stringify(focusAfter)}`);
-            return {action: `keyboard activation ${label}`, inputMethod: "CDP keyboard Tab + Space", focusBefore, focusAfter, started, resultWasFalseBeforeInput: true};
+            return {action: `keyboard activation ${label}`, inputMethod: "CDP keyboard Tab + Space (Enter fallback)", focusBefore, focusAfter, started, resultWasFalseBeforeInput: true};
         };
         const pressKey = async (label, key, code, windowsVirtualKeyCode, result) => {
             await requireFalse(result, `keyboard ${label}`);
