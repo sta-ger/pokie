@@ -249,6 +249,14 @@ export class ValidateCommand implements CliCommandHandling {
         if (issue.code.startsWith("outcome-library-bundle-")) {
             return this.safeOutcomeLibraryIssue(issue);
         }
+        if (issue.code === "pokie-game-manifest-threw") {
+            return {
+                ...issue,
+                message: "The game manifest exported by this package could not be read.",
+                path: "package.json#pokie.entry",
+                suggestion: 'Check the game exported by "pokie.entry" returns a manifest with id, name, and version, then run validate again.',
+            };
+        }
         return issue;
     }
 

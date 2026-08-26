@@ -220,7 +220,11 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(report).toMatchObject({schemaVersion: 1, valid: false, project: {kind: "blueprint", path: blueprintPath}});
         expect(report.errors).toEqual(
             expect.arrayContaining([
-                expect.objectContaining({code: "blueprint-reels-invalid", path: "reels", suggestion: expect.any(String)}),
+                expect.objectContaining({
+                    code: "blueprint-reels-invalid",
+                    path: "reels",
+                    suggestion: "Fix this issue at the indicated location, then run `pokie validate <path>` again.",
+                }),
             ]),
         );
     });
@@ -247,8 +251,36 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
             code: "outcome-library-bundle-manifest-invalid-json",
             path: "manifest.json",
             message: 'The outcome-library artifact at "manifest.json" is not valid JSON.',
-            suggestion: expect.any(String),
+            suggestion: "Repair manifest.json to match the outcome-library bundle format, then run validate again.",
         });
+    });
+
+    it("sanitizes malformed outcome index diagnostics at the CLI boundary", async () => {
+        const bundleDir = path.join(outDir, "malformed-index");
+        await writeOutcomeLibraryBundle(bundleDir);
+        fs.writeFileSync(path.join(bundleDir, "index_base.json"), "{ not JSON");
+
+        const exitCode = await new ValidateCommand().run([bundleDir, "--format", "json"]);
+
+        expect(exitCode).toBe(1);
+        const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
+            schemaVersion: number;
+            project: {kind: string};
+            errors: Array<{code: string; path: string; message: string; suggestion: string}>;
+        };
+        expect(report).toMatchObject({schemaVersion: 1, project: {kind: "outcome-library"}});
+        expect(report.errors).toEqual(
+            expect.arrayContaining([
+                {
+                    code: "outcome-library-bundle-mode-index-invalid-json",
+                    severity: "error",
+                    path: "index_base.json",
+                    message: 'The outcome-library artifact at "index_base.json" is not valid JSON.',
+                    suggestion: "Repair index_base.json to match the outcome-library bundle format, then run validate again.",
+                },
+            ]),
+        );
+        expect(JSON.stringify(report)).not.toMatch(/Unexpected token|ENOENT|SyntaxError|Error:|\/index_base\.json/);
     });
 
     it("reports a valid outcome library consistently in shallow and deep CLI validation", async () => {
@@ -290,11 +322,39 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
                 expect.objectContaining({
                     code: "outcome-library-bundle-outcomes-line-invalid-json",
                     path: "outcomes_base.jsonl",
-                    suggestion: expect.any(String),
+                    suggestion: "Repair outcomes_base.jsonl to match the outcome-library bundle format, then run validate again.",
                 }),
             ]),
         );
         expect(JSON.stringify(deep)).not.toMatch(/Unexpected token|ENOENT|SyntaxError|Error:/);
+    });
+
+    it("sanitizes a game manifest runtime failure with an entry-field location and remediation", async () => {
+        const command = new ValidateCommand(
+            createStubValidator({
+                ...invalidReport,
+                errors: [{
+                    code: "pokie-game-manifest-threw",
+                    severity: "error",
+                    message: "PokieGame.getManifest() threw: ResolverClass failed at /private/runtime/game.ts",
+                }],
+                warnings: [],
+                suggestions: [],
+            }),
+        );
+
+        expect(await command.run(["./broken-game", "--format", "json"])).toBe(1);
+        const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
+            errors: Array<{code: string; path: string; message: string; suggestion: string}>;
+        };
+        expect(report.errors).toContainEqual({
+            code: "pokie-game-manifest-threw",
+            severity: "error",
+            path: "package.json#pokie.entry",
+            message: "The game manifest exported by this package could not be read.",
+            suggestion: 'Check the game exported by "pokie.entry" returns a manifest with id, name, and version, then run validate again.',
+        });
+        expect(JSON.stringify(report)).not.toMatch(/ResolverClass|private\/runtime|threw:/);
     });
 
     it("returns a remedial report instead of a raw materialization failure", async () => {
