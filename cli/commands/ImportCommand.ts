@@ -7,9 +7,12 @@ import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderErr
 
 const USAGE = "Usage: pokie import <source> [--out <path>] [--format json]";
 
-// A source's path is the user-facing contract here: a workbook imports as a Blueprint and any
-// directory imports as a read-only outcome-source export. Keeping that dispatch in one ordinary
-// verb lets callers move projects without first learning a producer-specific command namespace.
+// A source's path is the user-facing contract here: a workbook imports as a Blueprint and a
+// POKIE-produced Stake Engine export directory imports as reconstructed outcome libraries.
+// Standalone analysis/diff accepts a broader, manifest-less foreign Stake directory, but import
+// cannot honestly reconstruct the POKIE-only provenance fields that format does not contain.
+// Keeping this dispatch in one ordinary verb lets callers move projects without first learning a
+// producer-specific command namespace.
 export class ImportCommand implements CliCommandHandling {
     private readonly par: ParCommand;
     private readonly stake: StakeEngineCommand;
@@ -24,7 +27,7 @@ export class ImportCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Import a recognized workbook or outcome directory into POKIE artifacts.";
+        return "Import a PAR workbook or POKIE Stake Engine export into POKIE artifacts.";
     }
 
     public getCommanderCommand(): Command {
@@ -41,14 +44,16 @@ export class ImportCommand implements CliCommandHandling {
             }
             throw error;
         }
-        const delegate = path.extname(input) === ".xlsx" ? this.par : this.stake;
+        // Filesystems routinely preserve a producer's uppercase `.XLSX` suffix. Extension casing
+        // is not a workbook-format distinction, so normalize it before selecting the PAR reader.
+        const delegate = path.extname(input).toLowerCase() === ".xlsx" ? this.par : this.stake;
         return delegate.run(["import", ...args]);
     }
 
     private command(): Command {
         return createCommanderCliCommand("import")
             .description(this.getDescription())
-            .argument("<source>", "a workbook or an outcome export directory")
+            .argument("<source>", "a PAR workbook or POKIE Stake Engine export directory")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--out <path>", "where to write imported artifacts")
             .option("--format <format>", 'only "json" is supported for workbook import')
