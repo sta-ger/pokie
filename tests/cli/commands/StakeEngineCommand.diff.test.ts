@@ -211,14 +211,14 @@ describe("StakeEngineCommand diff", () => {
             "/project/left": identicalReadResult("/project/left"),
             "/project/right": identicalReadResult("/project/right"),
         });
-        const writeFile = jest.fn();
-        const command = new StakeEngineCommand("1.3.0", undefined, undefined, undefined, undefined, undefined, undefined, reader, undefined, writeFile);
+        const writeNewDiffFile = jest.fn();
+        const command = new StakeEngineCommand("1.3.0", undefined, undefined, undefined, undefined, undefined, undefined, reader, undefined, undefined, undefined, writeNewDiffFile);
 
         const exitCode = await command.run(["diff", "/project/left", "/project/right", "--out", "/tmp/diff-report.json"]);
 
         expect(exitCode).toBe(0);
-        expect(writeFile).toHaveBeenCalledTimes(1);
-        const [filePath, contents] = writeFile.mock.calls[0] as [string, string];
+        expect(writeNewDiffFile).toHaveBeenCalledTimes(1);
+        const [filePath, contents] = writeNewDiffFile.mock.calls[0] as [string, string];
         expect(filePath).toBe("/tmp/diff-report.json");
         const parsed = JSON.parse(contents) as {stakeDir: {left: string; right: string}};
         expect(parsed.stakeDir).toEqual({left: "/project/left", right: "/project/right"});

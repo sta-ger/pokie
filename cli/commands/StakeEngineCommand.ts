@@ -124,7 +124,8 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly outcomeSourceReader: StakeEngineOutcomeSourceReading;
     private readonly standaloneAnalyzer: StakeEngineStandaloneAnalyzer;
     private readonly standaloneAnalysisDiffer: StakeEngineStandaloneAnalysisDiffing;
-    private readonly writeFile: (file: string, contents: string) => void;
+    private readonly writeAnalyzeFile: (file: string, contents: string) => void;
+    private readonly writeNewDiffFile: (file: string, contents: string) => void;
 
     constructor(
         pokieVersion: string,
@@ -137,8 +138,9 @@ export class StakeEngineCommand implements CliCommandHandling {
         bundleStreamingExporter: StakeEngineBundleStreamingExporting = new StakeEngineBundleStreamingExporter(pokieVersion),
         outcomeSourceReader: StakeEngineOutcomeSourceReading = new StakeEngineOutcomeSourceReader(),
         standaloneAnalyzer: StakeEngineStandaloneAnalyzer = new StakeEngineStandaloneAnalyzer(),
-        writeFile: (file: string, contents: string) => void = writeNewStakeEngineDiffFileAtomically,
+        writeAnalyzeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
         standaloneAnalysisDiffer: StakeEngineStandaloneAnalysisDiffing = new StakeEngineStandaloneAnalysisDiffer(),
+        writeNewDiffFile: (file: string, contents: string) => void = writeNewStakeEngineDiffFileAtomically,
     ) {
         this.exporter = exporter;
         this.importer = importer;
@@ -148,8 +150,9 @@ export class StakeEngineCommand implements CliCommandHandling {
         this.bundleStreamingExporter = bundleStreamingExporter;
         this.outcomeSourceReader = outcomeSourceReader;
         this.standaloneAnalyzer = standaloneAnalyzer;
-        this.writeFile = writeFile;
+        this.writeAnalyzeFile = writeAnalyzeFile;
         this.standaloneAnalysisDiffer = standaloneAnalysisDiffer;
+        this.writeNewDiffFile = writeNewDiffFile;
     }
 
     public getName(): string {
@@ -457,7 +460,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         const report: AnalyzeReport = {stakeDir: options.stakeDir, issues: [...readResult.issues], analysis};
 
         if (options.out) {
-            this.writeFile(options.out, JSON.stringify(report, null, 4));
+            this.writeAnalyzeFile(options.out, JSON.stringify(report, null, 4));
         }
 
         if (options.format === "json") {
@@ -500,7 +503,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         };
 
         if (options.out) {
-            this.writeFile(options.out, JSON.stringify(report, null, 4));
+            this.writeNewDiffFile(options.out, JSON.stringify(report, null, 4));
         }
 
         if (options.format === "json") {

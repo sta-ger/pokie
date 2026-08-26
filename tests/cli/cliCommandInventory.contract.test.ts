@@ -1843,9 +1843,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     },
                 },
             ),
-        // analyze/diff observe --out at writeFile (10th ctor param, called only when options.out is set, and
-        // nothing else in either case gates that same call, so whether it fires is driven solely by --out's
-        // real value); --format is derived from actual captured stdout (see STDOUT_FORMAT_FLAGS).
+        // analyze observes --out at writeAnalyzeFile (10th ctor param), while diff observes it at
+        // writeNewDiffFile (12th ctor param). Both are called only when options.out is set, so whether either
+        // fires is driven solely by --out's real value; --format is derived from actual captured stdout (see
+        // STDOUT_FORMAT_FLAGS).
         "stakeengine::analyze <stakeDir> --format json (accepted --format value, machine-readable shape)": (key) => {
             let writeFileCalled = false;
             deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
@@ -1893,11 +1894,12 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 {readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []})},
                 stub<StakeEngineStandaloneAnalyzer>({analyze: () => ({stakeDir: "stakeDir", modes: []})}),
+                undefined,
+                {diff: () => ({stakeDir: {left: "left", right: "right"}, onlyInLeft: [], onlyInRight: [], perMode: {}})},
                 (filePath) => {
                     writeFileCalled = true;
                     observe(key, "--out", filePath);
                 },
-                {diff: () => ({stakeDir: {left: "left", right: "right"}, onlyInLeft: [], onlyInRight: [], perMode: {}})},
             );
         },
         "stakeengine::diff <leftStakeDir> <rightStakeDir> --format json --out <file> (accepted --format/--out values)": (key) =>
@@ -1911,10 +1913,11 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 {readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []})},
                 stub<StakeEngineStandaloneAnalyzer>({analyze: () => ({stakeDir: "stakeDir", modes: []})}),
+                undefined,
+                {diff: () => ({stakeDir: {left: "left", right: "right"}, onlyInLeft: [], onlyInRight: [], perMode: {}})},
                 (filePath) => {
                     observe(key, "--out", filePath);
                 },
-                {diff: () => ({stakeDir: {left: "left", right: "right"}, onlyInLeft: [], onlyInRight: [], perMode: {}})},
             ),
 
         // --port/--host reach createServer(options); --no-open's accepted "true" has no dependency seam of its

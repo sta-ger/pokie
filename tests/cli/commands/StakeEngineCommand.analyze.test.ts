@@ -328,6 +328,24 @@ describe("StakeEngineCommand analyze", () => {
             fs.rmSync(dir, {recursive: true, force: true});
         }
     });
+
+    it("end to end: replaces an existing analysis report without using diff publication diagnostics", async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-existing-out-test-"));
+        const outFile = path.join(dir, "analysis.json");
+        try {
+            const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "cli-lib", betMode: "base", stake: 1, totalWin: 5});
+            await new StakeEngineExporter("1.3.0").exportToDirectory([{modeName: "base", cost: 1, library}], dir);
+            fs.writeFileSync(outFile, "previous analysis report", "utf-8");
+
+            const exitCode = await new StakeEngineCommand("1.3.0").run(["analyze", dir, "--out", outFile]);
+
+            expect(exitCode).toBe(0);
+            expect(JSON.parse(fs.readFileSync(outFile, "utf-8"))).toMatchObject({stakeDir: dir, issues: []});
+            expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).not.toContain("Cannot write Stake Engine diff");
+        } finally {
+            fs.rmSync(dir, {recursive: true, force: true});
+        }
+    });
 });
 
 // Writes a uint64-scale standalone directory whose second outcome carries a malformed event (an object with no string
