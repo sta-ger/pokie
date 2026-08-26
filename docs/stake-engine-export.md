@@ -165,9 +165,9 @@ the last two codes above only ever surface at this stage) before writing anythin
 issue from either stage, nothing is written — the same "no partial export" guarantee as
 `ParSheetExporter`/`GamePackageGenerator`.
 
-## Rebuild safety — the whole directory is replaced atomically
+## Rebuild safety — the programmatic writer replaces the whole directory atomically
 
-A `StakeEngineExporter` export doesn't add/overwrite individual files in `--out` — it builds the *entire* output
+A `StakeEngineExporter` API export doesn't add/overwrite individual files in `outDir` — it builds the *entire* output
 into a fresh temporary sibling directory first, and only swaps it into place (a directory rename) once every
 file has been written successfully. That has two consequences:
 
@@ -179,7 +179,7 @@ file has been written successfully. That has two consequences:
   written into the new directory, and the swap discards the old ones along with everything else — no stale
   per-mode files are ever left behind.
 
-Because the whole directory is discarded and rebuilt this way, exporting into an existing `--out` is only
+Because the whole directory is discarded and rebuilt this way, using the programmatic writer with an existing `outDir` is only
 allowed when that directory is either empty or recognized as a prior POKIE adapter-export run's own
 output (via that run's own `pokie-manifest.json`) — otherwise a caller pointing `--out` at an unrelated directory
 by mistake would have it wiped wholesale. An unrecognized non-empty directory is refused outright, with nothing
@@ -207,11 +207,18 @@ deliberate failure behavior:
 Every one of these failure branches also guarantees the temp directory itself never lingers past the call that
 created it (removed best-effort, without ever masking whichever error is actually being thrown/returned).
 
+The target-oriented CLI alias, `pokie export <config.json> --to adapter`, deliberately has a stricter public
+contract: it rejects every occupied destination before this writer is invoked. Choose a different unused `--out`
+path (or remove the destination yourself after checking it); the alias never replaces an occupied destination.
+
 ## CLI usage
 
 ```
-pokie export <config.json> --to adapter [--out <dir>]
+pokie export <config.json> --to adapter [--out <dir>] [--dry-run]
 ```
+
+`--dry-run` validates the adapter source and resolved destination without writing anything. It reports an
+incompatible source or occupied destination before a publish is attempted.
 
 `<config.json>` lists one `WeightedOutcomeLibrary` JSON file per mode:
 
