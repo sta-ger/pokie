@@ -114,6 +114,7 @@ describe("diffOutcomeSourceProjects", () => {
         expect(result.diff.right).toEqual({rootPath: stakeAdapterProject.rootPath, kind: "stakeEngine", issues: []});
         expect(result.diff.onlyInLeft).toEqual([]);
         expect(result.diff.onlyInRight).toEqual([]);
+        expect(result.diff.changed).toBe(true);
         expect(result.diff.perMode.base.rtp.left).toBe(0.9);
         expect(result.diff.perMode.base.rtp.right).toBe(0.95);
         expect(result.diff.perMode.base.rtp.delta).toBeCloseTo(0.05, 10);
@@ -141,6 +142,7 @@ describe("diffOutcomeSourceProjects", () => {
         expect(result.diff.onlyInLeft).toEqual(["base"]);
         expect(result.diff.onlyInRight).toEqual([]);
         expect(result.diff.perMode).toEqual({});
+        expect(result.diff.changed).toBe(true);
     });
 });
 
@@ -175,5 +177,6 @@ describe("diffOutcomeSourceProjects (integration, real outcome-library bundles)"
         }
         expect(result.diff.perMode.base.rtp.delta).toBeCloseTo(0, 10);
         expect(result.diff.perMode.base.hitFrequency.delta).toBeCloseTo(0, 10);
+        expect(result.diff.changed).toBe(false);
     });
 });

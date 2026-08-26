@@ -295,10 +295,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stdout).toContain("Commands:");
         // A representative spread of registered commands, including the longest name, so a truncated
         // or partially-rendered list is caught rather than just "some text was printed".
-        for (const commandName of ["build", "create", "diff", "export", "generate", "inspect", "sample", "validate"]) {
+        for (const commandName of ["build", "create", "diff", "export", "generate", "inspect", "sample", "stakeengine", "validate"]) {
             expect(result.stdout).toMatch(new RegExp(`^ {2}${commandName} `, "m"));
         }
-        expect(result.stdout).not.toMatch(/^ {2}(name|outcomelibrary|outcomesource|par|stakeengine|studio)\b/m);
+        // PAR and Stake Engine are supported public workflows.  The package-level help must not
+        // leak only the legacy/internal implementation command names.
+        expect(result.stdout).not.toMatch(/^ {2}(name|outcomelibrary|outcomesource|studio)\b/m);
     });
 
     it.each([["--version"], ["-V"]])("prints the installed version for `pokie %s`, exiting 0", (flag) => {
@@ -339,7 +341,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
         expect(result.status).toBe(1);
         expect(result.stdout).toBe("");
-        expect(result.stderr).toContain("Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]");
+        expect(result.stderr).toContain(
+            "Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]",
+        );
         expect(result.stderr).toContain("<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary");
     });
 

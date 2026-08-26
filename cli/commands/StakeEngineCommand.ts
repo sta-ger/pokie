@@ -84,6 +84,33 @@ type ExportDescriptorModeEntry = {
 };
 type ExportDescriptor = {modes: ExportDescriptorModeEntry[]};
 
+function newOutputPathMessage(file: string, reason: string): string {
+    return `Cannot write Stake Engine diff to "${file}" because ${reason}. Choose a new unused --out path and retry.`;
+}
+
+// Diff reports are derived artifacts, so publishing one must never replace a prior result that
+// appeared after validation. A hard link provides create-only publication on the destination's
+// filesystem: another process wins the race instead of having its bytes replaced.
+function writeNewStakeEngineDiffFileAtomically(file: string, contents: string): void {
+    const directory = path.dirname(file);
+    let temporaryDirectory: string | undefined;
+    try {
+        temporaryDirectory = fs.mkdtempSync(path.join(directory, ".pokie-stakeengine-diff-"));
+        const temporaryFile = path.join(temporaryDirectory, path.basename(file));
+        fs.writeFileSync(temporaryFile, contents, "utf-8");
+        fs.linkSync(temporaryFile, file);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+            throw new Error(newOutputPathMessage(file, "that destination already exists"));
+        }
+        throw error;
+    } finally {
+        if (temporaryDirectory !== undefined) {
+            fs.rmSync(temporaryDirectory, {recursive: true, force: true});
+        }
+    }
+}
+
 // Two CLI verbs ("pokie stakeengine export"/"pokie stakeengine import") sharing one command, the same way
 // ParCommand owns both "par import"/"par export" — cli/pokie.ts dispatches by exact name match, so two separate
 // classes could never both return getName() === "stakeengine".
@@ -97,7 +124,8 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly outcomeSourceReader: StakeEngineOutcomeSourceReading;
     private readonly standaloneAnalyzer: StakeEngineStandaloneAnalyzer;
     private readonly standaloneAnalysisDiffer: StakeEngineStandaloneAnalysisDiffing;
-    private readonly writeFile: (file: string, contents: string) => void;
+    private readonly writeAnalyzeFile: (file: string, contents: string) => void;
+    private readonly writeNewDiffFile: (file: string, contents: string) => void;
 
     constructor(
         pokieVersion: string,
@@ -110,8 +138,9 @@ export class StakeEngineCommand implements CliCommandHandling {
         bundleStreamingExporter: StakeEngineBundleStreamingExporting = new StakeEngineBundleStreamingExporter(pokieVersion),
         outcomeSourceReader: StakeEngineOutcomeSourceReading = new StakeEngineOutcomeSourceReader(),
         standaloneAnalyzer: StakeEngineStandaloneAnalyzer = new StakeEngineStandaloneAnalyzer(),
-        writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
+        writeAnalyzeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
         standaloneAnalysisDiffer: StakeEngineStandaloneAnalysisDiffing = new StakeEngineStandaloneAnalysisDiffer(),
+        writeNewDiffFile: (file: string, contents: string) => void = writeNewStakeEngineDiffFileAtomically,
     ) {
         this.exporter = exporter;
         this.importer = importer;
@@ -121,8 +150,9 @@ export class StakeEngineCommand implements CliCommandHandling {
         this.bundleStreamingExporter = bundleStreamingExporter;
         this.outcomeSourceReader = outcomeSourceReader;
         this.standaloneAnalyzer = standaloneAnalyzer;
-        this.writeFile = writeFile;
+        this.writeAnalyzeFile = writeAnalyzeFile;
         this.standaloneAnalysisDiffer = standaloneAnalysisDiffer;
+        this.writeNewDiffFile = writeNewDiffFile;
     }
 
     public getName(): string {
@@ -430,7 +460,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         const report: AnalyzeReport = {stakeDir: options.stakeDir, issues: [...readResult.issues], analysis};
 
         if (options.out) {
-            this.writeFile(options.out, JSON.stringify(report, null, 4));
+            this.writeAnalyzeFile(options.out, JSON.stringify(report, null, 4));
         }
 
         if (options.format === "json") {
@@ -454,6 +484,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     // row number. Diffing stays at the mode/aggregate-metric/classification-category level the differ already
     // computes, where "same modeName"/"same category" *is* a stable, meaningful identity.
     private async runDiff(options: DiffOptions): Promise<number> {
+        this.preflightDiffOutput(options);
         const [leftRead, rightRead]: [StakeEngineOutcomeSourceReadResult, StakeEngineOutcomeSourceReadResult] = await Promise.all([
             this.outcomeSourceReader.readFromDirectory(options.leftStakeDir),
             this.outcomeSourceReader.readFromDirectory(options.rightStakeDir),
@@ -472,7 +503,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         };
 
         if (options.out) {
-            this.writeFile(options.out, JSON.stringify(report, null, 4));
+            this.writeNewDiffFile(options.out, JSON.stringify(report, null, 4));
         }
 
         if (options.format === "json") {
@@ -488,6 +519,59 @@ export class StakeEngineCommand implements CliCommandHandling {
             return DIFF_EXIT_INVALID_INPUT;
         }
         return this.diffHasMaterialDifference(report.diff) ? DIFF_EXIT_MATERIAL_DIFFERENCE : DIFF_EXIT_NO_MATERIAL_DIFFERENCE;
+    }
+
+    private preflightDiffOutput(options: DiffOptions): void {
+        if (options.out === undefined) {
+            return;
+        }
+
+        const outputPath = this.canonicalPlannedPath(options.out);
+        const inputDirectory = [options.leftStakeDir, options.rightStakeDir].find((stakeDir) => this.isPathWithin(outputPath, this.canonicalPlannedPath(stakeDir)));
+        if (inputDirectory !== undefined) {
+            throw new Error(newOutputPathMessage(options.out, `it is inside input directory "${inputDirectory}"`));
+        }
+
+        try {
+            fs.lstatSync(options.out);
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+                return;
+            }
+            throw new Error(
+                `Cannot prepare Stake Engine diff output at "${options.out}": ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+        throw new Error(newOutputPathMessage(options.out, "that destination already exists"));
+    }
+
+    private canonicalPlannedPath(file: string): string {
+        const resolved = path.resolve(file);
+        let existingAncestor = resolved;
+        const missingParts: string[] = [];
+        let reachedRoot = false;
+        while (!reachedRoot) {
+            try {
+                return path.join(fs.realpathSync(existingAncestor), ...missingParts.reverse());
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+                    return resolved;
+                }
+                const parent = path.dirname(existingAncestor);
+                if (parent === existingAncestor) {
+                    reachedRoot = true;
+                    continue;
+                }
+                missingParts.push(path.basename(existingAncestor));
+                existingAncestor = parent;
+            }
+        }
+        return resolved;
+    }
+
+    private isPathWithin(candidate: string, directory: string): boolean {
+        const relative = path.relative(directory, candidate);
+        return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
     }
 
     // "Material" deliberately reuses the differ's own threshold-gated warnings (see

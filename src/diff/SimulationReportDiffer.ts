@@ -30,30 +30,68 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
         const breakdown = this.diffBreakdown(left.breakdown, right.breakdown);
         const betMode = this.diffBetMode(left.betMode, right.betMode);
 
+        const game = {
+            left: {...left.game},
+            right: {...right.game},
+            changed: left.game.id !== right.game.id || left.game.name !== right.game.name || left.game.version !== right.game.version,
+        };
+        const seed = {
+            left: left.seed,
+            right: right.seed,
+            changed: left.seed !== right.seed,
+        };
+        const requestedRounds = this.metricDiff(left.requestedRounds, right.requestedRounds);
+        const rounds = this.metricDiff(left.rounds, right.rounds);
+        const totalBet = this.metricDiff(left.totalBet, right.totalBet);
+        const totalWin = this.metricDiff(left.totalWin, right.totalWin);
+        const durationMs = this.metricDiff(left.durationMs, right.durationMs);
+        const spinsPerSecond = this.metricDiff(left.spinsPerSecond, right.spinsPerSecond);
+
         return {
-            game: {
-                left: {...left.game},
-                right: {...right.game},
-                changed: left.game.id !== right.game.id || left.game.name !== right.game.name || left.game.version !== right.game.version,
-            },
-            seed: {
-                left: left.seed,
-                right: right.seed,
-                changed: left.seed !== right.seed,
-            },
+            changed: this.hasChanges(game.changed, seed.changed, betMode, [requestedRounds, rounds, totalBet, totalWin, rtp, hitFrequency, maxWin, durationMs, spinsPerSecond], breakdown, left.breakdown, right.breakdown),
+            game,
+            seed,
             betMode,
-            requestedRounds: this.metricDiff(left.requestedRounds, right.requestedRounds),
-            rounds: this.metricDiff(left.rounds, right.rounds),
-            totalBet: this.metricDiff(left.totalBet, right.totalBet),
-            totalWin: this.metricDiff(left.totalWin, right.totalWin),
+            requestedRounds,
+            rounds,
+            totalBet,
+            totalWin,
             rtp,
             hitFrequency,
             maxWin,
-            durationMs: this.metricDiff(left.durationMs, right.durationMs),
-            spinsPerSecond: this.metricDiff(left.spinsPerSecond, right.spinsPerSecond),
+            durationMs,
+            spinsPerSecond,
             warnings: this.buildWarnings(rtp, hitFrequency, maxWin, breakdown, left.breakdown, right.breakdown, betMode),
             breakdown,
         };
+    }
+
+    private hasChanges(
+        gameChanged: boolean,
+        seedChanged: boolean,
+        betMode: SimulationReportDiff["betMode"],
+        metrics: readonly SimulationReportMetricDiff[],
+        breakdown: SimulationReportBreakdownDiff | undefined,
+        leftBreakdown: SimulationReportBreakdown | undefined,
+        rightBreakdown: SimulationReportBreakdown | undefined,
+    ): boolean {
+        if (gameChanged || seedChanged || betMode?.changed || metrics.some((metric) => metric.delta !== 0)) {
+            return true;
+        }
+        if (!!leftBreakdown !== !!rightBreakdown) {
+            return true;
+        }
+        return breakdown !== undefined && Object.values(breakdown.components).some(
+            (component) => component.left === null || component.right === null || [
+                component.rounds,
+                component.totalBet,
+                component.totalWin,
+                component.rtp,
+                component.contribution,
+                component.hitFrequency,
+                component.maxWin,
+            ].some((metric) => metric.delta !== 0),
+        );
     }
 
     private diffBetMode(

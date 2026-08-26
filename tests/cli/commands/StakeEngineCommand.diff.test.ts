@@ -211,17 +211,61 @@ describe("StakeEngineCommand diff", () => {
             "/project/left": identicalReadResult("/project/left"),
             "/project/right": identicalReadResult("/project/right"),
         });
-        const writeFile = jest.fn();
-        const command = new StakeEngineCommand("1.3.0", undefined, undefined, undefined, undefined, undefined, undefined, reader, undefined, writeFile);
+        const writeNewDiffFile = jest.fn();
+        const command = new StakeEngineCommand("1.3.0", undefined, undefined, undefined, undefined, undefined, undefined, reader, undefined, undefined, undefined, writeNewDiffFile);
 
         const exitCode = await command.run(["diff", "/project/left", "/project/right", "--out", "/tmp/diff-report.json"]);
 
         expect(exitCode).toBe(0);
-        expect(writeFile).toHaveBeenCalledTimes(1);
-        const [filePath, contents] = writeFile.mock.calls[0] as [string, string];
+        expect(writeNewDiffFile).toHaveBeenCalledTimes(1);
+        const [filePath, contents] = writeNewDiffFile.mock.calls[0] as [string, string];
         expect(filePath).toBe("/tmp/diff-report.json");
         const parsed = JSON.parse(contents) as {stakeDir: {left: string; right: string}};
         expect(parsed.stakeDir).toEqual({left: "/project/left", right: "/project/right"});
+    });
+
+    it("publishes a new diff artifact but preserves existing and input-directory destinations", async () => {
+        const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-safe-output-"));
+        const leftDir = path.join(rootDir, "left");
+        const rightDir = path.join(rootDir, "right");
+        const outputPath = path.join(rootDir, "diff-report.json");
+        const existingOutputPath = path.join(rootDir, "existing-diff.json");
+        const leftAlias = path.join(rootDir, "left-alias");
+        try {
+            await new StakeEngineExporter("1.3.0").exportToDirectory(
+                [{modeName: "base", cost: 1, library: buildSingleOutcomeStakeEngineLibrary({libraryId: "left-lib", betMode: "base", stake: 1, totalWin: 5})}],
+                leftDir,
+            );
+            await new StakeEngineExporter("1.3.0").exportToDirectory(
+                [{modeName: "base", cost: 1, library: buildSingleOutcomeStakeEngineLibrary({libraryId: "right-lib", betMode: "base", stake: 1, totalWin: 25})}],
+                rightDir,
+            );
+            fs.writeFileSync(existingOutputPath, "existing diff artifact", "utf-8");
+            fs.symlinkSync(leftDir, leftAlias, "dir");
+            const leftIndexPath = path.join(leftDir, "index.json");
+            const leftIndexBefore = fs.readFileSync(leftIndexPath, "utf-8");
+            const command = new StakeEngineCommand("1.3.0");
+
+            expect(await command.run(["diff", leftDir, rightDir, "--format", "json", "--out", outputPath])).toBe(1);
+            const artifact = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {diff: StakeEngineStandaloneAnalysisDiff};
+            expect(artifact.diff.perMode.base.rtp.delta).toBe(20);
+
+            await expect(command.run(["diff", leftDir, rightDir, "--out", existingOutputPath])).rejects.toThrow(
+                `Cannot write Stake Engine diff to "${existingOutputPath}" because that destination already exists. Choose a new unused --out path and retry.`,
+            );
+            await expect(command.run(["diff", leftDir, rightDir, "--out", path.join(rightDir, "new-diff.json")])).rejects.toThrow(
+                /because it is inside input directory/,
+            );
+            await expect(command.run(["diff", leftDir, rightDir, "--out", path.join(leftAlias, "index.json")])).rejects.toThrow(
+                /because it is inside input directory/,
+            );
+
+            expect(fs.readFileSync(existingOutputPath, "utf-8")).toBe("existing diff artifact");
+            expect(fs.readFileSync(leftIndexPath, "utf-8")).toBe(leftIndexBefore);
+            expect(fs.existsSync(path.join(rightDir, "new-diff.json"))).toBe(false);
+        } finally {
+            fs.rmSync(rootDir, {recursive: true, force: true});
+        }
     });
 
     it("end to end: diffs two real Stake Engine directories exported at different totalWins, detecting the rtp drift and never event-level diffing", async () => {

@@ -56,6 +56,7 @@ describe("SimulationReportSetDiffer", () => {
         expect(setDiff.perMode.base.rtp.left).toBe(0.9);
         expect(setDiff.perMode.base.rtp.right).toBe(0.95);
         expect(setDiff.perMode.base.rtp.delta).toBeCloseTo(0.05, 10);
+        expect(setDiff.changed).toBe(true);
     });
 
     it("lists a mode present only on the left under onlyInLeft, not diffed against anything", () => {
@@ -68,6 +69,7 @@ describe("SimulationReportSetDiffer", () => {
         expect(setDiff.onlyInLeft).toEqual(["buy-10"]);
         expect(setDiff.onlyInRight).toEqual([]);
         expect(setDiff.perMode["buy-10"]).toBeUndefined();
+        expect(setDiff.changed).toBe(true);
     });
 
     it("lists a mode present only on the right under onlyInRight", () => {
@@ -93,13 +95,13 @@ describe("SimulationReportSetDiffer", () => {
         expect(setDiff.game.right.id).toBe("sample-slot-v2");
     });
 
-    it("never adds a blended/overall metric across modes -- only game, perMode, onlyInLeft, onlyInRight", () => {
+    it("never adds a blended/overall metric across modes -- only a changed flag, game, perMode, onlyInLeft, onlyInRight", () => {
         const left = buildSet({base: buildReport("base", 0.9), ante: buildReport("ante", 0.95)});
         const right = buildSet({base: buildReport("base", 0.91), ante: buildReport("ante", 0.96)});
         const differ = new SimulationReportSetDiffer();
 
         const setDiff = differ.diff(left, right);
 
-        expect(Object.keys(setDiff).sort()).toEqual(["game", "onlyInLeft", "onlyInRight", "perMode"]);
+        expect(Object.keys(setDiff).sort()).toEqual(["changed", "game", "onlyInLeft", "onlyInRight", "perMode"]);
     });
 });

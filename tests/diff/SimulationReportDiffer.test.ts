@@ -58,6 +58,11 @@ describe("SimulationReportDiffer", () => {
         const diff = new SimulationReportDiffer().diff(left, {...right, game: {id: "sample-slot", name: "Sample Slot", version: "0.2.0"}});
 
         expect(diff.game.changed).toBe(true);
+        expect(diff.changed).toBe(true);
+    });
+
+    it("marks an identical report as unchanged for machine consumers", () => {
+        expect(new SimulationReportDiffer().diff(left, left).changed).toBe(false);
     });
 
     it("flags seed as changed when it differs", () => {

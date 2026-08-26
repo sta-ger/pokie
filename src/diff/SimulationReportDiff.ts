@@ -27,6 +27,11 @@ export type SimulationReportBreakdownDiff = {
 };
 
 export type SimulationReportDiff = {
+    // A machine-friendly answer to the question the CLI's summary answers for people: did any
+    // report field that this differ compares actually change?  Keeping this at the top level
+    // means callers do not need to infer it from every metric, optional breakdown, and metadata
+    // field themselves.
+    changed: boolean;
     game: {
         left: {id: string; name: string; version: string};
         right: {id: string; name: string; version: string};

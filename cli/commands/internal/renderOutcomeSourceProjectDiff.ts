@@ -28,6 +28,10 @@ function formatMetric(metric: OutcomeSourceProjectMetricDiff, decimals: number):
 export function renderOutcomeSourceProjectDiff(diff: OutcomeSourceProjectDiff): string {
     const lines: string[] = [`Diffing "${diff.left.rootPath}" (${diff.left.kind}) -> "${diff.right.rootPath}" (${diff.right.kind})`];
 
+    if (!diff.changed) {
+        lines.push("  No changes detected.");
+    }
+
     if (diff.left.issues.length > 0) {
         lines.push("", `Errors reading "${diff.left.rootPath}" (${diff.left.issues.length}):`);
         for (const issue of diff.left.issues) {
