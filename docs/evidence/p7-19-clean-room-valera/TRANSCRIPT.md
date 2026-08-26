@@ -1,85 +1,69 @@
-# Machine-run transcript — P7-19
+# Bounded transcript — P7-19
 
-Candidate: `9bb5cf4ebdef008954262f388a4699e9f1cd0b5d`
-CLI package: `pokie@1.3.0`; tarball SHA-256 `82462d1cde78c375bb5e38d015c00e0e02b04d25d897f786358ef43d1dfea498`.
+Candidate: `03e0474c558bd55bcd3946292473cf07ecd80c0a`
+Date: 2026-08-26 UTC
+Context: a fresh `/tmp/p7-19-clean-room-valera.*` directory. All POKIE invocations below
+were `./node_modules/.bin/pokie` from that directory, after installing the packed candidate.
 
-## Clean-room provenance
+## Provenance and packaged documentation
 
-`mktemp -d /tmp/p7-19-clean-room-valera.XXXXXX` -> `/tmp/p7-19-clean-room-valera.A409NF` (exit 0)
-
-`npm install --ignore-scripts --no-audit --no-fund <candidate>/pokie-1.3.0.tgz` (exit 0; 99 packages)
-
-All later commands ran from that directory through `./node_modules/.bin/pokie`.
-The packed tarball contained `package/README.md` and no `package/docs/` tree. `test -d
-node_modules/pokie/docs` reported `absent`. No source, fixture, project output, or local
-configuration from the candidate checkout was used; generated outputs were never edited.
-
-## Learn and create/package journey
-
-| Command | Exit | Readback/result |
+| Command/check | Exit | Result |
 | --- | ---: | --- |
-| `pokie --version` | 0 | `1.3.0` |
-| `pokie`, `pokie --help`, and per-command `--help` for create/build/validate/inspect/sim/report/diff/replay/export/par/fairness/serve/dev/sample | 0 | Public command grammar and next actions available. |
-| `pokie create valera --blank --out valera.blueprint.json` | 0 | Created Blueprint `Valera`, id `valera`, v`0.1.0`. |
-| `pokie inspect valera.blueprint.json` | 0 | Identified a Game Blueprint and offered build/export actions. |
-| `pokie validate valera.blueprint.json --format json --out valera-blueprint-validation.json` | 0 | `valid: true`, no errors/warnings. |
-| `pokie build valera.blueprint.json --target tsPackage --out valera-package --dry-run` | 0 | Valid; expected six package files; blueprint hash `aa79…65fd`; no destination written. |
-| `pokie build valera.blueprint.json --target tsPackage --out valera-package` | 0 | Runnable package created. |
-| `pokie inspect valera-package` / `pokie validate valera-package --format json --out valera-package-validation.json` | 0 / 0 | POKIE game package; `valid: true`, game `valera`. |
+| `git rev-parse HEAD` | 0 | `03e0474c558bd55bcd3946292473cf07ecd80c0a` before packing. |
+| `npm pack --json` | 0 | Built one `pokie-1.3.0.tgz`; SHA-256 is recorded in `CHECKSUMS.sha256`. |
+| `npm init -y && npm install --ignore-scripts <candidate>/pokie-1.3.0.tgz` | 0 | Fresh install: 99 packages. |
+| `pokie --help` | 0 | Installed CLI exposed the public command set and next steps. |
+| Installed README Markdown-link check | 0 | 10 unique `.md` targets, 0 missing: `docs/{README,cli,external-adapter-sdk,game-packages,math-modeling,outcome-library-bundle,paytable-and-wins,provably-fair,reel-strip-generation,reels-and-sequences}.md`. |
+| `pokie certification build --help` | 0 | Names `docs/certification-evidence-bundle.md`; the installed document existed and supplied the documented `modes`/`seed`/`sampleCount` config. |
 
-## Simulation, report, diff, and replay
+## Deterministic public Blueprint and interoperable artifacts
 
-| Command | Exit | Artifact readback |
+| Command | Exit | Artifact readback/result |
 | --- | ---: | --- |
-| `pokie sim valera-package --rounds 24 --seed valera-19-a --format json --out valera-sim-a.json` | 0 | 24 rounds, RTP `0.875`, hit frequency `0.333333`, max win `5`. |
-| `pokie sim valera-package --rounds 24 --seed valera-19-b --format json --out valera-sim-b.json` | 0 | 24 rounds, RTP `0.958333`, hit frequency `0.25`, max win `6`. |
-| `pokie report valera-sim-a.json --format markdown --out valera-sim-a.md` | 0 | Rendered simulation report, retaining seed and re-run command. |
-| `pokie diff valera-sim-a.json valera-sim-b.json --format json --out valera-sim-diff.json` | 0 | `changed: true`; seed, RTP, hit frequency, and max win differences reported. |
-| `pokie replay valera-package --seed valera-19-a --round 7 --format json --out valera-replay.json` | 0 | Round 7 read back with a 3×3 screen, total bet `7`, total win `6`. |
+| `pokie create Valera --random --seed 190719 --preset default --out journey/valera.blueprint.json` | 0 | Created reproducible `Valera` Blueprint; generator `1.1.0`, strategy `default-line-pay`. |
+| `pokie validate journey/valera.blueprint.json --format json` | 0 | `kind: blueprint`, `valid: true`, no errors or warnings. |
+| `pokie build journey/valera.blueprint.json --target outcomeLibrary --out journey/valera-outcomes` | 0 | Standard heap completed. Preflight reported `85,766,121` raw combinations and selected documented deterministic bounded coverage: 5,000 outcomes. |
+| `pokie validate journey/valera-outcomes --deep --format json` | 0 | `kind: outcome-library`, `valid: true`, no issues. |
+| `pokie build journey/valera.blueprint.json --target stakeAdapter --out journey/valera-stake` | 0 | Standard heap completed a 5,000-outcome Stake export. |
+| `pokie validate journey/valera-stake --format json` | 0 | `kind: stake-engine`, `valid: true`; one documented informational lossy-import hash warning only. |
+| `pokie report journey/valera-stake --format json --out journey/stake-report.json` | 0 | Readable exact Stake analysis: mode `base`, 5,000 outcomes, RTP `0.3188000000000004`. |
+| `pokie import journey/valera-stake --out journey/valera-imported-outcomes` | 0 | Wrote documented adapter source descriptor (`config.json`, `libraries/base.json`, `source-provenance.json`). |
+| `pokie export journey/valera-imported-outcomes/config.json --to adapter --out journey/valera-stake-roundtrip` | 0 | Readback/re-export completed; `cmp` returned 0 for original vs. round-trip `index.json`, `lookup_base.csv`, and `books_base.jsonl.zst`. |
+| `pokie par export journey/valera.blueprint.json --out journey/valera.par.xlsx` | 0 | Readable PAR workbook written. |
+| `pokie par import journey/valera.par.xlsx --out journey/valera-par-imported.blueprint.json` | 0 | Imported `Valera`, 6 x 3, 6 symbols; recorded provenance hash matched. |
+| `pokie validate journey/valera-par-imported.blueprint.json --format json` | 0 | `valid: true`, no errors or warnings. |
+| `pokie certification build journey/valera-outcomes journey/certification-config.json --out journey/valera-certification` | 0 | Wrote manifest and 50 deterministic samples for `base`. |
+| `pokie certification verify journey/valera-certification --source journey/valera-outcomes` | 0 | Certification bundle verified successfully. |
 
-## Outcome, Stake, and PAR branches
+The documented imported-Stake output is a re-export descriptor, not an Outcome Library Bundle.
+An attempted `pokie validate journey/valera-imported-outcomes --deep` therefore exited 1 with the expected
+`outcome-library-bundle-manifest-missing` message; the installed `stake-engine-import.md` explicitly directs
+users to feed `config.json` back to `pokie export --to adapter`, which succeeded above. This was recorded as
+discoverability/readback evidence, not a product finding.
 
-| Command | Exit | Artifact readback |
+## Package lifecycle and outcome generation
+
+| Command | Exit | Artifact readback/result |
 | --- | ---: | --- |
-| `pokie build valera.blueprint.json --target outcomeLibrary --out valera-outcomes` | 0 | Exact Outcome Library built; preflight enumerated 91,125 reel-stop combinations. |
-| `pokie inspect valera-outcomes` / `pokie validate valera-outcomes --deep --format json --out valera-outcomes-validation.json` | 0 / 0 | Outcome Library; deep validation `valid: true`, no issues. |
-| `pokie sample valera-outcomes --mode base --seed valera-19-sample` | 0 | Portable round-1 descriptor: library `valera-base`, outcome `outcome-cdfe226aa77997e1`, selection `derived-round-seed-v1`. |
-| `pokie replay valera-outcomes --mode base --seed valera-19-sample --round 1 --format json --out valera-outcome-replay.json` | 0 | Exact replay selected the same outcome id and library hash. |
-| `pokie build valera.blueprint.json --target stakeAdapter --out valera-stake` | 0 | Stake export created (14,950 Stake books); `inspect` identifies it as Stake Engine export. |
-| `pokie par export valera.blueprint.json --out valera.par.xlsx` | 0 | PAR workbook created; `inspect` identifies a PAR workbook. |
-| `pokie par import valera.par.xlsx --out valera-imported.blueprint.json --format json` | 0 | Imported Blueprint reports matching POKIE provenance/hash. |
-| `pokie validate valera-imported.blueprint.json --format json --out valera-imported-validation.json` | 0 | `valid: true`; two explicit math-quality warnings only. |
-| `pokie build valera.blueprint.json --target parWorkbook --out valera-built.par.xlsx` | 0 | Alternate build target produced a readable PAR workbook. |
-| `pokie build valera-outcomes --target stakeAdapter --out valera-outcome-stake` | 0 | Outcome Library also exports to Stake successfully. |
+| `pokie build journey/valera.blueprint.json --target tsPackage --out journey/valera-package` | 0 | Runnable package written; build summary records Blueprint hash `sha256:7c625d11dbfe442e8e1caa8f7ed0350d44fadea0e1e38efb2e2f9b986a1e78f8`. |
+| `pokie inspect journey/valera-package` / `pokie validate journey/valera-package --format json` | 0 / 0 | Identified a POKIE game package, `valid: true`. |
+| `pokie sim journey/valera-package --rounds 1000 --seed valera-before --out journey/before.json --format json` | 0 | 1,000 rounds; RTP `0.261`, hit frequency `0.111`, max win `10`. |
+| `pokie report journey/before.json --format markdown --out journey/before.md` | 0 | Markdown readback retained seed and reproducibility command. |
+| `pokie sim journey/valera-package --rounds 1000 --seed valera-after --out journey/after.json --format json` | 0 | 1,000 rounds; RTP `0.302`, hit frequency `0.119`, max win `9`. |
+| `pokie diff journey/before.json journey/after.json` | 0 | Reported the seeded-run deltas (RTP `+4.10 pp`, hit frequency `+0.80 pp`). |
+| `pokie replay journey/valera-package --seed valera-before --round 42 --out journey/replay.json --format json` | 0 | Read back round 42 with a 6 x 3 screen, total bet `42`, total win `14`. |
+| `pokie generate journey/valera-package --sample 5000 --seed valera-generated --out journey/generated-outcomes.json --format json` | 0 | Readback found exactly 5,000 outcomes; diagnostics record `bounded-coverage`, source size `85,766,121`, and the seed. |
 
-## Public serve/dev workflows
+One initial public `generate` invocation used `--seed` without documented `--sample`; it exited 1 with the
+actionable CLI usage message. Reading its public `--help` supplied the corrected command above. No artifact was
+written by the rejected invocation.
 
-| Command | Exit | Semantic readiness/readback |
+## Public local/dev lifecycle
+
+| Command | Exit | Semantic ready state |
 | --- | ---: | --- |
-| `pokie serve valera-package --port 41719 --host 127.0.0.1` | 0 after termination | Rendered `POKIE dev server listening on http://127.0.0.1:41719`; public `GET /health` -> `{"status":"ok"}`. |
-| `pokie dev valera-package --port 41720 --host 127.0.0.1 --client-port 41721 --client-host 127.0.0.1 --no-open` | 0 after termination | Rendered API and client ready URLs; public API `GET /health` -> `{"status":"ok"}` and client `GET /` contained `<title>POKIE client`. |
+| `pokie serve journey/valera-package --host 127.0.0.1 --port 0` | 0 after intentional SIGINT | Rendered `POKIE dev server listening on http://127.0.0.1:34029`. |
+| `pokie dev journey/valera-package --host 127.0.0.1 --port 0 --client-host 127.0.0.1 --client-port 0 --no-open` | 0 after intentional SIGINT | Rendered API `http://127.0.0.1:46007` and client UI `http://127.0.0.1:34021`. |
 
-Both deliberate server terminations occurred only after their rendered ready state and successful public HTTP
-readback. No server process remained afterward.
-
-## Findings and error readback
-
-1. **P2 — packed documentation gap blocks certification discoverability.** `pokie certification build --help`
-   requires a config and directs the newcomer to `docs/certification-evidence-bundle.md`; the packed tarball has
-   no `docs/` directory. The installed README likewise uses relative `docs/...` references. With the stipulated
-   packed CLI plus packaged public documentation, the certification config cannot be authored without outside or
-   internal knowledge.
-2. **P2 — `export` advertises unsupported Blueprint input for Stake adapter.** `pokie export --help` says its
-   source is “a source descriptor or Blueprint Project” and accepts `--to adapter`. Yet
-   `pokie export valera.blueprint.json --to adapter --out should-not-exist-stake` exited **1**, wrote no output,
-   and said the Blueprint “is not a valid Stake Engine export config.” The advertised direct build alternative
-   works, but that does not make the advertised export route usable.
-3. **P2 — `validate` rejects the CLI's own valid Stake export.** After the successful Stake build above,
-   `pokie validate valera-stake --format json` exited **1** with project kind `outcome-library` and
-   `outcome-library-bundle-manifest-missing` for `manifest.json`. `pokie inspect valera-stake` correctly calls
-   the same artifact a Stake Engine export. This blocks the documented validate workflow for that generated
-   artifact.
-
-The generated `valera-outcomes` (14 MiB), packages, Stake trees, workbooks, temporary logs, and the installed
-dependencies are intentionally not retained. Their representative sizes and checksums are recorded separately;
-the retained evidence is three small text files only.
+Each server was stopped only after its rendered readiness state; no process remained. Generated artifacts and
+temporary logs were discarded after the checksums below were recorded. No product failure was observed.

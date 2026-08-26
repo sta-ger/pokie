@@ -1,19 +1,25 @@
 # P7-19 clean-room Valera CLI journey
 
-Independent host run for candidate `9bb5cf4ebdef008954262f388a4699e9f1cd0b5d` on 2026-08-26.
+Independent host verification of candidate `03e0474c558bd55bcd3946292473cf07ecd80c0a`
+on 2026-08-26 (UTC): **passed**.
 
-The run began in a new `/tmp/p7-19-clean-room-valera.*` directory. It installed only
-the candidate's packed `pokie-1.3.0.tgz` (`sha256:82462d1cde78c375bb5e38d015c00e0e02b04d25d897f786358ef43d1dfea498`), then used
-`./node_modules/.bin/pokie` and its public README/help. No checkout project, fixture,
-developer state, or hand-edited generated artifact was used as an input.
+From a newly-created temporary directory, the candidate was packed and installed as
+`pokie@1.3.0` (tarball SHA-256 `cec6e58c942c983a1ca50bb55e1ef17cf5e4dd88abcdf6a2920850d0205c4757`).
+After installation every POKIE command used only `./node_modules/.bin/pokie`; documentation
+was read only from `node_modules/pokie/README.md` and `node_modules/pokie/docs/`.
+No checkout fixture, source module, prior audit, hidden state, or edited generated artifact
+was used as an input.
 
-The successful interoperable chain was: Blueprint -> runnable package -> validation ->
-two seeded simulations -> Markdown report/diff/replay; then Blueprint -> Outcome Library
-(deep validation/sample/exact replay), Stake export, and PAR workbook -> imported Blueprint.
-`serve` and `dev --no-open` both started and their public health endpoints answered.
+The package supplied all ten Markdown targets linked by its README and the certification
+document named by CLI help. A deterministic, large public Blueprint (`85,766,121` raw
+reel-stop combinations) completed Blueprint-to-Outcome and Blueprint-to-Stake exports on
+the standard Node heap. Both outputs were read back and validated; the Stake import/re-export
+also reproduced its `index.json`, CSV, and compressed books byte-for-byte. The documented
+package lifecycle (build, validate, simulation, report, diff, replay, outcome generation,
+PAR import/export, certification, serve, and dev) completed in the fresh context.
 
-Three P2 findings prevent a PASS: the packed README points to missing relative `docs/`
-files (including the certification config format); `export --help` promises Blueprint
-input but rejects it for `--to adapter`; and `validate` misclassifies a successfully built
-Stake export as an Outcome Library. See [TRANSCRIPT.md](TRANSCRIPT.md) and
-[CHECKSUMS.sha256](CHECKSUMS.sha256).
+Only the bounded transcript and checksums are retained. Superseded evidence for older
+candidates was removed from this evidence root; generated packages, outcome libraries,
+Stake directories, workbooks, dependencies, logs, and temporary automation were not committed.
+
+See [TRANSCRIPT.md](TRANSCRIPT.md) and [CHECKSUMS.sha256](CHECKSUMS.sha256).
