@@ -16,6 +16,7 @@ import {
     SimulationReportSetDiffer,
 } from "pokie";
 import fs from "fs";
+import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -32,11 +33,39 @@ type DiffOptions = {
 
 type OutcomeSourceDiffing = (left: PokieProject, right: PokieProject) => Promise<OutcomeSourceDiffResult>;
 
+type DiffFileWriting = (file: string, contents: string) => void;
+
 const USAGE = "Usage: pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson> [--format json] [--out <file>]";
+
+// A diff is an analysis artifact: replacing a prior result (or, worse, an input) would make recovery
+// needlessly difficult. Stage it next to its requested destination, then atomically publish it with a
+// hard link, which fails rather than replacing a destination another process created after preflight.
+function writeNewDiffFileAtomically(file: string, contents: string): void {
+    const directory = path.dirname(file);
+    let temporaryDirectory: string | undefined;
+    try {
+        temporaryDirectory = fs.mkdtempSync(path.join(directory, ".pokie-diff-"));
+        const temporaryFile = path.join(temporaryDirectory, path.basename(file));
+        fs.writeFileSync(temporaryFile, contents, "utf-8");
+        fs.linkSync(temporaryFile, file);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+            throw new Error(
+                `Cannot write diff to "${file}" because that destination already exists. ` +
+                "Choose a new unused --out path, or inspect and remove the destination yourself before retrying.",
+            );
+        }
+        throw error;
+    } finally {
+        if (temporaryDirectory !== undefined) {
+            fs.rmSync(temporaryDirectory, {recursive: true, force: true});
+        }
+    }
+}
 
 export class DiffCommand implements CliCommandHandling {
     private readonly readFile: (file: string) => string;
-    private readonly writeFile: (file: string, contents: string) => void;
+    private readonly writeFile: DiffFileWriting;
     private readonly differ: SimulationReportDiffing;
     private readonly setDiffer: SimulationReportSetDiffer;
     private readonly resolveProject: ProjectResolving;
@@ -44,7 +73,7 @@ export class DiffCommand implements CliCommandHandling {
 
     constructor(
         readFile: (file: string) => string = (file) => fs.readFileSync(file, "utf-8"),
-        writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
+        writeFile: DiffFileWriting = writeNewDiffFileAtomically,
         differ: SimulationReportDiffing = new SimulationReportDiffer(),
         setDiffer: SimulationReportSetDiffer = new SimulationReportSetDiffer(differ),
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
@@ -73,6 +102,7 @@ export class DiffCommand implements CliCommandHandling {
     public async run(args: string[]): Promise<void> {
         try {
             const options = this.parseArgs(args);
+            this.preflightOutput(options);
             if (await this.tryDiffOutcomeSourceProjects(options)) {
                 return;
             }
@@ -225,6 +255,46 @@ export class DiffCommand implements CliCommandHandling {
             });
         }
         return resultRef.value!;
+    }
+
+    private preflightOutput(options: DiffOptions): void {
+        if (options.out === undefined) {
+            return;
+        }
+
+        const outputPath = this.canonicalPath(options.out);
+        const inputPath = [options.leftPath, options.rightPath]
+            .map((input) => this.canonicalPath(input))
+            .find((input) => input === outputPath);
+        if (inputPath !== undefined) {
+            throw new Error(
+                `Cannot write diff to "${options.out}" because it is also an input. ` +
+                "Choose a new unused --out path to keep both inputs unchanged.",
+            );
+        }
+
+        try {
+            fs.lstatSync(options.out);
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+                return;
+            }
+            throw new Error(
+                `Cannot prepare diff output at "${options.out}": ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+        throw new Error(
+            `Cannot write diff to "${options.out}" because that destination already exists. ` +
+            "Choose a new unused --out path, or inspect and remove the destination yourself before retrying.",
+        );
+    }
+
+    private canonicalPath(file: string): string {
+        try {
+            return fs.realpathSync(file);
+        } catch {
+            return path.resolve(file);
+        }
     }
 
     private readReportJson(reportPath: string): SimulationReport | SimulationReportSet {

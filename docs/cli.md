@@ -769,7 +769,7 @@ Each step is the same command documented elsewhere in this file, with the same o
 [`dev`](#pokie-dev-packageroot) work identically whether the package came from `pokie build` or
 `pokie init` — none of them care how a package was produced, only that it satisfies the
 [game package](game-packages.md) contract. `pokie sim --out` twice (before/after a tweak) also lets you
-[`pokie diff`](#pokie-diff-leftreportjson-rightreportjson) the two reports, same as the [`init`
+[`pokie diff`](#pokie-diff-leftprojectorreportjson-rightprojectorreportjson) the two reports, same as the [`init`
 workflow](#workflow) below.
 
 ## `pokie par import <input.xlsx>` / `pokie par export <config.json>`
@@ -1825,8 +1825,9 @@ hit frequency, max win, duration, and spins per second. Also compares the featur
 Options:
 
 - `--format json` — print the JSON diff to stdout instead of the default human-readable summary.
-- `--out <file>` — also write the JSON diff to `<file>`. Independent of `--format`: the summary/JSON is always
-  printed to the console; `--out` additionally saves the JSON diff to disk.
+- `--out <file>` — also write the JSON diff to a new `<file>`. Independent of `--format`: the summary/JSON is always
+  printed to the console; `--out` additionally saves the JSON diff to disk. It refuses an existing destination or
+  either input path, so choose a new unused path (or inspect and remove an old diff artifact yourself) before retrying.
 
 The human-readable summary looks like:
 
@@ -3462,7 +3463,7 @@ Each step builds on the same `<packageRoot>`:
 - [`validate`](#pokie-validate-project) needs a prepared package (`pokie init`, or `pokie build` + the
   same-shaped output) — it checks the contract before anything else runs.
 - [`sim --out`](#pokie-sim-packageroot) produces the JSON report that
-  [`report`](#pokie-report-simulationreportjson) renders and [`diff`](#pokie-diff-leftreportjson-rightreportjson)
+  [`report`](#pokie-report-simulationreportjson) renders and [`diff`](#pokie-diff-leftprojectorreportjson-rightprojectorreportjson)
   compares — run `sim` twice (before/after a config change, same `--seed`) to get two reports worth diffing.
 - [`replay`](#pokie-replay-packageroot) is independent of `sim`'s output files, but reproducibility across all
   three of `sim`/`diff`/`replay` depends on the same caveat: the game package must actually thread `context.seed`

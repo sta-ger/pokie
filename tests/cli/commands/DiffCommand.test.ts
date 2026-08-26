@@ -583,6 +583,29 @@ describe("DiffCommand (integration, real pokie sim output)", () => {
         expect(diff.rounds.right).toBe(200);
         expect(diff.game.changed).toBe(false);
     });
+
+    it("refuses existing or input-alias --out paths without changing report files", async () => {
+        const leftFile = path.join(outDir, "left.json");
+        const rightFile = path.join(outDir, "right.json");
+        const existingOutput = path.join(outDir, "existing-diff.json");
+        await new SimCommand().run([fixtureRoot, "--rounds", "100", "--seed", "demo", "--out", leftFile]);
+        await new SimCommand().run([fixtureRoot, "--rounds", "200", "--seed", "demo", "--out", rightFile]);
+        fs.writeFileSync(existingOutput, "existing diff artifact", "utf-8");
+        const leftBefore = fs.readFileSync(leftFile, "utf-8");
+        const rightBefore = fs.readFileSync(rightFile, "utf-8");
+
+        await expect(new DiffCommand().run([leftFile, rightFile, "--out", existingOutput])).rejects.toThrow(
+            /Choose a new unused --out path, or inspect and remove the destination yourself before retrying/,
+        );
+        await expect(new DiffCommand().run([leftFile, rightFile, "--out", path.relative(process.cwd(), leftFile)])).rejects.toThrow(
+            /because it is also an input/,
+        );
+        await expect(new DiffCommand().run([leftFile, rightFile, "--out", rightFile])).rejects.toThrow(/because it is also an input/);
+
+        expect(fs.readFileSync(leftFile, "utf-8")).toBe(leftBefore);
+        expect(fs.readFileSync(rightFile, "utf-8")).toBe(rightBefore);
+        expect(fs.readFileSync(existingOutput, "utf-8")).toBe("existing diff artifact");
+    });
 });
 
 describe("DiffCommand (integration, real reports with an arbitrary custom category)", () => {
@@ -650,7 +673,12 @@ describe("DiffCommand (integration, real outcome-source artifacts)", () => {
         await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-only")], baseOnlyDir);
 
         const outputPath = path.join(outDir, "outcome-diff.json");
+        fs.writeFileSync(outputPath, "existing outcome diff artifact", "utf-8");
         const command = new DiffCommand();
+        await expect(command.run([leftDir, changedDir, "--out", outputPath])).rejects.toThrow(/destination already exists/);
+        await expect(command.run([leftDir, changedDir, "--out", leftDir])).rejects.toThrow(/because it is also an input/);
+        expect(fs.readFileSync(outputPath, "utf-8")).toBe("existing outcome diff artifact");
+        fs.unlinkSync(outputPath);
         await command.run([leftDir, changedDir, "--format", "json", "--out", outputPath]);
 
         const machineDiff = JSON.parse((console.log as jest.Mock).mock.calls[0][0]);
