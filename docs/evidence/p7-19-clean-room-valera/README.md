@@ -1,12 +1,14 @@
-# P7-19 clean-room Valera direct-export rerun
+# P7-19 clean-room Valera CLI rerun
 
-Independent host verification of `c7daa219ee47ee0cfb0015ffba1a73eb90e01264` on
-2026-08-26 UTC confirmed that the installed public CLI directly
-exported the deterministic Valera Blueprint to both an Outcome Library and Stake adapter on
-the standard Node heap. Each output was identified by `inspect` and validated successfully.
-The transcript also records a P2 discoverability finding: `inspect` recommends the unavailable
-public command `pokie outcomesource inspect`.
+Independent host-side verification at candidate `3e9c3339c0d5afd4fb87423fe1f89eef5b5b14c1`.
 
-Only the bounded [transcript](TRANSCRIPT.md) and [checksums](CHECKSUMS.sha256) are retained.
-They supersede the prior build-target evidence; generated packages, installed dependencies,
-Blueprints, exports, logs, and temporary context were removed.
+The workflow used a newly packed `pokie@1.3.0` tarball, installed into a fresh
+temporary prefix.  After installation, all product-facing guidance came from
+that installed package's `README.md` and `docs/cli.md`; all workflow commands
+used its installed `pokie` binary.  The temporary Blueprint, Outcome Library,
+Stake export, reports, diff, package tarball, installer tree, and raw command
+logs were intentionally discarded.  No artifact was hand edited.
+
+`TRANSCRIPT.md` records the commands, results, public guidance, and structural
+readback. `CHECKSUMS.sha256` records the generated-file hashes observed before
+cleanup; it is an audit record, not a retained artifact payload.
