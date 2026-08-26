@@ -246,30 +246,65 @@ export class ValidateCommand implements CliCommandHandling {
     }
 
     private safeIssue(issue: ValidationIssue): ValidationIssue {
-        switch (issue.code) {
-            case "outcome-library-bundle-manifest-invalid-json":
-                return {
-                    ...issue,
-                    message: "manifest.json is not valid JSON.",
-                    path: "manifest.json",
-                    suggestion: "Fix manifest.json so it is valid JSON, then run validate again.",
-                };
-            case "outcome-library-bundle-manifest-unreadable":
-                return {
-                    ...issue,
-                    message: "manifest.json could not be read.",
-                    path: "manifest.json",
-                    suggestion: "Check that manifest.json is readable, then run validate again.",
-                };
-            case "outcome-library-bundle-malformed":
-                return {
-                    ...issue,
-                    message: "The outcome-library bundle is malformed or could not be read.",
-                    suggestion: "Check manifest.json and the bundle files, then run validate again.",
-                };
-            default:
-                return issue;
+        if (issue.code.startsWith("outcome-library-bundle-")) {
+            return this.safeOutcomeLibraryIssue(issue);
         }
+        return issue;
+    }
+
+    // The bundle validator intentionally retains low-level causes for library authors. The CLI is a public
+    // boundary, though: never expose parser, filesystem, or implementation text from any of its diagnostics.
+    private safeOutcomeLibraryIssue(issue: ValidationIssue): ValidationIssue {
+        const location = this.outcomeLibraryLocation(issue);
+        const code = issue.code;
+        let problem = "contains inconsistent outcome-library data.";
+
+        if (code.includes("-missing")) {
+            problem = "is missing.";
+        } else if (code.includes("-unreadable")) {
+            problem = "could not be read.";
+        } else if (code.includes("-invalid-json")) {
+            problem = "is not valid JSON.";
+        } else if (code.includes("-unsafe")) {
+            problem = "contains an unsafe file reference.";
+        } else if (code.includes("-schema-version-unsupported")) {
+            problem = "uses an unsupported schema version.";
+        } else if (code.includes("-malformed") || code.includes("-invalid")) {
+            problem = "does not match the required outcome-library format.";
+        } else if (code.includes("-mismatch")) {
+            problem = "does not match the related outcome-library data.";
+        } else if (code.includes("-duplicate")) {
+            problem = "contains a duplicate value where values must be unique.";
+        } else if (code.includes("-not-sorted")) {
+            problem = "is not in the required canonical order.";
+        } else if (code.includes("byte-range") || code.includes("newline-terminated") || code.includes("too-small") || code.includes("trailing-bytes")) {
+            problem = "does not have the byte layout recorded by its index.";
+        }
+
+        return {
+            code: issue.code,
+            severity: issue.severity,
+            message: `The outcome-library artifact at "${location}" ${problem}`,
+            path: location,
+            suggestion: `Repair ${location} to match the outcome-library bundle format, then run validate again.`,
+        };
+    }
+
+    private outcomeLibraryLocation(issue: ValidationIssue): string {
+        const modeName = typeof issue.details?.modeName === "string" && (/^[A-Za-z0-9_-]+$/).test(issue.details.modeName)
+            ? issue.details.modeName
+            : undefined;
+
+        if (issue.code.includes("-manifest-")) {
+            return "manifest.json";
+        }
+        if (issue.code.includes("-mode-index-")) {
+            return modeName === undefined ? "manifest.json" : `index_${modeName}.json`;
+        }
+        if (issue.code.includes("-outcomes-") || issue.code.endsWith("-hash-mismatch") || issue.code.endsWith("-analysis-mismatch")) {
+            return modeName === undefined ? "manifest.json" : `outcomes_${modeName}.jsonl`;
+        }
+        return "manifest.json";
     }
 
     private writeAndPrint(report: ValidateReport, format: ValidateFormat, out: string | undefined): void {

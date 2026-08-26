@@ -1,9 +1,10 @@
-import {PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator} from "pokie";
+import {OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleWriter, PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {ValidateCommand} from "../../../cli/commands/ValidateCommand.js";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
+import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function createStubValidator(report: PokieGamePackageValidationReport): PokieGamePackageValidating & {calledWith?: string} {
     return {
@@ -31,6 +32,20 @@ const invalidReport: PokieGamePackageValidationReport = {
     warnings: [{code: "some-warning", severity: "warning", message: "a warning"}],
     suggestions: ["Export an object implementing PokieGame as the entry module's default export."],
 };
+
+async function writeOutcomeLibraryBundle(bundleDir: string): Promise<void> {
+    await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "validate-test-library")], bundleDir);
+}
+
+function corruptOutcomeContentsWithoutChangingByteLayout(bundleDir: string): void {
+    const index = JSON.parse(fs.readFileSync(path.join(bundleDir, "index_base.json"), "utf-8")) as OutcomeLibraryBundleModeIndex;
+    const outcomesPath = path.join(bundleDir, "outcomes_base.jsonl");
+    const bytes = fs.readFileSync(outcomesPath);
+    for (const entry of index.entries) {
+        bytes.fill("x".charCodeAt(0), entry.byteOffset, entry.byteOffset + entry.byteLength);
+    }
+    fs.writeFileSync(outcomesPath, bytes);
+}
 
 describe("ValidateCommand", () => {
     it("has the expected name and description", () => {
@@ -189,6 +204,27 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(printed).not.toContain("Unexpected token");
     });
 
+    it("reports a structural Blueprint fault with its field location and remediation in the CLI JSON schema", async () => {
+        const blueprintPath = path.join(outDir, "structurally-invalid.blueprint.json");
+        fs.writeFileSync(blueprintPath, JSON.stringify({...createStarterGameBlueprint(), reels: 0}));
+
+        const exitCode = await new ValidateCommand().run([blueprintPath, "--format", "json"]);
+
+        expect(exitCode).toBe(1);
+        const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
+            schemaVersion: number;
+            valid: boolean;
+            project: {kind: string; path: string};
+            errors: Array<{code: string; path: string; message: string; suggestion: string}>;
+        };
+        expect(report).toMatchObject({schemaVersion: 1, valid: false, project: {kind: "blueprint", path: blueprintPath}});
+        expect(report.errors).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({code: "blueprint-reels-invalid", path: "reels", suggestion: expect.any(String)}),
+            ]),
+        );
+    });
+
     it("validates malformed outcome-library bundles deeply and reports the requested deep check in JSON", async () => {
         const bundleDir = path.join(outDir, "outcomes");
         fs.mkdirSync(bundleDir);
@@ -210,9 +246,55 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(report.errors[0]).toMatchObject({
             code: "outcome-library-bundle-manifest-invalid-json",
             path: "manifest.json",
-            message: "manifest.json is not valid JSON.",
+            message: 'The outcome-library artifact at "manifest.json" is not valid JSON.',
             suggestion: expect.any(String),
         });
+    });
+
+    it("reports a valid outcome library consistently in shallow and deep CLI validation", async () => {
+        const bundleDir = path.join(outDir, "valid-outcomes");
+        await writeOutcomeLibraryBundle(bundleDir);
+        const command = new ValidateCommand();
+
+        expect(await command.run([bundleDir, "--format", "json"])).toBe(0);
+        const shallow = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {schemaVersion: number; deep: boolean; valid: boolean; project: {kind: string}; errors: unknown[]; issues: unknown[]};
+        expect(shallow).toMatchObject({schemaVersion: 1, deep: false, valid: true, project: {kind: "outcome-library"}, errors: [], issues: []});
+
+        (console.log as jest.Mock).mockClear();
+        expect(await command.run([bundleDir, "--deep", "--format", "json"])).toBe(0);
+        const deep = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {schemaVersion: number; deep: boolean; valid: boolean; project: {kind: string}; errors: unknown[]; issues: unknown[]};
+        expect(deep).toMatchObject({schemaVersion: 1, deep: true, valid: true, project: {kind: "outcome-library"}, errors: [], issues: []});
+    });
+
+    it("keeps byte-layout-only outcome corruption valid in shallow mode and safely reports it in deep mode", async () => {
+        const bundleDir = path.join(outDir, "deep-corruption");
+        await writeOutcomeLibraryBundle(bundleDir);
+        corruptOutcomeContentsWithoutChangingByteLayout(bundleDir);
+        const command = new ValidateCommand();
+
+        expect(await command.run([bundleDir, "--format", "json"])).toBe(0);
+        const shallow = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {schemaVersion: number; deep: boolean; valid: boolean; errors: unknown[]};
+        expect(shallow).toMatchObject({schemaVersion: 1, deep: false, valid: true, errors: []});
+
+        (console.log as jest.Mock).mockClear();
+        expect(await command.run([bundleDir, "--deep", "--format", "json"])).toBe(1);
+        const deep = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
+            schemaVersion: number;
+            deep: boolean;
+            valid: boolean;
+            errors: Array<{code: string; path: string; message: string; suggestion: string}>;
+        };
+        expect(deep).toMatchObject({schemaVersion: 1, deep: true, valid: false});
+        expect(deep.errors).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    code: "outcome-library-bundle-outcomes-line-invalid-json",
+                    path: "outcomes_base.jsonl",
+                    suggestion: expect.any(String),
+                }),
+            ]),
+        );
+        expect(JSON.stringify(deep)).not.toMatch(/Unexpected token|ENOENT|SyntaxError|Error:/);
     });
 
     it("returns a remedial report instead of a raw materialization failure", async () => {
