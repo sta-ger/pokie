@@ -48,7 +48,7 @@ export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
     {command: "create", verb: "--blank", requiresLoadablePackage: false, primaryInput: "name (optional; names the written blueprint file)"},
     {command: "create", verb: "--random", requiresLoadablePackage: false, primaryInput: "name (optional; names the written blueprint file)"},
 
-    {command: "diff", verb: undefined, requiresLoadablePackage: false, primaryInput: "leftReportJson + rightReportJson (pokie sim --out reports)"},
+    {command: "diff", verb: undefined, requiresLoadablePackage: false, primaryInput: "two simulation reports or two Outcome Library/Stake Engine outcome sources"},
 
     // --- edit: interactively edits an existing Blueprint Project (a GameBlueprint JSON file) in place; never
     // reads/loads a runnable package. ---

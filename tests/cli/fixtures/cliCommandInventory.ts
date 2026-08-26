@@ -245,8 +245,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         verbs: [
             {
                 verb: undefined,
-                usage: "Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]",
-                positionals: ["leftReportJson", "rightReportJson"],
+                usage: "Usage: pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson> [--format json] [--out <file>]",
+                positionals: ["leftProjectOrReportJson", "rightProjectOrReportJson"],
                 options: [
                     // --format has no dependency seam (it only chooses console.log(json) vs printSummary(diff), and
                     // the extra "Diff written" line is guarded by `format !== "json"`), so its value is observed via
@@ -1130,10 +1130,10 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "diff",
         kind: "invalid",
-        label: "missing <rightReportJson>",
+        label: "missing <rightProjectOrReportJson>",
         args: ["left.json"],
         expectedExitCode: 1,
-        expectedError: "Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]",
+        expectedError: "Usage: pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson> [--format json] [--out <file>]",
     },
     {
         command: "diff",
@@ -1142,7 +1142,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["left.json", "right.json", "--format", "html"],
         expectedExitCode: 1,
         expectedError:
-            '--format only supports "json". Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]',
+            '--format only supports "json". Usage: pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson> [--format json] [--out <file>]',
     },
     {
         command: "diff",
@@ -2682,7 +2682,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--format given with no value",
         args: ["left.json", "right.json", "--format"],
         expectedExitCode: 1,
-        expectedError: "--format only supports \"json\". Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]",
+        expectedError: "--format only supports \"json\". Usage: pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson> [--format json] [--out <file>]",
     },
     {
         command: "diff",
@@ -2690,7 +2690,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--out given with no value",
         args: ["left.json", "right.json", "--format", "json", "--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a file path. Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]",
+        expectedError: "--out requires a file path. Usage: pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson> [--format json] [--out <file>]",
     },
 
     // --- edit: missing-value cases ---

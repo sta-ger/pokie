@@ -26,15 +26,20 @@ export class SimulationReportSetDiffer {
             }
         });
 
+        const game = {
+            left: {...left.game},
+            right: {...right.game},
+            changed: left.game.id !== right.game.id || left.game.name !== right.game.name || left.game.version !== right.game.version,
+        };
+        const onlyInLeft = leftIds.filter((modeId) => !rightIds.has(modeId));
+        const onlyInRight = Object.keys(right.modes).filter((modeId) => !leftIds.includes(modeId));
+
         return {
-            game: {
-                left: {...left.game},
-                right: {...right.game},
-                changed: left.game.id !== right.game.id || left.game.name !== right.game.name || left.game.version !== right.game.version,
-            },
+            changed: game.changed || Object.values(perMode).some((diff) => diff.changed) || onlyInLeft.length > 0 || onlyInRight.length > 0,
+            game,
             perMode,
-            onlyInLeft: leftIds.filter((modeId) => !rightIds.has(modeId)),
-            onlyInRight: Object.keys(right.modes).filter((modeId) => !leftIds.includes(modeId)),
+            onlyInLeft,
+            onlyInRight,
         };
     }
 }

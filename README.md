@@ -64,8 +64,8 @@ POKIE goes well beyond classic paylines:
   validate <project>` checks a game package, Blueprint JSON file, or outcome-library bundle without playing it
   (`--deep` adds outcome checks only for outcome-library bundles); `npx pokie report <simulationReportJson>` renders a `pokie sim`
   report (including reproducibility info, warnings, and recommendations) as JSON/Markdown/HTML; `npx pokie diff
-  <leftReportJson> <rightReportJson>` compares two `pokie sim` reports
-  (e.g. before/after a config change); `npx pokie replay <packageRoot>` best-effort replays a single round (by
+  <leftProjectOrReportJson> <rightProjectOrReportJson>` compares two `pokie sim` reports or two Outcome Library/
+  Stake Engine outcome sources (e.g. before/after a config change); `npx pokie replay <packageRoot>` best-effort replays a single round (by
   seed + round index) as a JSON artifact; `npx pokie serve <packageRoot>` starts a local/dev JSON
   HTTP server over a package for creating sessions and spinning them, not a casino backend/RGS; `npx pokie client
   <packageRoot>` serves the POKIE browser client for a running `pokie serve`; `npx

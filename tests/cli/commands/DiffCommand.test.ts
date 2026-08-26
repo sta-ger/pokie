@@ -1,9 +1,22 @@
-import {OutcomeSourceDiffResult, PokieProject, PROJECT_TYPE_CAPABILITIES, ProjectResolving, SimulationReport, SimulationReportSet} from "pokie";
+import {
+    OutcomeLibraryBundleWriter,
+    OutcomeSourceDiffResult,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+    ProjectResolving,
+    SimulationReport,
+    SimulationReportSet,
+    StakeEngineExportModeInput,
+    StakeEngineExporter,
+    WeightedOutcomeInput,
+} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {DiffCommand} from "../../../cli/commands/DiffCommand.js";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
+import {buildStakeEngineTestLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
+import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 const left: SimulationReport = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
@@ -62,8 +75,8 @@ describe("DiffCommand", () => {
     it("throws when run without both report paths", async () => {
         const command = new DiffCommand();
 
-        await expect(command.run([])).rejects.toThrow(/Usage: pokie diff <leftReportJson> <rightReportJson>/);
-        await expect(command.run(["only-left.json"])).rejects.toThrow(/Usage: pokie diff <leftReportJson> <rightReportJson>/);
+        await expect(command.run([])).rejects.toThrow(/Usage: pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson>/);
+        await expect(command.run(["only-left.json"])).rejects.toThrow(/Usage: pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson>/);
     });
 
     it("throws a descriptive error for an unknown option", async () => {
@@ -122,6 +135,7 @@ describe("DiffCommand", () => {
             Promise.resolve({
                 supported: true,
                 diff: {
+                    changed: false,
                     left: {rootPath: "left-project", kind: "native", issues: []},
                     right: {rootPath: "right-project", kind: "stakeEngine", issues: []},
                     onlyInLeft: [],
@@ -136,8 +150,43 @@ describe("DiffCommand", () => {
         await command.run(["left-project", "right-project"]);
 
         expect(diffOutcomeSources).toHaveBeenCalledWith(leftProject, rightProject);
-        expect(logSpy).toHaveBeenCalledWith('Diffing "left-project" (native) -> "right-project" (stakeEngine)');
+        expect(logSpy.mock.calls[0][0]).toContain('Diffing "left-project" (native) -> "right-project" (stakeEngine)');
         logSpy.mockRestore();
+    });
+
+    it("uses the product-facing compatibility diagnostic for an unsupported project", async () => {
+        const blueprintProject: PokieProject = {
+            type: "blueprint",
+            rootPath: "game.json",
+            provenance: "blueprint",
+            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+        };
+        const outcomeProject: PokieProject = {
+            type: "outcomeLibrary",
+            rootPath: "library",
+            provenance: "native",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+        };
+        const resolveProject: ProjectResolving = {
+            resolve: jest.fn((targetPath: string) => Promise.resolve(targetPath === "game.json" ? blueprintProject : outcomeProject)),
+        };
+        const unsupportedResult: OutcomeSourceDiffResult = {
+            supported: false,
+            diagnostic: {
+                detectedType: "blueprint" as const,
+                operation: "outcomeSource.diff",
+                missingCapability: "outcomeSource.read" as const,
+                alternatives: ["outcomeLibrary", "stakeAdapter"] as const,
+                message: "This Game Blueprint cannot compare outcome sources. Compare two Outcome Library bundles or Stake Engine exports.",
+            },
+        };
+        const diffOutcomeSources = jest.fn(() => Promise.resolve(unsupportedResult));
+        const command = new DiffCommand(createStubReadFile({}), undefined, undefined, undefined, resolveProject, diffOutcomeSources);
+
+        await expect(command.run(["game.json", "library"])).rejects.toThrow(
+            "This Game Blueprint cannot compare outcome sources. Compare two Outcome Library bundles or Stake Engine exports.",
+        );
+        expect(diffOutcomeSources).toHaveBeenCalledWith(blueprintProject, outcomeProject);
     });
 
     it("prints a human-readable diff to the console by default", async () => {
@@ -151,6 +200,21 @@ describe("DiffCommand", () => {
         expect(printed).toContain("rounds          9800 -> 9850");
         expect(printed).toContain("rtp             95.22% -> 98.00%");
 
+        logSpy.mockRestore();
+    });
+
+    it("makes an identical report's no-change result explicit in both human and machine output", async () => {
+        const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(left), "right.json": JSON.stringify(left)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["left.json", "right.json"]);
+
+        expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("No changes detected.");
+        logSpy.mockClear();
+
+        await command.run(["left.json", "right.json", "--format", "json"]);
+
+        expect(JSON.parse(logSpy.mock.calls[0][0]).changed).toBe(false);
         logSpy.mockRestore();
     });
 
@@ -432,6 +496,7 @@ describe("DiffCommand (SimulationReportSet -- diffing two `pokie sim --mode all`
         expect(setDiff.onlyInRight).toEqual(["buy-20"]);
         expect(setDiff.perMode["buy-10"]).toBeUndefined();
         expect(setDiff.perMode["buy-20"]).toBeUndefined();
+        expect(setDiff.changed).toBe(true);
 
         logSpy.mockRestore();
     });
@@ -461,7 +526,7 @@ describe("DiffCommand (SimulationReportSet -- diffing two `pokie sim --mode all`
         await command.run(["left.json", "right.json", "--format", "json"]);
 
         const setDiff = JSON.parse(logSpy.mock.calls[0][0]);
-        expect(Object.keys(setDiff).sort()).toEqual(["game", "onlyInLeft", "onlyInRight", "perMode"]);
+        expect(Object.keys(setDiff).sort()).toEqual(["changed", "game", "onlyInLeft", "onlyInRight", "perMode"]);
 
         logSpy.mockRestore();
     });
@@ -472,6 +537,21 @@ describe("DiffCommand (SimulationReportSet -- diffing two `pokie sim --mode all`
         const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(singleReport), "right.json": JSON.stringify(set)}));
 
         await expect(command.run(["left.json", "right.json"])).rejects.toThrow(/Cannot diff a single-mode pokie sim report against a multi-mode report set/);
+    });
+
+    it("explains that a report and an outcome source cannot be compared together", async () => {
+        const outcomeProject: PokieProject = {
+            type: "outcomeLibrary",
+            rootPath: "library",
+            provenance: "native",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+        };
+        const resolveProject: ProjectResolving = {resolve: jest.fn((targetPath: string) => Promise.resolve(targetPath === "library" ? outcomeProject : undefined))};
+        const command = new DiffCommand(createStubReadFile({"report.json": JSON.stringify(left)}), undefined, undefined, undefined, resolveProject);
+
+        await expect(command.run(["report.json", "library"])).rejects.toThrow(
+            /Compare two simulation reports, or two Outcome Library bundles \/ Stake Engine exports/,
+        );
     });
 });
 
@@ -532,5 +612,89 @@ describe("DiffCommand (integration, real reports with an arbitrary custom catego
         expect(diff.breakdown.components.bonus).toBeDefined();
         expect(diff.breakdown.components.bonus.rounds.left).toBeGreaterThan(0);
         expect(diff.breakdown.components.bonus.rounds.right).toBeGreaterThan(diff.breakdown.components.bonus.rounds.left);
+    });
+});
+
+describe("DiffCommand (integration, real outcome-source artifacts)", () => {
+    let outDir: string;
+
+    beforeEach(() => {
+        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-diff-outcome-source-test-"));
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        fs.rmSync(outDir, {recursive: true, force: true});
+        (console.log as jest.Mock).mockRestore();
+    });
+
+    it("diffs real changed, unchanged, and removed-mode Outcome Library bundles with valid JSON output", async () => {
+        const leftDir = path.join(outDir, "left-library");
+        const changedDir = path.join(outDir, "changed-library");
+        const baseOnlyDir = path.join(outDir, "base-only-library");
+        const changedMode = buildOutcomeLibraryBundleModeInput("base", "changed");
+        const changedOutcomes: WeightedOutcomeInput<string>[] = [];
+        for await (const outcome of changedMode.outcomes) {
+            changedOutcomes.push(outcome);
+        }
+        changedOutcomes[4] = {...changedOutcomes[4], weight: 20};
+
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(
+            [buildOutcomeLibraryBundleModeInput("base", "left"), buildOutcomeLibraryBundleModeInput("bonus", "left-bonus")],
+            leftDir,
+        );
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{
+            ...changedMode,
+            outcomes: changedOutcomes,
+        }, buildOutcomeLibraryBundleModeInput("bonus", "changed-bonus")], changedDir);
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-only")], baseOnlyDir);
+
+        const outputPath = path.join(outDir, "outcome-diff.json");
+        const command = new DiffCommand();
+        await command.run([leftDir, changedDir, "--format", "json", "--out", outputPath]);
+
+        const machineDiff = JSON.parse((console.log as jest.Mock).mock.calls[0][0]);
+        expect(machineDiff.changed).toBe(true);
+        expect(machineDiff.perMode.base.rtp.delta).not.toBe(0);
+        expect(JSON.parse(fs.readFileSync(outputPath, "utf-8"))).toEqual(machineDiff);
+
+        (console.log as jest.Mock).mockClear();
+        await command.run([leftDir, leftDir]);
+        expect((console.log as jest.Mock).mock.calls[0][0]).toContain("No changes detected.");
+
+        (console.log as jest.Mock).mockClear();
+        await command.run([leftDir, baseOnlyDir, "--format", "json"]);
+        const removedModeDiff = JSON.parse((console.log as jest.Mock).mock.calls[0][0]);
+        expect(removedModeDiff.changed).toBe(true);
+        expect(removedModeDiff.onlyInLeft).toEqual(["bonus"]);
+    });
+
+    it("diffs two real Stake Engine exports through the same public command", async () => {
+        const leftDir = path.join(outDir, "left-stake");
+        const rightDir = path.join(outDir, "right-stake");
+        const leftModes: StakeEngineExportModeInput[] = [{
+            modeName: "base",
+            cost: 1,
+            library: buildStakeEngineTestLibrary({libraryId: "left", betMode: "base", stake: 1}),
+        }];
+        const rightModes: StakeEngineExportModeInput[] = [{
+            modeName: "base",
+            cost: 1,
+            library: buildStakeEngineTestLibrary({libraryId: "right", betMode: "base", stake: 1}),
+        }, {
+            modeName: "bonus",
+            cost: 1,
+            library: buildStakeEngineTestLibrary({libraryId: "bonus", betMode: "bonus", stake: 1}),
+        }];
+        await new StakeEngineExporter("1.3.0").exportToDirectory(leftModes, leftDir);
+        await new StakeEngineExporter("1.3.0").exportToDirectory(rightModes, rightDir);
+
+        await new DiffCommand().run([leftDir, rightDir, "--format", "json"]);
+
+        const diff = JSON.parse((console.log as jest.Mock).mock.calls[0][0]);
+        expect(diff.changed).toBe(true);
+        expect(diff.left.kind).toBe("stakeEngine");
+        expect(diff.right.kind).toBe("stakeEngine");
+        expect(diff.onlyInRight).toEqual(["bonus"]);
     });
 });

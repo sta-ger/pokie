@@ -30,6 +30,9 @@ export type OutcomeSourceProjectModeDiff = {
 // either side's own canonical reader reported a structural error for it, is named in "onlyInLeft"/
 // "onlyInRight" instead of silently skipped.
 export type OutcomeSourceProjectDiff = {
+    // True when the comparable exact analyses, their mode inventory, or either canonical reader's
+    // diagnostics differ.  Consumers can use this directly instead of re-walking every metric.
+    readonly changed: boolean;
     readonly left: {readonly rootPath: string; readonly kind: string; readonly issues: readonly ValidationIssue[]};
     readonly right: {readonly rootPath: string; readonly kind: string; readonly issues: readonly ValidationIssue[]};
     readonly perMode: Readonly<Record<string, OutcomeSourceProjectModeDiff>>;

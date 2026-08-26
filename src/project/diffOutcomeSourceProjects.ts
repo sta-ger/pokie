@@ -52,13 +52,26 @@ function buildDiff(leftReport: OutcomeSourceProjectReport, rightReport: OutcomeS
         }
     }
 
+    const onlyInLeft = [...leftByMode.keys()].filter((modeName) => !rightByMode.has(modeName));
+    const onlyInRight = [...rightByMode.keys()].filter((modeName) => !leftByMode.has(modeName));
+
     return {
+        changed: !sameIssues(leftReport.issues, rightReport.issues) || onlyInLeft.length > 0 || onlyInRight.length > 0 || Object.values(perMode).some(modeHasChanges),
         left: {rootPath: leftReport.rootPath, kind: leftReport.descriptor.kind, issues: leftReport.issues},
         right: {rootPath: rightReport.rootPath, kind: rightReport.descriptor.kind, issues: rightReport.issues},
         perMode,
-        onlyInLeft: [...leftByMode.keys()].filter((modeName) => !rightByMode.has(modeName)),
-        onlyInRight: [...rightByMode.keys()].filter((modeName) => !leftByMode.has(modeName)),
+        onlyInLeft,
+        onlyInRight,
     };
+}
+
+function modeHasChanges(mode: OutcomeSourceProjectModeDiff): boolean {
+    return [mode.rtp, mode.hitFrequency, mode.zeroWinFrequency, mode.variance, mode.standardDeviation, mode.maxWinProbability]
+        .some((metric) => metric.delta !== 0);
+}
+
+function sameIssues(left: OutcomeSourceProjectReport["issues"], right: OutcomeSourceProjectReport["issues"]): boolean {
+    return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function diffMode(modeName: string, left: OutcomeSourceProjectModeAnalysis, right: OutcomeSourceProjectModeAnalysis): OutcomeSourceProjectModeDiff {

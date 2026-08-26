@@ -1100,7 +1100,7 @@ per-mode summary (RTP, hit frequency, and standard deviation). `--format json` i
 structured outcome-source analysis (`rootPath`, `descriptor`, `issues`, and per-mode `analysis`), and `--out
 <file>` writes the same payload. Without `--format json`, `--out <file>` writes the human-readable analysis.
 
-## `pokie diff <leftProject> <rightProject>`
+## `pokie stakeengine diff <leftStakeDir> <rightStakeDir>`
 
 Reads and analyzes two Stake Engine outcome directories with the same canonical-reader pipeline `pokie report` uses,
 then diffs the two resulting analyses mode-by-mode: added/removed modes, every scalar metric (`rtp`,
@@ -1109,7 +1109,7 @@ then diffs the two resulting analyses mode-by-mode: added/removed modes, every s
 attempts an event-level (per-outcome) diff.
 
 ```
-pokie diff stakeengine-before stakeengine-after --format json
+pokie stakeengine diff stakeengine-before stakeengine-after --format json
 ```
 
 Options:
@@ -1804,10 +1804,12 @@ Failure modes:
 - A `SimulationReportSet` against a renderer without `renderSet()` throws
   `This renderer does not support multi-mode report sets ...`.
 
-## `pokie diff <leftReportJson> <rightReportJson>`
+## `pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson>`
 
-Compares two JSON reports produced by [`pokie sim --out`](#pokie-sim-packageroot) and reports what changed —
-handy for seeing how a paytable/config change moved the game's math between runs.
+Compares two JSON reports produced by [`pokie sim --out`](#pokie-sim-packageroot), or two resolved Outcome
+Library bundles and/or Stake Engine exports. Simulation reports show sampled runtime metrics and feature/category
+breakdowns; outcome sources show their canonical exact per-mode analyses. A simulation report and an outcome
+source cannot be mixed because they do not share one meaningful metric contract.
 
 ```
 pokie sim ./sample-slot --rounds 100000 --seed demo --out before.json
@@ -1846,10 +1848,14 @@ A `Warnings:` section is appended whenever RTP, hit frequency, or max win moved 
 default: RTP or hit frequency by more than 1 percentage point, or max win by more than 10%) — the signal that
 usually matters most after a paytable/config change.
 
-The JSON diff shape:
+Every machine-readable diff has a top-level `changed` boolean, so scripts can branch without re-walking every
+metric. The human summary likewise prints `No changes detected.` for identical inputs.
+
+The simulation-report JSON diff shape:
 
 ```ts
 {
+    changed: boolean;
     game: {left: {id, name, version}; right: {id, name, version}; changed: boolean};
     seed: {left: string | null; right: string | null; changed: boolean};
     requestedRounds: {left: number; right: number; delta: number; percentDelta: number | null};
@@ -1933,13 +1939,14 @@ to support: comparing the same mode across versions, and comparing different mod
 
 ### Diffing a `SimulationReportSet` (`pokie sim --mode all` output)
 
-`pokie diff` auto-detects when both `<leftReportJson>`/`<rightReportJson>` are `SimulationReportSet`s (see
+`pokie diff` auto-detects when both project-or-report inputs are `SimulationReportSet`s (see
 `pokie sim --mode all` under [`pokie sim`](#pokie-sim-packageroot) above) instead of plain `SimulationReport`s, and diffs
 them mode by mode instead — one `SimulationReportDiff` (see above) per bet mode id present on **both** sides,
 computed by the exact same `SimulationReportDiffing` (no diff math is duplicated for this):
 
 ```ts
 {
+    changed: boolean;
     game: {left: {...}; right: {...}; changed: boolean};
     perMode: Record<string, SimulationReportDiff>; // only modes present on BOTH sides
     onlyInLeft: string[];   // mode ids only the left set declared
@@ -1962,14 +1969,46 @@ const setDiffer = new SimulationReportSetDiffer(); // wraps a SimulationReportDi
 const setDiff = setDiffer.diff(leftSet, rightSet); // leftSet/rightSet: SimulationReportSet
 ```
 
+### Diffing Outcome Library bundles and Stake Engine exports
+
+When both paths resolve to an Outcome Library bundle or Stake Engine export, `pokie diff` uses each artifact's
+canonical reader and exact per-mode analysis. Native bundles, Stake exports, and a native/Stake pair are all
+supported. Its JSON is intentionally composable with the report form: `changed`, `perMode`, and
+`onlyInLeft`/`onlyInRight` make changed metrics and added/removed modes explicit.
+
+```ts
+{
+    changed: boolean;
+    left: {rootPath: string; kind: "native" | "stakeEngine"; issues: ValidationIssue[]};
+    right: {rootPath: string; kind: "native" | "stakeEngine"; issues: ValidationIssue[]};
+    perMode: Record<string, {
+        modeName: string;
+        rtp: {left, right, delta, percentDelta};
+        hitFrequency: {left, right, delta, percentDelta};
+        zeroWinFrequency: {left, right, delta, percentDelta};
+        variance: {left, right, delta, percentDelta};
+        standardDeviation: {left, right, delta, percentDelta};
+        maxWinProbability: {left, right, delta, percentDelta};
+    }>;
+    onlyInLeft: string[];
+    onlyInRight: string[];
+}
+```
+
+The default summary names the artifact kinds, each common mode's shared exact metrics, and added/removed modes.
+`--format json` prints this exact structure and `--out <file>` writes the same valid JSON without changing the
+selected console format.
+
 Failure modes:
 
-- Missing `<leftReportJson>`/`<rightReportJson>`, an unknown option, or an invalid `--format`/`--out` value throw
+- Missing `<leftProjectOrReportJson>`/`<rightProjectOrReportJson>`, an unknown option, or an invalid `--format`/`--out` value throw
   a `Usage: pokie diff ...` error.
 - Each report path is read/parsed/validated the same way as [`pokie report`](#pokie-report-simulationreportjson) —
   the same "could not read"/"not valid JSON"/"does not look like a pokie sim report" errors apply to either side.
 - Diffing a `SimulationReport` against a `SimulationReportSet` (one single-mode, one multi-mode) throws
   `Cannot diff a single-mode pokie sim report against a multi-mode report set ...`.
+- Diffing a simulation report and an Outcome Library bundle or Stake Engine export explains that the command needs
+  two simulation reports or two outcome sources; it never exposes resolver implementation terms.
 
 ## `pokie replay <packageRoot>`
 

@@ -32,7 +32,7 @@ type DiffOptions = {
 
 type OutcomeSourceDiffing = (left: PokieProject, right: PokieProject) => Promise<OutcomeSourceDiffResult>;
 
-const USAGE = "Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]";
+const USAGE = "Usage: pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson> [--format json] [--out <file>]";
 
 export class DiffCommand implements CliCommandHandling {
     private readonly readFile: (file: string) => string;
@@ -121,8 +121,8 @@ export class DiffCommand implements CliCommandHandling {
     private buildCommand(resultRef: {value?: DiffOptions} = {}): Command {
         return createCommanderCliCommand("diff")
             .description(this.getDescription())
-            .argument("<leftReportJson>", "a pokie sim JSON report (see \"pokie sim --out\")")
-            .argument("<rightReportJson>", "a pokie sim JSON report (see \"pokie sim --out\")")
+            .argument("<leftProjectOrReportJson>", "a pokie sim JSON report or Outcome Library/Stake Engine export")
+            .argument("<rightProjectOrReportJson>", "a pokie sim JSON report or Outcome Library/Stake Engine export")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--format <format>", "only \"json\" is supported (default: a human-readable summary)", (value: string) => {
                 if (value !== "json") {
@@ -164,18 +164,18 @@ export class DiffCommand implements CliCommandHandling {
     }
 
     // Project-aware comparison is tried before treating either input as report JSON. Both sides must
-    // resolve: a report paired with an unrelated existing path remains an ordinary report-input error,
-    // while two outcome sources always use their canonical readers rather than pretending they are
-    // simulation reports. This is the public counterpart to the old format-specific diff command.
+    // be the same broad input family: two resolved projects use their canonical readers, while two
+    // JSON files use the simulation-report path. A project/report mix is a user mistake, not a
+    // filesystem failure (for example, an opaque EISDIR from trying to read a bundle as JSON).
     private async tryDiffOutcomeSourceProjects(options: DiffOptions): Promise<boolean> {
-        let left: PokieProject | undefined;
-        let right: PokieProject | undefined;
-        try {
-            [left, right] = await Promise.all([this.resolveProject.resolve(options.leftPath), this.resolveProject.resolve(options.rightPath)]);
-        } catch {
-            return false;
-        }
+        const [left, right] = await Promise.all([this.resolveProject.resolve(options.leftPath), this.resolveProject.resolve(options.rightPath)]);
         if (left === undefined || right === undefined) {
+            if (left !== undefined || right !== undefined) {
+                throw new Error(
+                    "Cannot compare a simulation report with an outcome source. Compare two simulation reports, " +
+                        "or two Outcome Library bundles / Stake Engine exports.",
+                );
+            }
             return false;
         }
 
@@ -295,6 +295,9 @@ export class DiffCommand implements CliCommandHandling {
         if (setDiff.game.left.version !== setDiff.game.right.version) {
             console.log(`  version         ${setDiff.game.left.version} -> ${setDiff.game.right.version}`);
         }
+        if (!setDiff.changed) {
+            console.log("  No changes detected.");
+        }
 
         Object.entries(setDiff.perMode).forEach(([modeId, diff]) => {
             console.log(`\n=== Mode: ${modeId} ===`);
@@ -320,6 +323,9 @@ export class DiffCommand implements CliCommandHandling {
         }
         if (diff.seed.changed) {
             console.log(`  seed            ${diff.seed.left ?? "none"} -> ${diff.seed.right ?? "none"}`);
+        }
+        if (!diff.changed) {
+            console.log("  No changes detected.");
         }
         console.log(`  requested rounds ${this.formatMetric(diff.requestedRounds, 0)}`);
         console.log(`  rounds          ${this.formatMetric(diff.rounds, 0)}`);

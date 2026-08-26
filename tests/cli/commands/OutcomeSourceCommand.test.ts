@@ -309,6 +309,7 @@ describe("OutcomeSourceCommand diff", () => {
         const diffResult: OutcomeSourceDiffResult = {
             supported: true,
             diff: {
+                changed: true,
                 left: {rootPath: "/libraries/left", kind: "native", issues: []},
                 right: {rootPath: "/stake/right", kind: "stakeEngine", issues: []},
                 perMode: {
@@ -365,6 +366,7 @@ describe("OutcomeSourceCommand diff", () => {
         const diff = stubDiff({
             supported: true,
             diff: {
+                changed: true,
                 left: {rootPath: "/libraries/left", kind: "native", issues: [{code: "outcome-library-bundle-manifest-invalid-json", severity: "error", message: "boom"}]},
                 right: {rootPath: "/libraries/right", kind: "native", issues: []},
                 perMode: {},
