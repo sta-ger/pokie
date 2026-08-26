@@ -22,11 +22,11 @@ import {
     SimulationReportSet,
     WeightedOutcomeRandomSource,
 } from "pokie";
-import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {writeOutputFileAtomically} from "./internal/writeOutputFile.js";
 
 type SimFormat = "summary" | "json";
 
@@ -119,7 +119,7 @@ export class SimCommand implements CliCommandHandling {
 
     constructor(
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
-        writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
+        writeFile: (file: string, contents: string) => void = writeOutputFileAtomically,
         reportBuilder: SimulationReportBuilding = new SimulationReportBuilder(),
         workerEntryUrl: URL | undefined = undefined,
         createParallelSimulationRunner: (
@@ -345,16 +345,16 @@ export class SimCommand implements CliCommandHandling {
 
         const report = result.report;
         if (options.out) {
-            this.writeFile(options.out, JSON.stringify(report, null, 4));
+            this.writeReport(options.out, JSON.stringify(report, null, 4));
         }
 
         if (options.format === "json") {
             console.log(JSON.stringify(report, null, 4));
         } else {
             this.printOutcomeSourceSummary(report);
-            if (options.out) {
-                console.log(`\nReport written to "${options.out}".`);
-            }
+        }
+        if (options.out) {
+            this.printReportDestination(options.out, options.format === "json");
         }
     }
 
@@ -391,16 +391,16 @@ export class SimCommand implements CliCommandHandling {
         const report = await this.runSingleMode(options, options.mode, targetRtp);
 
         if (options.out) {
-            this.writeFile(options.out, JSON.stringify(report, null, 4));
+            this.writeReport(options.out, JSON.stringify(report, null, 4));
         }
 
         if (options.format === "json") {
             console.log(JSON.stringify(report, null, 4));
         } else {
             this.printSummary(report);
-            if (options.out) {
-                console.log(`\nReport written to "${options.out}".`);
-            }
+        }
+        if (options.out) {
+            this.printReportDestination(options.out, options.format === "json");
         }
     }
 
@@ -468,7 +468,7 @@ export class SimCommand implements CliCommandHandling {
         };
 
         if (options.out) {
-            this.writeFile(options.out, JSON.stringify(reportSet, null, 4));
+            this.writeReport(options.out, JSON.stringify(reportSet, null, 4));
         }
 
         if (options.format === "json") {
@@ -478,10 +478,26 @@ export class SimCommand implements CliCommandHandling {
                 console.log(`\n=== Mode: ${modeId} ===`);
                 this.printSummary(report);
             });
-            if (options.out) {
-                console.log(`\nReport written to "${options.out}".`);
-            }
         }
+        if (options.out) {
+            this.printReportDestination(options.out, options.format === "json");
+        }
+    }
+
+    private writeReport(file: string, contents: string): void {
+        try {
+            this.writeFile(file, contents);
+        } catch (error) {
+            throw new Error(
+                `Could not write simulation report to "${file}": ${error instanceof Error ? error.message : String(error)}. ` +
+                "Choose an existing writable directory and try --out <file> again.",
+            );
+        }
+    }
+
+    private printReportDestination(file: string, machineReadable: boolean): void {
+        // A caller can pipe `pokie sim --format json` to JSON.parse even when it also persists --out.
+        (machineReadable ? console.error : console.log)(`\nReport written to "${file}".`);
     }
 
     // --min-rounds/--rtp-tolerance/--check-interval must all be given together to enable adaptive

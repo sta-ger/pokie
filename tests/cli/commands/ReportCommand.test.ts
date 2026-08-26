@@ -106,6 +106,13 @@ describe("ReportCommand", () => {
         await expect(command.run(["other.json"])).rejects.toThrow(/does not look like a pokie sim report/);
     });
 
+    it("rejects malformed optional renderer content before emitting a partial document", async () => {
+        const malformed = {...report, warnings: "not an array"};
+        const command = new ReportCommand(createStubReadFile({"broken-report.json": JSON.stringify(malformed)}));
+
+        await expect(command.run(["broken-report.json"])).rejects.toThrow(/does not look like a pokie sim report/);
+    });
+
     it("prints Markdown to the console by default", async () => {
         const command = new ReportCommand(createStubReadFile({"sim.json": JSON.stringify(report)}));
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
@@ -129,6 +136,16 @@ describe("ReportCommand", () => {
         expect(printed).toContain("<!DOCTYPE html>");
         expect(printed).toContain("<h1>Simulation Report: Sample Slot</h1>");
 
+        logSpy.mockRestore();
+    });
+
+    it("prints the complete parseable simulation report payload when --format json is given", async () => {
+        const command = new ReportCommand(createStubReadFile({"sim.json": JSON.stringify(report)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["sim.json", "--format", "json"]);
+
+        expect(JSON.parse(logSpy.mock.calls[0][0])).toEqual(report);
         logSpy.mockRestore();
     });
 
@@ -159,6 +176,19 @@ describe("ReportCommand", () => {
         expect(writeFile).not.toHaveBeenCalled();
 
         (console.log as jest.Mock).mockRestore();
+    });
+
+    it("wraps an output failure with an actionable destination recovery and does not announce success", async () => {
+        const writeFile = jest.fn(() => {
+            throw new Error("EACCES");
+        });
+        const command = new ReportCommand(createStubReadFile({"sim.json": JSON.stringify(report)}), writeFile);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await expect(command.run(["sim.json", "--out", "locked/report.md"]))
+            .rejects.toThrow(/Could not write report to "locked\/report\.md".*existing writable directory/);
+        expect(logSpy).not.toHaveBeenCalled();
+        logSpy.mockRestore();
     });
 
     it("accepts and renders an old report JSON without reproducibility/warnings/recommendations fields", async () => {
@@ -307,9 +337,10 @@ describe("ReportCommand outcome-source project routing", () => {
 
         expect(outcomeSourceAnalyzer.calls).toEqual([outcomeLibraryProject]);
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain('"/libraries/base" is a "native" canonical outcome source (streaming: true).');
+        expect(printed).toContain("# Outcome Source Report");
+        expect(printed).toContain("## Exact analysis");
         expect(printed).toContain("never re-derives the game model that produced these outcomes");
-        expect(printed).toContain('mode "base": rtp 95.50%, hit frequency 25.00%');
+        expect(printed).toContain("| base | 95.50% | 25.00% | 0.3162 |");
 
         logSpy.mockRestore();
     });
@@ -332,6 +363,26 @@ describe("ReportCommand outcome-source project routing", () => {
         await command.run(["/libraries/base", "--format", "json"]);
 
         expect(JSON.parse(logSpy.mock.calls[0][0])).toEqual(report);
+        logSpy.mockRestore();
+    });
+
+    it('renders a resolved "outcomeLibrary" project as a complete HTML document', async () => {
+        const report: OutcomeSourceProjectReport = {
+            rootPath: "/libraries/base",
+            descriptor: {kind: "native", streaming: true, limitations: ["source limitation"]},
+            issues: [{code: "example-warning", severity: "warning", message: "example issue"}],
+            modes: [{modeName: "base", analysis: {totalWeight: 1000, rtp: 0.955, hitFrequency: 0.25, zeroWinFrequency: 0.75, variance: 0.1, standardDeviation: 0.3162, maxWin: 500, maxWinProbability: 0.001, payoutDistribution: []}}],
+        };
+        const command = new ReportCommand(createStubReadFile({}), undefined, undefined, stubProjectResolver(outcomeLibraryProject), stubAnalyzer(report));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["/libraries/base", "--format", "html"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("<!DOCTYPE html>");
+        expect(printed).toContain("<h2>Reproducibility</h2>");
+        expect(printed).toContain("<h2>Warnings</h2>");
+        expect(printed).toContain("<h2>Limitations and recommendations</h2>");
         logSpy.mockRestore();
     });
 
@@ -359,7 +410,7 @@ describe("ReportCommand outcome-source project routing", () => {
 
         expect(readFile).not.toHaveBeenCalled();
         expect(outcomeSourceAnalyzer.calls).toEqual([stakeAdapterProject]);
-        expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain('"/stake/base" is a "stakeEngine" canonical outcome source');
+        expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("# Outcome Source Report");
 
         logSpy.mockRestore();
     });
@@ -379,19 +430,19 @@ describe("ReportCommand outcome-source project routing", () => {
         await command.run(["/libraries/broken"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain("1 issue(s) found while reading it:");
+        expect(printed).toContain("## Warnings");
         expect(printed).toContain("outcome-library-bundle-manifest-invalid-json");
         expect(printed).not.toContain("Exact analysis");
 
         logSpy.mockRestore();
     });
 
-    it("falls back to the original error unchanged when the outcome-source analyzer itself fails", async () => {
+    it("preserves an outcome-source analyzer failure with its compatible recovery route", async () => {
         const resolveProject = stubProjectResolver(outcomeLibraryProject);
         const outcomeSourceAnalyzer = stubAnalyzer(new Error("disk exploded"));
         const command = new ReportCommand(createStubReadFile({}), undefined, undefined, resolveProject, outcomeSourceAnalyzer);
 
-        await expect(command.run(["missing.json"])).rejects.toThrow(/Could not read simulation report at "missing\.json"/);
+        await expect(command.run(["missing.json"])).rejects.toThrow(/Could not analyze outcome source at "missing\.json": disk exploded.*pokie outcomesource inspect/);
     });
 
     it("writes the same canonical JSON analysis to --out for a resolved Stake adapter", async () => {
@@ -444,8 +495,8 @@ describe("ReportCommand (integration, real outcome-library bundle)", () => {
         await command.run([bundleDir]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain('is a "native" canonical outcome source (streaming: true)');
-        expect(printed).toContain('mode "base":');
+        expect(printed).toContain("# Outcome Source Report");
+        expect(printed).toContain("## Exact analysis");
         expect(printed).not.toContain("run pokie sim");
 
         logSpy.mockRestore();

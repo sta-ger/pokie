@@ -103,7 +103,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     outcome-library bundle without playing it, emits JSON with `--format json`, exits 0 when valid and 1 otherwise,
     and applies `--deep` only to outcome-library bundles; `pokie inspect <packageRoot>`, which prints a generated package's provenance (game, blueprint
     hash, source, timestamp, `pokie` version) from `package.json`/`build-info.json` without running it; `pokie
-    report <projectOrSimulationReportJson>`, which renders a `pokie sim --out` report as Markdown or HTML, or
+    report <projectOrSimulationReportJson>`, which renders a `pokie sim --out` report as JSON, Markdown, or HTML, or
     inspects an Outcome Library Bundle or Stake adapter project through its canonical reader; `pokie diff
     <leftProjectOrReportJson> <rightProjectOrReportJson>`, which compares two `pokie sim --out` reports or two
     resolved outcome-source projects;

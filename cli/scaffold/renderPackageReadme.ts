@@ -18,7 +18,7 @@ npm run build
 npx pokie inspect .
 npx pokie validate .
 npx pokie sim . --rounds 10000 --seed demo --out sim.json
-npx pokie report sim.json
+npx pokie report sim.json --format html --out report.html
 npx pokie replay . --seed demo --round 1
 npx pokie dev .
 \`\`\`

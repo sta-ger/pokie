@@ -36,3 +36,68 @@ export function renderOutcomeSourceReport(targetPath: string, report: OutcomeSou
 
     return lines.join("\n");
 }
+
+// `outcomesource inspect` intentionally keeps its compact terminal rendering above. `pokie report`, however,
+// advertises document formats, so its outcome-source route uses these format-specific documents rather than
+// claiming that a plain terminal transcript is HTML.
+export function renderOutcomeSourceMarkdown(targetPath: string, report: OutcomeSourceProjectReport): string {
+    const lines = [
+        "# Outcome Source Report",
+        "",
+        `- **Path**: \`${targetPath}\``,
+        `- **Kind**: ${report.descriptor.kind}`,
+        `- **Streaming**: ${report.descriptor.streaming ? "yes" : "no"}`,
+        "",
+        "## Reproducibility",
+        "",
+        `- **Source root**: \`${report.rootPath}\``,
+        "- **Analysis**: exact enumeration of the source's declared outcome weights; no simulation was run.",
+    ];
+
+    if (report.descriptor.limitations.length > 0) {
+        lines.push("", "## Limitations and recommendations", "", ...report.descriptor.limitations.map((limitation) => `- ${limitation}`));
+    }
+    if (report.issues.length > 0) {
+        lines.push("", "## Warnings", "", ...report.issues.map((issue) => `- **${issue.severity} ${issue.code}**: ${issue.message}`));
+    }
+    if (report.modes.length > 0) {
+        lines.push("", "## Exact analysis", "", "| Mode | RTP | Hit frequency | Standard deviation |", "| --- | --- | --- | --- |");
+        report.modes.forEach((mode) => {
+            lines.push(`| ${mode.modeName} | ${(mode.analysis.rtp * 100).toFixed(2)}% | ${(mode.analysis.hitFrequency * 100).toFixed(2)}% | ${mode.analysis.standardDeviation.toFixed(4)} |`);
+        });
+    }
+    return lines.join("\n") + "\n";
+}
+
+export function renderOutcomeSourceHtml(targetPath: string, report: OutcomeSourceProjectReport): string {
+    const escapeHtml = (value: string): string => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    const list = (items: readonly string[]): string[] => ["        <ul>", ...items.map((item) => `            <li>${escapeHtml(item)}</li>`), "        </ul>"];
+    const rows = report.modes.map((mode) => `            <tr><td>${escapeHtml(mode.modeName)}</td><td>${(mode.analysis.rtp * 100).toFixed(2)}%</td><td>${(mode.analysis.hitFrequency * 100).toFixed(2)}%</td><td>${mode.analysis.standardDeviation.toFixed(4)}</td></tr>`);
+
+    return [
+        "<!DOCTYPE html>",
+        '<html lang="en">',
+        "<head>",
+        '    <meta charset="utf-8">',
+        "    <title>Outcome Source Report</title>",
+        "</head>",
+        "<body>",
+        "    <article>",
+        "        <h1>Outcome Source Report</h1>",
+        "        <table><tbody>",
+        `            <tr><th scope="row">Path</th><td><code>${escapeHtml(targetPath)}</code></td></tr>`,
+        `            <tr><th scope="row">Kind</th><td>${escapeHtml(report.descriptor.kind)}</td></tr>`,
+        `            <tr><th scope="row">Streaming</th><td>${report.descriptor.streaming ? "yes" : "no"}</td></tr>`,
+        "        </tbody></table>",
+        "        <section><h2>Reproducibility</h2>",
+        ...list([`Source root: ${report.rootPath}`, "Analysis: exact enumeration of declared outcome weights; no simulation was run."]),
+        "        </section>",
+        ...(report.descriptor.limitations.length > 0 ? ["        <section><h2>Limitations and recommendations</h2>", ...list(report.descriptor.limitations), "        </section>"] : []),
+        ...(report.issues.length > 0 ? ["        <section><h2>Warnings</h2>", ...list(report.issues.map((issue) => `${issue.severity} ${issue.code}: ${issue.message}`)), "        </section>"] : []),
+        ...(rows.length > 0 ? ["        <section><h2>Exact analysis</h2>", "        <table><thead><tr><th>Mode</th><th>RTP</th><th>Hit frequency</th><th>Standard deviation</th></tr></thead><tbody>", ...rows, "        </tbody></table></section>"] : []),
+        "    </article>",
+        "</body>",
+        "</html>",
+        "",
+    ].join("\n");
+}

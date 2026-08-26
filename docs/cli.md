@@ -1730,9 +1730,10 @@ the `AggregateSimulationRunner`/`ParallelSimulationRunner`/`pokie sim` path.
 
 ## `pokie report <projectOrSimulationReportJson>`
 
-Renders a JSON report produced by [`pokie sim --out`](#pokie-sim-packageroot) as a human-readable Markdown or
-HTML document. When the path instead resolves to an Outcome Library Bundle or Stake adapter project, it dispatches
-to that project's canonical reader and prints its exact per-mode outcome analysis.
+Renders a JSON report produced by [`pokie sim --out`](#pokie-sim-packageroot) as JSON, a human-readable Markdown
+document, or a complete HTML document. When the path instead resolves to an Outcome Library Bundle or Stake adapter
+project, it dispatches to that project's canonical reader and renders the same three formats from that source's
+exact per-mode outcome analysis.
 
 ```
 pokie sim ./sample-slot --rounds 10000 --out sim.json
@@ -1744,11 +1745,12 @@ pokie report stakeengine --format json --out stake-analysis.json
 
 Options:
 
-- `--format markdown|html` — simulation-report output format (default `markdown`).
-- `--format json` — for a resolved Outcome Library Bundle or Stake adapter project, print that source's canonical
-  structured analysis. It is not a simulation-report renderer.
-- `--out <file>` — also write the printed report to `<file>`. For an outcome source with `--format json`, this is
-  the same structured JSON payload printed to the console; otherwise it is the human-readable rendered report.
+- `--format markdown|html|json` — output format for either supported input (default `markdown`). JSON preserves the
+  complete simulation report (including every mode of a `--mode all` report set) or canonical source-analysis
+  payload; Markdown and HTML are readable documents.
+- `--out <file>` — also write the complete printed artifact to `<file>`. The command writes atomically and only
+  announces the destination after success; for a write error choose an existing writable directory and rerun the
+  shown command.
 
 The rendered report includes, at minimum: game id/name/version, requested rounds, actual rounds, seed, total bet,
 total win, RTP, hit frequency, max win, duration, and spins per second. The HTML output is plain semantic HTML
