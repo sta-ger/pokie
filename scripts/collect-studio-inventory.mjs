@@ -489,7 +489,7 @@ async function main() {
                 try {
                     const simulationQueued = () => renderedText("queued —");
                     operation = {...await activate("Run Simulation", simulationQueued), coverageId: "simulation-run"};
-                    await observeAction("Simulation run begins with queued rounds", operation, simulationQueued, 120_000);
+                    await observeAction("Simulation run begins with queued rounds", operation, simulationQueued, 5_000);
                     if (await renderedActionExists("Cancel")) {
                         operation = await click("Cancel", () => renderedActionExists("Confirm"));
                         await observeAction("Simulation cancellation requests confirmation", operation, () => renderedActionExists("Confirm"));
@@ -541,7 +541,7 @@ async function main() {
         try {
             const managedProjectOpenedOrErrored = () => renderedActionExists("Close project") || renderedText("Couldn't open project");
             operation = {...await click("Open", managedProjectOpenedOrErrored), coverageId: "managed-project-open"};
-            await observeAction("Managed project Open opens the project workspace or reports an error", operation, managedProjectOpenedOrErrored);
+            await observeAction("Managed project Open opens the project workspace or reports an error", operation, managedProjectOpenedOrErrored, 5_000);
             operation = await click("Close project", () => renderedActionExists("Confirm"));
             await observeAction("Managed project workspace closes", operation, () => renderedActionExists("Confirm"));
             operation = await click("Confirm", () => renderedText("Design Your Game"));
@@ -555,7 +555,7 @@ async function main() {
         try {
             const removeConfirmationVisible = () => renderedActionExists("Cancel") || renderedText("This only forgets it here");
             operation = {...await click("Remove", removeConfirmationVisible), coverageId: "managed-project-remove-confirm"};
-            await observeAction("Managed project Remove opens a non-destructive confirmation", operation, removeConfirmationVisible);
+            await observeAction("Managed project Remove opens a non-destructive confirmation", operation, removeConfirmationVisible, 5_000);
         } catch (error) {
             recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CONFIRMATION", "Managed project Remove confirmation", "P8-02", `The managed-project Remove confirmation was not reachable from the rendered registry without a managed project: ${error.message}`, undefined, "managed-project-remove-confirm");
             await snapshot("Managed project Remove confirmation blocked", operation);
