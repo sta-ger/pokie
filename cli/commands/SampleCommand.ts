@@ -23,6 +23,10 @@ export class SampleCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<number> {
+        if (args.includes("--help") || args.includes("-h")) {
+            console.log(this.getCommanderCommand().helpInformation());
+            return 0;
+        }
         try {
             return await this.outcomeSource.run(["sample", ...args]);
         } catch (error) {

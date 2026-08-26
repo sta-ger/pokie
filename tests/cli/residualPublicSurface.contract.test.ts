@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 
 import {CliCommandHandling} from "../../cli/CliCommandHandling.js";
+import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {dispatch} from "../../cli/dispatch.js";
 import {registerCliCommands} from "../../cli/registerCliCommands.js";
 
@@ -79,5 +80,30 @@ describe("residual public CLI surface", () => {
         expect(message).toMatch(expected);
         expectActionable(message);
         expect(message).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
+    });
+
+    it("keeps Report's outcome-source recovery on public project identification rather than retrying report", async () => {
+        const outcomeLibrary = {
+            type: "outcomeLibrary" as const,
+            rootPath: "broken-outcomes",
+            capabilities: [],
+            provenance: "test fixture",
+        };
+        const command = new ReportCommand(
+            undefined,
+            undefined,
+            undefined,
+            {resolve: () => Promise.resolve(outcomeLibrary)},
+            {analyze: () => Promise.reject(new Error("manifest unreadable"))},
+        );
+        const error = await command.run(["broken-outcomes"]).then(
+            () => new Error("Expected report analysis to fail."),
+            (reason: unknown) => reason,
+        );
+
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain('Run "pokie inspect broken-outcomes" to identify the project and its repair path.');
+        expect((error as Error).message).not.toContain("pokie report");
+        expect((error as Error).message).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
     });
 });

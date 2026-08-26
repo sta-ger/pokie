@@ -456,12 +456,21 @@ describe("ReportCommand outcome-source project routing", () => {
         logSpy.mockRestore();
     });
 
-    it("preserves an outcome-source analyzer failure with its compatible recovery route", async () => {
+    it("routes an outcome-source analyzer failure to public project identification and repair guidance", async () => {
         const resolveProject = stubProjectResolver(outcomeLibraryProject);
         const outcomeSourceAnalyzer = stubAnalyzer(new Error("disk exploded"));
         const command = new ReportCommand(createStubReadFile({}), undefined, undefined, resolveProject, outcomeSourceAnalyzer);
 
-        await expect(command.run(["missing.json"])).rejects.toThrow(/Could not analyze outcome source at "missing\.json": disk exploded.*pokie report <path> --format json/);
+        const error = await command.run(["missing.json"]).then(
+            () => new Error("Expected outcome-source analysis to fail."),
+            (reason: unknown) => reason,
+        );
+
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain('Could not analyze outcome source at "missing.json": disk exploded.');
+        expect((error as Error).message).toContain('Run "pokie inspect missing.json" to identify the project and its repair path.');
+        expect((error as Error).message).not.toContain("pokie report");
+        expect((error as Error).message).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
     });
 
     it("writes the same canonical JSON analysis to --out for a resolved Stake adapter", async () => {

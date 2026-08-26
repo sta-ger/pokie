@@ -31,6 +31,10 @@ export class GenerateCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<number> {
+        if (args.includes("--help") || args.includes("-h")) {
+            console.log(this.getCommanderCommand().helpInformation());
+            return 0;
+        }
         try {
             return await this.outcomeLibrary.run(["generate", ...args]);
         } catch (error) {
