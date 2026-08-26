@@ -2,6 +2,7 @@ import type {
     FairnessCommitment,
     GameModelProjection,
     GamePackageInspectionReport,
+    OutcomeSourceReplayDescriptorView,
     OutcomeSourceSampleView,
     PokieGameManifest,
     PokieGamePackageValidationReport,
@@ -645,6 +646,7 @@ export async function runReplay(
     seed?: string,
     simulationId?: string,
     modeName?: string,
+    outcomeSource?: OutcomeSourceReplayDescriptorView,
 ): Promise<StartReplayResult> {
     const response = await fetchImpl("/api/project/replays", {
         method: "POST",
@@ -654,6 +656,7 @@ export async function runReplay(
             ...(seed !== undefined ? {seed} : {}),
             ...(simulationId !== undefined ? {simulationId} : {}),
             ...(modeName !== undefined ? {modeName} : {}),
+            ...(outcomeSource !== undefined ? {outcomeSource} : {}),
         }),
     });
 
@@ -701,7 +704,13 @@ export function buildReplayDownloadUrl(id: string): string {
     return `/api/project/replays/${encodeURIComponent(id)}/download`;
 }
 
-export type InspectReplayArtifactResult = {round: number; seed?: string; artifactWarnings: string[]};
+export type InspectReplayArtifactResult = {
+    round: number;
+    seed?: string;
+    modeName?: string;
+    outcomeSource?: import("./types").OutcomeSourceReplayDescriptorView;
+    artifactWarnings: string[];
+};
 
 // Validates a pasted "Replay Artifact" JSON before attempting an actual reproduction (the Find/Load
 // steps of the Replay & Debug workflow) — reuses the exact same round/seed validation the real

@@ -311,6 +311,8 @@ describe("ReplayCommand outcome-source routing", () => {
             replay: {
                 libraryId: "base-lib",
                 libraryHash: "sha256:abc",
+                modeName: "base",
+                selectionAlgorithm: "derived-round-seed-v1",
                 seed: "demo-seed",
                 round: 3,
                 outcomeId: "2",
@@ -333,6 +335,8 @@ describe("ReplayCommand outcome-source routing", () => {
                 outcomeSource: {
                     libraryId: "base-lib",
                     libraryHash: "sha256:abc",
+                    modeName: "base",
+                    selectionAlgorithm: "derived-round-seed-v1",
                     seed: "demo-seed",
                     round: 3,
                     outcomeId: "2",

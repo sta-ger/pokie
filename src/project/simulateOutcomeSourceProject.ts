@@ -1,4 +1,7 @@
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
+import {deriveDeterministicSeed} from "../pregenerated/internal/deriveDeterministicSeed.js";
+import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedOutcomeRandomSource.js";
+import type {PreGeneratedRoundReplayDescriptor} from "../pregenerated/PreGeneratedRoundReplayDescriptor.js";
 import {SimulationAccumulator} from "../simulation/SimulationAccumulator.js";
 import type {SimulationStatistics} from "../simulation/SimulationStatistics.js";
 import {OutcomeLibraryBundleOutcomeSource} from "../weightedoutcome/bundle/OutcomeLibraryBundleOutcomeSource.js";
@@ -19,6 +22,9 @@ export type OutcomeSourceSimulationReport = {
     readonly seed?: string;
     readonly durationMs: number;
     readonly statistics: SimulationStatistics;
+    // The last real sampled round makes a seeded simulation directly replayable, without exposing
+    // its nondeterministic report duration as part of the comparison contract.
+    readonly lastReplay?: PreGeneratedRoundReplayDescriptor;
 };
 
 export type OutcomeSourceSimulationResult =
@@ -45,17 +51,43 @@ export async function simulateOutcomeSourceProject(
     if (diagnostic !== undefined) {
         return {supported: false, diagnostic};
     }
+    if (seed !== undefined && seed.trim().length === 0) {
+        throw new Error("Cannot exactly simulate an outcome-library round with a blank seed. Provide a non-empty seed, or omit it for a best-effort secure simulation.");
+    }
 
     const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
     const accumulator = new SimulationAccumulator();
     let libraryId = "";
     let libraryHash = "";
+    let lastReplay: PreGeneratedRoundReplayDescriptor | undefined;
     const startedAt = Date.now();
     for (let round = 0; round < rounds; round++) {
-        const selection = await outcomeSource.drawOutcome(randomSource);
+        const replayRound = round + 1;
+        const roundRandomSource = seed === undefined ? randomSource : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(seed, replayRound));
+        const selection = await outcomeSource.drawOutcome(roundRandomSource);
         libraryId = selection.libraryId;
         libraryHash = selection.libraryHash;
         accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin);
+        if (seed !== undefined) {
+            lastReplay = {
+                game: selection.outcome.artifact.provenance.game,
+                libraryId: selection.libraryId,
+                libraryHash: selection.libraryHash,
+                modeName,
+                selectionAlgorithm: "derived-round-seed-v1",
+                seed,
+                round: replayRound,
+                outcomeId: selection.outcome.id,
+                weight: selection.outcome.weight,
+                totalWin: selection.outcome.artifact.totalWin,
+                payoutMultiplier: selection.outcome.artifact.payoutMultiplier,
+                stake: selection.outcome.artifact.stake,
+                screen: selection.outcome.artifact.screen.map((row) => [...row]),
+                artifact: selection.outcome.artifact,
+                timestamp: startedAt,
+                durationMs: Date.now() - startedAt,
+            };
+        }
     }
 
     return {
@@ -68,6 +100,7 @@ export async function simulateOutcomeSourceProject(
             seed,
             durationMs: Date.now() - startedAt,
             statistics: accumulator.getStatistics(),
+            ...(lastReplay === undefined ? {} : {lastReplay}),
         },
     };
 }

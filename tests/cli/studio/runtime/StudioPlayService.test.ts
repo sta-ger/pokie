@@ -486,6 +486,16 @@ describe("StudioPlayService", () => {
             expect(loadGame).not.toHaveBeenCalled();
         });
 
+        it.each(["", "   "])("rejects a blank seed before creating an exactly replayable outcome-library Play session (%p)", async (seed) => {
+            const bundleDir = await buildLibraryBundle();
+            const service = new StudioPlayService();
+
+            await expect(service.newSession(bundleDir, seed)).resolves.toEqual({
+                status: "failed",
+                error: expect.stringMatching(/seed.*non-empty.*best-effort/i),
+            });
+        });
+
         it("draws the same real outcome every time for a given seed, the same reproducibility a live game's own seed promises", async () => {
             const bundleDir = await buildLibraryBundle();
             const first = new StudioPlayService();
@@ -546,6 +556,13 @@ describe("StudioPlayService", () => {
                 }
                 expect((spun.session.debug?.artifact as {roundId?: string} | undefined)?.roundId).toMatch(/^buy-lib-/);
                 expect(spun.session.studioModeName).toBe("buyFeature");
+                expect(spun.session.replay).toEqual(expect.objectContaining({
+                    libraryId: "buy-lib",
+                    modeName: "buyFeature",
+                    seed: "multi-mode-explicit-seed",
+                    round: 1,
+                    selectionAlgorithm: "derived-round-seed-v1",
+                }));
             });
 
             it("fails honestly, naming every real mode, for a mode name that isn't part of this library -- never falls back to the first mode", async () => {
@@ -576,6 +593,7 @@ describe("StudioPlayService", () => {
                 const recorded = roundRecorder.list();
                 expect(recorded).toHaveLength(1);
                 expect(recorded[0].studioModeName).toBe("buyFeature");
+                expect(recorded[0].replay).toEqual(expect.objectContaining({modeName: "buyFeature", round: 1}));
             });
         });
     });

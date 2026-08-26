@@ -61,7 +61,13 @@ export type OutcomeSourceProjectReportView = {
 // own OutcomeSourceSampleResult. `diagnostic` is StudioServer's exact same structured
 // UnsupportedProjectOperationDiagnostic every other unsupported-capability route already surfaces.
 export type OutcomeSourceSampleView =
-    | {supported: true; selection: {libraryId: string; libraryHash: string; totalWeight: number; outcome: {id: string; weight: number; artifact: RoundArtifact}}}
+    | {
+          supported: true;
+          selection: {libraryId: string; libraryHash: string; totalWeight: number; outcome: {id: string; weight: number; artifact: RoundArtifact}};
+          // Present for a seeded sample: this is the same portable identity the public replay command
+          // consumes, rather than a UI-only approximation of the selected outcome.
+          replay?: OutcomeSourceReplayDescriptorView;
+      }
     | {supported: false; diagnostic: {detectedType: StudioProjectType; operation: string; missingCapability: string; alternatives: StudioProjectType[]; message: string}};
 
 // The Project Dashboard's own read model — see cli/studio/ProjectDashboardContext.ts (the server's
@@ -633,6 +639,8 @@ export type StudioSimulationJobView = {
     // The real outcome-library mode this job samples/sampled -- undefined for an ordinary
     // "tsPackage"/"blueprint" simulation, which has no notion of an outcome-library mode at all.
     modeName?: string;
+    // The final seeded outcome-library draw, retained by Studio simulation for exact replay.
+    lastReplay?: OutcomeSourceReplayDescriptorView;
 };
 
 // One row of GET /api/project/reports — only ever built from a "completed" job, see
@@ -714,6 +722,27 @@ export type RoundArtifact = {
 // hash, what a completed replay's descriptor.artifact and a pasted "Replay Artifact" JSON both are.
 export type RoundArtifactJson = RoundArtifact & {readonly hash: string};
 
+// Mirrors PreGeneratedRoundReplayDescriptor. It travels with ordinary outcome-library Play and
+// Sample results so consumers can hand the exact recorded seed/round/mode/provenance to `pokie replay`.
+export type OutcomeSourceReplayDescriptorView = {
+    game?: {id: string; name: string; version: string};
+    libraryId: string;
+    libraryHash: string;
+    modeName: string;
+    selectionAlgorithm: "derived-round-seed-v1";
+    seed: string;
+    round: number;
+    outcomeId: string | number;
+    weight: number;
+    totalWin: number;
+    payoutMultiplier: number;
+    stake?: number;
+    screen?: unknown[][];
+    artifact?: RoundArtifact;
+    timestamp: number;
+    durationMs: number;
+};
+
 // The server's copy of this same type lives in "pokie" itself (src/replay/ReplayDescriptor.ts) —
 // kept as its own client-side copy here, same convention as every other type in this file.
 export type ReplayDescriptor = {
@@ -742,6 +771,26 @@ export type ReplayDescriptor = {
     // StudioReplayExecutionService.captureBoundaryState()'s own doc comment).
     stateBefore?: Record<string, unknown>;
     stateAfter?: Record<string, unknown>;
+    // Native outcome-library provenance. Its absence means this is package replay or an older,
+    // inspection-only descriptor; a caller must not invent a mode/seed for exact comparison.
+    outcomeSource?: {
+        game?: {id: string; name: string; version: string};
+        libraryId: string;
+        libraryHash: string;
+        modeName: string;
+        selectionAlgorithm: "derived-round-seed-v1";
+        seed: string;
+        round: number;
+        outcomeId: string;
+        weight: number;
+        totalWin: number;
+        payoutMultiplier: number;
+        stake?: number;
+        screen?: unknown[][];
+        artifact?: RoundArtifact;
+        timestamp: number;
+        durationMs: number;
+    };
 };
 
 export type StudioReplayStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -833,6 +882,7 @@ export type StudioRuntimeSessionView = {
     // backed round ("play-outcome-source"/"outcome-source-sample"/"simulation-sample"), absent for a
     // "runtime"/"live"/"pre-generated" one, which has no such notion at all.
     studioModeName?: string;
+    replay?: OutcomeSourceReplayDescriptorView;
     debug?: {
         stateAfter?: unknown;
         stateBefore?: unknown;

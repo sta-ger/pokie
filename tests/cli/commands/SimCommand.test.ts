@@ -1112,6 +1112,40 @@ describe("SimCommand outcome-source routing", () => {
         expect(loadGame).not.toHaveBeenCalled();
     });
 
+    it.each(["", "   "])("rejects a blank outcome-library seed before simulating or emitting replay provenance (%p)", async (seed) => {
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const simulate = stubSimulateOutcomeSource({
+            supported: true,
+            report: {
+                libraryId: "base-lib",
+                libraryHash: "sha256:abc",
+                modeName: "base",
+                requestedRounds: 10,
+                durationMs: 0,
+                statistics: {
+                    rounds: 10,
+                    hitCount: 0,
+                    totalBet: 10,
+                    totalPayout: 0,
+                    averageBet: 1,
+                    averagePayout: 0,
+                    averagePayoutConfidenceInterval95: {low: 0, high: 0},
+                    rtp: 0,
+                    rtpConfidenceInterval95: {low: 0, high: 0},
+                    volatility: 0,
+                    payoutStandardDeviation: 0,
+                    returnStandardDeviation: 0,
+                    maxWin: 0,
+                    payoutHistogram: {},
+                },
+            },
+        });
+        const command = new SimCommand(undefined, undefined, undefined, undefined, undefined, undefined, resolveProject, simulate);
+
+        await expect(command.run(["/libraries/base", "--rounds", "10", "--mode", "base", "--seed", seed])).rejects.toThrow(/--seed.*non-empty.*best-effort/i);
+        expect(simulate.calls).toEqual([]);
+    });
+
     it("simulates a resolved native outcome-library project through the injected outcome-source simulation function, never loading the game", async () => {
         const resolveProject = stubProjectResolver(outcomeLibraryProject);
         const simulate = stubSimulateOutcomeSource({

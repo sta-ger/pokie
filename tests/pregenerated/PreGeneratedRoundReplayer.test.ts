@@ -18,8 +18,8 @@ describe("PreGeneratedRoundReplayer", () => {
         const libraryHash = computeWeightedOutcomeLibraryHash(library);
         const replayer = new PreGeneratedRoundReplayer();
 
-        const first = replayer.replay({library, libraryHash, seed: "player-seed", round: 7});
-        const second = replayer.replay({library, libraryHash, seed: "player-seed", round: 7});
+        const first = replayer.replay({library, libraryHash, modeName: "base", seed: "player-seed", round: 7});
+        const second = replayer.replay({library, libraryHash, modeName: "base", seed: "player-seed", round: 7});
 
         expect(second.outcomeId).toBe(first.outcomeId);
         expect(second.weight).toBe(first.weight);
@@ -33,7 +33,7 @@ describe("PreGeneratedRoundReplayer", () => {
         const replayer = new PreGeneratedRoundReplayer();
 
         const outcomeIds = Array.from({length: 50}, (_, index) =>
-            replayer.replay({library, libraryHash, seed: "player-seed", round: index + 1}).outcomeId,
+            replayer.replay({library, libraryHash, modeName: "base", seed: "player-seed", round: index + 1}).outcomeId,
         );
 
         expect(new Set(outcomeIds).size).toBeGreaterThan(1);
@@ -45,7 +45,7 @@ describe("PreGeneratedRoundReplayer", () => {
         const replayer = new PreGeneratedRoundReplayer();
 
         const outcomeIds = Array.from({length: 50}, (_, index) =>
-            replayer.replay({library, libraryHash, seed: `seed-${index}`, round: 1}).outcomeId,
+            replayer.replay({library, libraryHash, modeName: "base", seed: `seed-${index}`, round: 1}).outcomeId,
         );
 
         expect(new Set(outcomeIds).size).toBeGreaterThan(1);
@@ -56,7 +56,16 @@ describe("PreGeneratedRoundReplayer", () => {
         const libraryHash = computeWeightedOutcomeLibraryHash(library);
         const replayer = new PreGeneratedRoundReplayer();
 
-        expect(() => replayer.replay({library, libraryHash, seed: "s", round: 0})).toThrow(/positive integer/);
-        expect(() => replayer.replay({library, libraryHash, seed: "s", round: 1.5})).toThrow(/positive integer/);
+        expect(() => replayer.replay({library, libraryHash, modeName: "base", seed: "s", round: 0})).toThrow(/positive integer/);
+        expect(() => replayer.replay({library, libraryHash, modeName: "base", seed: "s", round: 1.5})).toThrow(/positive integer/);
+    });
+
+    it("requires the portable seed and mode identity before selecting an outcome", () => {
+        const library = buildLibrary();
+        const libraryHash = computeWeightedOutcomeLibraryHash(library);
+        const replayer = new PreGeneratedRoundReplayer();
+
+        expect(() => replayer.replay({library, libraryHash, modeName: "", seed: "seed", round: 1})).toThrow(/modeName.*non-empty/);
+        expect(() => replayer.replay({library, libraryHash, modeName: "base", seed: "", round: 1})).toThrow(/seed.*non-empty/);
     });
 });

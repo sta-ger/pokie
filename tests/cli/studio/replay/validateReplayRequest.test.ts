@@ -10,6 +10,16 @@ describe("validateReplayRequest", () => {
         expect(validateReplayRequest({round: 42, seed: "demo"})).toEqual({round: 42, seed: "demo"});
     });
 
+    it("requires the recorded seed and mode for exact outcome-library replay without changing package replay", () => {
+        expect(() => validateReplayRequest({round: 42}, {requireOutcomeSourceProvenance: true})).toThrow(/without a seed/i);
+        expect(() => validateReplayRequest({round: 42, seed: "demo"}, {requireOutcomeSourceProvenance: true})).toThrow(/without its recorded mode/i);
+        expect(validateReplayRequest({round: 42, seed: "demo", modeName: "base"}, {requireOutcomeSourceProvenance: true})).toEqual({
+            round: 42,
+            seed: "demo",
+            modeName: "base",
+        });
+    });
+
     it("rejects a missing round", () => {
         expect(() => validateReplayRequest({})).toThrow('"round" must be a positive integer.');
     });

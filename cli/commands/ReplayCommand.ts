@@ -73,7 +73,7 @@ export class ReplayCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Best-effort replay of a single round (by seed + round index) from a POKIE game package.";
+        return "Replay one round: exact native outcome-library reconstruction with seed, round and mode, or best-effort game-package replay.";
     }
 
     public getCommanderCommand(): Command {

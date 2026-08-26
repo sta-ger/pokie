@@ -4,7 +4,7 @@ import {useStudioApi} from "../context/StudioApiProvider";
 import {errorMessage} from "../domain/errorMessage";
 import {describeReplayProgress, isReplayActive, isReplayTerminal, type ReplayProgressView} from "../domain/interpret/Replay";
 import {useDoubleSubmitGuard} from "./useDoubleSubmitGuard";
-import type {StudioReplayJobView} from "../api/types";
+import type {OutcomeSourceReplayDescriptorView, StudioReplayJobView} from "../api/types";
 
 const POLL_INTERVAL_MS = 500;
 
@@ -66,13 +66,13 @@ export function useReplayPoll(onTerminal?: () => void) {
             });
     }
 
-    function run(round: number, seed: string | undefined, simulationId?: string, modeName?: string): void {
+    function run(round: number, seed: string | undefined, simulationId?: string, modeName?: string, outcomeSource?: OutcomeSourceReplayDescriptorView): void {
         if (!runGuard.begin()) {
             return;
         }
         setError(undefined);
         setProgress({status: "queued", completedRounds: 0, round, percent: 0, durationMs: 0});
-        runReplay(fetchImpl, round, seed, simulationId, modeName)
+        runReplay(fetchImpl, round, seed, simulationId, modeName, outcomeSource)
             .then((result) => {
                 if (cancelledRef.current) {
                     return;

@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleWriter, PokieProject, ProjectTargetResolver, replayOutcomeSourceProject} from "pokie";
+import {OutcomeLibraryBundleWriter, PokieProject, type PreGeneratedRoundReplayDescriptor, ProjectTargetResolver, replayOutcomeSourceProject} from "pokie";
 import {buildOutcomeLibraryBundleModeInput, buildOutcomeLibraryBundleTestLibrary} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 // Proves P3-POLISH-21's own replay boundary: a resolved "outcomeLibrary" project reproduces a (seed, round)
@@ -55,6 +55,82 @@ describe("replayOutcomeSourceProject", () => {
             expect(second.replay.outcomeId).toBe(first.replay.outcomeId);
             expect(second.replay.libraryHash).toBe(first.replay.libraryHash);
         }
+    });
+
+    it("fails closed when a recorded library artifact does not match the bundle being replayed", async () => {
+        const bundleDir = path.join(workDir, "bundle");
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+        const project = (await resolver.resolve(bundleDir)) as PokieProject;
+        const original = await replayOutcomeSourceProject(project, "base", "reproducible-seed", 4);
+        if (!original.supported) {
+            throw new Error("expected a supported outcome-library project");
+        }
+
+        await expect(
+            replayOutcomeSourceProject(project, "base", "reproducible-seed", 4, {...original.replay, libraryHash: "sha256:stale"}),
+        ).rejects.toThrow(/recorded.*current.*Restore\/open the original game and outcome-library artifact/i);
+    });
+
+    it("fails closed for every supplied canonical game and result field", async () => {
+        const bundleDir = path.join(workDir, "bundle");
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+        const project = (await resolver.resolve(bundleDir)) as PokieProject;
+        const original = await replayOutcomeSourceProject(project, "base", "reproducible-seed", 4);
+        if (!original.supported) {
+            throw new Error("expected a supported outcome-library project");
+        }
+
+        await expect(
+            replayOutcomeSourceProject(project, "base", "reproducible-seed", 4, {
+                ...original.replay,
+                game: original.descriptor.game,
+                stake: original.descriptor.totalBet + 1,
+                screen: [["stale-screen"]],
+            }),
+        ).rejects.toThrow(/game:|stake:|screen:/i);
+    });
+
+    it("rejects incomplete recorded descriptors instead of claiming an exact recorded-result comparison", async () => {
+        const bundleDir = path.join(workDir, "bundle");
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+        const project = (await resolver.resolve(bundleDir)) as PokieProject;
+        const original = await replayOutcomeSourceProject(project, "base", "reproducible-seed", 4);
+        if (!original.supported) {
+            throw new Error("expected a supported outcome-library project");
+        }
+
+        const omittedFields: [string, string][] = [
+            ["game", "game identity"],
+            ["libraryId", "library id"],
+            ["libraryHash", "library hash"],
+            ["modeName", "mode"],
+            ["selectionAlgorithm", "selection algorithm"],
+            ["seed", "seed"],
+            ["round", "round"],
+            ["outcomeId", "outcome id"],
+            ["weight", "weight"],
+            ["totalWin", "total win"],
+            ["payoutMultiplier", "payout multiplier"],
+            ["stake", "stake"],
+            ["screen", "screen"],
+            ["artifact", "artifact"],
+        ];
+        for (const [field, label] of omittedFields) {
+            const incomplete = {...original.replay, [field]: undefined} as unknown as PreGeneratedRoundReplayDescriptor;
+
+            await expect(replayOutcomeSourceProject(project, "base", "reproducible-seed", 4, incomplete)).rejects.toThrow(
+                new RegExp(`missing ${label}.*complete descriptor.*omit the recorded descriptor`, "i"),
+            );
+        }
+    });
+
+    it("rejects a missing seed or mode rather than silently choosing a default", async () => {
+        const bundleDir = path.join(workDir, "bundle");
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+        const project = (await resolver.resolve(bundleDir)) as PokieProject;
+
+        await expect(replayOutcomeSourceProject(project, "base", "", 1)).rejects.toThrow(/without a non-empty seed/i);
+        await expect(replayOutcomeSourceProject(project, "", "seed", 1)).rejects.toThrow(/without a mode/i);
     });
 
     it("returns the capability diagnostic, rather than throwing or reading a bundle, for a resolved Stake Engine project", async () => {

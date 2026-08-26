@@ -1189,8 +1189,12 @@ pokie diff bundle stake-export --format json --out diff.json
 `report` prints the source's own kind/streaming/limitations plus, for a structurally valid source, an exact
 per-mode analysis (every outcome's own weight, enumerated exactly — no simulation). `sample` draws exactly one
 outcome from a native outcome library's own mode through the same selector/session/server path live and
-pre-generated play already use (`WeightedOutcomeSelector` over the mode's own index) — `--seed <string>` makes
-the draw reproducible (`SeededWeightedOutcomeRandomSource`), omitted uses a cryptographically secure source. A
+pre-generated play already use (`WeightedOutcomeSelector` over the mode's own index). With `--seed <string>`, it
+selects derived round 1 (`derived-round-seed-v1`) and prints the standard JSON `ReplayDescriptor`, including its
+complete `outcomeSource` provenance (seed, round, mode, game/library identity and canonical result). Replay it
+with `pokie replay <bundle> --seed <seed> --round 1 --mode <mode>`. Without `--seed`, `sample` uses a
+cryptographically secure source and prints a human-readable selection only; it does **not** emit portable replay
+provenance. A
 Stake Engine export has no such draw contract, so `sample` against one reports the same missing-capability
 diagnostic every other unsupported project operation does, rather than attempting to run it. `diff` compares
 two resolved outcome sources' own exact analyses mode-by-mode over the core metrics both a native bundle and a
@@ -2032,6 +2036,26 @@ Options:
 - `--out <file>` — write the JSON replay descriptor to `<file>`.
 - `--format json` — accepted for symmetry with `pokie sim`/`pokie validate`; JSON is currently the only supported
   format, and is always printed to stdout regardless of this flag.
+
+When `<packageRoot>` is a native Outcome Library bundle, replay is an exact reconstruction against the currently
+opened library rather than best-effort package replay and requires `seed`, one-based `round`, and `mode`:
+
+```sh
+pokie replay ./outcome-library --seed recorded-seed --round 7 --mode base --out replay.json
+```
+
+The returned descriptor includes `outcomeSource` with the game, library id/hash, mode, selection algorithm,
+outcome id, canonical artifact, screen, stake and payout. Do not substitute a default mode: a missing seed or mode
+is rejected. The CLI reconstructs from the current bundle; for an exact comparison with a saved recorded round,
+the exported `replayOutcomeSourceProject(..., recordedDescriptor)` API requires the complete canonical provenance
+and fails closed for omissions or mismatches, telling the caller to restore the original artifact/bundle. Package
+replay remains best-effort; it may inspect a round with unavailable state, but must not claim an exact comparison.
+
+Seeded `pokie outcomesource sample` prints a standard `ReplayDescriptor` whose `outcomeSource` is the portable
+provenance. Seeded Studio Outcome Library Play spins retain that provenance in Recent Rounds, and a seeded `pokie
+sim <bundle> --mode <mode> --seed <seed>` report exposes its last sampled round as `lastReplay`. These all use
+`derived-round-seed-v1`: use the recorded `seed`, `round`, and `modeName` verbatim; a default mode or a raw
+seeded-stream sample is not interchangeable provenance.
 
 The session's credit balance is set to `Number.MAX_SAFE_INTEGER` before replaying, so reaching `--round` is never
 cut short by the session running out of credits.

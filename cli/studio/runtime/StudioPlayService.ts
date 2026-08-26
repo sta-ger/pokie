@@ -20,6 +20,7 @@ import {
     PokieJsonRoundArtifactProjector,
     PokieProject,
     PokieSessionState,
+    PreGeneratedRoundReplayDescriptor,
     PreGeneratedOutcomeSourcing,
     ProjectResolving,
     ProjectTargetResolver,
@@ -36,6 +37,7 @@ import {
     type VideoSlotSessionHandling,
     type VideoSlotWithFreeGamesSessionHandling,
 } from "pokie";
+import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import crypto from "crypto";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {StudioRoundRecorder, type StudioRoundOperation} from "./StudioRoundRecorder.js";
@@ -72,7 +74,8 @@ type ActiveOutcomeSourceSession = {
     readonly kind: "outcomeSource";
     readonly manifest: {id: string; name: string; version: string};
     readonly outcomeSource: PreGeneratedOutcomeSourcing;
-    readonly randomSource: WeightedOutcomeRandomSource;
+    // Matches the portable server/CLI selector: a seed-derived source per one-based round.
+    roundsPlayed: number;
     credits: number;
     // Same reasoning as ActiveRuntimeSession's own projectRoot/seed above.
     readonly projectRoot: string;
@@ -465,6 +468,12 @@ export class StudioPlayService {
         if (diagnostic !== undefined) {
             return {status: "failed", error: diagnostic.message};
         }
+        if (typeof seed === "string" && seed.trim().length === 0) {
+            return {
+                status: "failed",
+                error: '"seed" must be a non-empty string for an exactly replayable outcome-library Play session. Omit it for an unseeded best-effort session.',
+            };
+        }
 
         let bundleGame: {id: string; name: string; version: string};
         let resolvedModeName: string;
@@ -480,18 +489,14 @@ export class StudioPlayService {
         }
 
         const sessionId = crypto.randomUUID();
-        // A given seed drives one SeededWeightedOutcomeRandomSource shared by every draw made against this
-        // exact session -- the same "a given seed always plays out the same way" contract PlayTab's own doc
-        // comment promises for a live game's own createSession({seed}) context, just built out of a source
-        // that has no session-scoped RNG of its own to seed instead.
-        const randomSource: WeightedOutcomeRandomSource =
-            seed === undefined ? new SecureWeightedOutcomeRandomSource() : new SeededWeightedOutcomeRandomSource(String(seed));
-
+        // Native outcome-library sessions use the same derived-per-round algorithm as the public server,
+        // simulation and CLI replay.  A seeded stream is deterministic too, but would not make a round's
+        // portable (seed, round, mode) provenance interchangeable with those public surfaces.
         this.active = {
             kind: "outcomeSource",
             manifest: bundleGame,
             outcomeSource: new OutcomeLibraryBundleOutcomeSource(project.rootPath, resolvedModeName),
-            randomSource,
+            roundsPlayed: 0,
             credits: 0,
             projectRoot: project.rootPath,
             seed,
@@ -510,16 +515,46 @@ export class StudioPlayService {
     // "credits" figure lives at all (see the class doc comment).
     private async spinOutcomeSource(sessionId: string, active: ActiveOutcomeSourceSession): Promise<StudioPlaySpinResult> {
         let artifact: RoundArtifact;
+        let replay: PreGeneratedRoundReplayDescriptor | undefined;
         try {
-            const selection = await active.outcomeSource.drawOutcome(active.randomSource);
+            const nextRound = active.roundsPlayed + 1;
+            const startedAt = Date.now();
+            const randomSource: WeightedOutcomeRandomSource =
+                active.seed === undefined
+                    ? new SecureWeightedOutcomeRandomSource()
+                    : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(String(active.seed), nextRound));
+            const selection = await active.outcomeSource.drawOutcome(randomSource);
             artifact = selection.outcome.artifact;
+            if (active.seed !== undefined) {
+                replay = {
+                    game: active.manifest,
+                    libraryId: selection.libraryId,
+                    libraryHash: selection.libraryHash,
+                    modeName: active.modeName,
+                    selectionAlgorithm: "derived-round-seed-v1",
+                    seed: String(active.seed),
+                    round: nextRound,
+                    outcomeId: selection.outcome.id,
+                    weight: selection.outcome.weight,
+                    totalWin: artifact.totalWin,
+                    payoutMultiplier: artifact.payoutMultiplier,
+                    stake: artifact.stake,
+                    screen: artifact.screen.map((row) => [...row]),
+                    artifact,
+                    timestamp: startedAt,
+                    durationMs: Date.now() - startedAt,
+                };
+            }
+            // Studio serializes one Play request at a time; Object.assign keeps this post-await
+            // session update explicit without presenting a stale read/write expression to lint.
+            Object.assign(active, {roundsPlayed: nextRound});
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }
 
         active.credits = active.credits - artifact.stake + artifact.totalWin;
 
-        return {status: "ok", session: this.buildOutcomeSourceSessionView(sessionId, active, artifact)};
+        return {status: "ok", session: this.buildOutcomeSourceSessionView(sessionId, active, artifact, replay)};
     }
 
     private fail(error: unknown): StudioPlaySessionResult {
@@ -612,6 +647,7 @@ export class StudioPlayService {
         sessionId: string,
         active: ActiveOutcomeSourceSession,
         artifact: RoundArtifact | undefined,
+        replay?: PreGeneratedRoundReplayDescriptor,
     ): StudioRuntimeSessionView {
         const view = {
             sessionId,
@@ -620,6 +656,7 @@ export class StudioPlayService {
             ...(artifact !== undefined
                 ? {bet: artifact.stake, win: artifact.totalWin, screen: artifact.screen.map((row) => [...row])}
                 : {}),
+            ...(replay === undefined ? {} : {replay}),
         } as StudioRuntimeSessionView;
 
         if (artifact !== undefined) {

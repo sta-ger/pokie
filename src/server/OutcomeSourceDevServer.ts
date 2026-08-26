@@ -2,6 +2,8 @@ import http, {IncomingMessage, ServerResponse} from "http";
 import crypto from "crypto";
 import {SecureWeightedOutcomeRandomSource} from "../pregenerated/SecureWeightedOutcomeRandomSource.js";
 import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedOutcomeRandomSource.js";
+import {deriveDeterministicSeed} from "../pregenerated/internal/deriveDeterministicSeed.js";
+import type {PreGeneratedRoundReplayDescriptor} from "../pregenerated/PreGeneratedRoundReplayDescriptor.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
 import {PreGeneratedRoundResultProjector} from "../pregenerated/PreGeneratedRoundResultProjector.js";
 import {ReplayRecorder} from "../replay/ReplayRecorder.js";
@@ -35,7 +37,7 @@ const DEFAULT_INITIAL_BALANCE = 1000;
 type SampleFn = (project: PokieProject, modeName: string, randomSource: WeightedOutcomeRandomSource) => Promise<OutcomeSourceSampleResult>;
 type GameSummary = {id: string; name: string; version: string};
 type SpinRequest = {requestId?: string; bet?: number; mode?: string};
-type PublicReplayIdentity = Pick<PreGeneratedRoundRecord["replay"], "libraryId" | "libraryHash" | "round" | "outcomeId">;
+type PublicReplayIdentity = PreGeneratedRoundReplayDescriptor;
 
 // A native Outcome Library is a complete source of rounds, but it is not a loadable PokieGame. This
 // server therefore implements the same Player-facing /sessions contract as PokieDevServer directly on
@@ -184,8 +186,38 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
             return;
         }
 
-        const randomSource = seed !== undefined ? new SeededWeightedOutcomeRandomSource(seed) : new SecureWeightedOutcomeRandomSource();
-        this.sendJson(res, 200, await this.sample(this.project, this.modeName, randomSource));
+        // A seeded stateless sample is the first round of the same portable algorithm used by session
+        // spins and `pokie replay`, so its returned provenance is directly reusable rather than a
+        // superficially similar seeded-stream draw.
+        const randomSource =
+            seed !== undefined ? new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(seed, 1)) : new SecureWeightedOutcomeRandomSource();
+        const result = await this.sample(this.project, this.modeName, randomSource);
+        if (!result.supported || seed === undefined) {
+            this.sendJson(res, 200, result);
+            return;
+        }
+        const {selection} = result;
+        this.sendJson(res, 200, {
+            ...result,
+            replay: {
+                game: await this.gameSummary,
+                libraryId: selection.libraryId,
+                libraryHash: selection.libraryHash,
+                modeName: this.modeName,
+                selectionAlgorithm: "derived-round-seed-v1",
+                seed,
+                round: 1,
+                outcomeId: selection.outcome.id,
+                weight: selection.outcome.weight,
+                totalWin: selection.outcome.artifact.totalWin,
+                payoutMultiplier: selection.outcome.artifact.payoutMultiplier,
+                stake: selection.outcome.artifact.stake,
+                screen: selection.outcome.artifact.screen.map((row) => [...row]),
+                artifact: selection.outcome.artifact,
+                timestamp: Date.now(),
+                durationMs: 0,
+            },
+        });
     }
 
     private async handleCreateSession(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -292,14 +324,20 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
 
         const publicView = this.projector.projectPublic(result.result);
         const replay = {
+            game: await this.gameSummary,
             libraryId: result.result.selection.libraryId,
             libraryHash: result.result.selection.libraryHash,
+            modeName: this.modeName,
+            selectionAlgorithm: "derived-round-seed-v1" as const,
             seed,
             round: result.round,
             outcomeId: result.result.selection.outcomeId,
             weight: result.result.selection.weight,
             totalWin: result.result.artifact.totalWin,
             payoutMultiplier: result.result.artifact.payoutMultiplier,
+            stake: result.result.artifact.stake,
+            screen: result.result.artifact.screen.map((row) => [...row]),
+            artifact: result.result.artifact,
             timestamp: Date.now(),
             durationMs: 0,
         };
@@ -354,8 +392,7 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
     }
 
     private publicReplayIdentity(record: PreGeneratedRoundRecord): PublicReplayIdentity {
-        const {libraryId, libraryHash, round, outcomeId} = record.replay;
-        return {libraryId, libraryHash, round, outcomeId};
+        return record.replay;
     }
 
     private isInternalDataRequested(url: URL): boolean {
@@ -385,6 +422,9 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
         if (typeof seed !== "string") {
             throw new Error('"seed" must be a string.');
         }
+        if (seed.trim().length === 0) {
+            throw new Error('"seed" must be a non-empty string when given. Omit it for an unseeded best-effort sample.');
+        }
         return seed;
     }
 
@@ -396,6 +436,9 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
         const {seed, initialBalance} = parsed as {seed?: unknown; initialBalance?: unknown};
         if (seed !== undefined && typeof seed !== "string" && typeof seed !== "number") {
             throw new Error('"seed" must be a string or number.');
+        }
+        if (typeof seed === "string" && seed.trim().length === 0) {
+            throw new Error('"seed" must be a non-empty string when given. Omit it to create a server-seeded session.');
         }
         if (initialBalance !== undefined && (typeof initialBalance !== "number" || !Number.isFinite(initialBalance) || initialBalance < 0)) {
             throw new Error('"initialBalance" must be a finite number >= 0.');

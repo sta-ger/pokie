@@ -1,4 +1,4 @@
-import type {SimulationReport} from "pokie";
+import type {PreGeneratedRoundReplayDescriptor, SimulationReport} from "pokie";
 import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
 
 // The one extra bit of data Studio surfaces alongside the standard SimulationReport — volatility/
@@ -35,6 +35,7 @@ export type StudioSimulationJobView = {
     // The real outcome-library mode this job samples/sampled -- see StudioSimulationJobRecord's own
     // doc comment. Undefined for an ordinary "tsPackage"/"blueprint" simulation.
     modeName?: string;
+    lastReplay?: PreGeneratedRoundReplayDescriptor;
 };
 
 // The GET /api/project/reports/:id response envelope -- bundles the persisted SimulationReport with the

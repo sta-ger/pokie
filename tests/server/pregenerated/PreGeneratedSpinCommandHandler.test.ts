@@ -104,6 +104,7 @@ describe("PreGeneratedSpinCommandHandler", () => {
         const replayed = new PreGeneratedRoundReplayer().replay({
             library,
             libraryHash,
+            modeName: "base",
             seed: "reproducible-seed",
             round: 1,
         });
@@ -125,7 +126,7 @@ describe("PreGeneratedSpinCommandHandler", () => {
                 throw new Error(`expected round ${round} to be played`);
             }
 
-            const replayed = replayer.replay({library, libraryHash, seed: "long-run-seed", round});
+            const replayed = replayer.replay({library, libraryHash, modeName: "base", seed: "long-run-seed", round});
             expect(replayed.outcomeId).toBe(result.result.selection.outcomeId);
             expect(replayed.totalWin).toBe(result.result.artifact.totalWin);
         }

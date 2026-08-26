@@ -18,7 +18,16 @@ export class PreGeneratedRoundReplayer implements PreGeneratedRoundReplaying {
     public replay<T extends string | number = string>(
         options: PreGeneratedRoundReplayOptions<T>,
     ): PreGeneratedRoundReplayDescriptor {
-        const {library, libraryHash, seed, round} = options;
+        const {library, libraryHash, modeName, seed, round} = options;
+        if (typeof seed !== "string" || seed.trim().length === 0) {
+            throw new Error("seed must be a non-empty string; restore the recorded session seed before exact replay.");
+        }
+        if (typeof modeName !== "string" || modeName.trim().length === 0) {
+            throw new Error("modeName must be a non-empty string; restore the recorded outcome-library mode before exact replay.");
+        }
+        if (typeof libraryHash !== "string" || libraryHash.trim().length === 0) {
+            throw new Error("libraryHash must be a non-empty string; open the original outcome-library bundle before exact replay.");
+        }
         if (!Number.isInteger(round) || round < 1) {
             throw new Error(`round must be a positive integer, got ${round}.`);
         }
@@ -31,12 +40,17 @@ export class PreGeneratedRoundReplayer implements PreGeneratedRoundReplaying {
         return {
             libraryId: library.libraryId,
             libraryHash,
+            modeName,
+            selectionAlgorithm: "derived-round-seed-v1",
             seed,
             round,
             outcomeId: outcome.id,
             weight: outcome.weight,
             totalWin: outcome.artifact.totalWin,
             payoutMultiplier: outcome.artifact.payoutMultiplier,
+            stake: outcome.artifact.stake,
+            screen: outcome.artifact.screen.map((row) => [...row]),
+            artifact: outcome.artifact,
             timestamp: startedAt,
             durationMs,
         };

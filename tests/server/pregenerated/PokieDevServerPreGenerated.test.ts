@@ -246,7 +246,7 @@ describe("PokieDevServer — pre-generated rounds (opt-in, additive)", () => {
             const {body: spinResponse} = await postJson(`${baseUrl}/pregenerated-sessions/${sessionId}/spin?debug=1`);
             const outcomeId = (spinResponse.internal as {selection: {outcomeId: string}}).selection.outcomeId;
 
-            const replayed = new PreGeneratedRoundReplayer().replay({library, libraryHash, seed: "replayable-seed", round: 1});
+            const replayed = new PreGeneratedRoundReplayer().replay({library, libraryHash, modeName: "base", seed: "replayable-seed", round: 1});
             expect(replayed.outcomeId).toBe(outcomeId);
         });
     });
