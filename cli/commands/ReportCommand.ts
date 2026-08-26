@@ -5,6 +5,7 @@ import {
     MarkdownSimulationReportRenderer,
     OutcomeSourceProjectAnalyzer,
     OutcomeSourceProjectAnalyzing,
+    OutcomeSourceProjectReport,
     describeProjectType,
     type ProjectType,
     ProjectResolving,
@@ -16,7 +17,8 @@ import {
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
-import {renderOutcomeSourceReport} from "./internal/renderOutcomeSourceReport.js";
+import {renderOutcomeSourceHtml, renderOutcomeSourceMarkdown} from "./internal/renderOutcomeSourceReport.js";
+import {writeOutputFileAtomically} from "./internal/writeOutputFile.js";
 
 type SimulationReportFormat = "markdown" | "html";
 type ReportFormat = SimulationReportFormat | "json";
@@ -41,7 +43,7 @@ export class ReportCommand implements CliCommandHandling {
 
     constructor(
         readFile: (file: string) => string = (file) => fs.readFileSync(file, "utf-8"),
-        writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
+        writeFile: (file: string, contents: string) => void = writeOutputFileAtomically,
         renderers: Record<SimulationReportFormat, SimulationReportRendering> = {
             markdown: new MarkdownSimulationReportRenderer(),
             html: new HtmlSimulationReportRenderer(),
@@ -61,7 +63,7 @@ export class ReportCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Render a pokie sim JSON report, or inspect a resolved outcome-library/Stake adapter project.";
+        return "Render a pokie sim report or a resolved outcome-library/Stake adapter analysis as JSON, Markdown, or HTML.";
     }
 
     public getCommanderCommand(): Command {
@@ -82,13 +84,17 @@ export class ReportCommand implements CliCommandHandling {
 
         const project = await this.resolveProjectSafely(reportPath);
         if (project?.type === "outcomeLibrary" || project?.type === "stakeAdapter") {
+            let outcomeSourceReport: OutcomeSourceProjectReport;
             try {
-                const report = await this.outcomeSourceAnalyzer.analyze(project);
-                this.emit(format === "json" ? JSON.stringify(report, null, 4) : renderOutcomeSourceReport(reportPath, report), out);
-                return;
-            } catch {
-                // Preserve the established report-file diagnostic if canonical analysis cannot run.
+                outcomeSourceReport = await this.outcomeSourceAnalyzer.analyze(project);
+            } catch (error) {
+                throw new Error(
+                    `Could not analyze outcome source at "${reportPath}": ${error instanceof Error ? error.message : String(error)}. ` +
+                    'Run "pokie outcomesource inspect <path>" for source diagnostics.',
+                );
             }
+            this.emit(this.renderOutcomeSource(format, reportPath, outcomeSourceReport), out, format === "json");
+            return;
         }
 
         let parsed: SimulationReport | SimulationReportSet;
@@ -99,12 +105,14 @@ export class ReportCommand implements CliCommandHandling {
             throw alternative.error;
         }
 
+        let rendered: string;
         if (format === "json") {
-            throw new Error(`--format json is only available for resolved outcome-source projects. ${USAGE}`);
+            rendered = JSON.stringify(parsed, null, 4);
+        } else {
+            const renderer = this.renderers[format];
+            rendered = isSimulationReportSet(parsed) ? this.renderSet(renderer, parsed) : renderer.render(parsed);
         }
-        const renderer = this.renderers[format];
-        const rendered = isSimulationReportSet(parsed) ? this.renderSet(renderer, parsed) : renderer.render(parsed);
-        this.emit(rendered, out);
+        this.emit(rendered, out, format === "json");
     }
 
     // Builds the exact Commander tree parseArgs() itself parses argv with -- the same object graph both
@@ -117,7 +125,7 @@ export class ReportCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<projectOrSimulationReportJson>", "a supported outcome project or pokie sim JSON report")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--format <value>", '"markdown", "html", or "json" for outcome-source projects (default: "markdown")', (value: string) => {
+            .option("--format <value>", '"markdown", "html", or "json" (default: "markdown")', (value: string) => {
                 if (value !== "markdown" && value !== "html" && value !== "json") {
                     throw new Error(`--format must be "markdown", "html", or "json". ${USAGE}`);
                 }
@@ -137,11 +145,37 @@ export class ReportCommand implements CliCommandHandling {
             });
     }
 
-    private emit(rendered: string, out?: string): void {
+    private emit(rendered: string, out?: string, machineReadable = false): void {
+        if (rendered.trim().length === 0) {
+            throw new Error("Report rendering produced no output; try regenerating the simulation with \"pokie sim <packageRoot> --out <file>\".");
+        }
+        if (out) {
+            try {
+                this.writeFile(out, rendered);
+            } catch (error) {
+                throw new Error(
+                    `Could not write report to "${out}": ${error instanceof Error ? error.message : String(error)}. ` +
+                    "Choose an existing writable directory and try --out <file> again.",
+                );
+            }
+        }
         console.log(rendered);
         if (out) {
-            this.writeFile(out, rendered);
-            console.log(`Report written to "${out}".`);
+            // Keep --format json stdout directly parseable even when an artifact was also requested.
+            (machineReadable ? console.error : console.log)(`Report written to "${out}".`);
+        }
+    }
+
+    private renderOutcomeSource(format: ReportFormat, targetPath: string, report: OutcomeSourceProjectReport): string {
+        switch (format) {
+            case "json":
+                return JSON.stringify(report, null, 4);
+            case "markdown":
+                return renderOutcomeSourceMarkdown(targetPath, report);
+            case "html":
+                return renderOutcomeSourceHtml(targetPath, report);
+            default:
+                throw new Error(`Unsupported report format "${format}". ${USAGE}`);
         }
     }
 
@@ -193,7 +227,7 @@ export class ReportCommand implements CliCommandHandling {
             throw new Error(`"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
         }
 
-        if (isSimulationReportSet(parsed)) {
+        if (isSimulationReportSet(parsed) && Object.values(parsed.modes).every((report) => this.isSimulationReport(report))) {
             return parsed;
         }
 
@@ -273,7 +307,95 @@ export class ReportCommand implements CliCommandHandling {
             typeof candidate.hitFrequency === "number" &&
             typeof candidate.maxWin === "number" &&
             typeof candidate.durationMs === "number" &&
-            typeof candidate.spinsPerSecond === "number"
+            typeof candidate.spinsPerSecond === "number" &&
+            this.hasStringList(candidate.warnings) &&
+            this.hasStringList(candidate.recommendations) &&
+            this.hasReproducibility(candidate.reproducibility) &&
+            this.hasNumericOption(candidate.workers) &&
+            this.hasStringOption(candidate.betMode) &&
+            this.hasNumericOption(candidate.targetRtp) &&
+            this.hasNumericOption(candidate.rtpDeviation) &&
+            this.hasNumericOption(candidate.averageBet) &&
+            this.hasNumericOption(candidate.averagePayout) &&
+            this.hasNumericOption(candidate.volatility) &&
+            this.hasNumericOption(candidate.maxWinFrequency) &&
+            this.hasStringOption(candidate.stopReason) &&
+            this.hasPayoutHistogram(candidate.payoutHistogram) &&
+            this.hasBreakdown(candidate.breakdown) &&
+            this.hasJackpot(candidate.jackpot) &&
+            this.hasConvergence(candidate.convergence)
         );
+    }
+
+    private hasStringList(value: unknown): boolean {
+        return value === undefined || (Array.isArray(value) && value.every((item) => typeof item === "string"));
+    }
+
+    private hasStringOption(value: unknown): boolean {
+        return value === undefined || typeof value === "string";
+    }
+
+    private hasNumericOption(value: unknown): boolean {
+        return value === undefined || typeof value === "number";
+    }
+
+    private hasReproducibility(value: unknown): boolean {
+        if (value === undefined) {
+            return true;
+        }
+        if (typeof value !== "object" || value === null) {
+            return false;
+        }
+        const reproducibility = value as Partial<NonNullable<SimulationReport["reproducibility"]>>;
+        const game = reproducibility.game;
+        return (
+            typeof game === "object" &&
+            game !== null &&
+            typeof game.id === "string" &&
+            typeof game.name === "string" &&
+            typeof game.version === "string" &&
+            (reproducibility.seed === null || typeof reproducibility.seed === "string") &&
+            typeof reproducibility.requestedRounds === "number" &&
+            typeof reproducibility.actualRounds === "number" &&
+            typeof reproducibility.command === "string" &&
+            (reproducibility.workerSeedStrategy === undefined || typeof reproducibility.workerSeedStrategy === "string")
+        );
+    }
+
+    private hasPayoutHistogram(value: unknown): boolean {
+        return value === undefined || (typeof value === "object" && value !== null && Object.values(value).every((count) => typeof count === "number"));
+    }
+
+    private hasBreakdown(value: unknown): boolean {
+        if (value === undefined) {
+            return true;
+        }
+        if (typeof value !== "object" || value === null || typeof (value as {components?: unknown}).components !== "object" || (value as {components?: unknown}).components === null) {
+            return false;
+        }
+        return Object.values((value as {components: Record<string, unknown>}).components).every((component) =>
+            this.hasNumbers(component, ["rounds", "totalBet", "totalWin", "rtp", "contribution", "hitFrequency", "maxWin"]),
+        );
+    }
+
+    private hasJackpot(value: unknown): boolean {
+        if (value === undefined) {
+            return true;
+        }
+        if (!this.hasNumbers(value, ["awardCount", "totalAwarded", "totalContributed", "contribution"])) {
+            return false;
+        }
+        const pools = (value as {pools?: unknown}).pools;
+        return typeof pools === "object" && pools !== null && Object.values(pools).every((pool) =>
+            this.hasNumbers(pool, ["awardCount", "totalAwarded", "totalContributed", "contribution"]),
+        );
+    }
+
+    private hasConvergence(value: unknown): boolean {
+        return value === undefined || this.hasNumbers(value, ["minRounds", "rtpTolerance", "checkIntervalRounds", "stableChecks", "checksPerformed", "consecutiveStableChecks", "achievedRtpHalfWidth"]);
+    }
+
+    private hasNumbers(value: unknown, keys: string[]): boolean {
+        return typeof value === "object" && value !== null && keys.every((key) => typeof (value as Record<string, unknown>)[key] === "number");
     }
 }

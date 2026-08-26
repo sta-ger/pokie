@@ -554,7 +554,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "report",
-        description: "Render a pokie sim JSON report, or inspect a resolved outcome-library/Stake adapter project.",
+        description: "Render a pokie sim report or a resolved outcome-library/Stake adapter analysis as JSON, Markdown, or HTML.",
         verbs: [
             {
                 verb: undefined,

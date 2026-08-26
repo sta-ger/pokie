@@ -63,7 +63,7 @@ POKIE goes well beyond classic paylines:
   sim <packageRoot>` runs a simulation against a package and reports RTP/hit-frequency/max-win; `npx pokie
   validate <project>` checks a game package, Blueprint JSON file, or outcome-library bundle without playing it
   (`--deep` adds outcome checks only for outcome-library bundles); `npx pokie report <simulationReportJson>` renders a `pokie sim`
-  report (including reproducibility info, warnings, and recommendations) as Markdown/HTML; `npx pokie diff
+  report (including reproducibility info, warnings, and recommendations) as JSON/Markdown/HTML; `npx pokie diff
   <leftReportJson> <rightReportJson>` compares two `pokie sim` reports
   (e.g. before/after a config change); `npx pokie replay <packageRoot>` best-effort replays a single round (by
   seed + round index) as a JSON artifact; `npx pokie serve <packageRoot>` starts a local/dev JSON
