@@ -1,15 +1,5 @@
-# P7-18 residual public CLI surface
+# P7-18 independent public CLI rerun
 
-The public CLI deliberately exposes capability-oriented workflows only. The historical
-`outcomelibrary`, `outcomesource`, and `stakeengine` handler namespaces remain private implementation
-delegates; their supported workflows are reached through `generate`, `sample`, `report`, `diff`,
-`export`, `import`, and `validate`.
+This evidence is an independent rerun against `b34a4968fa4c52b1632903f883f6408e330aa66a`. It packs this checkout, installs that tarball into a new `/tmp` directory, and invokes only the installed package's `dist/cli/pokie.js`.
 
-`tests/cli/residualPublicSurface.contract.test.ts` compares the production registration factory with
-the Phase 7 executable inventory map and the maintained CLI guide. It also sends unknown command,
-missing argument, invalid target, invalid format, unknown source, and unknown path requests through
-the real dispatcher, asserting actionable messages without stacks, `ENOENT`, or source-file leakage.
-`publicCommandTree.test.ts` separately checks that the top-level help omits private namespaces and
-that the delegated `generate` and `sample` help trees render their public command names.
-
-The bounded rerun transcript is retained in [TRANSCRIPT.md](TRANSCRIPT.md).
+The retained [TRANSCRIPT.md](TRANSCRIPT.md) records the tarball and documentation checksums, fresh-install provenance, complete public command/help inventory, private-namespace rejection, residual error diagnostics, and a created-artifact JSON readback. Generated tarballs, install trees, and created blueprint files remain only in `/tmp`; their SHA-256 values are recorded rather than retained.
