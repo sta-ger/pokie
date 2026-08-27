@@ -1,6 +1,7 @@
 import {MantineProvider} from "@mantine/core";
 import {fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {RoundArtifactJson, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
 import {RoundArtifactInspector} from "../../../../../../cli/studio-client/src/components/common/RoundArtifactInspector";
 import {describeRoundArtifact} from "../../../../../../cli/studio-client/src/domain/interpret/Replay";
@@ -84,6 +85,121 @@ describe("ProjectDashboardPage - Play", () => {
             await screen.findByText("This session couldn't be completed. Try again. If it continues, start a new session and retry."),
         ).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "New Play session"})).toBeInTheDocument();
+    }, 30000);
+
+    it("keeps the last settled round and its controls visible when a retryable Spin request fails", async () => {
+        const user = userEvent.setup();
+        let spinCalls = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor({bet: 5, availableBets: [1, 5]})}}),
+            "/api/project/play/sessions/sess-1/spin": () => {
+                spinCalls += 1;
+                return spinCalls === 1
+                    ? {
+                        ok: true,
+                        status: 200,
+                        body: {
+                            status: "ok",
+                            session: sessionFor({
+                                bet: 5,
+                                win: 15,
+                                screen: [["cherry"]],
+                                availableBets: [1, 5],
+                                debug: {artifactUnavailableReason: "Round details were not captured in this fixture."},
+                            }),
+                        },
+                    }
+                    : {ok: false, status: 500, body: {error: "game worker disconnected"}};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await screen.findByText(/You won 15\.00/);
+
+        await user.click(screen.getByRole("button", {name: "Spin"}));
+
+        expect(await screen.findByText("This spin couldn't be completed. Try again. If it continues, start a new session and retry.")).toBeInTheDocument();
+        expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
+    }, 30000);
+
+    it("keeps the settled round visible while a reset request is still loading", async () => {
+        const user = userEvent.setup();
+        let createCalls = 0;
+        let resolveReset: ((response: {ok: boolean; status: number; json: () => Promise<unknown>}) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/play/session") {
+                createCalls += 1;
+                if (createCalls === 2) {
+                    return new Promise((resolve) => {
+                        resolveReset = resolve;
+                    });
+                }
+                return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor({bet: 5, availableBets: [1, 5]})})});
+            }
+            if (path === "/api/project/play/sessions/sess-1/spin") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({
+                        status: "ok",
+                        session: sessionFor({
+                            bet: 5,
+                            win: 15,
+                            screen: [["cherry"]],
+                            availableBets: [1, 5],
+                            debug: {artifactUnavailableReason: "Round details were not captured in this fixture."},
+                        }),
+                    }),
+                });
+            }
+            const route = BASE_ROUTES[path];
+            if (route === undefined) {
+                return Promise.reject(new Error(`No fake route registered for ${url}`));
+            }
+            const response = route({url, init});
+            return Promise.resolve({ok: response.ok, status: response.status, json: () => Promise.resolve(response.body)});
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await screen.findByText(/You won 15\.00/);
+
+        await user.click(screen.getByRole("button", {name: "Reset Play session"}));
+
+        expect(await screen.findByRole("status")).toHaveTextContent("Spinning…");
+        expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
+        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
+
+        resolveReset?.({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor({sessionId: "sess-2"})})});
+
+        await screen.findByText(/No round played yet/);
+        expect(screen.queryByText(/You won 15\.00/)).toBeNull();
+    }, 30000);
+
+    it("stops offering controls for a stale Play session instead of presenting its previous round as current", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/play/sessions/sess-1/spin": () => ({ok: true, status: 404, body: {status: "not-found", error: "session expired"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+
+        expect(await screen.findByText("Unknown session id.")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "New Play session"})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Spin"})).not.toBeInTheDocument();
     }, 30000);
 
     // Spinning renders the real round straight through the shared RoundSummary/GameScreenView chain the
@@ -207,6 +323,60 @@ describe("ProjectDashboardPage - Play", () => {
 
         await waitFor(() => expect(screen.getByText(/No round played yet/)).toBeInTheDocument());
         expect(createCalls).toBe(2);
+    }, 30000);
+
+    it("keeps a completed round usable after a typed reset failure, then replaces it after a successful reset", async () => {
+        const user = userEvent.setup();
+        let createCalls = 0;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => {
+                createCalls += 1;
+                if (createCalls === 2) {
+                    return {ok: true, status: 200, body: {status: "failed", error: "materialization failed"}};
+                }
+                return {ok: true, status: 201, body: {status: "ok", session: sessionFor({sessionId: `sess-${createCalls}`, bet: 5, availableBets: [1, 5]})}};
+            },
+            "/api/project/play/sessions/sess-1/spin": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    session: sessionFor({
+                        sessionId: "sess-1",
+                        credits: 1015,
+                        bet: 5,
+                        win: 15,
+                        screen: [["cherry"]],
+                        availableBets: [1, 5],
+                        debug: {artifactUnavailableReason: "Round details were not captured in this fixture."},
+                    }),
+                },
+            }),
+            "/api/project/play/sessions/sess-3/spin": () => ({ok: true, status: 200, body: {status: "ok", session: sessionFor({sessionId: "sess-3"})}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await screen.findByText(/You won 15\.00/);
+
+        await user.click(screen.getByRole("button", {name: "Reset Play session"}));
+
+        expect(await screen.findByText("This session couldn't be completed. Try again. If it continues, start a new session and retry.")).toBeInTheDocument();
+        expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
+        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
+        expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Find any win"})).toBeEnabled();
+
+        await user.click(screen.getByRole("button", {name: "Reset Play session"}));
+
+        await screen.findByText(/No round played yet/);
+        expect(screen.queryByText(/You won 15\.00/)).toBeNull();
+        await user.click(screen.getByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-3/spin")).toBe(true));
+        expect(createCalls).toBe(3);
     }, 30000);
 
     // Find any win / Find symbol win drive Studio Play's own authoritative scenario controls -- a real

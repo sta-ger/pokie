@@ -4,6 +4,7 @@ import {useStudioApi} from "../context/StudioApiProvider";
 import {errorMessage} from "../domain/errorMessage";
 import {describePlaySessionResult, describePlaySpinResult, type PlaySessionResultView, type PlaySpinResultView} from "../domain/interpret/Runtime";
 import {useDoubleSubmitGuard} from "./useDoubleSubmitGuard";
+import type {StudioRuntimeSessionView} from "../api/types";
 
 export type PlaySessionView = PlaySessionResultView | PlaySpinResultView;
 
@@ -32,6 +33,10 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // identity alongside the rendered state avoids a click being silently discarded by a callback that
     // closed over a prior render's undefined session id.
     const activeSessionIdRef = useRef<string | undefined>(undefined);
+    // Keep the last server-confirmed session separately from the transient request state.  A rejected
+    // spin/reset does not undo the already-settled round on the server, so replacing that round with an
+    // error-only screen would make a recoverable failure look as though the result had vanished.
+    const activeSessionRef = useRef<StudioRuntimeSessionView | undefined>(undefined);
     const newSessionGuard = useDoubleSubmitGuard();
     const spinGuard = useDoubleSubmitGuard();
 
@@ -41,22 +46,37 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                 return;
             }
             const requestId = ++requestIdRef.current;
-            setSession({status: "loading"});
+            const previousSession = activeSessionRef.current;
+            setSession({status: "loading", ...(previousSession === undefined ? {} : {previousSession})});
             createPlaySession(fetchImpl, seed, modeName)
                 .then((result) => {
                     if (requestId !== requestIdRef.current) {
                         return;
                     }
+                    if (result.status === "ok") {
+                        setSession(describePlaySessionResult(result));
+                        activeSessionRef.current = result.session;
+                        activeSessionIdRef.current = result.session.sessionId;
+                        setSessionId(result.session.sessionId);
+                        return;
+                    }
+                    if (result.status === "error") {
+                        // Session creation can fail after a previously confirmed session has completed a
+                        // round. That failed reset has not invalidated the confirmed session, so retain
+                        // its identity and round while giving the designer actionable recovery copy.
+                        setSession({status: "error", message: result.message, subject: "This session", ...(previousSession === undefined ? {} : {previousSession})});
+                        return;
+                    }
+                    // "No active project" means the old session is no longer safely actionable.
+                    // Do not keep rendering it as a live session after the project has disappeared.
                     setSession(describePlaySessionResult(result));
-                    const nextSessionId = result.status === "ok" ? result.session.sessionId : undefined;
-                    activeSessionIdRef.current = nextSessionId;
-                    setSessionId(nextSessionId);
+                    activeSessionRef.current = undefined;
+                    activeSessionIdRef.current = undefined;
+                    setSessionId(undefined);
                 })
                 .catch((error: unknown) => {
                     if (requestId === requestIdRef.current) {
-                        setSession({status: "error", message: errorMessage(error)});
-                        activeSessionIdRef.current = undefined;
-                        setSessionId(undefined);
+                        setSession({status: "error", message: errorMessage(error), ...(previousSession === undefined ? {} : {previousSession})});
                     }
                 })
                 .finally(() => newSessionGuard.end());
@@ -76,21 +96,34 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                 return;
             }
             const requestId = ++requestIdRef.current;
-            setSession({status: "loading"});
+            const previousSession = activeSessionRef.current;
+            setSession({status: "loading", ...(previousSession === undefined ? {} : {previousSession})});
             action(activeSessionId)
                 .then((result) => {
                     if (requestId !== requestIdRef.current) {
                         return;
                     }
                     const described = describePlaySpinResult(result);
-                    setSession(described.status === "error" ? {...described, subject} : described);
+                    if (described.status === "ok") {
+                        activeSessionRef.current = described.session;
+                        setSession(described);
+                    } else if (described.status === "not-found" || described.status === "no-active-project") {
+                        // A missing session/project is a stale boundary, not a retryable spin failure.
+                        // Clear its identity so the UI cannot offer controls against it as though it worked.
+                        activeSessionRef.current = undefined;
+                        activeSessionIdRef.current = undefined;
+                        setSessionId(undefined);
+                        setSession(described);
+                    } else {
+                        setSession({...described, ...(described.status === "error" ? {subject} : {}), ...(previousSession === undefined ? {} : {previousSession})});
+                    }
                     if (described.status === "ok") {
                         onRoundRecorded?.();
                     }
                 })
                 .catch((error: unknown) => {
                     if (requestId === requestIdRef.current) {
-                        setSession({status: "error", message: errorMessage(error), subject});
+                        setSession({status: "error", message: errorMessage(error), subject, ...(previousSession === undefined ? {} : {previousSession})});
                     }
                 })
                 .finally(() => spinGuard.end());
@@ -137,6 +170,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // being cleared here.
     const resetForProjectSwitch = useCallback(() => {
         requestIdRef.current++;
+        activeSessionRef.current = undefined;
         activeSessionIdRef.current = undefined;
         setSession({status: "idle"});
         setSessionId(undefined);

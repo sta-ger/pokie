@@ -1,0 +1,24 @@
+[2026-08-27T09:59:45Z] START candidate=2d70f4e959c4f03040d68b5ba954a44ba61a2563; entrypoint=node ./dist/cli/pokie.js --no-open; fresh visible Chromium profile
+[2026-08-27T09:59:46Z] PASS created managed starter game, opened Play, and created a new Play session with no prior round
+[2026-08-27T09:59:47Z] PASS completed a real Spin and captured 02-completed-play-round.png
+[2026-08-27T09:59:47Z] PASS held the real Reset request at the browser transport boundary; captured 03-delayed-reset-preserves-round.png with “Spinning…” beside the completed prior round
+[2026-08-27T09:59:49Z] PASS released Reset (normal replacement); induced one rendered recoverable Spin transport failure and made one successful rendered retry; captured 04-recoverable-play-failure.png
+[2026-08-27T09:59:50Z] PASS ran two-round Simulation and captured 05-simulation-report.png
+
+[2026-08-27T10:06:51Z] CONTINUATION fresh profile, same candidate and required source-checkout entrypoint
+[2026-08-27T10:06:55Z] PASS selected the native-radio “Session Spin” source by its rendered label, then selected the rendered “Session 1 — Round 1 — Spin” control; captured 06-replay-session-spin.png showing the loaded replay and Round inspector
+[2026-08-27T10:06:55Z] ACTION clicked “Generate exact outcome library (base)” in Build/Export
+[2026-08-27T10:06:55Z] NOT REACHED local outcome-generation/export result inspection: the continuation harness used a page-wide “Generated … outcomes” predicate, which could not prove this card’s local result, then found no enabled export action. The UI had already closed; no product error or export result was observed, so this is a harness-not-product conclusion.
+
+[continuation fresh-profile run]
+[2026-08-27T10:11:46.472Z] START candidate=2d70f4e959c4f03040d68b5ba954a44ba61a2563 entrypoint=node ./dist/cli/pokie.js --no-open freshProfile=true
+[2026-08-27T10:11:47.427Z] ACTION rendered-input="Game id"
+[2026-08-27T10:11:47.449Z] ACTION visible-click="Create game"
+[2026-08-27T10:11:47.720Z] PASS rendered design workflow created a fresh managed project
+[2026-08-27T10:11:47.734Z] ACTION visible-click="Build/Export"
+[2026-08-27T10:11:47.888Z] ACTION visible-click="Generate exact outcome library (base)"
+[2026-08-27T10:11:48.401Z] PASS outcome library card rendered its own generated-outcomes result
+[2026-08-27T10:11:48.429Z] ACTION visible-click="Run Stake Engine Export (base)"
+[2026-08-27T10:11:49.040Z] CAPTURE 07-outcome-and-export-results.png rendered Studio state
+[2026-08-27T10:11:49.040Z] PASS outcome generation and Stake Engine export rendered inspectable success results
+Diagnostics: runtime-exceptions=0; network-loading-failures=0 in this continuation.
