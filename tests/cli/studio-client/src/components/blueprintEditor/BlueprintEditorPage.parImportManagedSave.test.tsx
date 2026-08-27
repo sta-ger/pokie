@@ -98,7 +98,7 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
 
         // Design Game validates as part of its single primary action; it deliberately has no
         // separate Configure -> Validate -> Save sequence.
-        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        await user.click(screen.getByRole("button", {name: "Create game"}));
 
         await waitFor(() => expect(saveManagedBodies).toHaveLength(1));
         expect(saveManagedBodies[0].sourceWorkbookPath).toBe("/games/in.par.xlsx");
@@ -132,7 +132,7 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
         renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
         expect(screen.queryByText("Imported from PAR")).not.toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        await user.click(screen.getByRole("button", {name: "Create game"}));
 
         await waitFor(() => expect(saveManagedBodies).toHaveLength(1));
         expect(saveManagedBodies[0].sourceWorkbookPath).toBeUndefined();
