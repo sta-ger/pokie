@@ -13,8 +13,10 @@ import type {StudioRuntimeSessionView} from "../../api/types";
 // never sends an expectedVersion — see StudioServer.sendPlayErrorResult's own doc comment).
 export type PlaySessionResultView =
     | {status: "idle"}
-    | {status: "loading"}
-    | {status: "error"; message: string; subject?: string}
+    // A failed reset must not erase the session/round the designer was already inspecting.  The
+    // optional snapshot lets Play keep that context visible while it explains the failed action.
+    | {status: "loading"; previousSession?: StudioRuntimeSessionView}
+    | {status: "error"; message: string; subject?: string; previousSession?: StudioRuntimeSessionView}
     | {status: "no-active-project"; message: string}
     | {status: "ok"; session: StudioRuntimeSessionView};
 
@@ -27,10 +29,10 @@ export function describePlaySessionResult(result: PlaySessionResult): PlaySessio
 
 export type PlaySpinResultView =
     | {status: "idle"}
-    | {status: "loading"}
-    | {status: "error"; message: string; subject?: string}
-    | {status: "not-found"; message: string}
-    | {status: "blocked"; message: string}
+    | {status: "loading"; previousSession?: StudioRuntimeSessionView}
+    | {status: "error"; message: string; subject?: string; previousSession?: StudioRuntimeSessionView}
+    | {status: "not-found"; message: string; previousSession?: StudioRuntimeSessionView}
+    | {status: "blocked"; message: string; previousSession?: StudioRuntimeSessionView}
     | {status: "no-active-project"; message: string}
     | {status: "ok"; session: StudioRuntimeSessionView};
 

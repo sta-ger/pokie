@@ -64,8 +64,12 @@ export function PlayTab({
     // The game's own real symbol list -- present on session/spin/find-scenario responses alike (see
     // StudioPlayService.buildSessionView()'s own doc comment) -- undefined until the first "ok" response,
     // never a placeholder/invented list in the meantime.
-    const availableSymbols = session.status === "ok" ? session.session.availableSymbols : undefined;
-    const activeSession = session.status === "ok" ? session.session : undefined;
+    // A transient action failure/loading state carries the last confirmed server session.  Keep its
+    // controls and completed round in view so Retry is genuinely recoverable rather than forcing the
+    // designer to reconstruct context that the failed request never invalidated.
+    const preservedSession = "previousSession" in session ? session.previousSession : undefined;
+    const activeSession = session.status === "ok" ? session.session : preservedSession;
+    const availableSymbols = activeSession?.availableSymbols;
     // These values are the session serializer's direct projection of the canonical Project/Game Model;
     // Play never invents a bet or a mode from an artifact/result.  They are refreshed from the returned
     // session after every spin, which is particularly important for a consumed one-shot buyFeature.
@@ -160,8 +164,8 @@ export function PlayTab({
     // capture, so exactly one of the two is present on every spun round regardless of the underlying
     // game's serializer shape.
     const playedRound =
-        session.status === "ok" && (session.session.debug?.artifact !== undefined || session.session.debug?.artifactUnavailableReason !== undefined)
-            ? session.session
+        activeSession !== undefined && (activeSession.debug?.artifact !== undefined || activeSession.debug?.artifactUnavailableReason !== undefined)
+            ? activeSession
             : undefined;
 
     return (

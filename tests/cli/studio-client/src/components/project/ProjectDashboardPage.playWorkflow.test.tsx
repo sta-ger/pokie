@@ -86,6 +86,64 @@ describe("ProjectDashboardPage - Play", () => {
         expect(screen.getByRole("button", {name: "New Play session"})).toBeInTheDocument();
     }, 30000);
 
+    it("keeps the last settled round and its controls visible when a retryable Spin request fails", async () => {
+        const user = userEvent.setup();
+        let spinCalls = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor({bet: 5, availableBets: [1, 5]})}}),
+            "/api/project/play/sessions/sess-1/spin": () => {
+                spinCalls += 1;
+                return spinCalls === 1
+                    ? {
+                        ok: true,
+                        status: 200,
+                        body: {
+                            status: "ok",
+                            session: sessionFor({
+                                bet: 5,
+                                win: 15,
+                                screen: [["cherry"]],
+                                availableBets: [1, 5],
+                                debug: {artifactUnavailableReason: "Round details were not captured in this fixture."},
+                            }),
+                        },
+                    }
+                    : {ok: false, status: 500, body: {error: "game worker disconnected"}};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await screen.findByText(/You won 15\.00/);
+
+        await user.click(screen.getByRole("button", {name: "Spin"}));
+
+        expect(await screen.findByText("This spin couldn't be completed. Try again. If it continues, start a new session and retry.")).toBeInTheDocument();
+        expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
+    }, 30000);
+
+    it("stops offering controls for a stale Play session instead of presenting its previous round as current", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/play/sessions/sess-1/spin": () => ({ok: true, status: 404, body: {status: "not-found", error: "session expired"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+
+        expect(await screen.findByText("Unknown session id.")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "New Play session"})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Spin"})).not.toBeInTheDocument();
+    }, 30000);
+
     // Spinning renders the real round straight through the shared RoundSummary/GameScreenView chain the
     // Runtime tab's own Session Tools and the Replay tab's other sources already use -- not a Play-local
     // re-presentation of the same screen/win data, and never an embedded copy of the canonical player.
