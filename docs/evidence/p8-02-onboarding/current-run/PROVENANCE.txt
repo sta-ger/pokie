@@ -1,12 +1,9 @@
-P8-02 independent clean-profile browser verification provenance
-candidate_sha=1c5765a8a7180264bd84710b89683d7974ee479c
-candidate_worktree=/home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-02-20260827004748
+P8-02 independent browser rerun provenance
+candidate_sha=f1511c0e47038a94f266788475e513deb83a915a
+build_command=npm run build-cli (completed before the rendered rerun)
 studio_command=node ./dist/cli/pokie.js --no-open --host 127.0.0.1 --port 32182
-profiles=isolated Studio and Chromium profiles under the controller-owned harness workspace
-browser_control=rendered-control coordinates and rendered text only
-screenshots_sha256:
-0708de194afaf03e1a3cef255929bf56b472108ba0571ccc7ad00658fa267f01  00-clean-launch.png
-4484d42a3401912f5ce3a8c77cde57beb1ef1f7ea95a9dd0797c70dc206e31f5  01-invalid-import-recovery.png
-39b49a2eac97da534cfbf363b5222cd6e9e241f5ef04604761aabf3314f1041f  02-start-choices.png
-9e7e6521f15e784003c468153706d308c7fdc49373851cc047a8234026c6f373  03-created-workspace.png
-result=passed
+profiles=fresh isolated Studio HOME and Chromium user-data-dir; removed after the run
+result=inconclusive: rendered driver could not find an interactable Create game control after starter selection
+sha256 0708de194afaf03e1a3cef255929bf56b472108ba0571ccc7ad00658fa267f01  00-clean-launch.png
+sha256 699cc802b9ca484b49bd5563a45d45d65b22c84d5fc30ecd429c0c48f2734144  01-invalid-import-recovery.png
+sha256 8cc7ce2a8e919c57709c5600d21c65e56b4a979a8475567e007acb84a1119175  02-start-choices.png

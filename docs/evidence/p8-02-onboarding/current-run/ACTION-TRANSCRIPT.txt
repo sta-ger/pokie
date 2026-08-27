@@ -1,13 +1,8 @@
-[2026-08-27T03:13:07.797Z] START fresh Studio and Chromium profiles for P8-02 first-launch journey
-[2026-08-27T03:13:08.301Z] CAPTURE 00-clean-launch: rendered screenshot
-[2026-08-27T03:13:08.314Z] CLICK "Projects" through rendered coordinates
-[2026-08-27T03:13:08.742Z] INPUT "Game location" through rendered keyboard input
-[2026-08-27T03:13:09.125Z] CLICK "Check game" through rendered coordinates
-[2026-08-27T03:13:09.663Z] CAPTURE 01-invalid-import-recovery: rendered screenshot
-[2026-08-27T03:13:09.684Z] CLICK "Create your first game" through rendered coordinates
-[2026-08-27T03:13:10.078Z] CLICK "Choose a different start" through rendered coordinates
-[2026-08-27T03:13:10.651Z] CAPTURE 02-start-choices: rendered screenshot
-[2026-08-27T03:13:10.932Z] CLICK "Create game" through rendered coordinates
-[2026-08-27T03:13:11.422Z] CAPTURE 03-created-workspace: rendered screenshot
-[2026-08-27T03:13:11.422Z] PASS: clean launch explained Studio, invalid import remained recoverable, all start choices were visible, and Create game reached the project workspace.
-[2026-08-27T03:13:11.493Z] PROVENANCE candidate_sha=1c5765a8a7180264bd84710b89683d7974ee479c; fresh Studio/Chromium profiles; screenshots recorded in PROVENANCE.txt
+[2026-08-27T03:30:17.099Z] LAUNCH fresh isolated Studio and Chromium profiles with the candidate build.
+[2026-08-27T03:30:17.507Z] CAPTURE 00-clean-launch.png: first-launch purpose.
+[2026-08-27T03:30:17.520Z] CLICK Projects; enter /not-a-game; Check game renders actionable recovery.
+[2026-08-27T03:30:17.939Z] CAPTURE 01-invalid-import-recovery.png.
+[2026-08-27T03:30:18.116Z] CLICK Choose a different start; all four choices are rendered.
+[2026-08-27T03:30:18.388Z] CAPTURE 02-start-choices.png.
+[2026-08-27T03:30:18.428Z] CLICK Use the starter game.
+[2026-08-27T03:30:18.491Z] INCONCLUSIVE: no interactable Create game control was located after the rendered starter selection; workspace and HTTP recovery were not reached.

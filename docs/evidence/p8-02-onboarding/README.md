@@ -1,11 +1,9 @@
 # P8-02 onboarding evidence
 
-`scripts/p8-02-onboarding-browser-audit.mjs` is the reproducible, rendered-browser
-check for this slice. It starts Studio with an isolated profile, opens a fresh
-Chromium profile, and records the first-launch journey in `current-run/`.
-
-The journey verifies that Studio explains the starter, blank, generated, and
-saved-design choices; rejects an unrecognised game location without losing the
-Projects surface; and creates the starter game into its project-scoped
-workspace. The transcript and screenshots are generated evidence: rerunning the
-script replaces only files in this P8-02 directory.
+This retained run is **inconclusive**. It used a fresh Studio and Chromium
+profile on candidate `f1511c0e47038a94f266788475e513deb83a915a`, and rendered
+the purpose copy, invalid-location recovery, and all four start choices. After
+selecting the starter, the browser driver found no interactable `Create game`
+control; the bounded run therefore did not reach workspace or HTTP-context
+verification. Superseded success evidence has been removed rather than retained
+as proof for this candidate.
