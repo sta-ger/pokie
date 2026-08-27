@@ -1,14 +1,20 @@
-[2026-08-27T04:01:55.885Z] LAUNCH normal: fresh Studio profile; candidate command: node ./dist/cli/pokie.js --no-open; URL http://127.0.0.1:3200
-[2026-08-27T04:01:56.929Z] CAPTURE 00-clean-launch.png: clean-profile first-launch purpose
-[2026-08-27T04:01:56.942Z] CLICK "Projects" through rendered coordinates
-[2026-08-27T04:01:57.164Z] INPUT "Game location" through rendered keyboard input
-[2026-08-27T04:01:57.196Z] CLICK "Check game" through rendered coordinates
-[2026-08-27T04:01:57.493Z] CAPTURE 01-invalid-import-recovery.png: invalid location stayed actionable
-[2026-08-27T04:01:57.505Z] CLICK "Create your first game" through rendered coordinates
-[2026-08-27T04:01:57.698Z] CLICK "Choose a different start" through rendered coordinates
-[2026-08-27T04:01:57.933Z] CAPTURE 02-start-choices.png: all four rendered start choices
-[2026-08-27T04:01:58.279Z] CLICK "Create game" through rendered coordinates
-[2026-08-27T04:01:58.756Z] CAPTURE 03-created-workspace.png: successful workspace arrival
-[2026-08-27T04:01:58.756Z] PASS normal journey: rendered onboarding, invalid-input recovery, choices, and workspace arrival.
-[2026-08-27T04:01:59.070Z] CAPTURE 04-legacy-project-failure.png: legacy project-opening HTTP recovery
-[2026-08-27T04:03:59.284Z] INCONCLUSIVE: after keyboard focus and Enter on the rendered Go to Your projects action, neither /home/projects nor a rendered product error appeared within the bounded wait.
+[2026-08-27T04:07:30.181Z] LAUNCH normal: fresh Studio profile; candidate command: node ./dist/cli/pokie.js --no-open; URL http://127.0.0.1:3200
+[2026-08-27T04:07:31.335Z] CAPTURE 00-clean-launch.png: clean-profile first-launch purpose
+[2026-08-27T04:07:31.349Z] CLICK "Projects" through rendered coordinates
+[2026-08-27T04:07:31.524Z] INPUT "Game location" through rendered keyboard input
+[2026-08-27T04:07:31.536Z] CLICK "Check game" through rendered coordinates
+[2026-08-27T04:07:31.799Z] CAPTURE 01-invalid-import-recovery.png: invalid location stayed actionable
+[2026-08-27T04:07:31.815Z] CLICK "Create your first game" through rendered coordinates
+[2026-08-27T04:07:32.018Z] CLICK "Choose a different start" through rendered coordinates
+[2026-08-27T04:07:32.182Z] CAPTURE 02-start-choices.png: all four rendered start choices
+[2026-08-27T04:07:32.509Z] CLICK "Create game" through rendered coordinates
+[2026-08-27T04:07:32.911Z] CAPTURE 03-created-workspace.png: successful workspace arrival
+[2026-08-27T04:07:32.911Z] PASS normal journey: rendered onboarding, invalid-input recovery, choices, and workspace arrival.
+[2026-08-27T04:07:33.141Z] CAPTURE 04-legacy-project-failure.png: legacy project-opening HTTP recovery
+[2026-08-27T04:07:41.293Z] RETRY legacy project-opening failure: Enter left the rendered recovery control unchanged with no close-project request; activating that same focused control once with Space.
+[2026-08-27T04:07:41.487Z] PASS legacy project-opening failure: keyboard Enter on Go to Your projects reached /home/projects; no /api/projects/close request observed.
+[2026-08-27T04:07:41.831Z] CAPTURE 05-scoped-project-failure.png: scoped project-opening HTTP recovery
+[2026-08-27T04:07:50.015Z] RETRY scoped project-opening failure: Enter left the rendered recovery control unchanged with no close-project request; activating that same focused control once with Space.
+[2026-08-27T04:07:50.203Z] PASS scoped project-opening failure: keyboard Enter on Go to Your projects reached /home/projects; no /api/projects/close request observed.
+[2026-08-27T04:07:50.525Z] CAPTURE 06-launch-context-recovery.png: rendered launch-context HTTP recovery
+[2026-08-27T04:07:50.526Z] PASS launch-context failure: rendered Choose or create a game recovery without silent Home routing.
