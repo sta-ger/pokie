@@ -1,20 +1,38 @@
-[2026-08-27T07:14:47.207Z] PROVENANCE candidate_sha=bc45822441bd3a3087962fd4df662210f2fe2732; launch=node ./dist/cli/pokie.js --no-open; isolated_studio_profile=XDG_CONFIG_HOME:/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P8-03-4de646a8ed24ed10/runtime/fresh-profile/studio-config; isolated_browser_profile=/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P8-03-4de646a8ed24ed10/runtime/fresh-profile/chromium
-[2026-08-27T07:14:48.581Z] WAIT Studio ready=1370ms
-[2026-08-27T07:14:49.094Z] WAIT fresh visible Chromium=511ms
-[2026-08-27T07:14:49.227Z] BROWSER_ADDRESS_NAVIGATE fresh home=http://127.0.0.1:3200/#/
-[2026-08-27T07:14:49.524Z] WAIT landing content=297ms
-[2026-08-27T07:14:49.532Z] CLICK "Create game" via rendered coordinates
-[2026-08-27T07:14:49.908Z] WAIT created starter workspace=376ms
-[2026-08-27T07:14:49.910Z] WORKSPACE route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-4de646a8ed24ed10%2Fruntime%2Ffresh-profile%2Fstudio-documents%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/overview
-[2026-08-27T07:14:49.943Z] CLICK "Game Model" via rendered coordinates
-[2026-08-27T07:14:50.086Z] WAIT Game Model=143ms
-[2026-08-27T07:14:50.108Z] CLICK "Edit" via rendered coordinates
-[2026-08-27T07:14:50.234Z] WAIT Game basics edit=126ms
-[2026-08-27T07:14:50.278Z] INPUT "Game name" through rendered keyboard
-[2026-08-27T07:14:50.309Z] CLICK "Close project" via rendered coordinates
-[2026-08-27T07:14:50.333Z] WAIT guarded close confirmation=24ms
-[2026-08-27T07:14:50.351Z] CLICK "Cancel" via rendered coordinates
-[2026-08-27T07:14:50.352Z] WAIT guarded close cancellation retains Game Model=1ms
-[2026-08-27T07:14:50.352Z] GUARDED_CLOSE cancellation retained the dirty Game Model route.
-[2026-08-27T07:14:50.357Z] CLICK "Cancel" via rendered coordinates
-[2026-08-27T07:15:20.429Z] INCONCLUSIVE selector/state: after rendered Game basics Cancel, the expected discard-confirmation state was not rendered within 30s; no rendered product error appeared. Launch budget prevented continuation to the remote check.
+[2026-08-27T07:19:39.112Z] PROVENANCE candidate_sha=bc45822441bd3a3087962fd4df662210f2fe2732; launch=node ./dist/cli/pokie.js --no-open; isolated_studio_profile=XDG_CONFIG_HOME:/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P8-03-4de646a8ed24ed10/runtime/fresh-profile/studio-config; isolated_browser_profile=/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P8-03-4de646a8ed24ed10/runtime/fresh-profile/chromium
+[2026-08-27T07:19:40.490Z] WAIT Studio ready=1374ms
+[2026-08-27T07:19:40.944Z] WAIT fresh visible Chromium=453ms
+[2026-08-27T07:19:41.121Z] BROWSER_ADDRESS_NAVIGATE fresh home=http://127.0.0.1:3200/#/
+[2026-08-27T07:19:41.396Z] WAIT landing content=275ms
+[2026-08-27T07:19:41.405Z] CLICK "Create game" via rendered coordinates
+[2026-08-27T07:19:41.779Z] WAIT created starter workspace=374ms
+[2026-08-27T07:19:41.781Z] WORKSPACE route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-4de646a8ed24ed10%2Fruntime%2Ffresh-profile%2Fstudio-documents%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/overview
+[2026-08-27T07:19:41.813Z] CLICK "Game Model" via rendered coordinates
+[2026-08-27T07:19:41.953Z] WAIT Game Model=140ms
+[2026-08-27T07:19:41.979Z] CLICK "Edit" via rendered coordinates
+[2026-08-27T07:19:42.105Z] WAIT Game basics edit=126ms
+[2026-08-27T07:19:42.145Z] INPUT "Game name" through rendered keyboard
+[2026-08-27T07:19:42.176Z] CLICK "Close project" via rendered coordinates
+[2026-08-27T07:19:42.199Z] WAIT guarded close confirmation=23ms
+[2026-08-27T07:19:42.216Z] CLICK "Cancel" via rendered coordinates
+[2026-08-27T07:19:42.217Z] WAIT guarded close cancellation retains Game Model=1ms
+[2026-08-27T07:19:42.467Z] WAIT guarded close dialog closes=250ms
+[2026-08-27T07:19:42.467Z] GUARDED_CLOSE cancellation retained the dirty Game Model route.
+[2026-08-27T07:19:42.488Z] CLICK "Cancel" via rendered coordinates
+[2026-08-27T07:19:42.525Z] WAIT discard confirmation=37ms
+[2026-08-27T07:19:42.566Z] CLICK "Confirm" via rendered coordinates
+[2026-08-27T07:19:42.592Z] WAIT discard settles=26ms
+[2026-08-27T07:19:42.594Z] BROWSER_ADDRESS_NAVIGATE scoped unavailable Certification route=http://127.0.0.1:3200/#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-4de646a8ed24ed10%2Fruntime%2Ffresh-profile%2Fstudio-documents%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/certification
+[2026-08-27T07:19:42.611Z] WAIT unavailable route recovery=17ms
+[2026-08-27T07:19:42.613Z] UNAVAILABLE_ROUTE message="\"Certification\" isn't available for this project -- it requires: Use saved game outcomes."
+[2026-08-27T07:19:42.626Z] CLICK "Go to Overview" via rendered coordinates
+[2026-08-27T07:19:47.714Z] RETRY Go to Overview after the visible recovery control remained available and the first click did not change the route.
+[2026-08-27T07:19:47.744Z] CLICK "Go to Overview" via rendered coordinates
+[2026-08-27T07:19:47.759Z] WAIT Overview recovery route after safe retry=15ms
+[2026-08-27T07:19:47.779Z] WAIT Overview recovery content=20ms
+[2026-08-27T07:19:47.779Z] OVERVIEW_RECOVERY visible=Open Play
+[2026-08-27T07:19:47.819Z] CLICK "Build/Export" via rendered coordinates
+[2026-08-27T07:19:47.970Z] WAIT Remote deployment placeholder=151ms
+[2026-08-27T07:19:48.235Z] CAPTURE remote-recovery.png rendered UI
+[2026-08-27T07:19:48.235Z] REMOTE_RECOVERY check_compatibility=visible-disabled; recovery="Generate a compatible outcome library above in Build/Export before checking a configured remote destination."; generator="Generate exact outcome library (base)"; obsolete_workspace_instruction=false
+[2026-08-27T07:19:48.235Z] DIAGNOSTICS console=["console warning"]; network=["404 http://127.0.0.1:3200/favicon.ico","404 http://127.0.0.1:3200/favicon.ico"]; studio=["POKIE Studio listening on http://127.0.0.1:3200"]
+[2026-08-27T07:19:48.235Z] PASS all rendered P8-03 checks completed.
