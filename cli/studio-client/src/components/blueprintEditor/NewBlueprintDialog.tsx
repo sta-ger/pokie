@@ -166,7 +166,7 @@ export function NewBlueprintDialog({
                             />
                         )}
                         {(saveView.status === "error" || saveView.status === "failed") && (
-                            <ErrorState message={describePathActionError("The blueprint file", saveView.message)} />
+                            <ErrorState message={describePathActionError("The saved game design", saveView.message)} />
                         )}
                         <Group justify="flex-end">
                             <Button variant="default" onClick={onClose}>

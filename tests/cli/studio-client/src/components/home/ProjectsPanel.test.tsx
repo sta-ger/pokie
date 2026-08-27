@@ -719,6 +719,58 @@ describe("ProjectsPanel: Import Project", () => {
         expect(screen.getAllByText("My managed game")).toHaveLength(1);
     });
 
+    it("keeps a missing game available when its new location is not recognized", async () => {
+        const user = userEvent.setup();
+        const oldLocation = "/games/missing/slot.json";
+        const newLocation = "/moved/not-a-game";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [{
+                    location: oldLocation,
+                    name: "Missing game",
+                    type: "blueprint",
+                    capabilities: ["blueprint.build"],
+                    origin: "external",
+                    lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                    status: "missing",
+                }],
+            }),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: newLocation, displayPath: newLocation, entries: [], isDirectory: false},
+            }),
+            "/api/home/projects/registry/relocate": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "unrecognized", path: newLocation},
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await goToProjects(user);
+
+        await screen.findByText("Missing game (missing)");
+        await user.click(screen.getByRole("button", {name: "Relocate"}));
+        await user.type(screen.getByLabelText("New location"), newLocation);
+        const relocateButtons = screen.getAllByRole("button", {name: "Relocate"});
+        await user.click(relocateButtons[relocateButtons.length - 1]);
+
+        await waitFor(() =>
+            expect(calls).toContainEqual(
+                expect.objectContaining({
+                    url: "/api/home/projects/registry/relocate",
+                    init: expect.objectContaining({body: JSON.stringify({location: oldLocation, newLocation})}),
+                }),
+            ),
+        );
+        expect(await screen.findByText(`"${newLocation}" isn't a recognized game location. Choose another location or retry.`)).toBeInTheDocument();
+        expect(screen.getByText("Missing game (missing)")).toBeInTheDocument();
+        expect(screen.queryByText(/POKIE project/i)).not.toBeInTheDocument();
+    });
+
     it("groups a large registry, searches it, and pages the bounded results", async () => {
         const user = userEvent.setup();
         const entries = Array.from({length: 12}, (_, index) => ({

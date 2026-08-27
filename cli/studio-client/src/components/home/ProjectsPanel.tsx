@@ -282,7 +282,7 @@ export function ProjectsPanel({
             .then((result) => {
                 relocateGuard.end();
                 if (result.status !== "ok") {
-                    setRelocationError(`"${result.path}" doesn't look like a POKIE project.`);
+                    setRelocationError(`"${result.path}" isn't a recognized game location. Choose another location or retry.`);
                     return;
                 }
                 removeEntry(relocatingEntry.location);

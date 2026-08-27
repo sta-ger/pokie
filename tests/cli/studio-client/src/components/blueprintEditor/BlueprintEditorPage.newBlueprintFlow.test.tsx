@@ -121,6 +121,25 @@ describe("BlueprintEditorPage - New flow", () => {
         expect(saveCalls).toEqual([{overwrite: false, path: "/games/a/blueprint.json"}]);
     });
 
+    it("explains how to recover when saving a dirty game design fails", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createFakeFetch((call) => {
+            if (call.url === SAVE_URL) {
+                return {ok: true, status: 200, body: {status: "error", error: "ENOENT: no such file or directory"}};
+            }
+            throw new Error(`unexpected fetch to ${call.url}`);
+        });
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+
+        await dirtyGameId(user, "dirty-draft");
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        await user.type(await screen.findByLabelText("Save this game design"), "/games/missing/slot.json");
+        await user.click(screen.getByRole("button", {name: "Save and continue"}));
+
+        expect(await screen.findByText("The saved game design could not be found. Check the path and try again.")).toBeInTheDocument();
+        expect(screen.queryByText(/blueprint file/i)).not.toBeInTheDocument();
+    });
+
     it("resolves a save conflict via Overwrite and continue, then reaches the choice step", async () => {
         const user = userEvent.setup();
         const saveCalls: {overwrite: boolean}[] = [];
