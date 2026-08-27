@@ -60,6 +60,34 @@ describe("isUnsafeStartDirectory", () => {
         }
     });
 
+    it("allows a temporary profile below a TMPDIR cache path with node_modules ancestors", () => {
+        const parent = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-tmpdir-cache-parent-"));
+        const temporaryRoot = path.join(parent, "node_modules", "cache");
+        const profile = path.join(temporaryRoot, "fresh-profile");
+        fs.mkdirSync(temporaryRoot, {recursive: true});
+        const tmpdirSpy = jest.spyOn(os, "tmpdir").mockReturnValue(temporaryRoot);
+        try {
+            expect(isUnsafeStartDirectory(path.join(profile, "POKIE Projects", "valera-mathematician"), {
+                cwd: "/elsewhere",
+                allowedTemporaryRoot: profile,
+            })).toBe(false);
+        } finally {
+            tmpdirSpy.mockRestore();
+            fs.rmSync(parent, {recursive: true, force: true});
+        }
+    });
+
+    it("does not let a non-temporary allowed root suppress unsafe ancestor segments", () => {
+        expect(isUnsafeStartDirectory("/home/alice/node_modules/profile/POKIE Projects/sample-slot", {
+            cwd: "/elsewhere",
+            allowedTemporaryRoot: "/home/alice/node_modules/profile",
+        })).toBe(true);
+        expect(isUnsafeStartDirectory("/home/alice/dist/profile/POKIE Projects/sample-slot", {
+            cwd: "/elsewhere",
+            allowedTemporaryRoot: "/home/alice/dist/profile",
+        })).toBe(true);
+    });
+
     it("rejects the install root and paths inside it", () => {
         expect(
             isUnsafeStartDirectory("/opt/pokie/some/nested/dir", {cwd: "/elsewhere", installRoot: "/opt/pokie"}),
