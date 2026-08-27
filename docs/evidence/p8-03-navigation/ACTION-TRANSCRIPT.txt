@@ -1,33 +1,10 @@
-[2026-08-27T06:40:44.477Z] PROVENANCE candidate_sha=4b06907f272ed1b9a47e719980ae71372a64c27e; checkout_head=4ad8e2f4264c3e85c9748bbb4275e3644e2e8997; product_tree_matches_candidate=true; launch=node ./dist/cli/pokie.js --no-open; isolated_studio_profile=P8-03-52647d6bab4f238a/runtime/fresh-profile/studio; isolated_browser_profile=P8-03-52647d6bab4f238a/runtime/fresh-profile/chromium
-[2026-08-27T06:40:45.882Z] STUDIO_READY http://127.0.0.1:3200
-[2026-08-27T06:40:46.587Z] BROWSER_ADDRESS_NAVIGATE active_window=6291459; visible_page=http://127.0.0.1:3200/#/
-[2026-08-27T06:40:46.862Z] WAIT landing=275ms
-[2026-08-27T06:40:46.880Z] CLICK "Create game"
-[2026-08-27T06:40:47.205Z] WAIT blueprint=325ms
-[2026-08-27T06:40:47.206Z] WAIT scoped-route=1ms
-[2026-08-27T06:40:47.209Z] BLUEPRINT title="Starter Slot" route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/overview sections=["Overview","Game Model","Play","Simulation","Replay","Build/Export"]
-[2026-08-27T06:40:47.363Z] CAPTURE omitted from retained evidence: blueprint workspace rendered
-[2026-08-27T06:40:47.387Z] CLICK "Game Model"
-[2026-08-27T06:40:47.515Z] WAIT game-model=127ms
-[2026-08-27T06:40:47.549Z] CLICK "Edit" in "Game basics"
-[2026-08-27T06:40:47.658Z] WAIT edit=109ms
-[2026-08-27T06:40:47.707Z] INPUT "Game name" rendered field
-[2026-08-27T06:40:47.739Z] CLICK "Close project"
-[2026-08-27T06:40:47.765Z] WAIT close-guard=26ms
-[2026-08-27T06:40:47.779Z] CLICK "Cancel" in "Close the project anyway?"
-[2026-08-27T06:40:47.780Z] WAIT guarded-stay=1ms
-[2026-08-27T06:40:47.781Z] GUARD_CLOSE preserved scoped Game Model route and rendered draft
-[2026-08-27T06:40:47.788Z] CLICK "Cancel" in "Game basics"
-[2026-08-27T06:40:47.790Z] WAIT discard-confirm=2ms
-[2026-08-27T06:40:47.796Z] CLICK "Confirm" in "Discard your unsaved changes"
-[2026-08-27T06:40:47.798Z] WAIT discard=2ms
-[2026-08-27T06:40:48.130Z] BROWSER_ADDRESS_NAVIGATE active_window=6291459; visible_page=scoped Certification route
-[2026-08-27T06:40:48.285Z] WAIT unavailable=155ms
-[2026-08-27T06:40:48.289Z] SCOPED_DEEP_LINK Certification route rendered
-[2026-08-27T06:40:48.291Z] UNAVAILABLE "Certification" isn't available for this project -- it requires: Use saved game outcomes.
-[2026-08-27T06:40:48.358Z] CAPTURE omitted from retained evidence: unavailable recovery rendered
-[2026-08-27T06:40:48.361Z] CLICK "Go to Overview"
-[2026-08-27T06:40:54.443Z] RECOVERY_FIRST_CLICK_UNACCEPTED route remained Certification; visible_action_still_present=true; console=["router blocker warning on manual HashRouter POP navigation"]; network=["404 favicon only"]
-[2026-08-27T06:40:54.505Z] RETRY_RENDERED_CLICK_GEOMETRY active visible Chromium window=6291459; x=0; y=-8; chrome_height=87
-[2026-08-27T06:40:54.613Z] RETRY_RENDERED_CLICK "Go to Overview" once; active verified Chromium window
-[2026-08-27T06:41:54.674Z] READINESS_INCONCLUSIVE no Overview semantic state or rendered product error after the single safe retry; Build/Export remote-control checks not reached.
+[2026-08-27T06:56:36Z] PROVENANCE candidate_sha=4b06907f272ed1b9a47e719980ae71372a64c27e; checkout_head=64d42facb96bf502b14916fee2972ec094a748e1; product_tree_matches_candidate=true; candidate_build=completed; launch=node ./dist/cli/pokie.js --no-open; isolated_studio_profile=P8-03-52647d6bab4f238a/runtime/fresh-profile/studio; isolated_browser_profile=P8-03-52647d6bab4f238a/runtime/fresh-profile/chromium
+[2026-08-27T06:56:37Z] STUDIO_READY http://127.0.0.1:3200 (1406ms)
+[2026-08-27T06:56:38Z] FRESH_BLUEPRINT scoped Overview route rendered (330ms); sections included Build/Export.
+[2026-08-27T06:56:40Z] GUARD_CLOSE edited Game Model; Close project showed its confirmation; Cancel retained the scoped Game Model route and draft (53ms).
+[2026-08-27T06:56:41Z] DISCARD_CONFIRM rendered, stabilised, and returned Game Model to read-only state (315ms).
+[2026-08-27T06:56:43Z] SCOPED_DEEP_LINK Certification rendered its unavailable diagnostic: "Certification" isn't available for this project -- it requires: Use saved game outcomes. (14ms)
+[2026-08-27T06:56:43Z] RECOVERY Go to Overview transitioned to the scoped Overview route and exposed its local Open Play action (10ms).
+[2026-08-27T06:56:44Z] BUILD_EXPORT click issued from rendered navigation.
+[2026-08-27T06:56:50Z] BUILD_EXPORT_TRANSITION route became /exportDeploy. The local Remote deployment / Check compatibility control had not rendered during the bounded semantic wait; console=[]; network=[404 favicon only]. No product error rendered and no duplicate navigation was issued.
+[2026-08-27T06:56:50Z] NOT_REACHED remote disabled-control recovery-copy observation remains readiness-inconclusive after the four permitted fresh launches.
