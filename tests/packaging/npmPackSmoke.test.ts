@@ -87,6 +87,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         execFileSync("npm", ["install", tarballPath, "--no-audit", "--no-fund"], {cwd: installDir, encoding: "utf-8"});
 
         pokieBinPath = path.join(installDir, "node_modules", ".bin", "pokie");
+        const installedPackage = JSON.parse(fs.readFileSync(path.join(installDir, "node_modules", "pokie", "package.json"), "utf-8")) as {
+            bin?: Record<string, string>;
+        };
+        // The public package must declare the executable, not merely happen to include a
+        // runnable dist/cli/pokie.js file. npm only creates node_modules/.bin/pokie from this
+        // manifest contract; without it, `npx --no-install pokie --help` cannot start.
+        expect(installedPackage.bin).toEqual({pokie: "./dist/cli/pokie.js"});
         expect(fs.existsSync(pokieBinPath)).toBe(true);
 
         // The third test below runs a real worker-thread simulation against
