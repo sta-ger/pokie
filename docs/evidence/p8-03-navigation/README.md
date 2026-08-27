@@ -1,19 +1,19 @@
 # P8-03 fresh-profile Studio navigation verification
 
-Candidate: `7a618abcb44619ea6ac8a65353a52425921990e6`.
+Candidate SHA: `4b06907f272ed1b9a47e719980ae71372a64c27e`.
 
-This evidence was collected through the visible Studio UI from the candidate
-`./dist/cli/pokie.js --no-open` launch, with newly isolated Studio and Chromium
-profiles. The concise action transcript records visible outcomes, scoped navigation and
-recovery, disabled-action behavior, latency, and bounded console/network diagnostics.
+The second, newly isolated visible-Studio attempt launched this checkout with
+`node ./dist/cli/pokie.js --no-open` and a new Studio profile plus a new Chromium
+profile. It reached the scoped project, verified guarded-close cancellation and the
+unavailable Certification diagnostic. After the visible `Go to Overview` action, no
+semantic Overview outcome or rendered product error appeared within the bounded wait.
+This is retained as readiness-inconclusive evidence, not a product finding. The first
+attempt stopped earlier on a repaired harness selector, before the Build/Export portion.
 
-Representative rendered captures: Blueprint workspace, unavailable scoped deep-link
-recovery, Build/Export prerequisite guidance, and the generated PAR spreadsheet project.
-Runtime profiles and generated project outputs were removed after verification.
+Superseded evidence from earlier candidate SHAs was removed. Runtime profiles, browser
+data, generated project state, screenshots, and full process logs were removed after
+the attempts.
 
-Checksums:
-- `01-blueprint-workspace.png = d9d99029ba3f073c0ef2ebf2419e7c8922e838000a56dc7366082f1b127f066e`
-- `03-unavailable-link-recovery.png = 850efd94578ae3df84355181af9268a0db8d7988055a098aedf475f888dd03ec`
-- `04-disabled-export-guidance.png = 525c225d3859bb88ef8ff14f8ac0f418e87decf5b17feb2dc3e7e0d319cac983`
-- `06-par-project-state.png = db40bc56a082a4f792ca6e0a158e225a735cf7019f290f2146a1be525e5fceea`
-- `ACTION-TRANSCRIPT.txt = 0ab8bef1b0c95922c0588f6bcb3e874d4272aaea65578066054f54a320af6035`
+Checksum:
+
+- `ACTION-TRANSCRIPT.txt = 49530c44cd25d25ec92f330ec5473c18397554a4f33d81d37f75764ee368d3a0`
