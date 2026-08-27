@@ -1,14 +1,13 @@
-# P8-05 Studio runtime journey
+# P8-05 exact-candidate Studio browser rerun
 
-Candidate product source: `3ba937f9b27916bb64afa49184fcab597d0c93b8`. Evidence commit changes only bounded proof. Fresh Chromium/XDG profiles drove the built checkout through `node ./dist/cli/pokie.js --no-open`.
+Candidate: `2d70f4e959c4f03040d68b5ba954a44ba61a2563`.
 
-The rendered journey created `p8-runtime-proof`, completed real Play rounds, tested failed-reset preservation, successful reset and stale-session recovery, completed a two-round Simulation report, selected a recorded Session Spin in Replay, and generated both the exact outcome library and Stake Engine export. The two recovery responses are explicitly logged browser-protocol faults issued only after their respective visible Play action; no private Studio endpoint was invoked.
+Fresh isolated Studio and visible Chromium profiles used the candidate checkout entrypoint exactly as `node ./dist/cli/pokie.js --no-open`. The rendered journey created a managed starter game, opened Play, completed a real round, held that real Reset request at the browser transport boundary, and captured the resulting visible loading state. The server's normal response was then released and visibly replaced the old round with a fresh session.
 
-- `01-play-round.png` — completed real Play round.
-- `02-failed-reset-preserves-context.png` — actionable failed reset preserves the completed round and controls.
-- `03-stale-session-cleared.png` — stale no-active-project response clears stale controls.
-- `04-simulation-report.png` — visible completed simulation/report.
-- `05-replay-session-spin.png` — selected recorded Play round and local Replay inspector.
-- `06-build-export-results.png` — visible outcome-library and export completion.
+- `01-initial-session-no-prior-round.png` — a new Play session shows “No round played yet -- Spin to play.”
+- `02-completed-play-round.png` — a real settled Play round.
+- `03-delayed-reset-preserves-round.png` — visible “Spinning…” feedback and the completed prior round together.
+- `04-recoverable-play-failure.png` — the rendered recovery state after one browser-transport failure, followed by one successful rendered retry (recorded in the transcript).
+- `05-simulation-report.png` — a completed two-round Simulation result.
 
-`ACTION-TRANSCRIPT.txt` contains bounded action timing and console/network diagnostics. `ARTIFACTS.sha256` records checksums only; generated output, profiles, raw logs, and automation are not retained.
+The run reached Replay but its harness's exact-button selector did not recognize the rendered Session Spin segmented-control option. No further Studio launch was permitted, so Replay and Build/Export are intentionally not claimed. `ACTION-TRANSCRIPT.txt` records the bounded actions and terminal selector observation. `ARTIFACTS.sha256` records only retained-evidence checksums; generated project/output trees and profiles were removed.

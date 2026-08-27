@@ -1,7 +1,5 @@
-37694f2112d37d433f2923ee616ed38d420fc68ab81fe9cd42b55771c20e5532  index_base.json (263448 bytes; outcomelibrary)
-57e19f4de9b88cc3e45e7a5a2f11e0940b465ff9e09a5e1553d58b384807a5d5  index.json (183 bytes; stakeengine)
-8a67ec914924ca3c4ecd12b75b7d1057062046c6b185d273ba7c1ee3006ccb4b  pokie-manifest.json (911 bytes; stakeengine)
-a6ab06e0ae86547667fff1418a5d62aa3de9c4b53e7cd1d757cde2267c934dc0  lookup_base.csv (8376 bytes; stakeengine)
-c0dc33f77175b4ee5e1a15afaee2a441360645bee7758e2cf1d829b63c66d901  books_base.jsonl.zst (13295 bytes; stakeengine)
-d605a8019e14e23a6101571c7e31cf8766612b5e62c9ade53c9b8fb9e5391745  outcomes_base.jsonl (693422 bytes; outcomelibrary)
-dd7e35ccfbc4704d297d1abea7390321dd4e358250416951fc1fec2fae3f6341  manifest.json (4145 bytes; outcomelibrary)
+2dd6759d7495533f9c1e3fec8e23f75e5bd5b37c99194f66c8e67c48fb3bf0f1  01-initial-session-no-prior-round.png
+3382123ff6e8d7a42055980a6ddff942e7ebe240a2ac6d9047d38efacdc2084a  02-completed-play-round.png
+e318344af4f06f2a7b9e7ab599a25d4b39d03037345c930ba2229ad48f81af07  03-delayed-reset-preserves-round.png
+92eeb66f9791e9b2e836965215847a6a0af330435405ed937ca14af8a0f45634  04-recoverable-play-failure.png
+4c54f3686190cd4e2301c0e8db50f277ffffbb04fd3ed8b6bf435b5f79c5998e  05-simulation-report.png
