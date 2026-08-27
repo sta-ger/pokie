@@ -492,20 +492,24 @@ function TargetCard({
                 </>
             )}
 
-            {card.kind === "remoteDeployment" && card.deploymentTarget && (
+            {card.kind === "remoteDeployment" && (
                 <>
                     <Button
                         size="xs"
                         mt="sm"
                         loading={isActiveTarget && deployment.runLoading}
-                        disabled={!canRunRemoteDeployment}
-                        onClick={() => deployment.run(false, card.deploymentTarget, resolveDeploymentModes())}
+                        disabled={card.deploymentTarget === undefined || !canRunRemoteDeployment}
+                        onClick={() => {
+                            if (card.deploymentTarget !== undefined) {
+                                deployment.run(false, card.deploymentTarget, resolveDeploymentModes());
+                            }
+                        }}
                     >
                         Check compatibility
                     </Button>
-                    {!canRunRemoteDeployment && (
+                    {(!canRunRemoteDeployment || card.deploymentTarget === undefined) && (
                         <Text size="sm" c="dimmed" mt={4}>
-                            A compatible outcome library is required before this destination can be checked. Generate one above in Build/Export, or open a project with a compatible library.
+                            Generate a compatible outcome library above in Build/Export before checking a configured remote destination.
                         </Text>
                     )}
                     {previewedOk && (
