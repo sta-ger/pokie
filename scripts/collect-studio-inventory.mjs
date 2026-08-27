@@ -113,6 +113,13 @@ export function validateInventory(record, complete = false) {
     if (record.findings.some((finding) => !owners.has(finding.owner) || finding.status !== "unreached" || finding.observedBy === undefined)) {
         throw new Error("Every unobserved public capability needs an owned finding.");
     }
+    if (REQUIRED_ACTION_COVERAGE.some((required) => {
+        const actionCount = record.actions.filter((action) => action.coverageId === required.id && action.owner === required.owner).length;
+        const findingCount = record.findings.filter((finding) => finding.coverageId === required.id && finding.owner === required.owner).length;
+        return actionCount + findingCount !== 1;
+    })) {
+        throw new Error("Each required action needs exactly one browser-input result or scoped boundary finding.");
+    }
     if (record.claimCoverage.some((claim) => {
         const declared = record.publicDocumentationClaims.claims.find((entry) => entry.id === claim.id);
         return !declared
@@ -365,10 +372,12 @@ async function main() {
             note(`ACT keyboard=${JSON.stringify(label)} focusBefore=${JSON.stringify(focusBefore)} focusAfter=${JSON.stringify(focusAfter)}`);
             return {action: `keyboard ${label}`, inputMethod: `CDP keyboard ${key}`, focusBefore, focusAfter, started, resultWasFalseBeforeInput: true};
         };
-        const observeAction = async (goal, operation, result, timeout) => {
+        const observeAction = async (goal, operation, result, timeout, visibleResultFor) => {
             await waitFor(result, `${operation.action} visible result`, timeout);
             operation.latencyMs = Date.now() - operation.started;
-            const visibleResult = await evaluate("document.body.innerText.replace(/\\s+/g, ' ').slice(0, 400)");
+            const visibleResult = visibleResultFor === undefined
+                ? await evaluate("document.body.innerText.replace(/\\s+/g, ' ').slice(0, 400)")
+                : await visibleResultFor();
             actions.push({...operation, goal, owner: ownerForGoal(goal), visibleResult, visibleResultAt: new Date().toISOString(), consoleErrors: [...consoleErrors], networkErrors: [...networkErrors]});
             await snapshot(goal, operation);
         };
@@ -411,6 +420,11 @@ async function main() {
             findings.push({id, surface, owner, status: "unreached", observedBy: runId, reason, ...(documentationClaimId === undefined ? {} : {documentationClaimId}), ...(coverageId === undefined ? {} : {coverageId}), consoleErrors: [...consoleErrors], networkErrors: [...networkErrors]});
             note(`FINDING id=${id} owner=${owner} reason=${JSON.stringify(reason)}`);
         };
+        const recordMissingCoverageFinding = (coverageId, id, surface, owner, reason) => {
+            if (!actions.some((action) => action.coverageId === coverageId) && !findings.some((finding) => finding.coverageId === coverageId)) {
+                recordFinding(id, surface, owner, reason, undefined, coverageId);
+            }
+        };
         const renderedText = (value) => evaluate(`(() => {
             const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
             return [...document.querySelectorAll("body *")].some((element) => visible(element) && element.children.length === 0 && (element.textContent ?? "").includes(${JSON.stringify(value)}));
@@ -418,12 +432,20 @@ async function main() {
         const cardText = (label) => evaluate(`(() => {
             const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
             const heading = [...document.querySelectorAll("body *")].find((element) => visible(element) && element.children.length === 0 && (element.textContent ?? "").trim() === ${JSON.stringify(label)});
-            return heading?.closest("div[style*='margin-bottom']")?.innerText ?? "";
+            for (let card = heading?.parentElement; card && card !== document.body; card = card.parentElement) {
+                const builds = [...card.querySelectorAll("button")].filter((button) => visible(button) && button.innerText.trim() === "Build");
+                if (builds.length === 1 && card.innerText.includes(${JSON.stringify(label)})) return card.innerText;
+            }
+            return "";
         })()`);
         const cardTextForControl = (label) => evaluate(`(() => {
             const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
             const control = [...document.querySelectorAll("button,a,[role=tab]")].find((element) => visible(element) && (element.innerText ?? element.textContent ?? "").trim() === ${JSON.stringify(label)});
-            return control?.closest("div[style*='margin-bottom']")?.innerText ?? "";
+            for (let card = control?.parentElement; card && card !== document.body; card = card.parentElement) {
+                const controls = [...card.querySelectorAll("button")].filter((button) => visible(button) && button.innerText.trim() === ${JSON.stringify(label)});
+                if (controls.length === 1) return card.innerText;
+            }
+            return "";
         })()`);
         const activeSection = (label) => evaluate(`(() => [...document.querySelectorAll('nav[aria-label=Sections] button')].some((button) => button.getClientRects().length > 0 && button.getAttribute('aria-current') === 'page' && (button.innerText ?? '').trim() === ${JSON.stringify(label)}))()`);
         await setViewport(1280, 900, "desktop");
@@ -511,9 +533,17 @@ async function main() {
                 operation = await fill("Rounds", "2", () => evaluate("[...document.querySelectorAll('input')].some((input) => input.value === '2')"));
                 await observeAction("Simulation round count is entered", operation, () => evaluate("[...document.querySelectorAll('input')].some((input) => input.value === '2')"));
                 try {
-                    const simulationQueued = () => renderedText("queued —");
-                    operation = {...await activate("Run Simulation", simulationQueued), coverageId: "simulation-run"};
-                    await observeAction("Simulation run begins with queued rounds", operation, simulationQueued, 5_000);
+                    const simulationVisibleResult = async () =>
+                        (await renderedText("queued —"))
+                        || (await renderedText("running —"))
+                        || (await renderedText("completed —"))
+                        || (await renderedText("failed —"))
+                        || (await renderedText("cancelled —"))
+                        || (await renderedActionExists("Cancel"))
+                        || (await renderedActionExists("Repeat simulation"))
+                        || (await renderedText("This simulation request"));
+                    operation = {...await activate("Run Simulation", simulationVisibleResult), coverageId: "simulation-run"};
+                    await observeAction("Simulation run begins or settles a visible result", operation, simulationVisibleResult, 120_000);
                     if (await renderedActionExists("Cancel")) {
                         operation = await click("Cancel", () => renderedActionExists("Confirm"));
                         await observeAction("Simulation cancellation requests confirmation", operation, () => renderedActionExists("Confirm"));
@@ -540,14 +570,14 @@ async function main() {
                     return /Generated .* outcomes|error|failed|could not/i.test(text);
                 };
                 operation = {...await activate(generateLabel, outcomeLibraryCompletedOrErrored), coverageId: "build-generate-outcome-library"};
-                await observeAction("Build/Export completes outcome-library generation or reports an error", operation, outcomeLibraryCompletedOrErrored, 120_000);
+                await observeAction("Build/Export completes outcome-library generation or reports an error", operation, outcomeLibraryCompletedOrErrored, 120_000, () => cardTextForControl(generateLabel));
                 await waitFor(() => renderedActionExists(exportLabel), "enabled Stake Engine export after completed outcome-library generation", 120_000);
                 const stakeExportCompletedOrErrored = async () => {
                     const text = await cardTextForControl(exportLabel);
                     return /Exported \d+ file\(s\)|error|failed|could not|replace the existing directory/i.test(text);
                 };
                 operation = {...await activate(exportLabel, stakeExportCompletedOrErrored), coverageId: "stake-engine-export"};
-                await observeAction("Build/Export completes Stake Engine export or reports an error", operation, stakeExportCompletedOrErrored, 120_000);
+                await observeAction("Build/Export completes Stake Engine export or reports an error", operation, stakeExportCompletedOrErrored, 120_000, () => cardTextForControl(exportLabel));
 
                 const artifactBuilds = [
                     {label: "TypeScript Game Package", coverageId: "build-typescript-game-package", findingId: "P8-01-F-BUILD-TYPESCRIPT-GAME-PACKAGE-NO-VISIBLE-RESULT"},
@@ -558,11 +588,11 @@ async function main() {
                 for (const artifact of artifactBuilds) {
                     const artifactLoadingSuccessOrError = async () => {
                         const text = await cardText(artifact.label);
-                        return /Building artifact|Built to |Build cancelled\.|artifact build|error|failed|could not/i.test(text);
+                        return /Building artifact|Built to |Build cancelled\.|artifact build|error|failed|could not|couldn't|unable to/i.test(text);
                     };
                     try {
                         operation = {...await click("Build", artifactLoadingSuccessOrError, artifact.label), coverageId: artifact.coverageId};
-                        await observeAction(`Build/Export ${artifact.label} Build reaches a visible loading, success, or error result`, operation, artifactLoadingSuccessOrError, 15_000);
+                        await observeAction(`Build/Export ${artifact.label} Build reaches a visible loading, success, or error result`, operation, artifactLoadingSuccessOrError, 120_000, () => cardText(artifact.label));
                     } catch (error) {
                         recordFinding(
                             artifact.findingId,
@@ -580,12 +610,17 @@ async function main() {
         await snapshot("Build/Export on a narrow viewport");
         await setViewport(1280, 900, "desktop");
         try {
-            operation = await click("Close project", () => renderedActionExists("Confirm"));
-        if (await renderedActionExists("Confirm")) {
-            await observeAction("Creator is warned before closing an active project", operation, () => renderedActionExists("Confirm"));
-            operation = await click("Confirm", () => renderedText("Design Your Game"));
-        }
-        await observeAction("Home after closing a project", operation, () => renderedText("Design Your Game"));
+        const closeProjectToHome = async (goal) => {
+            const closeResult = async () => (await renderedActionExists("Confirm")) || (await renderedText("Design Your Game"));
+            operation = await click("Close project", closeResult);
+            await observeAction(`${goal} starts its visible close transition`, operation, closeResult);
+            if (await renderedActionExists("Confirm")) {
+                operation = await click("Confirm", () => renderedText("Design Your Game"));
+                await observeAction(`${goal} confirms closing the project`, operation, () => renderedText("Design Your Game"));
+            }
+            await waitFor(() => renderedText("Design Your Game"), `${goal} Home result`);
+        };
+        await closeProjectToHome("Creator");
         operation = await click("Projects", () => activeSection("Projects"));
         await observeAction("Projects registry after creating a project", operation, () => activeSection("Projects"));
         const unsavedChangesDialogVisible = () => renderedText("You have unsaved changes in Design Game. Leave and lose them?") && renderedActionExists("Stay") && renderedActionExists("Leave");
@@ -602,10 +637,7 @@ async function main() {
             operation = await click("Stay", unsavedChangesDialogClosed);
             await observeAction("Managed project Open clears its completed conflict dialog", operation, unsavedChangesDialogClosed);
         }
-        operation = await click("Close project", () => renderedActionExists("Confirm"));
-        await observeAction("Managed project workspace closes", operation, () => renderedActionExists("Confirm"));
-        operation = await click("Confirm", () => renderedText("Design Your Game"));
-        await observeAction("Home after closing managed project", operation, () => renderedText("Design Your Game"));
+        await closeProjectToHome("Managed project workspace");
         operation = await click("Projects", () => activeSection("Projects"));
         await observeAction("Projects registry after opening managed project", operation, () => activeSection("Projects"));
         const removeConfirmationVisible = () => renderedText("This only forgets it here") && renderedActionExists("Cancel");
@@ -616,11 +648,11 @@ async function main() {
         await observeAction("Managed project Remove is cancelled", operation, removeConfirmationClosed);
         } catch (error) {
             const closeBoundary = `Studio could not return from the active project to the managed-project registry: ${error.message}`;
-            recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-CONFLICT", "Managed project Open unsaved-changes dialog", "P8-02", closeBoundary, undefined, "managed-project-open-conflict");
-            recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-STAY", "Managed project Open Stay recovery", "P8-02", closeBoundary, undefined, "managed-project-open-stay");
-            recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-NO-VISIBLE-RESULT", "Managed project Open", "P8-02", closeBoundary, undefined, "managed-project-open");
-            recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CONFIRMATION", "Managed project Remove confirmation", "P8-02", closeBoundary, undefined, "managed-project-remove-confirm");
-            recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CANCEL", "Managed project Remove cancellation", "P8-02", closeBoundary, undefined, "managed-project-remove-cancel");
+            recordMissingCoverageFinding("managed-project-open-conflict", "P8-01-F-MANAGED-PROJECT-OPEN-CONFLICT", "Managed project Open unsaved-changes dialog", "P8-02", closeBoundary);
+            recordMissingCoverageFinding("managed-project-open-stay", "P8-01-F-MANAGED-PROJECT-OPEN-STAY", "Managed project Open Stay recovery", "P8-02", closeBoundary);
+            recordMissingCoverageFinding("managed-project-open", "P8-01-F-MANAGED-PROJECT-OPEN-NO-VISIBLE-RESULT", "Managed project Open", "P8-02", closeBoundary);
+            recordMissingCoverageFinding("managed-project-remove-confirm", "P8-01-F-MANAGED-PROJECT-REMOVE-CONFIRMATION", "Managed project Remove confirmation", "P8-02", closeBoundary);
+            recordMissingCoverageFinding("managed-project-remove-cancel", "P8-01-F-MANAGED-PROJECT-REMOVE-CANCEL", "Managed project Remove cancellation", "P8-02", closeBoundary);
         }
         recordFinding("P8-01-F-IMPORT-NATIVE-PICKER", "Import Project host native picker", "P8-02", "The browser collector can observe Browse controls but a headless clean-profile run cannot select a host-native file-picker result.");
         recordFinding("P8-01-F-IMPORT-DETECT", "Import Project Detect", "P8-02", "Detect requires a user-provided package, outcome library, export, blueprint, or PAR-sheet path; the clean run does not fabricate an external artifact.", "DOC-03");

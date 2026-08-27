@@ -74,7 +74,7 @@ test("collector contract requires exact browser-action coverage with matching ro
 test("collector contract rejects a missing required action and a misowned action finding", () => {
     const record = completeRecord();
     record.actions = record.actions.filter((entry) => entry.coverageId !== "build-stake-engine-export");
-    assert.throws(() => validateInventory(record, true), /primary action/i);
+    assert.throws(() => validateInventory(record, true), /browser-input result/i);
 
     record.findings.push({
         id: "P8-01-F-BUILD-STAKE-EXPORT",
@@ -84,10 +84,13 @@ test("collector contract rejects a missing required action and a misowned action
         observedBy: "clean-profile",
         coverageId: "build-stake-engine-export",
     });
-    assert.throws(() => validateInventory(record, true), /primary action/i);
+    assert.throws(() => validateInventory(record, true), /browser-input result/i);
 
     record.findings[0].owner = "P8-05";
     assert.doesNotThrow(() => validateInventory(record, true));
+
+    record.actions.push(action("build-stake-engine-export", "P8-05", "Build/Export Stake Engine export Build completes or reports an error"));
+    assert.throws(() => validateInventory(record, true), /exactly one browser-input result/i);
 });
 
 test("documentation claims are observed only when every rendered goal is present", () => {
