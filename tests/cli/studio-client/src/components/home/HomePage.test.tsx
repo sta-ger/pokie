@@ -70,27 +70,19 @@ describe("HomePage", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
         expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
-        expect(sectionsNav().getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page");
+        expect(sectionsNav().getByRole("button", {name: "Start a game"})).toHaveAttribute("aria-current", "page");
 
         await user.click(sectionsNav().getByRole("button", {name: "Projects"}));
 
         await expectActiveSection("Projects");
-        expect(await screen.findByText("No projects yet -- import or design one below.")).toBeInTheDocument();
-        expect(screen.getByLabelText("Location", {exact: false})).toBeInTheDocument();
-        expect(sectionsNav().getByRole("button", {name: "Design Game"})).not.toHaveAttribute("aria-current");
+        expect(await screen.findByText("No games yet. Start a game or add one you already have.")).toBeInTheDocument();
+        expect(screen.getByLabelText("Game location", {exact: false})).toBeInTheDocument();
+        expect(sectionsNav().getByRole("button", {name: "Start a game"})).not.toHaveAttribute("aria-current");
 
-        // The removed "Advanced Tools" scaffold/init-in-place flows have no replacement inside Studio --
-        // this is the visible pointer to the CLI commands that replace them (see HomePage.tsx's own doc
-        // comment), so it has to survive as user-facing copy, not just a source comment.
-        expect(
-            screen.getByText((_, element) => element?.tagName.toLowerCase() === "p" && (element.textContent ?? "").includes("pokie init")),
-        ).toBeInTheDocument();
-        expect(
-            screen.getByText((_, element) => element?.tagName.toLowerCase() === "p" && (element.textContent ?? "").includes("pokie create")),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/ready-to-edit starter, a blank design, or a generated idea/i)).toBeInTheDocument();
 
-        await user.click(sectionsNav().getByRole("button", {name: "Design Game"}));
-        await expectActiveSection("Design Game");
+        await user.click(sectionsNav().getByRole("button", {name: "Start a game"}));
+        await expectActiveSection("Start a game");
         expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
     });
 
@@ -118,8 +110,8 @@ describe("HomePage", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
         expect(await screen.findByRole("button", {name: "Open"})).toBeInTheDocument();
-        await user.click(sectionsNav().getByRole("button", {name: "Design Game"}));
-        await expectActiveSection("Design Game");
+        await user.click(sectionsNav().getByRole("button", {name: "Start a game"}));
+        await expectActiveSection("Start a game");
 
         status = "missing";
         await user.click(sectionsNav().getByRole("button", {name: "Projects"}));
@@ -187,13 +179,13 @@ describe("HomePage", () => {
 
         await user.click(sectionsNav().getByRole("button", {name: "Projects"}));
         await expectActiveSection("Projects");
-        expect(await screen.findByText("No projects yet -- import or design one below.")).toBeInTheDocument();
+        expect(await screen.findByText("No games yet. Start a game or add one you already have.")).toBeInTheDocument();
 
         // SectionedFormEditor's own activeSection state isn't reset by this outer tab switch (it never
         // unmounts, only its display toggles, same as every other Home tab body) -- Symbols is still the
         // active section here, no need to click it again.
-        await user.click(sectionsNav().getByRole("button", {name: "Design Game"}));
-        await expectActiveSection("Design Game");
+        await user.click(sectionsNav().getByRole("button", {name: "Start a game"}));
+        await expectActiveSection("Start a game");
         // The switch back has landed (expectActiveSection above), so the draft assertion is now the only
         // thing left to prove: Design Game's body was never unmounted, only CSS-hidden, so the
         // "wild-draft" value its controlled input holds survived the round trip verbatim. guidedSection()
@@ -268,8 +260,8 @@ describe("HomePage", () => {
             expect(screen.queryByText("You have unsaved changes in Design Game. Leave and lose them?")).not.toBeInTheDocument(),
         );
         expect(sectionsNav().getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
-        await user.click(sectionsNav().getByRole("button", {name: "Design Game"}));
-        await expectActiveSection("Design Game");
+        await user.click(sectionsNav().getByRole("button", {name: "Start a game"}));
+        await expectActiveSection("Start a game");
         // Same as the first draft-restore assertion above: Design Game's tab body was never unmounted
         // (only CSS-hidden), so the committed "wild-draft" symbol input was preserved verbatim. This is
         // scoped to the now-visible guided section rather than left as a screen-wide findByDisplayValue:

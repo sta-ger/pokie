@@ -131,9 +131,7 @@ export function PlayTab({
         return (
             <div>
                 <Text size="sm" c="dimmed" mb="sm">
-                    Play prepares this project (materializing a Blueprint into a runnable package first if
-                    needed) and creates a real session directly in Studio&apos;s own backend -- no server,
-                    host, port, or separate API to set up.
+                    Play prepares this game for a real round and creates a session in Studio. Nothing else needs to be set up.
                 </Text>
                 {loading && <LoadingState label="Starting…" />}
                 {errorNotice}

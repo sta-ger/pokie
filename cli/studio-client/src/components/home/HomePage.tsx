@@ -1,4 +1,4 @@
-import {Code, Stack, Text, Title} from "@mantine/core";
+import {Stack, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {useLocation, useNavigate, useParams} from "react-router-dom";
@@ -14,7 +14,7 @@ import type {StudioProjectRegistryView} from "../../api/types";
 export type HomeTab = "design" | "projects";
 
 const HOME_TABS: NavTabItem<HomeTab>[] = [
-    {value: "design", label: "Design Game"},
+    {value: "design", label: "Start a game"},
     {value: "projects", label: "Projects"},
 ];
 
@@ -56,7 +56,7 @@ export function HomePage() {
     const navigate = useNavigate();
     const {tab} = useParams<{tab: string}>();
     const activeTab: HomeTab = isHomeTab(tab) ? tab : "design";
-    const activeTabLabel = HOME_TABS.find((item) => item.value === activeTab)?.label ?? "Design Game";
+    const activeTabLabel = HOME_TABS.find((item) => item.value === activeTab)?.label ?? "Start a game";
     useDocumentTitle(`${activeTabLabel} · POKIE Studio`);
 
     // Keep the address bar aligned with the fallback view too. Without this replacement an invalid
@@ -113,12 +113,10 @@ export function HomePage() {
                         <Stack gap="md">
                             <Title order={2}>Projects</Title>
                             <Text c="dimmed" size="sm">
-                                Open an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn&apos;t
-                                know about yet.
+                                Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it.
                             </Text>
                             <Text c="dimmed" size="sm">
-                                Need a new project from your terminal? Run <Code>pokie init</Code> for a ready-to-build package, or{" "}
-                                <Code>pokie create</Code> for an editable Blueprint Project -- then import it above.
+                                New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea.
                             </Text>
                             <ProjectsPanel
                                 registryVersion={projectRegistryVersion}

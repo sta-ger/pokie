@@ -1,5 +1,5 @@
 import {MantineProvider, Stepper} from "@mantine/core";
-import {render, screen} from "@testing-library/react";
+import {fireEvent, render, screen} from "@testing-library/react";
 import {readFileSync} from "node:fs";
 import {join} from "node:path";
 import {CodeBlock} from "../../../../../../cli/studio-client/src/components/common/CodeBlock";
@@ -85,6 +85,20 @@ describe("Responsive / no-horizontal-page-overflow primitives", () => {
         expect(status.style.overflowWrap).toBe("anywhere");
     });
 
+    it("EmptyState keeps an optional action visible and usable outside its status message", () => {
+        const onAction = jest.fn();
+        renderWithMantine(<EmptyState message="No games yet." actionLabel="Create your first game" onAction={onAction} />);
+
+        const status = screen.getByRole("status");
+        const action = screen.getByRole("button", {name: "Create your first game"});
+        expect(status).toHaveTextContent("No games yet.");
+        expect(status).toHaveAttribute("aria-live", "polite");
+        expect(status).toHaveStyle({overflowWrap: "anywhere"});
+        expect(status).not.toContainElement(action);
+        fireEvent.click(action);
+        expect(onAction).toHaveBeenCalledTimes(1);
+    });
+
     it("SuccessResult wraps a long unbroken message instead of letting it expand the page width", () => {
         renderWithMantine(<SuccessResult message={LONG_UNBROKEN_TEXT} />);
         // The message renders as the Alert's title, so the wrapping style must be asserted on the
@@ -106,9 +120,13 @@ describe("Status/alert/live region semantics", () => {
         expect(screen.getByRole("status").textContent).toContain("Validating…");
     });
 
-    it("EmptyState is role=status, not role=alert", () => {
+    it("EmptyState without an action keeps its message as the polite status element", () => {
         renderWithMantine(<EmptyState message="No completed simulations yet." />);
-        expect(screen.getByText("No completed simulations yet.")).toHaveAttribute("role", "status");
+        const message = screen.getByText("No completed simulations yet.");
+        expect(message).toHaveAttribute("role", "status");
+        expect(message).toHaveAttribute("aria-live", "polite");
+        expect(message).toHaveStyle({overflowWrap: "anywhere"});
+        expect(screen.queryByRole("button")).not.toBeInTheDocument();
     });
 
     it("SuccessResult is role=status, not role=alert", () => {

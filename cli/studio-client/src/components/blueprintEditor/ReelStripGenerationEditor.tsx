@@ -1349,7 +1349,7 @@ export function ReelStripGenerationEditor({
                             </Button>
                             <Button variant="default" onClick={() => setActiveStep(2)}>Back to Preview</Button>
                         </QuickActions>
-                        {!isDirty && <Alert color="blue" variant="light" title="Modified — not saved" mt="sm">This reel is in the Reels draft. Use the common Game Model Save to persist the blueprint.</Alert>}
+                        {!isDirty && <Alert color="blue" variant="light" title="Modified — not saved" mt="sm">This reel is in the Reels draft. Use Save game to keep these changes.</Alert>}
                     </div>
                 ))}
         </div>

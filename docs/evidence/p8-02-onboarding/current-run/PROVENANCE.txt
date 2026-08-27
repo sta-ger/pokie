@@ -1,0 +1,14 @@
+candidate_sha=6215d485251dabb8a8aec0e87cd7edca8bb16518
+build_command=npm run build-cli
+launch_command=node ./dist/cli/pokie.js --no-open (exact; final fresh-profile launch from this source checkout)
+profiles=fresh isolated Studio HOME/XDG and Chromium --user-data-dir; deleted after the launch
+browser=visible Chromium on inherited DISPLAY; rendered controls were observed and activated with CDP coordinate/keyboard input
+network_intercepts=INTERCEPT HTTP 503 GET /api/project/context (legacy); INTERCEPT HTTP 500 POST /api/home/projects/open (scoped); INTERCEPT HTTP 503 GET /api/context (launch-context)
+console_errors=none observed
+sha256 07cf756c5ab88f34875718354ea4d1065f1833afc9f0299ca288d6a9644bb13f  00-clean-launch.png
+sha256 b035f0e666dbfe58792bf8534bc75e300e71dacb8c355b4287014d1d1f747b3a  01-invalid-import-recovery.png
+sha256 93e649c97599c7c8c7e9f2b9542c99a67d7aabf30bd8ab4086c25e46a2b9de3f  02-start-choices.png
+sha256 3e39aa780999da2d964de5f4eb8179d3ef0947837f8508c4703875b6e944c1f4  03-created-workspace.png
+sha256 7f1781c6c9bd03f8e54f8a20033c84f5dd7f24cbbc980f397d46b0ac6f8cd72f  04-legacy-project-failure.png
+sha256 c9b23ae11381cb8c24b4fbdcf53b64d55801d031bc4093816da6b4a6ec9e7bce  05-scoped-project-failure.png
+sha256 4822a3ee264dbf466508f691b6926d1559a64cace2d0b575204a3a84b82b864a  06-launch-context-recovery.png

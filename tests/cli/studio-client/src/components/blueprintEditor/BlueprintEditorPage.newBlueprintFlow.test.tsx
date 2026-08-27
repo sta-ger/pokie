@@ -49,11 +49,11 @@ describe("BlueprintEditorPage - New flow", () => {
         const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
 
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
 
-        expect(await screen.findByRole("button", {name: "Blank"})).toBeInTheDocument();
+        expect(await screen.findByRole("button", {name: "Start with a blank game"})).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Generate random"})).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Load existing"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Open a saved game design"})).toBeInTheDocument();
         expect(screen.queryByText(/unsaved changes/)).not.toBeInTheDocument();
     });
 
@@ -64,9 +64,9 @@ describe("BlueprintEditorPage - New flow", () => {
 
         await dirtyGameId(user, "dirty-draft");
 
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
-        expect(await screen.findByText("You have unsaved changes to the current blueprint. Save them, discard them, or cancel.")).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Blank"})).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        expect(await screen.findByText("You have unsaved changes to this game design. Save them, discard them, or cancel.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Start with a blank game"})).not.toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Cancel"}));
 
@@ -80,9 +80,9 @@ describe("BlueprintEditorPage - New flow", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
 
         await dirtyGameId(user, "dirty-draft");
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
         await user.click(await screen.findByRole("button", {name: "Discard"}));
-        await user.click(await screen.findByRole("button", {name: "Blank"}));
+        await user.click(await screen.findByRole("button", {name: "Start with a blank game"}));
 
         expect(screen.getByLabelText("Game id")).toHaveValue("");
     });
@@ -95,8 +95,8 @@ describe("BlueprintEditorPage - New flow", () => {
         await user.click(screen.getByRole("radio", {name: "JSON"}));
         fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: "unsaved-work-in-progress"}});
 
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
-        expect(await screen.findByText("You have unsaved changes to the current blueprint. Save them, discard them, or cancel.")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        expect(await screen.findByText("You have unsaved changes to this game design. Save them, discard them, or cancel.")).toBeInTheDocument();
     });
 
     it("saves the dirty draft to a typed path before proceeding to the choice step", async () => {
@@ -113,12 +113,31 @@ describe("BlueprintEditorPage - New flow", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
 
         await dirtyGameId(user, "dirty-draft");
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
-        await user.type(await screen.findByLabelText("Save current blueprint to path"), "/games/a/blueprint.json");
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        await user.type(await screen.findByLabelText("Save this game design"), "/games/a/blueprint.json");
         await user.click(screen.getByRole("button", {name: "Save and continue"}));
 
-        expect(await screen.findByRole("button", {name: "Blank"})).toBeInTheDocument();
+        expect(await screen.findByRole("button", {name: "Start with a blank game"})).toBeInTheDocument();
         expect(saveCalls).toEqual([{overwrite: false, path: "/games/a/blueprint.json"}]);
+    });
+
+    it("explains how to recover when saving a dirty game design fails", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createFakeFetch((call) => {
+            if (call.url === SAVE_URL) {
+                return {ok: true, status: 200, body: {status: "error", error: "ENOENT: no such file or directory"}};
+            }
+            throw new Error(`unexpected fetch to ${call.url}`);
+        });
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+
+        await dirtyGameId(user, "dirty-draft");
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        await user.type(await screen.findByLabelText("Save this game design"), "/games/missing/slot.json");
+        await user.click(screen.getByRole("button", {name: "Save and continue"}));
+
+        expect(await screen.findByText("The saved game design could not be found. Check the path and try again.")).toBeInTheDocument();
+        expect(screen.queryByText(/blueprint file/i)).not.toBeInTheDocument();
     });
 
     it("resolves a save conflict via Overwrite and continue, then reaches the choice step", async () => {
@@ -138,8 +157,8 @@ describe("BlueprintEditorPage - New flow", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
 
         await dirtyGameId(user, "dirty-draft");
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
-        await user.type(await screen.findByLabelText("Save current blueprint to path"), "/games/a/blueprint.json");
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        await user.type(await screen.findByLabelText("Save this game design"), "/games/a/blueprint.json");
         await user.click(screen.getByRole("button", {name: "Save and continue"}));
 
         expect(await screen.findByText('"/games/a/blueprint.json" already exists.')).toBeInTheDocument();
@@ -150,7 +169,7 @@ describe("BlueprintEditorPage - New flow", () => {
         await user.click(await screen.findByRole("button", {name: "Confirm"}));
 
         await waitFor(() => expect(saveCalls).toEqual([{overwrite: false}, {overwrite: true}]));
-        expect(await screen.findByRole("button", {name: "Blank"})).toBeInTheDocument();
+        expect(await screen.findByRole("button", {name: "Start with a blank game"})).toBeInTheDocument();
     });
 
     it("uses an entered random name to generate and apply a blueprint, then offers Undo", async () => {
@@ -165,25 +184,25 @@ describe("BlueprintEditorPage - New flow", () => {
         });
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
 
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
         await user.click(await screen.findByRole("button", {name: "Generate random"}));
         await user.type(screen.getByLabelText("Name (optional)"), "Named Random Slot");
         await user.click(screen.getByRole("button", {name: "Generate"}));
 
-        expect(await screen.findByText('Generated "Named Random Slot" (id: "named-random-slot") from seed 42.')).toBeInTheDocument();
+        expect(await screen.findByText('Generated "Named Random Slot" from seed 42.')).toBeInTheDocument();
         expect(randomCalls).toEqual([{preset: "default", seed: 20260815, name: "Named Random Slot"}]);
 
-        await user.click(screen.getByRole("button", {name: "Use this blueprint"}));
+        await user.click(screen.getByRole("button", {name: "Use this game idea"}));
 
         await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
         expect(screen.getByLabelText("Game id")).toHaveValue("named-random-slot");
         expect(screen.getByLabelText("Game name")).toHaveValue("Named Random Slot");
-        expect(await screen.findByText("Replaced the current blueprint.")).toBeInTheDocument();
+        expect(await screen.findByText("Replaced the current game design.")).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Undo"}));
 
         expect(screen.getByLabelText("Game id")).toHaveValue("");
-        expect(screen.queryByText("Replaced the current blueprint.")).not.toBeInTheDocument();
+        expect(screen.queryByText("Replaced the current game design.")).not.toBeInTheDocument();
     });
 
     it("hides the Undo banner again once the restored draft is edited further", async () => {
@@ -196,15 +215,15 @@ describe("BlueprintEditorPage - New flow", () => {
         });
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
 
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
         await user.click(await screen.findByRole("button", {name: "Generate random"}));
         await user.click(screen.getByRole("button", {name: "Generate"}));
-        await user.click(await screen.findByRole("button", {name: "Use this blueprint"}));
-        expect(await screen.findByText("Replaced the current blueprint.")).toBeInTheDocument();
+        await user.click(await screen.findByRole("button", {name: "Use this game idea"}));
+        expect(await screen.findByText("Replaced the current game design.")).toBeInTheDocument();
 
         await dirtyGameId(user, "further-edit");
 
-        expect(screen.queryByText("Replaced the current blueprint.")).not.toBeInTheDocument();
+        expect(screen.queryByText("Replaced the current game design.")).not.toBeInTheDocument();
     });
 
     it("Randomize again mints a fresh seed instead of reusing the field's current value", async () => {
@@ -221,14 +240,14 @@ describe("BlueprintEditorPage - New flow", () => {
         });
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
 
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
         await user.click(await screen.findByRole("button", {name: "Generate random"}));
         await user.click(screen.getByRole("button", {name: "Generate"}));
-        await screen.findByText('Generated "Random Slot" (id: "random-slot") from seed 42.');
+        await screen.findByText('Generated "Random Slot" from seed 42.');
 
         await user.click(screen.getByRole("button", {name: "Randomize again"}));
 
-        expect(await screen.findByText('Generated "Random Slot" (id: "random-slot-2") from seed 99.')).toBeInTheDocument();
+        expect(await screen.findByText('Generated "Random Slot" from seed 99.')).toBeInTheDocument();
         expect(randomCalls).toEqual([{preset: "default", seed: 20260815}, {preset: "default"}]);
     });
 
@@ -246,10 +265,10 @@ describe("BlueprintEditorPage - New flow", () => {
         });
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
 
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
-        await user.click(await screen.findByRole("button", {name: "Load existing"}));
-        await user.type(screen.getByLabelText("Existing blueprint path"), "/games/a/blueprint.json");
-        await user.click(screen.getByRole("button", {name: "Load existing blueprint"}));
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        await user.click(await screen.findByRole("button", {name: "Open a saved game design"}));
+        await user.type(screen.getByLabelText("Saved game design"), "/games/a/blueprint.json");
+        await user.click(screen.getByRole("button", {name: "Open saved game design"}));
 
         await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
         expect(screen.getByLabelText("Game id")).toHaveValue("loaded-slot");
@@ -291,9 +310,9 @@ describe("BlueprintEditorPage - New flow", () => {
         expect(jsonTextareaValue()).toContain("before-new");
         await user.click(screen.getByRole("radio", {name: "Form"}));
 
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
         await user.click(await screen.findByRole("button", {name: "Discard"}));
-        await user.click(await screen.findByRole("button", {name: "Blank"}));
+        await user.click(await screen.findByRole("button", {name: "Start with a blank game"}));
 
         // Build Preview's own result is this panel's local state -- must not survive the replace.
         expect(screen.queryByText(/Before New/)).not.toBeInTheDocument();
@@ -318,8 +337,8 @@ describe("BlueprintEditorPage - New flow", () => {
         await user.click(screen.getByRole("button", {name: "Validate"}));
         expect(await screen.findByText("Valid — no issues found.")).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
-        await user.click(await screen.findByRole("button", {name: "Blank"}));
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        await user.click(await screen.findByRole("button", {name: "Start with a blank game"}));
 
         expect(screen.queryByText("Valid — no issues found.")).not.toBeInTheDocument();
     });
@@ -340,11 +359,11 @@ describe("BlueprintEditorPage - New flow", () => {
         await user.click(screen.getByRole("button", {name: "Validate"}));
         expect(await screen.findByText("Valid — no issues found.")).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
         await user.click(await screen.findByRole("button", {name: "Generate random"}));
         await user.click(screen.getByRole("button", {name: "Generate"}));
-        expect(await screen.findByText('Generated "Random Slot" (id: "random-slot") from seed 42.')).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Use this blueprint"}));
+        expect(await screen.findByText('Generated "Random Slot" from seed 42.')).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Use this game idea"}));
 
         await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
         expect(screen.queryByText("Valid — no issues found.")).not.toBeInTheDocument();

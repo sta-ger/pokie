@@ -46,6 +46,17 @@ export type ProjectHeaderView =
           origin?: StudioProjectOrigin;
       };
 
+const PROJECT_OPEN_FAILURE_MESSAGE =
+    "We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.";
+
+// Project-context failures can originate while Studio starts directly in a workspace, restores a
+// project-scoped browser-history entry, or reloads the active project. Those are all the same
+// designer-facing recovery moment. Keep the server's response available for support, but never let
+// its implementation-specific wording become the alert a designer sees first.
+export function describeProjectContextFailure(projectRoot: string, detail?: string): ProjectHeaderView {
+    return {status: "error", projectRoot, message: PROJECT_OPEN_FAILURE_MESSAGE, errorDetail: detail};
+}
+
 export function describeProjectHeader(context: ProjectDashboardContext): ProjectHeaderView {
     if (context.status === "empty") {
         return {status: "empty"};
@@ -54,7 +65,8 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
         return {status: "loading", projectRoot: context.projectRoot};
     }
     if (context.status === "error") {
-        return {status: "error", projectRoot: context.projectRoot, message: context.error, errorDetail: context.errorDetail};
+        const detail = [context.error, context.errorDetail].filter((value, index, details) => value !== undefined && details.indexOf(value) === index).join("\n\n");
+        return describeProjectContextFailure(context.projectRoot, detail || undefined);
     }
     if (context.status === "outcome-source") {
         return {
@@ -138,23 +150,23 @@ export const STAKE_ADAPTER_EXCHANGE_CAPABILITY: StudioProjectCapability = "stake
 export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: StudioProjectCapability = "parWorkbook.exchange";
 
 export const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
-    blueprint: "Blueprint",
-    tsPackage: "Package",
-    outcomeLibrary: "Outcome library",
-    stakeAdapter: "Stake Engine export",
-    wasm: "WASM",
-    parWorkbook: "PAR sheet",
+    blueprint: "Game design",
+    tsPackage: "Playable game",
+    outcomeLibrary: "Game data library",
+    stakeAdapter: "Game export",
+    wasm: "Game module",
+    parWorkbook: "PAR spreadsheet",
 };
 
 const CAPABILITY_LABEL: Record<string, string> = {
-    "blueprint.build": "Build from Blueprint source",
-    "runtime.execute": "Run in-process (simulate, replay, play)",
-    "outcomeLibrary.read": "Read pre-generated outcomes",
-    "stakeAdapter.exchange": "Exchange with Stake Engine",
-    "parWorkbook.exchange": "Exchange as a PAR sheet",
-    "wasm.export": "Export to WASM",
-    "outcomeSource.read": "Read canonical outcome-source analysis",
-    "outcomeSource.sample": "Draw/sample/replay real outcomes",
+    "blueprint.build": "Edit and build this game",
+    "runtime.execute": "Play, test, and export this game",
+    "outcomeLibrary.read": "Use saved game outcomes",
+    "stakeAdapter.exchange": "Share this game export",
+    "parWorkbook.exchange": "Share this PAR spreadsheet",
+    "wasm.export": "Export this game module",
+    "outcomeSource.read": "Review game outcome data",
+    "outcomeSource.sample": "Play and replay saved outcomes",
 };
 
 // Capability ids are an open, plain-string vocabulary (see StudioProjectCapability's own doc comment)

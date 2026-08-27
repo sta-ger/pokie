@@ -16,7 +16,22 @@ import {LoadingState} from "../common/LoadingState";
 import {QuickActions} from "../common/QuickActions";
 import {GameModelSections, type GameModelSectionId} from "./GameModelSections";
 
-type GameModelState = {status: "loading"} | {status: "error"; message: string} | {status: "loaded"; projection: GameModelProjection};
+type GameModelFailure = {message: string; detail?: string};
+type GameModelState = {status: "loading"} | {status: "error"; failure: GameModelFailure} | {status: "loaded"; projection: GameModelProjection};
+
+function describeGameModelLoadFailure(detail: string): GameModelFailure {
+    return {
+        message: "We couldn't load this game's model. Refresh to try again. If it continues, reopen the game.",
+        detail,
+    };
+}
+
+function describeGameModelEditLoadFailure(detail: string): GameModelFailure {
+    return {
+        message: "We couldn't load this game's saved design for editing. Try editing again. If it continues, reopen the game.",
+        detail,
+    };
+}
 
 // `viewing` -- the default, and the only state possible for a non-editable project (see `editable`
 // below). `loading` -- Edit was clicked on `section`; the current tracked Blueprint source is being
@@ -74,7 +89,7 @@ export function GameModelTab({
     const [state, setState] = useState<GameModelState>({status: "loading"});
     const [editState, setEditState] = useState<EditState>({status: "viewing"});
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
-    const [editError, setEditError] = useState<string>();
+    const [editError, setEditError] = useState<GameModelFailure>();
     // Undefined keeps the Reels section's own default, reproducible "symbolWeights"/"default" sample
     // (see buildGameModelReels' own SHARED_WEIGHTS_SAMPLE_SEED) -- only ever set by the "New sample"
     // action below, and carried across an ordinary refresh() (a save, the Refresh button) so that action
@@ -99,7 +114,7 @@ export function GameModelTab({
             })
             .catch((error: unknown) => {
                 if (requestId === refreshRequestIdRef.current) {
-                    setState({status: "error", message: errorMessage(error)});
+                    setState({status: "error", failure: describeGameModelLoadFailure(errorMessage(error))});
                 }
             });
     }, [fetchImpl, sharedWeightsSampleSeed]);
@@ -162,7 +177,7 @@ export function GameModelTab({
             .then((result) => {
                 if (result.status === "load-error") {
                     setEditState({status: "viewing"});
-                    setEditError(describePathActionError("This project's Blueprint source", result.error));
+                    setEditError({message: describePathActionError("This game's saved design", result.error), detail: result.error});
                     return;
                 }
                 const revisionBeforeLoad = editor.state.revision;
@@ -172,7 +187,7 @@ export function GameModelTab({
             })
             .catch((error: unknown) => {
                 setEditState({status: "viewing"});
-                setEditError(errorMessage(error));
+                setEditError(describeGameModelEditLoadFailure(errorMessage(error)));
             })
             .finally(() => loadGuard.end());
     };
@@ -194,7 +209,7 @@ export function GameModelTab({
             .then((result) => {
                 if (result.status === "load-error") {
                     setEditState({status: "viewing"});
-                    setEditError(describePathActionError("This project's Blueprint source", result.error));
+                    setEditError({message: describePathActionError("This game's saved design", result.error), detail: result.error});
                     return;
                 }
                 const revisionBeforeLoad = editor.state.revision;
@@ -208,7 +223,7 @@ export function GameModelTab({
             })
             .catch((error: unknown) => {
                 setEditState({status: "viewing"});
-                setEditError(errorMessage(error));
+                setEditError(describeGameModelEditLoadFailure(errorMessage(error)));
             })
             .finally(() => loadGuard.end());
     };
@@ -257,7 +272,7 @@ export function GameModelTab({
                 return saveBlueprint(fetchImpl, projectRoot, blueprintToSave, true).then((saveResult) => {
                     if (saveResult.status !== "ok") {
                         setEditState({status: "editing", section, baselineRevision});
-                        setEditError(describePathActionError("This project's Blueprint source", saveResult.error));
+                        setEditError({message: describePathActionError("This game's saved design", saveResult.error), detail: saveResult.error});
                         return;
                     }
                     setEditState({status: "viewing"});
@@ -276,9 +291,9 @@ export function GameModelTab({
 
     return (
         <div>
-            {editError && <ErrorState message={editError} />}
+            {editError && <ErrorState message={editError.message} detail={editError.detail} />}
             {state.status === "loading" && <LoadingState label="Loading game model…" />}
-            {state.status === "error" && <ErrorState message={`Couldn't load the game model: ${state.message}`} />}
+            {state.status === "error" && <ErrorState message={state.failure.message} detail={state.failure.detail} />}
             {state.status === "loaded" && (
                 <GameModelSections
                     projection={state.projection}

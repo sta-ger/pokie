@@ -24,7 +24,7 @@ describe("Guided Design Game: automatic validation", () => {
 
         expect(screen.getByLabelText("Game id")).toHaveValue("starter-slot");
         expect(screen.getByLabelText("Game name")).toHaveValue("Starter Slot");
-        expect(screen.getByRole("button", {name: "Create Project"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Create game"})).toBeInTheDocument();
 
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
     });
@@ -37,7 +37,7 @@ describe("Guided Design Game: automatic validation", () => {
         expect(screen.queryByRole("list", {name: "Progress"})).not.toBeInTheDocument();
     });
 
-    it("makes Create Project surface automatic validation errors without trying to save", async () => {
+    it("makes Create game surface automatic validation errors without trying to save", async () => {
         const user = userEvent.setup();
         const requests: string[] = [];
         renderRoutedApp({
@@ -59,7 +59,7 @@ describe("Guided Design Game: automatic validation", () => {
             initialEntries: ["/home/design"],
         });
 
-        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        await user.click(screen.getByRole("button", {name: "Create game"}));
 
         await waitFor(() => expect(screen.getByText("Invalid — 1 error(s).")).toBeInTheDocument());
         expect(screen.getByLabelText("Game id")).toHaveAttribute("aria-invalid", "true");

@@ -62,6 +62,13 @@ describe("studio-client apiClient", () => {
             expect(calls).toEqual([{url: "/api/context", init: undefined}]);
             expect(context).toEqual({mode: "home"});
         });
+
+        it("rejects an HTTP failure instead of treating its body as a launch context", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: false, status: 500, body: {error: "launch context unavailable"}}));
+
+            await expect(getContext(fetchImpl)).rejects.toThrow("launch context unavailable");
+            expect(calls).toEqual([{url: "/api/context", init: undefined}]);
+        });
     });
 
     describe("listRecentProjects", () => {
@@ -95,6 +102,12 @@ describe("studio-client apiClient", () => {
 
             expect(calls).toEqual([{url: expect.stringMatching(/^\/api\/home\/projects\/registry\?refresh=\d+$/), init: {cache: "no-store"}}]);
             expect(result).toEqual(entries);
+        });
+
+        it("rejects an HTTP failure instead of treating its body as project entries", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 503, body: {error: "project registry unavailable"}}));
+
+            await expect(listProjectRegistry(fetchImpl)).rejects.toThrow("project registry unavailable");
         });
     });
 
@@ -601,6 +614,12 @@ describe("studio-client apiClient", () => {
 
             const errored = createFakeFetch(() => ({ok: true, status: 200, body: {status: "error", projectRoot: "/a", error: "boom"}}));
             expect(await getProjectContext(errored.fetchImpl)).toEqual({status: "error", projectRoot: "/a", error: "boom"});
+        });
+
+        it("rejects an HTTP failure instead of treating its body as a project dashboard", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 500, body: {error: "project context unavailable"}}));
+
+            await expect(getProjectContext(fetchImpl)).rejects.toThrow("project context unavailable");
         });
     });
 

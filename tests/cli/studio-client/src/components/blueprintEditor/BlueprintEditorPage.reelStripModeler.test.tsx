@@ -69,7 +69,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         expect(screen.getByLabelText("Reel 1 symbol 2")).toHaveValue("K");
         expect(screen.getByLabelText("Reel 1 symbol 3")).toHaveValue("Q");
         expect(screen.getByLabelText("Reel 1 symbol 4")).toHaveValue("J");
-        await waitFor(() => expect(screen.getByRole("button", {name: "Create Project"})).toBeEnabled());
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
     });
 
     it("keeps every literal reel strip when rendered controls switch to Symbol weights and back", async () => {
@@ -92,7 +92,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         expect(screen.getByLabelText("Reel 3 symbol 1")).toHaveValue("K");
         expect(screen.getByLabelText("Reel 4 symbol 1")).toHaveValue("K");
         expect(screen.getByLabelText("Reel 5 symbol 1")).toHaveValue("Q");
-        await waitFor(() => expect(screen.getByRole("button", {name: "Create Project"})).toBeEnabled());
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
     });
 
     it("edits a literal reel's strip as a local draft, and only Apply commits it to the blueprint", async () => {
@@ -417,9 +417,9 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         // "Add symbol to reel 1" already mutated the blueprint itself (reelStripGeneration is a real
         // field), so the New flow's own dirty-confirm gate triggers -- Discard then Blank (see
         // NewBlueprintDialog's own doc comment).
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
         await user.click(await screen.findByRole("button", {name: "Discard"}));
-        await user.click(await screen.findByRole("button", {name: "Blank"}));
+        await user.click(await screen.findByRole("button", {name: "Start with a blank game"}));
         await goToReelStripModeler(user);
 
         // A fresh remount (via the parent's own key={formGeneration}) -- back to Select reel, with no
@@ -995,9 +995,9 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         expect(screen.getByRole("group", {name: "Stop window preview"})).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Continue to Apply"}));
         await user.click(screen.getByRole("button", {name: "Apply"}));
-        expect(screen.getByText(/Use the common Game Model Save to persist the blueprint/)).toBeInTheDocument();
+        expect(screen.getByText(/Use Save game to keep these changes/)).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        await user.click(screen.getByRole("button", {name: "Create game"}));
         await waitFor(() => expect(managedSaveBodies).toHaveLength(1));
         const savedReel = managedSaveBodies[0].blueprint.reelStripGeneration[0];
         expect(savedReel).toMatchObject({type: "generated", length: 6, seed: 7});

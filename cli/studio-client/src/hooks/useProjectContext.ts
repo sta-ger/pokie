@@ -1,8 +1,8 @@
 import {useEffect, useState} from "react";
-import {getProjectContext, openProject} from "../api/apiClient";
+import {getProjectContext, openProject, ProjectOpenError} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
 import {errorMessage} from "../domain/errorMessage";
-import {describeProjectHeader, type ProjectHeaderView} from "../domain/interpret/ProjectDashboard";
+import {describeProjectContextFailure, describeProjectHeader, type ProjectHeaderView} from "../domain/interpret/ProjectDashboard";
 
 // Ports pollProjectDashboard (500ms interval, capped at 40 attempts, ~20s) -- only ever needed when
 // Studio starts directly into Project mode (`pokie .`), since Create/Open both resolve straight to
@@ -11,6 +11,11 @@ import {describeProjectHeader, type ProjectHeaderView} from "../domain/interpret
 // so unmounting (navigating to Home) naturally cancels the poll -- no route-comparison needed.
 const POLL_INTERVAL_MS = 500;
 const POLL_MAX_ATTEMPTS = 40;
+
+function projectContextErrorDetail(error: unknown): string {
+    const message = errorMessage(error);
+    return error instanceof ProjectOpenError && error.detail !== undefined ? `${message}\n\n${error.detail}` : message;
+}
 
 // `requestedProjectRoot` is taken from a project-scoped history route. It must be made current on
 // the server before any dashboard data is read: the server intentionally owns one active project,
@@ -36,7 +41,7 @@ export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderV
                 })
                 .catch((error: unknown) => {
                     if (!cancelled) {
-                        setHeader({status: "error", projectRoot: "", message: errorMessage(error)});
+                        setHeader(describeProjectContextFailure("", errorMessage(error)));
                     }
                 });
         };
@@ -71,13 +76,13 @@ export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderV
                         })
                         .catch((error: unknown) => {
                             if (!cancelled) {
-                                setHeader({status: "error", projectRoot: requestedProjectRoot, message: errorMessage(error)});
+                                setHeader(describeProjectContextFailure(requestedProjectRoot, projectContextErrorDetail(error)));
                             }
                         });
                 })
                 .catch((error: unknown) => {
                     if (!cancelled) {
-                        setHeader({status: "error", projectRoot: requestedProjectRoot, message: errorMessage(error)});
+                        setHeader(describeProjectContextFailure(requestedProjectRoot, errorMessage(error)));
                     }
                 });
         }

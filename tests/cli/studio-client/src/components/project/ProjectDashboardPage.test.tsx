@@ -50,6 +50,10 @@ describe("ProjectDashboardPage", () => {
         await waitFor(() => {
             expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument();
         });
+        expect(screen.getByText("Game format")).toBeInTheDocument();
+        expect(screen.getByText("Game design")).toBeInTheDocument();
+        expect(screen.queryByText("Capabilities")).not.toBeInTheDocument();
+        expect(screen.queryByText("Build from Blueprint source")).not.toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Simulation"}));
         expect(await screen.findByRole("button", {name: "Run Simulation"})).toBeInTheDocument();
@@ -281,8 +285,9 @@ describe("ProjectDashboardPage", () => {
         // Every other mutating apiClient.ts function throws on a non-ok response; closeProject() used to
         // be the one exception (it parsed the body regardless of status), and the page-level handler threw
         // the failure away entirely -- so a failed close was indistinguishable from the button silently
-        // doing nothing. It must now surface an error, stay on the project, and let the user retry.
-        it("shows an error and stays on the project when closing fails, and lets the user retry", async () => {
+        // doing nothing. It must now keep the designer in context with a clear retry path, while keeping
+        // the backend diagnostic collapsed as technical detail.
+        it("keeps the designer in the game with recovery copy when closing fails, and lets them retry", async () => {
             const user = userEvent.setup();
             let shouldFail = true;
             const fetchImpl = (url: string, init?: RequestInit) => {
@@ -311,21 +316,26 @@ describe("ProjectDashboardPage", () => {
 
             await user.click(screen.getByRole("button", {name: "Close project"}));
 
-            expect(await screen.findByText(/Couldn't close the project/)).toBeInTheDocument();
-            expect(screen.getByText(/a spin is still writing to disk/)).toBeInTheDocument();
+            const alert = await screen.findByRole("alert");
+            expect(alert).toHaveTextContent("We couldn't close this game. Try closing again. If it continues, finish any active work and reopen Studio.");
+            expect(screen.getByRole("button", {name: "Try closing again"})).toBeInTheDocument();
+            const details = screen.getByText("Technical details").closest("details");
+            expect(details).not.toBeNull();
+            expect(details).not.toHaveAttribute("open");
+            expect(details).toHaveTextContent("close failed: a spin is still writing to disk");
             expect(screen.getByRole("heading", {name: "Sample Slot"})).toBeInTheDocument();
 
             shouldFail = false;
-            await user.click(screen.getByRole("button", {name: "Close project"}));
+            await user.click(screen.getByRole("button", {name: "Try closing again"}));
 
             await waitFor(() => expect(screen.queryByRole("heading", {name: "Sample Slot"})).not.toBeInTheDocument());
         });
     });
 
     // A "pokie ." boot straight into Project mode: a failed Blueprint materialization (e.g. a broken
-    // "npm install") settles /api/project/context into "error" with both the curated human message and
-    // the raw npm diagnostic as its own separate `errorDetail` field.
-    it("shows a failed Blueprint materialization's human-readable error up front, with the raw npm diagnostic reachable only through a collapsed disclosure", async () => {
+    // "npm install") must offer normal game-opening recovery guidance, with both server diagnostics
+    // available only through the collapsed technical disclosure.
+    it("shows failed project entry recovery guidance up front, with raw materialization diagnostics only in a collapsed disclosure", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/project/context": () => ({
                 ok: true,
@@ -342,7 +352,7 @@ describe("ProjectDashboardPage", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
 
         const alert = await screen.findByRole("alert");
-        expect(alert.textContent).toContain('Installing dependencies for "/games/broken-slot" failed.');
+        expect(alert).toHaveTextContent("We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.");
 
         const summary = screen.getByText("Technical details");
         const details = summary.closest("details");
@@ -350,6 +360,51 @@ describe("ProjectDashboardPage", () => {
         expect(alert.contains(details)).toBe(true);
         // Collapsed by default: the raw diagnostic lives inside the disclosure, never rendered up front.
         expect(details).not.toHaveAttribute("open");
+        expect(details?.textContent).toContain('Installing dependencies for "/games/broken-slot" failed.');
         expect(details?.textContent).toContain("npm ERR! simulated transient local npm failure");
+    });
+
+    it("shows project-context HTTP failures as game-opening recovery with diagnostics collapsed", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => ({ok: false, status: 503, body: {error: "project context service unavailable"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.");
+        const details = screen.getByText("Technical details").closest("details");
+        expect(details).not.toHaveAttribute("open");
+        expect(details).toHaveTextContent("project context service unavailable");
+    });
+
+    it("returns from a failed scoped project link to Your projects without closing a possibly active game", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "empty"}}),
+            "/api/home/projects/open": () => ({
+                ok: false,
+                status: 500,
+                body: {error: "resolver could not load /games/broken", detail: "ENOENT: internal project manifest detail"},
+            }),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+        });
+
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fbroken/overview"]});
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.");
+        const details = screen.getByText("Technical details").closest("details");
+        expect(details).not.toHaveAttribute("open");
+        expect(details).toHaveTextContent("resolver could not load /games/broken");
+        expect(details).toHaveTextContent("ENOENT: internal project manifest detail");
+
+        const returnToProjects = screen.getByRole("button", {name: "Go to Your projects"});
+        returnToProjects.focus();
+        await user.keyboard("{Enter}");
+
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/projects"));
+        expect(await screen.findByRole("heading", {name: "Projects"})).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/projects/close")).toBe(false);
     });
 });

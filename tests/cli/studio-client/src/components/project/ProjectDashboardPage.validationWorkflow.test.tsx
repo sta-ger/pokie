@@ -37,7 +37,7 @@ describe("ProjectDashboardPage - Validation workflow", () => {
 
         await user.click(screen.getByRole("button", {name: "Open Play"}));
 
-        expect(await screen.findByText(/Play prepares this project/)).toBeInTheDocument();
+        expect(await screen.findByText(/Play prepares this game/)).toBeInTheDocument();
     });
 
     it("shows a subject-specific recovery message, never the raw backend text, when the automatic validation check fails", async () => {

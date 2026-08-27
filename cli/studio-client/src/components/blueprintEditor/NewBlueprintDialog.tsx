@@ -5,6 +5,7 @@ import type {StudioBlueprintRandomView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {describePathActionError} from "../../domain/pathActionError";
+import {describeProjectActionError} from "../../domain/projectActionError";
 import type {BlueprintLoadView, BlueprintSaveView} from "../../domain/interpret/BlueprintEditor";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
@@ -137,18 +138,18 @@ export function NewBlueprintDialog({
     };
 
     return (
-        <Modal opened={opened} onClose={onClose} title="Create Blueprint Project" size="md">
+        <Modal opened={opened} onClose={onClose} title="Start a new game" size="md">
             <Stack gap="sm">
                 {step === "confirmDirty" && (
                     <Stack gap="sm">
-                        <Text size="sm">You have unsaved changes to the current blueprint. Save them, discard them, or cancel.</Text>
+                        <Text size="sm">You have unsaved changes to this game design. Save them, discard them, or cancel.</Text>
                         {blueprintPath === undefined && (
                             <PathInput
-                                label="Save current blueprint to path"
+                                label="Save this game design"
                                 kind="file"
-                                browseTitle="Browse for a blueprint JSON file"
+                                browseTitle="Choose a game design file"
                                 browseId="new-blueprint-dialog-save-path"
-                                fileFilters={[{name: "JSON files", extensions: ["json"]}]}
+                                fileFilters={[{name: "Game design files", extensions: ["json"]}]}
                                 filePickerMode="save"
                                 value={saveAsPath}
                                 onChange={(event) => setSaveAsPath(event.currentTarget.value)}
@@ -165,7 +166,7 @@ export function NewBlueprintDialog({
                             />
                         )}
                         {(saveView.status === "error" || saveView.status === "failed") && (
-                            <ErrorState message={describePathActionError("The blueprint file", saveView.message)} />
+                            <ErrorState message={describePathActionError("The saved game design", saveView.message)} />
                         )}
                         <Group justify="flex-end">
                             <Button variant="default" onClick={onClose}>
@@ -187,16 +188,17 @@ export function NewBlueprintDialog({
 
                 {step === "choose" && (
                     <Stack gap="sm">
-                        <Text size="sm">Choose a playable project to start with, or explicitly begin from a blank blueprint.</Text>
-                        <Group>
+                        <Text size="sm">Choose how to begin. Each choice stays editable, and you can save it as a game when you are ready.</Text>
+                        <Stack gap="xs">
                             <Button
                                 onClick={() => {
                                     onChooseRecommended();
                                     onClose();
                                 }}
                             >
-                                Recommended
+                                Use the starter game
                             </Button>
+                            <Text size="xs" c="dimmed">A ready-to-edit slot game with a working layout, symbols, reels, prizes, and bets.</Text>
                             <Button
                                 variant="default"
                                 onClick={() => {
@@ -204,15 +206,18 @@ export function NewBlueprintDialog({
                                     onClose();
                                 }}
                             >
-                                Blank
+                                Start with a blank game
                             </Button>
+                            <Text size="xs" c="dimmed">Build every part yourself, beginning with an empty game design.</Text>
                             <Button variant="default" aria-label="Generate random" onClick={() => setStep("random")}>
-                                Random
+                                Generate a game idea
                             </Button>
+                            <Text size="xs" c="dimmed">Create an editable sample game automatically. You can regenerate it until you like the direction.</Text>
                             <Button variant="default" onClick={() => setStep("load")}>
-                                Load existing
+                                Open a saved game design
                             </Button>
-                        </Group>
+                            <Text size="xs" c="dimmed">Continue from a game design file you saved earlier.</Text>
+                        </Stack>
                     </Stack>
                 )}
 
@@ -228,12 +233,12 @@ export function NewBlueprintDialog({
                                 onChange={(value) => setRandomForm((prev) => ({...prev, seed: value === "" ? "" : String(value)}))}
                             />
                             <SegmentedControl
-                                aria-label="Random blueprint preset"
+                                aria-label="Generated game style"
                                 value={randomForm.preset}
                                 onChange={(value) => setRandomForm((prev) => ({...prev, preset: value as RandomPreset}))}
                                 data={[
-                                    {label: "Default", value: "default"},
-                                    {label: "Variant", value: "variant"},
+                                    {label: "Classic", value: "default"},
+                                    {label: "Variation", value: "variant"},
                                 ]}
                             />
                             <TextInput
@@ -249,17 +254,14 @@ export function NewBlueprintDialog({
                             </Button>
                         </QuickActions>
 
-                        {randomView.status === "error" && <ErrorState message={randomView.message} />}
+                        {randomView.status === "error" && <ErrorState message={describeProjectActionError("Generating this game idea", randomView.message)} />}
                         {randomView.status === "ok" &&
                             (() => {
-                                const {name, id} = blueprintNameAndId(randomView.result.blueprint);
+                                const {name} = blueprintNameAndId(randomView.result.blueprint);
                                 return (
                                     <Stack gap={4}>
                                         <Text size="sm">
-                                            Generated &quot;{name}&quot; (id: &quot;{id}&quot;) from seed {randomView.result.seed}.
-                                        </Text>
-                                        <Text size="xs" c="dimmed">
-                                            Generator {randomView.result.provenance.generatorVersion}, strategy &quot;{randomView.result.provenance.strategy}&quot;.
+                                            Generated &quot;{name}&quot; from seed {randomView.result.seed}.
                                         </Text>
                                     </Stack>
                                 );
@@ -276,7 +278,7 @@ export function NewBlueprintDialog({
                                     </Button>
                                 )}
                                 <Button disabled={randomView.status !== "ok"} onClick={handleUseRandom}>
-                                    Use this blueprint
+                                    Use this game idea
                                 </Button>
                             </Group>
                         </Group>
@@ -286,25 +288,25 @@ export function NewBlueprintDialog({
                 {step === "load" && (
                     <Stack gap="sm">
                         <PathInput
-                            label="Existing blueprint path"
+                            label="Saved game design"
                             kind="file"
-                            browseTitle="Browse for a blueprint JSON file"
+                            browseTitle="Choose a game design file"
                             browseId="new-blueprint-dialog-load-path"
-                            fileFilters={[{name: "JSON files", extensions: ["json"]}]}
+                            fileFilters={[{name: "Game design files", extensions: ["json"]}]}
                             value={loadPath}
                             onChange={(event) => setLoadPath(event.currentTarget.value)}
                             onPathSelected={setLoadPath}
                         />
-                        {loadView.status === "loading" && <LoadingState label="Loading…" />}
+                        {loadView.status === "loading" && <LoadingState label="Opening your saved game design…" />}
                         {(loadView.status === "error" || loadView.status === "load-error") && (
-                            <ErrorState message={describePathActionError("The blueprint file", loadView.message)} />
+                            <ErrorState message={describePathActionError("The saved game design", loadView.message)} />
                         )}
                         <Group justify="space-between">
                             <Button variant="default" onClick={() => setStep("choose")}>
                                 Back
                             </Button>
                             <Button onClick={() => onLoad(loadPath)} loading={loadView.status === "loading"} disabled={loadPath.trim().length === 0}>
-                                Load existing blueprint
+                                Open saved game design
                             </Button>
                         </Group>
                     </Stack>

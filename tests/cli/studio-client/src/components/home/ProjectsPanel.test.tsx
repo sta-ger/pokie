@@ -23,7 +23,7 @@ const AUTOMATIC_VALIDATION_ROUTE = {
 
 async function goToProjects(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await user.click(await screen.findByRole("button", {name: "Projects"}));
-    await screen.findByText("Import Project");
+    await screen.findByText("Add a game you already have");
 }
 
 function LocationProbe() {
@@ -32,6 +32,32 @@ function LocationProbe() {
 }
 
 describe("ProjectsPanel: Import Project", () => {
+    it("shows project-list recovery for an HTTP failure and reloads the list when retried", async () => {
+        const user = userEvent.setup();
+        let attempts = 0;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => {
+                attempts++;
+                return attempts === 1
+                    ? {ok: false, status: 503, body: {error: "registry service unavailable"}}
+                    : {
+                        ok: true,
+                        status: 200,
+                        body: [{location: "/games/recovered", name: "Recovered game", type: "tsPackage", capabilities: [], origin: "managed", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"}],
+                    };
+            },
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        expect(await screen.findByRole("alert")).toHaveTextContent("Your projects list couldn't be completed. Try again. If it continues, reopen the project and retry.");
+        expect(screen.getByRole("button", {name: "Try loading projects again"})).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Try loading projects again"}));
+
+        expect(await screen.findByText("Recovered game")).toBeInTheDocument();
+        expect(calls.filter((call) => call.url.startsWith("/api/home/projects/registry?"))).toHaveLength(2);
+    });
+
     it("detects a recognized package, prefills the suggested name, and Register adds it to the list", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
@@ -61,14 +87,14 @@ describe("ProjectsPanel: Import Project", () => {
         });
         renderWithProviders(<ProjectsPanel />, {fetchImpl});
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/a");
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.type(screen.getByLabelText("Game location", {exact: false}), "/games/a");
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
-        expect(await screen.findByText(/Detected a Package at/)).toBeInTheDocument();
+        expect(await screen.findByText(/Found a Playable game at/)).toBeInTheDocument();
         const nameInput = screen.getByLabelText("Name") as HTMLInputElement;
         expect(nameInput.value).toBe("a");
 
-        await user.click(screen.getByRole("button", {name: "Register"}));
+        await user.click(screen.getByRole("button", {name: "Add to projects"}));
 
         await waitFor(() =>
             expect(calls).toContainEqual(
@@ -78,7 +104,7 @@ describe("ProjectsPanel: Import Project", () => {
                 }),
             ),
         );
-        expect(await screen.findByText('Registered "a" -- it now shows up in Your projects above.')).toBeInTheDocument();
+        expect(await screen.findByText('Added "a" to Your projects. Select Open to continue working on it.')).toBeInTheDocument();
         expect(await screen.findByText("a")).toBeInTheDocument();
     });
 
@@ -97,13 +123,13 @@ describe("ProjectsPanel: Import Project", () => {
         };
         renderWithProviders(<ProjectsPanel />, {fetchImpl});
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/a");
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.type(screen.getByLabelText("Game location", {exact: false}), "/games/a");
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
         // The empty project registry also owns a polite status region. Assert against this
         // import flow's unique, visible copy rather than whichever status mounted first.
-        expect(await screen.findByText("Detecting project…")).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Detect"})).toBeDisabled();
+        expect(await screen.findByText("Checking this game…")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Check game"})).toBeDisabled();
     });
 
     it("settles an unresponsive preview into an actionable error", async () => {
@@ -129,8 +155,8 @@ describe("ProjectsPanel: Import Project", () => {
                 await Promise.resolve();
             });
             await act(async () => {
-                fireEvent.change(screen.getByLabelText("Location", {exact: false}), {target: {value: "/games/a"}});
-                fireEvent.click(screen.getByRole("button", {name: "Detect"}));
+                fireEvent.change(screen.getByLabelText("Game location", {exact: false}), {target: {value: "/games/a"}});
+                fireEvent.click(screen.getByRole("button", {name: "Check game"}));
                 await Promise.resolve();
             });
 
@@ -139,8 +165,8 @@ describe("ProjectsPanel: Import Project", () => {
                 await Promise.resolve();
             });
 
-            expect(screen.getByRole("alert")).toHaveTextContent("Project detection timed out. Confirm Studio is still reachable, then try again.");
-            expect(screen.getByRole("button", {name: "Detect"})).not.toBeDisabled();
+            expect(screen.getByRole("alert")).toHaveTextContent("That game location could not be completed. Try again. If it continues, choose the location again and retry.");
+            expect(screen.getByRole("button", {name: "Check game"})).not.toBeDisabled();
         } finally {
             jest.useRealTimers();
         }
@@ -217,13 +243,13 @@ describe("ProjectsPanel: Import Project", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await goToProjects(user);
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), location);
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.type(screen.getByLabelText("Game location", {exact: false}), location);
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
-        expect(await screen.findByText(/Detected a PAR sheet at/)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Register"})).toBeInTheDocument();
+        expect(await screen.findByText(/Found a PAR spreadsheet at/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Add to projects"})).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "Register"}));
+        await user.click(screen.getByRole("button", {name: "Add to projects"}));
 
         await waitFor(() =>
             expect(calls).toContainEqual(
@@ -246,7 +272,7 @@ describe("ProjectsPanel: Import Project", () => {
                 }),
             ),
         );
-        expect(await screen.findByRole("heading", {name: "PAR sheet"})).toBeInTheDocument();
+        expect(await screen.findByRole("heading", {name: "PAR spreadsheet"})).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
@@ -286,9 +312,9 @@ describe("ProjectsPanel: Import Project", () => {
             fileFilters: [{name: "PAR sheets", extensions: ["xlsx"]}],
         });
 
-        await user.click(screen.getByRole("button", {name: "Detect"}));
-        expect(await screen.findByText(/Detected a PAR sheet at/)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Open in Design Game"}));
+        await user.click(screen.getByRole("button", {name: "Check game"}));
+        expect(await screen.findByText(/Found a PAR spreadsheet at/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Open in Start a game"}));
 
         await waitFor(() =>
             expect(JSON.parse(screen.getByTestId("location").textContent ?? "{}")).toEqual({
@@ -313,7 +339,7 @@ describe("ProjectsPanel: Import Project", () => {
         });
         renderWithProviders(<ProjectsPanel />, {fetchImpl});
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), selectedLocation);
+        await user.type(screen.getByLabelText("Game location", {exact: false}), selectedLocation);
         await user.click(screen.getByRole("button", {name: "Browse PAR sheet…"}));
 
         await waitFor(() => expect(calls.some((call) => call.url === "/api/home/fs/native-browse")).toBe(true));
@@ -432,10 +458,10 @@ describe("ProjectsPanel: Import Project", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await goToProjects(user);
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/tmp/nothing");
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.type(screen.getByLabelText("Game location", {exact: false}), "/tmp/nothing");
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
-        expect(await screen.findByText('"/tmp/nothing" doesn\'t look like any POKIE project type POKIE recognizes.')).toBeInTheDocument();
+        expect(await screen.findByText(/Studio couldn't identify "\/tmp\/nothing" as a game it can open/)).toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/home/projects/registry/register")).toBe(false);
     });
 
@@ -474,18 +500,18 @@ describe("ProjectsPanel: Import Project", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await goToProjects(user);
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/blueprint.json");
+        await user.type(screen.getByLabelText("Game location", {exact: false}), "/games/blueprint.json");
 
         expect(await screen.findByText("Resolves to: /games/blueprint.json")).toBeInTheDocument();
         expect(screen.queryByText(/is a file, not a folder/)).not.toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=%2Fgames%2Fblueprint.json&kind=any")).toBe(true);
 
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
-        expect(await screen.findByText(/Detected a Blueprint at/)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Register"}));
+        expect(await screen.findByText(/Found a Game design at/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Add to projects"}));
 
-        expect(await screen.findByText('Registered "blueprint" -- it now shows up in Your projects above.')).toBeInTheDocument();
+        expect(await screen.findByText('Added "blueprint" to Your projects. Select Open to continue working on it.')).toBeInTheDocument();
     });
 
     it("registers an imported Blueprint file and Open lands it on its Studio project workspace, same as a package", async () => {
@@ -537,12 +563,12 @@ describe("ProjectsPanel: Import Project", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await goToProjects(user);
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/blueprint.json");
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.type(screen.getByLabelText("Game location", {exact: false}), "/games/blueprint.json");
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
-        expect(await screen.findByText(/Detected a Blueprint at/)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Register"}));
-        expect(await screen.findByText('Registered "blueprint" -- it now shows up in Your projects above.')).toBeInTheDocument();
+        expect(await screen.findByText(/Found a Game design at/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Add to projects"}));
+        expect(await screen.findByText('Added "blueprint" to Your projects. Select Open to continue working on it.')).toBeInTheDocument();
 
         // The freshly registered Blueprint row gets the same Open action a Package row does -- not just
         // Remove (StudioHomeService.openProject materializes a "blueprint" location into a real runtime
@@ -597,18 +623,18 @@ describe("ProjectsPanel: Import Project", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await goToProjects(user);
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/a");
+        await user.type(screen.getByLabelText("Game location", {exact: false}), "/games/a");
 
         expect(await screen.findByText("Resolves to: /games/a")).toBeInTheDocument();
         expect(screen.queryByText(/is a directory, not a file/)).not.toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=%2Fgames%2Fa&kind=any")).toBe(true);
 
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
-        expect(await screen.findByText(/Detected a Package at/)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Register"}));
+        expect(await screen.findByText(/Found a Playable game at/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Add to projects"}));
 
-        expect(await screen.findByText('Registered "a" -- it now shows up in Your projects above.')).toBeInTheDocument();
+        expect(await screen.findByText('Added "a" to Your projects. Select Open to continue working on it.')).toBeInTheDocument();
     });
 
     it("removes a registered entry after confirming, without deleting anything on disk", async () => {
@@ -651,7 +677,7 @@ describe("ProjectsPanel: Import Project", () => {
                 }),
             ),
         );
-        expect(await screen.findByText("No projects yet -- import or design one below.")).toBeInTheDocument();
+        expect(await screen.findByText("No games yet. Start a game or add one you already have.")).toBeInTheDocument();
     });
 
     it("repairs a missing managed entry from the rendered Relocate confirmation without leaving the old row behind", async () => {
@@ -719,6 +745,58 @@ describe("ProjectsPanel: Import Project", () => {
         expect(screen.getAllByText("My managed game")).toHaveLength(1);
     });
 
+    it("keeps a missing game available when its new location is not recognized", async () => {
+        const user = userEvent.setup();
+        const oldLocation = "/games/missing/slot.json";
+        const newLocation = "/moved/not-a-game";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [{
+                    location: oldLocation,
+                    name: "Missing game",
+                    type: "blueprint",
+                    capabilities: ["blueprint.build"],
+                    origin: "external",
+                    lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                    status: "missing",
+                }],
+            }),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: newLocation, displayPath: newLocation, entries: [], isDirectory: false},
+            }),
+            "/api/home/projects/registry/relocate": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "unrecognized", path: newLocation},
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await goToProjects(user);
+
+        await screen.findByText("Missing game (missing)");
+        await user.click(screen.getByRole("button", {name: "Relocate"}));
+        await user.type(screen.getByLabelText("New location"), newLocation);
+        const relocateButtons = screen.getAllByRole("button", {name: "Relocate"});
+        await user.click(relocateButtons[relocateButtons.length - 1]);
+
+        await waitFor(() =>
+            expect(calls).toContainEqual(
+                expect.objectContaining({
+                    url: "/api/home/projects/registry/relocate",
+                    init: expect.objectContaining({body: JSON.stringify({location: oldLocation, newLocation})}),
+                }),
+            ),
+        );
+        expect(await screen.findByText(`"${newLocation}" isn't a recognized game location. Choose another location or retry.`)).toBeInTheDocument();
+        expect(screen.getByText("Missing game (missing)")).toBeInTheDocument();
+        expect(screen.queryByText(/POKIE project/i)).not.toBeInTheDocument();
+    });
+
     it("groups a large registry, searches it, and pages the bounded results", async () => {
         const user = userEvent.setup();
         const entries = Array.from({length: 12}, (_, index) => ({
@@ -750,7 +828,7 @@ describe("ProjectsPanel: Import Project", () => {
         expect(screen.queryByText("Project 12")).not.toBeInTheDocument();
     });
 
-    it("keeps each project identity, availability, metadata, and actions labelled for the narrow card layout", async () => {
+    it("uses clear user-facing wording for how each project was added", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({
                 ok: true,
@@ -768,7 +846,14 @@ describe("ProjectsPanel: Import Project", () => {
         expect(availableRow).toHaveClass("project-registry-entry");
         expect(within(availableRow as HTMLElement).getByText("Available")).toBeInTheDocument();
         expect(within(missingRow as HTMLElement).getByText("Needs attention")).toBeInTheDocument();
+        expect(within(availableRow as HTMLElement).getByText("Created in Studio")).toBeInTheDocument();
+        expect(within(missingRow as HTMLElement).getByText("Added from your computer")).toBeInTheDocument();
+        expect(screen.getByRole("columnheader", {name: "Added to Studio"})).toBeInTheDocument();
+        expect(screen.queryByText("Origin")).not.toBeInTheDocument();
+        expect(screen.queryByText("Managed")).not.toBeInTheDocument();
+        expect(screen.queryByText("Registered")).not.toBeInTheDocument();
         expect(within(availableRow as HTMLElement).getByText("Available game").closest("td")).toHaveAttribute("data-label", "Project");
+        expect(within(availableRow as HTMLElement).getByText("Created in Studio").closest("td")).toHaveAttribute("data-label", "Added to Studio");
         expect(within(availableRow as HTMLElement).getByRole("button", {name: "Open"}).closest("td")).toHaveAttribute("data-label", "Actions");
         expect(within(missingRow as HTMLElement).getByRole("checkbox", {name: "Select missing project Missing game"}).closest("td")).toHaveAttribute("data-label", "Select");
     });
@@ -875,7 +960,7 @@ describe("ProjectsPanel: Import Project", () => {
                 }),
             ),
         );
-        expect(await screen.findByRole("heading", {name: "PAR sheet"})).toBeInTheDocument();
+        expect(await screen.findByRole("heading", {name: "PAR spreadsheet"})).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;

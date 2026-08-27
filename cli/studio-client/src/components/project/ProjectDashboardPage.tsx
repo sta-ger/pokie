@@ -1,4 +1,4 @@
-import {Anchor, Button, Text, Title} from "@mantine/core";
+import {Button, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
@@ -159,6 +159,20 @@ function isProjectTab(value: string | undefined): value is ProjectTab {
     return ALL_PROJECT_TABS.some((tab) => tab.value === value);
 }
 
+// A project-opening error can happen before this route has safely established which project is
+// active. Returning to the project list must therefore only navigate: unlike Close project, it must
+// never mutate the server's current project or discard in-progress work that may still be active.
+function ProjectOpeningErrorState({message, detail, onReturnToProjects}: {message: string; detail?: string; onReturnToProjects: () => void}) {
+    return (
+        <div>
+            <ErrorState message={message} detail={detail} />
+            <Button variant="default" mt="sm" onClick={onReturnToProjects}>
+                Go to Your projects
+            </Button>
+        </div>
+    );
+}
+
 // A route with a project root must remount the dashboard when browser history changes that root.
 // ProjectDashboardPage owns several long-lived runtime hooks, and retaining an A instance while the
 // server has already switched to B would leave A's session/run identifiers actionable against B.
@@ -193,7 +207,7 @@ export function LegacyProjectDashboardRoute() {
     }, [activeTab, navigate, projectRoot]);
 
     if (header.status === "error" && projectRoot === "") {
-        return <ErrorState message={header.message} detail={header.errorDetail} />;
+        return <ProjectOpeningErrorState message={header.message} detail={header.errorDetail} onReturnToProjects={() => navigate("/home/projects")} />;
     }
 
     return <LoadingState label="Resolving project…" />;
@@ -777,28 +791,28 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [closeError, setCloseError] = useState<string>();
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
     const closeGuard = useDoubleSubmitGuard();
+    const closeProjectAndReturnHome = (): void => {
+        if (!closeGuard.begin()) {
+            return;
+        }
+        setCloseError(undefined);
+        closeProject(fetchImpl)
+            .then(() => {
+                navigate("/home/design");
+            })
+            .catch((error: unknown) => setCloseError(errorMessage(error)))
+            .finally(() => closeGuard.end());
+    };
     const handleClose = (): void => {
-        const doClose = (): void => {
-            if (!closeGuard.begin()) {
-                return;
-            }
-            setCloseError(undefined);
-            closeProject(fetchImpl)
-                .then(() => {
-                    navigate("/home/design");
-                })
-                .catch((error: unknown) => setCloseError(errorMessage(error)))
-                .finally(() => closeGuard.end());
-        };
         if (!hasActiveOperation && !gameModelDirty) {
-            doClose();
+            closeProjectAndReturnHome();
             return;
         }
         const reasons = [
             hasActiveOperation ? "an active simulation, replay, or deployment" : undefined,
             gameModelDirty ? "unsaved Game Model changes" : undefined,
         ].filter((reason): reason is string => reason !== undefined);
-        confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, doClose);
+        confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, closeProjectAndReturnHome);
     };
 
     function copyProjectPath(): void {
@@ -815,9 +829,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     if (header.status === "empty") {
         return (
             <AppShellLayout navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}>
-                <Text>
-                    No active project. <Anchor href="#/home/design">Go to Home</Anchor>.
-                </Text>
+                <div>
+                    <Text>No game is open yet. Choose a game you already started, or create a new one.</Text>
+                    <Button component="a" href="#/home/design" mt="sm">Choose or create a game</Button>
+                </div>
             </AppShellLayout>
         );
     }
@@ -852,19 +867,22 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 </Button>
                 {closeError && (
                     <div style={{marginTop: "0.5rem"}}>
-                        <ErrorState message={`Couldn't close the project: ${closeError}`} />
+                        <ErrorState message="We couldn't close this game. Try closing again. If it continues, finish any active work and reopen Studio." detail={closeError} />
+                        <Button variant="default" size="xs" mt="xs" onClick={handleClose} loading={closeGuard.isBlocked()}>
+                            Try closing again
+                        </Button>
                     </div>
                 )}
             </div>
 
             {header.status === "loading" && (
                 <div style={{marginTop: "1rem"}}>
-                    <LoadingState label="Loading project…" />
+                    <LoadingState label="Opening your game…" />
                 </div>
             )}
             {header.status === "error" && (
                 <div style={{marginTop: "1rem"}}>
-                    <ErrorState message={header.message} detail={header.errorDetail} />
+                    <ProjectOpeningErrorState message={header.message} detail={header.errorDetail} onReturnToProjects={() => navigate("/home/projects")} />
                 </div>
             )}
             {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact") && (

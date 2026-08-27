@@ -108,7 +108,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
             {fetchImpl},
         );
 
-        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        await user.click(screen.getByRole("button", {name: "Create game"}));
 
         await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(1));
         expect(calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(1);
@@ -153,7 +153,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
             {fetchImpl},
         );
 
-        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        await user.click(screen.getByRole("button", {name: "Create game"}));
 
         await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1));
         expect(JSON.parse(calls.find((call) => call.url === "/api/home/projects/open")?.init?.body ?? "{}")).toEqual({projectRoot: savedPath});
@@ -213,7 +213,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
             {fetchImpl},
         );
 
-        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        await user.click(screen.getByRole("button", {name: "Create game"}));
 
         await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1));
         expect(JSON.parse(calls.find((call) => call.url === "/api/home/projects/open")?.init?.body ?? "{}")).toEqual({projectRoot: savedPath});
@@ -251,7 +251,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         act(() => {
             fireEvent.change(gameNameInput, {target: {value: ""}});
             fireEvent.blur(gameNameInput);
-            fireEvent.click(screen.getByRole("button", {name: "Create Project"}));
+            fireEvent.click(screen.getByRole("button", {name: "Create game"}));
         });
 
         await waitFor(() => expect(validationBodies).toHaveLength(2));
@@ -291,7 +291,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
 
         await waitFor(() => expect(validationRequests).toBe(1), {timeout: 1500});
-        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        await user.click(screen.getByRole("button", {name: "Create game"}));
         const gameNameInput = screen.getByLabelText("Game name");
         // This regression covers the revision boundary, not per-keystroke behavior. A single native
         // change event models the completed manual edit while avoiding eleven full editor rerenders
@@ -308,7 +308,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         });
         expect(managedSaveBodies).toHaveLength(0);
 
-        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        await user.click(screen.getByRole("button", {name: "Create game"}));
 
         await waitFor(() => expect(managedSaveBodies).toHaveLength(1));
         expect(validationBodies.length).toBeGreaterThanOrEqual(2);
@@ -347,13 +347,13 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         });
 
         renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
-        const dialogHeading = await screen.findByRole("heading", {name: "Create Blueprint Project"});
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        const dialogHeading = await screen.findByRole("heading", {name: "Start a new game"});
         expect(dialogHeading.tagName).toBe("H2");
         expect(dialogHeading.querySelector("h1, h2, h3, h4, h5, h6")).toBeNull();
         await user.click(await screen.findByRole("button", {name: "Generate random"}));
         await user.click(screen.getByRole("button", {name: "Generate"}));
-        await user.click(await screen.findByRole("button", {name: "Use this blueprint"}));
+        await user.click(await screen.findByRole("button", {name: "Use this game idea"}));
 
         await waitFor(() => {
             const randomValidation = calls.find(

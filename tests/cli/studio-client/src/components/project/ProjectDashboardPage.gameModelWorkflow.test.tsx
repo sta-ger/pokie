@@ -173,7 +173,7 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         expect(screen.getByText("Bet range: 1 – 2")).toBeInTheDocument();
     });
 
-    it("shows each section's own truthful 'Not available' reason, never inventing data, when the project has no tracked game model", async () => {
+    it("gives recovery guidance for unavailable sections and keeps projection reasons collapsed", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
@@ -187,9 +187,38 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToGameModelTab(user);
 
-        expect(await screen.findByText("Not available — This project's package could not be inspected.")).toBeInTheDocument();
-        expect(screen.getAllByText("Not available — no tracked source").length).toBeGreaterThan(0);
+        expect((await screen.findAllByText("This part of the Game Model isn't available yet. Check the game design, then try viewing the Game Model again.")).length).toBeGreaterThan(0);
+        const details = screen.getAllByText(/This project's package could not be inspected\.|no tracked source/).map((reason) => reason.closest("details"));
+        expect(details).not.toHaveLength(0);
+        expect(details.every((detail) => detail !== null && !detail.hasAttribute("open"))).toBe(true);
         expect(screen.queryByText("Id: a")).not.toBeInTheDocument();
+    });
+
+    it("gives recovery guidance for an unresolved reel and keeps its reason in collapsed technical details", async () => {
+        const user = userEvent.setup();
+        const projection = fullProjection();
+        if (projection.reels.status === "available") {
+            projection.reels = {
+                ...projection.reels,
+                data: {
+                    ...projection.reels.data,
+                    reels: [{reelIndex: 0, source: "generated", reason: "generator could not satisfy internal constraints", generationDiagnostics: []}],
+                },
+            };
+        }
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: projection}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+        await user.click(screen.getByRole("tab", {name: "Full strips"}));
+
+        expect((await screen.findAllByText("This reel couldn't be generated. Check its generation settings, then try viewing the Game Model again.")).length).toBeGreaterThan(0);
+        const details = screen.getAllByText("generator could not satisfy internal constraints").map((reason) => reason.closest("details"));
+        expect(details).not.toHaveLength(0);
+        expect(details.every((detail) => detail !== null && !detail.hasAttribute("open"))).toBe(true);
     });
 
     it("shows a recovery message, never a raw stack trace, when the fetch itself fails", async () => {
@@ -202,7 +231,32 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToGameModelTab(user);
 
-        expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load the game model");
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("We couldn't load this game's model. Refresh to try again. If it continues, reopen the game.");
+        const details = screen.getByText("Technical details").closest("details");
+        expect(details).not.toHaveAttribute("open");
+        expect(details).toHaveTextContent("boom");
+    });
+
+    it("translates an edit-load failure and keeps its diagnostic in collapsed technical details", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: false, status: 500, body: {error: "raw blueprint loader failure"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        const symbols = sectionFieldset("Symbols");
+        await user.click(within(symbols).getByRole("button", {name: "Edit"}));
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("We couldn't load this game's saved design for editing. Try editing again. If it continues, reopen the game.");
+        const details = screen.getByText("Technical details").closest("details");
+        expect(details).not.toHaveAttribute("open");
+        expect(details).toHaveTextContent("raw blueprint loader failure");
     });
 });
 
@@ -575,5 +629,40 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         await user.click(screen.getByRole("button", {name: "Leave"}));
 
         expect(await screen.findByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+    });
+
+    it("rechecks unsaved Game Model changes before retrying a failed project close", async () => {
+        const user = userEvent.setup();
+        let closeCalls = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
+            "/api/projects/close": () => {
+                closeCalls += 1;
+                return closeCalls === 1
+                    ? {ok: false, status: 500, body: {error: "close failure detail"}}
+                    : {ok: true, status: 200, body: {context: {status: "empty"}}};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Close project"}));
+        await screen.findByRole("button", {name: "Try closing again"});
+
+        await user.click(screen.getByRole("button", {name: "Game Model"}));
+        const symbols = sectionFieldset("Symbols");
+        await user.click(within(symbols).getByRole("button", {name: "Edit"}));
+        await within(symbols).findByLabelText("New symbol id");
+        await user.type(within(symbols).getByLabelText("New symbol id"), "B");
+        await user.click(within(symbols).getByRole("button", {name: "Add symbol"}));
+
+        await user.click(screen.getByRole("button", {name: "Try closing again"}));
+        expect(await screen.findByText("This project has unsaved Game Model changes. Close the project anyway?")).toBeInTheDocument();
+        expect(closeCalls).toBe(1);
+
+        await user.click(screen.getByRole("button", {name: "Confirm"}));
+        await waitFor(() => expect(closeCalls).toBe(2));
     });
 });

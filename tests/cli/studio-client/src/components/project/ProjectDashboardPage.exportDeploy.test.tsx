@@ -98,7 +98,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         };
 
         renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
-        await screen.findByRole("heading", {name: "PAR sheet"});
+        await screen.findByRole("heading", {name: "PAR spreadsheet"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
@@ -981,7 +981,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             };
 
             renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await screen.findByRole("heading", {name: "PAR sheet"});
+            await screen.findByRole("heading", {name: "PAR spreadsheet"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
             const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
