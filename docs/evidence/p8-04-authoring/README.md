@@ -1,47 +1,24 @@
 # P8-04 independent fresh-profile authoring rerun
 
 Product candidate: `cce79716790ae3cfc8d6f5c095fbc08426386e56`
-Evidence-only starting descendant: `83c97a421683ac0ab1223e15b49fc63f7fdc6377`
-Date: 2026-08-27
+Evidence descendant: `1d39d9eefe54be84c55adf483aac40ed7b6606de` (the candidate source tree differs only at this evidence path).
 
-The candidate source was unchanged between those revisions except for this
-evidence location. Four new, fresh launches used the candidate checkout command
-`node ./dist/cli/pokie.js --no-open`, each with a newly-created Studio HOME and
-Chromium profile. The retained candidate build was therefore the one exercised;
-no `node_modules/.bin/pokie` executable was used.
+## Scope and provenance
 
-## Rendered outcomes
+Four fresh, isolated Studio/Chromium profile launches used exactly `node ./dist/cli/pokie.js --no-open` from this checkout. No `node_modules/.bin/pokie` executable was launched. Each isolated launch reached the public **Design Your Game** journey; the final launch used the candidate build, fresh HOME, fresh Chromium user-data directory, inherited controller display, and active-window verification.
 
-- Required/optional metadata guidance, **Choose a different start**, and **Use
-  the starter game** rendered in every run. Latest timing: Studio listening
-  1379 ms, Chromium ready 480 ms, guided editor 307 ms.
-- After repairing pointer focus with real X11 keyboard traversal, `Game id` was
-  reached in nine visible Tab steps. Clearing it rendered the field-local,
-  actionable error `"manifest.id" must be a non-empty string.` and `Invalid — 1
-  error(s).`; after entering a new ID and name, Studio rendered `Valid — no
-  issues found.` in 667 ms.
-- No rendered Studio error, console warning/error, or material network failure
-  appeared. Each run saw only two `GET /favicon.ico` 404 responses.
+## Rendered results
 
-## Bounded recovery result
+- Public guidance rendered: required `Game id`, `Game name`, and `Version`, with optional Description/Author; **Choose a different start** led to **Use the starter game**.
+- After the visible `Game id` was cleared, Studio rendered the local actionable error `"manifest.id" must be a non-empty string.`; entering an ID and name rendered a valid design in 648--671 ms.
+- The Layout tab rendered its destructive-change guidance. Reducing Reels from 5 to 4 showed `Reduce reels from 5 to 4?` and explicitly warned that custom paylines and reel definitions beyond reel 4 would be removed. **Cancel** restored the visible count to 5 and preserved five `Payline 1` cells. The second reduction's **Confirm** produced four visible reels and four cells, then field-specific, actionable validation reported four repairs.
+- All four `A`, `K`, `Q`, and `J` `x5` payout row actions then disappeared immediately after their own visible clicks. The final rendered state was `Valid, with warnings — 1 warning(s).`; its warning was the actionable K-versus-Q reel-strip weighting/RTP warning, not an authoring error. Thus the former 120-second wait for the stricter `Valid — no issues found.` phrase was a harness readiness mismatch, not a product failure.
 
-The first two launches reached the starter editor but pointer focus did not
-arrive at `Game id`; the third proved the repaired Tab route and then exposed a
-harness omission (selected text was not deleted for an empty replacement). The
-fourth repaired that omission and achieved field-specific validation and valid
-correction. It then stopped before the destructive-layout step because the
-harness looked up the rendered `Layout` tab by exact text even though Studio
-appends a status badge to its accessible name. The harness is repaired in place
-to use semantic-prefix tab/action lookup, but the four-launch limit was then
-exhausted. This is selector/driver inconclusive rather than a product defect;
-the reel-reduction, save/reopen, and workspace-continuation portions were not
-reached.
+The final launch timings were: Studio listening 1379 ms, Chromium ready 479 ms, guided editor 298 ms, local Game-id validation 665 ms, corrected initial design 670 ms, destructive confirmation 62/28 ms, cancellation 266 ms, and confirmed post-reduction validation 700 ms. No rendered product error or console warning/error was observed. The only network diagnostics were two `GET /favicon.ico` 404 responses.
 
-No screenshot is retained because no destructive-confirmation or saved-project
-outcome was reached. No profile, project tree, browser automation, or raw log
-is retained. The discarded bounded result JSON checksums, in launch order, are:
+## Boundary and bounded diagnostics
 
-- `ed97d9eeefcf0da2b3414ea107585bfb1f96f4d246570b83bb7e6a95ef43b4ea`
-- `cc5fa2d3c7210d853e006f66860402bd88b54f6a6be4f5d9ebe9a3a378d70e78`
-- `622b75535eb6b7ea2a18b3d650b7234562c80dfbca771ebd28788a30bcf0f6c1`
-- `ddbf8c8b2aee2bafafba96b2b8ae8fd79327cfce4dbd2097b10fa37e601ba4eb`
+The four-launch budget expired after the valid-with-warning state, before **Create game**, **Close project**, **Projects/Open**, and workspace continuation. Those outcomes were therefore not reached and are not represented as product failures. No profiles, project trees, automation source, raw logs, or generated artifacts are retained. Discarded final-launch bounded proof checksums:
+
+- rendered destructive-confirmation PNG: `c81fd2a4ad317792435b95f73586a5ea7fab3cf81fe44400a6deba08d4ccfef8`
+- rendered result JSON (events, console/network diagnostics, final visible text): `d31885b2e8e1dabbccc9643043f32fab647633a77090e242dfd21ddbc125f551`
