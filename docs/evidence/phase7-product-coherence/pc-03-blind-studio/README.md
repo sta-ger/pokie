@@ -1,51 +1,52 @@
-# PC-03 — blind Studio rerun ledger
+# PC-03 — blind Studio recovery ledger
 
 Candidate: `a2083eb4d433fd52e42ad32ae1725bdd070d08c1`.
 
-## Method and bounded outcome
+## Method
 
 On 2026-08-27, a newly isolated Studio home, registry, and Chromium profile
-started this checkout with exactly:
+launched this checkout with exactly:
 
 ```sh
 node ./dist/cli/pokie.js --no-open
 ```
 
-The public listener rendered at `http://127.0.0.1:3200`. The exploration used
-only rendered labels and browser mouse/keyboard events; no project path,
-application state, private endpoint, source-guided route, or fabricated
-artifact was used. Temporary profiles and generated data were removed. No
-screenshots are retained because the visible text below is the smallest useful
-proof.
+The browser opened the public listener at `http://127.0.0.1:3200` in a
+mapped, active inherited-Xvfb window. The exploration used rendered Studio
+labels, browser pointer/keyboard input, and the public README Studio tour; it
+did not use private API calls, routes, application state, source-guided
+navigation, or fabricated project files. All temporary profiles and generated
+projects were removed after the run. No visual artifact is retained: the
+bounded observations below are the smallest useful proof.
 
-The browser renderer exposed the following actual public states before the
-host-side visible-window driver became unavailable:
+## Rendered observations
 
-| Visible action | Rendered outcome |
-| --- | --- |
-| Fresh **Design Your Game** → **Choose a different start** | The menu offered **Open a saved game design** and described continuing from a saved design file. |
-| **Open a saved game design** | The design screen expanded a public **Saved game design** path field, **Browse…**, **Back**, and **Open saved game design**. |
-| Enter `/definitely-not-a-pokie-project` and press **Open saved game design** | The rendered actionable failure was `"/definitely-not-a-pokie-project" doesn't exist. Check the path, or use Browse to pick an existing location. The saved game design could not be found. Check the path and try again.` The original Design screen and **Create game** remained rendered. |
-| Initial automatic validation | The status read `Studio is checking this game design automatically. Create game will show any fixes that are needed.` It then rendered `Valid — no issues found.` |
+Fresh Design Your Game → Choose a different start offered Use the starter
+game, Start with a blank game, Generate a game idea, and Open a saved game
+design. That last action rendered a Saved game design field, Browse…, Back,
+and Open saved game design.
 
-The test did not retain or make a second **Create game** request. The first
-rendered click after the invalid saved-design error did not transition to a
-pending, success, or rendered product-error state; the still-rendered
-**Back** control showed that the failed open subflow remained active. This is
-not evidence of a product defect and was not duplicated while the interaction
-was unresolved.
+Entering a nonexistent location and choosing Open saved game design produced
+a local actionable failure: `/definitely-not-a-pokie-project` does not exist,
+the path can be corrected or Browse used, and the saved design could not be
+found. Back returned the visible start choices; the failed-open panel was no
+longer pending or stale.
 
-## Rerun boundary
+Use the starter game showed `Replaced the current game design.` followed by
+automatic validation. The rendered checking state settled at `Valid — no
+issues found.` Create game after that local valid state opened a saved
+workspace for Starter Slot, with a visible isolated project location, `Added
+to Studio Created in Studio`, `Editable — you can change this game in Studio.`,
+Close project, and `Valid — no issues found.`
 
-During the same launch, Chromium's DevTools renderer continued to expose the
-public UI, but Fluxbox/Xvfb reported no mapped Chromium client window or active
-browser window. That prevents the required visible host interaction needed to
-finish the saved-project **Close/Open**, generic project-import, reload,
-browser Back/Forward, and stale-state portions. The run was therefore stopped
-without a second create/open request or fabricated evidence. No rendered
-product error, stale diagnostic, or loading failure was observed beyond the
-actionable missing-file message above.
+## Remaining boundary
 
-This replaces the earlier broader ledger rather than carrying its unrepeatable
-claims forward. A later verification must use a mapped visible Chromium window
-and then complete the remaining public controls from this fresh-profile route.
+The fresh-profile run reached a real saved-project workspace and the
+saved-design open error/recovery route. It did not establish the saved-project
+Close → Projects → Open handoff, browser reload, Back, Forward, or a
+stale-specific state: the recovery harness used an overly broad `Open` matcher
+that accepted the already-rendered Open Play control immediately after it
+clicked Close project. Thus it did not confirm a Projects transition and made
+no further duplicate or speculative action. There was no rendered product
+error for project creation, and no stale state was publicly reached. This is a
+bounded driver/selector limitation, not a product finding.
