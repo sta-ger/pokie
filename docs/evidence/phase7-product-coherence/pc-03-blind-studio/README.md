@@ -1,68 +1,39 @@
-# PC-03 — blind Studio import and artifact handoff
+# PC-03 — blind Studio workflow attempt
 
-Candidate: `8bf3751ed6eb9675889b9b257a807dad03356e87`.
+Candidate: `a84c906d60d220cbf93a0a9e80646dc06acd6e11`.
 
 ## Boundary
 
-On 2026-08-27, the candidate was built once and Studio was launched once from
-this checkout exactly with `node ./dist/cli/pokie.js --no-open`. The actual
-exploration used a new, isolated Chromium profile, Studio home, registry, and
-project root. It used only rendered public Studio controls and its rendered
-documentation links; it did not inspect source, call private APIs, inject
-state, or alter product code or tests. All temporary profiles, generated
-project/output trees, browser logs, and automation remain unretained.
+On 2026-08-27, this verifier built the candidate once, then made the two
+permitted fresh-profile Studio launches from this checkout with exactly
+`node ./dist/cli/pokie.js --no-open`. Each Chromium profile and Studio runtime
+directory was newly isolated and removed after the session. The exploration
+used rendered Studio controls and the public Docs index only; it did not
+inspect source, call private APIs, inject application state, or alter product
+code or tests.
 
-## Fresh-profile transcript
+`fresh-start.png` is the sole retained screenshot (SHA-256
+`1b2fdea9d3852957c65915af722a85c4f0f2528c2d6db683727d3b5c65ed7b3d`).
 
-1. The public start screen rendered Design Your Game, its public documentation
-   links, valid starter sections, and `Choose a different start`.
-2. `Choose a different start` → `Open a saved game design` rendered the Saved
-   game design form. Before a path was supplied, the form rendered:
-   `"…/dist/cli/studio-client" is a folder, not a file. Point this at a file
-   instead, or use Browse to pick one.`
-3. The explorer pressed the rendered `Browse…` control. Its rendered picker
-   showed navigation and `Cancel`; Cancel returned to the Saved game design
-   form. `Back` then returned to the start choices. This is the import attempt,
-   its visible result, and its recovery; no private or fabricated filename was
-   used.
-4. `Use the starter game` eventually created `Starter Slot Overview` with
-   `Created in Studio`, `Editable`, and `Valid — no issues found`. An earlier
-   readiness wait expired while the starter dialog was still settling; the
-   later rendered Overview proves creation succeeded, so that threshold is not
-   recorded as a product failure.
-5. Overview → `Build/Export` rendered the local Outcome library generator,
-   Stake Engine Export, TypeScript Game Package, Outcome library, Stake Engine
-   export, optional destinations, Build preflights, Browse controls, and the
-   unavailable remote-delivery description.
-6. One rendered click on `Generate exact outcome library (base)` first showed
-   `Generating outcome library from this project's current build…`, then
-   settled at `Generated 1,024 outcomes for mode "base" using exact (RTP
-   100.78%) into outcomelibrary.`
-7. That settled artifact naturally enabled `Run Stake Engine Export (base)`.
-   One rendered click on it settled at `Exported 4 file(s)` and exposed `Open
-   output folder`. The generated files and output folder were deleted after
-   observation rather than retained as evidence.
+## Rendered ledger
 
-## Surface ledger
+| Entry point / action | Rendered result | Natural recovery or next action |
+| --- | --- | --- |
+| Fresh Studio start | `Start a game` → `Design Your Game`; the form showed editable Game id (`starter-slot`), Game name (`Starter Slot`), Version (`0.1.0`), optional Description/Author, Game basics/Layout/Symbols/Reels/Paytable/Bets tabs, `Create game`, `Choose a different start`, and advanced file/JSON controls. | Enter the required design values, or choose a different start. |
+| Automatic validation | Initially `Studio is checking this game design automatically`; it then visibly settled to `Valid — no issues found`, with every listed design tab marked `valid`. | `Create game` became the visible next action. |
+| Public documentation | The visible `Docs index` link opened the public `pokie/docs` README in Chromium. | Returning to Studio leaves the design form intact. |
+| Project creation | On the first fresh session the expected `Use the starter game` control was not rendered, so no click was emitted. On the second fresh session the rendered `Create game` control was clicked once. The UI driver then stopped receiving a response before any success, error, loading, dialog, or navigation state could be rendered or observed. No native picker was visible. | A non-idempotent creation action was not retried. The Studio runtime and fresh profile were terminated and removed. |
 
-| Surface | Rendered states / conclusion |
-| --- | --- |
-| Saved-design import | Form, Browse picker, Cancel recovery, disabled Open without a selection, and the erroneous prefilled-directory validation message all rendered. |
-| Starter creation | Checking/loading language, a settling start dialog, valid success, and created editable Overview rendered. |
-| Build/Export | Local output-generator and package/export cards, optional destinations, ready preflights, disabled-before-prerequisite text, and remote delivery unavailable all rendered. |
-| Artifact reuse/handoff | Generator pending → exact-library success → enabled Stake Engine handoff → exported success. |
+## Unreached workspace surfaces
 
-The similarly named Outcome library generator and Outcome library Build cards
-are separate rendered capabilities: the former says it supplies export and
-delivery options; the latter is a standalone build artifact. No contradictory
-duplicate action was observed. No stale state was observed after import
-recovery or either settled artifact operation.
+Edit was reached only as the rendered Design form and validation was reached
+only through its automatic valid state above. Because the one project-creation
+attempt yielded no later rendered state, the project-scoped Play, Simulation,
+and Replay entrypoints, their forms/dialogs, and their success/error/empty/
+stale/disabled/recovery states were not reached. No duplicate or contradictory
+capability was observed; this is an absence of discovery, not a remediation.
 
-## Finding retained without remediation
-
-**PC-03-P2-01 — spurious saved-design error (P2).** A blank fresh-profile
-Saved game design form reports that this checkout's `dist/cli/studio-client`
-directory is not a file before the explorer enters or selects anything. The
-error names a location the explorer did not choose, so it is misleading
-first-contact import state. The rendered Browse/Cancel and Back paths still
-recover cleanly. This verification did not inspect or remediate its cause.
+This is a harness/driver inconclusive result rather than a product finding:
+there is no rendered product error and no evidence that the `Create game`
+request completed. Generated profiles, project/output trees, logs, browser
+automation, and all non-representative screenshots were removed.
