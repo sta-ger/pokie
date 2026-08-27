@@ -34,6 +34,10 @@ describe("isUnsafeStartDirectory", () => {
                 cwd: "/elsewhere",
                 allowedTemporaryRoot: profile,
             })).toBe(true);
+            expect(isUnsafeStartDirectory(path.join(profile, "node_modules", "project"), {
+                cwd: "/elsewhere",
+                allowedTemporaryRoot: profile,
+            })).toBe(true);
         } finally {
             fs.rmSync(profile, {recursive: true, force: true});
         }
