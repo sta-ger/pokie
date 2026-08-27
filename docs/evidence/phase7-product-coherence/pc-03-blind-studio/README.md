@@ -34,11 +34,14 @@ error was rendered. A fixed observation bound elapsed before its terminal card,
 so that absence is driver/readiness-inconclusive rather than a product finding.
 Play rendered the session's next **Spin** action and then a completed no-win
 round with its grid, credits, bet, paytable, and Inspect-round-artifact action.
-Replay rendered its initial empty state; choosing the visible native **Session
-Spin** control rendered the concrete `Session 1 — Round 1 — Spin` next action.
-The recovery driver mistakenly waited for the prior Load control instead of
-that rendered session-round action, so it did not load the replay before the
-four-launch allowance ended.
+Replay first rendered its empty state. In the final fresh-profile completion
+run, choosing its visible **Session Spin** control rendered the concrete
+`Session 1 — Round 1 — Spin — win 0` action. Activating that rendered action
+produced **Loaded replay**: the recorded Play source, identities, complete
+artifact state, grid, credits, bet, paytable, round detail, and enabled JSON
+download were all visible. No rendered product error occurred. This repaired
+the prior harness's incorrect expectation of an invented generic Load action;
+the product's actual local transition succeeded.
 
 ## Bounded output provenance
 
@@ -51,5 +54,9 @@ committed. The package output shown by Build/Export and reopened by Studio had:
 | `outcomelibrary/outcomes_base.jsonl` | 701,614 | `513b56e0e17744ae6b1654a440e91c15d5bd99d2bb916fa1ecef126e488dbfaf` |
 | `stakeengine/pokie-manifest.json` | 927 | `02d85b30c9ae0141afaaa5edf71c89b306ac8bd4b543607e6713f811f3af672b` |
 
-No systemic product defect was observed. The sole remainder is the bounded
-driver failure to activate the now-rendered Replay session-round control.
+No systemic product defect was observed. The complete natural Studio pass now
+covers create/open/import, edit validation and recovery, workspace history,
+Game Model, Build/Export and package reopening, generated outcomes and Stake
+export, Simulation, Play, and the completed Replay handoff. It retained no
+generated output, profile, raw transcript, or screenshot: the checksums and
+rendered-state record above are the bounded provenance proof.
