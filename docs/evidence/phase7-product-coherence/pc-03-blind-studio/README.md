@@ -1,65 +1,22 @@
-# PC-03 — blind Studio Build/Export and surface ledger
+# PC-03 blind Studio exploration
 
-Candidate: `6b800e4132f5863fd9b44403499dd7f100399ce0`.
+Candidate: `0d7bc35bd2ab8a752c03f0920ce9e222cd7eeacf`
+Run: `run-1787865749738` (fresh Studio registry and browser profile)
 
-## Method and retained proof
+The visible Studio journey completed without a rendered product error:
 
-On 2026-08-27, the verifier built this checkout once, then made two fresh,
-isolated-profile Studio launches, each exactly with
-`node ./dist/cli/pokie.js --no-open`. It used rendered Studio controls, the
-rendered public documentation links, and visible Chromium only. No product
-source, private API, DOM/state injection, or private filename was used. The
-temporary profiles, registries, generated project, outcome library, Stake
-Engine output, diagnostics, and full logs were removed after the observations.
+1. **Start a game** opened **Create game**; creating the game exposed **Show project location**. Activating it changed the control state, and reload restored the created workspace at **Overview**.
+2. **Play** opened **New Play session**; the session reached a completed round and left **Spin** and **Reset Play session** as useful next actions.
+3. **Simulation** opened **Run Simulation**; completion exposed **Repeat simulation locally**.
+4. **Build/Export** opened exact-outcome-library generation. Generation completed and exposed the Stake Engine handoff. **Run Stake Engine Export (base)** completed with `Exported 4 file(s)`.
+5. **Your projects** listed the created Blueprint; reopening it returned to **Overview** after the artifact handoffs.
 
-| Retained image | SHA-256 | Rendered proof |
-| --- | --- | --- |
-| `build-export-handoff.png` | `0f7cfeb8183b8baaf87fc4623c3122eac08ea592adf7cdd79339189a8cfb0b94` | Outcome library success followed by the now-enabled Stake Engine export success (four files). |
-| `projects-empty.png` | `bf26d6402928d67fe71821be8da415f351deac9a71c5a4ba84b5e39253ff4943` | Fresh Projects entrypoint: empty list, add-game form, Browse/Browse PAR spreadsheet dialogs, and disabled Check game. |
-| `simulation-empty-disabled.png` | `aca17231b12662eda7ab0acacac41ef19efe6ccf2ab1daa15a83843c1d6533c9` | Simulation’s empty run list and inactive Review/Export stages. |
-| `import-replaced-invalid.png` | `5d2d0e1436b8b8a28bf3831358f1e73c6aedaf6c2b488338634ef552ecdfc32d` | Previously observed, frozen PC-05 saved-design replacement/invalid state. |
+Generated-artifact inspection (names, size, SHA-256 only):
 
-## Build/Export handoff
+| Output | Artifacts |
+| --- | --- |
+| Blueprint | `blueprint.json` — 1,430 B — `9428e23e9c3b58a215037dcabaec2926b39317d4784c9ca07ea051e843fb1031` |
+| Outcome library | `index_base.json` — 263,443 B — `49b531ef7642a50aa1b863c8e83ce7743ee9eb22211b26dc7237c58742dc245a`; `manifest.json` — 4,133 B — `2f4af948d1b37b73aab07a7ceeffcf7e5f99a0e3c9adadb836591d10002a7d5a`; `outcomes_base.jsonl` — 689,326 B — `afc90be68bebaa62f3cb01cf2f653c438873b675998ea36802d6951391929745` |
+| Stake Engine export | `books_base.jsonl.zst` — 13,295 B — `c0dc33f77175b4ee5e1a15afaee2a441360645bee7758e2cf1d829b63c66d901`; `index.json` — 183 B — `57e19f4de9b88cc3e45e7a5a2f11e0940b465ff9e09a5e1553d58b384807a5d5`; `lookup_base.csv` — 8,376 B — `a6ab06e0ae86547667fff1418a5d62aa3de9c4b53e7cd1d757cde2267c934dc0`; `pokie-manifest.json` — 903 B — `04ca53e5a4de284f3220925dbfb59f3ce091c400d910a0565a7175fe87646fea` |
 
-From a valid rendered Starter Slot workspace, the verifier opened
-**Build/Export**. Its Outcome library generator showed the max-space form,
-bounded-coverage checkbox, Generate exact outcome library action, advanced
-details disclosure, and an initially disabled Stake Engine export. Selecting
-the visible generator action rendered: **Generated 1,024 outcomes for mode
-“base” using exact (RTP 100.78%)**. This is the artifact handoff.
-
-Without entering a path, filename, registry value, or pipeline detail, the
-verifier then used the newly enabled **Run Stake Engine Export (base)** public
-control. Studio rendered **Exported 4 file(s)** and its own Open output folder
-control. The retained handoff image shows both success messages. This is the
-natural, rendered reuse result rather than an inferred filesystem readback.
-
-## Surface and state ledger
-
-| Surface | Rendered controls/forms inspected | Observed state |
-| --- | --- | --- |
-| Home — Start a game | Ready-to-edit starter; Create game; advanced file/JSON disclosure; different-start chooser; Game basics, Layout, Symbols, Reels, Paytable, Bets | Valid starter with all step checks. Create succeeded into a workspace. |
-| Home — Projects | Create first game; add-existing-game location field; Browse; Browse PAR spreadsheet; Check game; public Docs/Get started/CLI reference links | Fresh profile was empty; Check game disabled. |
-| Workspace — Overview | Breadcrumbs; project location link; Close project; Open Play; Validation/Re-check | Valid, created-in-Studio project. |
-| Workspace — Game Model | Game basics/Layout/Symbols/Reels cards and Edit controls; Game window, Full strips, Analysis tabs; stop controls | Read-only overview form rendered without an error. |
-| Workspace — Play | Seed disclosure and New Play session | Ready start form; no session created in this pass. |
-| Workspace — Simulation | Rounds input; Run; advanced seed/workers disclosure; Refresh; Configure/Run/Review/Export progression | Initially empty and Review/Export inactive (retained). One Run was accepted and later rendered a completed report with RTP, warnings, report/compare/repeat controls, and a recent run. No fixed timeout was treated as a failure. |
-| Workspace — Replay | Recreate from seed, Replay Artifact, Session Spin, Recent Simulation; target-round and seed fields; Load; Download JSON; Refresh | Empty replay list and disabled Download JSON (observed). |
-| Workspace — Build/Export | Outcome-library and Stake-Engine cards, forms, advanced disclosures, output-folder controls | Export disabled before library creation; both handoff and export success rendered afterward (retained). |
-| Native/dialog-adjacent controls | Current Projects Browse/Browse PAR buttons; preserved saved-design picker observation | No dialog was needed for the successful handoff. The saved-design picker’s contradictory replacement result remains frozen below. |
-
-No persistent loading or stale state rendered before the semantic transitions;
-all accepted actions reached a visible success state. No additional visible
-duplicate capability was observed in this pass. The only contradictory public
-behavior remains the frozen P2 finding below. No product remediation was made.
-
-## Frozen PC-05 discovery
-
-The retained saved-design screenshot records the established P2 finding:
-
-> **P2 — saved-design selection can replace the current editable starter with
-> an invalid/blank design while the UI offers Back/cancel and no explanatory
-> import error.**
-
-It is carried forward for PC-05 only. This verification neither remediated it
-nor used source inspection to explain it.
+No screenshot was retained: the result contained no visual defect requiring one, and the interaction transcript plus artifact checksums supply the reviewable proof.
