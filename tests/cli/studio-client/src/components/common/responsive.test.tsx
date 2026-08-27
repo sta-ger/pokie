@@ -92,6 +92,8 @@ describe("Responsive / no-horizontal-page-overflow primitives", () => {
         const status = screen.getByRole("status");
         const action = screen.getByRole("button", {name: "Create your first game"});
         expect(status).toHaveTextContent("No games yet.");
+        expect(status).toHaveAttribute("aria-live", "polite");
+        expect(status).toHaveStyle({overflowWrap: "anywhere"});
         expect(status).not.toContainElement(action);
         fireEvent.click(action);
         expect(onAction).toHaveBeenCalledTimes(1);
