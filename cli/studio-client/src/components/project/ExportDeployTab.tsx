@@ -505,7 +505,7 @@ function TargetCard({
                     </Button>
                     {!canRunRemoteDeployment && (
                         <Text size="sm" c="dimmed" mt={4}>
-                            A compatible outcome library is required before this destination can be checked. Generate one in Outcome libraries, or open a project with a compatible library.
+                            A compatible outcome library is required before this destination can be checked. Generate one above in Build/Export, or open a project with a compatible library.
                         </Text>
                     )}
                     {previewedOk && (

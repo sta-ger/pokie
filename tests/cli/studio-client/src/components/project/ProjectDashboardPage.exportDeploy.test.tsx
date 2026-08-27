@@ -308,7 +308,14 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
         expect(await within(remoteSection).findByRole("button", {name: "Check compatibility"})).toBeDisabled();
-        expect(within(remoteSection).getByText(/compatible outcome library is required before this destination can be checked/)).toBeInTheDocument();
+        expect(
+            within(remoteSection).getByText(
+                "A compatible outcome library is required before this destination can be checked. Generate one above in Build/Export, or open a project with a compatible library.",
+            ),
+        ).toBeInTheDocument();
+
+        const outcomeLibrarySection = screen.getByText("Outcome libraries").closest("fieldset") as HTMLElement;
+        expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled();
     });
 
     it("sends a remote adapter's compatibility check against an already-registered outcome library, not just one generated this session", async () => {
