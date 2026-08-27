@@ -32,6 +32,32 @@ function LocationProbe() {
 }
 
 describe("ProjectsPanel: Import Project", () => {
+    it("shows project-list recovery for an HTTP failure and reloads the list when retried", async () => {
+        const user = userEvent.setup();
+        let attempts = 0;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => {
+                attempts++;
+                return attempts === 1
+                    ? {ok: false, status: 503, body: {error: "registry service unavailable"}}
+                    : {
+                        ok: true,
+                        status: 200,
+                        body: [{location: "/games/recovered", name: "Recovered game", type: "tsPackage", capabilities: [], origin: "managed", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"}],
+                    };
+            },
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        expect(await screen.findByRole("alert")).toHaveTextContent("Your projects list couldn't be completed. Try again. If it continues, reopen the project and retry.");
+        expect(screen.getByRole("button", {name: "Try loading projects again"})).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Try loading projects again"}));
+
+        expect(await screen.findByText("Recovered game")).toBeInTheDocument();
+        expect(calls.filter((call) => call.url.startsWith("/api/home/projects/registry?"))).toHaveLength(2);
+    });
+
     it("detects a recognized package, prefills the suggested name, and Register adds it to the list", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({

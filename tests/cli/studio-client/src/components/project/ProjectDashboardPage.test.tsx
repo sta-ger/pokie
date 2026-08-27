@@ -364,6 +364,20 @@ describe("ProjectDashboardPage", () => {
         expect(details?.textContent).toContain("npm ERR! simulated transient local npm failure");
     });
 
+    it("shows project-context HTTP failures as game-opening recovery with diagnostics collapsed", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => ({ok: false, status: 503, body: {error: "project context service unavailable"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.");
+        const details = screen.getByText("Technical details").closest("details");
+        expect(details).not.toHaveAttribute("open");
+        expect(details).toHaveTextContent("project context service unavailable");
+    });
+
     it("translates a direct project-link opening failure and keeps both server diagnostics collapsed", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/project/context": () => ({ok: true, status: 200, body: {status: "empty"}}),

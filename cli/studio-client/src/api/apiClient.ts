@@ -185,6 +185,9 @@ export async function listProjectRegistry(fetchImpl: FetchLike): Promise<StudioP
     // earlier list. `cache: "no-store"` covers normal Fetch caches; the unique query also prevents
     // an intermediary that ignores that directive from reusing an earlier registry snapshot.
     const response = await fetchImpl(`/api/home/projects/registry?refresh=${Date.now()}`, {cache: "no-store"});
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to load the projects list"));
+    }
     return (await response.json()) as StudioProjectRegistryView[];
 }
 
@@ -484,6 +487,9 @@ export async function closeProject(fetchImpl: FetchLike): Promise<StudioContext>
 
 export async function getProjectContext(fetchImpl: FetchLike): Promise<ProjectDashboardContext> {
     const response = await fetchImpl("/api/project/context");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to load the project context"));
+    }
     return (await response.json()) as ProjectDashboardContext;
 }
 
