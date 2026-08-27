@@ -11,6 +11,8 @@ import type {
     GameModelReels,
     GameModelReelWindowCell,
     GameModelResolvedReel,
+    ReelStripGenerationDiagnostic,
+    GameModelUnresolvedReel,
     GameModelSection,
     GameModelSharedWeightsSample,
     GameModelSymbol,
@@ -178,11 +180,35 @@ function describeReelGenerationMode(mode: GameModelReelGenerationMode): string {
 // known but simply empty, which renders its own "No ... configured." text below instead, straight from
 // the projection's own (empty) data. This component never invents data to fill the gap -- see
 // GameModelProjection's own doc comment.
+function TechnicalDetails({reason, diagnostics}: {reason: string; diagnostics?: ReelStripGenerationDiagnostic[]}) {
+    return (
+        <details style={{marginTop: "0.5rem"}}>
+            <summary style={{cursor: "pointer"}}>Technical details</summary>
+            <pre style={{whiteSpace: "pre-wrap", overflowWrap: "anywhere"}}>{reason}</pre>
+            {diagnostics !== undefined && <DiagnosticsList diagnostics={diagnostics} />}
+        </details>
+    );
+}
+
 function UnavailableSection({reason}: {reason: string}) {
     return (
-        <Text size="sm" c="dimmed">
-            Not available — {reason}
-        </Text>
+        <div>
+            <Text size="sm" c="dimmed">
+                This part of the Game Model isn&apos;t available yet. Check the game design, then try viewing the Game Model again.
+            </Text>
+            <TechnicalDetails reason={reason} />
+        </div>
+    );
+}
+
+function UnresolvedReelNotice({reel, includeDiagnostics = false}: {reel: GameModelUnresolvedReel; includeDiagnostics?: boolean}) {
+    return (
+        <div>
+            <Text size="sm" c="red" mb="xs">
+                This reel couldn&apos;t be generated. Check its generation settings, then try viewing the Game Model again.
+            </Text>
+            <TechnicalDetails reason={reel.reason} diagnostics={includeDiagnostics ? reel.generationDiagnostics : undefined} />
+        </div>
     );
 }
 
@@ -446,7 +472,8 @@ function ReelPositionsTable({reel}: {reel: GameModelResolvedReel}) {
 
 // Full strips: every physical reel's own full, circular strip -- index, symbol, wild/scatter, stack
 // run, and locked positions (see GameModelReelStripPosition's own doc comment). An unresolved
-// "generated" reel shows exactly why it couldn't be resolved instead of a strip.
+// "generated" reel offers a recovery step while preserving its resolution reason in collapsed technical
+// details instead of showing backend projection text in the normal Game Model UI.
 function FullStripsView({reels}: {reels: GameModelReel[]}) {
     if (reels.length === 0) {
         return <EmptyState message="No reels configured yet." />;
@@ -463,11 +490,7 @@ function FullStripsView({reels}: {reels: GameModelReel[]}) {
                             </Text>
                             <ReelPositionsTable reel={reel} />
                         </>
-                    ) : (
-                        <Text size="sm" c="red">
-                            Unresolved — {reel.reason}
-                        </Text>
-                    )}
+                    ) : <UnresolvedReelNotice reel={reel} />}
                 </PageSection>
             ))}
         </div>
@@ -533,14 +556,7 @@ function AnalysisView({reels, sharedWeightsSample}: {reels: GameModelReel[]; sha
                             <AnalysisTable analysis={reel.analysis} />
                             {reel.generationDiagnostics !== undefined && <DiagnosticsList diagnostics={reel.generationDiagnostics} />}
                         </>
-                    ) : (
-                        <>
-                            <Text size="sm" c="red" mb="xs">
-                                Unresolved — {reel.reason}
-                            </Text>
-                            <DiagnosticsList diagnostics={reel.generationDiagnostics} />
-                        </>
-                    )}
+                    ) : <UnresolvedReelNotice reel={reel} includeDiagnostics />}
                 </PageSection>
             ))}
         </div>

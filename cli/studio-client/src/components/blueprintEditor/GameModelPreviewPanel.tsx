@@ -48,7 +48,12 @@ export function GameModelPreviewPanel({blueprint}: {blueprint: unknown}) {
                     Preview Game Model
                 </Button>
             </QuickActions>
-            {state.status === "error" && <ErrorState message={`Couldn't preview the game model: ${state.message}`} />}
+            {state.status === "error" && (
+                <ErrorState
+                    message="We couldn't build this game model preview. Check the game design, then try previewing it again."
+                    detail={state.message}
+                />
+            )}
             {state.status === "loading" && <LoadingState label="Building preview…" />}
             {state.status === "loaded" && (
                 <GameModelSections projection={state.projection} reelsSampleControls={{onNewSample: handleNewSample, loading: false}} />

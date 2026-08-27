@@ -45,7 +45,10 @@ describe("Guided Design Game: Game Model preview", () => {
         await user.click(screen.getByRole("button", {name: "Preview Game Model"}));
 
         expect(await screen.findByText("Id: starter")).toBeInTheDocument();
-        expect(screen.getAllByText("Not available — no tracked source recorded").length).toBeGreaterThan(0);
+        expect(screen.getAllByText("This part of the Game Model isn't available yet. Check the game design, then try viewing the Game Model again.").length).toBeGreaterThan(0);
+        const details = screen.getAllByText("no tracked source recorded").map((reason) => reason.closest("details"));
+        expect(details).not.toHaveLength(0);
+        expect(details.every((detail) => detail !== null && !detail.hasAttribute("open"))).toBe(true);
     });
 
     it("shows a recovery message, never a raw stack trace, when the preview request fails", async () => {
@@ -64,6 +67,10 @@ describe("Guided Design Game: Game Model preview", () => {
 
         await user.click(screen.getByRole("button", {name: "Preview Game Model"}));
 
-        expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't preview the game model");
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("We couldn't build this game model preview. Check the game design, then try previewing it again.");
+        const details = screen.getByText("Technical details").closest("details");
+        expect(details).not.toHaveAttribute("open");
+        expect(details).toHaveTextContent("boom");
     });
 });
