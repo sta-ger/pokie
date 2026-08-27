@@ -1,6 +1,7 @@
 import {MantineProvider} from "@mantine/core";
 import {fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {RoundArtifactJson, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
 import {RoundArtifactInspector} from "../../../../../../cli/studio-client/src/components/common/RoundArtifactInspector";
 import {describeRoundArtifact} from "../../../../../../cli/studio-client/src/domain/interpret/Replay";
@@ -124,6 +125,63 @@ describe("ProjectDashboardPage - Play", () => {
         expect(await screen.findByText("This spin couldn't be completed. Try again. If it continues, start a new session and retry.")).toBeInTheDocument();
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
+    }, 30000);
+
+    it("keeps the settled round visible while a reset request is still loading", async () => {
+        const user = userEvent.setup();
+        let createCalls = 0;
+        let resolveReset: ((response: {ok: boolean; status: number; json: () => Promise<unknown>}) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/play/session") {
+                createCalls += 1;
+                if (createCalls === 2) {
+                    return new Promise((resolve) => {
+                        resolveReset = resolve;
+                    });
+                }
+                return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor({bet: 5, availableBets: [1, 5]})})});
+            }
+            if (path === "/api/project/play/sessions/sess-1/spin") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({
+                        status: "ok",
+                        session: sessionFor({
+                            bet: 5,
+                            win: 15,
+                            screen: [["cherry"]],
+                            availableBets: [1, 5],
+                            debug: {artifactUnavailableReason: "Round details were not captured in this fixture."},
+                        }),
+                    }),
+                });
+            }
+            const route = BASE_ROUTES[path];
+            if (route === undefined) {
+                return Promise.reject(new Error(`No fake route registered for ${url}`));
+            }
+            const response = route({url, init});
+            return Promise.resolve({ok: response.ok, status: response.status, json: () => Promise.resolve(response.body)});
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await screen.findByText(/You won 15\.00/);
+
+        await user.click(screen.getByRole("button", {name: "Reset Play session"}));
+
+        expect(await screen.findByRole("status")).toHaveTextContent("Spinning…");
+        expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
+        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
+
+        resolveReset?.({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor({sessionId: "sess-2"})})});
+
+        await screen.findByText(/No round played yet/);
+        expect(screen.queryByText(/You won 15\.00/)).toBeNull();
     }, 30000);
 
     it("stops offering controls for a stale Play session instead of presenting its previous round as current", async () => {

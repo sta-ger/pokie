@@ -257,7 +257,7 @@ export function PlayTab({
             {errorNotice}
 
             {loading && <LoadingState label="Spinning…" />}
-            {!loading && (playedRound === undefined ? <EmptyState message="No round played yet -- Spin to play." /> : <RoundSummary session={playedRound} />)}
+            {(!loading || playedRound !== undefined) && (playedRound === undefined ? <EmptyState message="No round played yet -- Spin to play." /> : <RoundSummary session={playedRound} />)}
         </div>
     );
 }
