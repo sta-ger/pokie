@@ -378,17 +378,19 @@ describe("ProjectDashboardPage", () => {
         expect(details).toHaveTextContent("project context service unavailable");
     });
 
-    it("translates a direct project-link opening failure and keeps both server diagnostics collapsed", async () => {
-        const {fetchImpl} = createRoutedFakeFetch({
+    it("returns from a failed scoped project link to Your projects without closing a possibly active game", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
             "/api/project/context": () => ({ok: true, status: 200, body: {status: "empty"}}),
             "/api/home/projects/open": () => ({
                 ok: false,
                 status: 500,
                 body: {error: "resolver could not load /games/broken", detail: "ENOENT: internal project manifest detail"},
             }),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fbroken/overview"]});
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fbroken/overview"]});
 
         const alert = await screen.findByRole("alert");
         expect(alert).toHaveTextContent("We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.");
@@ -396,5 +398,13 @@ describe("ProjectDashboardPage", () => {
         expect(details).not.toHaveAttribute("open");
         expect(details).toHaveTextContent("resolver could not load /games/broken");
         expect(details).toHaveTextContent("ENOENT: internal project manifest detail");
+
+        const returnToProjects = screen.getByRole("button", {name: "Go to Your projects"});
+        returnToProjects.focus();
+        await user.keyboard("{Enter}");
+
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/projects"));
+        expect(await screen.findByRole("heading", {name: "Projects"})).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/projects/close")).toBe(false);
     });
 });

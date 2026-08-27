@@ -14,6 +14,30 @@ async function traverseBrowserHistory(direction: "back" | "forward"): Promise<vo
 }
 
 describe("Routable Home/Project sections: refresh and direct-link", () => {
+    it("a legacy project link can return to Your projects after an HTTP context failure without closing a project", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/project/context": () => ({ok: false, status: 503, body: {error: "project context service unavailable"}}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+        });
+
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.");
+        const details = screen.getByText("Technical details").closest("details");
+        expect(details).not.toHaveAttribute("open");
+        expect(details).toHaveTextContent("project context service unavailable");
+
+        const returnToProjects = screen.getByRole("button", {name: "Go to Your projects"});
+        returnToProjects.focus();
+        await user.keyboard("{Enter}");
+
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/projects"));
+        expect(await screen.findByRole("heading", {name: "Projects"})).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/projects/close")).toBe(false);
+    });
+
     it("a direct link to a non-default Home tab renders that tab, not the default", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),

@@ -159,6 +159,20 @@ function isProjectTab(value: string | undefined): value is ProjectTab {
     return ALL_PROJECT_TABS.some((tab) => tab.value === value);
 }
 
+// A project-opening error can happen before this route has safely established which project is
+// active. Returning to the project list must therefore only navigate: unlike Close project, it must
+// never mutate the server's current project or discard in-progress work that may still be active.
+function ProjectOpeningErrorState({message, detail, onReturnToProjects}: {message: string; detail?: string; onReturnToProjects: () => void}) {
+    return (
+        <div>
+            <ErrorState message={message} detail={detail} />
+            <Button variant="default" mt="sm" onClick={onReturnToProjects}>
+                Go to Your projects
+            </Button>
+        </div>
+    );
+}
+
 // A route with a project root must remount the dashboard when browser history changes that root.
 // ProjectDashboardPage owns several long-lived runtime hooks, and retaining an A instance while the
 // server has already switched to B would leave A's session/run identifiers actionable against B.
@@ -193,7 +207,7 @@ export function LegacyProjectDashboardRoute() {
     }, [activeTab, navigate, projectRoot]);
 
     if (header.status === "error" && projectRoot === "") {
-        return <ErrorState message={header.message} detail={header.errorDetail} />;
+        return <ProjectOpeningErrorState message={header.message} detail={header.errorDetail} onReturnToProjects={() => navigate("/home/projects")} />;
     }
 
     return <LoadingState label="Resolving project…" />;
@@ -868,7 +882,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             )}
             {header.status === "error" && (
                 <div style={{marginTop: "1rem"}}>
-                    <ErrorState message={header.message} detail={header.errorDetail} />
+                    <ProjectOpeningErrorState message={header.message} detail={header.errorDetail} onReturnToProjects={() => navigate("/home/projects")} />
                 </div>
             )}
             {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact") && (
