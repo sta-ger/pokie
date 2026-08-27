@@ -76,7 +76,7 @@ export function NewBlueprintDialog({
     const cancelRef = useRef<HTMLButtonElement>(null);
     const choiceRef = useRef<HTMLButtonElement>(null);
     const seedRef = useRef<HTMLInputElement>(null);
-    const loadBackRef = useRef<HTMLButtonElement>(null);
+    const loadPathRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (opened) {
@@ -112,7 +112,7 @@ export function NewBlueprintDialog({
         } else if (step === "random") {
             target = seedRef.current;
         } else {
-            target = loadBackRef.current;
+            target = loadPathRef.current;
         }
         const timeout = window.setTimeout(() => target?.focus(), 0);
         return () => window.clearTimeout(timeout);
@@ -318,6 +318,7 @@ export function NewBlueprintDialog({
                 {step === "load" && (
                     <Stack gap="sm">
                         <PathInput
+                            ref={loadPathRef}
                             label="Saved game design"
                             kind="file"
                             browseTitle="Choose a game design file"
@@ -332,7 +333,7 @@ export function NewBlueprintDialog({
                             <ErrorState message={describePathActionError("The saved game design", loadView.message)} />
                         )}
                         <Group justify="space-between">
-                            <Button ref={loadBackRef} variant="default" onClick={() => setStep("choose")}>
+                            <Button variant="default" onClick={() => setStep("choose")}>
                                 Back
                             </Button>
                             <Button onClick={() => onLoad(loadPath)} loading={loadView.status === "loading"} disabled={loadPath.trim().length === 0}>

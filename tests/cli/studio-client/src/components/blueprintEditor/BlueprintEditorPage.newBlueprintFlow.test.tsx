@@ -76,6 +76,23 @@ describe("BlueprintEditorPage - New flow", () => {
         await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", {name: "Use the starter game"})));
     });
 
+    it("moves focus to each New Blueprint form's primary input", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        await user.click(await screen.findByRole("button", {name: "Generate random"}));
+        const seed = screen.getByLabelText("Seed (optional)");
+        await waitFor(() => expect(document.activeElement).toBe(seed));
+
+        await user.click(screen.getByRole("button", {name: "Back"}));
+        await user.click(screen.getByRole("button", {name: "Open a saved game design"}));
+        const savedGameDesign = screen.getByLabelText("Saved game design");
+        await waitFor(() => expect(document.activeElement).toBe(savedGameDesign));
+        expect(document.activeElement).not.toBe(screen.getByRole("button", {name: "Back"}));
+    });
+
     it("gates behind Save/Discard/Cancel when the draft is dirty, and Cancel leaves the draft untouched", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
