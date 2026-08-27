@@ -1,71 +1,89 @@
 # Public-surface census and ownership ledger
 
-This is the Phase 7 discovery ledger.  It distinguishes an advertised or
-help-listed surface from a verified one: every row begins as `collect`, and a
-later owner may change it only by citing a clean-room run artifact.  The owner
-handles are explicit delivery owners, not implementation prescriptions.
+This is an append-only Phase 7 discovery ledger. It is intentionally empty of
+source-derived product inventory: a clean-room collector appends one row for
+each individually observed public surface, then cites the run artifact that
+made the observation reproducible. A row is not verification or a claim that
+the product succeeds.
 
-## CLI command and option census
+Use statuses `observed`, `not-observed`, `input-required`, `not-generated`,
+or `superseded`. Only `observed` means the cited evidence shows the stated
+surface. `not-observed` and `input-required` are explicit boundaries, not
+coverage. Every row needs a non-empty evidence reference and a future owner.
+For a pre-observation boundary row, cite the applicable PC-01 protocol section
+and replace it with a run-artifact reference only by appending a later row.
 
-| Coverage family | What the clean-room run records | Evidence authority | Future owner | Status |
-| --- | --- | --- | --- | --- |
-| Root invocation | default output, `--help`/`-h`, `--version`/`-V`, exit statuses and aliases | installed root help/output | `phase7-cli-owner` | collect |
-| Every public verb | each verb/subcommand shown by installed root or recursive help | `cli/help-index.tsv` plus captured help | `phase7-cli-owner` | collect |
-| Every public option | spelling, value placeholder, help text, displayed default, and owning verb | captured per-command help | `phase7-cli-owner` | collect |
-| Parser recovery | unknown-command visible diagnostic and exit status | `cli/errors/unknown-command.*` | `phase7-cli-owner` | collect |
-| File/server-producing verbs | their advertised artifact/endpoint claim only; no workflow execution is implied here | installed help and artifact ledger | `phase7-artifact-owner` | collect |
+Evidence references use `runs/<run-id>/<path>#<row-or-line-id>` where possible
+(for example `runs/20260827T152200Z-pokie-1.3.0/cli/help-index.tsv#C004-init`
+or `runs/.../studio/browser-transcript.md#T003`). Multiple references are
+semicolon-separated. Public documentation may additionally use its public URL
+with a quoted claim in the record. New discovery never edits a previous row:
+append it and use `supersedes=<record-id>` in notes where needed.
 
-The recursive installed-help index is deliberately the complete command and
-option list.  It prevents this ledger from freezing a source-derived command
-list and guarantees that a newly shipped public verb, option, alias, or nested
-subcommand acquires the `phase7-cli-owner` automatically.
+## CLI records
 
-## Studio page, action, and state census
+Append one row for every root flag, verb, subcommand, alias, option, and
+bounded parser outcome discovered from installed help/output. A command with
+five displayed options produces five option rows; no family-level row can
+stand in for them.
 
-| Coverage family | What the clean-room transcript records | Future owner | Status |
-| --- | --- | --- | --- |
-| First render | initial page title, visible navigation, empty/loading/error content, and launch error if any | `phase7-studio-owner` | collect |
-| Top-level pages | every visibly offered top-level page reachable without domain data | `phase7-studio-owner` | collect |
-| Project/dashboard pages | every visibly offered page/tab after a project is openly available; record route/title as rendered, not guessed | `phase7-studio-owner` | collect |
-| Visible actions | labels, enabled/disabled state, confirmation/recovery behavior, and required-input boundary | `phase7-studio-owner` | collect |
-| UI states | loading, empty, validation/diagnostic, success, warning, error, cancellation, and input-required states when visibly encountered | `phase7-studio-owner` | collect |
-| Browser-only relationships | responsive/layout/cross-surface relationships that require a screenshot | `phase7-studio-owner` | collect |
+| record_id | surface_kind | command_path | spelling_or_alias | metavar_and_default | observed_help_or_diagnostic | status | evidence_reference | future_owner | observed_utc | notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `CLI-...` | `root-flag` / `verb` / `subcommand` / `alias` / `option` / `parser-outcome` | exact displayed path | exact spelling or alias target | exact display or `none` | exact visible wording/summary | allowed status | help index + stream, or error stream and command row | `phase7-cli-owner` | UTC or `not-yet-observed` | alias canonical path; `supersedes=...` if applicable |
 
-The fresh-profile requirement applies to every Studio row.  A previously saved
-project, browser history entry, or local-storage state is a different surface
-and must be registered by `phase7-studio-owner` before it is included.
+## Studio records
 
-## Advertised artifact census
+Append separate rows for each page, each actionable control, and each visible
+state. An action that lands on an empty state requires at least an action row
+and a state row; a page is not treated as evidence that every action or state
+on it was reached. Cite matching transcript transition IDs and screenshots
+when visual proof is necessary.
 
-The following public claim families must be compared with actual ledger rows.
-They are not assertions that any artifact was generated in PC-01.
+| record_id | surface_kind | visible_page_or_control | triggering_visible_action | resulting_visible_state_or_boundary | status | evidence_reference | future_owner | observed_utc | notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `STUDIO-...` | `page` / `action` / `state` | exact rendered title, route, label, or state | exact visible action or `initial-render` | exact rendered result, or boundary text | allowed status | transcript row; screenshot path if used; launch command row when relevant | `phase7-studio-owner` | UTC or `not-yet-observed` | include enabled/disabled; `requires=<input>`; `supersedes=...` |
 
-| Advertised artifact family | Observable proof required | Future owner | Status |
-| --- | --- | --- | --- |
-| Blueprint/project JSON | generated file row with extension, hash, producer, and exit status | `phase7-artifact-owner` | collect |
-| Generated game/package files | artifact rows for the output tree and producer command/UI action | `phase7-artifact-owner` | collect |
-| Simulation reports (JSON, Markdown, HTML where advertised) | file/download ledger row for each observed format | `phase7-artifact-owner` | collect |
-| Replay result artifact | file/download ledger row and visible producer | `phase7-artifact-owner` | collect |
-| Outcome-library, fairness, certification, PAR-sheet, and Stake Engine exports | separate ledger rows; no family may stand in for another | `phase7-artifact-owner` | collect |
-| Browser client/served endpoint output | terminal provenance plus transcript evidence; no source/API inspection | `phase7-artifact-owner` | collect |
+The following required boundary records must exist before a run is called
+complete. They deliberately preserve the discovery boundary instead of
+inventing an input or a workflow:
 
-## Public documentation-claim census
+| record_id | surface_kind | visible_page_or_control | triggering_visible_action | resulting_visible_state_or_boundary | status | evidence_reference | future_owner | observed_utc | notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `STUDIO-BOUNDARY-INPUT` | `state` | first rendered control that requires a product choice, path, or generated input | visible action that reaches it, or `not-yet-reached` | record exact visible prompt; do not supply input | `input-required` | `COLLECTION-PROTOCOL.md#4-render-studio-with-a-fresh-browser-profile` until a transcript row exists | `phase7-studio-owner` | `not-yet-observed` | append a run-backed row when encountered; no scripted workflow |
+| `STUDIO-BOUNDARY-UNOBSERVED` | `page` / `action` / `state` | any Studio surface advertised or visibly offered but not reached clean-room | `not-reached` | state why it was not reached | `not-observed` | `COLLECTION-PROTOCOL.md#4-render-studio-with-a-fresh-browser-profile` until a transcript row exists | `phase7-studio-owner` | `not-yet-observed` | one row per later discovery; not covered |
 
-| Claim family | Public evidence to record | Future owner | Status |
-| --- | --- | --- | --- |
-| Installation and first contact | exact public package/version request, root output, and linked public README claim | `phase7-docs-owner` | collect |
-| CLI workflows | each help-listed verb and option mapped to its public wording | `phase7-docs-owner` | collect |
-| Studio capability | rendered page/action/state mapped to the public wording that advertises it | `phase7-docs-owner` | collect |
-| Artifact promises | advertised type mapped to an actual ledger row or an explicit `not generated` result | `phase7-docs-owner` | collect |
-| Product boundaries and safety claims | exact public wording plus the observable surface that supports or limits it | `phase7-docs-owner` | collect |
+## Advertised artifact records
 
-## Discovery rule
+Append one row for every individually advertised artifact type or format found
+in installed public metadata, installed README links, CLI help, or rendered
+Studio. A family name (for example “exports”) is not a row. Record separately
+each format/type and whether a ledger entry actually proves generation.
 
-Every newly observed verb, option, page, action, state, artifact type, or
-documentation claim is appended to the corresponding table/run index on the
-same day it is found.  Its owner is fixed by family (`phase7-cli-owner`,
-`phase7-studio-owner`, `phase7-artifact-owner`, or `phase7-docs-owner`);
-cross-surface discoveries receive all applicable owners and one coordinating
-owner, `phase7-product-coherence-owner`.  No discovery is silently excluded
-because it was absent from an earlier checklist.
+| record_id | advertised_type_or_format | exact_public_claim_and_location | producer_command_or_ui_surface | generation_status | evidence_reference | future_owner | observed_utc | notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `ARTIFACT-...` | exact advertised type/extension/format | exact public wording plus URL or help stream | command id, Studio record id, or `not-observed` | `observed` / `not-generated` / `not-observed` / `input-required` | public claim reference; ledger row if generated | `phase7-artifact-owner` | UTC or `not-yet-observed` | ledger id; boundary; `supersedes=...` |
 
+## Public documentation-claim records
+
+Append one row for each distinct externally visible claim, rather than one per
+documentation family. Record literal wording compactly enough to identify the
+claim, its public location, and the observable surface that supports, limits,
+or has not yet exercised it.
+
+| record_id | claim_topic | exact_public_claim | public_location | related_surface_record_ids | status | evidence_reference | future_owner | observed_utc | notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `DOC-...` | installation / CLI / Studio / artifact / boundary / other | exact wording | public URL, installed README path, or help stream | CLI/STUDIO/ARTIFACT IDs or `none-yet` | allowed status | public location plus run artifact that supports or limits it | `phase7-docs-owner` | UTC or `not-yet-observed` | discrepancy or boundary; `supersedes=...` |
+
+## Ownership and discovery rule
+
+The future owner is `phase7-cli-owner`, `phase7-studio-owner`,
+`phase7-artifact-owner`, or `phase7-docs-owner` according to record family.
+A cross-surface discovery cites all applicable record IDs and names
+`phase7-product-coherence-owner` as coordinating owner in notes, while keeping
+the family owner in `future_owner`.
+
+On the day a collector finds a new verb, option, page, action, state, artifact
+type, or documentation claim, append its individual record with evidence,
+status, and owner. Do not consult source, prior campaign evidence, or a
+prepared success script to fill gaps; record the unobserved/input-required
+boundary and hand it to its future owner instead.
