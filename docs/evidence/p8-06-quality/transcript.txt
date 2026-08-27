@@ -1,11 +1,11 @@
 P8-06 candidate browser audit — concise observation transcript
 candidate: 4b1c6b49bc1e58f50db8fe3f8ca450e6dba0b718
-public launch: node ./dist/cli/pokie.js --no-open (fresh isolated Studio and Chromium profiles)
+public launch: node ./dist/cli/pokie.js --no-open (fresh isolated Studio and visible Chromium profiles)
 
-Home Design rendered in 327 ms at 1280px. Viewport and document width were both 1280px (no horizontal overflow).
-Rendered named, focusable regions: "Design Your Game" and "Projects".
-The rendered New Blueprint dialog was named "Start a new game" and initially focused "Use the starter game".
-After a rendered Game name edit, dirty confirmation initially focused "Cancel". Cancel returned focus to "Choose a different start".
-Discard returned to the rendered starter-choice state; the retained screenshot records that state.
-Console events: none. Failed network: 404 http://127.0.0.1:3200/favicon.ico.
-The run then reached a bounded CDP keyboard-transition timeout waiting for Home Projects. No rendered product error was observed; the two-launch budget was exhausted before a repaired rerun.
+1280px Home Design rendered in 323 ms; viewport and document width were 1280px (no horizontal overflow).
+Rendered named focusable regions: Design Your Game; Projects. Start a new game initially focused Use the starter game.
+After a rendered Game name edit, dirty confirmation focused Cancel; Cancel restored focus to Choose a different start; Discard restored the rendered starter choice (01-dirty-discard-choice-1280.png).
+The authoring dialog appeared in 31 ms. Keyboard focus reached and activated Projects in 113 ms, then Start a game; the Projects region became the local result. After create, keyboard focus reached and activated Game Model in 35 ms; the Dashboard navigation’s local active tab became Game Model.
+Controlled 700 ms local latency: Create game showed its disabled pending control after 769 ms; the saved starter reached Project Dashboard in 1096 ms. The Dashboard named region was Starter Slot.
+405px Home Projects rendered in 65 ms; viewport and document width were 405px (no horizontal overflow); named regions remained Design Your Game and Projects (02-home-projects-405.png). Reopening returned to the desktop Dashboard with retained Starter Slot context and navigation (03-dashboard-1280.png).
+Console: one router warning caused by the harness’s direct hash navigation; no exception. Failed network: 404 /favicon.ico. No rendered product error observed.

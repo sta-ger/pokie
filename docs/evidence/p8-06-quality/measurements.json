@@ -12,10 +12,46 @@
     },
     {
       "action": "first load Home Design",
-      "visibleResultMs": 326
+      "visibleResultMs": 323
+    },
+    {
+      "action": "authoring: New Blueprint dialog",
+      "visibleResultMs": 31
+    },
+    {
+      "action": "keyboard Home Projects navigation",
+      "visibleResultMs": 113
+    },
+    {
+      "action": "create/save to Project Dashboard",
+      "visibleResultMs": 1096
+    },
+    {
+      "action": "keyboard Dashboard Game Model navigation",
+      "visibleResultMs": 35
+    },
+    {
+      "viewport": 405,
+      "document": {
+        "width": 405,
+        "scrollWidth": 405,
+        "overflow": false
+      }
+    },
+    {
+      "action": "narrow Home Projects navigation",
+      "visibleResultMs": 65
+    },
+    {
+      "viewport": 1280,
+      "document": {
+        "width": 1280,
+        "scrollWidth": 1265,
+        "overflow": false
+      }
     }
   ],
-  "console": [],
+  "console": ["warning: router blocker after harness direct hash navigation; no exception"],
   "failedNetwork": [
     "404 http://127.0.0.1:3200/favicon.ico"
   ]
