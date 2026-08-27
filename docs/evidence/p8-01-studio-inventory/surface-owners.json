@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "policy": {
+    "everyFindingNeedsOwner": true,
+    "soleResidualOwner": "P8-07",
+    "p8_07CompletionRule": "P8-07 cannot complete while unownedFindings is non-empty."
+  },
+  "owners": [
+    {"step": "P8-02", "surfaces": ["public entrypoint", "Home project entry", "Projects registry", "import/detect/register/open", "missing-project recovery", "project persistence after restart"]},
+    {"step": "P8-03", "surfaces": ["Home and project navigation", "section tabs", "keyboard focus", "desktop/narrow navigation"]},
+    {"step": "P8-04", "surfaces": ["New Blueprint dialog", "guided Design Game", "game-model authoring", "validation", "Blueprint save"]},
+    {"step": "P8-05", "surfaces": ["project Overview", "Play", "Simulation", "Replay", "Build/Export", "Certification", "Provably Fair", "round, report, and generated-artifact states"]},
+    {"step": "P8-06", "surfaces": ["loading/error/recovery quality", "console/network observations", "public documentation claim traceability", "latency evidence"]},
+    {"step": "P8-07", "surfaces": [], "residual": true}
+  ],
+  "observedSurfaceAssignments": [
+    {"surface": "Studio public URL, first-run entry, Projects empty state, managed-project registry, Import Project and public open path", "owner": "P8-02"},
+    {"surface": "Home/project section navigation, keyboard focus order, and desktop/narrow navigation shell", "owner": "P8-03"},
+    {"surface": "Create Blueprint Project dirty-draft dialog, Blank/Recommended choices, blank validation error, guided editor, and Blueprint creation", "owner": "P8-04"},
+    {"surface": "opened-project Overview, Game Model, Play, Simulation, Replay, Build/Export, capability-gated Certification/Fairness, and artifacts", "owner": "P8-05"},
+    {"surface": "loading/error/recovery evidence, disabled prerequisites, console/network observations, latency, and public documentation traceability", "owner": "P8-06"}
+  ],
+  "findingProtocol": {
+    "requiredFields": ["id", "surface", "observedBy", "owner", "status"],
+    "newCapabilityRule": "Record a new capability as a finding before assigning it. P8-07 may own it only with owner=P8-07 and status=unresolved.",
+    "completionRule": "P8-07 completion requires unownedFindings to be empty and every residualFindings entry to have a non-empty id and owner."
+  },
+  "findingAssignments": [
+    {"id": "P8-01-F-IMPORT-NATIVE-PICKER", "surface": "Import Project host native picker", "owner": "P8-02", "status": "unreached"},
+    {"id": "P8-01-F-IMPORT-DETECT", "surface": "Import Project Detect", "owner": "P8-02", "status": "unreached"},
+    {"id": "P8-01-F-IMPORT-REGISTER", "surface": "Import Project Register", "owner": "P8-02", "status": "unreached"},
+    {"id": "P8-01-F-IMPORT-OPEN", "surface": "Import Project Open imported project", "owner": "P8-02", "status": "unreached"},
+    {"id": "P8-01-F-NEW-BLUEPRINT-LOAD-EXISTING", "surface": "New Blueprint Load existing blueprint", "owner": "P8-04", "status": "unreached"},
+    {"id": "P8-01-F-SIMULATION-RUN-NO-VISIBLE-RESULT", "surface": "Simulation Run Simulation", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-REOPEN-PERSISTENCE", "surface": "Reopen Studio and persisted project/artifact state", "owner": "P8-02", "status": "unreached"},
+    {"id": "P8-01-F-TRANSIENT-LOADING", "surface": "Transient loading state capture", "owner": "P8-06", "status": "unreached"},
+    {"id": "P8-01-F-CONDITIONAL-CAPABILITIES", "surface": "Certification and Provably Fair capability-gated tabs", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-SIMULATION-TERMINALS", "surface": "Cancelled and failed simulation outcomes", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-REPLAY-ARTIFACT-INPUT", "surface": "Replay Artifact validation/load", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-REPLAY-ARTIFACT-TERMINALS", "surface": "Replay artifact failure and recovery outcomes", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-BUILD-OPEN-OUTPUT-FOLDER", "surface": "Build/Export Open output folder", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-PROJECT-SHOW-LOCATION", "surface": "Project Show project location", "owner": "P8-02", "status": "unreached"}
+  ],
+  "residualFindings": [],
+  "unownedFindings": []
+}
