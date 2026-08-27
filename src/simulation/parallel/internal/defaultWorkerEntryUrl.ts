@@ -44,16 +44,25 @@ let cachedUrlPromise: Promise<URL> | undefined;
 // resolution at all.
 export function getDefaultWorkerEntryUrl(): Promise<URL> {
     if (!cachedUrlPromise) {
-        cachedUrlPromise = importIndirect("./resolveDefaultWorkerEntryUrl.mjs")
-            .then((module) => module.resolveDefaultWorkerEntryUrl())
-            .catch((error: unknown) => {
-                if (!isVmDynamicImportUnavailable(error) || typeof require !== "function" || typeof __dirname !== "string") {
-                    throw error;
-                }
-                return resolveCommonJsWorkerEntryUrl(require, __dirname);
-            });
+        // Jest's VM tears down before a native dynamic import can settle when it is exercised late
+        // in a large in-band run. Its CommonJS test transform always supplies `require` and
+        // `__dirname`, so select the existing synchronous fallback before starting that import.
+        cachedUrlPromise = isJestRuntime() && typeof require === "function" && typeof __dirname === "string"
+            ? Promise.resolve(resolveCommonJsWorkerEntryUrl(require, __dirname))
+            : importIndirect("./resolveDefaultWorkerEntryUrl.mjs")
+                .then((module) => module.resolveDefaultWorkerEntryUrl())
+                .catch((error: unknown) => {
+                    if (!isVmDynamicImportUnavailable(error) || typeof require !== "function" || typeof __dirname !== "string") {
+                        throw error;
+                    }
+                    return resolveCommonJsWorkerEntryUrl(require, __dirname);
+                });
     }
     return cachedUrlPromise;
+}
+
+function isJestRuntime(): boolean {
+    return typeof process !== "undefined" && process.env?.JEST_WORKER_ID !== undefined;
 }
 
 function isVmDynamicImportUnavailable(error: unknown): boolean {
