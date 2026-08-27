@@ -1,15 +1,47 @@
-[2026-08-27T05:08:08.445Z] PROVENANCE candidate_sha=7a618abcb44619ea6ac8a65353a52425921990e6; checkout_sha=38c647131de613407385eeb0743b343dbfde188e (evidence-only descendant); launch=node ./dist/cli/pokie.js --no-open; isolated Studio and Chromium profiles=fresh-profile
-[2026-08-27T05:08:09.769Z] STUDIO_READY http://127.0.0.1:3200
-[2026-08-27T05:08:10.704Z] WAIT landing=301ms; visible landing="Design Your Game"
-[2026-08-27T05:08:10.712Z] CLICK rendered "Create game"
-[2026-08-27T05:08:11.091Z] WAIT created=379ms; visible saved Blueprint workspace
-[2026-08-27T05:08:11.098Z] BLUEPRINT workspace="Starter Slot" route=scoped project route; visible sections=["Overview","Game Model","Play","Simulation","Replay","Build/Export"]
-[2026-08-27T05:08:11.280Z] CAPTURE 01-blueprint-workspace.png rendered UI
-[2026-08-27T05:08:11.309Z] CLICK rendered "Game Model"; WAIT=150ms for visible "Game basics"
-[2026-08-27T05:08:11.490Z] CLICK rendered "Edit" in local "Game basics" card; WAIT=130ms for local Save/Cancel controls
-[2026-08-27T05:08:11.665Z] INPUT rendered "Game id" field to create an unsaved draft
-[2026-08-27T05:08:11.711Z] CLICK rendered "Close project"
-[2026-08-27T05:08:11.854Z] WAIT close confirmation=127ms; CLICK local rendered "Cancel" in "Close the project anyway?" dialog
-[2026-08-27T05:08:11.862Z] WAIT context-preserved=8ms; visible Game basics and local Save remained on the scoped Game Model route
-[2026-08-27T05:08:11.881Z] CLICK rendered local "Save" in Game basics
-[2026-08-27T05:08:56.979Z] READINESS_INCONCLUSIVE local Save remained rendered after 45s; no rendered local completion or error observed. Later deep-link/reload, unavailable-action, Build/Export, package/PAR/outcome, successful close, and complete console/network capture were not reached. No product defect was observed.
+[2026-08-27T05:21:36.517Z] PROVENANCE candidate_sha=7a618abcb44619ea6ac8a65353a52425921990e6; checkout_sha=362947733e3c2705fd162b248c4f766bdefd95c2 (evidence-only descendant); launch=/home/stager/Work/sta-ger/agents/.toolchain/node-v24.18.0-linux-x64/bin/node ./dist/cli/pokie.js --no-open; isolated profiles=/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P8-03-74fb6e55fc3dc4f5/runtime/fresh-profile
+[2026-08-27T05:21:37.964Z] STUDIO_READY http://127.0.0.1:3200
+[2026-08-27T05:21:38.897Z] WAIT landing=284ms
+[2026-08-27T05:21:38.905Z] CLICK "Create game"
+[2026-08-27T05:21:39.175Z] WAIT created=270ms
+[2026-08-27T05:21:39.183Z] BLUEPRINT workspace="Starter Slot" route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-74fb6e55fc3dc4f5%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/overview sections=["Overview","Game Model","Play","Simulation","Replay","Build/Export"]
+[2026-08-27T05:21:39.301Z] CAPTURE 01-blueprint-workspace.png rendered UI
+[2026-08-27T05:21:39.318Z] CLICK "Game Model"
+[2026-08-27T05:21:39.455Z] WAIT game-model=137ms
+[2026-08-27T05:21:39.488Z] CLICK "Edit" in "Game basics"
+[2026-08-27T05:21:39.618Z] WAIT edit=130ms
+[2026-08-27T05:21:39.671Z] INPUT rendered labelled field "Game name" to create unsaved draft
+[2026-08-27T05:21:39.729Z] CLICK "Close project"
+[2026-08-27T05:21:39.772Z] CLICK "Cancel" in "Close the project anyway?"
+[2026-08-27T05:21:39.772Z] WAIT close-guard=25ms
+[2026-08-27T05:21:40.033Z] WAIT close-guard-dismiss=261ms
+[2026-08-27T05:21:40.038Z] WAIT stayed=5ms
+[2026-08-27T05:21:40.040Z] GUARD cancel preserved scoped route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-74fb6e55fc3dc4f5%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/gameModel
+[2026-08-27T05:21:40.069Z] CLICK "Cancel" in "Game basics"
+[2026-08-27T05:21:40.202Z] WAIT discard-confirm=132ms
+[2026-08-27T05:21:40.259Z] CLICK "Confirm" in "Discard your unsaved changes to this section?"
+[2026-08-27T05:21:40.304Z] WAIT discard=45ms
+[2026-08-27T05:21:40.309Z] DISCARD preserved project context after guarded-close cancellation route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-74fb6e55fc3dc4f5%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/gameModel
+[2026-08-27T05:21:40.345Z] WAIT unknown-link=34ms
+[2026-08-27T05:21:40.348Z] UNKNOWN_DEEP_LINK canonicalRoute=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-74fb6e55fc3dc4f5%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/overview title=Starter Slot overviewCurrent=true
+[2026-08-27T05:21:40.480Z] CAPTURE 02-unknown-link-recovery.png rendered UI
+[2026-08-27T05:21:40.663Z] WAIT reload=177ms
+[2026-08-27T05:21:40.670Z] RELOAD canonicalRoute=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-74fb6e55fc3dc4f5%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/overview title=Starter Slot
+[2026-08-27T05:21:40.679Z] WAIT unavailable-link=8ms
+[2026-08-27T05:21:40.682Z] UNAVAILABLE_DEEP_LINK "\"Certification\" isn't available for this project -- it requires: Use saved game outcomes." route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-74fb6e55fc3dc4f5%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/certification
+[2026-08-27T05:21:40.804Z] CAPTURE 03-unavailable-link-recovery.png rendered UI
+[2026-08-27T05:21:40.820Z] CLICK "Go to Overview"
+[2026-08-27T05:21:40.947Z] WAIT recovery=127ms
+[2026-08-27T05:21:40.979Z] CLICK "Build/Export"
+[2026-08-27T05:21:41.135Z] WAIT build-export=156ms
+[2026-08-27T05:21:41.142Z] DISABLED_CONTROLS [{"label":"Run Stake Engine Export (base)","surrounding":"Static export\n\nCreate a standalone bundle for another system to use.\n\nStake Engine Export\n\nTHIS COMPUTER\n\nPurpose: Create a standalone Stake Engine bundle from this project's outcomes.\n\nDestination: Choose a local folder for the finished export. Studio checks it before creating the export.\n\nPrerequisites\n\nA canonical outcome library file per mode\nA positive cost for every mode\nAn output directory to write to\nRun Stake Engine Export (base)\n\nGenerate an outcome library above first -- Stake Engine "}]
+[2026-08-27T05:21:41.155Z] CLICK "Run Stake Engine Export (base)" [disabled]
+[2026-08-27T05:21:41.662Z] DISABLED_EXPORT no request emitted; recovery guidance visible; actionRequests=4
+[2026-08-27T05:21:42.073Z] CAPTURE 04-disabled-export-guidance.png rendered UI
+[2026-08-27T05:21:42.126Z] CLICK "Generate exact outcome library (base)"
+[2026-08-27T05:21:42.640Z] WAIT outcome=514ms
+[2026-08-27T05:21:42.645Z] OUTCOME_STATE Generated 1,024 outcomes for mode "base" using exact (RTP 100.78%) into outcomelibrary.
+[2026-08-27T05:21:42.645Z] PACKAGE_PAR_NOT_REACHED prior isolated TypeScript Game Package Build had no rendered completion, error, or pending state within 180000ms; no duplicate build was issued in this fresh run.
+[2026-08-27T05:21:42.651Z] CLICK "Close project"
+[2026-08-27T05:21:42.654Z] WAIT close=3ms
+[2026-08-27T05:21:42.654Z] CLOSE_SUCCESS Your projects visible after confirmed clean project close
+[2026-08-27T05:21:42.654Z] DIAGNOSTICS console_errors=["warning: You are trying to use a blocker on a POP navigation to a location that was not created by @remix-run/router. This will fail silently in production. This can happen if you are navigating outside the router via `window.history.pushState`/`window.location.hash` instead of using router navigation APIs.  This can also happen if you are using createHashRouter and the user manually changes the URL."] network_errors=["404 http://127.0.0.1:3200/favicon.ico","404 http://127.0.0.1:3200/favicon.ico","404 http://127.0.0.1:3200/favicon.ico"] action_requests=["GET /api/project/deployment/targets","GET /api/project/deployment/build-modes","GET /api/project/deployment/targets","GET /api/project/deployment/build-modes","GET /api/project/deployment/build-modes"]
