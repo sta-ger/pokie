@@ -43,3 +43,11 @@ Focused harness recovery (fresh profiles, candidate build, 2026-08-27):
 - Replay then rendered its real recovery/workflow surface: `Recreate from seed`, a target-round input, optional seed, and `Load`. The harness still awaited the old `Run again` action and therefore emitted no Load request before the four-launch limit. This remaining portion is selector-inconclusive; no product defect was observed.
 
 No screenshot or generated output from this recovery was retained. The transcript above is limited to rendered transitions and product artifacts, and the pre-existing checksum list remains the retained generated-artifact inspection.
+
+Replay recovery completion (fresh profile, candidate build, 2026-08-27):
+
+- `Load` created the rendered replay configuration for round 1. Its local readiness table showed `Reproducible: AVAILABLE`, while inspection and JSON download correctly remained unavailable until reproduction.
+- The rendered next action, `Run again`, entered its pending state once and settled at `completed — 1/1 rounds`. The resulting round reported `Completeness: Full`, `Inspectable: AVAILABLE`, and `Exportable: AVAILABLE`; the `Download JSON` control became enabled. The displayed grid, paylines, paytable, credits, total win, and round detail were present. No product error appeared.
+- The prior Play reload recovery remained consistent: after reload, the intentional local recovery action was `New Play session`. Studio's clicked section controls are same-document transitions (no browser history entry was created), so browser back/forward did not apply to this journey.
+
+No additional screenshots or generated output are retained. This completes the previously unreached rendered Replay workflow; retained checksums remain the representative generated-artifact inspection.
