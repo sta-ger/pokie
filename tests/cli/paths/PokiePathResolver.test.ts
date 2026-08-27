@@ -93,6 +93,18 @@ describe("PokiePathResolver", () => {
             }
         });
 
+        it.each(["node_modules", "dist"] as const)("rejects a non-temporary Home beneath a %s ancestor", (unsafeSegment) => {
+            const home = path.join(process.cwd(), unsafeSegment, "ordinary-profile");
+            const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: home};
+            const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, env, () => ({
+                status: "valid",
+                directory: home,
+                source: "home",
+            }));
+
+            expect(resolver.resolveIndependentProjectDirectory("sample-slot").status).toBe("unsafe-path");
+        });
+
         it("uses an isolated temporary Documents folder only when it stays inside that profile", () => {
             const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-temp-home-documents-test-"));
             try {

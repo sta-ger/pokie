@@ -4,6 +4,7 @@ import path from "path";
 import jestConfigIgnore from "./jest.config.ignore.mjs";
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
+const jestCacheDirectory = path.join(configDir, "node_modules", ".cache", "jest");
 // The "pokie-examples" project below discovers tests in a sibling checkout that isn't part of
 // this repo's own git history (see its own comment). That sibling is present in some sandboxes
 // but not guaranteed in every environment that runs this config (eg. a fresh clone of just this
@@ -152,6 +153,11 @@ const pokieExamplesTransform = {
 // flag (see package.json's test:coverage/check:release scripts), not part of the default `npm test`
 // lane.
 export default {
+    // Jest defaults its transform and haste-map cache to the shared system temp directory. The
+    // full multi-project suite can exhaust that directory's per-job write quota even though this
+    // worktree still has ample space, causing otherwise unrelated suites to fail before running.
+    // Keep ephemeral cache data with the checked-out dependency tree instead, where each worktree
+    // has an isolated writable location.
     coveragePathIgnorePatterns: [...jestConfigIgnore],
     collectCoverageFrom: ["./src/**/*.ts"],
     // Several studio-client-components tests exercise the app's own real (unmocked) setTimeout-based
@@ -206,6 +212,7 @@ export default {
     projects: [
         {
             displayName: "pokie",
+            cacheDirectory: jestCacheDirectory,
             moduleFileExtensions: ["ts", "js"],
             transform: sourceTestTransform,
             moduleNameMapper: sourceTestModuleNameMapper,
@@ -225,12 +232,14 @@ export default {
             // P7 contract checks are executable Node ESM scripts. Keep them isolated from the
             // TypeScript source lane so an exact --runTestsByPath invocation can discover them.
             displayName: "p7-scripts",
+            cacheDirectory: jestCacheDirectory,
             testEnvironment: "node",
             moduleFileExtensions: ["mjs", "js"],
             testMatch: ["<rootDir>/tests/scripts/**/*.test.mjs"],
         },
         {
             displayName: "pokie-examples",
+            cacheDirectory: jestCacheDirectory,
             testEnvironment: "jsdom",
             // jest-environment-jsdom defaults package "exports" resolution to the "browser" condition,
             // which sends "pokie" -> src/index.ts's own exceljs dependency down to uuid's ESM browser
@@ -253,6 +262,7 @@ export default {
         },
         {
             displayName: "studio-client-components",
+            cacheDirectory: jestCacheDirectory,
             testEnvironment: "jsdom",
             moduleFileExtensions: ["tsx", "ts", "js"],
             testMatch: ["<rootDir>/tests/cli/studio-client/src/**/*.test.tsx"],
@@ -264,6 +274,7 @@ export default {
         },
         {
             displayName: "pokie-integration",
+            cacheDirectory: jestCacheDirectory,
             moduleFileExtensions: ["ts", "js"],
             transform: sourceTestTransform,
             moduleNameMapper: sourceTestModuleNameMapper,
@@ -271,6 +282,7 @@ export default {
         },
         {
             displayName: "pokie-packaging",
+            cacheDirectory: jestCacheDirectory,
             moduleFileExtensions: ["ts", "js"],
             transform: sourceTestTransform,
             moduleNameMapper: sourceTestModuleNameMapper,
@@ -282,6 +294,7 @@ export default {
             // these deliberately don't gate anything. Its own lane (like pokie-packaging) so
             // `npm run bench` never accidentally runs alongside the correctness suites.
             displayName: "pokie-benchmarks",
+            cacheDirectory: jestCacheDirectory,
             moduleFileExtensions: ["ts", "js"],
             transform: sourceTestTransform,
             moduleNameMapper: sourceTestModuleNameMapper,
@@ -289,6 +302,7 @@ export default {
         },
         {
             displayName: "studio-client-workflows",
+            cacheDirectory: jestCacheDirectory,
             testEnvironment: "jsdom",
             moduleFileExtensions: ["tsx", "ts", "js"],
             testMatch: studioClientWorkflowsTestMatch,

@@ -33,8 +33,11 @@ export type UnsafeStartDirectoryContext = {
     // A deliberately isolated user profile may itself live below the OS temporary directory (for
     // example, a disposable local Studio profile).  That profile is still the user's explicit Home,
     // not an arbitrary scratch destination.  When supplied, only descendants that remain physically
-    // inside this exact root are exempt from the broad OS-temp check; every other unsafe-root and
-    // unsafe-segment check below remains in force.
+    // inside this exact root are exempt from the broad OS-temp check. This exception applies only when
+    // the root itself is an isolated profile inside the configured OS temporary directory, both
+    // lexically and after symlinks resolve. Unsafe roots and path segments below that profile boundary
+    // remain in force; segments in an ancestor chosen by the test/runtime temporary-directory provider
+    // are not part of the user's profile destination.
     readonly allowedTemporaryRoot?: string;
 };
 
@@ -115,6 +118,17 @@ function isUnsafeAgainst(
     return isWithin(physicalAnchor(root, realpath), physicalCandidate, platformPath);
 }
 
+function hasUnsafePathSegment(
+    candidate: string,
+    platformPath: PlatformPathModule,
+    allowedRoot: string | undefined,
+): boolean {
+    const pathToInspect = allowedRoot !== undefined && isWithin(allowedRoot, candidate, platformPath)
+        ? platformPath.relative(allowedRoot, candidate)
+        : candidate;
+    return pathToInspect.split(platformPath.sep).some((segment) => UNSAFE_SEGMENT_NAMES.has(normalizeForComparison(segment, platformPath)));
+}
+
 // True when `candidate` is, or physically resolves inside, a directory a *default*-resolution algorithm
 // must never silently hand back: the process's own CWD, the OS temp/cache directory, POKIE's own install
 // root or Studio's own internal asset directory (both as ancestors, and as a bare "node_modules"/"dist"
@@ -143,17 +157,25 @@ export function isUnsafeStartDirectory(candidate: string, context: UnsafeStartDi
     }
 
     const allowedTemporaryRoot = context.allowedTemporaryRoot === undefined ? undefined : platformPath.resolve(context.allowedTemporaryRoot);
+    const temporaryRoot = platformPath.resolve(os.tmpdir());
+    const physicalTemporaryRoot = physicalAnchor(temporaryRoot, realpath);
     // Unlike the other forbidden roots, an isolated HOME may be intentionally absent until the
     // first managed project save creates it. Resolve that planned path through its nearest existing
     // ancestor so a missing /tmp/profile stays a narrow exemption rather than collapsing to /tmp.
     const physicalAllowedTemporaryRoot =
         allowedTemporaryRoot === undefined ? undefined : physicalDestination(allowedTemporaryRoot, platformPath, realpath);
-    const isInsideAllowedTemporaryRoot =
+    const isIsolatedTemporaryProfile =
         allowedTemporaryRoot !== undefined &&
         physicalAllowedTemporaryRoot !== undefined &&
+        isWithin(temporaryRoot, allowedTemporaryRoot, platformPath) &&
+        !pathsEqual(temporaryRoot, allowedTemporaryRoot, platformPath) &&
+        isWithin(physicalTemporaryRoot, physicalAllowedTemporaryRoot, platformPath) &&
+        !pathsEqual(physicalTemporaryRoot, physicalAllowedTemporaryRoot, platformPath);
+    const isInsideAllowedTemporaryRoot =
+        isIsolatedTemporaryProfile &&
         isWithin(allowedTemporaryRoot, resolvedCandidate, platformPath) &&
         isWithin(physicalAllowedTemporaryRoot, physicalCandidate, platformPath);
-    if (!isInsideAllowedTemporaryRoot && isUnsafeAgainst(platformPath.resolve(os.tmpdir()), resolvedCandidate, physicalCandidate, platformPath, realpath)) {
+    if (!isInsideAllowedTemporaryRoot && isUnsafeAgainst(temporaryRoot, resolvedCandidate, physicalCandidate, platformPath, realpath)) {
         return true;
     }
     if (context.installRoot !== undefined && isUnsafeAgainst(platformPath.resolve(context.installRoot), resolvedCandidate, physicalCandidate, platformPath, realpath)) {
@@ -163,9 +185,11 @@ export function isUnsafeStartDirectory(candidate: string, context: UnsafeStartDi
         return true;
     }
 
-    const hasUnsafeSegment = (segment: string) => UNSAFE_SEGMENT_NAMES.has(normalizeForComparison(segment, platformPath));
-    if (resolvedCandidate.split(platformPath.sep).some(hasUnsafeSegment)) {
+    // A profile intentionally rooted inside a test/runtime-specific temporary folder is allowed to
+    // inherit ancestor names such as node_modules from that provider. Inspect only the part below its
+    // explicit boundary, while still rejecting unsafe segments a project itself tries to introduce.
+    if (hasUnsafePathSegment(resolvedCandidate, platformPath, isInsideAllowedTemporaryRoot ? allowedTemporaryRoot : undefined)) {
         return true;
     }
-    return physicalCandidate.split(platformPath.sep).some(hasUnsafeSegment);
+    return hasUnsafePathSegment(physicalCandidate, platformPath, isInsideAllowedTemporaryRoot ? physicalAllowedTemporaryRoot : undefined);
 }
