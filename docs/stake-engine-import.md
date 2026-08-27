@@ -227,8 +227,10 @@ per-outcome error still means the whole import reports nothing built — the sam
 pokie import <stakeDir> [--out <dir>]
 ```
 
-Writes exactly the shape `pokie export --to adapter` reads back in — `<outDir>/libraries/<modeName>.json` per
-mode, `<outDir>/config.json` naming them, and (whenever `sourceProvenance` is present) `<outDir>/source-provenance.json`:
+Writes a canonical [Outcome Library bundle](outcome-library-bundle.md), so the imported directory can immediately
+be passed to `pokie inspect`, `pokie validate`, simulation, replay, and other Outcome Library commands. It also
+preserves the re-export descriptor: `<outDir>/libraries/<modeName>.json` per mode, `<outDir>/config.json` naming
+them, and (whenever `sourceProvenance` is present) `<outDir>/source-provenance.json`.
 
 ```json
 {

@@ -91,6 +91,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
         options?: OutcomeLibraryBundleWriteOptions,
     ): Promise<OutcomeLibraryBundleWriteResult> {
         assertNotCancelled(options);
+        assertSafeAdditionalFiles(options?.additionalFiles ?? []);
         const upfrontIssues = this.validator.validate(modes);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
@@ -189,6 +190,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             }
 
             const relativeFiles = [...manifestEntries.flatMap((entry) => [entry.indexFile, entry.outcomesFile]), "manifest.json"];
+            assertAdditionalFilesDoNotOverlap(options?.additionalFiles ?? [], relativeFiles);
             const manifest: OutcomeLibraryBundleManifest = {
                 schemaVersion: OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION,
                 generatedBy: "pokie outcomelibrary build",
@@ -217,6 +219,11 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                         // is immediately followed by the atomic swap below.
                         assertNotCancelled(options);
                     }
+                    for (const additionalFile of options?.additionalFiles ?? []) {
+                        const additionalPath = path.resolve(tempDir, additionalFile.relativePath);
+                        fs.mkdirSync(path.dirname(additionalPath), {recursive: true});
+                        this.writeFile(additionalPath, additionalFile.contents);
+                    }
                 },
             });
 
@@ -228,7 +235,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                     ? [...issues, {code: "outcome-library-bundle-write-stale-cleanup-failed", severity: "warning" as const, message: cleanupWarning, details: {outDir}}]
                     : issues;
 
-            return {outDir, files: relativeFiles, manifest, issues: finalIssues};
+            return {outDir, files: [...relativeFiles, ...(options?.additionalFiles ?? []).map((file) => file.relativePath)], manifest, issues: finalIssues};
         } finally {
             try {
                 this.removeDirectory(stagingDir);
@@ -242,4 +249,32 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
 
 function assertNotCancelled(options: OutcomeLibraryBundleWriteOptions | undefined): void {
     if (options?.signal?.aborted) throw new OutcomeLibraryBundleWriteCancelledError();
+}
+
+function assertSafeAdditionalFiles(files: readonly {readonly relativePath: string}[]): void {
+    const seen = new Set<string>();
+    for (const file of files) {
+        const segments = file.relativePath.split(/[\\/]/);
+        if (
+            file.relativePath.length === 0 ||
+            path.isAbsolute(file.relativePath) ||
+            path.win32.isAbsolute(file.relativePath) ||
+            segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")
+        ) {
+            throw new Error(`Outcome library companion file path "${file.relativePath}" is not a safe relative path.`);
+        }
+        if (seen.has(file.relativePath)) {
+            throw new Error(`Outcome library companion file path "${file.relativePath}" is listed more than once.`);
+        }
+        seen.add(file.relativePath);
+    }
+}
+
+function assertAdditionalFilesDoNotOverlap(files: readonly {readonly relativePath: string}[], bundleFiles: readonly string[]): void {
+    const bundleFileSet = new Set(bundleFiles);
+    for (const file of files) {
+        if (bundleFileSet.has(file.relativePath)) {
+            throw new Error(`Outcome library companion file path "${file.relativePath}" overlaps a canonical bundle file.`);
+        }
+    }
 }

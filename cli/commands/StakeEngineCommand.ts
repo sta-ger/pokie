@@ -134,7 +134,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         exporter: StakeEngineExporting = new StakeEngineExporter(pokieVersion),
         importer: StakeEngineImporting = new StakeEngineImporter(),
         loadJson: (filePath: string) => unknown = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf-8")),
-        importWriter: StakeEngineImportWriting = new StakeEngineImportWriter(),
+        importWriter: StakeEngineImportWriting = new StakeEngineImportWriter(pokieVersion),
         loadLibraryFromBundle: (bundleDir: string, modeName: string) => Promise<WeightedOutcomeLibrary> = (bundleDir, modeName) =>
             loadWeightedOutcomeLibraryFromBundle(bundleDir, modeName),
         bundleStreamingExporter: StakeEngineBundleStreamingExporting = new StakeEngineBundleStreamingExporter(pokieVersion),
@@ -441,8 +441,11 @@ export class StakeEngineCommand implements CliCommandHandling {
         const written = await this.importWriter.writeToDirectory(result, options.outDir);
 
         console.log(`Imported "${options.stakeDir}" to "${options.outDir}":`);
+        console.log(`  wrote  manifest.json`);
         console.log(`  wrote  config.json`);
         for (const mode of result.modes) {
+            console.log(`  wrote  index_${mode.modeName}.json`);
+            console.log(`  wrote  outcomes_${mode.modeName}.jsonl`);
             console.log(`  wrote  libraries/${mode.modeName}.json`);
         }
         if (result.sourceProvenance !== undefined) {

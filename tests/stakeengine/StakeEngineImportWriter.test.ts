@@ -2,9 +2,10 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StakeEngineImportResult, StakeEngineImportWriter} from "pokie";
+import {buildSingleOutcomeStakeEngineLibrary} from "./StakeEngineTestFixtures.js";
 
-const BASE_LIBRARY = {schemaVersion: 1, libraryId: "base-lib", outcomes: []};
-const BONUS_LIBRARY = {schemaVersion: 1, libraryId: "bonus-lib", outcomes: []};
+const BASE_LIBRARY = buildSingleOutcomeStakeEngineLibrary({libraryId: "base-lib", betMode: "base", stake: 1, totalWin: 1});
+const BONUS_LIBRARY = buildSingleOutcomeStakeEngineLibrary({libraryId: "bonus-lib", betMode: "bonus", stake: 1, totalWin: 2});
 
 function resultWithModes(modeNames: readonly string[]): StakeEngineImportResult {
     const librariesByName: Record<string, unknown> = {base: BASE_LIBRARY, bonus: BONUS_LIBRARY};
@@ -38,14 +39,16 @@ describe("StakeEngineImportWriter", () => {
         }
     });
 
-    it("writes libraries/<mode>.json, config.json, and source-provenance.json", async () => {
-        const writer = new StakeEngineImportWriter();
+    it("writes a valid Outcome Library alongside libraries/<mode>.json, config.json, and source-provenance.json", async () => {
+        const writer = new StakeEngineImportWriter("1.3.0");
         const result = resultWithModes(["base", "bonus"]);
 
         const written = await writer.writeToDirectory(result, outDir);
 
         expect(written.issues).toEqual([]);
-        expect(new Set(fs.readdirSync(outDir))).toEqual(new Set(["libraries", "config.json", "source-provenance.json"]));
+        expect(new Set(fs.readdirSync(outDir))).toEqual(
+            new Set(["libraries", "config.json", "source-provenance.json", "manifest.json", "index_base.json", "outcomes_base.jsonl", "index_bonus.json", "outcomes_bonus.jsonl"]),
+        );
         expect(new Set(fs.readdirSync(path.join(outDir, "libraries")))).toEqual(new Set(["base.json", "bonus.json"]));
         expect(JSON.parse(fs.readFileSync(path.join(outDir, "libraries", "base.json"), "utf-8"))).toEqual(BASE_LIBRARY);
         expect(JSON.parse(fs.readFileSync(path.join(outDir, "config.json"), "utf-8"))).toEqual({
@@ -58,7 +61,7 @@ describe("StakeEngineImportWriter", () => {
     });
 
     it("removes a mode's library file when a re-write no longer includes that mode", async () => {
-        const writer = new StakeEngineImportWriter();
+        const writer = new StakeEngineImportWriter("1.3.0");
         await writer.writeToDirectory(resultWithModes(["base", "bonus"]), outDir);
         expect(fs.existsSync(path.join(outDir, "libraries", "bonus.json"))).toBe(true);
 
@@ -70,7 +73,7 @@ describe("StakeEngineImportWriter", () => {
     });
 
     it("leaves no temp/stale sibling directories behind after a successful write or re-write", async () => {
-        const writer = new StakeEngineImportWriter();
+        const writer = new StakeEngineImportWriter("1.3.0");
 
         await writer.writeToDirectory(resultWithModes(["base"]), outDir);
         expect(siblingLeftovers(outDir)).toEqual([]);
@@ -80,7 +83,7 @@ describe("StakeEngineImportWriter", () => {
     });
 
     it("preserves the whole existing directory, byte for byte, when a write fails partway through a re-write", async () => {
-        const writer = new StakeEngineImportWriter();
+        const writer = new StakeEngineImportWriter("1.3.0");
         await writer.writeToDirectory(resultWithModes(["base", "bonus"]), outDir);
         const filesBefore = fs.readdirSync(path.join(outDir, "libraries")).sort();
         const configBefore = fs.readFileSync(path.join(outDir, "config.json"), "utf-8");
@@ -103,14 +106,16 @@ describe("StakeEngineImportWriter", () => {
     });
 
     it("restores the old outDir byte-for-byte when the publish rename fails after the old directory was moved aside", async () => {
-        const writer = new StakeEngineImportWriter();
+        const writer = new StakeEngineImportWriter("1.3.0");
         await writer.writeToDirectory(resultWithModes(["base", "bonus"]), outDir);
         const filesBefore = fs.readdirSync(path.join(outDir, "libraries")).sort();
 
         let renameCallCount = 0;
         const failingRenameDirectory = (from: string, to: string): void => {
             renameCallCount++;
-            if (renameCallCount === 2) {
+            // Three bundle files move from the staging directory before the atomic publisher moves the
+            // existing output aside (fourth) and attempts the replacement (fifth).
+            if (renameCallCount === 5) {
                 throw new Error("simulated publish failure");
             }
             fs.renameSync(from, to);
@@ -119,13 +124,13 @@ describe("StakeEngineImportWriter", () => {
 
         await expect(failingWriter.writeToDirectory(resultWithModes(["base"]), outDir)).rejects.toThrow("simulated publish failure");
 
-        expect(renameCallCount).toBe(3);
+        expect(renameCallCount).toBe(6);
         expect(fs.readdirSync(path.join(outDir, "libraries")).sort()).toEqual(filesBefore);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
     it("surfaces a warning (not a failure) when removing the stale backup fails after a successful publish", async () => {
-        const writer = new StakeEngineImportWriter();
+        const writer = new StakeEngineImportWriter("1.3.0");
         await writer.writeToDirectory(resultWithModes(["base", "bonus"]), outDir);
 
         const failingRemoveDirectory = (): void => {
@@ -136,12 +141,11 @@ describe("StakeEngineImportWriter", () => {
         const written = await failingWriter.writeToDirectory(resultWithModes(["base"]), outDir);
 
         expect(written.issues.some((issue) => issue.code === "stakeengine-import-write-stale-cleanup-failed" && issue.severity === "warning")).toBe(true);
-        // The new (single-mode) directory is fully live despite the cleanup failure.
         expect(fs.readdirSync(path.join(outDir, "libraries"))).toEqual(["base.json"]);
     });
 
     it("refuses to write a library file outside libraries/ for a hand-crafted, unsafe modeName", async () => {
-        const writer = new StakeEngineImportWriter();
+        const writer = new StakeEngineImportWriter("1.3.0");
         const maliciousResult: StakeEngineImportResult = {
             stakeDir: "/stake",
             manifest: undefined,
@@ -150,7 +154,7 @@ describe("StakeEngineImportWriter", () => {
             issues: [],
         };
 
-        await expect(writer.writeToDirectory(maliciousResult, outDir)).rejects.toThrow(/not safe/);
+        await expect(writer.writeToDirectory(maliciousResult, outDir)).rejects.toThrow(/safe relative path/);
 
         // Nothing was published — outDir was never touched (mkdtempSync created it empty, and it must stay so).
         expect(fs.readdirSync(outDir)).toEqual([]);
