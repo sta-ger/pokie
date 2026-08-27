@@ -95,23 +95,27 @@ export function NewBlueprintDialog({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [opened]);
 
-    // Mantine initially focused the dialog's close button in the rendered Studio audit. Each step
-    // has a useful first control instead: cancelling preserves a dirty draft, the starter is the
-    // recommended first-use choice, and the form steps start at their primary input.  This also makes
-    // an in-dialog step transition deterministic instead of leaving keyboard focus on a removed node.
+    // Mantine's modal autofocus runs after this component's effects. Each step has a useful first
+    // control instead: cancelling preserves a dirty draft, the starter is the recommended first-use
+    // choice, and the form steps start at their primary input. Scheduling this after the modal's own
+    // autofocus also makes an in-dialog step transition deterministic instead of leaving keyboard
+    // focus on a removed node.
     useEffect(() => {
         if (!opened) {
-            return;
+            return () => undefined;
         }
+        let target: HTMLElement | null;
         if (step === "confirmDirty") {
-            cancelRef.current?.focus();
+            target = cancelRef.current;
         } else if (step === "choose") {
-            choiceRef.current?.focus();
+            target = choiceRef.current;
         } else if (step === "random") {
-            seedRef.current?.focus();
+            target = seedRef.current;
         } else {
-            loadBackRef.current?.focus();
+            target = loadBackRef.current;
         }
+        const timeout = window.setTimeout(() => target?.focus(), 0);
+        return () => window.clearTimeout(timeout);
     }, [opened, step]);
 
     // Advances past the dirty-confirm gate once a Save this dialog itself triggered actually lands —
@@ -192,7 +196,7 @@ export function NewBlueprintDialog({
                             <ErrorState message={describePathActionError("The saved game design", saveView.message)} />
                         )}
                         <Group justify="flex-end">
-                            <Button ref={cancelRef} variant="default" onClick={onClose}>
+                            <Button ref={cancelRef} data-autofocus variant="default" onClick={onClose}>
                                 Cancel
                             </Button>
                             <Button variant="default" color="red" onClick={() => setStep("choose")}>
@@ -215,6 +219,7 @@ export function NewBlueprintDialog({
                         <Stack gap="xs">
                             <Button
                                 ref={choiceRef}
+                                data-autofocus
                                 onClick={() => {
                                     onChooseRecommended();
                                     onClose();
