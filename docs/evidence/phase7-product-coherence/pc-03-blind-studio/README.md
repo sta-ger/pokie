@@ -1,40 +1,41 @@
-# PC-03 — blind Studio exploration transcript
+# PC-03 — blind Studio exploration attempt
 
-Candidate: `4063b18516986161bf2f4ca5231d2553d7c6dbc9`
-Run: 2026-08-27, fresh Studio registry and Chromium profile.
+Candidate: `8f23a47b443a578d4351b7d019dddadd7c698b12`
+Run: 2026-08-27, two isolated attempts, each with a newly created Chromium
+profile and Studio runtime directory. Studio was built from this checkout and
+launched only with `node ./dist/cli/pokie.js --no-open`.
 
-Before launch, the explorer did not read product/source/architecture material,
-roadmap, prior findings, or prior evidence. Studio was launched from this
-checkout with `node ./dist/cli/pokie.js --no-open`; the visible Studio page was
-driven through rendered controls only.
+This is a bounded **driver-inconclusive** attempt, not a product pass or a
+product finding. No roadmap, prior evidence, source-file path, or known finding
+was supplied to the UI exploration.
 
-## Rendered workflow
+## Rendered observations
 
-1. The starter screen rendered Create game, design tabs, the required
-   id/name/version fields, automatic validation, and advanced file/JSON tools.
-2. Create game was enabled and accepted once. It changed to **Save game**,
-   rendered **Your game was saved. Opening its workspace…**, and every design
-   section reported **valid** with **Valid — no issues found**.
-3. The subsequent workspace rendered `Starter Slot` / `starter-slot · v0.1.0`,
-   an editable project location, valid re-check state, and useful next actions:
-   Open Play, Game Model, Simulation, Replay, and Build/Export.
-4. Browser Back, Forward, and Reload were exercised after the handoff. Reload
-   retained the rendered workspace and valid project state; no rendered error
-   appeared. No unaccepted or pending operation was repeated.
+1. Fresh Studio rendered the editable starter-design screen: **Create game**,
+   **Choose a different start**, game id/name/version fields, validation, and
+   Game Model preview. This establishes the clean empty/new-project entry
+   state.
+2. The rendered start chooser offered starter, blank, generated-idea, and
+   **Open a saved game design** paths. Its Browse control opened a visible native
+   picker; the picker was activated and given an isolated deliberately malformed
+   JSON path. The resulting rendered modal displayed that path and an explicit
+   **Open saved game design** confirmation. The driver did not confirm that
+   second rendered action, so this is neither an import result nor an error
+   finding. A separate visible-picker cancellation returned cleanly.
+3. The name field was cleared and restored through visible keyboard interaction.
+   Studio rendered `Source changed — checking again…`; no product error was
+   rendered. The rendered green notice later confirmed: `Your game was saved.
+   Opening its workspace…`.
 
-Only this one idempotency-safe new-project action was clicked. The complete
-rendered success and recovery state is retained here rather than raw driver
-logs; no screenshot is needed because no visual-only finding was observed.
+## Limitation and disposition
 
-## Generated-artifact inspection
+After the confirmed save/create state, the input focus left the action above
+the viewport. The harness searched only viewport-visible controls and therefore
+raised a driver error before it could await the workspace or reach Build/Export,
+Play, Simulation, Replay, generated-artifact reuse, or browser history checks.
+The same bounded harness repair was tried once with a fresh profile and reached
+the same viewport-selection failure. The two permitted public-workflow launches
+were thereby exhausted.
 
-The newly created blueprint rendered at
-`/home/stager/POKIE Projects/starter-slot-97/blueprint.json`. The product
-artifact is intentionally not retained in the repository.
-
-| Artifact | Bytes | SHA-256 |
-| --- | ---: | --- |
-| `blueprint.json` | 1,430 | `9428e23e9c3b58a215037dcabaec2926b39317d4784c9ca07ea051e843fb1031` |
-
-Result: the explored create-and-handoff workflow passed; no product finding was
-observed in this isolated run.
+No fixed wait expiry, no unconfirmed action, and no driver failure is reported
+as a product defect. No generated project or raw driver log is retained.
