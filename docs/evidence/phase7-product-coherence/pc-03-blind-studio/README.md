@@ -30,3 +30,8 @@ Harness-recovery addendum (fresh profiles, candidate CLI, 2026-08-27):
 - The second fresh launch clicked `Create game`, created `Starter Slot`, and clicked its visible `Play` navigation action. The rendered Play surface then offered `Start Play` and `New Play session`. The remaining harness awaited a nonexistent `Spin` control before taking that required `Start Play` transition, so no spin or replay request was emitted and no rendered product error appeared.
 
 The failed driver expectation is selector-inconclusive, not a product finding. No additional screenshots or generated artifacts were retained.
+
+Final harness-recovery attempt (fresh profiles, candidate build, 2026-08-27):
+
+- The repaired visible journey again created `Starter Slot`, opened `Play`, and rendered `Start Play` plus `New Play session`.
+- The DOM driver could neither expose a matching interactive control nor scroll it into its control list, despite that rendered Play text. Four fresh-profile launches exhausted the allotted recovery budget before an action could be emitted. There was no rendered product error, request, or duplicate action; this is selector-inconclusive, not a product finding.
