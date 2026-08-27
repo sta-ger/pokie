@@ -1,0 +1,12 @@
+P8-06 candidate browser audit — concise observation transcript
+candidate: 4b1c6b49bc1e58f50db8fe3f8ca450e6dba0b718
+public launch: node ./dist/cli/pokie.js --no-open
+
+Run 1 (fresh isolated Studio and Chromium profiles): Studio listened on loopback port 3200.
+Home Design first rendered in 246 ms. At 1280px, viewport and document width were both 1280px (no horizontal overflow).
+Rendered named, focusable regions: "Design Your Game" and "Projects".
+The rendered first-launch control was "Choose a different start", not the harness's initial "New Blueprint" selector. No product error rendered.
+
+Run 2 (fresh isolated profiles; repaired selector): Studio again listened on loopback port 3200; the 1280px no-overflow observation repeated.
+Immediately after navigation, the CDP driver read before document.body existed and aborted with a driver TypeError. No rendered product error was observed.
+The two permitted public-workflow launches were exhausted before keyboard/dialog/dashboard, 405px, and complete latency/network observations could run.

@@ -1,0 +1,14 @@
+{
+  "measurements": [
+    {
+      "viewport": 1280,
+      "document": {
+        "width": 1280,
+        "scrollWidth": 1280,
+        "overflow": false
+      }
+    }
+  ],
+  "console": [],
+  "failedNetwork": []
+}
