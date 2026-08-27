@@ -1,12 +1,13 @@
 # P8-02 onboarding evidence
 
-Independent rerun passed on candidate `f1511c0e47038a94f266788475e513deb83a915a`.
-Fresh Studio and Chromium profiles used this checkout's candidate build via
-`node ./dist/cli/pokie.js --no-open` for two launches. The rendered journey
-shows Studio's purpose, all four start choices, invalid-location recovery, and
-the created Starter Slot workspace. A browser-rendered HTTP 503 for
-`GET /api/context` remained at `#/` with the explicit **Choose or create a
-game** recovery action, rather than routing to Home.
+Independent final rerun on candidate `6215d485251dabb8a8aec0e87cd7edca8bb16518`
+used the checkout build with `node ./dist/cli/pokie.js --no-open` and newly
+isolated Studio/Chromium profiles. Rendered evidence confirms the first-launch
+purpose, invalid-location recovery, all four start choices, and workspace
+arrival. It also captures the rendered legacy project-opening HTTP recovery.
 
-`current-run/` contains the concise action transcript, provenance/checksums,
-and the five representative rendered screenshots only.
+The run is driver-inconclusive for the remaining recovery checks: after the
+visible **Go to Your projects** button was keyboard-focused and Enter was sent,
+no rendered route transition or product error appeared within the bounded
+wait. This is not recorded as a product finding. Superseded screenshots and
+provenance from the earlier candidate were removed.

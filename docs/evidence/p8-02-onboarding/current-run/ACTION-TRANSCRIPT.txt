@@ -1,17 +1,14 @@
-[2026-08-27T03:34:48.109Z] LAUNCH normal: fresh isolated Studio and Chromium profiles; candidate command: node ./dist/cli/pokie.js --no-open; URL http://127.0.0.1:3200
-[2026-08-27T03:34:48.516Z] CAPTURE 00-clean-launch.png: first-launch purpose
-[2026-08-27T03:34:48.531Z] CLICK "Projects" via its visible rendered coordinates
-[2026-08-27T03:34:48.700Z] INPUT "Game location" through rendered keyboard input
-[2026-08-27T03:34:48.718Z] CLICK "Check game" via its visible rendered coordinates
-[2026-08-27T03:34:48.970Z] CAPTURE 01-invalid-import-recovery.png: actionable invalid game-location recovery
-[2026-08-27T03:34:48.987Z] CLICK "Create your first game" via its visible rendered coordinates
-[2026-08-27T03:34:49.160Z] CLICK "Choose a different start" via its visible rendered coordinates
-[2026-08-27T03:34:49.420Z] CAPTURE 02-start-choices.png: all four visible start choices
-[2026-08-27T03:34:49.430Z] KEY Escape closed the rendered start-choice modal
-[2026-08-27T03:34:49.699Z] CLICK "Create game" via its visible rendered coordinates
-[2026-08-27T03:34:50.147Z] CAPTURE 03-created-workspace.png: successful workspace arrival
-[2026-08-27T03:34:50.147Z] PASS normal journey: purpose, four choices, invalid-location recovery, and workspace transition were rendered.
-[2026-08-27T03:34:52.131Z] LAUNCH http-context: fresh isolated Studio and Chromium profiles; candidate command: node ./dist/cli/pokie.js --no-open; URL http://127.0.0.1:3200
-[2026-08-27T03:34:52.306Z] NETWORK browser received an intercepted HTTP 503 for GET /api/context
-[2026-08-27T03:34:52.511Z] CAPTURE 04-http-context-recovery.png: HTTP launch-context recovery with no Home route
-[2026-08-27T03:34:52.511Z] PASS HTTP failure: visible recovery remained at "#/", not #/home/design.
+[2026-08-27T04:01:55.885Z] LAUNCH normal: fresh Studio profile; candidate command: node ./dist/cli/pokie.js --no-open; URL http://127.0.0.1:3200
+[2026-08-27T04:01:56.929Z] CAPTURE 00-clean-launch.png: clean-profile first-launch purpose
+[2026-08-27T04:01:56.942Z] CLICK "Projects" through rendered coordinates
+[2026-08-27T04:01:57.164Z] INPUT "Game location" through rendered keyboard input
+[2026-08-27T04:01:57.196Z] CLICK "Check game" through rendered coordinates
+[2026-08-27T04:01:57.493Z] CAPTURE 01-invalid-import-recovery.png: invalid location stayed actionable
+[2026-08-27T04:01:57.505Z] CLICK "Create your first game" through rendered coordinates
+[2026-08-27T04:01:57.698Z] CLICK "Choose a different start" through rendered coordinates
+[2026-08-27T04:01:57.933Z] CAPTURE 02-start-choices.png: all four rendered start choices
+[2026-08-27T04:01:58.279Z] CLICK "Create game" through rendered coordinates
+[2026-08-27T04:01:58.756Z] CAPTURE 03-created-workspace.png: successful workspace arrival
+[2026-08-27T04:01:58.756Z] PASS normal journey: rendered onboarding, invalid-input recovery, choices, and workspace arrival.
+[2026-08-27T04:01:59.070Z] CAPTURE 04-legacy-project-failure.png: legacy project-opening HTTP recovery
+[2026-08-27T04:03:59.284Z] INCONCLUSIVE: after keyboard focus and Enter on the rendered Go to Your projects action, neither /home/projects nor a rendered product error appeared within the bounded wait.

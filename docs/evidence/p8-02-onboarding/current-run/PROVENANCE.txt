@@ -1,11 +1,13 @@
-candidate_sha=f1511c0e47038a94f266788475e513deb83a915a
-evidence_checkout_sha=1495491268c5ff7884ad780ed743dcda760db8b6 (candidate descendant; only docs/evidence/p8-02-onboarding changed)
-build_command=npm run build-cli (completed before both launches)
-launch_command=node ./dist/cli/pokie.js --no-open (run twice from this source checkout)
-profiles=fresh isolated Studio HOME and Chromium user-data-dir for each launch; removed after run
-http_case=Chromium Fetch interception fulfilled GET /api/context with HTTP 503; page DOM/state was not injected
-sha256 0708de194afaf03e1a3cef255929bf56b472108ba0571ccc7ad00658fa267f01  00-clean-launch.png
-sha256 699cc802b9ca484b49bd5563a45d45d65b22c84d5fc30ecd429c0c48f2734144  01-invalid-import-recovery.png
-sha256 22e7ebbbccc367dc79d07e2caf1c9ef2aa135c1901fd2c92e66bb127be74abf1  02-start-choices.png
-sha256 2baa69bf770c5dac64b6daeccdaf250905b48b78ce89e368e85ab7f7fa252395  03-created-workspace.png
-sha256 e2847ec8d5905dece8bca5af631976c1ec3959a25889d6a5cedade421d20aeb7  04-http-context-recovery.png
+candidate_sha=6215d485251dabb8a8aec0e87cd7edca8bb16518
+build_command=npm run build-cli
+launch_command=node ./dist/cli/pokie.js --no-open (exact; source checkout)
+profiles=fresh isolated Studio HOME/XDG and Chromium user-data-dir; removed after the run
+browser=visible Chromium on inherited DISPLAY; rendered controls used coordinate and keyboard input
+network=browser interceptor supplied HTTP 503 for GET /api/project/context; no /api/projects/close request was observed before the timeout
+console_errors=none observed before the driver timeout
+result=driver-inconclusive at the legacy recovery navigation; no rendered product error observed
+sha256 07cf756c5ab88f34875718354ea4d1065f1833afc9f0299ca288d6a9644bb13f  00-clean-launch.png
+sha256 b035f0e666dbfe58792bf8534bc75e300e71dacb8c355b4287014d1d1f747b3a  01-invalid-import-recovery.png
+sha256 a096c26befc440adb01c1894bf98c5ae9977fa66aa237ce2034d7a21515af497  02-start-choices.png
+sha256 3e39aa780999da2d964de5f4eb8179d3ef0947837f8508c4703875b6e944c1f4  03-created-workspace.png
+sha256 7f1781c6c9bd03f8e54f8a20033c84f5dd7f24cbbc980f397d46b0ac6f8cd72f  04-legacy-project-failure.png
