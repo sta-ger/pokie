@@ -596,7 +596,7 @@ describe("Projects: Import Project required-field baseline", () => {
         const {fetchImpl, calls} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
         renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
-        await screen.findByText("No projects yet -- import or design one below.");
+        await screen.findByText("No games yet. Start a game or add one you already have.");
         const detectButton = await screen.findByRole("button", {name: "Detect"});
         expect(detectButton).toBeDisabled();
         expect(detectButton).toHaveAttribute("aria-describedby", "import-project-detect-help");

@@ -1,7 +1,9 @@
+import {Button, Stack} from "@mantine/core";
 import {useEffect, useState} from "react";
 import {Navigate} from "react-router-dom";
 import {getContext} from "../api/apiClient";
 import {LoadingState} from "./common/LoadingState";
+import {ErrorState} from "./common/ErrorState";
 import {useStudioApi} from "../context/StudioApiProvider";
 
 const HOME_ROUTE = "/home/design";
@@ -21,6 +23,7 @@ const PROJECT_ROUTE = "/project/overview";
 export function StudioLanding() {
     const fetchImpl = useStudioApi();
     const [route, setRoute] = useState<string>();
+    const [contextUnavailable, setContextUnavailable] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -33,9 +36,13 @@ export function StudioLanding() {
 
         getContext(fetchImpl).then(
             (context) => land(context.mode === "project" ? PROJECT_ROUTE : HOME_ROUTE),
-            // An unreachable/failed /api/context is not worth stranding the user on a blank screen for:
-            // Home is the safe landing, and it's what the app did for every startup before this existed.
-            () => land(HOME_ROUTE),
+            // Keep the designer in control when the startup check fails: silently changing to Home hides
+            // why the requested project did not open and makes a broken launch look like a fresh start.
+            () => {
+                if (!cancelled) {
+                    setContextUnavailable(true);
+                }
+            },
         );
 
         return () => {
@@ -44,7 +51,15 @@ export function StudioLanding() {
     }, [fetchImpl]);
 
     if (route === undefined) {
-        return <LoadingState label="Starting POKIE Studio…" />;
+        if (contextUnavailable) {
+            return (
+                <Stack gap="sm">
+                    <ErrorState message="Studio couldn't determine which project to open. Start from your game designs and projects instead." />
+                    <Button onClick={() => setRoute(HOME_ROUTE)}>Choose or create a game</Button>
+                </Stack>
+            );
+        }
+        return <LoadingState label="Opening Studio…" />;
     }
 
     return <Navigate to={route} replace />;

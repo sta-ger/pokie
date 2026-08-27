@@ -1,4 +1,4 @@
-import {screen, waitFor} from "@testing-library/react";
+import {fireEvent, screen, waitFor} from "@testing-library/react";
 import {createFakeFetch, createRoutedFakeFetch} from "./testUtils/fakeFetch";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
@@ -63,10 +63,10 @@ describe("Studio startup landing route", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/"]});
 
-        expect(screen.getByRole("status")).toHaveTextContent("Starting POKIE Studio…");
+        expect(screen.getByRole("status")).toHaveTextContent("Opening Studio…");
     });
 
-    it("falls back to Home when the context request fails", async () => {
+    it("explains a failed launch check and lets the designer choose a game instead of silently changing screens", async () => {
         const {fetchImpl} = createFakeFetch((call) => {
             if (call.url === "/api/context") {
                 throw new Error("context unreachable");
@@ -76,6 +76,9 @@ describe("Studio startup landing route", () => {
 
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/"]});
 
+        expect(await screen.findByText(/Studio couldn't determine which project to open/)).toBeInTheDocument();
+        expect(router.state.location.pathname).toBe("/");
+        fireEvent.click(screen.getByRole("button", {name: "Choose or create a game"}));
         await waitFor(() => expect(router.state.location.pathname).toBe("/home/design"));
     });
 

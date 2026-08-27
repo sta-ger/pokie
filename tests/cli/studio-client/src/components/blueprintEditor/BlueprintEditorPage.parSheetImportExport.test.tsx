@@ -364,8 +364,8 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         // comment), so the New flow's own dirty-confirm gate doesn't trigger; "New Blueprint" opens
         // straight to the Blank/Generate random/Load existing choice (see NewBlueprintDialog's own doc
         // comment).
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
-        await user.click(await screen.findByRole("button", {name: "Blank"}));
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        await user.click(await screen.findByRole("button", {name: "Start with a blank game"}));
 
         // A fresh remount (via the parent's own key={formGeneration}) -- back to a clean Import step,
         // with no trace of the previous blueprint's import result.

@@ -28,7 +28,7 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         // this point -- awaiting its settling keeps this test from returning while that promise is still
         // pending, which would otherwise resolve after cleanup/the next test starts and call setState
         // outside any act() this test controls.
-        expect(await screen.findByText("No projects yet -- import or design one below.")).toBeInTheDocument();
+        expect(await screen.findByText("No games yet. Start a game or add one you already have.")).toBeInTheDocument();
     });
 
     it("a direct link to a non-default Project tab renders that tab, not Overview", async () => {

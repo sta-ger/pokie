@@ -15,6 +15,7 @@ import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {formatTimestamp} from "../../domain/formatTimestamp";
 import {describePathActionError} from "../../domain/pathActionError";
+import {describeProjectActionError} from "../../domain/projectActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
@@ -66,12 +67,12 @@ const OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType
 ]);
 
 const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
-    blueprint: "Blueprint",
-    tsPackage: "Package",
-    outcomeLibrary: "Outcome library",
-    stakeAdapter: "Stake Engine export",
-    wasm: "WASM",
-    parWorkbook: "PAR sheet",
+    blueprint: "Game design",
+    tsPackage: "Playable game",
+    outcomeLibrary: "Game data library",
+    stakeAdapter: "Game export",
+    wasm: "Game module",
+    parWorkbook: "PAR spreadsheet",
 };
 
 const PROJECTS_PER_PAGE = 10;
@@ -175,7 +176,7 @@ export function ProjectsPanel({
             })
             .catch((error: unknown) => {
                 if (!cancelled) {
-                    setListView({status: "error", message: errorMessage(error)});
+                    setListView({status: "error", message: describeProjectActionError("Your projects list", errorMessage(error))});
                 }
             });
         return () => {
@@ -198,7 +199,7 @@ export function ProjectsPanel({
         }
         setListView((previous) => previous.status === "loaded" ? {...previous, openError: undefined} : previous);
         setOpeningLocation(entry.location);
-        const subject = entry.type === "blueprint" ? "The blueprint file" : "The project directory";
+        const subject = entry.type === "blueprint" ? "The game design" : "The game";
         openAndNavigate(entry.location)
             .catch((error: unknown) =>
                 setListView((previous) => {
@@ -219,7 +220,7 @@ export function ProjectsPanel({
         confirm(`Remove "${entry.name}" from Projects? This only forgets it here -- nothing on disk is deleted.`, () => {
             removeProjectRegistryEntry(fetchImpl, entry.location)
                 .then(() => removeEntry(entry.location))
-                .catch((error: unknown) => setListView({status: "error", message: errorMessage(error)}));
+                .catch((error: unknown) => setListView({status: "error", message: describeProjectActionError("Removing this game", errorMessage(error))}));
         });
     };
 
@@ -292,7 +293,7 @@ export function ProjectsPanel({
             })
             .catch((error: unknown) => {
                 relocateGuard.end();
-                setRelocationError(errorMessage(error));
+                setRelocationError(describePathActionError("The new game location", errorMessage(error)));
             });
     };
 
@@ -314,7 +315,7 @@ export function ProjectsPanel({
             })
             .catch((error: unknown) => {
                 detectGuard.end();
-                setImportView({status: "error", message: errorMessage(error)});
+                setImportView({status: "error", message: describePathActionError("That game location", errorMessage(error))});
             });
     };
 
@@ -359,7 +360,7 @@ export function ProjectsPanel({
             })
             .catch((error: unknown) => {
                 registerGuard.end();
-                setImportView({status: "error", message: errorMessage(error)});
+                setImportView({status: "error", message: describeProjectActionError("Adding this game", errorMessage(error))});
             });
     };
 
@@ -417,7 +418,7 @@ export function ProjectsPanel({
                         <Button variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>Open</Button>
                     )}
                     {entry.status === "ok" && entry.type === "parWorkbook" && (
-                        <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Open in Design Game</Button>
+                        <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Open in Start a game</Button>
                     )}
                     {entry.status === "missing" && (
                         <Button variant="default" size="xs" onClick={() => {
@@ -438,7 +439,7 @@ export function ProjectsPanel({
             <PageSection legend="Your projects">
                 {listView.status === "loading" && <LoadingState />}
                 {listView.status === "error" && <ErrorState message={listView.message} detail={listView.detail} />}
-                {listView.status === "empty" && <EmptyState message="No projects yet -- import or design one below." />}
+                {listView.status === "empty" && <EmptyState message="No games yet. Start a game or add one you already have." />}
                 {listView.status === "loaded" && (
                     <>
                         {listView.openError && <ErrorState message={listView.openError.message} detail={listView.openError.detail} />}
@@ -450,8 +451,8 @@ export function ProjectsPanel({
                                 onChange={(event) => setFilters(event.currentTarget.value, typeFilter, statusFilter)}
                             />
                             <Select
-                                label="Project type"
-                                data={[{value: "all", label: "All types"}, ...Object.entries(PROJECT_TYPE_LABEL).map(([value, label]) => ({value, label}))]}
+                                label="Game type"
+                                data={[{value: "all", label: "All game types"}, ...Object.entries(PROJECT_TYPE_LABEL).map(([value, label]) => ({value, label}))]}
                                 value={typeFilter}
                                 onChange={(value) => setFilters(search, (value ?? "all") as ProjectTypeFilter, statusFilter)}
                             />
@@ -575,17 +576,16 @@ export function ProjectsPanel({
                 )}
             </PageSection>
 
-            <PageSection legend="Import Project">
+            <PageSection legend="Add a game you already have">
                 <Text size="sm" c="dimmed" mb="sm">
-                    Point at an existing package, outcome library, Stake Engine export, blueprint, or PAR sheet (.xlsx) -- POKIE detects what
-                    it is before anything is registered.
+                    Choose a game folder, saved game design, or PAR spreadsheet (.xlsx). Studio checks it first, so nothing is added until you confirm.
                 </Text>
                 <QuickActions>
                     <PathInput
-                        label="Location"
+                        label="Game location"
                         placeholder="./my-game"
                         kind="any"
-                        browseTitle="Browse for a project to import"
+                        browseTitle="Browse for a game to add"
                         browseId="import-project-location"
                         nativePicker={{
                             kind: "file",
@@ -603,38 +603,38 @@ export function ProjectsPanel({
                         disabled={location.trim().length === 0}
                         aria-describedby="import-project-detect-help"
                     >
-                        Detect
+                        Check game
                     </Button>
                 </QuickActions>
                 {location.trim().length === 0 && (
                     <Text id="import-project-detect-help" size="sm" c="dimmed" mt="xs">
-                        Enter a project location or use Browse to enable Detect.
+                        Enter a game location or use Browse to check it before adding it.
                     </Text>
                 )}
 
                 {importView.status === "detecting" && (
                     <Text role="status" size="sm" c="dimmed" mt="xs">
-                        Detecting project…
+                        Checking this game…
                     </Text>
                 )}
 
                 {importView.status === "error" && <ErrorState message={importView.message} />}
                 {importView.status === "unrecognized" && (
-                    <ErrorState message={`"${importView.path}" doesn't look like any POKIE project type POKIE recognizes.`} />
+                    <ErrorState message={`Studio couldn't identify "${importView.path}" as a game it can open. Choose another game folder or game-design file, then try again.`} />
                 )}
                 {importView.status === "registered" && (
-                    <Text size="sm">Registered &quot;{importView.name}&quot; -- it now shows up in Your projects above.</Text>
+                    <Text size="sm">Added &quot;{importView.name}&quot; to Your projects. Select Open to continue working on it.</Text>
                 )}
 
                 {(importView.status === "recognized" || importView.status === "registering") && (
                     <div>
                         <Text size="sm" mb="sm">
-                            Detected a {PROJECT_TYPE_LABEL[importView.result.type]} at{" "}
+                            Found a {PROJECT_TYPE_LABEL[importView.result.type]} at{" "}
                             <strong style={{overflowWrap: "anywhere"}}>{importView.result.location}</strong>.
                         </Text>
                         {importView.result.type === "parWorkbook" && (
                             <Text size="sm" c="dimmed" mb="sm">
-                                Register it to open its Build/Export dashboard, or open it in Design Game to map and import its PAR data.
+                                Add it to open its export tools, or choose Open in Start a game to bring its PAR data into a game design.
                             </Text>
                         )}
                         <TextInput
@@ -642,15 +642,15 @@ export function ProjectsPanel({
                             mb="sm"
                             value={registerName}
                             onChange={(event) => setRegisterName(event.currentTarget.value)}
-                            description="Registered under this name -- rename it later if you need to."
+                            description="This is how the game will appear in Your projects."
                         />
                         <QuickActions>
                             <Button onClick={handleRegister} loading={importView.status === "registering"}>
-                                Register
+                                Add to projects
                             </Button>
                             {importView.result.type === "parWorkbook" && (
                                 <Button variant="default" onClick={() => handleGoToDesignGame(importView.result.location)}>
-                                    Open in Design Game
+                                    Open in Start a game
                                 </Button>
                             )}
                         </QuickActions>

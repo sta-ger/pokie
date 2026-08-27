@@ -1037,10 +1037,9 @@ export function BlueprintEditorPage({
                 <div>
                     <Title order={2}>Design Your Game</Title>
                     <Text c="dimmed" size="sm" mb="md">
-                        Start with the recommended playable model, then make it your own. Edit its layout, symbols,
-                        reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks
-                        the model automatically; Create Project saves it and opens the Workspace for Game Model, Play,
-                        Simulation, and Replay.
+                        Start with the ready-to-edit starter game, then make it your own. Edit its layout, symbols,
+                        reels, prizes, and bets. Studio checks your design as you work; Create game saves it and opens
+                        its workspace, where you can play, test, and export it.
                     </Text>
                 </div>
             )}
@@ -1068,29 +1067,36 @@ export function BlueprintEditorPage({
                 <div>
                     <QuickActions>
                         <Button onClick={handleGuidedSave} loading={managedSaveView.status === "loading"}>
-                            {blueprintPath === undefined || overwriteConfirmedForPath !== blueprintPath ? "Create Project" : "Save Project"}
+                            {blueprintPath === undefined || overwriteConfirmedForPath !== blueprintPath ? "Create game" : "Save game"}
                         </Button>
                     </QuickActions>
                     {validationView.status !== "ok" && (
                         <Text c="dimmed" size="sm" mb="sm">
-                            Studio is checking this model automatically. Create Project will show any fixes that are needed.
+                            Studio is checking this game design automatically. Create game will show any fixes that are needed.
                         </Text>
                     )}
-                    {managedSaveView.status === "ok" && <SuccessResult message={`Saved to "${managedSaveView.path}".`} />}
-                    {workspaceOpenError && <ErrorState message={`The project was saved, but its Workspace could not open: ${workspaceOpenError}`} />}
+                    {managedSaveView.status === "ok" && <SuccessResult message="Your game was saved. Opening its workspace…" />}
+                    {workspaceOpenError && (
+                        <RecoveryNotice
+                            title="Your game was saved, but Studio couldn't open its workspace"
+                            message="Return to Your projects and open the game again. Your saved work is safe."
+                            actionLabel="Go to Your projects"
+                            onAction={() => navigate("/home/projects")}
+                        />
+                    )}
                     {managedSaveView.status === "conflict" && managedSaveView.reason === "stale" && (
                         <div>
                             <RecoveryNotice
-                                title="Blueprint changed while you were editing"
+                                title="This saved game design changed while you were editing"
                                 message={managedSaveView.message}
-                                actionLabel="Reload"
+                                actionLabel="Reload saved version"
                                 onAction={() => handleLoad(managedSaveView.path)}
                                 secondaryActionLabel="Compare"
                                 onSecondaryAction={() => setShowManagedConflictComparison((shown) => !shown)}
                             />
                             {managedSaveView.canSaveAs && (
                                 <Button variant="default" size="xs" mb="sm" onClick={openAdvanced}>
-                                    Save As
+                                    Save a copy
                                 </Button>
                             )}
                             {showManagedConflictComparison && (
@@ -1110,7 +1116,7 @@ export function BlueprintEditorPage({
                         </div>
                     )}
                     {(managedSaveView.status === "failed" || managedSaveView.status === "error") && (
-                        <ErrorState message={describePathActionError("The project", managedSaveView.message)} />
+                        <ErrorState message={describePathActionError("Your game", managedSaveView.message)} />
                     )}
                 </div>
             )}
@@ -1118,7 +1124,7 @@ export function BlueprintEditorPage({
             {guided && (
                 <Text size="sm" mb="sm">
                     <Anchor component="button" type="button" onClick={toggleAdvanced}>
-                        {advancedOpened ? "Hide" : "Show"} advanced options (JSON mode, load/save by path)
+                        {advancedOpened ? "Hide" : "Show"} advanced options (file and JSON tools)
                     </Anchor>
                 </Text>
             )}
@@ -1159,7 +1165,7 @@ export function BlueprintEditorPage({
 
             {undoSnapshot && undoSnapshot.validAtRevision === revision && (
                 <RecoveryNotice
-                    message="Replaced the current blueprint."
+                    message="Replaced the current game design."
                     actionLabel="Undo"
                     onAction={handleUndoReplace}
                 />

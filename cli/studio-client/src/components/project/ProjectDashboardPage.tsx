@@ -815,9 +815,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     if (header.status === "empty") {
         return (
             <AppShellLayout navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}>
-                <Text>
-                    No active project. <Anchor href="#/home/design">Go to Home</Anchor>.
-                </Text>
+                <div>
+                    <Text>No game is open yet. Choose a game you already started, or create a new one.</Text>
+                    <Button component={Anchor} href="#/home/design" mt="sm">Choose or create a game</Button>
+                </div>
             </AppShellLayout>
         );
     }
@@ -859,7 +860,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
 
             {header.status === "loading" && (
                 <div style={{marginTop: "1rem"}}>
-                    <LoadingState label="Loading project…" />
+                    <LoadingState label="Opening your game…" />
                 </div>
             )}
             {header.status === "error" && (

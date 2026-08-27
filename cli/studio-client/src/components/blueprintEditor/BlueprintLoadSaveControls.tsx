@@ -74,7 +74,7 @@ export function BlueprintLoadSaveControls({
         <div>
             <QuickActions>
                 <Button variant="default" onClick={onNew}>
-                    New Blueprint
+                    Choose a different start
                 </Button>
             </QuickActions>
             {advancedOptionsOpened === undefined ? loadSaveFields : <Collapse expanded={advancedOptionsOpened}>{loadSaveFields}</Collapse>}

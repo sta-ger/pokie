@@ -23,7 +23,7 @@ const AUTOMATIC_VALIDATION_ROUTE = {
 
 async function goToProjects(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await user.click(await screen.findByRole("button", {name: "Projects"}));
-    await screen.findByText("Import Project");
+    await screen.findByText("Add a game you already have");
 }
 
 function LocationProbe() {
@@ -61,14 +61,14 @@ describe("ProjectsPanel: Import Project", () => {
         });
         renderWithProviders(<ProjectsPanel />, {fetchImpl});
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/a");
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.type(screen.getByLabelText("Game location", {exact: false}), "/games/a");
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
-        expect(await screen.findByText(/Detected a Package at/)).toBeInTheDocument();
+        expect(await screen.findByText(/Found a Playable game at/)).toBeInTheDocument();
         const nameInput = screen.getByLabelText("Name") as HTMLInputElement;
         expect(nameInput.value).toBe("a");
 
-        await user.click(screen.getByRole("button", {name: "Register"}));
+        await user.click(screen.getByRole("button", {name: "Add to projects"}));
 
         await waitFor(() =>
             expect(calls).toContainEqual(
@@ -78,7 +78,7 @@ describe("ProjectsPanel: Import Project", () => {
                 }),
             ),
         );
-        expect(await screen.findByText('Registered "a" -- it now shows up in Your projects above.')).toBeInTheDocument();
+        expect(await screen.findByText('Added "a" to Your projects. Select Open to continue working on it.')).toBeInTheDocument();
         expect(await screen.findByText("a")).toBeInTheDocument();
     });
 
@@ -97,13 +97,13 @@ describe("ProjectsPanel: Import Project", () => {
         };
         renderWithProviders(<ProjectsPanel />, {fetchImpl});
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/a");
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.type(screen.getByLabelText("Game location", {exact: false}), "/games/a");
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
         // The empty project registry also owns a polite status region. Assert against this
         // import flow's unique, visible copy rather than whichever status mounted first.
-        expect(await screen.findByText("Detecting project…")).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Detect"})).toBeDisabled();
+        expect(await screen.findByText("Checking this game…")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Check game"})).toBeDisabled();
     });
 
     it("settles an unresponsive preview into an actionable error", async () => {
@@ -129,8 +129,8 @@ describe("ProjectsPanel: Import Project", () => {
                 await Promise.resolve();
             });
             await act(async () => {
-                fireEvent.change(screen.getByLabelText("Location", {exact: false}), {target: {value: "/games/a"}});
-                fireEvent.click(screen.getByRole("button", {name: "Detect"}));
+                fireEvent.change(screen.getByLabelText("Game location", {exact: false}), {target: {value: "/games/a"}});
+                fireEvent.click(screen.getByRole("button", {name: "Check game"}));
                 await Promise.resolve();
             });
 
@@ -139,8 +139,8 @@ describe("ProjectsPanel: Import Project", () => {
                 await Promise.resolve();
             });
 
-            expect(screen.getByRole("alert")).toHaveTextContent("Project detection timed out. Confirm Studio is still reachable, then try again.");
-            expect(screen.getByRole("button", {name: "Detect"})).not.toBeDisabled();
+            expect(screen.getByRole("alert")).toHaveTextContent("That game location could not be completed. Try again. If it continues, choose the location again and retry.");
+            expect(screen.getByRole("button", {name: "Check game"})).not.toBeDisabled();
         } finally {
             jest.useRealTimers();
         }
@@ -217,13 +217,13 @@ describe("ProjectsPanel: Import Project", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await goToProjects(user);
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), location);
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.type(screen.getByLabelText("Game location", {exact: false}), location);
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
-        expect(await screen.findByText(/Detected a PAR sheet at/)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Register"})).toBeInTheDocument();
+        expect(await screen.findByText(/Found a PAR spreadsheet at/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Add to projects"})).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "Register"}));
+        await user.click(screen.getByRole("button", {name: "Add to projects"}));
 
         await waitFor(() =>
             expect(calls).toContainEqual(
@@ -286,9 +286,9 @@ describe("ProjectsPanel: Import Project", () => {
             fileFilters: [{name: "PAR sheets", extensions: ["xlsx"]}],
         });
 
-        await user.click(screen.getByRole("button", {name: "Detect"}));
-        expect(await screen.findByText(/Detected a PAR sheet at/)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Open in Design Game"}));
+        await user.click(screen.getByRole("button", {name: "Check game"}));
+        expect(await screen.findByText(/Found a PAR spreadsheet at/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Open in Start a game"}));
 
         await waitFor(() =>
             expect(JSON.parse(screen.getByTestId("location").textContent ?? "{}")).toEqual({
@@ -313,7 +313,7 @@ describe("ProjectsPanel: Import Project", () => {
         });
         renderWithProviders(<ProjectsPanel />, {fetchImpl});
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), selectedLocation);
+        await user.type(screen.getByLabelText("Game location", {exact: false}), selectedLocation);
         await user.click(screen.getByRole("button", {name: "Browse PAR sheet…"}));
 
         await waitFor(() => expect(calls.some((call) => call.url === "/api/home/fs/native-browse")).toBe(true));
@@ -432,10 +432,10 @@ describe("ProjectsPanel: Import Project", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await goToProjects(user);
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/tmp/nothing");
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.type(screen.getByLabelText("Game location", {exact: false}), "/tmp/nothing");
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
-        expect(await screen.findByText('"/tmp/nothing" doesn\'t look like any POKIE project type POKIE recognizes.')).toBeInTheDocument();
+        expect(await screen.findByText(/Studio couldn't identify "\/tmp\/nothing" as a game it can open/)).toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/home/projects/registry/register")).toBe(false);
     });
 
@@ -474,18 +474,18 @@ describe("ProjectsPanel: Import Project", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await goToProjects(user);
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/blueprint.json");
+        await user.type(screen.getByLabelText("Game location", {exact: false}), "/games/blueprint.json");
 
         expect(await screen.findByText("Resolves to: /games/blueprint.json")).toBeInTheDocument();
         expect(screen.queryByText(/is a file, not a folder/)).not.toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=%2Fgames%2Fblueprint.json&kind=any")).toBe(true);
 
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
-        expect(await screen.findByText(/Detected a Blueprint at/)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Register"}));
+        expect(await screen.findByText(/Found a Game design at/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Add to projects"}));
 
-        expect(await screen.findByText('Registered "blueprint" -- it now shows up in Your projects above.')).toBeInTheDocument();
+        expect(await screen.findByText('Added "blueprint" to Your projects. Select Open to continue working on it.')).toBeInTheDocument();
     });
 
     it("registers an imported Blueprint file and Open lands it on its Studio project workspace, same as a package", async () => {
@@ -537,12 +537,12 @@ describe("ProjectsPanel: Import Project", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await goToProjects(user);
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/blueprint.json");
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.type(screen.getByLabelText("Game location", {exact: false}), "/games/blueprint.json");
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
-        expect(await screen.findByText(/Detected a Blueprint at/)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Register"}));
-        expect(await screen.findByText('Registered "blueprint" -- it now shows up in Your projects above.')).toBeInTheDocument();
+        expect(await screen.findByText(/Found a Game design at/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Add to projects"}));
+        expect(await screen.findByText('Added "blueprint" to Your projects. Select Open to continue working on it.')).toBeInTheDocument();
 
         // The freshly registered Blueprint row gets the same Open action a Package row does -- not just
         // Remove (StudioHomeService.openProject materializes a "blueprint" location into a real runtime
@@ -597,18 +597,18 @@ describe("ProjectsPanel: Import Project", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await goToProjects(user);
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/a");
+        await user.type(screen.getByLabelText("Game location", {exact: false}), "/games/a");
 
         expect(await screen.findByText("Resolves to: /games/a")).toBeInTheDocument();
         expect(screen.queryByText(/is a directory, not a file/)).not.toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=%2Fgames%2Fa&kind=any")).toBe(true);
 
-        await user.click(screen.getByRole("button", {name: "Detect"}));
+        await user.click(screen.getByRole("button", {name: "Check game"}));
 
-        expect(await screen.findByText(/Detected a Package at/)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Register"}));
+        expect(await screen.findByText(/Found a Playable game at/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Add to projects"}));
 
-        expect(await screen.findByText('Registered "a" -- it now shows up in Your projects above.')).toBeInTheDocument();
+        expect(await screen.findByText('Added "a" to Your projects. Select Open to continue working on it.')).toBeInTheDocument();
     });
 
     it("removes a registered entry after confirming, without deleting anything on disk", async () => {
@@ -651,7 +651,7 @@ describe("ProjectsPanel: Import Project", () => {
                 }),
             ),
         );
-        expect(await screen.findByText("No projects yet -- import or design one below.")).toBeInTheDocument();
+        expect(await screen.findByText("No games yet. Start a game or add one you already have.")).toBeInTheDocument();
     });
 
     it("repairs a missing managed entry from the rendered Relocate confirmation without leaving the old row behind", async () => {
