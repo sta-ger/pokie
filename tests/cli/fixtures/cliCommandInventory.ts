@@ -668,11 +668,16 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
             },
             {
                 verb: "import",
-                usage: "Usage: pokie stakeengine import <stakeDir> [--out <dir>]",
+                usage: "Usage: pokie stakeengine import <stakeDir> [--out <dir>] [--format json]",
                 positionals: ["stakeDir"],
                 // defaultValue "stakeDir-imported": path.join(path.dirname(stakeDir), `${path.basename(stakeDir)}-imported`)
                 // with stakeDir "stakeDir" resolves there, observed at importWriter.writeToDirectory's own outDir argument.
-                options: [{flag: "--out", required: false, kind: "unvalidated", defaultValue: "stakeDir-imported", acceptedValue: "custom-stakeengine-import-out"}],
+                options: [
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "stakeDir-imported", acceptedValue: "custom-stakeengine-import-out"},
+                    // --format selects JSON versus the human-readable import summary, so its value is observed
+                    // from the real stdout shape, like analyze and diff below.
+                    {flag: "--format", required: false, kind: "validated", defaultValue: "summary", acceptedValue: "json"},
+                ],
             },
             {
                 verb: "analyze",
@@ -2381,7 +2386,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             "Usage: pokie stakeengine export <config.json> [--out <dir>]\n" +
-            "   or: pokie stakeengine import <stakeDir> [--out <dir>]\n" +
+            "   or: pokie stakeengine import <stakeDir> [--out <dir>] [--format json]\n" +
             "   or: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]\n" +
             "   or: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]\n" +
             '<config.json> lists one WeightedOutcomeLibrary source per Stake mode, either a plain JSON file — ' +
@@ -2427,7 +2432,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["import"],
         expectedExitCode: 1,
         expectedError:
-            "Usage: pokie stakeengine import <stakeDir> [--out <dir>]\n" +
+            "Usage: pokie stakeengine import <stakeDir> [--out <dir>] [--format json]\n" +
             '<stakeDir> must be a directory produced by "pokie stakeengine export" (index.json, per-mode lookup ' +
             "CSV/books, and its own pokie-manifest.json). Reconstruction does not accept a compatible foreign directory " +
             'without that manifest; use "pokie stakeengine analyze" (including its --out report) or "pokie stakeengine diff" ' +
@@ -2448,6 +2453,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["import", "stakeDir", "--out", "custom-stakeengine-import-out"],
         expectedExitCode: 0,
         expectStdout: "text",
+    },
+    {
+        command: "stakeengine",
+        kind: "valid",
+        label: "import <stakeDir> --format json (accepted --format value, machine-readable shape)",
+        args: ["import", "stakeDir", "--format", "json"],
+        expectedExitCode: 0,
+        expectStdout: "json",
     },
     {
         command: "stakeengine",
@@ -3151,7 +3164,15 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "import --out given with no value",
         args: ["import", "stakeDir", "--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a directory path. Usage: pokie stakeengine import <stakeDir> [--out <dir>]",
+        expectedError: "--out requires a directory path. Usage: pokie stakeengine import <stakeDir> [--out <dir>] [--format json]",
+    },
+    {
+        command: "stakeengine",
+        kind: "invalid",
+        label: "import --format given with no value",
+        args: ["import", "stakeDir", "--format"],
+        expectedExitCode: 1,
+        expectedError: '--format only supports "json". Usage: pokie stakeengine import <stakeDir> [--out <dir>] [--format json]',
     },
     {
         command: "stakeengine",

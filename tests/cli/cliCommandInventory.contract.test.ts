@@ -236,7 +236,7 @@ function resolveDeferredValues(caseKey: string): void {
 // fixture metadata like testCase.expectStdout, so a regression that silently changes which shape a
 // default/accepted value actually prints is caught here, not masked by an assumption about what it was
 // supposed to print. One entry per command that has such an option; a command whose verb doesn't
-// actually declare that flag (e.g. par export, stakeengine export/import) simply records a value the
+// actually declare that flag (e.g. par export, stakeengine export) simply records a value the
 // "CLI option value contract" block never reads for it, which is harmless. "replay" is the deliberate
 // degenerate case: its --format is validated-but-inert (parsed, then never used -- run() always prints
 // JSON), so both shapes map to the same "json".
@@ -1838,6 +1838,19 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 },
             ),
         "stakeengine::import <stakeDir> --out <dir> (accepted --out value)": (key) =>
+            new StakeEngineCommand(
+                TEST_VERSION,
+                undefined,
+                {importFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", manifest: undefined, modes: [], sourceProvenance: undefined, issues: []})},
+                undefined,
+                {
+                    writeToDirectory: (result, outDir) => {
+                        observe(key, "--out", outDir);
+                        return Promise.resolve({issues: []});
+                    },
+                },
+            ),
+        "stakeengine::import <stakeDir> --format json (accepted --format value, machine-readable shape)": (key) =>
             new StakeEngineCommand(
                 TEST_VERSION,
                 undefined,
