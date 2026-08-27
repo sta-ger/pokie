@@ -1,0 +1,20 @@
+[2026-08-27T04:56:17.027Z] PROVENANCE candidate_sha=7a618abcb44619ea6ac8a65353a52425921990e6; launch=/home/stager/Work/sta-ger/agents/.toolchain/node-v24.18.0-linux-x64/bin/node ./dist/cli/pokie.js --no-open; isolated profiles=/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P8-03-74fb6e55fc3dc4f5/runtime/fresh-profile
+[2026-08-27T04:56:18.475Z] STUDIO_READY http://127.0.0.1:3200
+[2026-08-27T04:56:19.405Z] WAIT landing=291ms
+[2026-08-27T04:56:19.413Z] CLICK "Create game"
+[2026-08-27T04:56:19.787Z] WAIT created=374ms
+[2026-08-27T04:56:19.791Z] BLUEPRINT workspace="Starter Slot" route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-74fb6e55fc3dc4f5%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/overview sections=["Overview","Game Model","Play","Simulation","Replay","Build/Export"]
+[2026-08-27T04:56:19.961Z] CAPTURE 01-blueprint-workspace.png rendered UI
+[2026-08-27T04:56:19.993Z] CLICK "Game Model"
+[2026-08-27T04:56:20.134Z] WAIT game-model=141ms
+[2026-08-27T04:56:20.156Z] CLICK "Edit" in "Game basics"
+[2026-08-27T04:56:20.283Z] WAIT edit=127ms
+[2026-08-27T04:56:20.329Z] INPUT rendered field "Game id" to create unsaved draft
+[2026-08-27T04:56:20.365Z] CLICK "Close project"
+[2026-08-27T04:56:20.371Z] WAIT close-guard=6ms
+[2026-08-27T04:56:20.385Z] CLICK "Cancel"
+[2026-08-27T04:56:20.412Z] WAIT stayed=26ms
+[2026-08-27T04:56:20.421Z] GUARD cancel preserved scoped route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-74fb6e55fc3dc4f5%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/gameModel
+[2026-08-27T04:56:20.428Z] FAILED Error: Rendered control unavailable: Cancel; visible=["POKIE Studio","Your projects","Starter Slot","Overview","Game Model","Play","Simulation","Replay","Build/Export","Show project location","Close project [disabled]","Save","Cancel","Edit [disabled]","Edit [disabled]","Edit [disabled]","Game window","Full strips","Analysis","‹ Prev stop","","","Next stop ›","Edit [disabled]","Edit [disabled]","Edit [disabled]","Refresh [disabled]","","Cancel","Confirm"]
+    at click (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P8-03-74fb6e55fc3dc4f5/current.mjs:123:30)
+    at async main (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P8-03-74fb6e55fc3dc4f5/current.mjs:163:5)
