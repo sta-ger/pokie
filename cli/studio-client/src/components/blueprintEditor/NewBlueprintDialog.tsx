@@ -1,5 +1,5 @@
 import {Button, Group, Modal, NumberInput, SegmentedControl, Stack, Text, TextInput} from "@mantine/core";
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {generateRandomBlueprint} from "../../api/apiClient";
 import type {StudioBlueprintRandomView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -73,6 +73,10 @@ export function NewBlueprintDialog({
     const [loadPath, setLoadPath] = useState("");
     const [randomForm, setRandomForm] = useState<RandomFormState>({seed: "", preset: "default", name: ""});
     const [randomView, setRandomView] = useState<RandomGenerationView>({status: "idle"});
+    const cancelRef = useRef<HTMLButtonElement>(null);
+    const choiceRef = useRef<HTMLButtonElement>(null);
+    const seedRef = useRef<HTMLInputElement>(null);
+    const loadPathRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (opened) {
@@ -90,6 +94,29 @@ export function NewBlueprintDialog({
         // the save-success effect below is about to advance to.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [opened]);
+
+    // Mantine's modal autofocus runs after this component's effects. Each step has a useful first
+    // control instead: cancelling preserves a dirty draft, the starter is the recommended first-use
+    // choice, and the form steps start at their primary input. Scheduling this after the modal's own
+    // autofocus also makes an in-dialog step transition deterministic instead of leaving keyboard
+    // focus on a removed node.
+    useEffect(() => {
+        if (!opened) {
+            return () => undefined;
+        }
+        let target: HTMLElement | null;
+        if (step === "confirmDirty") {
+            target = cancelRef.current;
+        } else if (step === "choose") {
+            target = choiceRef.current;
+        } else if (step === "random") {
+            target = seedRef.current;
+        } else {
+            target = loadPathRef.current;
+        }
+        const timeout = window.setTimeout(() => target?.focus(), 0);
+        return () => window.clearTimeout(timeout);
+    }, [opened, step]);
 
     // Advances past the dirty-confirm gate once a Save this dialog itself triggered actually lands —
     // `savingToProceed` scopes this to a save this dialog started (never one from the always-visible
@@ -169,7 +196,7 @@ export function NewBlueprintDialog({
                             <ErrorState message={describePathActionError("The saved game design", saveView.message)} />
                         )}
                         <Group justify="flex-end">
-                            <Button variant="default" onClick={onClose}>
+                            <Button ref={cancelRef} data-autofocus variant="default" onClick={onClose}>
                                 Cancel
                             </Button>
                             <Button variant="default" color="red" onClick={() => setStep("choose")}>
@@ -191,6 +218,8 @@ export function NewBlueprintDialog({
                         <Text size="sm">Choose how to begin. Each choice stays editable, and you can save it as a game when you are ready.</Text>
                         <Stack gap="xs">
                             <Button
+                                ref={choiceRef}
+                                data-autofocus
                                 onClick={() => {
                                     onChooseRecommended();
                                     onClose();
@@ -225,6 +254,7 @@ export function NewBlueprintDialog({
                     <Stack gap="sm">
                         <QuickActions>
                             <NumberInput
+                                ref={seedRef}
                                 label="Seed (optional)"
                                 placeholder="Random"
                                 allowDecimal={false}
@@ -288,6 +318,7 @@ export function NewBlueprintDialog({
                 {step === "load" && (
                     <Stack gap="sm">
                         <PathInput
+                            ref={loadPathRef}
                             label="Saved game design"
                             kind="file"
                             browseTitle="Choose a game design file"

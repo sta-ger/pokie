@@ -1,0 +1,11 @@
+P8-06 current-candidate browser focus audit
+candidate: 69b7ae42256dee1aa7bb79554ac1a48132de077d
+build: npm run build
+public launch: node ./dist/cli/pokie.js --no-open
+profiles: fresh isolated Studio configuration and visible Chromium profile
+
+Home focused the named Design Your Game region. Keyboard entry into Generate a game idea focused Seed (optional), then Back returned to Use the starter game. Keyboard entry into Open a saved game design focused Saved game design, then Back returned to Use the starter game. Escape cancelled the dialog and returned focus to Choose a different start.
+
+Projects focused the named Projects region; Start a game returned focus to the named Design Your Game region.
+
+Recovery run: after a new `npm run build`, the fresh-profile public Studio flow Choose a different start → Use the starter game → Create game reached the dashboard (Overview and Close project), with no rendered alert. Focus landed on the Dashboard `region`, named `Starter Slot` and labelled by `project-dashboard-heading`; `03-project-dashboard-focus.png` records the state.

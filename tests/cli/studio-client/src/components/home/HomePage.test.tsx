@@ -75,6 +75,7 @@ describe("HomePage", () => {
         await user.click(sectionsNav().getByRole("button", {name: "Projects"}));
 
         await expectActiveSection("Projects");
+        expect(document.activeElement).toBe(screen.getByRole("region", {name: "Projects"}));
         expect(await screen.findByText("No games yet. Start a game or add one you already have.")).toBeInTheDocument();
         expect(screen.getByLabelText("Game location", {exact: false})).toBeInTheDocument();
         expect(sectionsNav().getByRole("button", {name: "Start a game"})).not.toHaveAttribute("aria-current");
@@ -84,6 +85,7 @@ describe("HomePage", () => {
         await user.click(sectionsNav().getByRole("button", {name: "Start a game"}));
         await expectActiveSection("Start a game");
         expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
+        expect(document.activeElement).toBe(screen.getByRole("region", {name: "Design Your Game"}));
     });
 
     it("refreshes a moved managed project when returning from Design Game", async () => {

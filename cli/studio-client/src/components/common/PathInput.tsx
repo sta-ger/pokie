@@ -1,5 +1,5 @@
 import {Button, Group, Stack, Text, TextInput, type TextInputProps} from "@mantine/core";
-import {useEffect, useRef, useState} from "react";
+import {forwardRef, useEffect, useRef, useState} from "react";
 import {browseFilesystem, checkNativePickerAvailability, pickNativePath} from "../../api/apiClient";
 import type {StudioFsBrowseErrorReason, StudioNativePickerFileFilter} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -113,7 +113,7 @@ function describePathIssue(reason: StudioFsBrowseErrorReason | "network", path: 
 // field select either. A Cancel from either picker leaves the field untouched. The chosen start location
 // (see resolveBrowseStartLocation.ts) is reused as the fallback modal's own initial location too, so
 // falling back never loses that precedence.
-export function PathInput({
+export const PathInput = forwardRef<HTMLInputElement, PathInputProps>(({
     kind = "directory",
     browseTitle,
     onPathSelected,
@@ -129,7 +129,7 @@ export function PathInput({
     onFocus,
     onChange,
     ...rest
-}: PathInputProps) {
+}: PathInputProps, ref) => {
     const fetchImpl = useStudioApi();
     const [modalOpened, setModalOpened] = useState(false);
     const [modalInitialPath, setModalInitialPath] = useState("");
@@ -272,6 +272,7 @@ export function PathInput({
         <Stack gap={4}>
             <Group align="flex-end" gap="xs" wrap="nowrap">
                 <TextInput
+                    ref={ref}
                     style={{flex: 1}}
                     onFocus={(event) => {
                         onFocus?.(event);
@@ -329,4 +330,6 @@ export function PathInput({
             />
         </Stack>
     );
-}
+});
+
+PathInput.displayName = "PathInput";

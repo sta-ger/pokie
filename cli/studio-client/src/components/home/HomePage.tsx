@@ -95,7 +95,7 @@ export function HomePage() {
         >
             <DesignNavigationGuardProvider value={navigationGuard}>
                 <Stack gap="lg">
-                    <div ref={designRef} tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
+                    <div ref={designRef} role="region" aria-labelledby="design-game-heading" tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
                         <BlueprintEditorPage
                             guided
                             initialPath={initialBlueprintPath}
@@ -109,9 +109,9 @@ export function HomePage() {
                         />
                     </div>
 
-                    <div ref={projectsRef} tabIndex={-1} style={{display: activeTab === "projects" ? undefined : "none"}}>
+                    <div ref={projectsRef} role="region" aria-labelledby="projects-heading" tabIndex={-1} style={{display: activeTab === "projects" ? undefined : "none"}}>
                         <Stack gap="md">
-                            <Title order={2}>Projects</Title>
+                            <Title id="projects-heading" order={2}>Projects</Title>
                             <Text c="dimmed" size="sm">
                                 Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it.
                             </Text>

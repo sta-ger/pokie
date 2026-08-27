@@ -1,0 +1,18 @@
+P8-06 independent rendered audit — product SHA 69b7ae42256dee1aa7bb79554ac1a48132de077d; evidence checkout c61639cb77d90c6ae46a380c710393a0b83ea5c4.
+
+Build: npm run build.
+Public launch: node ./dist/cli/pokie.js --no-open.
+Profiles: fresh isolated Studio XDG config/data/documents and fresh visible Chromium profile.
+
+Rendered observations (2026-08-27 UTC):
+- First visible Home content: 343 ms; 1280 px document overflow: false.
+- Home → Projects visible: 125 ms. Projects → Start a game returned to the rendered Design Your Game surface.
+- First editor action: Choose a different start → Use the starter game rendered Game basics.
+- At 405 px Home/editor: scrollWidth 390, viewport 390, document overflow false (01-home-405.png).
+- Controlled local proxy held the first browser-originated /api/home/blueprints/validate response for 4,000 ms.
+- While delayed, the rendered loading states were “Validating…” and “Loading your projects…”, each role=status with aria-live=polite (02-controlled-loading-1280.png).
+- While validation was pending, Create game rendered disabled=false and aria-busy=null; Projects rendered disabled=false. The active Create game action was therefore not visibly scoped-blocked.
+- A real rendered edit changed Game name to “Latency Audit Slot” during the delay. The client issued two validation requests total, recovered in 4,743 ms, and visibly retained that current name; no stale “Starter Slot” result appeared.
+- One rendered Create game click did not reach a dashboard, success, or error state within the initial 30-second semantic observation. No rendered product error was present, so this threshold is recorded as inconclusive rather than a product finding.
+
+Console and failed-network listeners were enabled in the browser harness, but the incomplete dashboard observation prevented retention of a complete console/network summary; this part of the broader audit is not claimed as passed.
