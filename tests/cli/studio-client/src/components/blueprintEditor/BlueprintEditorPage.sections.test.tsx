@@ -98,6 +98,16 @@ function okValidateFetch(): FetchLike {
 }
 
 describe("Guided Design Game: sectioned layout", () => {
+    it("explains required metadata and the recommended default reel mode in their authoring sections", () => {
+        renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
+
+        expect(screen.getByText("Required: Game id, Game name, and Version. Description and Author are optional.")).toBeVisible();
+
+        fireEvent.click(sectionTab(/Reels/));
+        expect(screen.getByText("Optional — Default (recommended) uses the engine's weighted reel generator. Choose one of the other modes only when you need to control the reel contents yourself.")).toBeVisible();
+        expect(screen.getByRole("radio", {name: "Default (recommended)"})).toBeVisible();
+    }, 60000);
+
     it("walks across sections -> automatic validation -> Create Project, ending in Workspace", async () => {
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
@@ -120,7 +130,7 @@ describe("Guided Design Game: sectioned layout", () => {
         expect(tablist).not.toBeNull();
         expect(within(tablist as HTMLElement).queryByText(/^\d+$/)).not.toBeInTheDocument();
 
-        fireEvent.click(buttonNamed("Create Project"));
+        fireEvent.click(buttonNamed("Create game"));
 
         await waitFor(() => {
             const heading = Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6")).find((candidate) => candidate.textContent === "Sectioned");
@@ -215,7 +225,7 @@ describe("Guided Design Game: sectioned layout", () => {
 
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
         expect(gameNameInput).toHaveValue("Sectioned Renamed");
-        expect(buttonNamed("Create Project")).toBeEnabled();
+        expect(buttonNamed("Create game")).toBeEnabled();
         expect(screen.queryByText("Compare built blueprint", {selector: "button"})).not.toBeInTheDocument();
     }, 60000);
 

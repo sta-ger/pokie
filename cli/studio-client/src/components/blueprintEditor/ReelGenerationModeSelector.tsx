@@ -24,11 +24,11 @@ export function ReelGenerationModeSelector({
     return (
         <PageSection legend="Reel generation">
             <Text size="sm" c="dimmed" mb="sm">
-                Optional — omit all three to use the engine&apos;s default weighted reel generator.
+                Optional — Default (recommended) uses the engine&apos;s weighted reel generator. Choose one of the other modes only when you need to control the reel contents yourself.
             </Text>
             <Radio.Group value={mode} onChange={(value) => mutate((b) => setReelGenerationMode(b, value as ReelGenerationMode, modeDrafts.current))} mb="md">
                 <Group gap="md">
-                    <Radio value="default" label="Default" />
+                    <Radio value="default" label="Default (recommended)" />
                     <Radio value="reelStrips" label="Reel strips" />
                     <Radio value="reelStripGeneration" label="Per-reel (Reel Strip Modeler)" />
                     <Radio value="symbolWeights" label="Symbol weights" />
