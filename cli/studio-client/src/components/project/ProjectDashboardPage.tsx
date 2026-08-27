@@ -777,28 +777,28 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [closeError, setCloseError] = useState<string>();
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
     const closeGuard = useDoubleSubmitGuard();
+    const closeProjectAndReturnHome = (): void => {
+        if (!closeGuard.begin()) {
+            return;
+        }
+        setCloseError(undefined);
+        closeProject(fetchImpl)
+            .then(() => {
+                navigate("/home/design");
+            })
+            .catch((error: unknown) => setCloseError(errorMessage(error)))
+            .finally(() => closeGuard.end());
+    };
     const handleClose = (): void => {
-        const doClose = (): void => {
-            if (!closeGuard.begin()) {
-                return;
-            }
-            setCloseError(undefined);
-            closeProject(fetchImpl)
-                .then(() => {
-                    navigate("/home/design");
-                })
-                .catch((error: unknown) => setCloseError(errorMessage(error)))
-                .finally(() => closeGuard.end());
-        };
         if (!hasActiveOperation && !gameModelDirty) {
-            doClose();
+            closeProjectAndReturnHome();
             return;
         }
         const reasons = [
             hasActiveOperation ? "an active simulation, replay, or deployment" : undefined,
             gameModelDirty ? "unsaved Game Model changes" : undefined,
         ].filter((reason): reason is string => reason !== undefined);
-        confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, doClose);
+        confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, closeProjectAndReturnHome);
     };
 
     function copyProjectPath(): void {
@@ -853,7 +853,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 </Button>
                 {closeError && (
                     <div style={{marginTop: "0.5rem"}}>
-                        <ErrorState message={`Couldn't close the project: ${closeError}`} />
+                        <ErrorState message="We couldn't close this game. Try closing again. If it continues, finish any active work and reopen Studio." detail={closeError} />
+                        <Button variant="default" size="xs" mt="xs" onClick={closeProjectAndReturnHome} loading={closeGuard.isBlocked()}>
+                            Try closing again
+                        </Button>
                     </div>
                 )}
             </div>

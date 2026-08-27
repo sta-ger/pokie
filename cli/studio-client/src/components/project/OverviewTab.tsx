@@ -15,14 +15,11 @@ import {NextStepCallout} from "../common/NextStepCallout";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 
-function describeOrigin(origin: StudioProjectOrigin | undefined): string {
+function describeAddedToStudio(origin: StudioProjectOrigin | undefined): string {
     if (origin === "managed") {
-        return "Managed";
+        return "Created in Studio";
     }
-    if (origin === "external") {
-        return "Registered";
-    }
-    return "Unknown";
+    return "Added from your computer";
 }
 
 // Validation's own diagnostics, folded into Overview instead of a separate "Validate" section --
@@ -56,8 +53,8 @@ function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationVie
 }
 
 // The Project Dashboard's landing section starts with a concrete, non-wizard workflow for a playable
-// project, then reports what that project *is* (id/name/version, type, origin, location,
-// editable-or-read-only, its capabilities) and its current validation state. A resolved Project can be
+// project, then reports what that project *is* (id/name/version, format, where it was added from, location,
+// and whether it can be edited) alongside its current validation state. A resolved Project can be
 // a "blueprint" (a single JSON file, no package.json of its own) just as easily as a "tsPackage", so
 // the facts table only shows fields every resolved ProjectType actually has.
 export function OverviewTab({
@@ -99,8 +96,8 @@ export function OverviewTab({
                         <Table.Td>{header.type ? PROJECT_TYPE_LABEL[header.type] : "Unknown"}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
-                        <Table.Th>Origin</Table.Th>
-                        <Table.Td>{describeOrigin(header.origin)}</Table.Td>
+                        <Table.Th>Added to Studio</Table.Th>
+                        <Table.Td>{describeAddedToStudio(header.origin)}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Location</Table.Th>

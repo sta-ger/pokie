@@ -285,8 +285,9 @@ describe("ProjectDashboardPage", () => {
         // Every other mutating apiClient.ts function throws on a non-ok response; closeProject() used to
         // be the one exception (it parsed the body regardless of status), and the page-level handler threw
         // the failure away entirely -- so a failed close was indistinguishable from the button silently
-        // doing nothing. It must now surface an error, stay on the project, and let the user retry.
-        it("shows an error and stays on the project when closing fails, and lets the user retry", async () => {
+        // doing nothing. It must now keep the designer in context with a clear retry path, while keeping
+        // the backend diagnostic collapsed as technical detail.
+        it("keeps the designer in the game with recovery copy when closing fails, and lets them retry", async () => {
             const user = userEvent.setup();
             let shouldFail = true;
             const fetchImpl = (url: string, init?: RequestInit) => {
@@ -315,12 +316,17 @@ describe("ProjectDashboardPage", () => {
 
             await user.click(screen.getByRole("button", {name: "Close project"}));
 
-            expect(await screen.findByText(/Couldn't close the project/)).toBeInTheDocument();
-            expect(screen.getByText(/a spin is still writing to disk/)).toBeInTheDocument();
+            const alert = await screen.findByRole("alert");
+            expect(alert).toHaveTextContent("We couldn't close this game. Try closing again. If it continues, finish any active work and reopen Studio.");
+            expect(screen.getByRole("button", {name: "Try closing again"})).toBeInTheDocument();
+            const details = screen.getByText("Technical details").closest("details");
+            expect(details).not.toBeNull();
+            expect(details).not.toHaveAttribute("open");
+            expect(details).toHaveTextContent("close failed: a spin is still writing to disk");
             expect(screen.getByRole("heading", {name: "Sample Slot"})).toBeInTheDocument();
 
             shouldFail = false;
-            await user.click(screen.getByRole("button", {name: "Close project"}));
+            await user.click(screen.getByRole("button", {name: "Try closing again"}));
 
             await waitFor(() => expect(screen.queryByRole("heading", {name: "Sample Slot"})).not.toBeInTheDocument());
         });
