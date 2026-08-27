@@ -120,3 +120,20 @@ test("documentation claims with outstanding claim findings are not observed", ()
     record.findings.push({...finding, status: "unreached", observedBy: "clean-profile"});
     assert.throws(() => validateInventory(record, true), /documentation claim/i);
 });
+
+test("collector contract rejects findings absent from or misowned in the ownership ledger", () => {
+    const record = completeRecord();
+    const finding = {
+        id: "P8-01-F-EXAMPLE",
+        surface: "Example unavailable capability",
+        owner: "P8-05",
+        status: "unreached",
+        observedBy: "clean-profile",
+    };
+    record.findings.push(finding);
+    const ledger = {findingAssignments: [{id: finding.id, owner: finding.owner}]};
+    assert.doesNotThrow(() => validateInventory(record, true, ledger));
+
+    assert.throws(() => validateInventory(record, true, {findingAssignments: []}), /ownership-ledger/i);
+    assert.throws(() => validateInventory(record, true, {findingAssignments: [{id: finding.id, owner: "P8-02"}]}), /ownership-ledger/i);
+});

@@ -99,7 +99,17 @@ export function claimCoverageFor(claims, screens, findings) {
     });
 }
 
-export function validateInventory(record, complete = false) {
+export function validateFindingAssignments(findings, ownershipLedger) {
+    const assignments = ownershipLedger?.findingAssignments;
+    if (!Array.isArray(assignments) || findings.some((finding) => {
+        const matchingAssignments = assignments.filter((assignment) => assignment.id === finding.id);
+        return matchingAssignments.length !== 1 || matchingAssignments[0].owner !== finding.owner;
+    })) {
+        throw new Error("Every inventory finding needs one exact ownership-ledger assignment.");
+    }
+}
+
+export function validateInventory(record, complete = false, ownershipLedger) {
     const owners = new Set(["P8-02", "P8-03", "P8-04", "P8-05", "P8-06", "P8-07"]);
     if (record.schemaVersion !== 3 || !/^[0-9a-f]{40}$/.test(record.provenance.candidateSha ?? "")) {
         throw new Error("Inventory provenance does not satisfy schema version 3.");
@@ -114,6 +124,7 @@ export function validateInventory(record, complete = false) {
     if (record.findings.some((finding) => !owners.has(finding.owner) || finding.status !== "unreached" || finding.observedBy === undefined)) {
         throw new Error("Every unobserved public capability needs an owned finding.");
     }
+    if (ownershipLedger !== undefined) validateFindingAssignments(record.findings, ownershipLedger);
     if (REQUIRED_ACTION_COVERAGE.some((required) => {
         const actionCount = record.actions.filter((action) => action.coverageId === required.id && action.owner === required.owner).length;
         const findingCount = record.findings.filter((finding) => finding.coverageId === required.id && finding.owner === required.owner).length;
@@ -196,6 +207,7 @@ async function main() {
     const browserVersion = await commandOutput("chromium", ["--version"]);
     const startedAt = new Date().toISOString();
     const publicDocumentationClaims = JSON.parse(await readFile(join(repository, "docs/evidence/p8-01-studio-inventory/public-documentation-claims.json"), "utf8"));
+    const ownershipLedger = JSON.parse(await readFile(join(repository, "docs/evidence/p8-01-studio-inventory/surface-owners.json"), "utf8"));
     const inventory = () => ({
         schemaVersion: 3,
         collector: "scripts/collect-studio-inventory.mjs",
@@ -223,7 +235,7 @@ async function main() {
     });
     const writeInventory = async (complete = false) => {
         const record = inventory();
-        validateInventory(record, complete);
+        validateInventory(record, complete, ownershipLedger);
         await writeFile(join(output, "inventory.json"), `${JSON.stringify(record, null, 2)}\n`);
     };
     try {
@@ -636,8 +648,13 @@ async function main() {
         operation = {...await click("Leave", () => renderedActionExists("Close project")), coverageId: "managed-project-open"};
         await observeAction("Managed project Open leaves the draft and opens the project workspace", operation, () => renderedActionExists("Close project"), 120_000);
         if (await unsavedChangesDialogVisible()) {
-            operation = await click("Stay", unsavedChangesDialogClosed);
-            await observeAction("Managed project Open clears its completed conflict dialog", operation, unsavedChangesDialogClosed);
+            try {
+                operation = await click("Stay", unsavedChangesDialogClosed);
+                await observeAction("Managed project Open clears its completed conflict dialog", operation, unsavedChangesDialogClosed);
+            } catch (error) {
+                if (!await unsavedChangesDialogClosed()) throw error;
+                note("Managed project Open post-Leave dialog closed before its conditional Stay action.");
+            }
         }
         await closeProjectToHome("Managed project workspace");
         operation = await click("Projects", () => activeSection("Projects"));
