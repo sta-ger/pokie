@@ -215,7 +215,7 @@ describe("Studio happy path: recommended model -> create project -> simulate -> 
         expect(screen.queryByLabelText("Output directory (optional)")).not.toBeInTheDocument();
 
         // 3. Create atomically persists/registers the managed Blueprint Project and opens its Workspace.
-        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        await user.click(screen.getByRole("button", {name: "Create game"}));
         expect(await screen.findByRole("heading", {name: "Starter Slot"})).toBeInTheDocument();
 
         // 4. Overview validates automatically as soon as the project loads (no separate "Validate"

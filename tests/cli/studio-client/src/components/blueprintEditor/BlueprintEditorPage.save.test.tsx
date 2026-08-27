@@ -160,6 +160,44 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent(`/project/${encodeURIComponent(savedPath)}/overview`));
     });
 
+    it("keeps a saved game recoverable when opening its Workspace fails", async () => {
+        const user = userEvent.setup();
+        const savedPath = "/projects/starter-slot/blueprint.json";
+        const {fetchImpl} = createFakeFetch((call) => {
+            if (call.url === "/api/home/blueprints/validate") {
+                return {ok: true, status: 200, body: {status: "ok", warnings: []}};
+            }
+            if (call.url === "/api/home/blueprints/save-managed") {
+                return {ok: true, status: 201, body: {status: "ok", path: savedPath, name: "starter-slot", blueprintHash: "starter-hash"}};
+            }
+            if (call.url === "/api/home/projects/open") {
+                return {
+                    ok: false,
+                    status: 503,
+                    body: {error: "The workspace could not be prepared.", detail: "internal materialization diagnostic"},
+                };
+            }
+            throw new Error(`unexpected fetch to ${call.url}`);
+        });
+
+        renderWithProviders(
+            <>
+                <BlueprintEditorPage guided />
+                <LocationProbe />
+            </>,
+            {fetchImpl},
+        );
+
+        await user.click(screen.getByRole("button", {name: "Create game"}));
+
+        expect(await screen.findByRole("alert")).toHaveTextContent("Your game was saved, but Studio couldn't open its workspace");
+        expect(screen.getByRole("alert")).toHaveTextContent("Return to Your projects and open the game again. Your saved work is safe.");
+        expect(screen.getByRole("alert")).not.toHaveTextContent("internal materialization diagnostic");
+
+        await user.click(screen.getByRole("button", {name: "Go to Your projects"}));
+        await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/home/projects"));
+    });
+
     it("opens the just-persisted Blueprint path instead of an unresolved registry projection", async () => {
         const user = userEvent.setup();
         const savedPath = "/projects/starter-slot/blueprint.json";

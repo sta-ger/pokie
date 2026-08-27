@@ -47,7 +47,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
 
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         // The blocked transition hasn't been resolved yet -- still on Home, draft untouched.
-        expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("button", {name: "Start a game"})).toHaveAttribute("aria-current", "page");
         expect(router.state.location.pathname).toBe("/home/design");
     }, 60000);
 
@@ -60,7 +60,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         await act(() => router.navigate("/project/overview"));
 
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("button", {name: "Start a game"})).toHaveAttribute("aria-current", "page");
         expect(router.state.location.pathname).toBe("/home/design");
     }, 60000);
 
@@ -77,7 +77,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
 
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
         expect(router.state.location.pathname).toBe("/home/design");
-        expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("button", {name: "Start a game"})).toHaveAttribute("aria-current", "page");
         expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
     }, 60000);
 
@@ -104,7 +104,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         // the 2-entry history stack, and a single step *forward* lands straight back on Home instead of
         // a leftover duplicate entry sitting in between.
         await act(() => router.navigate(1));
-        await waitFor(() => expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page"));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Start a game"})).toHaveAttribute("aria-current", "page"));
     }, 60000);
 
     it("switching Home's own tabs never prompts, even while the draft is dirty", () => {
@@ -119,7 +119,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
 
-        fireEvent.click(screen.getByRole("button", {name: "Design Game"}));
+        fireEvent.click(screen.getByRole("button", {name: "Start a game"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
         expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
     }, 60000);
@@ -142,12 +142,12 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         addSpy.mockClear();
         removeSpy.mockClear();
 
-        // "New Blueprint" now opens the New flow's own dirty-confirm gate first (see
+        // "Choose a different start" now opens the New flow's own dirty-confirm gate first (see
         // NewBlueprintDialog's own doc comment) -- Discard then Blank resets the draft back to clean,
         // same end state the direct reset used to reach in one click.
-        fireEvent.click(screen.getByRole("button", {name: "New Blueprint"}));
+        fireEvent.click(screen.getByRole("button", {name: "Choose a different start"}));
         fireEvent.click(await screen.findByRole("button", {name: "Discard"}));
-        fireEvent.click(await screen.findByRole("button", {name: "Blank"}));
+        fireEvent.click(await screen.findByRole("button", {name: "Start with a blank game"}));
 
         await waitFor(() => expect(removeSpy.mock.calls.some(([type]) => type === "beforeunload")).toBe(true));
         expect(addSpy.mock.calls.some(([type]) => type === "beforeunload")).toBe(false);
