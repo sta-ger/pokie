@@ -88,12 +88,13 @@ export function claimCoverageFor(claims, screens, findings) {
     return claims.map((claim) => {
         const observedGoals = claim.renderedGoals.filter((goal) => screens.some((screen) => screen.goal === goal));
         const finding = findings.find((entry) => entry.documentationClaimId === claim.id);
+        const fullyObserved = observedGoals.length === claim.renderedGoals.length;
         return {
             id: claim.id,
             owner: claim.owner,
             observedGoals,
-            status: observedGoals.length === claim.renderedGoals.length ? "observed" : "finding",
-            ...(observedGoals.length === claim.renderedGoals.length ? {} : {findingId: finding?.id}),
+            status: fullyObserved && !finding ? "observed" : "finding",
+            ...(fullyObserved && !finding ? {} : {findingId: finding?.id}),
         };
     });
 }
@@ -126,6 +127,7 @@ export function validateInventory(record, complete = false) {
             || !owners.has(claim.owner)
             || claim.owner !== declared.owner
             || (claim.status === "observed" && claim.observedGoals.length !== declared.renderedGoals.length)
+            || (claim.status === "observed" && record.findings.some((finding) => finding.documentationClaimId === claim.id))
             || (claim.status === "finding" && !record.findings.some((finding) => finding.id === claim.findingId && finding.owner === claim.owner && finding.documentationClaimId === claim.id));
     })) {
         throw new Error("Every public documentation claim needs either an observation or an owned finding.");

@@ -104,3 +104,19 @@ test("documentation claims are observed only when every rendered goal is present
     record.claimCoverage = [{id: claim.id, owner: claim.owner, observedGoals: ["Project tab: Overview"], status: "observed"}];
     assert.throws(() => validateInventory(record, true), /documentation claim/i);
 });
+
+test("documentation claims with outstanding claim findings are not observed", () => {
+    const finding = {id: "P8-01-F-DOC-04", owner: "P8-05", documentationClaimId: "DOC-04"};
+    const coverage = claimCoverageFor([claim], claim.renderedGoals.map((goal) => ({goal})), [finding]);
+    assert.deepEqual(coverage, [{
+        id: claim.id,
+        owner: claim.owner,
+        observedGoals: [...claim.renderedGoals],
+        status: "finding",
+        findingId: "P8-01-F-DOC-04",
+    }]);
+
+    const record = completeRecord();
+    record.findings.push({...finding, status: "unreached", observedBy: "clean-profile"});
+    assert.throws(() => validateInventory(record, true), /documentation claim/i);
+});
