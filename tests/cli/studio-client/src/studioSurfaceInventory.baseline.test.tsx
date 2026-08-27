@@ -87,27 +87,27 @@ describe("Studio route table baseline", () => {
 });
 
 describe("Home (/home/:tab) tab inventory baseline", () => {
-    it("lists exactly Design Game, Projects, in that order, ungrouped", () => {
+    it("lists exactly Start a game, Projects, in that order, ungrouped", () => {
         const {fetchImpl} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
         const nav = screen.getByRole("navigation", {name: "Sections"});
         const tabButtons = within(nav).getAllByRole("button");
-        expect(tabButtons.map((button) => button.textContent)).toEqual(["Design Game", "Projects"]);
+        expect(tabButtons.map((button) => button.textContent)).toEqual(["Start a game", "Projects"]);
         // Neither of Home's 2 tabs is grouped under a visible section label (unlike the Project
         // Dashboard's "Advanced" grouping below) -- there is no section header text anywhere in the nav.
         expect(within(nav).queryByText("Advanced")).not.toBeInTheDocument();
     });
 
-    it("Design Game is the default tab, and Projects hosts the managed/registered list plus Import Project -- Advanced Tools is gone entirely", () => {
+    it("Start a game is the default tab, and Projects hosts the managed/registered list plus Add a game you already have -- Advanced Tools is gone entirely", () => {
         const {fetchImpl} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
         expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
         expect(screen.getByRole("heading", {name: "Projects", level: 2})).toBeInTheDocument();
-        expect(screen.getByText("Import Project")).toBeInTheDocument();
+        expect(screen.getByText("Add a game you already have")).toBeInTheDocument();
         // The hand-coded scaffold/init-in-place/build-from-blueprint-file tools that used to live behind
         // Advanced Tools are gone entirely -- init is now directed to the CLI (`pokie init`/`pokie create`),
         // not duplicated in Studio.
@@ -267,23 +267,23 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
     });
 });
 
-describe("New Blueprint action surface baseline", () => {
-    it("the one canonical (Design Game) Blueprint Editor instance exposes a 'New Blueprint' action", () => {
+describe("Design Game start action surface baseline", () => {
+    it("the one canonical Design Game editor exposes a 'Choose a different start' action", () => {
         const {fetchImpl} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
         // Exactly one -- there is no longer a second, independent Blueprint Editor instance (Advanced
         // Tools has been removed entirely -- see HomePage.tsx's own doc comment).
-        expect(screen.getAllByRole("button", {name: "New Blueprint", hidden: true})).toHaveLength(1);
+        expect(screen.getAllByRole("button", {name: "Choose a different start", hidden: true})).toHaveLength(1);
     });
 
-    it("the guided instance offers a 'Show advanced options' disclosure for JSON mode / load-save by path", () => {
+    it("the guided instance offers a 'Show advanced options' disclosure for file and JSON tools", () => {
         const {fetchImpl} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        expect(screen.getAllByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"})).toHaveLength(1);
+        expect(screen.getAllByRole("button", {name: "Show advanced options (file and JSON tools)"})).toHaveLength(1);
     });
 });
 
@@ -571,7 +571,7 @@ describe("Design Game: Load/Save raw-error-surface baseline", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
         // Load/Save are tucked behind Design Game's own "Show advanced options" disclosure.
-        await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
 
         // Unlike every required PathInput/TextInput elsewhere in this group, "Load from path" carries no
         // `required` prop -- so clicking Load with a blank field isn't silently blocked by native HTML
@@ -590,24 +590,24 @@ describe("Design Game: Load/Save raw-error-surface baseline", () => {
     });
 });
 
-describe("Projects: Import Project required-field baseline", () => {
-    it("keeps Detect disabled with an adjacent, programmatically associated next-step explanation until a location is entered", async () => {
+describe("Projects: add a game required-field baseline", () => {
+    it("keeps Check game disabled with an adjacent, programmatically associated next-step explanation until a location is entered", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
         renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
         await screen.findByText("No games yet. Start a game or add one you already have.");
-        const detectButton = await screen.findByRole("button", {name: "Detect"});
+        const detectButton = await screen.findByRole("button", {name: "Check game"});
         expect(detectButton).toBeDisabled();
         expect(detectButton).toHaveAttribute("aria-describedby", "import-project-detect-help");
-        expect(screen.getByText("Enter a project location or use Browse to enable Detect.")).toHaveAttribute("id", "import-project-detect-help");
+        expect(screen.getByText("Enter a game location or use Browse to check it before adding it.")).toHaveAttribute("id", "import-project-detect-help");
 
         await user.click(detectButton);
 
         expect(calls.some((call) => call.url === "/api/home/projects/registry/preview")).toBe(false);
         await user.type(screen.getByLabelText("Location", {exact: false}), "./my-game");
         expect(detectButton).not.toBeDisabled();
-        expect(screen.queryByText("Enter a project location or use Browse to enable Detect.")).not.toBeInTheDocument();
+        expect(screen.queryByText("Enter a game location or use Browse to check it before adding it.")).not.toBeInTheDocument();
     });
 });
 

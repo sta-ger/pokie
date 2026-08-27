@@ -246,7 +246,7 @@ describe("ProjectsPanel: Import Project", () => {
                 }),
             ),
         );
-        expect(await screen.findByRole("heading", {name: "PAR sheet"})).toBeInTheDocument();
+        expect(await screen.findByRole("heading", {name: "PAR spreadsheet"})).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
@@ -875,7 +875,7 @@ describe("ProjectsPanel: Import Project", () => {
                 }),
             ),
         );
-        expect(await screen.findByRole("heading", {name: "PAR sheet"})).toBeInTheDocument();
+        expect(await screen.findByRole("heading", {name: "PAR spreadsheet"})).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;

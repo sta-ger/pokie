@@ -115,13 +115,13 @@ describe("Routable Home sections: browser back/forward", () => {
         // buttons use, no sibling test component needed.
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("button", {name: "Start a game"})).toHaveAttribute("aria-current", "page");
 
         await user.click(screen.getByRole("button", {name: "Projects"}));
         await waitFor(() => expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page"));
 
         await act(() => router.navigate(-1));
-        await waitFor(() => expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page"));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Start a game"})).toHaveAttribute("aria-current", "page"));
 
         await act(() => router.navigate(1));
         await waitFor(() => expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page"));
