@@ -1,9 +1,11 @@
-# P8-03 fresh-profile Studio navigation verification
+# P8-03 exact-candidate browser rerun — inconclusive
 
-Candidate SHA: `4b06907f272ed1b9a47e719980ae71372a64c27e`. Studio was launched from this checkout with `node ./dist/cli/pokie.js --no-open`, using new, isolated Studio and Chromium profiles.
+Candidate SHA: `bc45822441bd3a3087962fd4df662210f2fe2732`.
 
-The visible journey passed guarded-close cancellation, the scoped unavailable Certification deep-link, and its Go to Overview recovery. On Build/Export, the rendered Remote deployment group showed only “Remote delivery is not set up”, with no Check compatibility control and no actionable way to add a destination. Thus the required disabled-control recovery copy is unreachable in the public fresh-profile workflow. The transcript includes transition latencies and bounded console/network diagnostics; the screenshot is the sole retained viewport. Runtime profiles, generated project output, and full logs were removed.
+This rerun launched the candidate checkout with `node ./dist/cli/pokie.js --no-open` and newly isolated XDG Studio and Chromium profiles. It reached the fresh starter workspace and confirmed guarded-close cancellation retains the dirty Game Model route (24 ms to confirmation; 1 ms to retained route).
 
-Checksums:
-- `03-remote-deployment-placeholder.png = dabbfe13291f0e82f26bce764c9b389e6d31ff1b35d616f8d478c718278a192e`
-- `ACTION-TRANSCRIPT.txt = 5d1e8fe39a71d4dbe1f0e1f4b5afc8d74c13a33f0ff7fa47e84a1578f6fe5b1f`
+The second permitted launch then stopped before the unavailable-route and Build/Export checks: after a rendered Game basics **Cancel**, the expected discard-confirmation state did not render within 30 s and no rendered product error appeared. This is a harness selector/state inconclusive, not a product finding; the remote recovery was not observed. Earlier superseded P8-03 screenshot/transcript evidence was removed.
+
+Retained bounded proof:
+
+- `ACTION-TRANSCRIPT.txt` — SHA-256 `19b3623eca3cc9c318e2e0d3cbfd6957963a37a4f42d5cf5ed596da3e29e467f`
