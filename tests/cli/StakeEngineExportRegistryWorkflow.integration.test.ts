@@ -134,5 +134,9 @@ describe("Stake Engine Export: package -> generate library -> registry discovery
         expect(fs.existsSync(path.join(importedDir, "config.json"))).toBe(true);
         expect(await new InspectCommand().run([importedDir])).toBe(0);
         expect(await new ValidateCommand().run([importedDir, "--deep"])).toBe(0);
+
+        const reExportedDir = path.join(workDir, "stakeengine-re-exported");
+        expect(await new StakeEngineCommand(POKIE_VERSION).run(["export", path.join(importedDir, "config.json"), "--out", reExportedDir])).toBe(0);
+        expect(fs.existsSync(path.join(reExportedDir, "pokie-manifest.json"))).toBe(true);
     });
 });

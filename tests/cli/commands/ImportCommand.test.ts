@@ -1,8 +1,12 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ParSheetExporter} from "pokie";
+import {ParSheetExporter, StakeEngineExporter} from "pokie";
 import {ImportCommand} from "../../../cli/commands/ImportCommand.js";
+import {InspectCommand} from "../../../cli/commands/InspectCommand.js";
+import {StakeEngineCommand} from "../../../cli/commands/StakeEngineCommand.js";
+import {ValidateCommand} from "../../../cli/commands/ValidateCommand.js";
+import {buildStakeEngineTestLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
 
 const blueprint = {
     manifest: {id: "import-conflict", name: "Import Conflict", version: "1.0.0"},
@@ -51,6 +55,31 @@ describe("ImportCommand", () => {
         } finally {
             logSpy.mockRestore();
             if (fs.existsSync(linkedDir)) fs.unlinkSync(linkedDir);
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("delegates a Stake export to a reusable, publicly inspectable and deep-valid Outcome Library", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-import-command-stake-test-"));
+        const stakeDir = path.join(workDir, "stake");
+        const importedDir = path.join(workDir, "imported");
+        const reExportedDir = path.join(workDir, "re-exported");
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+
+        try {
+            const library = buildStakeEngineTestLibrary({libraryId: "generic-import", betMode: "base", stake: 1});
+            const source = await new StakeEngineExporter("1.3.0").exportToDirectory([{modeName: "base", cost: 1, library}], stakeDir);
+            expect(source.issues).toEqual([]);
+
+            expect(await new ImportCommand("1.3.0").run([stakeDir, "--out", importedDir])).toBe(0);
+            expect(await new InspectCommand().run([importedDir])).toBe(0);
+            expect(await new ValidateCommand().run([importedDir, "--deep"])).toBe(0);
+            expect(await new StakeEngineCommand("1.3.0").run(["export", path.join(importedDir, "config.json"), "--out", reExportedDir])).toBe(0);
+            expect(fs.existsSync(path.join(reExportedDir, "pokie-manifest.json"))).toBe(true);
+        } finally {
+            logSpy.mockRestore();
+            errorSpy.mockRestore();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });

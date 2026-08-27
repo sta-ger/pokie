@@ -260,6 +260,10 @@ function validateSupplementalFiles<T extends string | number>(
         const key = normalizedName.toLowerCase();
         if (
             path.basename(normalizedName) !== normalizedName ||
+            normalizedName === "." ||
+            normalizedName === ".." ||
+            normalizedName.includes("/") ||
+            normalizedName.includes("\\") ||
             normalizedName.length === 0 ||
             reservedNames.has(key) ||
             seen.has(key) ||

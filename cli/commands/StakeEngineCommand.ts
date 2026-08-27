@@ -420,9 +420,8 @@ export class StakeEngineCommand implements CliCommandHandling {
         return 0;
     }
 
-    // Writes exactly the shape "pokie stakeengine export" already reads back (see loadDescriptor/parseExportArgs
-    // above) — libraries/<modeName>.json per mode, a config.json naming them, and (when available) a
-    // source-provenance.json — so the import's own output can be fed straight back into
+    // Writes a canonical Outcome Library bundle plus a config.json that names its bundle modes, and (when
+    // available) source-provenance.json — so the import's own output can be fed straight back into
     // "pokie stakeengine export <outDir>/config.json" with no further editing. Written via StakeEngineImportWriter,
     // which publishes the whole --out directory atomically (temp-dir-then-swap, the same discipline
     // StakeEngineExporter uses) — a failure never leaves partial files, never alters an existing --out, and a

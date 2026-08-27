@@ -355,9 +355,12 @@ describe("StakeEngineCommand", () => {
             expect(writer.calledWith?.importResult).toBe(successImportResult);
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain("Imported");
+            expect(printed).toContain("manifest.json");
+            expect(printed).toContain("index_base.json");
+            expect(printed).toContain("outcomes_base.jsonl");
+            expect(printed).toContain("index_bonus.json");
+            expect(printed).toContain("outcomes_bonus.jsonl");
             expect(printed).toContain("config.json");
-            expect(printed).toContain("libraries/base.json");
-            expect(printed).toContain("libraries/bonus.json");
         });
 
         it("honors a custom --out path", async () => {
@@ -409,6 +412,20 @@ describe("StakeEngineCommand", () => {
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain("Imported");
             expect(printed).toContain("could not remove stale backup");
+        });
+
+        it("prints a write error and returns 1 when the canonical Outcome Library writer rejects the import", async () => {
+            const writerIssues: ValidationIssue[] = [
+                {code: "outcome-library-bundle-write-supplemental-file-invalid", severity: "error", message: "invalid companion file"},
+            ];
+            const importer = createStubImporter(successImportResult);
+            const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, createStubImportWriter(writerIssues));
+
+            const exitCode = await command.run(["import", "/project/stake"]);
+
+            expect(exitCode).toBe(1);
+            expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("Could not write imported Outcome Library");
+            expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("invalid companion file");
         });
 
         it("throws a descriptive error when no stakeDir is given", async () => {
