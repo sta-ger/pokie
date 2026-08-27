@@ -1,10 +1,34 @@
-[2026-08-27T06:56:36Z] PROVENANCE candidate_sha=4b06907f272ed1b9a47e719980ae71372a64c27e; checkout_head=64d42facb96bf502b14916fee2972ec094a748e1; product_tree_matches_candidate=true; candidate_build=completed; launch=node ./dist/cli/pokie.js --no-open; isolated_studio_profile=P8-03-52647d6bab4f238a/runtime/fresh-profile/studio; isolated_browser_profile=P8-03-52647d6bab4f238a/runtime/fresh-profile/chromium
-[2026-08-27T06:56:37Z] STUDIO_READY http://127.0.0.1:3200 (1406ms)
-[2026-08-27T06:56:38Z] FRESH_BLUEPRINT scoped Overview route rendered (330ms); sections included Build/Export.
-[2026-08-27T06:56:40Z] GUARD_CLOSE edited Game Model; Close project showed its confirmation; Cancel retained the scoped Game Model route and draft (53ms).
-[2026-08-27T06:56:41Z] DISCARD_CONFIRM rendered, stabilised, and returned Game Model to read-only state (315ms).
-[2026-08-27T06:56:43Z] SCOPED_DEEP_LINK Certification rendered its unavailable diagnostic: "Certification" isn't available for this project -- it requires: Use saved game outcomes. (14ms)
-[2026-08-27T06:56:43Z] RECOVERY Go to Overview transitioned to the scoped Overview route and exposed its local Open Play action (10ms).
-[2026-08-27T06:56:44Z] BUILD_EXPORT click issued from rendered navigation.
-[2026-08-27T06:56:50Z] BUILD_EXPORT_TRANSITION route became /exportDeploy. The local Remote deployment / Check compatibility control had not rendered during the bounded semantic wait; console=[]; network=[404 favicon only]. No product error rendered and no duplicate navigation was issued.
-[2026-08-27T06:56:50Z] NOT_REACHED remote disabled-control recovery-copy observation remains readiness-inconclusive after the four permitted fresh launches.
+[2026-08-27T07:01:33.799Z] PROVENANCE candidate_sha=4b06907f272ed1b9a47e719980ae71372a64c27e; checkout_head=405bb2998f09f313dc16806a0bb73bd0687e902d; product_tree_matches_candidate=true; launch=node ./dist/cli/pokie.js --no-open; isolated_studio_profile=/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P8-03-52647d6bab4f238a/runtime/fresh-profile/studio; isolated_browser_profile=/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P8-03-52647d6bab4f238a/runtime/fresh-profile/chromium
+[2026-08-27T07:01:35.204Z] STUDIO_READY http://127.0.0.1:3200
+[2026-08-27T07:01:35.909Z] BROWSER_ADDRESS_NAVIGATE active_window=6291459; visible_page=http://127.0.0.1:3200/#/
+[2026-08-27T07:01:36.202Z] WAIT landing=293ms
+[2026-08-27T07:01:36.438Z] CLICK "Create game"
+[2026-08-27T07:01:36.810Z] WAIT blueprint=372ms
+[2026-08-27T07:01:36.811Z] WAIT scoped-route=1ms
+[2026-08-27T07:01:36.815Z] BLUEPRINT title="Starter Slot" route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-52647d6bab4f238a%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/overview sections=["Overview","Game Model","Play","Simulation","Replay","Build/Export"]
+[2026-08-27T07:01:37.054Z] CLICK "Game Model"
+[2026-08-27T07:01:37.176Z] WAIT game-model=122ms
+[2026-08-27T07:01:37.448Z] CLICK "Edit" in "Game basics"
+[2026-08-27T07:01:37.558Z] WAIT edit=110ms
+[2026-08-27T07:01:37.618Z] INPUT "Game name" rendered field
+[2026-08-27T07:01:37.902Z] CLICK "Close project"
+[2026-08-27T07:01:37.954Z] WAIT close-guard=52ms
+[2026-08-27T07:01:38.182Z] CLICK "Cancel" in "Close the project anyway?"
+[2026-08-27T07:01:38.185Z] WAIT guarded-stay=3ms
+[2026-08-27T07:01:38.191Z] GUARD_CLOSE preserved route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-52647d6bab4f238a%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/gameModel
+[2026-08-27T07:01:38.418Z] CLICK "Cancel" in "Game basics"
+[2026-08-27T07:01:38.528Z] WAIT discard-confirm=109ms
+[2026-08-27T07:01:38.986Z] CLICK "Confirm" in "Discard your unsaved changes"
+[2026-08-27T07:01:39.321Z] WAIT discard=335ms
+[2026-08-27T07:01:39.321Z] DISCARD settled=read-only Game Model; no pending dirty navigation blocker
+[2026-08-27T07:01:39.789Z] BROWSER_ADDRESS_NAVIGATE active_window=6291459; visible_page=http://127.0.0.1:3200/#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-52647d6bab4f238a%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/certification
+[2026-08-27T07:01:41.336Z] WAIT unavailable=13ms
+[2026-08-27T07:01:41.339Z] SCOPED_DEEP_LINK route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-52647d6bab4f238a%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/certification
+[2026-08-27T07:01:41.342Z] UNAVAILABLE "\"Certification\" isn't available for this project -- it requires: Use saved game outcomes."
+[2026-08-27T07:01:41.595Z] CLICK "Go to Overview"
+[2026-08-27T07:01:41.771Z] WAIT recovery=11ms
+[2026-08-27T07:01:41.774Z] RECOVERY overview_route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-52647d6bab4f238a%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/overview; local_control=Open Play
+[2026-08-27T07:01:42.015Z] CLICK "Build/Export"
+[2026-08-27T07:01:42.198Z] REMOTE_PLACEHOLDER rendered="Remote deployment\n\nCheck a configured delivery destination before publishing to it.\n\nRemote delivery is not set up\n\nREMOTE\n\nPurpose: Set up a remote destination before this project can be delivered outside Studio.\n\nDestination: Set up a remote destination before delivery can begin.\n\nUnavailable for this project\n\nRemote delivery is unavailable until a destination is set up. Add a remote delivery destination in Studio.\n\nPrerequisites\n\nAdd a remote delivery destination in Studio.\n\nShow advanced details (technical information)"; check_compatibility_control=false; recovery_action=false; console=[]; network=["404 http://127.0.0.1:3200/favicon.ico","404 http://127.0.0.1:3200/favicon.ico"]
+[2026-08-27T07:01:42.461Z] CAPTURE 03-remote-deployment-placeholder.png rendered UI
+[2026-08-27T07:01:42.462Z] REMOTE_PLACEHOLDER The visible Build/Export recovery gives no reachable action to register a remote destination, so the required disabled compatibility recovery cannot be reached in the public fresh-profile workflow.
