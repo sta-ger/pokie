@@ -1,4 +1,4 @@
-import {SimpleGrid, TextInput} from "@mantine/core";
+import {SimpleGrid, Text, TextInput} from "@mantine/core";
 import type {ValidationIssue} from "../../api/types";
 import {fieldErrorMessage, fieldWarningMessage} from "../../domain/interpret/BlueprintSections";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
@@ -67,6 +67,9 @@ export function MetadataFieldset({
 
     return (
         <PageSection legend={legend}>
+            <Text size="sm" c="dimmed" mb="sm">
+                Required: Game id, Game name, and Version. Description and Author are optional.
+            </Text>
             <SimpleGrid cols={{base: 1, sm: 2}} spacing="sm">
                 <div>
                     <TextInput

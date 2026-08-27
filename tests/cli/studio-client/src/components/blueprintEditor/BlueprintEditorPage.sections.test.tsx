@@ -120,7 +120,7 @@ describe("Guided Design Game: sectioned layout", () => {
         expect(tablist).not.toBeNull();
         expect(within(tablist as HTMLElement).queryByText(/^\d+$/)).not.toBeInTheDocument();
 
-        fireEvent.click(buttonNamed("Create Project"));
+        fireEvent.click(buttonNamed("Create game"));
 
         await waitFor(() => {
             const heading = Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6")).find((candidate) => candidate.textContent === "Sectioned");
@@ -215,7 +215,7 @@ describe("Guided Design Game: sectioned layout", () => {
 
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
         expect(gameNameInput).toHaveValue("Sectioned Renamed");
-        expect(buttonNamed("Create Project")).toBeEnabled();
+        expect(buttonNamed("Create game")).toBeEnabled();
         expect(screen.queryByText("Compare built blueprint", {selector: "button"})).not.toBeInTheDocument();
     }, 60000);
 
