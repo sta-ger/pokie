@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "candidateSha": "ea67efe200dfb1b322ed4afa695cf7736776632b",
+  "candidateSha": "58d96474edcf216396503dc5c32053b599e30e95",
   "purpose": "The evidence commit is documentation-only; both clean browser profiles exercised this exact product and collector candidate before the evidence files were committed.",
   "machineVerification": {
     "command": "test \"$(git rev-parse HEAD^)\" = \"$(node --input-type=module -e 'import {readFile} from \"node:fs/promises\"; const paths=[\"docs/evidence/p8-01-studio-inventory/current-run/inventory.json\",\"docs/evidence/p8-01-studio-inventory/independent-run/inventory.json\"]; const records=await Promise.all(paths.map(async (path) => JSON.parse(await readFile(path, \"utf8\")))); if (!records.every((record) => record.provenance.candidateSha === records[0].provenance.candidateSha)) process.exit(1); process.stdout.write(records[0].provenance.candidateSha);')\"",
