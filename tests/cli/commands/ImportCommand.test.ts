@@ -77,6 +77,9 @@ describe("ImportCommand", () => {
             expect(await new ValidateCommand().run([importedDir, "--deep"])).toBe(0);
             expect(await new StakeEngineCommand("1.3.0").run(["export", path.join(importedDir, "config.json"), "--out", reExportedDir])).toBe(0);
             expect(fs.existsSync(path.join(reExportedDir, "pokie-manifest.json"))).toBe(true);
+            expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toEqual(
+                expect.objectContaining({stakeDir, outDir: importedDir, files: expect.arrayContaining(["manifest.json", "config.json"])}),
+            );
         } finally {
             logSpy.mockRestore();
             errorSpy.mockRestore();

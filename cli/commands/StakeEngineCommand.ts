@@ -31,11 +31,11 @@ import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDispla
 
 const USAGE =
     "Usage: pokie stakeengine export <config.json> [--out <dir>]\n" +
-    "   or: pokie stakeengine import <stakeDir> [--out <dir>]\n" +
+    "   or: pokie stakeengine import <stakeDir> [--out <dir>] [--format json]\n" +
     "   or: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]\n" +
     "   or: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]";
 const EXPORT_USAGE = "Usage: pokie stakeengine export <config.json> [--out <dir>]";
-const IMPORT_USAGE = "Usage: pokie stakeengine import <stakeDir> [--out <dir>]";
+const IMPORT_USAGE = "Usage: pokie stakeengine import <stakeDir> [--out <dir>] [--format json]";
 const ANALYZE_USAGE = "Usage: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]";
 const DIFF_USAGE = "Usage: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]";
 const CONFIG_HINT =
@@ -66,7 +66,9 @@ const DIFF_EXIT_MATERIAL_DIFFERENCE = 1;
 const DIFF_EXIT_INVALID_INPUT = 2;
 
 type ExportOptions = {configPath: string; outDir: string};
-type ImportOptions = {stakeDir: string; outDir: string};
+type ImportFormat = "summary" | "json";
+type ImportOptions = {stakeDir: string; outDir: string; format: ImportFormat};
+type ImportReport = {stakeDir: string; outDir: string; files: readonly string[]; issues: readonly ValidationIssue[]};
 type AnalyzeFormat = "summary" | "json";
 type AnalyzeOptions = {stakeDir: string; format: AnalyzeFormat; out?: string};
 type AnalyzeReport = {stakeDir: string; issues: ValidationIssue[]; analysis: StakeEngineStandaloneAnalysis | undefined};
@@ -221,7 +223,11 @@ export class StakeEngineCommand implements CliCommandHandling {
             verbMessages = {
                 missingArgument: `${IMPORT_USAGE}\n${STAKE_DIR_HINT}`,
                 unknownOption: (flag) => `Unknown option "${flag}". ${IMPORT_USAGE}`,
-                optionMissingArgument: (flag) => (flag === "--out" ? `--out requires a directory path. ${IMPORT_USAGE}` : `Unknown option "${flag}". ${IMPORT_USAGE}`),
+                optionMissingArgument: (flag) => {
+                    if (flag === "--out") return `--out requires a directory path. ${IMPORT_USAGE}`;
+                    if (flag === "--format") return `--format only supports "json". ${IMPORT_USAGE}`;
+                    return `Unknown option "${flag}". ${IMPORT_USAGE}`;
+                },
             };
         } else if (verb === "analyze") {
             verbMessages = {
@@ -302,12 +308,23 @@ export class StakeEngineCommand implements CliCommandHandling {
             .argument("<stakeDir>", STAKE_DIR_HINT)
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--out <dir>", "output directory (default: <stakeDir> suffixed with \"-imported\")")
-            .action(async (stakeDir: string, excess: string[], options: {out?: string}) => {
+            .option(
+                "--format <format>",
+                'output format ("summary" or "json", default "summary")',
+                (value: string) => {
+                    if (value !== "json") {
+                        throw new Error(`--format only supports "json". ${IMPORT_USAGE}`);
+                    }
+                    return "json" as ImportFormat;
+                },
+                "summary" as ImportFormat,
+            )
+            .action(async (stakeDir: string, excess: string[], options: {out?: string; format: ImportFormat}) => {
                 if (!stakeDir || excess.length > 0) {
                     throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${IMPORT_USAGE}` : `${IMPORT_USAGE}\n${STAKE_DIR_HINT}`);
                 }
                 const outDir = options.out ?? path.join(path.dirname(stakeDir), `${path.basename(stakeDir)}-imported`);
-                exitCodeRef.value = await this.runImport({stakeDir, outDir});
+                exitCodeRef.value = await this.runImport({stakeDir, outDir, format: options.format});
             });
 
         parent
@@ -445,18 +462,24 @@ export class StakeEngineCommand implements CliCommandHandling {
             return 1;
         }
 
-        console.log(`Imported "${options.stakeDir}" to "${options.outDir}":`);
-        console.log(`  wrote  manifest.json`);
-        for (const mode of result.modes) {
-            console.log(`  wrote  index_${mode.modeName}.json`);
-            console.log(`  wrote  outcomes_${mode.modeName}.jsonl`);
-        }
-        console.log(`  wrote  config.json`);
-        if (result.sourceProvenance !== undefined) {
-            console.log(`  wrote  source-provenance.json`);
-        }
-        for (const issue of [...infos, ...written.issues]) {
-            console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
+        const files = [
+            "manifest.json",
+            ...result.modes.flatMap((mode) => [`index_${mode.modeName}.json`, `outcomes_${mode.modeName}.jsonl`]),
+            "config.json",
+            ...(result.sourceProvenance === undefined ? [] : ["source-provenance.json"]),
+        ];
+        const issues = [...infos, ...written.issues];
+        if (options.format === "json") {
+            const report: ImportReport = {stakeDir: options.stakeDir, outDir: options.outDir, files, issues};
+            console.log(JSON.stringify(report, null, 4));
+        } else {
+            console.log(`Imported "${options.stakeDir}" to "${options.outDir}":`);
+            for (const file of files) {
+                console.log(`  wrote  ${file}`);
+            }
+            for (const issue of issues) {
+                console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
+            }
         }
 
         return 0;

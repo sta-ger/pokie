@@ -49,13 +49,11 @@ export class ImportCommand implements CliCommandHandling {
         // Filesystems routinely preserve a producer's uppercase `.XLSX` suffix. Extension casing
         // is not a workbook-format distinction, so normalize it before selecting the PAR reader.
         const delegate = path.extname(options.input).toLowerCase() === ".xlsx" ? this.par : this.stake;
-        // `import` owns its public options before dispatching to a format-specific command. Stake
-        // reconstruction has no alternate rendered result, so its internal command deliberately
-        // does not expose `--format`; retaining it in the forwarded argv made the public generic
-        // command advertise an option that its Stake delegate rejected. Rebuild the delegated argv
-        // from the parsed public contract instead of leaking facade-only options across that seam.
+        // `import` owns its public options before dispatching to a format-specific command. Rebuild
+        // the delegated argv from the parsed public contract so every delegate receives exactly
+        // the public options it supports, rather than the original, unvalidated token sequence.
         const delegatedArgs = ["import", options.input, ...(options.out === undefined ? [] : ["--out", options.out])];
-        if (delegate === this.par && options.format !== undefined) delegatedArgs.push("--format", options.format);
+        if (options.format !== undefined) delegatedArgs.push("--format", options.format);
         return delegate.run(delegatedArgs);
     }
 
@@ -65,7 +63,7 @@ export class ImportCommand implements CliCommandHandling {
             .argument("<source>", "a PAR workbook or POKIE-produced Stake Engine export directory with pokie-manifest.json")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--out <path>", "where to write imported artifacts")
-            .option("--format <format>", 'only "json" is supported; it selects JSON output for workbook import')
+            .option("--format <format>", 'only "json" is supported; it selects JSON output')
             .action(() => undefined);
     }
 
