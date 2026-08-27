@@ -2,6 +2,31 @@
 
 Candidate: `8f23a47b443a578d4351b7d019dddadd7c698b12`.
 
+## Independent host rerun — 2026-08-27
+
+Verified candidate `0be293a3c9cafa3924f1e10ac2cbbef42216efbb` through the
+public Studio workflow, launched from this checkout exactly as
+`node ./dist/cli/pokie.js --no-open`. Each of the two permitted launches used
+a new Studio registry and Chromium profile. No source, roadmap, prior evidence,
+or known finding was consulted before the first launch.
+
+The first renderer readiness observation preceded the visible controls and did
+not send a product action; its fixed threshold is therefore not a product
+result. The single fresh retry rendered the starter-design page. A visible
+**Projects** click changed the route to `#/home/projects`, rendered the empty
+project state and its recovery actions (**Create your first game**, add/browse),
+and explained the disabled **Check game** state. Browser Back, Forward, and
+Reload all retained the rendered Projects state; no rendered product error or
+failed product request appeared. The fresh registry showed **No games yet**, so
+this run produced no game/output artifact to retain or inspect. The only browser
+diagnostic was a 404 for `favicon.ico`; it did not affect the rendered workflow.
+
+The retained proof is this bounded transcript summary. The isolated browser
+profile, Studio registry, raw diagnostics, and an unneeded screenshot were not
+committed. The pre-existing frozen finding and its single visual proof below are
+retained as the candidate's prior evidence, not asserted as a new observation
+by this rerun.
+
 This bounded recovery used four newly created Chromium profiles and Studio
 runtime directories. The candidate was built from this checkout; every launch
 then started Studio only with `node ./dist/cli/pokie.js --no-open`. The original retained launch began
