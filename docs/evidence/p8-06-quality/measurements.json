@@ -1,11 +1,19 @@
 {
   "candidateSha": "69b7ae42256dee1aa7bb79554ac1a48132de077d",
+  "build": "npm run build",
   "publicEntrypoint": "node ./dist/cli/pokie.js --no-open",
-  "freshProfiles": ["Studio configuration", "visible Chromium"],
-  "observedFocus": [
-    {"surface": "Home", "target": "Design Your Game region"},
-    {"surface": "Start choices", "target": "Use the starter game"},
-    {"surface": "Generate a game idea", "target": "Seed (optional)"}
+  "freshProfiles": ["isolated Studio configuration", "visible Chromium"],
+  "focusObserved": [
+    "Home: Design Your Game region",
+    "Generate a game idea: Seed (optional)",
+    "Open a saved game design: Saved game design",
+    "Home: Projects region",
+    "Home return: Design Your Game region"
   ],
-  "unreachedAfter": "Rendered Back click had no semantic transition or rendered error within 30 seconds; launch limit prevented a further UI rerun."
+  "dialogTransitions": ["Back returned to Use the starter game from random", "Back returned to Use the starter game from saved design", "Escape returned focus to Choose a different start"],
+  "dashboard": {
+    "rendered": "Overview and Close project",
+    "renderedAlert": false,
+    "focus": "not recorded: the pre-repair matcher expected a literal accessible name instead of the dashboard heading reference"
+  }
 }

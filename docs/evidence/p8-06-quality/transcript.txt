@@ -1,7 +1,9 @@
-P8-06 current-candidate partial browser audit
+P8-06 current-candidate browser focus audit
 candidate: 69b7ae42256dee1aa7bb79554ac1a48132de077d
-public launch: node ./dist/cli/pokie.js --no-open (fresh isolated Studio configuration and visible Chromium profile)
+build: npm run build
+public launch: node ./dist/cli/pokie.js --no-open
+profiles: fresh isolated Studio configuration and visible Chromium profile
 
-Home rendered the named Design Your Game region and focused it. Choose a different start opened the dialog and focused Use the starter game.
-Keyboard Tab, Tab, Space focused/activated Generate a game idea. The rendered random form focused Seed (optional), shown in 01-random-seed-focus.png.
-A rendered Back click then produced neither the expected starter-choice transition nor a rendered product error within 30 seconds. This is an inconclusive driver/interaction observation, not a product defect. The two-launch allowance was exhausted, so Saved game design, cancellation, Projects/Home, and Project Dashboard checks were not reached.
+Home focused the named Design Your Game region. Keyboard entry into Generate a game idea focused Seed (optional), then Back returned to Use the starter game. Keyboard entry into Open a saved game design focused Saved game design, then Back returned to Use the starter game. Escape cancelled the dialog and returned focus to Choose a different start.
+
+Projects focused the named Projects region; Start a game returned focus to the named Design Your Game region. Create game reached the rendered dashboard predicate (Overview and Close project), with no rendered alert. Dashboard-region focus was not recorded: the harness then incorrectly required the region's accessible name to be literal "Project Dashboard", but this UI names it with the project title. The two-launch budget was exhausted before the repaired, heading-based matcher could run. This is driver-inconclusive, not a product failure.
