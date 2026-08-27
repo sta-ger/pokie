@@ -17,12 +17,19 @@ The bounded dashboard capture is
 `dashboard-validation.png` (SHA-256
 `b9d0e774e5b306fcb996c88f28fa5cb6a81a28904ec23fb1a737cd9d6fce1765`).
 
-The Reels editor uses its visibly rendered contextual **Edit**, native
-generation-mode radios, and per-symbol fields—not the previously assumed
-reel-selector action. This is a harness selector recovery observation, not a
-product defect. In Build/Export, one rendered **Build** click for the ready
-TypeScript Game Package produced no local pending, success, or error state;
-the control still read **Status: Ready to build** after bounded observation.
-No duplicate build was sent. The two-launch limit prevented the required safe
-rendered retry, so artifact completion and saving an edit remain
-driver-inconclusive. No product error was rendered.
+Recovery used four further isolated Chromium profiles with the same candidate
+launcher. The final fresh-profile pass used Reels **Edit**, duplicated the
+rendered reel 1 symbol 1, then saved and returned to the normal Reels
+**Edit** surface. A new Play session settled a real Spin with **Round complete
+— no win this round**. The rendered TypeScript Game Package **Build** then
+completed with **Built to …/tsPackage**. The generated artifact was not
+retained: 6 files, 17,278 bytes, manifest SHA-256
+0887b093ceef10203293f9ef041d9ee516b7f8dc9a24311d5ca122b2de1a191f.
+
+Earlier timeouts were harness-only (an off-viewport control and stale
+local-result labels); the final pass observed each local transition. A
+harness-only second Build was sent after the first success because its
+detector did not yet recognize “Built to”; its nonempty-output-directory
+message is not a product finding, and the detector was repaired without
+another launch. Each rendered transition used a bounded 10–60 second local
+state observation. No rendered product defect was observed.
