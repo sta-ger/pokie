@@ -1,0 +1,3 @@
+[2026-08-27T09:20:50.414Z] Started a fresh visible Chromium profile against candidate Studio at http://127.0.0.1:3200/#/home/design.
+[2026-08-27T09:20:50.689Z] Entered Game id "p8-runtime-proof" through the rendered input; the guided design state became valid.
+[2026-08-27T09:20:51.489Z] STOPPED: the required rendered selector "Create Project" was absent. Visible controls instead included "Create game". No product error, console exception, or network failure was rendered before this selector mismatch.
