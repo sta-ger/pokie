@@ -1,14 +1,13 @@
-# P8-05 Studio runtime journey — bounded inconclusive rerun
+# P8-05 Studio runtime journey — bounded driver inconclusive
 
-Candidate product source: `3ba937f9b27916bb64afa49184fcab597d0c93b8`. This evidence-only descendant changes no product source. A fresh Chromium profile drove the built checkout using `node ./dist/cli/pokie.js --no-open`.
+Candidate product source: `3ba937f9b27916bb64afa49184fcab597d0c93b8`. This evidence descendant changes no product source. Fresh Chromium/XDG profiles drove the built checkout with `node ./dist/cli/pokie.js --no-open`.
 
-The reached public Studio flow created `p8-runtime-proof`, completed two real Play rounds, demonstrated failed-reset preservation, successful reset, stale-session clearing and recovery, and completed the visible two-round simulation report. Screenshots are representative rendered proof; no generated game, export, profile, raw log, or automation source is retained here.
-
-Replay was opened, but the harness had not selected the rendered **Session Spin** source before waiting for its round row. It therefore timed out at its own selector/readiness transition, not at a rendered product error. The persistent harness is repaired to select that source and then wait for its local selected-round state, but this invocation's two fresh-launch budget was exhausted. Build/Export was consequently not exercised.
+The rendered public Studio journey created `p8-runtime-proof`, completed real Play rounds, verified failed-reset preservation, successful reset, stale-session clearing/recovery, and completed a two-round Simulation report. The recovery rerun selected the actual Session Spin source and rendered the selected recorded round's Replay inspector. Build/Export was opened and its exact outcome-library action clicked, but a harness readiness condition was too broad and did not prove a local generator completion/error before export. No rendered product error was observed, and the four-launch budget prevented another run.
 
 - `01-play-round.png` — completed real Play round.
-- `02-failed-reset-preserves-context.png` — actionable reset error with preserved completed round and usable control.
-- `03-stale-session-cleared.png` — no-active-project boundary cleared stale Play actions.
-- `04-simulation-report.png` — completed report and Recent runs result.
+- `02-failed-reset-preserves-context.png` — actionable reset failure with preserved round and controls.
+- `03-stale-session-cleared.png` — stale context cleared to New Play session.
+- `04-simulation-report.png` — completed Simulation report.
+- `05-replay-session-spin.png` — selected recorded Play round and local Replay inspector.
 
-`ACTION-TRANSCRIPT.txt` records the action sequence, timings, limitation, and bounded diagnostics.
+`ACTION-TRANSCRIPT.txt` records bounded timings and diagnostics. Generated output, profiles, raw logs, and automation are not retained.

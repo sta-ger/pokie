@@ -1,13 +1,11 @@
-[2026-08-27T09:23:36.073Z] Started fresh visible Chromium and Studio profiles at http://127.0.0.1:3200/#/home/design using node ./dist/cli/pokie.js --no-open.
-[2026-08-27T09:23:36.368Z] Entered Game id "p8-runtime-proof" in the rendered Design form.
-[2026-08-27T09:23:37.486Z] Clicked rendered Create game; Studio opened the real game workspace.
-[2026-08-27T09:23:37.889Z] Play > New Play session > Spin rendered a completed real round (01-play-round.png).
-[2026-08-27T09:23:38.364Z] A controlled response to the rendered Reset Play session action showed actionable recovery while retaining the completed round and enabled Spin control (02-failed-reset-preserves-context.png).
-[2026-08-27T09:23:38.815Z] A normal rendered Reset Play session recovered to an enabled fresh session.
-[2026-08-27T09:23:38.914Z] A controlled no-active-project response to rendered Spin cleared stale controls and exposed New Play session (03-stale-session-cleared.png).
-[2026-08-27T09:23:39.372Z] New Play session > Spin restored current Play context and completed a second real round.
-[2026-08-27T09:23:39.690Z] Simulation with 2 rendered rounds completed; its report and Recent runs row are visible (04-simulation-report.png).
-[2026-08-27T09:23:39.862Z] Opened Replay. The harness then waited 30 seconds for a Round 1 row without first choosing the rendered Session Spin source, so Replay inspection and Build/Export were not reached before the fresh-launch budget expired.
+[2026-08-27T09:23:36Z] Fresh Chromium and Studio profiles launched candidate 3ba937f9b27916bb64afa49184fcab597d0c93b8 using node ./dist/cli/pokie.js --no-open.
+[2026-08-27T09:23:37Z] Created p8-runtime-proof through rendered Design guidance.
+[2026-08-27T09:23:38Z] Play > New Play session > Spin completed a real round (01-play-round.png).
+[2026-08-27T09:23:38Z] Controlled failed Reset Play session rendered actionable recovery while preserving the completed round and enabled Spin (02-failed-reset-preserves-context.png); normal Reset then restored a fresh usable session.
+[2026-08-27T09:23:39Z] Controlled no-active-project response cleared stale controls to New Play session (03-stale-session-cleared.png); New Play session > Spin restored current context.
+[2026-08-27T09:23:40Z] Two-round Simulation completed with visible RTP/report and Recent runs (04-simulation-report.png).
+[2026-08-27T09:36:45Z] Fresh recovery rerun selected Replay > Session Spin, refreshed, chose rendered “Session 1 — Round 1 — Spin”, and rendered its local Round inspector/provenance (05-replay-session-spin.png).
+[2026-08-27T09:36:46Z] Build/Export opened and the rendered Generate exact outcome library (base) action was clicked. The harness then used an over-broad text condition and could not prove the generator's local Generated/error state before looking for the export action. No rendered product error, browser console exception, or network failure was observed. The four-launch budget prevented the repaired rerun.
 
 DIAGNOSTICS
-No browser console exception, browser network failure, or rendered product error was observed during the reached workflow. The two logged controlled responses were deliberate browser-protocol faults applied only after the corresponding visible Play action.
+The two Play recovery responses above were deliberate browser-protocol faults applied only after their respective visible user action. All other steps used visible Studio controls. Superseded harness-only selector attempts and raw stack traces were pruned.
