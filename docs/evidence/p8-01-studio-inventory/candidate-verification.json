@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "candidateSha": "f817d8207d3c7c5b1a2a18aca957f1f76d0db461",
+  "candidateSha": "03cd786ab8149538bdeddb029cccc6aa8ab9c6de",
   "purpose": "The evidence commit is documentation-only; both clean browser profiles exercised this exact product and collector candidate before the evidence files were committed.",
   "machineVerification": {
-    "command": "test \"$(git rev-parse HEAD^)\" = \"$(node --input-type=module -e 'import {readFile} from \\\"node:fs/promises\\\"; const paths=[\\\"docs/evidence/p8-01-studio-inventory/current-run/inventory.json\\\",\\\"docs/evidence/p8-01-studio-inventory/independent-run/inventory.json\\\"]; const records=await Promise.all(paths.map(async (path) => JSON.parse(await readFile(path, \\\"utf8\\\")))); if (!records.every((record) => record.provenance.candidateSha === records[0].provenance.candidateSha)) process.exit(1); process.stdout.write(records[0].provenance.candidateSha);')\"",
+    "command": "test \"$(git rev-parse HEAD^)\" = \"$(node --input-type=module -e 'import {readFile} from \"node:fs/promises\"; const paths=[\"docs/evidence/p8-01-studio-inventory/current-run/inventory.json\",\"docs/evidence/p8-01-studio-inventory/independent-run/inventory.json\"]; const records=await Promise.all(paths.map(async (path) => JSON.parse(await readFile(path, \"utf8\")))); if (!records.every((record) => record.provenance.candidateSha === records[0].provenance.candidateSha)) process.exit(1); process.stdout.write(records[0].provenance.candidateSha);')\"",
     "expectedResult": "The evidence commit parent and both inventory provenance candidateSha values are identical."
   }
 }
