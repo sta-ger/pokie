@@ -1,20 +1,28 @@
 # P8-07 clean-room Studio verification
 
-Candidate: `4a3e099bf46b637afab4459e9e015ce82b1ef7ce`.
+Candidate: `4a3e099bf46b637afab4459e9e015ce82b1ef7ce` (verified from its
+evidence-only descendant `c7e9c2390bba3dfecf6eef1e595326a9866b48ca`).
 
-Two fresh-profile public Studio launches used exactly:
+Two new Chromium profiles used the public Studio only, launched exactly with:
 
 ```sh
 node ./dist/cli/pokie.js --no-open
 ```
 
-Both rendered the public **Start a game** designer and its Recommended starter
-form. The second launch sent one rendered click to **Create game** and the UI
-then rendered **Validating…**. No rendered success, error, or defect was
-observed before the verifier harness mistakenly treated descriptive text
-(`"Create game saves it…"`) as a success signal and closed the session.
+The second, repaired run rendered the Recommended starter form, created a
+project, and reached Overview with **Validation: Valid — no issues found**.
+It opened the Game Model's rendered Reels editor, then created a Play session
+and completed one real rendered spin: **You won 28.00** (total win 28.00x).
+The bounded dashboard capture is
+`dashboard-validation.png` (SHA-256
+`b9d0e774e5b306fcb996c88f28fa5cb6a81a28904ec23fb1a737cd9d6fce1765`).
 
-The harness wait has been repaired in its controller-provided runtime location;
-no third launch is permitted by this request. Therefore this record is an
-inconclusive driver result, not product-failure evidence. No generated output,
-profile, automation script, or raw log is retained here.
+The Reels editor uses its visibly rendered contextual **Edit**, native
+generation-mode radios, and per-symbol fields—not the previously assumed
+reel-selector action. This is a harness selector recovery observation, not a
+product defect. In Build/Export, one rendered **Build** click for the ready
+TypeScript Game Package produced no local pending, success, or error state;
+the control still read **Status: Ready to build** after bounded observation.
+No duplicate build was sent. The two-launch limit prevented the required safe
+rendered retry, so artifact completion and saving an edit remain
+driver-inconclusive. No product error was rendered.
