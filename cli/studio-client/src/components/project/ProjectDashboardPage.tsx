@@ -865,7 +865,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             onHomeClick={handleClose}
         >
             <div>
-                <Title order={2}>{describeProjectName(header)}</Title>
+                <Title id="project-dashboard-heading" order={2}>{describeProjectName(header)}</Title>
                 {header.status === "loaded" && <Text size="sm" c="dimmed">{header.id} · v{header.version}</Text>}
                 {projectKey !== undefined && (
                     <AdvancedDisclosure label="project location">
@@ -900,7 +900,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 </div>
             )}
             {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact") && (
-                <div ref={panelRef} tabIndex={-1} style={{marginTop: "1rem"}}>
+                <div ref={panelRef} role="region" aria-labelledby="project-dashboard-heading" tabIndex={-1} style={{marginTop: "1rem"}}>
                     {!activeTabSupported && activeTabDescriptor !== undefined && (
                         <>
                             <ErrorState message={describeUnsupportedTabMessage(activeTabDescriptor)} />

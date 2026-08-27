@@ -57,6 +57,25 @@ describe("BlueprintEditorPage - New flow", () => {
         expect(screen.queryByText(/unsaved changes/)).not.toBeInTheDocument();
     });
 
+    it("puts keyboard focus on a named choice when the dialog opens and after discarding a dirty draft", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        const starter = await screen.findByRole("button", {name: "Use the starter game"});
+        await waitFor(() => expect(document.activeElement).toBe(starter));
+
+        await user.keyboard("{Escape}");
+        await dirtyGameId(user, "dirty-draft");
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        const cancel = await screen.findByRole("button", {name: "Cancel"});
+        await waitFor(() => expect(document.activeElement).toBe(cancel));
+
+        await user.click(screen.getByRole("button", {name: "Discard"}));
+        await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", {name: "Use the starter game"})));
+    });
+
     it("gates behind Save/Discard/Cancel when the draft is dirty, and Cancel leaves the draft untouched", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));

@@ -1035,7 +1035,7 @@ export function BlueprintEditorPage({
         <div>
             {guided && (
                 <div>
-                    <Title order={2}>Design Your Game</Title>
+                    <Title id="design-game-heading" order={2}>Design Your Game</Title>
                     <Text c="dimmed" size="sm" mb="md">
                         Start with the ready-to-edit starter game, then make it your own. Edit its layout, symbols,
                         reels, prizes, and bets. Studio checks your design as you work; Create game saves it and opens

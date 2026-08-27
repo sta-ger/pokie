@@ -1,5 +1,5 @@
 import {Button, Group, Modal, NumberInput, SegmentedControl, Stack, Text, TextInput} from "@mantine/core";
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {generateRandomBlueprint} from "../../api/apiClient";
 import type {StudioBlueprintRandomView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -73,6 +73,10 @@ export function NewBlueprintDialog({
     const [loadPath, setLoadPath] = useState("");
     const [randomForm, setRandomForm] = useState<RandomFormState>({seed: "", preset: "default", name: ""});
     const [randomView, setRandomView] = useState<RandomGenerationView>({status: "idle"});
+    const cancelRef = useRef<HTMLButtonElement>(null);
+    const choiceRef = useRef<HTMLButtonElement>(null);
+    const seedRef = useRef<HTMLInputElement>(null);
+    const loadBackRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
         if (opened) {
@@ -90,6 +94,25 @@ export function NewBlueprintDialog({
         // the save-success effect below is about to advance to.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [opened]);
+
+    // Mantine initially focused the dialog's close button in the rendered Studio audit. Each step
+    // has a useful first control instead: cancelling preserves a dirty draft, the starter is the
+    // recommended first-use choice, and the form steps start at their primary input.  This also makes
+    // an in-dialog step transition deterministic instead of leaving keyboard focus on a removed node.
+    useEffect(() => {
+        if (!opened) {
+            return;
+        }
+        if (step === "confirmDirty") {
+            cancelRef.current?.focus();
+        } else if (step === "choose") {
+            choiceRef.current?.focus();
+        } else if (step === "random") {
+            seedRef.current?.focus();
+        } else {
+            loadBackRef.current?.focus();
+        }
+    }, [opened, step]);
 
     // Advances past the dirty-confirm gate once a Save this dialog itself triggered actually lands —
     // `savingToProceed` scopes this to a save this dialog started (never one from the always-visible
@@ -169,7 +192,7 @@ export function NewBlueprintDialog({
                             <ErrorState message={describePathActionError("The saved game design", saveView.message)} />
                         )}
                         <Group justify="flex-end">
-                            <Button variant="default" onClick={onClose}>
+                            <Button ref={cancelRef} variant="default" onClick={onClose}>
                                 Cancel
                             </Button>
                             <Button variant="default" color="red" onClick={() => setStep("choose")}>
@@ -191,6 +214,7 @@ export function NewBlueprintDialog({
                         <Text size="sm">Choose how to begin. Each choice stays editable, and you can save it as a game when you are ready.</Text>
                         <Stack gap="xs">
                             <Button
+                                ref={choiceRef}
                                 onClick={() => {
                                     onChooseRecommended();
                                     onClose();
@@ -225,6 +249,7 @@ export function NewBlueprintDialog({
                     <Stack gap="sm">
                         <QuickActions>
                             <NumberInput
+                                ref={seedRef}
                                 label="Seed (optional)"
                                 placeholder="Random"
                                 allowDecimal={false}
@@ -302,7 +327,7 @@ export function NewBlueprintDialog({
                             <ErrorState message={describePathActionError("The saved game design", loadView.message)} />
                         )}
                         <Group justify="space-between">
-                            <Button variant="default" onClick={() => setStep("choose")}>
+                            <Button ref={loadBackRef} variant="default" onClick={() => setStep("choose")}>
                                 Back
                             </Button>
                             <Button onClick={() => onLoad(loadPath)} loading={loadView.status === "loading"} disabled={loadPath.trim().length === 0}>
