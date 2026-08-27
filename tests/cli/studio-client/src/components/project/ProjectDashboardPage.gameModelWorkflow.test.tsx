@@ -291,6 +291,28 @@ function sectionFieldset(legend: string): HTMLElement {
 }
 
 describe("ProjectDashboardPage - Game Model tab editing", () => {
+    it("shows required metadata and the recommended default reel mode while editing the Game Model", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        const basics = sectionFieldset("Game basics");
+        await user.click(within(basics).getByRole("button", {name: "Edit"}));
+        expect(await within(basics).findByText("Required: Game id, Game name, and Version. Description and Author are optional.")).toBeVisible();
+
+        await user.click(within(basics).getByRole("button", {name: "Cancel"}));
+        const reels = sectionFieldset("Reels");
+        await user.click(within(reels).getByRole("button", {name: "Edit"}));
+        expect(await within(reels).findByText("Optional — Default (recommended) uses the engine's weighted reel generator. Choose one of the other modes only when you need to control the reel contents yourself.")).toBeVisible();
+        expect(within(reels).getByRole("radio", {name: "Default (recommended)"})).toBeVisible();
+    });
+
     it("offers Edit on every section with a canonical field editor, including Mechanics, but never on Limits (a derived value, not its own field)", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

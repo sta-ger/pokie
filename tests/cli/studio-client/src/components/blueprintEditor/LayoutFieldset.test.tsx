@@ -1,6 +1,6 @@
 import {screen, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {useState} from "react";
+import {useRef, useState} from "react";
 import {LayoutFieldset} from "../../../../../../cli/studio-client/src/components/blueprintEditor/LayoutFieldset";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
@@ -11,16 +11,24 @@ function Harness() {
         paylines: [[0, 0, 0, 0, 0]],
         reelStrips: [["A"], ["A"], ["A"], ["A"], ["A"]],
     });
+    const [mutationCount, setMutationCount] = useState(0);
+    const blueprintRef = useRef(blueprint);
     return <>
         <LayoutFieldset
             blueprint={blueprint}
-            mutate={(change) => setBlueprint((current) => {
+            mutate={(change) => {
+                const current = blueprintRef.current;
                 const draft = JSON.parse(JSON.stringify(current)) as Record<string, unknown>;
                 change(draft);
-                return draft;
-            })}
+                if (draft.reels !== current.reels) {
+                    setMutationCount((count) => count + 1);
+                }
+                blueprintRef.current = draft;
+                setBlueprint(draft);
+            }}
         />
         <output aria-label="Saved layout">{JSON.stringify(blueprint)}</output>
+        <output aria-label="Layout mutation count">{mutationCount}</output>
     </>;
 }
 
@@ -44,6 +52,8 @@ describe("LayoutFieldset", () => {
 
         await user.click(within(confirmation).getByRole("button", {name: "Cancel"}));
         expect(screen.getByLabelText("Saved layout")).toHaveTextContent('"reels":5');
+        expect(reels).toHaveValue("5");
+        expect(screen.getByLabelText("Layout mutation count")).toHaveTextContent("0");
 
         await user.clear(reels);
         await user.type(reels, "3");
@@ -52,5 +62,6 @@ describe("LayoutFieldset", () => {
 
         expect(screen.getByLabelText("Saved layout")).toHaveTextContent('"reels":3');
         expect(screen.getByLabelText("Saved layout")).toHaveTextContent('"reelStrips":[["A"],["A"],["A"]]');
+        expect(screen.getByLabelText("Layout mutation count")).toHaveTextContent("1");
     });
 });

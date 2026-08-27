@@ -6,13 +6,14 @@ import {useCallback} from "react";
 // message text, same gating semantics -- the only real change is that confirmation is now asynchronous
 // (a modal callback) rather than a synchronous boolean return, so callers move the gated action into
 // `onConfirm` instead of `if (!confirm) return`.
-export function useConfirm(): (message: string, onConfirm: () => void) => void {
-    return useCallback((message: string, onConfirm: () => void) => {
+export function useConfirm(): (message: string, onConfirm: () => void, onCancel?: () => void) => void {
+    return useCallback((message: string, onConfirm: () => void, onCancel?: () => void) => {
         modals.openConfirmModal({
             title: "Please confirm",
             children: message,
             labels: {confirm: "Confirm", cancel: "Cancel"},
             onConfirm,
+            onCancel,
         });
     }, []);
 }

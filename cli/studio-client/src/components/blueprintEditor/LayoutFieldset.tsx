@@ -1,4 +1,5 @@
 import {NumberInput, SimpleGrid, Text} from "@mantine/core";
+import {useEffect, useRef, useState} from "react";
 import {useConfirm} from "../../hooks/useConfirm";
 import type {ValidationIssue} from "../../api/types";
 import {resizePaylinesToReelCount, resizeReelStripGenerationToReelCount, resizeReelStripsToReelCount} from "../../domain/blueprintFormOps";
@@ -24,6 +25,20 @@ export function LayoutFieldset({
     const confirm = useConfirm();
     const reels = typeof blueprint.reels === "number" ? blueprint.reels : undefined;
     const rows = typeof blueprint.rows === "number" ? blueprint.rows : undefined;
+    // Reels commits on blur, so keep the currently typed value locally until that commit.  A rejected
+    // destructive reduction must put this draft back to the saved value rather than leaving an input
+    // that looks applied while the blueprint still has its original reel count.
+    const [reelInput, setReelInput] = useState<number | string>(reels ?? "");
+    const lastBlurredReelValue = useRef<string>();
+
+    useEffect(() => {
+        setReelInput(reels ?? "");
+    }, [reels]);
+
+    const setReelInputValue = (value: number | string): void => {
+        lastBlurredReelValue.current = undefined;
+        setReelInput(value);
+    };
 
     const applyReelCount = (value: number): void => {
         mutate((b) => {
@@ -52,16 +67,26 @@ export function LayoutFieldset({
                         label="Reels"
                         min={1}
                         step={1}
-                        defaultValue={reels}
+                        value={reelInput}
+                        onChange={setReelInputValue}
                         onBlur={(event) => {
-                            const value = Number(event.currentTarget.value);
+                            const inputValue = event.currentTarget.value;
+                            if (lastBlurredReelValue.current === inputValue) {
+                                return;
+                            }
+                            lastBlurredReelValue.current = inputValue;
+                            const value = Number(inputValue);
                             if (!Number.isFinite(value)) {
+                                return;
+                            }
+                            if (value === reels) {
                                 return;
                             }
                             if (reductionCanDiscardAuthoredData(value)) {
                                 confirm(
                                     `Reduce reels from ${reels} to ${value}? Custom paylines and reel definitions beyond reel ${value} will be removed.`,
                                     () => applyReelCount(value),
+                                    () => setReelInput(reels),
                                 );
                                 return;
                             }
