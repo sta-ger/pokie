@@ -134,7 +134,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         exporter: StakeEngineExporting = new StakeEngineExporter(pokieVersion),
         importer: StakeEngineImporting = new StakeEngineImporter(),
         loadJson: (filePath: string) => unknown = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf-8")),
-        importWriter: StakeEngineImportWriting = new StakeEngineImportWriter(),
+        importWriter: StakeEngineImportWriting = new StakeEngineImportWriter(pokieVersion),
         loadLibraryFromBundle: (bundleDir: string, modeName: string) => Promise<WeightedOutcomeLibrary> = (bundleDir, modeName) =>
             loadWeightedOutcomeLibraryFromBundle(bundleDir, modeName),
         bundleStreamingExporter: StakeEngineBundleStreamingExporting = new StakeEngineBundleStreamingExporter(pokieVersion),
@@ -439,12 +439,20 @@ export class StakeEngineCommand implements CliCommandHandling {
         }
 
         const written = await this.importWriter.writeToDirectory(result, options.outDir);
+        const writeErrors = written.issues.filter((issue) => issue.severity === "error");
+        if (writeErrors.length > 0) {
+            console.error(`Could not write imported Outcome Library to "${options.outDir}" (${writeErrors.length} error(s)):`);
+            this.printIssues(writeErrors);
+            return 1;
+        }
 
         console.log(`Imported "${options.stakeDir}" to "${options.outDir}":`);
-        console.log(`  wrote  config.json`);
+        console.log(`  wrote  manifest.json`);
         for (const mode of result.modes) {
-            console.log(`  wrote  libraries/${mode.modeName}.json`);
+            console.log(`  wrote  index_${mode.modeName}.json`);
+            console.log(`  wrote  outcomes_${mode.modeName}.jsonl`);
         }
+        console.log(`  wrote  config.json`);
         if (result.sourceProvenance !== undefined) {
             console.log(`  wrote  source-provenance.json`);
         }
