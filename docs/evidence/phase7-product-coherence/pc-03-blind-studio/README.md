@@ -23,3 +23,10 @@ stakeengine/pokie-manifest.json     dbdaf450544f885c4f9b02bb1b82d24df846f6e5fdec
 ```
 
 No screenshot is retained: screenshots only showed ordinary navigation/form layouts and do not prove a distinct visual product relationship. This run is driver-inconclusive for complete cold-start exploration, not a rendered product finding.
+
+Harness-recovery addendum (fresh profiles, candidate CLI, 2026-08-27):
+
+- The first repaired launch reached the rendered starter form. Its real action is `Create game`, not a control named `Recommended starter`; the stable harness was corrected in place without asserting a product failure.
+- The second fresh launch clicked `Create game`, created `Starter Slot`, and clicked its visible `Play` navigation action. The rendered Play surface then offered `Start Play` and `New Play session`. The remaining harness awaited a nonexistent `Spin` control before taking that required `Start Play` transition, so no spin or replay request was emitted and no rendered product error appeared.
+
+The failed driver expectation is selector-inconclusive, not a product finding. No additional screenshots or generated artifacts were retained.
