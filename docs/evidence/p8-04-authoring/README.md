@@ -1,24 +1,25 @@
 # P8-04 independent fresh-profile authoring rerun
 
-Product candidate: `cce79716790ae3cfc8d6f5c095fbc08426386e56`
-Evidence descendant: `1d39d9eefe54be84c55adf483aac40ed7b6606de` (the candidate source tree differs only at this evidence path).
+Product candidate: `cce79716790ae3cfc8d6f5c095fbc08426386e56`.
+The checkout's product source matches that candidate; its only descendant change is this bounded evidence path.
 
-## Scope and provenance
+## Fresh public Studio journey
 
-Four fresh, isolated Studio/Chromium profile launches used exactly `node ./dist/cli/pokie.js --no-open` from this checkout. No `node_modules/.bin/pokie` executable was launched. Each isolated launch reached the public **Design Your Game** journey; the final launch used the candidate build, fresh HOME, fresh Chromium user-data directory, inherited controller display, and active-window verification.
+On 2026-08-27, a new isolated HOME and Chromium profile launched the candidate build exactly with `node ./dist/cli/pokie.js --no-open` (never `node_modules/.bin/pokie`). Studio and Chromium used the inherited controller display; Chromium was visibly activated and verified before input. The journey used rendered Studio controls and guidance only.
 
-## Rendered results
+- **Design Your Game** rendered its required Game id/Game name/Version and optional Description/Author guidance. **Choose a different start** then **Use the starter game** opened the guided starter editor.
+- Clearing the rendered **Game id** produced the local, actionable error `"manifest.id" must be a non-empty string.` in 675 ms. Entering `fresh-p8-04-slot` and **Fresh P8-04 Slot** returned a valid design in 666 ms.
+- Layout guidance warned that reducing reels can remove custom reel/payline data. Reducing 5 to 4 displayed `Reduce reels from 5 to 4?` and stated that definitions beyond reel 4 would be removed. **Cancel** completed in 271 ms, restored the visible count to 5, and preserved five visible Payline 1 cells. Repeating the change and **Confirm** completed in 2 ms, visibly left 4 reels/4 cells, and showed four named actionable repairs in 714 ms.
+- In Paytable, the four rendered `Remove A/K/Q/J x5 payout` controls each disappeared immediately after its own click. The resulting `Valid, with warnings — 0 error(s), 1 warning(s).` state contained only the actionable K-versus-Q strip-weighting/RTP advisory; it was not an authoring error.
+- **Create game** opened the saved project workspace in 299 ms. **Close project** immediately rendered the Projects row, and its rendered **Open** action reopened **Fresh P8-04 Slot** in 1 ms. The reopened workspace displayed the next-workflow controls (Game Model, Play, Simulation, Replay, and Build/Export) and the editable, valid-with-warning project state.
 
-- Public guidance rendered: required `Game id`, `Game name`, and `Version`, with optional Description/Author; **Choose a different start** led to **Use the starter game**.
-- After the visible `Game id` was cleared, Studio rendered the local actionable error `"manifest.id" must be a non-empty string.`; entering an ID and name rendered a valid design in 648--671 ms.
-- The Layout tab rendered its destructive-change guidance. Reducing Reels from 5 to 4 showed `Reduce reels from 5 to 4?` and explicitly warned that custom paylines and reel definitions beyond reel 4 would be removed. **Cancel** restored the visible count to 5 and preserved five `Payline 1` cells. The second reduction's **Confirm** produced four visible reels and four cells, then field-specific, actionable validation reported four repairs.
-- All four `A`, `K`, `Q`, and `J` `x5` payout row actions then disappeared immediately after their own visible clicks. The final rendered state was `Valid, with warnings — 1 warning(s).`; its warning was the actionable K-versus-Q reel-strip weighting/RTP warning, not an authoring error. Thus the former 120-second wait for the stricter `Valid — no issues found.` phrase was a harness readiness mismatch, not a product failure.
+No browser console warnings/errors were recorded. The sole network diagnostic was two `GET /favicon.ico` 404 responses. No rendered product error occurred.
 
-The final launch timings were: Studio listening 1379 ms, Chromium ready 479 ms, guided editor 298 ms, local Game-id validation 665 ms, corrected initial design 670 ms, destructive confirmation 62/28 ms, cancellation 266 ms, and confirmed post-reduction validation 700 ms. No rendered product error or console warning/error was observed. The only network diagnostics were two `GET /favicon.ico` 404 responses.
+## Bounded proof
 
-## Boundary and bounded diagnostics
+Only checksums of discarded rendered screenshots/results are retained; no browser profile, project tree, automation source, raw log, or generated output is committed.
 
-The four-launch budget expired after the valid-with-warning state, before **Create game**, **Close project**, **Projects/Open**, and workspace continuation. Those outcomes were therefore not reached and are not represented as product failures. No profiles, project trees, automation source, raw logs, or generated artifacts are retained. Discarded final-launch bounded proof checksums:
-
-- rendered destructive-confirmation PNG: `c81fd2a4ad317792435b95f73586a5ea7fab3cf81fe44400a6deba08d4ccfef8`
-- rendered result JSON (events, console/network diagnostics, final visible text): `d31885b2e8e1dabbccc9643043f32fab647633a77090e242dfd21ddbc125f551`
+- destructive-reduction confirmation PNG: `281526afa1ab539b9b82e571984a38edc60d10185d8aaebce8f9ea92c468431b`
+- repaired four-reel design PNG: `3b85476ac3b90231181a6d8ea3996226424e36e1209eb809797608fd2319c568`
+- reopened workspace PNG: `adead6b075e4300645c62e4bc60668387fdffaa8c8b4d6ab6c31ee53b21e3cfd`
+- rendered result transcript: `9cb335c786c7f2a2100052ade11f2883fa4d0107b113f8effe1ecaf2da0931a2`
