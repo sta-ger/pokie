@@ -2,19 +2,18 @@
 
 Candidate SHA: `4b06907f272ed1b9a47e719980ae71372a64c27e`.
 
-Fresh isolated visible-Studio recovery attempts launched this checkout with
-`node ./dist/cli/pokie.js --no-open`, using new Studio and Chromium profiles. The
-retained run reached the scoped project, verified guarded-close cancellation and the
-unavailable Certification diagnostic. The focused recovery then repaired the stale
-render selector and used the visible Chromium address workflow for the scoped
-Certification deep link; it did not establish both the expected scoped route and the
-local `Go to Overview` recovery control within the bounded wait. Build/Export was not
-reached. This is readiness-inconclusive evidence, not a product finding.
+The retained fresh-profile run launched this checkout with
+`node ./dist/cli/pokie.js --no-open`, using isolated Studio and Chromium profiles.
+It proved the scoped project, guarded-close cancellation, and the unavailable
+Certification recovery surface. The visible `Go to Overview` action remained rendered
+after a semantic wait; one safe physical retry from the verified active Chromium window
+also produced no local success or rendered product error. A bounded console diagnostic
+is recorded in the transcript. Build/Export was therefore not reached. This is
+readiness-inconclusive evidence, not a product finding.
 
-Superseded evidence from earlier candidate SHAs was removed. Runtime profiles, browser
-data, generated project state, screenshots, and full process logs were removed after
-the attempts.
+Superseded attempt evidence, browser profiles, screenshots, generated project state,
+and full logs were removed. The retained payload is one concise transcript.
 
 Checksum:
 
-- `ACTION-TRANSCRIPT.txt = 9778808bf183ab6a26d494d88a263dedd5a6e4e5b4da57e115c381e2646410f2`
+- `ACTION-TRANSCRIPT.txt = fdd48b7dba9ad93effb366b6da66176e111f9b65730c78646a9f87283b481f08`
