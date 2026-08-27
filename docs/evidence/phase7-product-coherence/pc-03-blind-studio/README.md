@@ -35,3 +35,11 @@ Final harness-recovery attempt (fresh profiles, candidate build, 2026-08-27):
 
 - The repaired visible journey again created `Starter Slot`, opened `Play`, and rendered `Start Play` plus `New Play session`.
 - The DOM driver could neither expose a matching interactive control nor scroll it into its control list, despite that rendered Play text. Four fresh-profile launches exhausted the allotted recovery budget before an action could be emitted. There was no rendered product error, request, or duplicate action; this is selector-inconclusive, not a product finding.
+
+Focused harness recovery (fresh profiles, candidate build, 2026-08-27):
+
+- The repaired journey created `Starter Slot`, opened `Play`, used the rendered `New Play session` button (the accessible action beneath the `Start Play` heading), and completed one visible no-win round. `Spin` disabled/pending behavior settled to `Round complete — no win this round`, with credits, total win, grid, paylines, paytable, and `Inspect round artifact` rendered.
+- Reload returned the Play surface to its explicit `New Play session` recovery state; this is the local next action after the in-memory session is reset, not a rendered error.
+- Replay then rendered its real recovery/workflow surface: `Recreate from seed`, a target-round input, optional seed, and `Load`. The harness still awaited the old `Run again` action and therefore emitted no Load request before the four-launch limit. This remaining portion is selector-inconclusive; no product defect was observed.
+
+No screenshot or generated output from this recovery was retained. The transcript above is limited to rendered transitions and product artifacts, and the pre-existing checksum list remains the retained generated-artifact inspection.
