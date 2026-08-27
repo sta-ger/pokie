@@ -1,58 +1,11 @@
 {
-  "candidateSha": "4b1c6b49bc1e58f50db8fe3f8ca450e6dba0b718",
-  "publicLaunch": "node ./dist/cli/pokie.js --no-open",
-  "measurements": [
-    {
-      "viewport": 1280,
-      "document": {
-        "width": 1280,
-        "scrollWidth": 1280,
-        "overflow": false
-      }
-    },
-    {
-      "action": "first load Home Design",
-      "visibleResultMs": 323
-    },
-    {
-      "action": "authoring: New Blueprint dialog",
-      "visibleResultMs": 31
-    },
-    {
-      "action": "keyboard Home Projects navigation",
-      "visibleResultMs": 113
-    },
-    {
-      "action": "create/save to Project Dashboard",
-      "visibleResultMs": 1096
-    },
-    {
-      "action": "keyboard Dashboard Game Model navigation",
-      "visibleResultMs": 35
-    },
-    {
-      "viewport": 405,
-      "document": {
-        "width": 405,
-        "scrollWidth": 405,
-        "overflow": false
-      }
-    },
-    {
-      "action": "narrow Home Projects navigation",
-      "visibleResultMs": 65
-    },
-    {
-      "viewport": 1280,
-      "document": {
-        "width": 1280,
-        "scrollWidth": 1265,
-        "overflow": false
-      }
-    }
+  "candidateSha": "69b7ae42256dee1aa7bb79554ac1a48132de077d",
+  "publicEntrypoint": "node ./dist/cli/pokie.js --no-open",
+  "freshProfiles": ["Studio configuration", "visible Chromium"],
+  "observedFocus": [
+    {"surface": "Home", "target": "Design Your Game region"},
+    {"surface": "Start choices", "target": "Use the starter game"},
+    {"surface": "Generate a game idea", "target": "Seed (optional)"}
   ],
-  "console": ["warning: router blocker after harness direct hash navigation; no exception"],
-  "failedNetwork": [
-    "404 http://127.0.0.1:3200/favicon.ico"
-  ]
+  "unreachedAfter": "Rendered Back click had no semantic transition or rendered error within 30 seconds; launch limit prevented a further UI rerun."
 }

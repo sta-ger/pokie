@@ -1,11 +1,7 @@
-P8-06 candidate browser audit — concise observation transcript
-candidate: 4b1c6b49bc1e58f50db8fe3f8ca450e6dba0b718
-public launch: node ./dist/cli/pokie.js --no-open (fresh isolated Studio and visible Chromium profiles)
+P8-06 current-candidate partial browser audit
+candidate: 69b7ae42256dee1aa7bb79554ac1a48132de077d
+public launch: node ./dist/cli/pokie.js --no-open (fresh isolated Studio configuration and visible Chromium profile)
 
-1280px Home Design rendered in 323 ms; viewport and document width were 1280px (no horizontal overflow).
-Rendered named focusable regions: Design Your Game; Projects. Start a new game initially focused Use the starter game.
-After a rendered Game name edit, dirty confirmation focused Cancel; Cancel restored focus to Choose a different start; Discard restored the rendered starter choice (01-dirty-discard-choice-1280.png).
-The authoring dialog appeared in 31 ms. Keyboard focus reached and activated Projects in 113 ms, then Start a game; the Projects region became the local result. After create, keyboard focus reached and activated Game Model in 35 ms; the Dashboard navigation’s local active tab became Game Model.
-Controlled 700 ms local latency: Create game showed its disabled pending control after 769 ms; the saved starter reached Project Dashboard in 1096 ms. The Dashboard named region was Starter Slot.
-405px Home Projects rendered in 65 ms; viewport and document width were 405px (no horizontal overflow); named regions remained Design Your Game and Projects (02-home-projects-405.png). Reopening returned to the desktop Dashboard with retained Starter Slot context and navigation (03-dashboard-1280.png).
-Console: one router warning caused by the harness’s direct hash navigation; no exception. Failed network: 404 /favicon.ico. No rendered product error observed.
+Home rendered the named Design Your Game region and focused it. Choose a different start opened the dialog and focused Use the starter game.
+Keyboard Tab, Tab, Space focused/activated Generate a game idea. The rendered random form focused Seed (optional), shown in 01-random-seed-focus.png.
+A rendered Back click then produced neither the expected starter-choice transition nor a rendered product error within 30 seconds. This is an inconclusive driver/interaction observation, not a product defect. The two-launch allowance was exhausted, so Saved game design, cancellation, Projects/Home, and Project Dashboard checks were not reached.
