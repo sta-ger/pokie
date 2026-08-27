@@ -355,8 +355,13 @@ describe("StakeEngineCommand", () => {
             expect(writer.calledWith?.importResult).toBe(successImportResult);
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain("Imported");
+            expect(printed).toContain("manifest.json");
             expect(printed).toContain("config.json");
+            expect(printed).toContain("index_base.json");
+            expect(printed).toContain("outcomes_base.jsonl");
             expect(printed).toContain("libraries/base.json");
+            expect(printed).toContain("index_bonus.json");
+            expect(printed).toContain("outcomes_bonus.jsonl");
             expect(printed).toContain("libraries/bonus.json");
         });
 

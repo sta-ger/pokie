@@ -220,7 +220,10 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                         assertNotCancelled(options);
                     }
                     for (const additionalFile of options?.additionalFiles ?? []) {
-                        const additionalPath = path.resolve(tempDir, additionalFile.relativePath);
+                        // Treat either slash convention as a directory separator regardless of the
+                        // host that happens to publish this bundle. Validation above has already
+                        // rejected empty and traversal segments, so this remains below tempDir.
+                        const additionalPath = path.resolve(tempDir, portableRelativePath(additionalFile.relativePath));
                         fs.mkdirSync(path.dirname(additionalPath), {recursive: true});
                         this.writeFile(additionalPath, additionalFile.contents);
                     }
@@ -263,18 +266,31 @@ function assertSafeAdditionalFiles(files: readonly {readonly relativePath: strin
         ) {
             throw new Error(`Outcome library companion file path "${file.relativePath}" is not a safe relative path.`);
         }
-        if (seen.has(file.relativePath)) {
+        const identity = companionFileIdentity(file.relativePath);
+        if (seen.has(identity)) {
             throw new Error(`Outcome library companion file path "${file.relativePath}" is listed more than once.`);
         }
-        seen.add(file.relativePath);
+        seen.add(identity);
     }
 }
 
 function assertAdditionalFilesDoNotOverlap(files: readonly {readonly relativePath: string}[], bundleFiles: readonly string[]): void {
-    const bundleFileSet = new Set(bundleFiles);
+    const bundleFileSet = new Set(bundleFiles.map(companionFileIdentity));
     for (const file of files) {
-        if (bundleFileSet.has(file.relativePath)) {
+        if (bundleFileSet.has(companionFileIdentity(file.relativePath))) {
             throw new Error(`Outcome library companion file path "${file.relativePath}" overlaps a canonical bundle file.`);
         }
     }
+}
+
+// The bundle can be moved between case-sensitive and case-insensitive filesystems.  Its companion-file
+// contract must therefore use the conservative identity shared by both: slash style is not significant,
+// and neither is casing.  Keep this separate from portableRelativePath so publication preserves the
+// caller's chosen display casing while validation remains cross-platform safe.
+function companionFileIdentity(relativePath: string): string {
+    return relativePath.split(/[\\/]/).join("/").toLowerCase();
+}
+
+function portableRelativePath(relativePath: string): string {
+    return relativePath.split(/[\\/]/).join(path.sep);
 }

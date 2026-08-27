@@ -98,6 +98,39 @@ describe("OutcomeLibraryBundleWriter", () => {
         }
     });
 
+    it("atomically publishes a nested companion sidecar without adding it to the canonical manifest inventory", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+
+        const result = await writer.writeToDirectory([modes()[0]], outDir, {
+            additionalFiles: [{relativePath: "libraries/base.json", contents: "{\"legacy\":true}\n"}],
+        });
+
+        expect(result.issues).toEqual([]);
+        expect(fs.readFileSync(path.join(outDir, "libraries", "base.json"), "utf-8")).toBe("{\"legacy\":true}\n");
+        expect(result.files).toContain("libraries/base.json");
+        expect(result.manifest?.files).not.toContain("libraries/base.json");
+        expect(JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")).files).not.toContain("libraries/base.json");
+    });
+
+    it("rejects companion paths that collide by slash convention, case, or canonical bundle identity", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+
+        await expect(
+            writer.writeToDirectory([modes()[0]], outDir, {
+                additionalFiles: [
+                    {relativePath: "libraries\\base.json", contents: "first"},
+                    {relativePath: "LIBRARIES/base.json", contents: "second"},
+                ],
+            }),
+        ).rejects.toThrow(/listed more than once/);
+        expect(fs.existsSync(outDir)).toBe(false);
+
+        await expect(
+            writer.writeToDirectory([modes()[0]], outDir, {additionalFiles: [{relativePath: "MANIFEST.JSON", contents: "not a manifest"}]}),
+        ).rejects.toThrow(/overlaps a canonical bundle file/);
+        expect(fs.existsSync(outDir)).toBe(false);
+    });
+
     it("reports outcome-library-bundle-write-outcomes-not-sorted / -duplicate-outcome-id for a source that doesn't arrive in canonical order", async () => {
         const writer = new OutcomeLibraryBundleWriter("1.3.0");
         const outOfOrder = buildOutcomeLibraryBundleModeInput("base", "lib");

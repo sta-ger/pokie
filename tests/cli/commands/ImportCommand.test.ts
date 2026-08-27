@@ -1,8 +1,11 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ParSheetExporter} from "pokie";
+import {ParSheetExporter, StakeEngineExporter} from "pokie";
 import {ImportCommand} from "../../../cli/commands/ImportCommand.js";
+import {InspectCommand} from "../../../cli/commands/InspectCommand.js";
+import {ValidateCommand} from "../../../cli/commands/ValidateCommand.js";
+import {buildSingleOutcomeStakeEngineLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
 
 const blueprint = {
     manifest: {id: "import-conflict", name: "Import Conflict", version: "1.0.0"},
@@ -51,6 +54,32 @@ describe("ImportCommand", () => {
         } finally {
             logSpy.mockRestore();
             if (fs.existsSync(linkedDir)) fs.unlinkSync(linkedDir);
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("imports a real Stake export through the public adapter into an inspectable, valid Outcome Library", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-import-command-stake-test-"));
+        const stakeDir = path.join(workDir, "stake-export");
+        const importedDir = path.join(workDir, "imported-library");
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        try {
+            const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "imported-lib", betMode: "base", stake: 1, totalWin: 5});
+            await new StakeEngineExporter("1.3.0").exportToDirectory([{modeName: "base", cost: 1, library}], stakeDir);
+
+            expect(await new ImportCommand("1.3.0").run([stakeDir, "--out", importedDir])).toBe(0);
+            expect(await new InspectCommand().run([importedDir])).toBe(0);
+            expect(await new ValidateCommand().run([importedDir, "--format", "json"])).toBe(0);
+
+            const output = logSpy.mock.calls.map((call) => String(call[0])).join("\n");
+            expect(output).toContain("manifest.json");
+            expect(output).toContain("index_base.json");
+            expect(output).toContain("outcomes_base.jsonl");
+            expect(output).toContain("config.json");
+            expect(output).toContain("libraries/base.json");
+        } finally {
+            logSpy.mockRestore();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
