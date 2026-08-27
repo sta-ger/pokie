@@ -1,11 +1,11 @@
-# P8-06 built Studio quality audit — incomplete driver run
+# P8-06 built Studio quality audit — driver-inconclusive
 
-This evidence is bound to candidate `4b1c6b49bc1e58f50db8fe3f8ca450e6dba0b718` and records the two permitted fresh-profile launches of the exact public command `node ./dist/cli/pokie.js --no-open`.
+Evidence is bound to candidate `4b1c6b49bc1e58f50db8fe3f8ca450e6dba0b718`. The public built Studio entrypoint was launched from this checkout with `node ./dist/cli/pokie.js --no-open`; each of the two runs used newly isolated Studio and visible Chromium profiles.
 
-The public built client rendered Home Design, exposing named focusable Design and Projects regions. The first launch measured 246 ms from navigation to that rendered Home result; both launches established no document-level horizontal overflow at 1280px. The retained `measurements.json` records the clean second-run 1280px geometry and the browser's console/failed-network arrays through its abort point (both empty).
+The retained run reached Home Design at 1280px in 327 ms with no document-level horizontal overflow; named, focusable regions were `Design Your Game` and `Projects`. The New Blueprint dialog was named `Start a new game` and initially focused `Use the starter game`. After a rendered Game name edit, the dirty confirmation initially focused `Cancel`; Cancel returned focus to `Choose a different start`; Discard returned to the starter-choice state captured in `01-dirty-discard-choice-1280.png`.
 
-This is deliberately an **inconclusive driver result**, not a product finding. Run 1 stopped at a repaired first-launch control selector. Run 2 then evaluated before `document.body` existed after navigation. Neither stop produced a rendered product error, and the two-launch cap prevented a further repaired rerun. Consequently, this submission does not claim verification of the dirty-draft dialog, 405px layout, Project Dashboard navigation, create/save, or delayed loading.
+The browser recorded no console events and one failed request: `404 /favicon.ico`. The attempt stopped when CDP keyboard dispatch did not produce the rendered Home Projects transition within the bounded semantic wait; no rendered product error appeared. With the two-launch budget exhausted, this is a driver-inconclusive result, not a product finding. Therefore 405px, Project Dashboard, create/save, and delayed-loading portions remain unverified.
 
-Retained payload is only this README, the concise transcript, and the small measurement JSON; no profile, automation source, server log, generated project, or screenshot is committed.
+Retained payload: this README, the concise transcript, measurements, and one spatial screenshot. No profiles, automation source, server logs, generated projects, or raw logs are committed.
 
-SHA-256: `transcript.txt` `b43be07317c8a910098e0701384e2e935dad1415d67b3a5bad714706b3e78261`; `measurements.json` `9ccf008a064a64577bb73db54913b4c05edc6ecf3bf411eec368bdc0e57b3fd1`.
+SHA-256: `01-dirty-discard-choice-1280.png` `5bb89b6f5167eb10e9abefdb4daf9eac2e89adba059af73d51ad6818c2649f70`.

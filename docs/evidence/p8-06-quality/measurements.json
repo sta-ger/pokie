@@ -1,4 +1,6 @@
 {
+  "candidateSha": "4b1c6b49bc1e58f50db8fe3f8ca450e6dba0b718",
+  "publicLaunch": "node ./dist/cli/pokie.js --no-open",
   "measurements": [
     {
       "viewport": 1280,
@@ -7,8 +9,14 @@
         "scrollWidth": 1280,
         "overflow": false
       }
+    },
+    {
+      "action": "first load Home Design",
+      "visibleResultMs": 326
     }
   ],
   "console": [],
-  "failedNetwork": []
+  "failedNetwork": [
+    "404 http://127.0.0.1:3200/favicon.ico"
+  ]
 }

@@ -1,12 +1,11 @@
 P8-06 candidate browser audit — concise observation transcript
 candidate: 4b1c6b49bc1e58f50db8fe3f8ca450e6dba0b718
-public launch: node ./dist/cli/pokie.js --no-open
+public launch: node ./dist/cli/pokie.js --no-open (fresh isolated Studio and Chromium profiles)
 
-Run 1 (fresh isolated Studio and Chromium profiles): Studio listened on loopback port 3200.
-Home Design first rendered in 246 ms. At 1280px, viewport and document width were both 1280px (no horizontal overflow).
+Home Design rendered in 327 ms at 1280px. Viewport and document width were both 1280px (no horizontal overflow).
 Rendered named, focusable regions: "Design Your Game" and "Projects".
-The rendered first-launch control was "Choose a different start", not the harness's initial "New Blueprint" selector. No product error rendered.
-
-Run 2 (fresh isolated profiles; repaired selector): Studio again listened on loopback port 3200; the 1280px no-overflow observation repeated.
-Immediately after navigation, the CDP driver read before document.body existed and aborted with a driver TypeError. No rendered product error was observed.
-The two permitted public-workflow launches were exhausted before keyboard/dialog/dashboard, 405px, and complete latency/network observations could run.
+The rendered New Blueprint dialog was named "Start a new game" and initially focused "Use the starter game".
+After a rendered Game name edit, dirty confirmation initially focused "Cancel". Cancel returned focus to "Choose a different start".
+Discard returned to the rendered starter-choice state; the retained screenshot records that state.
+Console events: none. Failed network: 404 http://127.0.0.1:3200/favicon.ico.
+The run then reached a bounded CDP keyboard-transition timeout waiting for Home Projects. No rendered product error was observed; the two-launch budget was exhausted before a repaired rerun.
