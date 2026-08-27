@@ -1,0 +1,33 @@
+{
+  "candidateSha": "aa9f2c5b86dd37d01931c490f5d2e2b9e5c76bd9",
+  "publicEntrypoint": "node ./dist/cli/pokie.js --no-open",
+  "profiles": "fresh isolated Studio HOME/XDG and Chromium user-data-dir",
+  "controlledDelay": {
+    "route": "POST /api/home/blueprints/validate",
+    "delayMs": 4000,
+    "delayedResponses": 1
+  },
+  "pending": {
+    "create": {
+      "disabled": true,
+      "ariaBusy": "true"
+    },
+    "status": {
+      "text": "Validating…",
+      "ariaLive": "polite"
+    },
+    "editable": {
+      "disabled": false,
+      "readOnly": false,
+      "value": "Starter Slot"
+    }
+  },
+  "recovery": {
+    "gameName": "Current Revision Audit",
+    "staleStarterResult": false,
+    "visibleStatus": []
+  },
+  "validationRequestCount": 2,
+  "consoleObservations": [],
+  "failedNetwork": []
+}

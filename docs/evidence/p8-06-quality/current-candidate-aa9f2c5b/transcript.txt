@@ -1,0 +1,9 @@
+[2026-08-27T11:52:48.678Z] PROVENANCE: candidate=aa9f2c5b86dd37d01931c490f5d2e2b9e5c76bd9; public entrypoint=node ./dist/cli/pokie.js --no-open; fresh Studio and Chromium profiles; upstream=http://127.0.0.1:3200
+[2026-08-27T11:52:49.653Z] CLICK rendered "Choose a different start"
+[2026-08-27T11:52:49.719Z] CLICK rendered "Use the starter game"
+[2026-08-27T11:52:50.330Z] CONTROLLED_DELAY: first browser-originated POST /api/home/blueprints/validate held 4000 ms
+[2026-08-27T11:52:50.433Z] PENDING_RENDERED: {"create":{"disabled":true,"ariaBusy":"true"},"status":{"text":"Validating…","ariaLive":"polite"},"editable":{"disabled":false,"readOnly":false,"value":"Starter Slot"}}
+[2026-08-27T11:52:50.620Z] CAPTURE 01-controlled-validation-loading.png: rendered viewport
+[2026-08-27T11:52:50.684Z] EDIT rendered "Game name"="Current Revision Audit"
+[2026-08-27T11:52:54.428Z] RECOVERY_RENDERED: {"gameName":"Current Revision Audit","staleStarterResult":false,"visibleStatus":[]}; validations=2
+[2026-08-27T11:52:54.562Z] CAPTURE 02-current-revision-recovered.png: rendered viewport
