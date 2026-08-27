@@ -62,6 +62,13 @@ describe("studio-client apiClient", () => {
             expect(calls).toEqual([{url: "/api/context", init: undefined}]);
             expect(context).toEqual({mode: "home"});
         });
+
+        it("rejects an HTTP failure instead of treating its body as a launch context", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: false, status: 500, body: {error: "launch context unavailable"}}));
+
+            await expect(getContext(fetchImpl)).rejects.toThrow("launch context unavailable");
+            expect(calls).toEqual([{url: "/api/context", init: undefined}]);
+        });
     });
 
     describe("listRecentProjects", () => {

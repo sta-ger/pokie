@@ -72,6 +72,9 @@ type ProjectActionResult = {context: Extract<StudioContext, {mode: "project"}>; 
 
 export async function getContext(fetchImpl: FetchLike): Promise<StudioContext> {
     const response = await fetchImpl("/api/context");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to determine the Studio launch context"));
+    }
     return (await response.json()) as StudioContext;
 }
 

@@ -82,6 +82,18 @@ describe("Studio startup landing route", () => {
         await waitFor(() => expect(router.state.location.pathname).toBe("/home/design"));
     });
 
+    it("keeps an HTTP launch-context failure on the actionable recovery screen", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: false, status: 500, body: {error: "launch context unavailable"}}),
+        });
+
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/"]});
+
+        expect(await screen.findByText(/Studio couldn't determine which project to open/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Choose or create a game"})).toBeInTheDocument();
+        expect(router.state.location.pathname).toBe("/");
+    });
+
     it("asks the server exactly once, and never consults a remembered last project", async () => {
         const {fetchImpl, calls} = createRoutedFakeFetch({
             "/api/context": () => ({ok: true, status: 200, body: {mode: "project", projectRoot: "/games/my-slot"}}),
