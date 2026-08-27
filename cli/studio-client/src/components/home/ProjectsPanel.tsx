@@ -92,8 +92,7 @@ function previewProjectImportWithTimeout(fetchImpl: FetchLike, location: string)
     });
 }
 
-// Projects registry list -- every managed/registered project Studio knows about (see
-// StudioProjectRegistrationService.list()'s own doc comment), most-recently-registered/opened first.
+// Projects list -- every project Studio can reopen, most recently opened first.
 export function ProjectsPanel({
     registryVersion = 0,
     registeredProject,
@@ -406,9 +405,9 @@ export function ProjectsPanel({
                 </Text>
             </Table.Td>
             <Table.Td data-label="Type">{PROJECT_TYPE_LABEL[entry.type]}</Table.Td>
-            <Table.Td data-label="Origin">
+            <Table.Td data-label="Added to Studio">
                 <Group gap={6} wrap="nowrap">
-                    <Text component="span">{entry.origin === "managed" ? "Managed" : "Registered"}</Text>
+                    <Text component="span">{entry.origin === "managed" ? "Created in Studio" : "Added from your computer"}</Text>
                     {entry.importedFromParSheetPath && <Badge size="xs" color="grape">Imported from PAR</Badge>}
                 </Group>
             </Table.Td>
@@ -489,7 +488,7 @@ export function ProjectsPanel({
                                 >
                                     Remove selected missing ({selectedMissingLocations.size})
                                 </Button>
-                                <Text size="sm" c="dimmed">Remove stale registrations in one step; project files stay untouched.</Text>
+                                <Text size="sm" c="dimmed">Remove stale project entries in one step; project files stay untouched.</Text>
                             </QuickActions>
                         )}
                         {missingRemovalError && <ErrorState message={missingRemovalError} />}
@@ -512,7 +511,7 @@ export function ProjectsPanel({
                                             </Table.Th>
                                             <Table.Th>Name</Table.Th>
                                             <Table.Th>Type</Table.Th>
-                                            <Table.Th>Origin</Table.Th>
+                                            <Table.Th>Added to Studio</Table.Th>
                                             <Table.Th>Last opened</Table.Th>
                                             <Table.Th>Actions</Table.Th>
                                         </Table.Tr>

@@ -750,7 +750,7 @@ describe("ProjectsPanel: Import Project", () => {
         expect(screen.queryByText("Project 12")).not.toBeInTheDocument();
     });
 
-    it("keeps each project identity, availability, metadata, and actions labelled for the narrow card layout", async () => {
+    it("uses clear user-facing wording for how each project was added", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({
                 ok: true,
@@ -768,7 +768,14 @@ describe("ProjectsPanel: Import Project", () => {
         expect(availableRow).toHaveClass("project-registry-entry");
         expect(within(availableRow as HTMLElement).getByText("Available")).toBeInTheDocument();
         expect(within(missingRow as HTMLElement).getByText("Needs attention")).toBeInTheDocument();
+        expect(within(availableRow as HTMLElement).getByText("Created in Studio")).toBeInTheDocument();
+        expect(within(missingRow as HTMLElement).getByText("Added from your computer")).toBeInTheDocument();
+        expect(screen.getByRole("columnheader", {name: "Added to Studio"})).toBeInTheDocument();
+        expect(screen.queryByText("Origin")).not.toBeInTheDocument();
+        expect(screen.queryByText("Managed")).not.toBeInTheDocument();
+        expect(screen.queryByText("Registered")).not.toBeInTheDocument();
         expect(within(availableRow as HTMLElement).getByText("Available game").closest("td")).toHaveAttribute("data-label", "Project");
+        expect(within(availableRow as HTMLElement).getByText("Created in Studio").closest("td")).toHaveAttribute("data-label", "Added to Studio");
         expect(within(availableRow as HTMLElement).getByRole("button", {name: "Open"}).closest("td")).toHaveAttribute("data-label", "Actions");
         expect(within(missingRow as HTMLElement).getByRole("checkbox", {name: "Select missing project Missing game"}).closest("td")).toHaveAttribute("data-label", "Select");
     });

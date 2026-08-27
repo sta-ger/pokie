@@ -10,8 +10,8 @@ export function EmptyState({
     onAction?: () => void;
 }) {
     return (
-        <Stack gap="xs" align="flex-start" role="status" aria-live="polite">
-            <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
+        <Stack gap="xs" align="flex-start">
+            <Text role="status" aria-live="polite" size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
                 {message}
             </Text>
             {actionLabel && onAction && <Button size="xs" onClick={onAction}>{actionLabel}</Button>}
