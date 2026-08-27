@@ -45,3 +45,23 @@
 [2026-08-27T05:21:42.654Z] WAIT close=3ms
 [2026-08-27T05:21:42.654Z] CLOSE_SUCCESS Your projects visible after confirmed clean project close
 [2026-08-27T05:21:42.654Z] DIAGNOSTICS console_errors=["warning: You are trying to use a blocker on a POP navigation to a location that was not created by @remix-run/router. This will fail silently in production. This can happen if you are navigating outside the router via `window.history.pushState`/`window.location.hash` instead of using router navigation APIs.  This can also happen if you are using createHashRouter and the user manually changes the URL."] network_errors=["404 http://127.0.0.1:3200/favicon.ico","404 http://127.0.0.1:3200/favicon.ico","404 http://127.0.0.1:3200/favicon.ico"] action_requests=["GET /api/project/deployment/targets","GET /api/project/deployment/build-modes","GET /api/project/deployment/targets","GET /api/project/deployment/build-modes","GET /api/project/deployment/build-modes"]
+[2026-08-27T05:50:19.391Z] PROVENANCE candidate_sha=7a618abcb44619ea6ac8a65353a52425921990e6; checkout_sha=294d0d3d5360912835b2a6fa87a7a1d9fe353086 (evidence-only descendant); launch=node ./dist/cli/pokie.js --no-open; isolated profiles=/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P8-03-74fb6e55fc3dc4f5/runtime/fresh-profile
+[2026-08-27T05:50:20.837Z] STUDIO_READY http://127.0.0.1:3200
+[2026-08-27T05:50:21.781Z] WAIT landing=293ms
+[2026-08-27T05:50:21.789Z] CLICK "Create game"
+[2026-08-27T05:50:22.060Z] WAIT created=271ms
+[2026-08-27T05:50:22.072Z] BLUEPRINT workspace="Starter Slot" route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-74fb6e55fc3dc4f5%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2Fblueprint.json/overview sections=["Overview","Game Model","Play","Simulation","Replay","Build/Export"]
+[2026-08-27T05:50:22.072Z] PAR_FOLLOWUP fresh-profile continuation: retained Blueprint/recovery evidence reused; no previously-passed view was recaptured.
+[2026-08-27T05:50:22.082Z] CLICK "Build/Export"
+[2026-08-27T05:50:22.205Z] WAIT par-card=123ms
+[2026-08-27T05:50:22.205Z] PAR_DESTINATION using the rendered default destination
+[2026-08-27T05:50:22.213Z] WAIT par-preflight=7ms
+[2026-08-27T05:50:22.231Z] CLICK "Build" in "PAR sheet"
+[2026-08-27T05:50:22.412Z] PAR_BUILD succeeded; actionRequests=5; emitted=3
+[2026-08-27T05:50:22.421Z] CLICK rendered generated-project action "Open as Project"
+[2026-08-27T05:50:22.559Z] WAIT par-open=138ms
+[2026-08-27T05:50:22.565Z] PAR_STATE title="PAR spreadsheet" route=#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fruntime%2Fverifier-harnesses%2FP8-03-74fb6e55fc3dc4f5%2Fruntime%2Ffresh-profile%2Fstudio%2FPOKIE%20Projects%2Fstarter-slot%2FparWorkbook.xlsx/overview sections=["Overview","Game Model","Build/Export"]
+[2026-08-27T05:50:22.643Z] CAPTURE 06-par-project-state.png rendered UI
+[2026-08-27T05:50:22.650Z] CLICK "Close project"
+[2026-08-27T05:50:22.651Z] WAIT par-close=1ms
+[2026-08-27T05:50:22.651Z] DIAGNOSTICS console_errors=[] network_errors=["404 http://127.0.0.1:3200/favicon.ico","404 http://127.0.0.1:3200/favicon.ico"] action_requests=["GET /api/project/deployment/targets","GET /api/project/deployment/build-modes","POST /api/project/artifacts/build","GET /api/project/artifacts/build/1","GET /api/project/artifacts/build/1","GET /api/project/deployment/targets","GET /api/project/deployment/build-modes"]
