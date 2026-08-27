@@ -1,108 +1,37 @@
-# PC-02 — frozen blind CLI discovery ledger
+# PC-02 — independent blind CLI exploration
 
-## Scope and freeze point
+## Binding and boundary
 
-- Reviewed candidate: `936a7be4bfbab95ac5e7d6ee1abe5116c9c33448`
-  (`[PC-02] harden imported bundle sidecars`). This is the exact candidate
-  explored; it is not an inferred source revision or the later evidence-only
-  commit that retains this ledger.
-- Public entrypoint: `node ./dist/cli/pokie.js` (reported version `1.3.0`).
-- Clean context: `/tmp/pc-02-blind-cli.0xPYOc`, created with `mktemp -d`.
-- Explorer inputs: the executable's `--help` and command help, visible command
-  output, and files the commands created. The recorded workflow did not use
-  repository source, tests, prior evidence, or a prescribed product scenario.
-  This ledger is frozen before any source-guided diagnosis.
+| Field | Recorded value |
+| --- | --- |
+| Candidate required and checked out | `b53a88916b990d2374984f3b7da4d03c8fedc61a` |
+| CLI actually exercised | `node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js` |
+| CLI version / executable SHA-256 | `1.3.0` / `ed89a858789e02acbfc66d0fb4a950f0a48678ac9ee530f399d43fc9f9103c83` |
+| Work area | fresh `/tmp/pokie-blind-cli.i0ZEyl`; no project files retained in this repository |
+| Explorer boundary | Before the exploration, the explorer did not inspect repository source, README/docs, prior evidence, prepared audit scripts, implementation reports, roadmap, or known findings. Commands and follow-ons were selected from public `pokie --help` / command help and their rendered output. |
 
-The retained evidence is this command ledger and the checksums below; no
-generated project, package, library, or command log was copied into the
-repository. The temporary output path above is provenance, not a deliverable.
-The help commands were run from the candidate checkout; every exploration
-command below was run from that temporary directory. The command register is
-the verbatim shell input from the frozen pass: every table row cites its
-register ID, so abbreviations in the table do not replace an exact reproducer.
+The worktree was at the required commit and clean before the run. This record replaces the prior evidence file at this exact evidence root; it retains no generated artifact, full log, automation, browser profile, or source copy.
 
-## Verbatim command register
+## Natural exploration transcript
 
-`C00` was run in the candidate checkout. `C01` through `C15` were run in the
-fresh directory named above. Each command has the listed exit status in the
-ledger.
+The random source was created with `create lantern --random --seed 481516`; its rendered provenance says generator `1.1.0`, strategy `default-line-pay`, and supplies the reproduction command. `inspect` and `validate` passed. Source SHA-256: `3782c7491182a8e5085bdc823100b6c64a4d6c5723dd68e67e9fa53714bec450`.
 
-```sh
-# C00 (exit 0)
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js --help
+| Public family and follow-on | Observed result / user impact |
+| --- | --- |
+| create; inspect/open | Random Blueprint created; `inspect` identified it and offered build targets. Missing-path `inspect` clearly rejected a non-project path. **Finding PC-05-CLI-01:** its “Before you continue” text says one must build before simulation, but the immediately following direct `sim <blueprint> --rounds 10 --seed explore-1` succeeded. This is misleading prerequisite language and adds an unnecessary detour. |
+| validate; simulate | Blueprint and built-package validation passed. Direct Blueprint simulation and package simulation both passed; package run persisted JSON (`40` rounds, seed `explore-2`). |
+| build; dry-run; stale output; recovery | `build --target tsPackage --dry-run` reported no writes, then a real package build succeeded. Repeating to the non-empty destination safely failed with the exact recovery: choose another `--out` or remove it; using `pkg-recovered` succeeded. Package `dist/index.js` SHA-256: `355001f10ab17cf71651ae52cbe14f3fa5f779739ddcd4257a70987d7f4cc655`. |
+| report; replay | JSON simulation rendered to Markdown and replayed round `1` with seed `explore-2`; both output files were produced in the disposable work area. |
+| build/export | Outcome-library dry run and build passed; `export --to outcomes` dry run and real export passed. The outcome-library report exposed mode `base`; its manifest SHA-256: `361359c620c5edb2b64ca8524deb27571787a1db2cd51f8837517932918f460a`. |
+| simulate/report/replay reused outcome output | Native outcome report, `sim --mode base --rounds 20 --seed explore-3`, and exact replay round `20` all passed. The replay matched the simulation’s last outcome (`outcome-9e42380c0f867a96`, total win `0`). |
+| export/import reuse and incompatible artifact | A built Stake adapter imported successfully and reported its deliberate lossy substitutions; Stake manifest SHA-256: `701af251b9d901ad8881dd82966fd3fe7923c23bf3e3c7e76be3116123a87241`, reconstructed manifest SHA-256: `098d9aaadd508a065203086698b592703998c0c2b05131971e61d9203bd1a618`. Trying to import the just-exported outcome artifact ended only with `stakeengine-import-index-missing: ... has no index.json`. **Finding PC-05-CLI-02:** this public incompatible-artifact dead end exposes an internal file prerequisite but does not identify the supplied artifact as an outcome library or say that only a Stake export/PAR workbook is importable, leaving no actionable recovery in the error itself. |
+| serve; interruption | `serve <package> --port 0` reached the semantic ready state `POKIE dev server listening on http://127.0.0.1:41431`; it was deliberately interrupted with Ctrl-C after readiness. No product error was rendered. |
 
-# C01 (exit 0)
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js import --help
+## Handoff classification
 
-# C02 (exit 0)
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js build --help
+| PC-05 handoff | Classification | Observed impact | Severity |
+| --- | --- | --- | --- |
+| PC-05-CLI-01 | Misleading language / unnecessary internal prerequisite | `inspect` directs a user to build before simulation even though direct Blueprint simulation succeeds. | P2 |
+| PC-05-CLI-02 | Incompatible artifact / recovery failure | An understandable export-to-import follow-on ends in an internal missing-index error, with neither artifact identification nor next step. | P2 |
 
-# C03 (exit 0)
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js sim --help
-
-# C04 (exit 0)
-mkdir -p 'paths with spaces' && node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js create 'Blind CLI' --random --seed 20260827 --out 'paths with spaces/blind game.blueprint.json'
-
-# C05 (exit 0); C06 (exit 0)
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js inspect 'paths with spaces/blind game.blueprint.json'
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js inspect '/tmp/pc-02-blind-cli.0xPYOc/paths with spaces/blind game.blueprint.json'
-
-# C07 (exit 0)
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js build 'paths with spaces/blind game.blueprint.json' --target tsPackage --out 'paths with spaces/package output' --dry-run && test ! -e 'paths with spaces/package output'
-
-# C08 (exit 0); C09 (exit 1)
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js build 'paths with spaces/blind game.blueprint.json' --target outcomeLibrary --out 'paths with spaces/library output' --sample 10 --seed 20260827
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js build 'paths with spaces/blind game.blueprint.json' --target outcomeLibrary --out 'paths with spaces/library output' --sample 10 --seed 20260827
-
-# C10 (exit 1); C11 (exit 1); C12 (exit 1)
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js import
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js import missing-stake --out imported-relative
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js import '/tmp/pc-02-blind-cli.0xPYOc/missing-stake' --out '/tmp/pc-02-blind-cli.0xPYOc/imported-absolute'
-
-# C13 (exit 130); C14 (exit 0); C15 (exit 0)
-timeout --signal=INT --preserve-status 1 node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js sim 'paths with spaces/library output' --mode base --rounds 1000000000 --seed interrupt-output --out 'paths with spaces/interrupted.json'
-test ! -e 'paths with spaces/interrupted.json'
-node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js sim 'paths with spaces/library output' --mode base --rounds 5 --seed recovery-output --out 'paths with spaces/recovered.json'
-```
-
-## Public surface first encountered
-
-| Exact command | Exit | Observation / natural next action |
-| --- | ---: | --- |
-| `node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js --help` | 0 | Listed `create`, `build`, `import`, `inspect`, `sim`, and `validate`; the build summary advertised `--dry-run`. |
-| `node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js import --help` | 0 | Public import syntax requires `<source>` and offers `--out` and `--format`; it does not offer dry run or a cancellation flag. |
-| `node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js build --help` | 0 | Confirmed the visible `--dry-run` contract: validate and preview without writing. |
-| `node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-02-20260827154246/dist/cli/pokie.js sim --help` | 0 | Confirmed a normal simulation can write `--out`, giving a public interruption/recovery path to try. |
-
-## Exploration ledger
-
-| Variant | Exact reproducer | Exit | Relevant output / artifact provenance | Observation, intent, and actual outcome | Severity |
-| --- | --- | ---: | --- | --- | --- |
-| Spaced relative path | `C04` | 0 | Created `paths with spaces/blind game.blueprint.json`; SHA-256 `218077dc2c3d70982b51b3e0360c43f59c7c1cc2328d047bf9d890c69c75c08e`. | Natural intent: start with the help-suggested random game in an ordinary spaced directory. Actual: creation succeeded and printed a public build continuation. | none |
-| Relative and absolute path forms | `C05`; `C06` | 0; 0 | Both identified the same Game Blueprint at the absolute resolved location and proposed quoted build commands. | Natural intent: follow the continuation using either shell-relative or copied absolute location. Actual: both forms were accepted. | none |
-| Dry run | `C07` | 0 | Output: `Dry run — blueprint is valid, no files written.` The follow-up `test` confirmed the destination was absent. | Natural intent: preview the indicated package build safely. Actual: it named the files it would create without writing them. | none |
-| Existing/stale output | `C08`; `C09` | 0; 1 | First run created `manifest.json` (`0d4d0b…a84c0`), `index_base.json` (`8c029c…ed04`), and `outcomes_base.jsonl` (`837c13…20ad4`). Repeat said destination already exists and is not empty, then directed the user to choose another `--out` or remove it. | Natural intent: repeat an export after seeing its result. Actual: existing output was preserved and the recovery action was explicit. | none |
-| Missing positional input | `C10` | 1 | Output: `Usage: pokie import <source> [--out <path>] [--format json]`. | Natural intent: try the discovered import command before selecting a file. Actual: safe, concise usage error. | none |
-| Invalid relative input | `C11` | 1 | Output included `stakeengine-import-index-missing: "missing-stake" has no index.json.` No output directory was created. | Natural intent: import a local directory that turns out not to be an export. Actual: rejection names the required public artifact. | none |
-| Invalid absolute input | `C12` | 1 | Output included the same `stakeengine-import-index-missing` error with the absolute path. No output directory was created. | Natural intent: retry the visible error using a copied absolute path. Actual: equivalent safe rejection. | none |
-| Interrupted/cancelled work | `C13`; `C14` | 130; 0 | The interrupted report file was absent. No command-level cancellation control appeared in `C03`; SIGINT was therefore the publicly reachable cancellation action exercised. | Natural intent: stop a long-running simulation and avoid trusting a partial report. Actual: SIGINT ended the command and no partial output was published. | none |
-| Restart/recovery | `C15` | 0 | Printed five-round summary and wrote `recovered.json`, SHA-256 `fd201680ba06796b2b2ba9747e5110fe1f4806b755e540a6a0fc5f29fe89353a`. | Natural intent: restart after interruption with a bounded job. Actual: it completed normally and produced a fresh report. | none |
-
-## Frozen findings forwarded to PC-05 (no remediation in PC-02)
-
-These are discovery records, not implementation instructions. They remain open
-for PC-05; this step neither diagnoses source causes nor changes product code,
-tests, packaging, or public documentation.
-
-| ID | Severity | Observation and exact reproducer | Natural intent | Actual outcome / PC-05 handoff |
-| --- | --- | --- | --- | --- |
-| PC-02-F01 | P1 | Published-install observation from the supplied frozen cumulative record. In a fresh directory, run `npm init --yes` (0), `npm install --ignore-scripts --no-audit --no-fund pokie@1.2.2` (0), `node -p "JSON.stringify(require('./node_modules/pokie/package.json').bin || null)"` (0, output `null`), `test ! -e node_modules/.bin` (0), and `npx --no-install pokie --help` (1, output `could not determine executable to run`). The installed package provenance was `pokie@1.2.2`; no local source artifact was substituted. | Install the public package, discover its executable, and ask for help before choosing a workflow. | Installation appears successful but provides no usable `pokie` executable. Preserve this as a published-artifact discovery for PC-05. |
-| PC-02-F02 | P2 | Earlier bounded blind discovery, frozen at `e7d4be15cbf51383e6084bc874eeeb6436a31b74` before the reviewed candidate, is retained as a systemic handoff rather than relabelled as a current-candidate result. Its recorded public command chain was `node ./dist/cli/pokie.js import <POKIE-produced Stake export directory> --out imported-stake` (0), `node ./dist/cli/pokie.js inspect imported-stake` (1), then `node ./dist/cli/pokie.js validate imported-stake` (1). `import` reported writing `config.json`, `libraries/base.json`, and `source-provenance.json`; `inspect` rejected the directory and `validate` said `manifest.json` was missing. The temporary Stake export and raw log were intentionally discarded with that frozen run, so this row preserves the exact observed command shape, status, and output provenance without inventing a replacement fixture. | Import a POKIE-produced Stake export and immediately use the success-reported result through the next public `inspect` and `validate` actions. | Import reported success but produced an artifact rejected by both follow-ons. Preserve this recovery dead end as a PC-05 finding; it is not a PC-02 remediation instruction. |
-
-The package-manager commands for PC-02-F01 were not rerun in this implementer
-worktree: its command policy rejects `npm view`, installation, and `npx` with
-exit `126`. The row therefore expressly preserves the prior frozen observed
-result and its command/output provenance rather than substituting a synthetic
-or source-derived result. PC-02 changes no product code, test, package
-metadata, or public product documentation: the only retained artifact is this
-discovery ledger.
+No remediation was made. The other explored dead ends, duplicate-output handling, and recoveries were clear: missing paths were rejected as unsupported projects; dry runs wrote nothing; a duplicate build to a stale non-empty destination was protected and its recovery was stated; a fresh output path recovered successfully; the served process became ready before its intentional interruption.
