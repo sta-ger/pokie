@@ -1030,6 +1030,10 @@ export function BlueprintEditorPage({
             <ReelGenerationModeSelector blueprint={blueprint} mutate={mutateBlueprint} drafts={editor.drafts} modeDrafts={editor.modeDrafts} revision={revision} />
         </div>
     );
+    // A pending automatic validation is a prerequisite of the guided save, so the one conflicting
+    // primary action must look and behave busy for that whole validation/save sequence. Editing stays
+    // available: it is how an author corrects the model while the older validation becomes stale.
+    const guidedActionPending = managedSaveView.status === "loading" || validationView.status === "loading";
 
     return (
         <div>
@@ -1066,7 +1070,11 @@ export function BlueprintEditorPage({
             {guided && (
                 <div>
                     <QuickActions>
-                        <Button onClick={handleGuidedSave} loading={managedSaveView.status === "loading"}>
+                        <Button
+                            onClick={handleGuidedSave}
+                            loading={guidedActionPending}
+                            aria-busy={guidedActionPending || undefined}
+                        >
                             {blueprintPath === undefined || overwriteConfirmedForPath !== blueprintPath ? "Create game" : "Save game"}
                         </Button>
                     </QuickActions>

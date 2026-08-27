@@ -260,7 +260,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         expect(managedSaveBodies).toHaveLength(0);
     });
 
-    it("releases a joined stale validation so Create Project saves the edited revision", async () => {
+    it("blocks Create game while validation is pending, then saves the current edited revision", async () => {
         const user = userEvent.setup();
         const validationBodies: unknown[] = [];
         const managedSaveBodies: unknown[] = [];
@@ -291,8 +291,13 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
 
         await waitFor(() => expect(validationRequests).toBe(1), {timeout: 1500});
-        await user.click(screen.getByRole("button", {name: "Create game"}));
+        const createGame = screen.getByRole("button", {name: "Create game"});
+        await waitFor(() => {
+            expect(createGame).toBeDisabled();
+            expect(createGame).toHaveAttribute("aria-busy", "true");
+        });
         const gameNameInput = screen.getByLabelText("Game name");
+        expect(gameNameInput).toBeEnabled();
         // This regression covers the revision boundary, not per-keystroke behavior. A single native
         // change event models the completed manual edit while avoiding eleven full editor rerenders
         // that can starve this timing-sensitive stale-request test under the two-worker gate.
@@ -308,7 +313,8 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         });
         expect(managedSaveBodies).toHaveLength(0);
 
-        await user.click(screen.getByRole("button", {name: "Create game"}));
+        await waitFor(() => expect(createGame).toBeEnabled());
+        await user.click(createGame);
 
         await waitFor(() => expect(managedSaveBodies).toHaveLength(1));
         expect(validationBodies.length).toBeGreaterThanOrEqual(2);
