@@ -1,4 +1,4 @@
-import {Anchor, Button, Text, Title} from "@mantine/core";
+import {Button, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
@@ -817,7 +817,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             <AppShellLayout navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}>
                 <div>
                     <Text>No game is open yet. Choose a game you already started, or create a new one.</Text>
-                    <Button component={Anchor} href="#/home/design" mt="sm">Choose or create a game</Button>
+                    <Button component="a" href="#/home/design" mt="sm">Choose or create a game</Button>
                 </div>
             </AppShellLayout>
         );

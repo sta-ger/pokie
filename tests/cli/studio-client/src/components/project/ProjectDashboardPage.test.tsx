@@ -50,6 +50,10 @@ describe("ProjectDashboardPage", () => {
         await waitFor(() => {
             expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument();
         });
+        expect(screen.getByText("Game format")).toBeInTheDocument();
+        expect(screen.getByText("Game design")).toBeInTheDocument();
+        expect(screen.queryByText("Capabilities")).not.toBeInTheDocument();
+        expect(screen.queryByText("Build from Blueprint source")).not.toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Simulation"}));
         expect(await screen.findByRole("button", {name: "Run Simulation"})).toBeInTheDocument();

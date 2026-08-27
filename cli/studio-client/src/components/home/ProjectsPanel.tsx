@@ -108,6 +108,7 @@ export function ProjectsPanel({
     const confirm = useConfirm();
     const openAndNavigate = useOpenProject();
     const [listView, setListView] = useState<ListView>({status: "loading"});
+    const [refreshVersion, setRefreshVersion] = useState(0);
     const [location, setLocation] = useState("");
     const [importView, setImportView] = useState<ImportView>({status: "idle"});
     const [registerName, setRegisterName] = useState("");
@@ -182,7 +183,7 @@ export function ProjectsPanel({
         return () => {
             cancelled = true;
         };
-    }, [fetchImpl, isVisible, registryVersion]);
+    }, [fetchImpl, isVisible, refreshVersion, registryVersion]);
 
     // save-managed already has the canonical row the registry wrote. Render it immediately rather
     // than waiting for the invalidating list request above; that request remains the eventual
@@ -437,9 +438,20 @@ export function ProjectsPanel({
     return (
         <div>
             <PageSection legend="Your projects">
-                {listView.status === "loading" && <LoadingState />}
-                {listView.status === "error" && <ErrorState message={listView.message} detail={listView.detail} />}
-                {listView.status === "empty" && <EmptyState message="No games yet. Start a game or add one you already have." />}
+                {listView.status === "loading" && <LoadingState label="Loading your projects…" />}
+                {listView.status === "error" && (
+                    <>
+                        <ErrorState message={listView.message} detail={listView.detail} />
+                        <Button size="xs" onClick={() => setRefreshVersion((version) => version + 1)}>Try loading projects again</Button>
+                    </>
+                )}
+                {listView.status === "empty" && (
+                    <EmptyState
+                        message="No games yet. Start a game or add one you already have."
+                        actionLabel="Create your first game"
+                        onAction={() => navigate("/home/design")}
+                    />
+                )}
                 {listView.status === "loaded" && (
                     <>
                         {listView.openError && <ErrorState message={listView.openError.message} detail={listView.openError.detail} />}

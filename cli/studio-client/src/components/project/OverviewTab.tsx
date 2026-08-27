@@ -1,8 +1,7 @@
-import {Badge, Button, Group, Table, Text} from "@mantine/core";
+import {Button, Table, Text} from "@mantine/core";
 import type {StudioProjectOrigin} from "../../api/types";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
-    describeCapability,
     PROJECT_TYPE_LABEL,
     RUNTIME_EXECUTE_CAPABILITY,
     type ProjectHeaderView,
@@ -96,7 +95,7 @@ export function OverviewTab({
                         <Table.Td>{header.version}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
-                        <Table.Th>Type</Table.Th>
+                        <Table.Th>Game format</Table.Th>
                         <Table.Td>{header.type ? PROJECT_TYPE_LABEL[header.type] : "Unknown"}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
@@ -109,23 +108,7 @@ export function OverviewTab({
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Editable</Table.Th>
-                        <Table.Td>{editable ? "Editable — this project's Blueprint source file can be edited directly." : "Read-only — this project's source isn't directly editable in Studio."}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
-                        <Table.Th>Capabilities</Table.Th>
-                        <Table.Td>
-                            {header.capabilities.length === 0 ? (
-                                "—"
-                            ) : (
-                                <Group gap={4}>
-                                    {header.capabilities.map((capability) => (
-                                        <Badge key={capability} variant="light" size="sm">
-                                            {describeCapability(capability)}
-                                        </Badge>
-                                    ))}
-                                </Group>
-                            )}
-                        </Table.Td>
+                        <Table.Td>{editable ? "Editable — you can change this game in Studio." : "Read-only — this game can't be changed directly in Studio."}</Table.Td>
                     </Table.Tr>
                 </Table.Tbody>
             </Table>

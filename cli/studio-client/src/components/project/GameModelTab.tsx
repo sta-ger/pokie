@@ -162,7 +162,7 @@ export function GameModelTab({
             .then((result) => {
                 if (result.status === "load-error") {
                     setEditState({status: "viewing"});
-                    setEditError(describePathActionError("This project's Blueprint source", result.error));
+                    setEditError(describePathActionError("This game's saved design", result.error));
                     return;
                 }
                 const revisionBeforeLoad = editor.state.revision;
@@ -194,7 +194,7 @@ export function GameModelTab({
             .then((result) => {
                 if (result.status === "load-error") {
                     setEditState({status: "viewing"});
-                    setEditError(describePathActionError("This project's Blueprint source", result.error));
+                    setEditError(describePathActionError("This game's saved design", result.error));
                     return;
                 }
                 const revisionBeforeLoad = editor.state.revision;
@@ -257,7 +257,7 @@ export function GameModelTab({
                 return saveBlueprint(fetchImpl, projectRoot, blueprintToSave, true).then((saveResult) => {
                     if (saveResult.status !== "ok") {
                         setEditState({status: "editing", section, baselineRevision});
-                        setEditError(describePathActionError("This project's Blueprint source", saveResult.error));
+                        setEditError(describePathActionError("This game's saved design", saveResult.error));
                         return;
                     }
                     setEditState({status: "viewing"});

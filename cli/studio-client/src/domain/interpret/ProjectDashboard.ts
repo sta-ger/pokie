@@ -138,23 +138,23 @@ export const STAKE_ADAPTER_EXCHANGE_CAPABILITY: StudioProjectCapability = "stake
 export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: StudioProjectCapability = "parWorkbook.exchange";
 
 export const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
-    blueprint: "Blueprint",
-    tsPackage: "Package",
-    outcomeLibrary: "Outcome library",
-    stakeAdapter: "Stake Engine export",
-    wasm: "WASM",
-    parWorkbook: "PAR sheet",
+    blueprint: "Game design",
+    tsPackage: "Playable game",
+    outcomeLibrary: "Game data library",
+    stakeAdapter: "Game export",
+    wasm: "Game module",
+    parWorkbook: "PAR spreadsheet",
 };
 
 const CAPABILITY_LABEL: Record<string, string> = {
-    "blueprint.build": "Build from Blueprint source",
-    "runtime.execute": "Run in-process (simulate, replay, play)",
-    "outcomeLibrary.read": "Read pre-generated outcomes",
-    "stakeAdapter.exchange": "Exchange with Stake Engine",
-    "parWorkbook.exchange": "Exchange as a PAR sheet",
-    "wasm.export": "Export to WASM",
-    "outcomeSource.read": "Read canonical outcome-source analysis",
-    "outcomeSource.sample": "Draw/sample/replay real outcomes",
+    "blueprint.build": "Edit and build this game",
+    "runtime.execute": "Play, test, and export this game",
+    "outcomeLibrary.read": "Use saved game outcomes",
+    "stakeAdapter.exchange": "Share this game export",
+    "parWorkbook.exchange": "Share this PAR spreadsheet",
+    "wasm.export": "Export this game module",
+    "outcomeSource.read": "Review game outcome data",
+    "outcomeSource.sample": "Play and replay saved outcomes",
 };
 
 // Capability ids are an open, plain-string vocabulary (see StudioProjectCapability's own doc comment)

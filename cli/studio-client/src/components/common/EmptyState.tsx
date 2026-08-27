@@ -1,9 +1,20 @@
-import {Text} from "@mantine/core";
+import {Button, Stack, Text} from "@mantine/core";
 
-export function EmptyState({message}: {message: string}) {
+export function EmptyState({
+    message,
+    actionLabel,
+    onAction,
+}: {
+    message: string;
+    actionLabel?: string;
+    onAction?: () => void;
+}) {
     return (
-        <Text size="sm" c="dimmed" role="status" aria-live="polite" style={{overflowWrap: "anywhere"}}>
-            {message}
-        </Text>
+        <Stack gap="xs" align="flex-start" role="status" aria-live="polite">
+            <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
+                {message}
+            </Text>
+            {actionLabel && onAction && <Button size="xs" onClick={onAction}>{actionLabel}</Button>}
+        </Stack>
     );
 }

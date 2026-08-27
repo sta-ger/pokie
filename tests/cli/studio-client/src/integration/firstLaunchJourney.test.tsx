@@ -38,11 +38,15 @@ describe("clean first-launch journey", () => {
         expect(await screen.findByText(/Start with the ready-to-edit starter game/i)).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Projects"}));
         expect(await screen.findByText("Add a game you already have")).toBeInTheDocument();
+        // Empty Projects is a decision point, not a dead end: its primary next action returns to the
+        // guided first-game flow without requiring the designer to infer what the navigation means.
+        expect(screen.getByRole("button", {name: "Create your first game"})).toBeInTheDocument();
         await user.type(screen.getByLabelText("Game location"), "/not-a-game");
         await user.click(screen.getByRole("button", {name: "Check game"}));
         expect(await screen.findByText(/Choose another game folder or game-design file, then try again/)).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "Start a game"}));
+        await user.click(screen.getByRole("button", {name: "Create your first game"}));
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/design"));
         await user.click(screen.getByRole("button", {name: "Choose a different start"}));
         expect(await screen.findByRole("button", {name: "Use the starter game"})).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Start with a blank game"})).toBeInTheDocument();
