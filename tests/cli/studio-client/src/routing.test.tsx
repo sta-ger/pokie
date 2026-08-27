@@ -82,6 +82,7 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
     });
 
     it("a direct link to an operation the project's own capabilities don't support shows a diagnostic, never that operation's workflow", async () => {
+        const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/project/context": () => ({
                 ok: true,
@@ -102,7 +103,7 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
             "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
 
         await screen.findByRole("heading", {name: "A"});
         // Simulation's own workflow never mounts -- no "Run Simulation" control anywhere on the page.
@@ -110,6 +111,12 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         expect(screen.getByRole("alert")).toHaveTextContent('"Simulation" isn\'t available for this project');
         // Nor is Simulation offered as a destination to navigate to in the first place.
         expect(screen.queryByRole("button", {name: "Simulation"})).not.toBeInTheDocument();
+
+        // The diagnostic is a recovery state, not a dead end: return to a section this project's own
+        // capability matrix actually supports, while preserving its project-scoped route.
+        await user.click(screen.getByRole("button", {name: "Go to Overview"}));
+        await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent("/games/a")}/overview`));
+        expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
     });
 
     it("an unrecognized :tab falls back to the default section instead of erroring", async () => {
@@ -124,6 +131,37 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         // Projects panel's registry request (it deliberately does not make one until visible).
         await waitFor(() => expect(router.state.location.pathname).toBe("/home/design"));
         expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
+    });
+
+    it("replaces an unknown project section with that project's Overview route, so reload and browser history stay intelligible", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/open": () => ({ok: true, status: 200, body: {context: {mode: "project", projectRoot: "/games/a"}}}),
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "loaded",
+                    projectRoot: "/games/a",
+                    game: {id: "a", name: "A", version: "1.0.0"},
+                    type: "blueprint",
+                    capabilities: ["blueprint.build"],
+                },
+            }),
+            "/api/project/validate": () => ({ok: true, status: 200, body: {valid: true, issues: []}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: []}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "missing"}}),
+        });
+        const projectPath = `/project/${encodeURIComponent("/games/a")}/retired-section`;
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: [projectPath]});
+
+        await screen.findByRole("heading", {name: "A"});
+        await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent("/games/a")}/overview`));
+        expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
     });
 });
 
