@@ -245,11 +245,12 @@ describe("ProjectDashboardPage", () => {
     });
 
     describe("Close project", () => {
-        it("navigates to Home once the server confirms the project actually closed", async () => {
+        it("returns to Your projects once the server confirms the project actually closed", async () => {
             const user = userEvent.setup();
             const {fetchImpl} = createRoutedFakeFetch({
                 ...baseFetchRoutes(),
                 "/api/projects/close": () => ({ok: true, status: 200, body: {context: {status: "empty"}}}),
+                "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             });
 
             renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -258,27 +259,26 @@ describe("ProjectDashboardPage", () => {
             await user.click(screen.getByRole("button", {name: "Close project"}));
 
             await waitFor(() => expect(screen.queryByRole("heading", {name: "Sample Slot"})).not.toBeInTheDocument());
-            expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
+            expect(await screen.findByRole("heading", {name: "Projects"})).toBeInTheDocument();
         });
 
-        // The "POKIE Studio" breadcrumb is the other way to leave a project -- it must actually reach
-        // the global Studio home (by closing the project, same as the button above) rather than a plain
-        // `href="#/"` bouncing straight back to this same still-active project, since the server's own
-        // context hasn't changed (see AppShellLayout's own onHomeClick doc comment).
-        it("also reaches Home via the POKIE Studio breadcrumb, closing the project first", async () => {
+        // The Projects breadcrumb is the direct return path to the project list. It must still close
+        // the active project first rather than raw-navigating back into the same server-side workspace.
+        it("returns to Your projects via its breadcrumb, closing the project first", async () => {
             const user = userEvent.setup();
             const {fetchImpl, calls} = createRoutedFakeFetch({
                 ...baseFetchRoutes(),
                 "/api/projects/close": () => ({ok: true, status: 200, body: {context: {status: "empty"}}}),
+                "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             });
 
             renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
             await screen.findByRole("heading", {name: "Sample Slot"});
 
-            await user.click(screen.getByRole("button", {name: "POKIE Studio"}));
+            await user.click(screen.getByRole("button", {name: "Your projects"}));
 
             await waitFor(() => expect(screen.queryByRole("heading", {name: "Sample Slot"})).not.toBeInTheDocument());
-            expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
+            expect(await screen.findByRole("heading", {name: "Projects"})).toBeInTheDocument();
             expect(calls.some((call) => call.url === "/api/projects/close")).toBe(true);
         });
 

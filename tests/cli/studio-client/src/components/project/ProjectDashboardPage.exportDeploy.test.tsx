@@ -148,7 +148,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled();
     });
 
-    it("classifies Outcome libraries and Stake Engine Export as builder cards, never surfaces the local-json-example demo target, and falls back to the remote-deployment placeholder when nothing else is registered", async () => {
+    it("keeps fresh-profile remote delivery visibly disabled and recovers only through the reachable Build/Export outcome-library generator", async () => {
         const user = userEvent.setup();
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
@@ -165,6 +165,14 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
         expect(await within(remoteSection).findByText("Remote delivery is not set up")).toBeInTheDocument();
+        expect(within(remoteSection).getByRole("button", {name: "Check compatibility"})).toBeDisabled();
+        expect(
+            within(remoteSection).getByText(
+                "Generate a compatible outcome library above in Build/Export before checking a configured remote destination.",
+            ),
+        ).toBeInTheDocument();
+        expect(within(remoteSection).queryByText(/Add a remote delivery destination/)).not.toBeInTheDocument();
+        expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled();
     });
 
     it("keeps technical target implementation details out of the primary Build/Export cards until Advanced details is opened by keyboard", async () => {
@@ -248,7 +256,16 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                 body: [{id: "acme-rgs-v2", version: "0.1.0", requirements: {}, capabilities: []}],
             }),
             "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
-            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
+            "/api/project/outcome-libraries/registry": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    bundleDir: "outcomelibrary",
+                    buildStatus: "compatible",
+                    modes: [{modeName: "base", bundleDir: "outcomelibrary", buildStatus: "compatible"}],
+                },
+            }),
             "/api/project/deployment/runs": () => ({
                 ok: true,
                 status: 200,
@@ -271,13 +288,42 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await screen.findByText("Remote delivery");
-        await user.click(screen.getByRole("button", {name: "Check compatibility"}));
+        await user.click(await screen.findByRole("button", {name: "Check compatibility"}));
 
         // Runs the same runDeployment(publish: false) pipeline the Deployment tab itself drives, right
         // here -- never navigating away to a separate Stepper-driven workflow first.
         expect(await screen.findByText("Compatible -- ready to publish.")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Publish"})).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Preview artifacts"})).not.toBeInTheDocument();
+    });
+
+    it("keeps a remote compatibility action disabled until the project has a compatible outcome library, with a concrete recovery path", async () => {
+        const user = userEvent.setup();
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/targets": () => ({
+                ok: true,
+                status: 200,
+                body: [{id: "acme-rgs-v2", version: "0.1.0", requirements: {}, capabilities: []}],
+            }),
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
+        };
+
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
+        expect(await within(remoteSection).findByRole("button", {name: "Check compatibility"})).toBeDisabled();
+        expect(
+            within(remoteSection).getByText(
+                "Generate a compatible outcome library above in Build/Export before checking a configured remote destination.",
+            ),
+        ).toBeInTheDocument();
+
+        const outcomeLibrarySection = screen.getByText("Outcome libraries").closest("fieldset") as HTMLElement;
+        expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled();
     });
 
     it("sends a remote adapter's compatibility check against an already-registered outcome library, not just one generated this session", async () => {
@@ -1148,6 +1194,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
 
             expect(await within(buildArtifactSection).findByText(/already exists and is not empty/)).toBeInTheDocument();
+            expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeDisabled();
             expect(buildWasAttempted).toBe(false);
         });
     });

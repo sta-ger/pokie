@@ -287,6 +287,17 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         [navigate, requestedProjectRoot],
     );
 
+    // Keep the URL as understandable as the view.  Home already replaces unknown sections with its
+    // default route; doing the same for a project means a stale bookmark/reload never leaves an
+    // apparently-valid, but permanently unselectable, section in browser history.
+    useEffect(() => {
+        if (isProjectTab(tab)) {
+            return;
+        }
+        const routePrefix = requestedProjectRoot === undefined ? "/project" : `/project/${encodeURIComponent(requestedProjectRoot)}`;
+        navigate(`${routePrefix}/overview`, {replace: true});
+    }, [navigate, requestedProjectRoot, tab]);
+
     const header = useProjectContext(requestedProjectRoot);
     const projectKey =
         header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact"
@@ -791,28 +802,30 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [closeError, setCloseError] = useState<string>();
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
     const closeGuard = useDoubleSubmitGuard();
-    const closeProjectAndReturnHome = (): void => {
+    const closeProjectAndReturnToProjects = (): void => {
         if (!closeGuard.begin()) {
             return;
         }
         setCloseError(undefined);
         closeProject(fetchImpl)
             .then(() => {
-                navigate("/home/design");
+                // Closing a workspace returns to the list it came from, where the user can reopen it
+                // or choose another project.  Starting a new game remains an explicit Home choice.
+                navigate("/home/projects");
             })
             .catch((error: unknown) => setCloseError(errorMessage(error)))
             .finally(() => closeGuard.end());
     };
     const handleClose = (): void => {
         if (!hasActiveOperation && !gameModelDirty) {
-            closeProjectAndReturnHome();
+            closeProjectAndReturnToProjects();
             return;
         }
         const reasons = [
             hasActiveOperation ? "an active simulation, replay, or deployment" : undefined,
             gameModelDirty ? "unsaved Game Model changes" : undefined,
         ].filter((reason): reason is string => reason !== undefined);
-        confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, closeProjectAndReturnHome);
+        confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, closeProjectAndReturnToProjects);
     };
 
     function copyProjectPath(): void {
@@ -841,6 +854,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         <AppShellLayout
             navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}
             breadcrumbs={[
+                {label: "Your projects", onClick: handleClose},
                 {label: projectName, onClick: () => setActiveTab("overview")},
                 {label: activeTabLabel},
             ]}
@@ -887,7 +901,14 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             )}
             {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact") && (
                 <div ref={panelRef} tabIndex={-1} style={{marginTop: "1rem"}}>
-                    {!activeTabSupported && activeTabDescriptor !== undefined && <ErrorState message={describeUnsupportedTabMessage(activeTabDescriptor)} />}
+                    {!activeTabSupported && activeTabDescriptor !== undefined && (
+                        <>
+                            <ErrorState message={describeUnsupportedTabMessage(activeTabDescriptor)} />
+                            <Button variant="default" size="xs" mt="sm" onClick={() => setActiveTab("overview")}>
+                                Go to Overview
+                            </Button>
+                        </>
+                    )}
                     {activeTabSupported && (
                         <>
                             {activeTab === "overview" && header.status === "loaded" && (

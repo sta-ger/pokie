@@ -226,8 +226,12 @@ function TargetCard({
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
     const staticExportSource = resolveOutcomeLibrarySource();
     const canRunStaticExport = staticExportSource !== undefined;
+    // A remote check consumes the same canonical source as the static export.  Do not make a
+    // capability-eligible target look runnable while its concrete prerequisite is still absent.
+    const canRunRemoteDeployment = staticExportSource !== undefined;
     const staticExportModeName = staticExportSource?.modeName ?? defaultModeName;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
+    const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
 
     return (
         <div style={{marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid var(--mantine-color-default-border)"}}>
@@ -404,7 +408,7 @@ function TargetCard({
                     {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (
                         <ErrorState message={artifactPreview.message} />
                     )}
-                    <Button size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"}>
+                    <Button size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"} disabled={!canBuildArtifact}>
                         Build
                     </Button>
                     {artifactBuildRun.status === "running" && (
@@ -488,22 +492,33 @@ function TargetCard({
                 </>
             )}
 
-            {card.kind === "remoteDeployment" && card.deploymentTarget && (
+            {card.kind === "remoteDeployment" && (
                 <>
                     <Button
                         size="xs"
                         mt="sm"
                         loading={isActiveTarget && deployment.runLoading}
-                        onClick={() => deployment.run(false, card.deploymentTarget, resolveDeploymentModes())}
+                        disabled={card.deploymentTarget === undefined || !canRunRemoteDeployment}
+                        onClick={() => {
+                            if (card.deploymentTarget !== undefined) {
+                                deployment.run(false, card.deploymentTarget, resolveDeploymentModes());
+                            }
+                        }}
                     >
                         Check compatibility
                     </Button>
+                    {(!canRunRemoteDeployment || card.deploymentTarget === undefined) && (
+                        <Text size="sm" c="dimmed" mt={4}>
+                            Generate a compatible outcome library above in Build/Export before checking a configured remote destination.
+                        </Text>
+                    )}
                     {previewedOk && (
                         <Button
                             size="xs"
                             mt="xs"
                             ml="xs"
                             loading={isActiveTarget && deployment.runLoading}
+                            disabled={!canRunRemoteDeployment}
                             onClick={() => deployment.run(true, card.deploymentTarget, resolveDeploymentModes())}
                         >
                             Publish
