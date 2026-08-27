@@ -17,3 +17,5 @@
 [2026-08-27T06:05:18.506Z] CLICK "Go to Overview"
 [2026-08-27T06:06:18.570Z] READINESS_INCONCLUSIVE no rendered Overview semantic state or rendered product error within 60000ms; no duplicate click or additional launch issued.
 [2026-08-27T06:06:18.570Z] DIAGNOSTICS before threshold: no captured console or network error; Build/Export remote-control checks not reached.
+[2026-08-27T06:23:30.827Z] FOCUSED_HARNESS_RECOVERY isolated fresh-profile retry used the visible Chromium address workflow for the scoped Certification deep link after repairing the previous stale-render selector.
+[2026-08-27T06:23:30.827Z] READINESS_INCONCLUSIVE the scoped unavailable-action deep link did not establish both its expected scoped route and local Go to Overview recovery control within 60000ms; Build/Export remote-control checks not reached. No duplicate action was issued.
