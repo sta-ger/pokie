@@ -129,7 +129,7 @@ describe("useOpenProject: guarded side effects", () => {
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
         dirtyTheDesignDraft();
-        fireEvent.click(screen.getByRole("button", {name: "Create Project"}));
+        fireEvent.click(screen.getByRole("button", {name: "Create game"}));
         expect(await screen.findByRole("heading", {name: "Starter Slot"})).toBeInTheDocument();
         expect(screen.queryByText("You have unsaved changes in Design Game. Leave and lose them?")).not.toBeInTheDocument();
         expect(screen.queryByText("The project could not be completed. Try again. If it continues, choose the location again and retry.")).not.toBeInTheDocument();
@@ -206,7 +206,7 @@ describe("useOpenProject: guarded side effects", () => {
 
         // The raw "boom" server message is never rendered verbatim -- see [P2-POLISH-04]'s
         // describePathActionError, which turns it into subject-specific status + remediation copy.
-        expect(await screen.findByText("The project directory could not be completed. Try again. If it continues, choose the location again and retry.")).toBeInTheDocument();
+        expect(await screen.findByText("The game could not be completed. Try again. If it continues, choose the location again and retry.")).toBeInTheDocument();
         expect(screen.queryByText("boom")).not.toBeInTheDocument();
         // A transient open/materialization failure must not remove the registered project row:
         // the visible Open action is the user's direct retry path.
@@ -214,7 +214,7 @@ describe("useOpenProject: guarded side effects", () => {
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
         expect(router.state.location.pathname).toBe("/home/projects");
         expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
-        fireEvent.click(screen.getByRole("button", {name: "Design Game"}));
+        fireEvent.click(screen.getByRole("button", {name: "Start a game"}));
         expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
 
         // The failed attempt must not leave the router-level one-shot bypass stuck "on" -- a later,
@@ -255,7 +255,7 @@ describe("useOpenProject: guarded side effects", () => {
 
         fireEvent.click(screen.getByRole("button", {name: "Projects"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole("button", {name: "Design Game"}));
+        fireEvent.click(screen.getByRole("button", {name: "Start a game"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
         expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
     }, WORKFLOW_TIMEOUT_MS);

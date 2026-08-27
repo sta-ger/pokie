@@ -197,7 +197,7 @@ describe("Guided Design Game: automatic validation freshness", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await waitFor(() => expect(validatedIds).toContain("starter-slot"));
 
-        await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
         await user.type(screen.getByLabelText("Load from path", {exact: false}), "/games/other.json");
         await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
 
@@ -221,7 +221,7 @@ describe("Guided Design Game: automatic validation freshness", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await waitFor(() => expect(validatedIds).toContain("starter-slot"));
 
-        await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
         await user.click(screen.getByRole("radio", {name: "JSON", hidden: true}));
         const appliedBlueprint = {
             manifest: {id: "json-applied", name: "JSON Applied", version: "0.1.0"},
