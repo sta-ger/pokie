@@ -1,0 +1,12 @@
+P8-02 independent clean-profile browser verification provenance
+candidate_sha=1c5765a8a7180264bd84710b89683d7974ee479c
+candidate_worktree=/home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-02-20260827004748
+studio_command=node ./dist/cli/pokie.js --no-open --host 127.0.0.1 --port 32182
+profiles=isolated Studio and Chromium profiles under the controller-owned harness workspace
+browser_control=rendered-control coordinates and rendered text only
+screenshots_sha256:
+0708de194afaf03e1a3cef255929bf56b472108ba0571ccc7ad00658fa267f01  00-clean-launch.png
+4484d42a3401912f5ce3a8c77cde57beb1ef1f7ea95a9dd0797c70dc206e31f5  01-invalid-import-recovery.png
+39b49a2eac97da534cfbf363b5222cd6e9e241f5ef04604761aabf3314f1041f  02-start-choices.png
+9e7e6521f15e784003c468153706d308c7fdc49373851cc047a8234026c6f373  03-created-workspace.png
+result=passed
