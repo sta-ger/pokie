@@ -119,4 +119,23 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
 
         expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("2.00");
     });
+
+    it("explains that starting Play needs no separate server setup", () => {
+        render(
+            <MantineProvider>
+                <PlayTab
+                    session={{status: "idle"}}
+                    sessionId={undefined}
+                    onNewSession={() => undefined}
+                    onSpin={() => undefined}
+                    onFindAnyWin={() => undefined}
+                    onFindSymbolWin={() => undefined}
+                    onFindFreeGames={() => undefined}
+                />
+            </MantineProvider>,
+        );
+
+        expect(screen.getByText("Play prepares this game for a real round and creates a session in Studio. Nothing else needs to be set up.")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "New Play session"})).toBeInTheDocument();
+    });
 });

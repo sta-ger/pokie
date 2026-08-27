@@ -854,7 +854,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 {closeError && (
                     <div style={{marginTop: "0.5rem"}}>
                         <ErrorState message="We couldn't close this game. Try closing again. If it continues, finish any active work and reopen Studio." detail={closeError} />
-                        <Button variant="default" size="xs" mt="xs" onClick={closeProjectAndReturnHome} loading={closeGuard.isBlocked()}>
+                        <Button variant="default" size="xs" mt="xs" onClick={handleClose} loading={closeGuard.isBlocked()}>
                             Try closing again
                         </Button>
                     </div>

@@ -333,9 +333,9 @@ describe("ProjectDashboardPage", () => {
     });
 
     // A "pokie ." boot straight into Project mode: a failed Blueprint materialization (e.g. a broken
-    // "npm install") settles /api/project/context into "error" with both the curated human message and
-    // the raw npm diagnostic as its own separate `errorDetail` field.
-    it("shows a failed Blueprint materialization's human-readable error up front, with the raw npm diagnostic reachable only through a collapsed disclosure", async () => {
+    // "npm install") must offer normal game-opening recovery guidance, with both server diagnostics
+    // available only through the collapsed technical disclosure.
+    it("shows failed project entry recovery guidance up front, with raw materialization diagnostics only in a collapsed disclosure", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/project/context": () => ({
                 ok: true,
@@ -352,7 +352,7 @@ describe("ProjectDashboardPage", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
 
         const alert = await screen.findByRole("alert");
-        expect(alert.textContent).toContain('Installing dependencies for "/games/broken-slot" failed.');
+        expect(alert).toHaveTextContent("We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.");
 
         const summary = screen.getByText("Technical details");
         const details = summary.closest("details");
@@ -360,6 +360,27 @@ describe("ProjectDashboardPage", () => {
         expect(alert.contains(details)).toBe(true);
         // Collapsed by default: the raw diagnostic lives inside the disclosure, never rendered up front.
         expect(details).not.toHaveAttribute("open");
+        expect(details?.textContent).toContain('Installing dependencies for "/games/broken-slot" failed.');
         expect(details?.textContent).toContain("npm ERR! simulated transient local npm failure");
+    });
+
+    it("translates a direct project-link opening failure and keeps both server diagnostics collapsed", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "empty"}}),
+            "/api/home/projects/open": () => ({
+                ok: false,
+                status: 500,
+                body: {error: "resolver could not load /games/broken", detail: "ENOENT: internal project manifest detail"},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fbroken/overview"]});
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.");
+        const details = screen.getByText("Technical details").closest("details");
+        expect(details).not.toHaveAttribute("open");
+        expect(details).toHaveTextContent("resolver could not load /games/broken");
+        expect(details).toHaveTextContent("ENOENT: internal project manifest detail");
     });
 });

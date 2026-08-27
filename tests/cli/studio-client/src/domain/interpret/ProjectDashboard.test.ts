@@ -13,23 +13,23 @@ describe("describeProjectHeader", () => {
         });
     });
 
-    it("passes through the error state with its message, leaving errorDetail undefined when absent", () => {
+    it("translates an error state into actionable opening guidance and keeps its diagnostic as technical detail", () => {
         expect(describeProjectHeader({status: "error", projectRoot: "/a", error: "boom"})).toEqual({
             status: "error",
             projectRoot: "/a",
-            message: "boom",
-            errorDetail: undefined,
+            message: "We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.",
+            errorDetail: "boom",
         });
     });
 
-    it("carries a materialization failure's raw errorDetail through alongside its human-readable message", () => {
+    it("keeps both materialization diagnostics behind the designer-facing opening guidance", () => {
         expect(
             describeProjectHeader({status: "error", projectRoot: "/a", error: "Installing dependencies failed.", errorDetail: "npm ERR! simulated failure"}),
         ).toEqual({
             status: "error",
             projectRoot: "/a",
-            message: "Installing dependencies failed.",
-            errorDetail: "npm ERR! simulated failure",
+            message: "We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.",
+            errorDetail: "Installing dependencies failed.\n\nnpm ERR! simulated failure",
         });
     });
 

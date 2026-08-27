@@ -46,6 +46,17 @@ export type ProjectHeaderView =
           origin?: StudioProjectOrigin;
       };
 
+const PROJECT_OPEN_FAILURE_MESSAGE =
+    "We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.";
+
+// Project-context failures can originate while Studio starts directly in a workspace, restores a
+// project-scoped browser-history entry, or reloads the active project. Those are all the same
+// designer-facing recovery moment. Keep the server's response available for support, but never let
+// its implementation-specific wording become the alert a designer sees first.
+export function describeProjectContextFailure(projectRoot: string, detail?: string): ProjectHeaderView {
+    return {status: "error", projectRoot, message: PROJECT_OPEN_FAILURE_MESSAGE, errorDetail: detail};
+}
+
 export function describeProjectHeader(context: ProjectDashboardContext): ProjectHeaderView {
     if (context.status === "empty") {
         return {status: "empty"};
@@ -54,7 +65,8 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
         return {status: "loading", projectRoot: context.projectRoot};
     }
     if (context.status === "error") {
-        return {status: "error", projectRoot: context.projectRoot, message: context.error, errorDetail: context.errorDetail};
+        const detail = [context.error, context.errorDetail].filter((value, index, details) => value !== undefined && details.indexOf(value) === index).join("\n\n");
+        return describeProjectContextFailure(context.projectRoot, detail || undefined);
     }
     if (context.status === "outcome-source") {
         return {
