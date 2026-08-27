@@ -60,6 +60,13 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                         setSessionId(result.session.sessionId);
                         return;
                     }
+                    if (result.status === "error") {
+                        // Session creation can fail after a previously confirmed session has completed a
+                        // round. That failed reset has not invalidated the confirmed session, so retain
+                        // its identity and round while giving the designer actionable recovery copy.
+                        setSession({status: "error", message: result.message, subject: "This session", ...(previousSession === undefined ? {} : {previousSession})});
+                        return;
+                    }
                     // "No active project" means the old session is no longer safely actionable.
                     // Do not keep rendering it as a live session after the project has disappeared.
                     setSession(describePlaySessionResult(result));

@@ -120,6 +120,40 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
         expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("2.00");
     });
 
+    it("keeps a completed round and Play controls visible after a failed reset", () => {
+        const previousSession: StudioRuntimeSessionView = {
+            sessionId: "settled-session",
+            game: {id: "reset-recovery", name: "Reset Recovery", version: "1.0.0"},
+            credits: 1015,
+            bet: 5,
+            win: 15,
+            availableBets: [1, 5],
+            screen: [["cherry"]],
+            debug: {artifactUnavailableReason: "Round details were not captured in this fixture."},
+        };
+
+        render(
+            <MantineProvider>
+                <PlayTab
+                    session={{status: "error", message: "materialization failed", subject: "This session", previousSession}}
+                    sessionId={previousSession.sessionId}
+                    onNewSession={() => undefined}
+                    onSpin={() => undefined}
+                    onFindAnyWin={() => undefined}
+                    onFindSymbolWin={() => undefined}
+                    onFindFreeGames={() => undefined}
+                />
+            </MantineProvider>,
+        );
+
+        expect(screen.getByText("This session couldn't be completed. Try again. If it continues, start a new session and retry.")).toBeInTheDocument();
+        expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
+        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
+        expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Find any win"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Reset Play session"})).toBeEnabled();
+    });
+
     it("explains that starting Play needs no separate server setup", () => {
         render(
             <MantineProvider>

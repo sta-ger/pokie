@@ -267,6 +267,60 @@ describe("ProjectDashboardPage - Play", () => {
         expect(createCalls).toBe(2);
     }, 30000);
 
+    it("keeps a completed round usable after a typed reset failure, then replaces it after a successful reset", async () => {
+        const user = userEvent.setup();
+        let createCalls = 0;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => {
+                createCalls += 1;
+                if (createCalls === 2) {
+                    return {ok: true, status: 200, body: {status: "failed", error: "materialization failed"}};
+                }
+                return {ok: true, status: 201, body: {status: "ok", session: sessionFor({sessionId: `sess-${createCalls}`, bet: 5, availableBets: [1, 5]})}};
+            },
+            "/api/project/play/sessions/sess-1/spin": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    session: sessionFor({
+                        sessionId: "sess-1",
+                        credits: 1015,
+                        bet: 5,
+                        win: 15,
+                        screen: [["cherry"]],
+                        availableBets: [1, 5],
+                        debug: {artifactUnavailableReason: "Round details were not captured in this fixture."},
+                    }),
+                },
+            }),
+            "/api/project/play/sessions/sess-3/spin": () => ({ok: true, status: 200, body: {status: "ok", session: sessionFor({sessionId: "sess-3"})}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await screen.findByText(/You won 15\.00/);
+
+        await user.click(screen.getByRole("button", {name: "Reset Play session"}));
+
+        expect(await screen.findByText("This session couldn't be completed. Try again. If it continues, start a new session and retry.")).toBeInTheDocument();
+        expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
+        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
+        expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Find any win"})).toBeEnabled();
+
+        await user.click(screen.getByRole("button", {name: "Reset Play session"}));
+
+        await screen.findByText(/No round played yet/);
+        expect(screen.queryByText(/You won 15\.00/)).toBeNull();
+        await user.click(screen.getByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-3/spin")).toBe(true));
+        expect(createCalls).toBe(3);
+    }, 30000);
+
     // Find any win / Find symbol win drive Studio Play's own authoritative scenario controls -- a real
     // spin (or a real, symbol-chooser-selected spin) run server-side through StudioPlayService, never a
     // client-computed/simulated round. This exercises the request/response flow end to end: the button
