@@ -57,6 +57,8 @@ describe("ProjectDashboardPage", () => {
 
         await user.click(screen.getByRole("button", {name: "Simulation"}));
         expect(await screen.findByRole("button", {name: "Run Simulation"})).toBeInTheDocument();
+        const activePanel = screen.getByRole("region", {name: "Sample Slot"});
+        await waitFor(() => expect(activePanel).toHaveFocus());
     });
 
     it("keeps a running simulation's polling alive across a tab switch", async () => {
