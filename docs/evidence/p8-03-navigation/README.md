@@ -1,19 +1,20 @@
-# P8-03 fresh-profile browser rerun (inconclusive)
+# P8-03 fresh-profile Studio navigation verification (inconclusive)
 
 Candidate: `7a618abcb44619ea6ac8a65353a52425921990e6`.
 
-The retained transcript records a fresh isolated Studio/Chromium launch from the candidate's
-`./dist/cli/pokie.js --no-open`, creation of the starter Blueprint, its visible six-section
-navigation, and the guarded-close path. The rendered close confirmation's **Cancel** action
-preserved the scoped Game Model route and its unsaved draft.
+This bounded evidence is from a newly isolated Studio and Chromium profile launched from the
+candidate with `node ./dist/cli/pokie.js --no-open`. It visibly reached the starter Blueprint,
+its six navigation sections, Game Model, and the real rendered guarded-close confirmation.
+Choosing its local **Cancel** preserved the Game Model route and unsaved draft.
 
-The second and final permitted launch stopped before deeper navigation when the external driver
-could not unambiguously target the section's second rendered `Cancel` button. This is a harness
-selector limitation, not a product finding. No conclusion is retained for the unvisited deep-link,
-artifact/PAR/outcome states, Build/Export, or console/network diagnostics.
+The subsequent local Game basics **Save** action showed neither a rendered completion nor a
+rendered error within 45 seconds. Per verifier policy this is readiness-inconclusive, not a
+product finding; the workflow therefore did not reach deep-link recovery, unavailable actions,
+Build/Export guidance, package/PAR/outcome states, successful close, or final console/network
+diagnostics. `01-blueprint-workspace.png` is the sole representative rendered capture. Runtime
+profiles, generated projects, and raw logs were removed after the launch.
 
-`01-blueprint-workspace.png` is the representative visible workspace capture. Generated runtime
-profiles and project outputs were removed after the run.
-
-Checksums: `01-blueprint-workspace.png` = `d9d99029ba3f073c0ef2ebf2419e7c8922e838000a56dc7366082f1b127f066e`;
-`ACTION-TRANSCRIPT.txt` = `f93610d0683873c3095246f14ace529caf8ecc7fbd93e9a27468b5bd7b39470d`.
+Checksums: `01-blueprint-workspace.png` =
+`d9d99029ba3f073c0ef2ebf2419e7c8922e838000a56dc7366082f1b127f066e`;
+`ACTION-TRANSCRIPT.txt` =
+`3d5ab4c382391ce337806cb372d5ef41cfeacaa1d7946ff22c78bd3d7b2510a9`.
