@@ -72,13 +72,33 @@ describe("ImportCommand", () => {
             const source = await new StakeEngineExporter("1.3.0").exportToDirectory([{modeName: "base", cost: 1, library}], stakeDir);
             expect(source.issues).toEqual([]);
 
-            expect(await new ImportCommand("1.3.0").run([stakeDir, "--out", importedDir])).toBe(0);
+            expect(await new ImportCommand("1.3.0").run([stakeDir, "--out", importedDir, "--format", "json"])).toBe(0);
             expect(await new InspectCommand().run([importedDir])).toBe(0);
             expect(await new ValidateCommand().run([importedDir, "--deep"])).toBe(0);
             expect(await new StakeEngineCommand("1.3.0").run(["export", path.join(importedDir, "config.json"), "--out", reExportedDir])).toBe(0);
             expect(fs.existsSync(path.join(reExportedDir, "pokie-manifest.json"))).toBe(true);
         } finally {
             logSpy.mockRestore();
+            errorSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("rejects an unsupported public import format before creating a Stake destination", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-import-command-format-test-"));
+        const stakeDir = path.join(workDir, "stake");
+        const importedDir = path.join(workDir, "imported");
+        const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+
+        try {
+            const library = buildStakeEngineTestLibrary({libraryId: "generic-import-format", betMode: "base", stake: 1});
+            await new StakeEngineExporter("1.3.0").exportToDirectory([{modeName: "base", cost: 1, library}], stakeDir);
+
+            expect(() => new ImportCommand("1.3.0").run([stakeDir, "--out", importedDir, "--format", "xml"])).toThrow(
+                '--format only supports "json"',
+            );
+            expect(fs.existsSync(importedDir)).toBe(false);
+        } finally {
             errorSpy.mockRestore();
             fs.rmSync(workDir, {recursive: true, force: true});
         }

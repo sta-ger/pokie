@@ -6,6 +6,8 @@ import {StakeEngineCommand} from "./StakeEngineCommand.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie import <source> [--out <path>] [--format json]";
+type ImportFormat = "json";
+type ImportOptions = {input: string; out?: string; format?: ImportFormat};
 
 // A source's path is the user-facing contract here: a workbook imports as a Blueprint and a
 // POKIE-produced Stake Engine export directory imports as reconstructed outcome libraries.
@@ -35,9 +37,9 @@ export class ImportCommand implements CliCommandHandling {
     }
 
     public run(args: string[]): Promise<number> {
-        let input: string;
+        let options: ImportOptions;
         try {
-            input = this.parse(args);
+            options = this.parse(args);
         } catch (error) {
             if (isCommanderHelpDisplay(error)) {
                 return Promise.resolve(0);
@@ -46,8 +48,15 @@ export class ImportCommand implements CliCommandHandling {
         }
         // Filesystems routinely preserve a producer's uppercase `.XLSX` suffix. Extension casing
         // is not a workbook-format distinction, so normalize it before selecting the PAR reader.
-        const delegate = path.extname(input).toLowerCase() === ".xlsx" ? this.par : this.stake;
-        return delegate.run(["import", ...args]);
+        const delegate = path.extname(options.input).toLowerCase() === ".xlsx" ? this.par : this.stake;
+        // `import` owns its public options before dispatching to a format-specific command. Stake
+        // reconstruction has no alternate rendered result, so its internal command deliberately
+        // does not expose `--format`; retaining it in the forwarded argv made the public generic
+        // command advertise an option that its Stake delegate rejected. Rebuild the delegated argv
+        // from the parsed public contract instead of leaking facade-only options across that seam.
+        const delegatedArgs = ["import", options.input, ...(options.out === undefined ? [] : ["--out", options.out])];
+        if (delegate === this.par && options.format !== undefined) delegatedArgs.push("--format", options.format);
+        return delegate.run(delegatedArgs);
     }
 
     private command(): Command {
@@ -56,18 +65,21 @@ export class ImportCommand implements CliCommandHandling {
             .argument("<source>", "a PAR workbook or POKIE-produced Stake Engine export directory with pokie-manifest.json")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--out <path>", "where to write imported artifacts")
-            .option("--format <format>", 'only "json" is supported for workbook import')
+            .option("--format <format>", 'only "json" is supported; it selects JSON output for workbook import')
             .action(() => undefined);
     }
 
-    private parse(args: string[]): string {
+    private parse(args: string[]): ImportOptions {
         const command = this.command();
-        let input: string | undefined;
-        command.action((source: string, excess: string[]) => {
+        let options: ImportOptions | undefined;
+        command.action((source: string, excess: string[], parsedOptions: {out?: string; format?: string}) => {
             if (!source || excess.length > 0) {
                 throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
             }
-            input = source;
+            if (parsedOptions.format !== undefined && parsedOptions.format !== "json") {
+                throw new Error(`--format only supports "json". ${USAGE}`);
+            }
+            options = {input: source, out: parsedOptions.out, format: parsedOptions.format as ImportFormat | undefined};
         });
         try {
             command.parse(args, {from: "user"});
@@ -81,6 +93,6 @@ export class ImportCommand implements CliCommandHandling {
                 optionMissingArgument: (flag) => `${flag} requires a value. ${USAGE}`,
             });
         }
-        return input!;
+        return options!;
     }
 }
