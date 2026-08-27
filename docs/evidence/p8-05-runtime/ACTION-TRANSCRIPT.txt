@@ -1,11 +1,15 @@
-[2026-08-27T09:23:36Z] Fresh Chromium and Studio profiles launched candidate 3ba937f9b27916bb64afa49184fcab597d0c93b8 using node ./dist/cli/pokie.js --no-open.
-[2026-08-27T09:23:37Z] Created p8-runtime-proof through rendered Design guidance.
-[2026-08-27T09:23:38Z] Play > New Play session > Spin completed a real round (01-play-round.png).
-[2026-08-27T09:23:38Z] Controlled failed Reset Play session rendered actionable recovery while preserving the completed round and enabled Spin (02-failed-reset-preserves-context.png); normal Reset then restored a fresh usable session.
-[2026-08-27T09:23:39Z] Controlled no-active-project response cleared stale controls to New Play session (03-stale-session-cleared.png); New Play session > Spin restored current context.
-[2026-08-27T09:23:40Z] Two-round Simulation completed with visible RTP/report and Recent runs (04-simulation-report.png).
-[2026-08-27T09:36:45Z] Fresh recovery rerun selected Replay > Session Spin, refreshed, chose rendered “Session 1 — Round 1 — Spin”, and rendered its local Round inspector/provenance (05-replay-session-spin.png).
-[2026-08-27T09:36:46Z] Build/Export opened and the rendered Generate exact outcome library (base) action was clicked. The harness then used an over-broad text condition and could not prove the generator's local Generated/error state before looking for the export action. No rendered product error, browser console exception, or network failure was observed. The four-launch budget prevented the repaired rerun.
+# P8-05 rendered action transcript
 
-DIAGNOSTICS
-The two Play recovery responses above were deliberate browser-protocol faults applied only after their respective visible user action. All other steps used visible Studio controls. Superseded harness-only selector attempts and raw stack traces were pruned.
+Candidate product source: `3ba937f9b27916bb64afa49184fcab597d0c93b8`.
+
+The original fresh isolated Chromium/XDG journey (09:23 UTC) created `p8-runtime-proof` through Design Your Game, completed Play > New Play session > Spin, and retained `01-play-round.png`. A controlled failed Reset Play session rendered its actionable recovery while retaining the completed round and enabled Spin (`02`); a normal reset restored a usable new session. A controlled no-active-project Spin response cleared stale controls to New Play session (`03`); New Play session > Spin restored current context. Two Simulation rounds rendered RTP and Recent runs (`04`).
+
+Fresh recovery run (09:44 UTC; a new HOME, Chromium profile, registry, and project/output tree; source launched only with `node ./dist/cli/pokie.js --no-open`):
+
+- Created the real `p8-runtime-proof` game through the rendered Design form.
+- Completed Play, both reset-recovery cases, stale-session recovery, and a two-round Simulation again through visible controls. The existing representative captures `01`–`04` are reused.
+- Selected Replay > Session Spin, refreshed, selected the recorded `Session 1 — Round 1 — Spin`, and saw its local Round inspector/provenance. Existing capture `05` is reused.
+- Clicked the rendered `Generate exact outcome library (base)` control. Its own Outcome library generator card rendered: `Generated 1,024 outcomes for mode "base" using exact (RTP 100.78%) into outcomelibrary.` Observed action-to-local-result latency: 489 ms.
+- After its own enabled-state transition, clicked `Run Stake Engine Export (base)`. Its own Stake Engine Export card rendered: `Exported 4 file(s) to …/p8-runtime-proof/stakeengine.` Observed action-to-local-result latency: 333 ms. `06-build-export-results.png` shows both local successes together.
+
+Diagnostics (bounded): the two Play recovery responses were deliberate browser-protocol faults issued only after their respective visible actions (one controlled failed reset and one 409 no-active-project response). CDP recorded no `Runtime.exceptionThrown` or `Network.loadingFailed` event. It did record the expected controlled 409 console error and one browser console 404 without a URL; neither was accompanied by a rendered Studio error or prevented a later success. Chromium D-Bus/GPU startup noise is excluded as host diagnostics, not product evidence.
