@@ -29,7 +29,7 @@ export function LayoutFieldset({
     // destructive reduction must put this draft back to the saved value rather than leaving an input
     // that looks applied while the blueprint still has its original reel count.
     const [reelInput, setReelInput] = useState<number | string>(reels ?? "");
-    const lastBlurredReelValue = useRef<string>();
+    const lastBlurredReelValue = useRef<string | undefined>(undefined);
 
     useEffect(() => {
         setReelInput(reels ?? "");
@@ -86,7 +86,7 @@ export function LayoutFieldset({
                                 confirm(
                                     `Reduce reels from ${reels} to ${value}? Custom paylines and reel definitions beyond reel ${value} will be removed.`,
                                     () => applyReelCount(value),
-                                    () => setReelInput(reels),
+                                    () => setReelInput(reels ?? ""),
                                 );
                                 return;
                             }
@@ -101,7 +101,7 @@ export function LayoutFieldset({
                         label="Rows"
                         min={1}
                         step={1}
-                        defaultValue={rows}
+                        defaultValue={rows ?? ""}
                         onBlur={(event) => {
                             const value = Number(event.currentTarget.value);
                             if (!Number.isFinite(value)) {
