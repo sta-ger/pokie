@@ -138,11 +138,16 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         prepared: Awaited<ReturnType<BlueprintStakeOutcomeLibraryWorkflow["prepare"]>>,
         bundleDir: string,
         options?: ArtifactBuildOptions,
+        allowPlannedSourceSidecar = false,
     ): Promise<{readonly project: PokieProject; readonly reused: false}> {
         assertArtifactBuildNotCancelled(options);
         const {game, configHash, generation, compatibility} = prepared;
         assertArtifactDestinationAvailable(bundleDir, "directory");
-        assertArtifactDestinationIsSafe(source.rootPath, bundleDir);
+        // Only ArtifactBuilderRegistry may authorize the package's canonical
+        // managed Outcome sidecar, and only after it has checked the prepared
+        // plan's destination policy.  Direct workflow callers retain the
+        // normal no-source/no-descendant boundary.
+        if (!allowPlannedSourceSidecar) assertArtifactDestinationIsSafe(source.rootPath, bundleDir);
         const preflight = outcomeGenerationPreflight(game, generation);
         reportArtifactBuildProgress(options, {status: "preflight", preflight});
         assertArtifactBuildNotCancelled(options);

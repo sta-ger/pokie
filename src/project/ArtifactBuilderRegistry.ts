@@ -329,7 +329,7 @@ export class ArtifactBuilderRegistry {
         // execution.  In particular, reuse does not bypass a source alias or
         // existing-output conflict merely because no new outcomes are
         // generated.
-        const destination = this.checkDestination(target, destinationPath, source.rootPath);
+        const destination = this.checkDestination(target, destinationPath, this.destinationSafetySource(plan, source));
         if (!destination.available) throw new ArtifactBuildConflictError(destination.message ?? "The destination is unavailable.");
         if (target === "outcomeLibrary" && managed !== undefined) {
             const builder = this.builders.get("outcomeLibrary");
@@ -455,8 +455,10 @@ export class ArtifactBuilderRegistry {
         // Project already exists.  Check it before the managed-project lookup: otherwise the lookup
         // turns an explicit destination into a silently ignored hint (and can bypass the normal
         // no-overwrite policy every other artifact target enforces).
-        assertArtifactDestinationAvailable(destinationPath, "directory");
-        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+        // executePlan has already applied the destination policy from this
+        // exact prepared plan.  Do not re-derive the ordinary source-root
+        // rule here: a tsPackage's canonical outcomelibrary sidecar is an
+        // intentional, planner-approved generated child of that package.
         const outcomeLibrary = await this.generatePlannedManagedOutcome(plan, source, options, destinationPath);
         return {
             outputPath: outcomeLibrary.project.rootPath,
@@ -483,7 +485,13 @@ export class ArtifactBuilderRegistry {
             throw new Error("The recognized source changed after this conversion was prepared; prepare a new plan before executing it.");
         }
         const root = destinationPath ?? this.managedOutcomeProjects.allocateRoot(source.rootPath, expected);
-        return this.blueprintStakeWorkflow.generatePrepared(source, prepared, root, lifecycleOptions);
+        return this.blueprintStakeWorkflow.generatePrepared(
+            source,
+            prepared,
+            root,
+            lifecycleOptions,
+            this.destinationSafetySource(plan, source) === undefined,
+        );
     }
 
     private optionsForPlan(options: ArtifactBuildOptions | undefined, source: ArtifactIdentity): ArtifactBuildOptions | undefined {
@@ -591,11 +599,7 @@ export class ArtifactBuilderRegistry {
         // generation lifecycle has always published there. Keep every other
         // descendant blocked (including aliases), while retaining normal
         // occupied-destination checks for this one canonical managed output.
-        const isCanonicalPackageManagedOutcome =
-            source.type === "tsPackage" &&
-            target === "outcomeLibrary" &&
-            path.resolve(options.destinationPath) === path.join(path.resolve(source.rootPath), "outcomelibrary");
-        const destination = this.checkDestination(target, options.destinationPath, isCanonicalPackageManagedOutcome ? undefined : source.rootPath);
+        const destination = this.checkDestination(target, options.destinationPath, this.destinationSafetySource(plan, source));
         if (destination.available) return plan;
         return {
             ...plan,
@@ -607,6 +611,20 @@ export class ArtifactBuilderRegistry {
                 recovery: "Choose an empty destination that is not the source or one of its descendants.",
             },
         };
+    }
+
+    /**
+     * The planner owns the one supported descendant destination: the managed
+     * Outcome sidecar of a runnable package.  Preparation, preview and
+     * execution must use this exact rule so a successful preview cannot turn
+     * into a source/descendant conflict when publishing.
+     */
+    private destinationSafetySource(plan: ArtifactConversionPlan, source: PokieProject): string | undefined {
+        const isCanonicalPackageManagedOutcome =
+            source.type === "tsPackage" &&
+            plan.target.kind === "outcomeLibrary" &&
+            plan.target.canonicalLocation === path.join(path.resolve(source.rootPath), "outcomelibrary");
+        return isCanonicalPackageManagedOutcome ? undefined : source.rootPath;
     }
 
     private unavailableTargetMessage(target: ArtifactTargetType): string {

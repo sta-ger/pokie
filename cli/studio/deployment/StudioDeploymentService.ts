@@ -72,6 +72,13 @@ function describeSelectorModeMismatch(modeName: string, selectorModeName: string
     );
 }
 
+function describeUnverifiedDeploymentSelector(modeName: string): string {
+    return (
+        `mode "${modeName}" does not select this project's current compatible managed Outcome Library -- ` +
+        "regenerate or select the server-listed compatible bundle before deploying."
+    );
+}
+
 // The Project Dashboard's Deployment tab, built directly on top of the pokie package's own External
 // Adapter SDK (see docs/external-adapter-sdk.md) — this class never projects a RoundArtifact, never
 // generates artifacts, and never validates a compatibility/artifact-shape concern itself; every one of
@@ -98,6 +105,7 @@ export class StudioDeploymentService {
     private readonly resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined>;
     private readonly planning: StudioArtifactConversionPlanning;
     private readonly resolveServerSelectedModes: StudioDeploymentModeResolving;
+    private readonly hasServerSelectedModes: boolean;
 
     constructor(
         externalDeploymentService: ExternalDeploymentServicing = new ExternalDeploymentService(),
@@ -123,6 +131,7 @@ export class StudioDeploymentService {
         }
         this.planning = planning ?? new StudioArtifactConversionPlanningService(pokieVersion);
         this.resolveServerSelectedModes = resolveServerSelectedModes;
+        this.hasServerSelectedModes = resolveServerSelectedModes !== NO_SERVER_SELECTED_MODES;
     }
 
     /** Creates the production service with Studio's configured package version. */
@@ -181,7 +190,10 @@ export class StudioDeploymentService {
         // verified compatible library".  Resolve it exactly once before both
         // planning and reading, so a browser cannot choose a stale/moved bundle
         // between those two phases.
-        const selectedModes = request.modes.length === 0 ? await this.resolveServerSelectedModes(projectRoot) : request.modes;
+        const serverSelectedModes = this.hasServerSelectedModes || request.modes.length === 0
+            ? await this.resolveServerSelectedModes(projectRoot)
+            : undefined;
+        const selectedModes = request.modes.length === 0 ? serverSelectedModes! : request.modes;
         const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes);
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
@@ -208,6 +220,22 @@ export class StudioDeploymentService {
                 error: describeSelectorModeMismatch(mismatchedSelectorMode.modeName, selectorModeName(mismatchedSelectorMode.librarySelector) as string),
                 plan,
             };
+        }
+
+        // The browser may name a mode, but it may not substitute an arbitrary
+        // bundle for the opened project's managed Outcome provenance.  Studio
+        // Server supplies the current compatible registry entries here; a
+        // supplied selector must exactly match one of them after canonical
+        // project-relative resolution.  The optional resolver keeps embedded
+        // callers backwards compatible while the production server always
+        // configures this authority.
+        if (request.modes.length > 0 && serverSelectedModes !== undefined) {
+            const unverified = selectedModes.find((mode) => !serverSelectedModes.some((current) =>
+                current.modeName === mode.modeName && this.sameCurrentManagedSelector(projectRoot, current.librarySelector, mode.librarySelector),
+            ));
+            if (unverified !== undefined) {
+                return {status: "load-error", error: describeUnverifiedDeploymentSelector(unverified.modeName), plan};
+            }
         }
 
         // Request-level blockers have precedence over an unreadable selector:
@@ -283,5 +311,11 @@ export class StudioDeploymentService {
         const jsonPaths = modes.map((mode) => mode.librarySelector).filter((selector): selector is Extract<OutcomeLibrarySelector, {kind: "json"}> => selector.kind === "json");
         const uniquePaths = Array.from(new Set(jsonPaths.map((selector) => path.resolve(projectRoot, selector.path))));
         return jsonPaths.length === modes.length && uniquePaths.length === 1 ? uniquePaths[0] : undefined;
+    }
+
+    private sameCurrentManagedSelector(projectRoot: string, current: OutcomeLibrarySelector, selected: OutcomeLibrarySelector): boolean {
+        if (current.kind !== "bundle" || selected.kind !== "bundle") return false;
+        return current.modeName === selected.modeName &&
+            path.resolve(projectRoot, current.bundleDir) === path.resolve(projectRoot, selected.bundleDir);
     }
 }

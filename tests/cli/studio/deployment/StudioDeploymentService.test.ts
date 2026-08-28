@@ -170,6 +170,36 @@ describe("StudioDeploymentService", () => {
         });
     });
 
+    it("rejects a caller-selected bundle that is not the opened project's current compatible managed Outcome Library", async () => {
+        const readFile = jest.fn(() => {
+            throw new Error("a rejected selector must not be read");
+        });
+        const service = new StudioDeploymentService(
+            undefined,
+            () => stubTarget(),
+            readFile,
+            identityRealpath,
+            undefined,
+            undefined,
+            buildModeIdsIncludingBase,
+            undefined,
+            "1.3.0",
+            () => Promise.resolve([
+                {modeName: "base", librarySelector: {kind: "bundle" as const, bundleDir: "outcomelibrary", modeName: "base"}},
+            ]),
+        );
+
+        const result = await service.run("/project", runRequest({
+            modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "stale-or-foreign", modeName: "base"}}],
+        }));
+
+        expect(result).toMatchObject({
+            status: "load-error",
+            error: expect.stringMatching(/current compatible managed Outcome Library/),
+        });
+        expect(readFile).not.toHaveBeenCalled();
+    });
+
     it("rejects a mode absent from the active project's own current build, without ever reading its library", async () => {
         const readFile = jest.fn(() => {
             throw new Error("library file should not be read for a rejected mode");

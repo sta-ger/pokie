@@ -396,6 +396,16 @@ describe("ArtifactBuilderRegistry", () => {
                 const packageProject = projectOf("tsPackage");
                 const tsPackageProject = {...packageProject, rootPath: packageDir};
 
+                // A package's managed Outcome sidecar is the one deliberate
+                // descendant output.  Its prepared plan, dry-run validation,
+                // and execution must all accept the exact same destination.
+                const sidecarDir = path.join(packageDir, "outcomelibrary");
+                const sidecarPlan = await registry.preparePlan(tsPackageProject, "outcomeLibrary", {destinationPath: sidecarDir});
+                expect(sidecarPlan.status).toBe("planned");
+                await expect(registry.validate("outcomeLibrary", tsPackageProject, sidecarPlan)).resolves.toBeUndefined();
+                await expect(registry.executePlan(sidecarPlan, tsPackageProject, sidecarDir)).resolves.toMatchObject({outputPath: sidecarDir});
+                expect(fs.existsSync(path.join(sidecarDir, "manifest.json"))).toBe(true);
+
                 await expect(registry.build("outcomeLibrary", tsPackageProject, outcomeDir)).resolves.toMatchObject({outputPath: outcomeDir});
                 expect(JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")).modes).toEqual([
                     expect.objectContaining({modeName: "base", betMode: "base", stake: 1}),
