@@ -27,8 +27,8 @@ const DEPLOYMENT_OUTPUT_DIRNAME = "deployment";
 
 export type StudioDeploymentRunResult =
     | {readonly status: "ok"; readonly view: StudioDeploymentRunView}
-    | {readonly status: "target-not-found"}
-    | {readonly status: "invalid-modes"; readonly error: string}
+    | {readonly status: "target-not-found"; readonly plan?: import("pokie").ArtifactConversionPlan}
+    | {readonly status: "invalid-modes"; readonly error: string; readonly plan?: import("pokie").ArtifactConversionPlan}
     | {readonly status: "load-error"; readonly error: string; readonly plan?: import("pokie").ArtifactConversionPlan};
 
 // Domain-language remediation for a request naming a mode absent/stale from the current build (see
@@ -156,16 +156,16 @@ export class StudioDeploymentService {
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
         if (target === undefined) {
-            return {status: "target-not-found"};
+            return {status: "target-not-found", ...(plan === undefined ? {} : {plan})};
         }
 
         const buildModeIds = await this.resolveBuildModeIds(projectRoot);
         if (buildModeIds === undefined) {
-            return {status: "invalid-modes", error: describeBuildModesUnavailableForDeployment()};
+            return {status: "invalid-modes", error: describeBuildModesUnavailableForDeployment(), ...(plan === undefined ? {} : {plan})};
         }
         const staleModeNames = request.modes.map((mode) => mode.modeName).filter((modeName) => !buildModeIds.includes(modeName));
         if (staleModeNames.length > 0) {
-            return {status: "invalid-modes", error: describeInvalidDeploymentModes(staleModeNames, buildModeIds)};
+            return {status: "invalid-modes", error: describeInvalidDeploymentModes(staleModeNames, buildModeIds), ...(plan === undefined ? {} : {plan})};
         }
 
         const mismatchedSelectorMode = request.modes.find((mode) => {
@@ -176,6 +176,7 @@ export class StudioDeploymentService {
             return {
                 status: "invalid-modes",
                 error: describeSelectorModeMismatch(mismatchedSelectorMode.modeName, selectorModeName(mismatchedSelectorMode.librarySelector) as string),
+                ...(plan === undefined ? {} : {plan}),
             };
         }
 
@@ -190,7 +191,7 @@ export class StudioDeploymentService {
                 this.realpath,
             );
             if (loaded.status === "load-error") {
-                return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.error}`};
+                return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.error}`, ...(plan === undefined ? {} : {plan})};
             }
             modes.push({modeName: mode.modeName, library: loaded.library});
         }

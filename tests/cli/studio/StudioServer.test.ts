@@ -5129,7 +5129,7 @@ describe("StudioServer", () => {
             });
 
             expect(status).toBe(404);
-            expect(body).toEqual({error: 'Unknown deployment target "does-not-exist".'});
+            expect(body).toEqual({status: "target-not-found", error: 'Unknown deployment target "does-not-exist".'});
         });
 
         it("returns 400, in domain language, when a mode isn't part of the active project's own current build — even for a request that never went through the Configure UI", async () => {

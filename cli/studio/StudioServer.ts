@@ -1721,11 +1721,11 @@ export class StudioServer implements StudioServerHandling {
 
         const result = await this.deploymentService.run(this.currentContext.projectRoot, validated);
         if (result.status === "target-not-found") {
-            this.sendJson(res, 404, {error: `Unknown deployment target "${validated.targetId}".`});
+            this.sendJson(res, 404, {status: result.status, error: `Unknown deployment target "${validated.targetId}".`, ...(result.plan === undefined ? {} : {plan: result.plan})});
             return;
         }
         if (result.status === "invalid-modes" || result.status === "load-error") {
-            this.sendJson(res, 400, {error: result.error});
+            this.sendJson(res, 400, result);
             return;
         }
         this.sendJson(res, 200, result.view);

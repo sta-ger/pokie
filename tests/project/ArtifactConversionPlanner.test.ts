@@ -36,6 +36,37 @@ describe("ArtifactConversionPlanner", () => {
         });
     });
 
+    it("reports selected reuse work rather than generation work for a Stake prerequisite", () => {
+        const source = {
+            ...project("tsPackage"),
+            configurationProvenance: {
+                configurationHash: "source-hash",
+                gameId: "slot",
+                gameVersion: "1.0.0",
+                manifestIdentity: "slot@1.0.0",
+                pokieVersion: "1.3.0",
+                generationSemantics: "exact" as const,
+            },
+        };
+        const plan = planner.plan(source, "stakeAdapter", {
+            managedOutcome: {
+                verified: true,
+                identity: {
+                    kind: "outcomeLibrary",
+                    canonicalLocation: "/managed/outcomes",
+                    capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+                    configurationProvenance: source.configurationProvenance,
+                },
+            },
+        });
+
+        expect(plan).toMatchObject({
+            status: "planned",
+            steps: [{kind: "reuseManagedOutcomeLibrary"}, {kind: "publish"}],
+            preflight: {estimatedWork: "publish"},
+        });
+    });
+
     it("publishes a selected managed reuse to the requested Outcome destination", () => {
         const reusable = planner.plan(project("tsPackage"), "outcomeLibrary", {
             destinationPath: "/exports/outcomes",

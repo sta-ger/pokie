@@ -31,6 +31,31 @@ describe("StudioStakeEngineExportService", () => {
     });
 
     describe("validate", () => {
+        it("returns an unavailable prepared plan before loading selectors", async () => {
+            const unavailable: ArtifactConversionPlan = {
+                ...plannedStakeExport,
+                status: "unavailable",
+                diagnostic: {
+                    code: "missing-capability",
+                    failedEdge: {from: "outcomeLibrary", to: "stakeAdapter"},
+                    message: "The source cannot export Stake.",
+                    recovery: "Open a compatible source.",
+                },
+            };
+            const planning = {prepare: jest.fn(() => Promise.resolve(unavailable))};
+            const service = new StudioStakeEngineExportService(
+                TEST_POKIE_VERSION,
+                undefined, undefined,
+                jest.fn(() => {
+                    throw new Error("selector must not load");
+                }),
+                undefined, undefined, undefined, undefined, planning,
+            );
+
+            await expect(service.validate(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}]))
+                .resolves.toMatchObject({status: "unavailable", plan: unavailable});
+        });
+
         it("returns the planner destination conflict before loading any selector", async () => {
             const conflict: ArtifactConversionPlan = {
                 ...plannedStakeExport,

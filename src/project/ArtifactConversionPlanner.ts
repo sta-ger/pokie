@@ -331,7 +331,37 @@ export class ArtifactConversionPlanner {
         steps: readonly ArtifactConversionStep[],
         managedOutcome?: ArtifactConversionPlan["managedOutcome"],
     ): ArtifactConversionPlan {
-        return {status: "planned", source, target, steps, preflight, ...(managedOutcome === undefined ? {} : {managedOutcome})};
+        // Preflight describes the selected path, rather than the most expensive
+        // path that could have reached this target.  In particular, a Stake
+        // plan which reuses a verified managed Outcome Library only reads that
+        // prerequisite and publishes the final export; it does not generate an
+        // Outcome Library again.
+        const estimatedWork = steps.reduce<ArtifactConversionPreflight["estimatedWork"]>(
+            (current, step) => this.moreExpensiveWork(current, step.estimatedWork),
+            "none",
+        );
+        return {
+            status: "planned",
+            source,
+            target,
+            steps,
+            preflight: {...preflight, estimatedWork},
+            ...(managedOutcome === undefined ? {} : {managedOutcome}),
+        };
+    }
+
+    private moreExpensiveWork(
+        left: ArtifactConversionPreflight["estimatedWork"],
+        right: ArtifactConversionStep["estimatedWork"],
+    ): ArtifactConversionPreflight["estimatedWork"] {
+        const rank: Readonly<Record<ArtifactConversionPreflight["estimatedWork"], number>> = {
+            none: 0,
+            read: 1,
+            publish: 2,
+            materialize: 3,
+            generate: 4,
+        };
+        return rank[left] >= rank[right] ? left : right;
     }
 
     private targetIdentity(kind: ArtifactTargetType, destinationPath?: string, generationSemantics?: "exact" | "boundedSample"): ArtifactIdentity {

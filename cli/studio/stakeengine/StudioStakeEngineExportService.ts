@@ -92,6 +92,16 @@ export class StudioStakeEngineExportService {
     // recomputed beyond what computeWeightedOutcomeLibraryHash already does for every other tab.
     public async validate(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): Promise<StudioStakeEngineExportValidateView> {
         const plan = await this.planning.prepare(projectRoot, "stakeAdapter");
+        // A validation result is part of the same planner-governed lifecycle
+        // as export.  Do not keep resolving selector-specific inputs after a
+        // prepared plan has already established that this project cannot
+        // produce the requested Stake artifact.
+        if (plan?.status === "conflict") {
+            return {status: "conflict", error: plan.diagnostic?.message ?? "Stake Engine export has a destination conflict.", plan};
+        }
+        if (plan?.status === "unavailable") {
+            return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
+        }
         const loaded = await this.loadModes(projectRoot, modes);
         if (loaded.status === "load-error") {
             return {...loaded, ...(plan === undefined ? {} : {plan})};
