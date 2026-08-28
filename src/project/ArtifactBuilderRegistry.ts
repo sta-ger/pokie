@@ -585,7 +585,17 @@ export class ArtifactBuilderRegistry {
 
     private applyDestinationPolicy(source: PokieProject, target: ArtifactTargetType, options: ArtifactConversionPlanningOptions, plan: ArtifactConversionPlan): ArtifactConversionPlan {
         if (plan.status !== "planned" || options.destinationPath === undefined) return plan;
-        const destination = this.checkDestination(target, options.destinationPath, source.rootPath);
+        // A runnable package's conventional managed Outcome Library lives at
+        // `<package>/outcomelibrary`. It is a generated sidecar, not a
+        // replacement for the package input, and Studio's server-owned
+        // generation lifecycle has always published there. Keep every other
+        // descendant blocked (including aliases), while retaining normal
+        // occupied-destination checks for this one canonical managed output.
+        const isCanonicalPackageManagedOutcome =
+            source.type === "tsPackage" &&
+            target === "outcomeLibrary" &&
+            path.resolve(options.destinationPath) === path.join(path.resolve(source.rootPath), "outcomelibrary");
+        const destination = this.checkDestination(target, options.destinationPath, isCanonicalPackageManagedOutcome ? undefined : source.rootPath);
         if (destination.available) return plan;
         return {
             ...plan,

@@ -14,8 +14,20 @@ import {
     WeightedOutcomeLibraryAnalyzer,
     WinEvaluationResult,
 } from "pokie";
-import {StudioDeploymentService} from "../../../../cli/studio/deployment/StudioDeploymentService.js";
+import {StudioDeploymentService as ConfiguredStudioDeploymentService} from "../../../../cli/studio/deployment/StudioDeploymentService.js";
 import type {ValidatedDeploymentRunRequest} from "../../../../cli/studio/deployment/validateDeploymentRunRequest.js";
+
+// Production construction must name Studio's configured version. These legacy
+// dependency-injection tests focus on delivery behavior, so their local adapter
+// supplies an explicit test version instead of relying on a service default.
+class StudioDeploymentService extends ConfiguredStudioDeploymentService {
+    constructor(...args: ConstructorParameters<typeof ConfiguredStudioDeploymentService>) {
+        if (args[8] === undefined) {
+            args[8] = "test-pokie-version";
+        }
+        super(...args);
+    }
+}
 
 class FakeBundleReader implements OutcomeLibraryBundleReading<string> {
     private readonly manifest: OutcomeLibraryBundleManifest;
@@ -111,6 +123,10 @@ const identityRealpath = (resolvedPath: string): string => resolvedPath;
 const buildModeIdsIncludingBase = () => Promise.resolve(["base"] as readonly string[] | undefined);
 
 describe("StudioDeploymentService", () => {
+    it("requires configured POKIE versioning for direct construction", () => {
+        expect(() => new ConfiguredStudioDeploymentService()).toThrow("requires the configured POKIE version");
+    });
+
     it("lists the injected target's own id/version/requirements/capabilities", () => {
         const target = stubTarget({requirements: {minPokieVersion: "1.0.0"}, capabilities: ["multiMode"]});
         const service = new StudioDeploymentService(undefined, () => target);

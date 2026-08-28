@@ -27,11 +27,6 @@ import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedAr
 import {createExternalOutcomeLibraryPlan} from "../artifacts/createExternalArtifactConversionPlan.js";
 
 const DEPLOYMENT_OUTPUT_DIRNAME = "deployment";
-// Direct embedding remains supported, but it must plan with the running POKIE
-// package version rather than the old synthetic 0.0.0 provenance. StudioServer
-// always supplies its configured version through withPokieVersion(); npm sets
-// this value for direct package consumers during normal installation/testing.
-const DEFAULT_DIRECT_POKIE_VERSION = process.env.npm_package_version ?? "1.3.0";
 const NO_SERVER_SELECTED_MODES: StudioDeploymentModeResolving = () => Promise.resolve([]);
 
 export type StudioDeploymentRunResult =
@@ -113,7 +108,7 @@ export class StudioDeploymentService {
         stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
         resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined> = resolveCurrentBuildModeIds,
         planning: StudioArtifactConversionPlanning | undefined = undefined,
-        pokieVersion = DEFAULT_DIRECT_POKIE_VERSION,
+        pokieVersion: string | undefined = undefined,
         resolveServerSelectedModes: StudioDeploymentModeResolving = NO_SERVER_SELECTED_MODES,
     ) {
         this.externalDeploymentService = externalDeploymentService;
@@ -123,6 +118,9 @@ export class StudioDeploymentService {
         this.bundleReader = bundleReader;
         this.stakeEngineImporter = stakeEngineImporter;
         this.resolveBuildModeIds = resolveBuildModeIds;
+        if (pokieVersion === undefined || pokieVersion.trim().length === 0) {
+            throw new Error("StudioDeploymentService requires the configured POKIE version. Use StudioDeploymentService.withPokieVersion() or pass pokieVersion explicitly.");
+        }
         this.planning = planning ?? new StudioArtifactConversionPlanningService(pokieVersion);
         this.resolveServerSelectedModes = resolveServerSelectedModes;
     }

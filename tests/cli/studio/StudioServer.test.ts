@@ -5026,7 +5026,7 @@ describe("StudioServer", () => {
         // that current-build-modes check supplies this stand-in instead, so it isn't accidentally
         // exercised as a side effect of an unrelated scenario.
         function deploymentServiceForBuildModes(modeIds: readonly string[] | undefined): StudioDeploymentService {
-            return new StudioDeploymentService(undefined, undefined, undefined, undefined, undefined, undefined, () => Promise.resolve(modeIds));
+            return new StudioDeploymentService(undefined, undefined, undefined, undefined, undefined, undefined, () => Promise.resolve(modeIds), undefined, "test-pokie-version");
         }
 
         // A target whose generator returns a structurally malformed result (content of the wrong
@@ -5046,7 +5046,7 @@ describe("StudioServer", () => {
                         ({artifacts: [{relativePath: "index.json", content: 12345 as any}], issues: []}) as ExternalArtifactGenerationResult,
                 },
             };
-            return new StudioDeploymentService(undefined, () => malformedTarget, undefined, undefined, undefined, undefined, () => Promise.resolve(["base"]));
+            return new StudioDeploymentService(undefined, () => malformedTarget, undefined, undefined, undefined, undefined, () => Promise.resolve(["base"]), undefined, "test-pokie-version");
         }
 
         it("returns 409 for GET targets, GET build-modes, and POST runs when there is no active project", async () => {
@@ -5168,7 +5168,7 @@ describe("StudioServer", () => {
             const readFile = jest.fn(() => {
                 throw new Error("library file should not be read when the current build isn't known");
             });
-            const service = new StudioDeploymentService(undefined, undefined, readFile, undefined, undefined, undefined, () => Promise.resolve(undefined));
+            const service = new StudioDeploymentService(undefined, undefined, readFile, undefined, undefined, undefined, () => Promise.resolve(undefined), undefined, "test-pokie-version");
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot, service);
             writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
 

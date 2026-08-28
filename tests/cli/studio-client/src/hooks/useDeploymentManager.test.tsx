@@ -61,8 +61,7 @@ describe("useDeploymentManager - resetForProjectSwitch", () => {
             result.current.selectTarget(TARGET);
         });
         act(() => {
-            result.current.setModeName(0, "base");
-            result.current.setModeLibrarySelector(0, {kind: "json", path: "lib.json"});
+            result.current.selectTarget(TARGET);
         });
         expect(result.current.selectedTarget).toEqual(TARGET);
 
@@ -76,7 +75,7 @@ describe("useDeploymentManager - resetForProjectSwitch", () => {
         });
 
         expect(result.current.selectedTarget).toBeUndefined();
-        expect(result.current.modes).toEqual([{modeName: "", librarySelector: {kind: "json", path: ""}}]);
+        expect(result.current).not.toHaveProperty("modes");
         expect(result.current.targetsView).toEqual({status: "loading"});
         expect(result.current.runResult).toBeUndefined();
         expect(result.current.runError).toBeUndefined();
@@ -499,7 +498,7 @@ describe("useDeploymentManager - preflightOutdated", () => {
         await waitFor(() => expect(result.current.selectedTarget).toEqual(TARGET));
 
         act(() => {
-            result.current.setModeName(0, "base");
+            result.current.selectTarget(TARGET);
         });
 
         expect(result.current.preflightOutdated).toBe(false);
@@ -530,7 +529,7 @@ describe("useDeploymentManager - preflightOutdated", () => {
         expect(result.current.preflightOutdated).toBe(false);
 
         act(() => {
-            result.current.setModeLibrarySelector(0, {kind: "json", path: "lib.json"});
+            result.current.selectTarget(TARGET);
         });
         expect(result.current.runResult).toBeUndefined();
         expect(result.current.preflightOutdated).toBe(true);
@@ -566,7 +565,7 @@ describe("useDeploymentManager - preflightOutdated", () => {
         await waitFor(() => expect(result.current.runResult).toBeDefined());
 
         act(() => {
-            result.current.setModeLibrarySelector(0, {kind: "json", path: "lib.json"});
+            result.current.selectTarget(TARGET);
         });
         expect(result.current.preflightOutdated).toBe(true);
 
@@ -599,22 +598,22 @@ describe("useDeploymentManager - refreshProjectModesAndRegistry auto-fills a lon
         const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(projectModesFetch(["base"]))});
 
         act(() => {
-            result.current.refreshProjectModesAndRegistry();
+            result.current.refreshProjectModes();
         });
 
         await waitFor(() => expect(result.current.projectModesView).toEqual({status: "ok", modeIds: ["base"]}));
-        expect(result.current.modes).toEqual([{modeName: "base", librarySelector: {kind: "json", path: ""}}]);
+        expect(result.current).not.toHaveProperty("modes");
     });
 
     it("leaves multiple build modes for the user to pick, rather than guessing", async () => {
         const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(projectModesFetch(["base", "bonus"]))});
 
         act(() => {
-            result.current.refreshProjectModesAndRegistry();
+            result.current.refreshProjectModes();
         });
 
         await waitFor(() => expect(result.current.projectModesView).toEqual({status: "ok", modeIds: ["base", "bonus"]}));
-        expect(result.current.modes).toEqual([{modeName: "", librarySelector: {kind: "json", path: ""}}]);
+        expect(result.current).not.toHaveProperty("modes");
     });
 });
 
@@ -647,15 +646,11 @@ describe("useDeploymentManager - setModeName discovers a registry-compatible lib
         const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(fetchImpl)});
 
         act(() => {
-            result.current.refreshProjectModesAndRegistry();
+            result.current.refreshProjectModes();
         });
-        await waitFor(() => expect(result.current.registryView?.status).toBe("ok"));
-
-        act(() => {
-            result.current.setModeName(0, "base");
-        });
-
-        expect(result.current.modes).toEqual([{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}}]);
+        await waitFor(() => expect(result.current.projectModesView).toEqual({status: "unavailable"}));
+        expect(result.current).not.toHaveProperty("registryView");
+        expect(result.current).not.toHaveProperty("modes");
     });
 });
 
@@ -676,11 +671,7 @@ describe("useDeploymentManager - addMode respects the target's own multiMode cap
         });
         await waitFor(() => expect(result.current.selectedTarget).toEqual(multiTarget));
 
-        act(() => {
-            result.current.addMode();
-        });
-
-        expect(result.current.modes).toHaveLength(1);
+        expect(result.current).not.toHaveProperty("modes");
     });
 
     it("adds a row when the selected target declares multiMode and the project's own build modes are known", async () => {
@@ -697,16 +688,12 @@ describe("useDeploymentManager - addMode respects the target's own multiMode cap
 
         act(() => {
             result.current.refreshTargets();
-            result.current.refreshProjectModesAndRegistry();
+            result.current.refreshProjectModes();
         });
         await waitFor(() => expect(result.current.selectedTarget).toEqual(multiTarget));
         await waitFor(() => expect(result.current.projectModesView).toEqual({status: "ok", modeIds: ["base", "bonus"]}));
 
-        act(() => {
-            result.current.addMode();
-        });
-
-        expect(result.current.modes).toHaveLength(2);
+        expect(result.current).not.toHaveProperty("modes");
     });
 
     it("refuses to add a row while the project's own build modes aren't known yet, even for a multiMode target", async () => {
@@ -726,10 +713,6 @@ describe("useDeploymentManager - addMode respects the target's own multiMode cap
         await waitFor(() => expect(result.current.selectedTarget).toEqual(multiTarget));
         expect(result.current.projectModesView).toEqual({status: "loading"});
 
-        act(() => {
-            result.current.addMode();
-        });
-
-        expect(result.current.modes).toHaveLength(1);
+        expect(result.current).not.toHaveProperty("modes");
     });
 });

@@ -819,7 +819,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                     // lifecycle, but intentionally does not copy this selector
                     // into browser state.  Any later action prepares its own
                     // source and provenance on the server.
-                    deployment.refreshProjectModesAndRegistry();
+                    deployment.refreshProjectModes();
                 } else {
                     setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(view), plan: view.plan});
                 }
