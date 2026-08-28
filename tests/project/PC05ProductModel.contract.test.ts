@@ -27,6 +27,15 @@ type InventoryItem = {
 
 type ArtifactReferenceField = "imports_from" | "exports_to" | "prerequisite_for";
 
+function referencesFor(item: InventoryItem, field: ArtifactReferenceField): string[] | undefined {
+    switch (field) {
+        case "imports_from": return item.imports_from;
+        case "exports_to": return item.exports_to;
+        case "prerequisite_for": return item.prerequisite_for;
+    }
+    return undefined;
+}
+
 type ProductModelRegistry = {
     schema_version: number;
     reference_fields: ArtifactReferenceField[];
@@ -127,7 +136,7 @@ describe("PC-05 product-model contract", () => {
         }
         for (const artifact of registry.artifact_kinds) {
             for (const field of registry.reference_fields) {
-                for (const reference of artifact[field] ?? []) {
+                for (const reference of referencesFor(artifact, field) ?? []) {
                     expect(ids).toContain(reference);
                 }
             }
