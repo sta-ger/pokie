@@ -1,6 +1,6 @@
 import {Command} from "commander";
 import path from "path";
-import {ArtifactBuilderRegistry, ArtifactConversionPlanner, ProjectResolving, ProjectTargetResolver} from "pokie";
+import {ArtifactConversionPlanner, ProjectResolving, ProjectTargetResolver} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {ParCommand} from "./ParCommand.js";
 import {StakeEngineCommand} from "./StakeEngineCommand.js";
@@ -21,7 +21,6 @@ export class ImportCommand implements CliCommandHandling {
     private readonly stake: StakeEngineCommand;
     private readonly resolveProject: ProjectResolving;
     private readonly planner: ArtifactConversionPlanner;
-    private readonly registry: ArtifactBuilderRegistry;
 
     constructor(
         pokieVersion: string,
@@ -32,7 +31,6 @@ export class ImportCommand implements CliCommandHandling {
         this.stake = new StakeEngineCommand(pokieVersion);
         this.resolveProject = resolveProject;
         this.planner = planner;
-        this.registry = new ArtifactBuilderRegistry(pokieVersion);
     }
 
     public getName(): string {
@@ -74,17 +72,6 @@ export class ImportCommand implements CliCommandHandling {
         const plan = this.planner.planImportOutput(source, outputKind, destination);
         if (plan.status !== "planned") {
             throw new Error(`${plan.diagnostic?.message ?? "This import source is unavailable."} Next: ${plan.diagnostic?.recovery ?? "resolve a supported exchange source and retry."}`);
-        }
-        // Import output operations use the same alias/no-overwrite policy as
-        // artifact publication.  This is deliberately checked from the
-        // prepared source and output rather than left to a format writer.
-        const destinationCheck = this.registry.checkDestination(
-            outputKind === "blueprint" ? "parWorkbook" : "outcomeLibrary",
-            destination,
-            source.rootPath,
-        );
-        if (!destinationCheck.available) {
-            throw new Error(destinationCheck.message ?? `The import destination "${destination}" is unavailable.`);
         }
         if (source.type === "parWorkbook") {
             return this.par.runPreparedImport(source, plan, options.input, destination, options.format === "json" ? "json" : "summary");

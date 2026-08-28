@@ -120,8 +120,17 @@ export type ArtifactImportOutputPlan = {
 export type ArtifactImportOutputExecution<ReadResult, PublishedResult> = {
     readonly read: () => Promise<ReadResult> | ReadResult;
     readonly canPublish: (result: ReadResult) => boolean;
-    readonly beforePublish: () => void;
+    /** The format-specific physical destination probe, sequenced by the prepared operation. */
+    readonly assertDestinationAvailable?: () => Promise<void> | void;
+    /** @deprecated Use assertDestinationAvailable for new adapters. */
+    readonly beforePublish?: () => Promise<void> | void;
     readonly publish: (result: ReadResult) => Promise<PublishedResult> | PublishedResult;
+    /** Registration is part of successful publication, never a command-side afterthought. */
+    readonly register?: (published: PublishedResult) => Promise<void> | void;
+    /** Undo only publication allocated by this operation after a terminal failure. */
+    readonly rollback?: (published: PublishedResult) => Promise<void> | void;
+    /** Cancellation is checked before reading, publishing, and registration. */
+    readonly signal?: AbortSignal;
 };
 
 export type ArtifactImportOutputExecutionResult<ReadResult, PublishedResult> = {
@@ -129,6 +138,10 @@ export type ArtifactImportOutputExecutionResult<ReadResult, PublishedResult> = {
     readonly published: boolean;
     readonly publication?: PublishedResult;
 };
+
+function assertImportOperationNotCancelled(signal: AbortSignal | undefined): void {
+    if (signal?.aborted) throw new Error("The prepared import was cancelled before durable publication.");
+}
 
 // Presentation-only compatibility wording for callers that historically showed the product matrix.  It is
 // derived from a planner result (rather than used to choose an edge), so execution and preflight always retain
@@ -351,14 +364,29 @@ export class ArtifactConversionPlanner {
         execution: ArtifactImportOutputExecution<ReadResult, PublishedResult>,
     ): Promise<ArtifactImportOutputExecutionResult<ReadResult, PublishedResult>> {
         this.assertImportOutputPlanCurrent(plan, source, destinationPath);
+        assertImportOperationNotCancelled(execution.signal);
         const read = await execution.read();
+        assertImportOperationNotCancelled(execution.signal);
         if (!execution.canPublish(read)) return {read, published: false};
         // The destination policy belongs at the durable-publication boundary,
         // after format diagnostics but before any writer allocates output.
         this.assertImportOutputPlanCurrent(plan, source, destinationPath);
-        execution.beforePublish();
+        await execution.assertDestinationAvailable?.();
+        // Compatibility for the initial planner boundary.  The planner still
+        // owns ordering and current-plan verification around this hook.
+        await execution.beforePublish?.();
         this.assertImportOutputPlanCurrent(plan, source, destinationPath);
-        return {read, published: true, publication: await execution.publish(read)};
+        assertImportOperationNotCancelled(execution.signal);
+        let publication: PublishedResult | undefined;
+        try {
+            publication = await execution.publish(read);
+            assertImportOperationNotCancelled(execution.signal);
+            await execution.register?.(publication);
+            return {read, published: true, publication};
+        } catch (error) {
+            if (publication !== undefined) await execution.rollback?.(publication);
+            throw error;
+        }
     }
 
     public planIdentity(source: ArtifactIdentity, targetKind: ArtifactTargetType, options: ArtifactConversionPlanningOptions = {}): ArtifactConversionPlan {

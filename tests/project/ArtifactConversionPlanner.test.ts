@@ -229,7 +229,9 @@ describe("ArtifactConversionPlanner", () => {
                 return {valid: true};
             },
             canPublish: (read) => read.valid,
-            beforePublish: () => events.push("destination"),
+            beforePublish: () => {
+                events.push("destination");
+            },
             publish: () => {
                 events.push("publish");
                 return "published";
@@ -254,5 +256,48 @@ describe("ArtifactConversionPlanner", () => {
 
         expect(result).toEqual({read: {valid: false}, published: false});
         expect(publish).not.toHaveBeenCalled();
+    });
+
+    it("rolls back a published import when planner-owned registration fails", async () => {
+        const source = project("stakeAdapter");
+        const plan = planner.planImportOutput(source, "outcomeLibrary", "/imports/outcomes");
+        const events: string[] = [];
+
+        await expect(planner.executeImportOutputPlan(plan, source, "/imports/outcomes", {
+            read: () => ({valid: true}),
+            canPublish: (read) => read.valid,
+            assertDestinationAvailable: () => {
+                events.push("destination");
+            },
+            publish: () => {
+                events.push("publish");
+                return "published";
+            },
+            register: () => {
+                events.push("register");
+                throw new Error("registration failed");
+            },
+            rollback: (published) => {
+                events.push(`rollback:${published}`);
+            },
+        })).rejects.toThrow("registration failed");
+
+        expect(events).toEqual(["destination", "publish", "register", "rollback:published"]);
+    });
+
+    it("does not read or publish a cancelled prepared import", async () => {
+        const source = project("parWorkbook");
+        const plan = planner.planImportOutput(source, "blueprint", "/imports/slot.blueprint.json");
+        const controller = new AbortController();
+        const read = jest.fn();
+        controller.abort();
+
+        await expect(planner.executeImportOutputPlan(plan, source, "/imports/slot.blueprint.json", {
+            read,
+            canPublish: () => true,
+            publish: jest.fn(),
+            signal: controller.signal,
+        })).rejects.toThrow(/cancelled/i);
+        expect(read).not.toHaveBeenCalled();
     });
 });

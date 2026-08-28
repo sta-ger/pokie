@@ -245,6 +245,14 @@ export class StudioDeploymentService {
         if (plan.status !== "planned") {
             return {status: "load-error", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library deployment is unavailable.", plan};
         }
+        // This class is also constructed directly by embedded callers.  A
+        // bundle is not trusted merely because it is syntactically readable:
+        // every explicit selector needs the server-owned compatible managed
+        // outcome set as its provenance authority.  Raw selectors still take
+        // the unrecognised-source planner boundary above.
+        if (request.modes.length > 0 && serverSelectedModes === undefined) {
+            return {status: "load-error", error: describeUnverifiedDeploymentSelector(selectedModes[0].modeName), plan};
+        }
         const selectedSource = this.selectedBundleSource(projectRoot, selectedModes);
         const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "outcomeLibrary");
         if (planDrift !== undefined) {

@@ -239,7 +239,7 @@ export class ParCommand implements CliCommandHandling {
         const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, outPath, {
             read: () => this.importer.importFromFile(inputPath),
             canPublish: (result) => result.issues.every((issue) => issue.severity !== "error"),
-            beforePublish: () => this.assertDestinationIsAvailable(inputPath, outPath),
+            assertDestinationAvailable: () => this.assertDestinationIsAvailable(inputPath, outPath),
             publish: (result) => this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`),
         });
         return this.reportAndPublishImport(inputPath, outPath, format, execution.read, execution.published, execution.publication);

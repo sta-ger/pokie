@@ -471,7 +471,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, options.outDir, {
             read: () => this.importer.importFromDirectory(options.stakeDir),
             canPublish: (result) => result.issues.every((issue) => issue.severity !== "error"),
-            beforePublish: () => {
+            assertDestinationAvailable: () => {
                 const destination = new ArtifactBuilderRegistry().checkDestination("outcomeLibrary", options.outDir, prepared.source.rootPath);
                 if (!destination.available) throw new Error(destination.message ?? `The import destination "${options.outDir}" is unavailable.`);
             },
