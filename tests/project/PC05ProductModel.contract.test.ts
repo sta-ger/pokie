@@ -34,19 +34,6 @@ type PersistedPublicOutputContract = {
     persistence_trigger: string;
 };
 
-// This is deliberately the complete public write inventory, rather than a
-// hand-picked artifact subset.  A new public --out/--resume writer must add a
-// contract row and an artifact lifecycle, or this test fails.
-const PERSISTED_PUBLIC_OUTPUT_IDS = [
-    "create-blueprint", "edit-blueprint", "reel-blueprint", "par-import-blueprint", "par-export-workbook",
-    "build-package", "build-outcome-bundle", "build-stake", "build-par",
-    "export-outcome-bundle", "export-stake", "export-par", "stake-import-library",
-    "generate-raw-library", "generate-resume-checkpoint", "validate-report",
-    "simulate-report", "simulate-report-set", "report-simulation-json", "report-simulation-report-set-json", "report-simulation-rendering", "report-outcome-source-analysis",
-    "diff-simulation", "diff-outcome-source", "outcome-source-diff", "stake-analysis", "stake-diff",
-    "replay-descriptor", "certification-bundle", "fairness-seed-commitment", "fairness-commitment", "fairness-proof",
-];
-
 const PRODUCT_MODEL_DIR = path.join(__dirname, "..", "..", "docs", "evidence", "phase7-product-coherence", "pc-05-product-model");
 const REGISTRY_PATH = path.join(PRODUCT_MODEL_DIR, "artifact-registry.json");
 const MATRIX_PATH = path.join(PRODUCT_MODEL_DIR, "CAPABILITY-MATRIX.md");
@@ -75,6 +62,48 @@ function acceptanceOwnershipRow(productModel: string, step: string): string {
     return row;
 }
 
+type CommanderSurface = {
+    options: Array<{flags: string}>;
+    commands: CommanderSurface[];
+    name(): string;
+};
+
+type PublicPersistenceSurface = {route: string; option: "--out" | "--resume"};
+
+// This starts with the real public Commander tree, rather than registry ids or
+// command-file names. Any newly registered public leaf that exposes --out or
+// --resume has to be represented by a ledger producer before this test passes.
+function publicPersistenceSurfaces(): PublicPersistenceSurface[] {
+    const roots = registerCliCommands({
+        version: "test-version",
+        pokiePackageRoot: "/fake/pokie/root",
+        clientRoot: "/fake/pokie/root/dist/cli/client",
+        studioRoot: "/fake/pokie/root/dist/cli/studio-client",
+    }).filter((command) => command.getName() !== "__studio").map((command) => command.getCommanderCommand() as unknown as CommanderSurface);
+    const surfaces: PublicPersistenceSurface[] = [];
+    const visit = (command: CommanderSurface, parentRoute: string[]): void => {
+        const route = [...parentRoute, command.name()].join(" ");
+        for (const option of command.options) {
+            for (const persistenceOption of ["--out", "--resume"] as const) {
+                if (option.flags.includes(persistenceOption)) {
+                    surfaces.push({route, option: persistenceOption});
+                }
+            }
+        }
+        command.commands.forEach((child) => visit(child, [...parentRoute, command.name()]));
+    };
+    roots.forEach((root) => visit(root, []));
+    return surfaces;
+}
+
+function operationOwner(matrix: string, operation: string): string {
+    const row = matrix.split("\n").find((line) => line.startsWith(`| ${operation} |`));
+    if (row === undefined) throw new Error(`Missing capability-matrix operation ${operation}.`);
+    const owner = row.split("|")[8]?.trim();
+    if (owner === undefined || owner.length === 0) throw new Error(`Missing owner for ${operation}.`);
+    return owner;
+}
+
 describe("PC-05 product-model contract", () => {
     it("closes the artifact graph and inventories raw generation, portable rounds, Stake-import companions and the three fairness artifacts", () => {
         const registry = readRegistry();
@@ -98,6 +127,7 @@ describe("PC-05 product-model contract", () => {
         expect(ids).toEqual(
             expect.arrayContaining([
                 "blueprint",
+                "studioSymbolArtworkPng",
                 "tsPackage",
                 "parWorkbook",
                 "weightedOutcomeLibraryJson",
@@ -161,6 +191,18 @@ describe("PC-05 product-model contract", () => {
             }),
         );
         expect(rawLibrary?.recovery).toContain("pokie export <config.json> --to outcomes --out <dir>");
+        expect(registry.artifact_kinds.find((item) => item.id === "studioSymbolArtworkPng")).toEqual(
+            expect.objectContaining({
+                "label": "Studio Symbol Artwork PNG",
+                "shape": expect.stringContaining("separate"),
+                "created_by": expect.arrayContaining(["studio:blueprint-symbol-artwork-import (temporary staging)", "studio:blueprint-save/materializeSymbolArtwork"]),
+                "recognized_by": expect.arrayContaining(["StudioBlueprintService:resolveSymbolArtwork", "studio:editor SymbolPresentation", "studio:player CanonicalPlayerView"]),
+                provenance: expect.stringContaining("not embedded"),
+                stale: expect.stringContaining("session-local"),
+                compatibility: expect.stringContaining("assets/symbols/"),
+                recovery: expect.stringContaining("404"),
+            }),
+        );
         for (const artifactId of [
             "weightedOutcomeLibraryJson",
             "outcomeLibraryGenerationCheckpoint",
@@ -314,8 +356,19 @@ describe("PC-05 product-model contract", () => {
         expect(outcomeLibraryCommand).toContain("private async executeBuild(configPath: string, outDir: string)");
         const contracts = registry.persisted_public_output_contracts;
         expect(new Set(contracts.map((contract) => contract.id)).size).toBe(contracts.length);
-        expect(contracts.map((contract) => contract.id)).toEqual(expect.arrayContaining(PERSISTED_PUBLIC_OUTPUT_IDS));
-        expect(contracts).toHaveLength(PERSISTED_PUBLIC_OUTPUT_IDS.length);
+        const persistenceSurfaces = publicPersistenceSurfaces();
+        expect(persistenceSurfaces).toEqual(expect.arrayContaining([
+            {route: "generate", option: "--out"},
+            {route: "generate", option: "--resume"},
+            {route: "import", option: "--out"},
+            {route: "par import", option: "--out"},
+            {route: "fairness reveal", option: "--out"},
+        ]));
+        for (const surface of persistenceSurfaces) {
+            expect(
+                contracts.some((contract) => contract.producer.startsWith(`cli:${surface.route}`) && contract.producer.includes(surface.option)),
+            ).toBe(true);
+        }
         for (const contract of contracts) {
             expect(contract.persistence_trigger).toEqual(expect.any(String));
             const artifact = registry.artifact_kinds.find((item) => item.id === contract.artifact_id);
@@ -341,6 +394,30 @@ describe("PC-05 product-model contract", () => {
                 expect(source).toContain("--resume");
             }
         }
+    });
+
+    it("traces Studio symbol artwork from staged import through Blueprint save to contained editor and player serving", () => {
+        const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
+        const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
+        const service = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "blueprint", "StudioBlueprintService.ts"), "utf-8");
+        const server = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "StudioServer.ts"), "utf-8");
+        const presentation = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio-client", "src", "components", "common", "SymbolPresentation.tsx"), "utf-8");
+        const player = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio-client", "src", "components", "common", "CanonicalPlayerView.tsx"), "utf-8");
+
+        expect(service).toContain("public importSymbolArtwork(sourcePath: string)");
+        expect(service).toContain("this.stagedArtwork.set(reference, staged)");
+        expect(service).toContain("this.materializeSymbolArtwork(resolved, blueprint)");
+        expect(service).toContain("this.materializeSymbolArtwork(destination.targetPath, blueprint)");
+        expect(service).toContain(["return normalized.startsWith(`", String.fromCharCode(36, 123), "SYMBOL_ARTWORK_DIRECTORY}/`) && !normalized.split(\"/\").includes(\"..\")"].join(""));
+        expect(server).toContain('"/api/home/blueprints/symbol-artwork/import"');
+        expect(server).toContain('"/api/project/symbol-artwork"');
+        expect(server).toContain("if (!Object.values(artwork).includes(reference))");
+        expect(presentation).toContain("/api/project/symbol-artwork?path=");
+        expect(player).toContain("/api/project/symbol-artwork?path=");
+        expect(matrix).toContain("| Attach Studio symbol artwork |");
+        expect(matrix).toContain("not embedded Blueprint JSON");
+        expect(productModel).toContain("Studio's optional symbol artwork follows a separate companion path");
+        expect(productModel).toContain("The Blueprint remains the editable game-model source and stores only");
     });
 
     it("keeps frozen findings while assigning every closure surface to its roadmap-valid owner", () => {
@@ -391,5 +468,30 @@ describe("PC-05 product-model contract", () => {
         expect(remediatedImportGrammar).toContain("previously remediated");
         expect(remediatedImportGrammar).toContain("afb072d4523b65d04166b4ac53e1ff34f3dfd3bf");
         expect(remediatedImportGrammar).toContain("no PC-06 closure work");
+    });
+
+    it("does not assign baseline operations to unrelated or nonexistent remediation sweeps", () => {
+        const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
+        expect(operationOwner(matrix, "Create an editable game design")).toContain("No open mismatch");
+        expect(operationOwner(matrix, "Scaffold a ready-to-run project")).toContain("No open mismatch");
+        expect(operationOwner(matrix, "Edit a design")).toContain("No open mismatch");
+        expect(operationOwner(matrix, "Build a runnable package")).toContain("PC-07 package build sweep");
+        expect(operationOwner(matrix, "Simulate")).toBe("PC-08 runtime/source semantics sweep");
+        expect(operationOwner(matrix, "Deploy an external format")).toContain("No open mismatch");
+        expect(operationOwner(matrix, "Generate/inspect reel strips")).toContain("No open mismatch");
+        for (const operation of [
+            "Create an editable game design",
+            "Scaffold a ready-to-run project",
+            "Edit a design",
+            "Build a runnable package",
+            "Simulate",
+            "Deploy an external format",
+            "Generate/inspect reel strips",
+        ]) {
+            const owner = operationOwner(matrix, operation);
+            expect(owner).not.toContain("PC-09 docs/surface sweep");
+            expect(owner).not.toContain("PC-10 Studio recovery sweep");
+            expect(owner).not.toContain("PC-08 Studio/public parity decision");
+        }
     });
 });

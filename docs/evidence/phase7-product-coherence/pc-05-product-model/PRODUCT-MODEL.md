@@ -41,6 +41,29 @@ Blueprint ──build──> TypeScript package ──run──> session / Round
                                                                              └──> Stake Engine export ──import──> Outcome Library
 ```
 
+Studio's optional symbol artwork follows a separate companion path, rather
+than the JSON arrows above:
+
+```text
+user PNG ──Studio import/stage──> temporary PNG ──Blueprint Save──> assets/symbols/*.png
+                                               │                         │
+                                               └──Blueprint.symbolArtwork reference──> editor/player image route
+```
+
+The Blueprint remains the editable game-model source and stores only the
+project-relative `assets/symbols/...png` reference. `importSymbolArtwork()`
+requires a regular PNG with the PNG signature and a size at or below 5 MB,
+then stages it outside the Blueprint. `materializeSymbolArtwork()` runs on
+both ordinary and managed saves, copying only safe `assets/symbols/` paths
+inside the Blueprint's directory. On reopening, `/api/project/symbol-artwork`
+first loads the Blueprint's declared map and serves only a declared, contained,
+valid PNG. A missing staging file, moved/deleted/corrupt companion or unsafe
+reference never becomes a filesystem browse: the endpoint returns no image or
+404 and editor/player retain the symbol id. The author recovers by importing a
+replacement and saving, or by removing the stale reference. This is a durable,
+user-visible presentation companion with picker-path provenance; it is not
+embedded Blueprint JSON and is not a prerequisite for game logic.
+
 `pokie generate` is deliberately the first, raw stage: its `--out` value is a
 single `WeightedOutcomeLibrary` JSON file, and a cancelled run can persist an
 `ExactEnumerationCheckpoint` only when `--resume` was supplied.  Neither file
@@ -116,6 +139,7 @@ artifact with the applicable lifecycle contract.
 | Runtime-source semantic duplication | The same verb means runtime execution for one source and pre-generated selection for another. | PC-05-DUP-02: simulation/replay/serve. | PC-06 |
 | Validation surface asymmetry | Clients expose different portions of a target-specific validation lifecycle. | PC-05-DUP-03A/B: Blueprint/library/Stake/certification validation. | PC-06 / PC-11 |
 | Documentation/contract drift | Docs, defaults, presentation and shared resolver are maintained separately. | PC-05-DOC-01A: public CLI/help/generated-action prerequisite claims; PC-05-DOC-01B: WASM boundary. | PC-15 / PC-13 |
+| Persisted companion lifecycle omission | A user-visible file beside a source document is omitted because its reference is stored in the source JSON. | PC-05 inventory correction: Studio Symbol Artwork PNG is staged, materialized beside Blueprint, and consumed through a contained declared-reference route. No open product mismatch. | Closed by PC-05 model inventory |
 
 ## Acceptance ownership
 
