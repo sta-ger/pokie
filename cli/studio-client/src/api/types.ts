@@ -1268,7 +1268,7 @@ export type StudioArtifactTargetView = {
     state: "supported" | "diagnostic-required" | "hidden/unadvertised";
     diagnostic?: string;
     unsupportedNotes: string[];
-    plan?: StudioArtifactConversionPlan;
+    plan: StudioArtifactConversionPlan;
 };
 
 // POST /api/project/artifacts/build's own DTO — see cli/studio/artifacts/StudioArtifactBuildView.ts's own
@@ -1330,4 +1330,4 @@ export type StudioArtifactPreviewView =
           message: string;
           plan: StudioArtifactConversionPlan;
       }
-    | {status: "error"; message: string};
+    | {status: "error"; message: string; plan: StudioArtifactConversionPlan};

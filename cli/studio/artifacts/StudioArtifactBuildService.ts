@@ -96,7 +96,9 @@ export class StudioArtifactBuildService {
         const project = await this.resolveProject.resolve(projectRoot);
         return Promise.all(this.registry.listTargets().map(async (target) => {
             const descriptor = this.registry.describe(target);
-            const plan = project === undefined ? undefined : await this.plan(project, target);
+            const plan = project === undefined
+                ? createUnresolvedRuntimePlan(projectRoot, target)
+                : await this.plan(project, target);
             const plannerFields = this.targetPlannerFields(plan);
             return {
                 target,
@@ -116,7 +118,11 @@ export class StudioArtifactBuildService {
     public async preview(projectRoot: string, target: ArtifactTargetType, outDir?: string): Promise<StudioArtifactPreviewView> {
         const resolved = await this.resolveForTarget(projectRoot, target, outDir);
         if (resolved === undefined) {
-            return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`};
+            return {
+                status: "error",
+                message: `"${projectRoot}" was not recognized as a POKIE project.`,
+                plan: createUnresolvedRuntimePlan(projectRoot, target, outDir),
+            };
         }
         const {project, destination} = resolved;
         const destinationKind = destinationKindFor(target);
@@ -325,8 +331,7 @@ export class StudioArtifactBuildService {
             : describeArtifactConversionPlanDiagnostic(plan) ?? `${diagnostic.message} Next: ${diagnostic.recovery}`;
     }
 
-    private targetPlannerFields(plan: ArtifactConversionPlan | undefined): {readonly diagnostic?: string; readonly plan?: ArtifactConversionPlan} {
-        if (plan === undefined) return {};
+    private targetPlannerFields(plan: ArtifactConversionPlan): {readonly diagnostic?: string; readonly plan: ArtifactConversionPlan} {
         if (plan.status === "unavailable") return {diagnostic: this.describePlanDiagnostic(plan), plan};
         return {plan};
     }

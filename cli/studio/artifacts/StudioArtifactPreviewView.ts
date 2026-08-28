@@ -26,4 +26,4 @@ export type StudioArtifactPreviewView =
           readonly message: string;
           readonly plan: ArtifactConversionPlan;
       }
-    | {readonly status: "error"; readonly message: string};
+    | {readonly status: "error"; readonly message: string; readonly plan: ArtifactConversionPlan};

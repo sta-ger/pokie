@@ -126,6 +126,20 @@ describe("ArtifactBuilderRegistry", () => {
             expect(builder.calls).toBe(0);
         });
 
+        it("rejects a fabricated graph even when its source and destination identities match", async () => {
+            const builder = fakeBuilder("tsPackage");
+            const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
+            const source = projectOf("blueprint");
+            const plan = await withBuilder.preparePlan(source, "tsPackage", {destinationPath: "/out/prepared-game"});
+            const fabricated = {
+                ...plan,
+                steps: [],
+            } as ArtifactConversionPlan;
+
+            await expect(withBuilder.executePlan(fabricated, source, "/out/prepared-game")).rejects.toThrow(/graph is stale or invalid/);
+            expect(builder.calls).toBe(0);
+        });
+
         it("rejects validation against a different target than the prepared plan", async () => {
             const builder = fakeBuilder("tsPackage");
             const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));

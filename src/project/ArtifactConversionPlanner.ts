@@ -222,7 +222,7 @@ export class ArtifactConversionPlanner {
 
     public planIdentity(source: ArtifactIdentity, targetKind: ArtifactTargetType, options: ArtifactConversionPlanningOptions = {}): ArtifactConversionPlan {
         const sourceKind = source.kind as ProjectType;
-        const target = this.targetIdentity(targetKind, options.destinationPath, options.generationSemantics);
+        const target = this.targetIdentity(targetKind, options.destinationPath, options.generationSemantics, options.sampleCount, options.sampleSeed);
         const preflight = this.preflight(targetKind, sourceKind, options.generationSemantics);
         const unavailable = (code: ArtifactConversionDiagnostic["code"], message: string, recovery: string): ArtifactConversionPlan => ({
             status: "unavailable",
@@ -337,7 +337,7 @@ export class ArtifactConversionPlanner {
         preflight: ArtifactConversionPreflight,
         options: ArtifactConversionPlanningOptions,
     ): ArtifactConversionPlan {
-        const outcome = this.targetIdentity("outcomeLibrary", undefined, options.generationSemantics);
+        const outcome = this.targetIdentity("outcomeLibrary", undefined, options.generationSemantics, options.sampleCount, options.sampleSeed);
         // The requested destination belongs to the final Stake publication.
         // An intermediate reused Outcome Library must never be republished to
         // that Stake directory before the selected Stake publish executes.
@@ -392,8 +392,30 @@ export class ArtifactConversionPlanner {
         return rank[left] >= rank[right] ? left : right;
     }
 
-    private targetIdentity(kind: ArtifactTargetType, destinationPath?: string, generationSemantics?: "exact" | "boundedSample"): ArtifactTargetIdentity {
-        return {kind, ...(destinationPath === undefined ? {} : {canonicalLocation: path.resolve(destinationPath)}), capabilities: TARGET_CAPABILITIES[kind], ...(generationSemantics === undefined ? {} : {configurationProvenance: {generationSemantics}})};
+    private targetIdentity(
+        kind: ArtifactTargetType,
+        destinationPath?: string,
+        generationSemantics?: "exact" | "boundedSample",
+        sampleCount?: bigint | string,
+        sampleSeed?: string,
+    ): ArtifactTargetIdentity {
+        // The target is an output identity, not merely a display label.  A
+        // bounded request with a different count or seed must therefore be a
+        // different prepared output, even before a managed candidate is
+        // considered or execution starts.
+        const configurationProvenance = generationSemantics === undefined
+            ? undefined
+            : {
+                generationSemantics,
+                ...(sampleCount === undefined ? {} : {sampleCount: String(sampleCount)}),
+                ...(sampleSeed === undefined ? {} : {sampleSeed}),
+            };
+        return {
+            kind,
+            ...(destinationPath === undefined ? {} : {canonicalLocation: path.resolve(destinationPath)}),
+            capabilities: TARGET_CAPABILITIES[kind],
+            ...(configurationProvenance === undefined ? {} : {configurationProvenance}),
+        };
     }
 
     private preflight(target: ArtifactTargetType, source: ProjectType, _generationSemantics?: "exact" | "boundedSample"): ArtifactConversionPreflight {

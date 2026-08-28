@@ -193,7 +193,15 @@ export class StudioOutcomeLibraryGenerateService {
         if (plan.status === "unavailable") {
             return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
         }
-        const planDrift = describePreparedArtifactPlanDrift(plan, projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration.generationSemantics);
+        const planDrift = describePreparedArtifactPlanDrift(
+            plan,
+            projectRoot,
+            "outcomeLibrary",
+            resolvedOutDir.resolvedPath,
+            requestedGeneration.generationSemantics,
+            request.bounded?.sampleSize,
+            request.bounded?.seed,
+        );
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
         }

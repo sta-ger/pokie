@@ -168,7 +168,9 @@ type ArtifactPreviewRunView =
     | {status: "ok"; result: Extract<StudioArtifactPreviewView, {status: "ok"}>}
     | {status: "unsupported"; message: string; plan: StudioArtifactConversionPlan}
     | {status: "conflict"; result: Extract<StudioArtifactPreviewView, {status: "conflict"}>}
-    | {status: "error"; message: string};
+    // Transport failures have no server terminal result. Every server preview
+    // error still carries its mandatory plan through toArtifactPreviewRunView.
+    | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
 function toArtifactPreviewRunView(view: StudioArtifactPreviewView): ArtifactPreviewRunView {
     if (view.status === "ok") {
@@ -179,7 +181,7 @@ function toArtifactPreviewRunView(view: StudioArtifactPreviewView): ArtifactPrev
     }
     return view.status === "unsupported"
         ? {status: "unsupported", message: view.message, plan: view.plan}
-        : {status: "error", message: view.message};
+        : {status: "error", message: view.message, plan: view.plan};
 }
 
 function TargetCard({

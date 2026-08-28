@@ -122,6 +122,21 @@ describe("ArtifactConversionPlanner", () => {
         });
     });
 
+    it("binds bounded sample count and seed into the requested output identity", () => {
+        const plan = planner.plan(project("blueprint"), "outcomeLibrary", {
+            destinationPath: "/exports/bounded-outcomes",
+            generationSemantics: "boundedSample",
+            sampleCount: BigInt(100),
+            sampleSeed: "seed-a",
+        });
+
+        expect(plan.target.configurationProvenance).toEqual({
+            generationSemantics: "boundedSample",
+            sampleCount: "100",
+            sampleSeed: "seed-a",
+        });
+    });
+
     it("reports the exact unsupported boundary rather than a generic source matrix", () => {
         const outcomeToPackage = planner.plan(project("outcomeLibrary"), "tsPackage");
         const wasm = planner.plan(project("wasm"), "outcomeLibrary");

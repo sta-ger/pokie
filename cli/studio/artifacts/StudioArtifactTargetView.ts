@@ -13,6 +13,6 @@ export type StudioArtifactTargetView = {
     readonly diagnostic?: string;
     // The server's canonical planner payload. The client presents it, but never recreates an edge from
     // source/target labels or an old matrix row.
-    readonly plan?: ArtifactConversionPlan;
+    readonly plan: ArtifactConversionPlan;
     readonly unsupportedNotes: readonly string[];
 };

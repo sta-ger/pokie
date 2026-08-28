@@ -122,6 +122,11 @@ describe("StudioArtifactBuildService", () => {
                 throw new Error("expected error");
             }
             expect(result.message).toContain("was not recognized as a POKIE project");
+            expect(result.plan).toMatchObject({
+                status: "unavailable",
+                target: {kind: "tsPackage"},
+                diagnostic: {code: "unrecognized-source"},
+            });
         });
 
         it("previews Blueprint -> PAR Workbook with its real file destination", async () => {
@@ -243,6 +248,11 @@ describe("StudioArtifactBuildService", () => {
                 throw new Error("expected error");
             }
             expect(result.message).toContain("was not recognized as a POKIE project");
+            expect(result.plan).toMatchObject({
+                status: "unavailable",
+                target: {kind: "tsPackage"},
+                diagnostic: {code: "unrecognized-source"},
+            });
         });
 
         it("reports a plain error (not a crash) for an invalid blueprint", async () => {

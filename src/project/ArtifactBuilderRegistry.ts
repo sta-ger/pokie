@@ -322,6 +322,7 @@ export class ArtifactBuilderRegistry {
         const target = plan.target.kind as ArtifactTargetType;
         await this.assertPlanSourceMatches(plan, source);
         this.assertPlanDestinationMatches(plan, destinationPath);
+        await this.assertPlanGraphIsCurrent(plan, source, destinationPath);
         const reuseStep = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
         const managed = reuseStep === undefined ? undefined : await this.reopenPlannedManagedOutcome(source, plan.source, reuseStep.output);
         // Every selected plan is subjected to the same destination policy at
@@ -524,6 +525,24 @@ export class ArtifactBuilderRegistry {
             if (!sameConfigurationProvenance(plan.source.configurationProvenance, refreshed.source.configurationProvenance)) {
                 throw new Error("The source configuration or generation provenance changed after this conversion was prepared; prepare a new plan before executing it.");
             }
+        }
+    }
+
+    /**
+     * A prepared plan is a serializable public value, not a caller-authorized
+     * graph.  Rebuild the current graph at the execution boundary and require
+     * the supplied steps, reuse selection, diagnostics and output identity to
+     * be precisely the planner's result.  This rejects hand-built/deserialized
+     * graphs which try to skip an unavailable edge or change a prerequisite.
+     */
+    private async assertPlanGraphIsCurrent(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string): Promise<void> {
+        const target = plan.target.kind as ArtifactTargetType;
+        const current = await this.preparePlan(source, target, {
+            destinationPath,
+            outcomeLibraryGeneration: this.optionsForPlan(undefined, plan.source)?.outcomeLibraryGeneration,
+        });
+        if (JSON.stringify(current) !== JSON.stringify(plan)) {
+            throw new Error("The prepared conversion graph is stale or invalid; prepare a new plan before executing it.");
         }
     }
 

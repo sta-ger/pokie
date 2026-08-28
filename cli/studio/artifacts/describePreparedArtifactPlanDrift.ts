@@ -13,6 +13,8 @@ export function describePreparedArtifactPlanDrift(
     target: ArtifactTargetType,
     destinationPath?: string,
     generationSemantics?: "exact" | "boundedSample",
+    sampleCount?: bigint | string,
+    sampleSeed?: string,
 ): string | undefined {
     if (plan === undefined || plan.status !== "planned") return undefined;
     if (plan.source.canonicalLocation !== undefined && plan.source.canonicalLocation !== path.resolve(sourcePath)) {
@@ -27,6 +29,14 @@ export function describePreparedArtifactPlanDrift(
     if (generationSemantics !== undefined && plan.target.configurationProvenance?.generationSemantics !== undefined &&
         plan.target.configurationProvenance.generationSemantics !== generationSemantics) {
         return "The requested generation strategy changed after this conversion was prepared; refresh the preview and retry.";
+    }
+    if (sampleCount !== undefined && plan.target.configurationProvenance?.sampleCount !== undefined &&
+        plan.target.configurationProvenance.sampleCount !== String(sampleCount)) {
+        return "The requested bounded sample count changed after this conversion was prepared; refresh the preview and retry.";
+    }
+    if (sampleSeed !== undefined && plan.target.configurationProvenance?.sampleSeed !== undefined &&
+        plan.target.configurationProvenance.sampleSeed !== sampleSeed) {
+        return "The requested bounded sample seed changed after this conversion was prepared; refresh the preview and retry.";
     }
     return undefined;
 }
