@@ -87,6 +87,10 @@ export class StudioArtifactBuildService {
         private readonly registerManagedProject: (projectRoot: string, provenance?: {readonly sourceWorkbookPath?: string; readonly conversionEvidencePath?: string}) => Promise<void> = () => Promise.resolve(),
         managedOutcomeProjects?: ManagedOutcomeProjectServicing,
         pokiePackageRoot?: string,
+        // Registration is part of publication from Studio's point of view.
+        // Keep the inverse beside the writer so a later registration failure
+        // cannot leave an earlier parallel registration behind.
+        private readonly unregisterManagedProject: (projectRoot: string) => Promise<void> = () => Promise.resolve(),
     ) {
         this.resolveProject = resolveProject ?? new ProjectTargetResolver();
         this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
@@ -188,23 +192,33 @@ export class StudioArtifactBuildService {
                 ...(result.importedBlueprintPath === undefined ? [] : [result.importedBlueprintPath]),
             ]);
             const provenance = await this.parImportRegistrationProvenance(result.conversionEvidencePath);
+            const registeredRoots: string[] = [];
             try {
-                await Promise.all(Array.from(managedProjectRoots, (projectRoot) => this.registerManagedProject(
-                    projectRoot,
-                    // The terminal and the durable imported Blueprint both
-                    // retain the same workbook/evidence provenance.
-                    projectRoot === result.outputPath || projectRoot === result.importedBlueprintPath ? provenance : undefined,
-                )));
+                for (const projectRoot of managedProjectRoots) {
+                    await this.registerManagedProject(
+                        projectRoot,
+                        // The terminal and the durable imported Blueprint both
+                        // retain the same workbook/evidence provenance.
+                        projectRoot === result.outputPath || projectRoot === result.importedBlueprintPath ? provenance : undefined,
+                    );
+                    registeredRoots.push(projectRoot);
+                }
             } catch (error) {
                 // A Studio build is not successful until its publication is
                 // registered.  The registry has already guaranteed these are
                 // fresh plan-owned destinations, so remove them rather than
                 // leaving a plausible but undiscoverable result.
-                await Promise.all(Array.from(managedProjectRoots, async (projectRoot) => {
-                    if (projectRoot === result.outputPath || projectRoot === result.importedBlueprintPath) {
-                        await fs.promises.rm(projectRoot, {recursive: true, force: true}).catch(() => undefined);
-                    }
-                }));
+                await Promise.all([
+                    ...registeredRoots.map((projectRoot) => this.unregisterManagedProject(projectRoot).catch(() => undefined)),
+                    ...Array.from(managedProjectRoots, async (projectRoot) => {
+                        if (projectRoot === result.outputPath || projectRoot === result.importedBlueprintPath) {
+                            await fs.promises.rm(projectRoot, {recursive: true, force: true}).catch(() => undefined);
+                            // Blueprints publish their evidence as a sibling file,
+                            // rather than inside their (file-kind) project root.
+                            await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
+                        }
+                    }),
+                ]);
                 throw error;
             }
             return {

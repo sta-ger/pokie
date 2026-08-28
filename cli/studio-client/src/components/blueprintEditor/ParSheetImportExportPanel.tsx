@@ -90,7 +90,7 @@ export function ParSheetImportExportPanel({
     // `blueprintPath`), if any -- used only to derive Export to path's own real initial value, below.
     blueprintPath?: string;
     revision: number;
-    onApplyImportedBlueprint: (blueprint: unknown, sourcePath: string) => void;
+    onApplyImportedBlueprint: (blueprint: unknown, sourcePath: string, conversionEvidence: import("../../api/types").ParSheetConversionEvidence) => void;
     // Set when Home's own Projects "Import Project" action detected a PAR sheet and routed here (see
     // HomePage's own `initialParSheetPath` doc comment) -- auto-runs Import against this path on mount,
     // the same "arrive already on the right step" treatment BlueprintEditorPage's own `initialPath`
@@ -229,7 +229,7 @@ export function ParSheetImportExportPanel({
             return;
         }
         confirm("Replace the current blueprint with the imported one? Unsaved changes in the editor will be lost.", () => {
-            onApplyImportedBlueprint(importResult.blueprint, importResult.path);
+            onApplyImportedBlueprint(importResult.blueprint, importResult.path, importResult.conversionEvidence);
         });
     }
 

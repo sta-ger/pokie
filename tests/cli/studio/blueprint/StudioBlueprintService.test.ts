@@ -1128,6 +1128,27 @@ describe("StudioBlueprintService", () => {
             });
         });
 
+        it("publishes PAR conversion evidence beside an Applied managed Blueprint and removes the pair on rollback", () => {
+            const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
+            const service = createServiceWithManagedDirectory(managedDir);
+            const evidence = {
+                metaSheet: [["Key", "Value"], ["Blueprint Hash", "sha256:test"]],
+                facts: [{kind: "formulaMaterialized" as const, code: "parsheet-formula-cell", message: "Formula result materialized."}],
+                losslessEligible: false,
+                importedBlueprintHash: "sha256:imported",
+                provenanceHashMatches: false,
+            };
+
+            const result = service.saveManaged(buildBlueprint(), "/games/in.par.xlsx", evidence);
+
+            expect(result).toMatchObject({status: "ok", conversionEvidencePath: path.join(managedDir, "blueprint.json.conversion-evidence.json")});
+            if (result.status !== "ok" || result.conversionEvidencePath === undefined) throw new Error("expected evidence publication");
+            expect(JSON.parse(fs.readFileSync(result.conversionEvidencePath, "utf8"))).toMatchObject({sourceWorkbook: "/games/in.par.xlsx", facts: evidence.facts});
+            service.discardManagedSave(result.path);
+            expect(fs.existsSync(result.path)).toBe(false);
+            expect(fs.existsSync(result.conversionEvidencePath)).toBe(false);
+        });
+
         it("omits sourceWorkbookPath entirely for an ordinary first Save with no PAR import behind it", () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
             const service = createServiceWithManagedDirectory(managedDir);

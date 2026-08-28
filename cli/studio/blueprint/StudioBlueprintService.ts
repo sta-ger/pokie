@@ -43,7 +43,7 @@ import type {StudioBlueprintSaveManagedView} from "./StudioBlueprintSaveManagedV
 import type {StudioBlueprintSaveView} from "./StudioBlueprintSaveView.js";
 import type {StudioBlueprintValidationView} from "./StudioBlueprintValidationView.js";
 import type {StudioParSheetExportView} from "./StudioParSheetExportView.js";
-import type {StudioParSheetImportView} from "./StudioParSheetImportView.js";
+import type {StudioParSheetConversionEvidence, StudioParSheetImportView} from "./StudioParSheetImportView.js";
 import type {StudioReelStripGenerationReelView, StudioReelStripGenerationView} from "./StudioReelStripGenerationView.js";
 
 const outsideStudioRootMessage = (rawPath: string): string =>
@@ -146,6 +146,24 @@ function writeBlueprintAtomically(targetPath: string, blueprint: unknown): void 
         } catch {
             // The temporary file either was never created or was already renamed.  The original error
             // remains the useful one for the caller.
+        }
+        throw error;
+    }
+}
+
+function writeJsonAtomically(targetPath: string, value: unknown): void {
+    const temporaryPath = path.join(
+        path.dirname(targetPath),
+        `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
+    );
+    try {
+        fs.writeFileSync(temporaryPath, `${JSON.stringify(value, null, 4)}\n`, {encoding: "utf8", flag: "wx"});
+        fs.renameSync(temporaryPath, targetPath);
+    } catch (error) {
+        try {
+            fs.unlinkSync(temporaryPath);
+        } catch {
+            // Keep the publication failure as the useful error.
         }
         throw error;
     }
@@ -423,7 +441,7 @@ export class StudioBlueprintService {
     // (see StudioServer's own handleBlueprintSaveManaged, which forwards it to
     // StudioProjectRegistrationService.registerManaged). Omitted entirely for an ordinary "first Save" with
     // no PAR import behind it.
-    public saveManaged(blueprint: unknown, sourceWorkbookPath?: string): StudioBlueprintSaveManagedView {
+    public saveManaged(blueprint: unknown, sourceWorkbookPath?: string, conversionEvidence?: StudioParSheetConversionEvidence): StudioBlueprintSaveManagedView {
         const baseName = deriveManagedBlueprintName(blueprint);
         const destination = resolveAvailableManagedDestination(this.pathResolver, baseName);
         if (destination.status === "invalid-name") {
@@ -437,12 +455,35 @@ export class StudioBlueprintService {
             fs.mkdirSync(destination.directory, {recursive: true});
             this.materializeSymbolArtwork(destination.targetPath, blueprint);
             writeBlueprintAtomically(destination.targetPath, blueprint);
+            const conversionEvidencePath = `${destination.targetPath}.conversion-evidence.json`;
+            if (sourceWorkbookPath !== undefined && conversionEvidence !== undefined) {
+                try {
+                    writeJsonAtomically(conversionEvidencePath, {
+                        schemaVersion: 1,
+                        sourceWorkbook: path.resolve(sourceWorkbookPath),
+                        provenance: undefined,
+                        metaSheet: conversionEvidence.metaSheet,
+                        facts: conversionEvidence.facts,
+                        losslessEligible: conversionEvidence.losslessEligible,
+                        importedBlueprintHash: conversionEvidence.importedBlueprintHash,
+                        provenanceHashMatches: conversionEvidence.provenanceHashMatches,
+                    });
+                } catch (error) {
+                    // This pair is one user-visible publication.  The managed
+                    // destination was allocated by this call, so removing it
+                    // cannot affect a pre-existing project.
+                    fs.rmSync(destination.targetPath, {force: true});
+                    fs.rmSync(conversionEvidencePath, {force: true});
+                    throw error;
+                }
+            }
             return {
                 status: "ok",
                 path: destination.targetPath,
                 name: destination.name,
                 blueprintHash: computeGameBlueprintHash(blueprint),
                 sourceWorkbookPath,
+                ...(sourceWorkbookPath !== undefined && conversionEvidence !== undefined ? {conversionEvidencePath} : {}),
             };
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
@@ -455,6 +496,7 @@ export class StudioBlueprintService {
     public discardManagedSave(targetPath: string): void {
         try {
             fs.unlinkSync(targetPath);
+            fs.rmSync(`${targetPath}.conversion-evidence.json`, {force: true});
             fs.rmdirSync(path.dirname(targetPath));
         } catch {
             // Rollback is best effort.  The route still reports registration failure rather than a
@@ -554,7 +596,21 @@ export class StudioBlueprintService {
             const result = await this.parSheetImporter.importFromFile(resolved);
             const errors = result.issues.filter((issue) => issue.severity === "error");
             const warnings = result.issues.filter((issue) => issue.severity !== "error");
-            return {status: "ok", path: resolved, blueprint: result.blueprint, provenance: result.provenance, errors, warnings};
+            return {
+                status: "ok",
+                path: resolved,
+                blueprint: result.blueprint,
+                provenance: result.provenance,
+                conversionEvidence: result.conversionEvidence ?? {
+                    metaSheet: undefined,
+                    facts: result.issues.map((issue) => ({kind: "diagnostic" as const, code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})})),
+                    losslessEligible: false,
+                    importedBlueprintHash: computeGameBlueprintHash(result.blueprint),
+                    provenanceHashMatches: false,
+                },
+                errors,
+                warnings,
+            };
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error)};
         }

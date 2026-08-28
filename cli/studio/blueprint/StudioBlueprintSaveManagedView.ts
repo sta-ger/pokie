@@ -15,7 +15,7 @@
 // what the request originally carried -- undefined for an ordinary "first Save" that isn't the tail end of
 // a PAR sheet Apply.
 export type StudioBlueprintSaveManagedView =
-    | {status: "ok"; path: string; name: string; blueprintHash: string; sourceWorkbookPath?: string}
+    | {status: "ok"; path: string; name: string; blueprintHash: string; sourceWorkbookPath?: string; conversionEvidencePath?: string}
     | {status: "invalid-name"; error: string}
     | {status: "unavailable"; error: string}
     | {status: "error"; error: string};

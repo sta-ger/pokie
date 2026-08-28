@@ -497,6 +497,7 @@ export type StudioBlueprintSaveManagedView =
           name: string;
           blueprintHash: string;
           sourceWorkbookPath?: string;
+          conversionEvidencePath?: string;
           // The server's just-persisted registry record.  Returning it with the save lets Home update
           // its already-mounted Projects panel immediately, while its normal refresh reconciles later.
           registeredProject?: StudioProjectRegistryView;
@@ -529,10 +530,19 @@ export type StudioParSheetImportView =
           path: string;
           blueprint: unknown;
           provenance?: ParSheetProvenance;
+          conversionEvidence: ParSheetConversionEvidence;
           errors: ValidationIssue[];
           warnings: ValidationIssue[];
       }
     | {status: "load-error"; error: string};
+
+export type ParSheetConversionEvidence = {
+    metaSheet?: readonly (readonly unknown[])[];
+    facts: readonly {kind: "ignored" | "formulaMaterialized" | "inferredOrDefaulted" | "diagnostic"; code: string; message: string; details?: unknown}[];
+    losslessEligible: boolean;
+    importedBlueprintHash: string;
+    provenanceHashMatches: boolean;
+};
 
 // POST /api/home/blueprints/par-export's own DTO — see
 // cli/studio/blueprint/StudioParSheetExportView.ts's own doc comment. "conflict" mirrors

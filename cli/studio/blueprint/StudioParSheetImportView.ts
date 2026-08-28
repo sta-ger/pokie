@@ -1,4 +1,6 @@
-import type {ParSheetProvenance, ValidationIssue} from "pokie";
+import type {ParSheetImportResult, ParSheetProvenance, ValidationIssue} from "pokie";
+
+export type StudioParSheetConversionEvidence = NonNullable<ParSheetImportResult["conversionEvidence"]>;
 
 // POST /api/home/blueprints/par-import's own DTO -- see StudioBlueprintService.importParSheet()'s own
 // doc comment. "load-error" covers a path that doesn't exist, can't be read as an .xlsx workbook, or
@@ -17,6 +19,10 @@ export type StudioParSheetImportView =
           path: string;
           blueprint: unknown;
           provenance?: ParSheetProvenance;
+          // Applied imports carry this exact structured observation forward
+          // to the managed save, where it becomes the durable sibling
+          // evidence file rather than transient panel-only diagnostics.
+          conversionEvidence: StudioParSheetConversionEvidence;
           errors: ValidationIssue[];
           warnings: ValidationIssue[];
       }

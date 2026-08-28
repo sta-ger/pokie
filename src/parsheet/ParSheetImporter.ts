@@ -28,6 +28,7 @@ import type {WinModelSheetMapping} from "./mapping/WinModelSheetMapping.js";
 import type {ParSheetImporting} from "./ParSheetImporting.js";
 import type {ParSheetImportResult} from "./ParSheetImportResult.js";
 import type {SheetGrid} from "./SheetGrid.js";
+import {cellToText} from "./mapping/sheetCellParsing.js";
 
 // "Manifest"/"Symbols"/"Paytable" are the minimum needed to describe a playable blueprint at all
 // (mirrors GameBlueprint's own required fields); the rest are optional, matching reelStrips/
@@ -124,7 +125,9 @@ export class ParSheetImporter implements ParSheetImporting {
             return worksheet ? sheetToGrid(worksheet, name, issues, facts) : [];
         };
 
-        const manifestResult = this.manifestMapper.fromRows(gridFor("Manifest"));
+        const manifestRows = gridFor("Manifest");
+        const manifestResult = this.manifestMapper.fromRows(manifestRows);
+        recordManifestDefaults(manifestRows, facts);
         const symbolsResult = this.symbolsMapper.fromRows(gridFor("Symbols"));
         const paytableResult = this.paytableMapper.fromRows(gridFor("Paytable"));
         issues.push(...manifestResult.issues, ...symbolsResult.issues, ...paytableResult.issues);
@@ -302,6 +305,36 @@ export class ParSheetImporter implements ParSheetImporting {
         }
 
         return issues;
+    }
+}
+
+// ManifestSheetMapper intentionally supplies a structurally usable model even
+// for a hand-edited workbook with missing cells (the validator then describes
+// why that model is invalid).  Preserve each such materialization as an
+// explicit conversion fact: users must never have to infer a default from a
+// later generic validation error.
+function recordManifestDefaults(rows: SheetGrid, facts: ConversionFact[]): void {
+    const [header, ...dataRows] = rows;
+    const keyIndex = (header ?? []).findIndex((cell) => cellToText(cell)?.toLowerCase() === "key");
+    const valueIndex = (header ?? []).findIndex((cell) => cellToText(cell)?.toLowerCase() === "value");
+    const values = new Map<string, unknown>();
+    if (keyIndex >= 0 && valueIndex >= 0) {
+        for (const row of dataRows) {
+            const key = cellToText(row[keyIndex]);
+            if (key !== undefined) values.set(key.toLowerCase(), row[valueIndex]);
+        }
+    }
+    for (const [key, value] of [["Id", ""], ["Name", ""], ["Version", ""], ["Reels", 0], ["Rows", 0]] as const) {
+        const raw = values.get(key.toLowerCase());
+        const missing = raw === undefined || cellToText(raw) === undefined || (key === "Reels" || key === "Rows") && Number.isNaN(Number(cellToText(raw)));
+        if (missing) {
+            facts.push({
+                kind: "inferredOrDefaulted",
+                code: "parsheet-manifest-defaulted-value",
+                message: `Sheet "Manifest" has no usable "${key}" value; imported Blueprint uses ${JSON.stringify(value)}.`,
+                details: {sheet: "Manifest", key, value},
+            });
+        }
     }
 }
 

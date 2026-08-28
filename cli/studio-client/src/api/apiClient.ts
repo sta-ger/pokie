@@ -358,11 +358,12 @@ export async function saveManagedBlueprint(
     fetchImpl: FetchLike,
     blueprint: unknown,
     sourceWorkbookPath?: string,
+    conversionEvidence?: unknown,
 ): Promise<StudioBlueprintSaveManagedView> {
     const response = await fetchImpl("/api/home/blueprints/save-managed", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({blueprint, sourceWorkbookPath}),
+        body: JSON.stringify({blueprint, sourceWorkbookPath, conversionEvidence}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to save the project"));

@@ -39,6 +39,8 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
         // overwritten (or removed by the rollback below).
         assertArtifactDestinationAvailable(evidencePath, this.destinationKind);
         const evidenceState = captureArtifactDestinationState(evidencePath, this.destinationKind);
+        let blueprintTemp: string | undefined;
+        let evidenceTemp: string | undefined;
         try {
             reportArtifactBuildProgress(options, {status: "running", message: "Importing PAR workbook into Blueprint"});
             assertArtifactBuildNotCancelled(options);
@@ -48,10 +50,15 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
             assertArtifactBuildNotCancelled(options);
             reportArtifactBuildProgress(options, {status: "running", message: "Publishing imported Blueprint and conversion evidence"});
             assertArtifactBuildNotCancelled(options);
-            const temp = path.join(path.dirname(destinationPath), `.${path.basename(destinationPath)}.${process.pid}.${Date.now()}.tmp`);
-            await fs.promises.writeFile(temp, `${JSON.stringify(imported.blueprint, null, 4)}\n`, "utf8");
-            await fs.promises.rename(temp, destinationPath);
-            await fs.promises.writeFile(evidencePath, `${JSON.stringify({
+            // Stage both members of the publication before exposing either
+            // one.  A Blueprint without its evidence is not a successful PAR
+            // import, and a cancellation between the two renames must take
+            // the same rollback path as an importer or sidecar failure.
+            const publicationId = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+            blueprintTemp = path.join(path.dirname(destinationPath), `.${path.basename(destinationPath)}.${publicationId}.tmp`);
+            evidenceTemp = path.join(path.dirname(evidencePath), `.${path.basename(evidencePath)}.${publicationId}.tmp`);
+            await fs.promises.writeFile(blueprintTemp, `${JSON.stringify(imported.blueprint, null, 4)}\n`, "utf8");
+            await fs.promises.writeFile(evidenceTemp, `${JSON.stringify({
                 schemaVersion: 1,
                 sourceWorkbook: path.resolve(source.rootPath),
                 provenance: imported.provenance,
@@ -62,9 +69,17 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
                 importedBlueprintHash: imported.conversionEvidence?.importedBlueprintHash,
                 provenanceHashMatches: imported.conversionEvidence?.provenanceHashMatches ?? false,
             }, null, 4)}\n`, "utf8");
+            assertArtifactBuildNotCancelled(options);
+            await fs.promises.rename(blueprintTemp, destinationPath);
+            assertArtifactBuildNotCancelled(options);
+            await fs.promises.rename(evidenceTemp, evidencePath);
             reportArtifactBuildProgress(options, {status: "completed"});
             return {outputPath: destinationPath, conversionEvidencePath: evidencePath};
         } catch (error) {
+            await Promise.all([
+                ...(blueprintTemp === undefined ? [] : [fs.promises.rm(blueprintTemp, {force: true})]),
+                ...(evidenceTemp === undefined ? [] : [fs.promises.rm(evidenceTemp, {force: true})]),
+            ]);
             await cleanupIncompleteArtifactOutput(destinationPath, state);
             await cleanupIncompleteArtifactOutput(evidencePath, evidenceState);
             throw error;

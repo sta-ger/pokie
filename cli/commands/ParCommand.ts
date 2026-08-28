@@ -228,8 +228,12 @@ export class ParCommand implements CliCommandHandling {
                 if (options.dryRun) {
                     const prepared = this.prepareDescriptorExportOperation(blueprintPath, outPath);
                     await prepared.validate();
+                    const materialization = prepareBlueprintForParSheetExport(this.loadBlueprint(blueprintPath));
                     console.log(`Dry run -- would export PAR workbook "${blueprintPath}" to "${outPath}" (file destination). No files written.`);
                     this.printPreparedPlan(prepared.plan);
+                    for (const issue of materialization.issues.filter((issue) => issue.severity !== "error")) {
+                        console.log(`Materialization boundary: ${issue.code}: ${issue.message}`);
+                    }
                     return;
                 }
                 exitCodeRef.value = await this.executeExport(blueprintPath, outPath);

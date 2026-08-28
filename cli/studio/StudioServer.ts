@@ -378,6 +378,7 @@ export class StudioServer implements StudioServerHandling {
                     }
                 }),
                 options.pokiePackageRoot,
+                (projectRoot) => this.projectRegistrationService.remove(projectRoot),
             );
         this.describeProjectLocation = (location) => this.projectRegistrationService.describeLocation(location);
         this.toolHandlers = options.toolHandlers ?? [];
@@ -1360,11 +1361,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = this.blueprintService.saveManaged(validated.blueprint, validated.sourceWorkbookPath);
+        const result = this.blueprintService.saveManaged(validated.blueprint, validated.sourceWorkbookPath, validated.conversionEvidence);
         if (result.status === "ok") {
             let registration;
             try {
-                registration = await this.registerManagedProject(result.path, result.name, result.sourceWorkbookPath);
+                registration = await this.registerManagedProject(result.path, result.name, result.sourceWorkbookPath, result.conversionEvidencePath);
             } catch {
                 // A managed save is not successful until its Blueprint Project is registered. Roll the
                 // freshly-created source back so users never receive a "saved" result for an orphan that
@@ -1389,11 +1390,11 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, result);
     }
 
-    private async registerManagedProject(location: string, name: string, sourceWorkbookPath: string | undefined) {
+    private async registerManagedProject(location: string, name: string, sourceWorkbookPath: string | undefined, conversionEvidencePath?: string) {
         let latestError: unknown;
         for (let attempt = 1; attempt <= MANAGED_PROJECT_REGISTRATION_ATTEMPTS; attempt++) {
             try {
-                return await this.projectRegistrationService.registerManaged(location, name, sourceWorkbookPath);
+                return await this.projectRegistrationService.registerManaged(location, name, sourceWorkbookPath, conversionEvidencePath);
             } catch (error) {
                 latestError = error;
             }

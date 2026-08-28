@@ -87,6 +87,20 @@ describe("ParSheetImporter", () => {
         );
     });
 
+    it("records each Manifest fallback as structured conversion evidence", async () => {
+        const sheets = {...validSheets, Manifest: [["Key", "Value"], ["Id", "sample-slot"]]};
+        await writeWorkbook(sheets);
+
+        const result = await new ParSheetImporter().importFromFile(filePath);
+
+        expect(result.conversionEvidence?.facts).toEqual(expect.arrayContaining([
+            expect.objectContaining({kind: "inferredOrDefaulted", code: "parsheet-manifest-defaulted-value", details: {sheet: "Manifest", key: "Name", value: ""}}),
+            expect.objectContaining({kind: "inferredOrDefaulted", code: "parsheet-manifest-defaulted-value", details: {sheet: "Manifest", key: "Reels", value: 0}}),
+            expect.objectContaining({kind: "inferredOrDefaulted", code: "parsheet-manifest-defaulted-value", details: {sheet: "Manifest", key: "Rows", value: 0}}),
+        ]));
+        expect(result.conversionEvidence?.losslessEligible).toBe(false);
+    });
+
     it("warns about an unrecognized sheet", async () => {
         await writeWorkbook({...validSheets, Notes: [["Anything"]]});
         const importer = new ParSheetImporter();

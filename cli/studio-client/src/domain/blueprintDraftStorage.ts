@@ -5,7 +5,7 @@ const DESIGN_DRAFT_STORAGE_KEY = "pokie-studio:design-draft:v1";
 // recovered draft's eventual first Save still records the same workbook provenance an uninterrupted
 // session would have (see saveManagedBlueprint's own doc comment), rather than silently becoming an
 // ordinary, unattributed managed Blueprint just because the tab happened to refresh first.
-export type PersistedBlueprintDraft = {blueprint: unknown; importedFromParSheetPath?: string};
+export type PersistedBlueprintDraft = {blueprint: unknown; importedFromParSheetPath?: string; conversionEvidence?: unknown};
 
 // The guided Design Game editor's own draft-recovery slot -- one browser tab, one in-progress draft at a
 // time (Home only ever mounts a single BlueprintEditorPage instance -- see BlueprintEditorPage's own
@@ -29,15 +29,16 @@ export function loadPersistedBlueprintDraft(): PersistedBlueprintDraft | undefin
         return {
             blueprint: parsed.blueprint,
             importedFromParSheetPath: typeof parsed.importedFromParSheetPath === "string" ? parsed.importedFromParSheetPath : undefined,
+            conversionEvidence: parsed.conversionEvidence,
         };
     } catch {
         return undefined;
     }
 }
 
-export function savePersistedBlueprintDraft(blueprint: unknown, importedFromParSheetPath?: string): void {
+export function savePersistedBlueprintDraft(blueprint: unknown, importedFromParSheetPath?: string, conversionEvidence?: unknown): void {
     try {
-        window.sessionStorage.setItem(DESIGN_DRAFT_STORAGE_KEY, JSON.stringify({blueprint, importedFromParSheetPath}));
+        window.sessionStorage.setItem(DESIGN_DRAFT_STORAGE_KEY, JSON.stringify({blueprint, importedFromParSheetPath, conversionEvidence}));
     } catch {
         // sessionStorage unavailable (private browsing, storage disabled) -- the in-memory draft still
         // works for the rest of this tab's lifetime, it just won't survive a refresh.
