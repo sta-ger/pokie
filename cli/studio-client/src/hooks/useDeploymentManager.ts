@@ -328,13 +328,11 @@ export function useDeploymentManager() {
         // separate selectTarget() call first landing in a stale closure of `selectedTarget` -- see
         // ExportDeployTab's own doc comment. Every other caller omits it entirely and keeps running
         // against whatever selectTarget() already put in state, unchanged.
-        // `modesOverride` gives that same caller a way to run against a mode/library pairing it resolved
-        // itself (an existing registry bundle or one just generated this session) without first funnelling
-        // it through setModeName/setModeLibrarySelector and waiting a render for `modes` state to catch up
-        // -- state updates that land the same tick this callback fires would otherwise still read the
-        // *previous* render's `modes` closure. Every existing caller omits it and keeps running against
-        // the Configure step's own `modes` state, unchanged.
-        (publish: boolean, targetOverride?: StudioDeploymentTargetSummary, modesOverride?: StudioDeploymentModeInput[]) => {
+        // The request always uses this manager's current configured modes.  A
+        // caller cannot smuggle a separately inferred selector into a run:
+        // changing a mode first invalidates the prior terminal result, then the
+        // next action submits exactly that visible configuration to the server.
+        (publish: boolean, targetOverride?: StudioDeploymentTargetSummary) => {
             const target = targetOverride ?? selectedTarget;
             if (target === undefined) {
                 return;
@@ -363,7 +361,7 @@ export function useDeploymentManager() {
             setRunResult(undefined);
             setRunLoading(true);
 
-            runDeployment(fetchImpl, target.id, modesOverride ?? modes, publish)
+            runDeployment(fetchImpl, target.id, modes, publish)
                 .then((view) => {
                     trackerRef.current.endRun();
                     setRunLoading(trackerRef.current.isRunInFlight());

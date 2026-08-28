@@ -1255,7 +1255,7 @@ export type StudioArtifactConversionPlan = {
     steps: {kind: "publish" | "materializeRuntime" | "generateOutcomeLibrary" | "reuseManagedOutcomeLibrary"; choice: "materialize" | "reuse" | "publish"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses?: string[]}[];
     preflight: {destinationKind: "file" | "directory"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses: string[]; oneWay: boolean};
     managedOutcome?: {disposition: "reused" | "ineligible"; reason?: string};
-    diagnostic?: {code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict"; failedEdge: {from: StudioProjectType; to: StudioArtifactTargetType}; message: string; recovery: string};
+    diagnostic?: {code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict" | "unrecognized-source"; failedEdge: {from: StudioProjectType; to: StudioArtifactTargetType}; message: string; recovery: string};
 };
 
 // GET /api/project/artifacts/targets' own DTO — see cli/studio/artifacts/StudioArtifactTargetView.ts's

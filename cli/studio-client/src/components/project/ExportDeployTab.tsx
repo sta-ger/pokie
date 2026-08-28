@@ -21,7 +21,6 @@ import type {
     StudioArtifactPreviewView,
     StudioArtifactTargetType,
     StudioArtifactTargetView,
-    StudioDeploymentModeInput,
     StudioOutcomeLibraryGenerateResultView,
     StudioProjectCapability,
     StudioStakeEngineExportView,
@@ -190,8 +189,7 @@ function TargetCard({
     onGenerateOutcomeLibrary,
     outcomeLibraryGenerationOptions,
     onOutcomeLibraryGenerationOptionsChange,
-    resolveOutcomeLibrarySource,
-    resolveDeploymentModes,
+    staticExportSource,
     staticExportRun,
     onRunStaticExport,
     deployment,
@@ -215,8 +213,7 @@ function TargetCard({
     onGenerateOutcomeLibrary: () => void;
     outcomeLibraryGenerationOptions: OutcomeLibraryGenerationOptions;
     onOutcomeLibraryGenerationOptionsChange: (options: OutcomeLibraryGenerationOptions) => void;
-    resolveOutcomeLibrarySource: () => Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined;
-    resolveDeploymentModes: () => StudioDeploymentModeInput[] | undefined;
+    staticExportSource: Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined;
     staticExportRun: StaticExportRunView;
     onRunStaticExport: () => void;
     deployment: DeploymentManager;
@@ -235,7 +232,6 @@ function TargetCard({
     onCopyPath: (path: string) => void;
 }) {
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
-    const staticExportSource = resolveOutcomeLibrarySource();
     const staticExportModeName = staticExportSource?.modeName ?? defaultModeName;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
@@ -535,7 +531,7 @@ function TargetCard({
                         disabled={card.deploymentTarget === undefined}
                         onClick={() => {
                             if (card.deploymentTarget !== undefined) {
-                                deployment.run(false, card.deploymentTarget, resolveDeploymentModes());
+                                deployment.run(false, card.deploymentTarget);
                             }
                         }}
                     >
@@ -548,7 +544,7 @@ function TargetCard({
                             ml="xs"
                             loading={isActiveTarget && deployment.runLoading}
                             disabled={card.deploymentTarget === undefined}
-                            onClick={() => deployment.run(true, card.deploymentTarget, resolveDeploymentModes())}
+                            onClick={() => deployment.run(true, card.deploymentTarget)}
                         >
                             Publish
                         </Button>
@@ -654,11 +650,9 @@ function TargetCard({
 // status/error convention (ErrorState + a plain-language result line), rather than navigating away into a
 // separate legacy Stepper-driven workflow first. Deployment's own selection/run/registry state is owned by
 // the shared useDeploymentManager hook (see DeploymentManager) -- ExportDeployTab drives it directly
-// (deployment.run(publish, target, modes)) instead of duplicating it. An adapter card's own Check/Publish
-// always runs against resolveDeploymentModes()'s own resolved library -- a session-generated bundle or an
-// already-registered one, whichever resolveOutcomeLibrarySource() itself finds -- passed straight into
-// deployment.run() as an explicit override, so neither case depends on the Configure step's own `modes`
-// state already agreeing with it first. Every adapter card's own action always checks compatibility
+// (deployment.run(publish, target)) instead of reconstructing a prerequisite selector from registry or
+// session state. The server owns the selected deployment request and returns its planner terminal result.
+// Every adapter card's own action always checks compatibility
 // first (publish:false) and only offers "Publish" once that check comes back clean -- never a first-click
 // auto-publish outside this machine. (The SDK's own
 // local-json-example demo target -- the one case that could ever run straight to publish:true without a
@@ -670,6 +664,10 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     const defaultModeName = resolveDefaultModeName(deployment.projectModesView);
 
     const [outcomeLibraryRun, setOutcomeLibraryRun] = useState<OutcomeLibraryRunView>({status: "idle"});
+    // The source used by the next export is not inferred from browser state.
+    // It is the exact selector the server returned from a successful terminal
+    // generation lifecycle, and is cleared with the component on project switch.
+    const [generatedOutcomeSelector, setGeneratedOutcomeSelector] = useState<Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined>();
     const outcomeLibraryGuard = useDoubleSubmitGuard();
     const [outcomeLibraryGenerationOptions, setOutcomeLibraryGenerationOptions] = useState<OutcomeLibraryGenerationOptions>({
         maxOutcomeSpaceSize: DEFAULT_MAX_OUTCOME_SPACE_SIZE,
@@ -812,6 +810,10 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         if (!outcomeLibraryGuard.begin()) {
             return;
         }
+        // A new generation invalidates the previous terminal selector before
+        // its request leaves the browser.  Export therefore cannot consume a
+        // stale bundle while the server is preparing a replacement.
+        setGeneratedOutcomeSelector(undefined);
         setOutcomeLibraryRun({status: "running"});
         generateOutcomeLibrary(fetchImpl, {
             mode: defaultModeName,
@@ -824,6 +826,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                 outcomeLibraryGuard.end();
                 if (view.status === "ok") {
                     setOutcomeLibraryRun({status: "ok", result: view});
+                    setGeneratedOutcomeSelector(view.selector.kind === "bundle" ? view.selector : undefined);
                     // Feeds the freshly generated bundle straight into the shared Deployment mode row --
                     // see this file's own top-level doc comment.
                     deployment.setModeName(0, view.mode.modeName);
@@ -837,35 +840,6 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                 outcomeLibraryGuard.end();
                 setOutcomeLibraryRun({status: "error", message: describeProjectActionError("The outcome library generation", errorMessage(error))});
             });
-    }
-
-    // The Stake Engine Export card's own source: prefer the library this same session just generated
-    // (outcomeLibraryRun), falling back to whatever the registry already reports as compatible for
-    // `defaultModeName` -- a project that already had a fresh library before Build/Export was even opened
-    // never needs a redundant re-generate click first.
-    function resolveOutcomeLibrarySource(): Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined {
-        if (outcomeLibraryRun.status === "ok") {
-            return {kind: "bundle", bundleDir: outcomeLibraryRun.result.bundleDir, modeName: outcomeLibraryRun.result.mode.modeName};
-        }
-        const {registryView} = deployment;
-        if (registryView?.status === "ok" && registryView.buildStatus !== "missing") {
-            const mode = registryView.modes.find((entry) => entry.modeName === defaultModeName) ?? registryView.modes[0];
-            if (mode !== undefined && mode.buildStatus === "compatible") {
-                return {kind: "bundle", bundleDir: mode.bundleDir, modeName: mode.modeName};
-            }
-        }
-        return undefined;
-    }
-
-    // A remote adapter card's own run source: the exact same resolved library resolveOutcomeLibrarySource()
-    // already found -- a session-generated bundle or an already-registered one -- carried into a
-    // StudioDeploymentModeInput whose modeName is always the *selector's own* mode (never defaultModeName
-    // blindly), so a registry fallback onto a different mode than defaultModeName can never send a
-    // request pairing one mode's name with another mode's library. `undefined` (no resolved library yet)
-    // falls back to deployment.run()'s own default of the Configure step's `modes` state, unchanged.
-    function resolveDeploymentModes(): StudioDeploymentModeInput[] | undefined {
-        const source = resolveOutcomeLibrarySource();
-        return source === undefined ? undefined : [{modeName: source.modeName, librarySelector: source}];
     }
 
     // The browser submits the selected source only; destination safety and every terminal recovery
@@ -893,11 +867,10 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     }
 
     function handleRunStaticExport(): void {
-        const source = resolveOutcomeLibrarySource();
         if (!staticExportGuard.begin()) {
             return;
         }
-        runStaticExport(source);
+        runStaticExport(generatedOutcomeSelector);
     }
 
     // Runs a single "Build artifact" card's own target through ArtifactBuilderRegistry (via
@@ -1039,8 +1012,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                                             onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
                                             outcomeLibraryGenerationOptions={outcomeLibraryGenerationOptions}
                                             onOutcomeLibraryGenerationOptionsChange={setOutcomeLibraryGenerationOptions}
-                                            resolveOutcomeLibrarySource={resolveOutcomeLibrarySource}
-                                            resolveDeploymentModes={resolveDeploymentModes}
+                                            staticExportSource={generatedOutcomeSelector}
                                             staticExportRun={staticExportRun}
                                             onRunStaticExport={handleRunStaticExport}
                                             deployment={deployment}

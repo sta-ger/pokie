@@ -443,9 +443,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.queryByRole("button", {name: "Continue to Preview"})).not.toBeInTheDocument();
     });
 
-    it("exports a registry fallback mode with a coherent modeName/librarySelector pairing, not the project's default mode name", async () => {
+    it("does not turn a registry fallback into a local Stake selector", async () => {
         const user = userEvent.setup();
-        let capturedExportBody: {modes?: {modeName: string; librarySelector: {kind: string; bundleDir: string; modeName: string}}[]} | undefined;
+        let capturedExportBody: {modes?: unknown[]} | undefined;
         const routes = {
             ...BASE_ROUTES,
             "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
@@ -461,9 +461,8 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                     artifactPokieVersion: "1.0.0",
                     currentPokieVersion: "1.0.0",
                     generatedAt: "2026-01-01T00:00:00.000Z",
-                    // Only a non-"base" mode is registered -- resolveOutcomeLibrarySource() must fall back
-                    // to this mode (registryView.modes[0]) rather than the project's own default "base",
-                    // and the exported modeName must agree with it.
+                    // Only a non-"base" mode is registered. Build/Export must
+                    // not promote it into a locally inferred action input.
                     modes: [
                         {
                             modeName: "bonus",
@@ -495,12 +494,10 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (bonus)"}));
+        await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (base)"}));
 
         expect(await screen.findByText("Exported 1 file(s) to stakeengine.")).toBeInTheDocument();
-        expect(capturedExportBody?.modes).toEqual([
-            {modeName: "bonus", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "bonus"}, cost: 1},
-        ]);
+        expect(capturedExportBody?.modes).toEqual([]);
     });
 
     it("renders an occupied Stake Engine destination as the server planner's terminal conflict without a local overwrite action", async () => {
@@ -564,9 +561,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(await screen.findByText('"stakeengine" is occupied. Choose a new output directory and retry.')).toBeInTheDocument();
         expect(screen.queryByText(/open Stake Engine Export directly/)).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Overwrite"})).not.toBeInTheDocument();
-        expect(capturedBodies).toEqual([
-            {modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}, cost: 1}], outDir: "stakeengine", overwrite: false},
-        ]);
+        expect(capturedBodies).toEqual([{modes: [], outDir: "stakeengine", overwrite: false}]);
     });
 
     it("gives an actionable in-place message, with no Overwrite action, for a non-overwritable Stake Engine export conflict", async () => {
