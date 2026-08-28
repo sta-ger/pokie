@@ -1843,10 +1843,20 @@ describe("StudioServer", () => {
             // managed project as its own provenance, never as the project's own `location`.
             it("records sourceWorkbookPath on the response and on the registered managed project's own entry when a PAR Apply is behind this first Save", async () => {
                 const expectedPath = path.join(managedWorkDir, "POKIE Projects", "sample-slot", "blueprint.json");
+                const workbookPath = path.join(managedWorkDir, "in.par.xlsx");
+                const workbook = new ExcelJS.Workbook();
+                workbook.addWorksheet("Manifest").addRows([["Key", "Value"], ["Id", "sample-slot"], ["Name", "Sample Slot"], ["Version", "0.1.0"], ["Reels", 2], ["Rows", 2]]);
+                workbook.addWorksheet("Symbols").addRows([["Symbol", "Wild", "Scatter"], ["A", false, false]]);
+                workbook.addWorksheet("Paytable").addRows([["Symbol", "Matches", "Multiplier"], ["A", 2, 5]]);
+                await workbook.xlsx.writeFile(workbookPath);
+                const applied = await post(`${managedBaseUrl}/api/home/blueprints/par-import`, {path: workbookPath});
+                expect(applied.status).toBe(200);
+                expect(applied.body).toMatchObject({status: "ok"});
+                const appliedBlueprint = (applied.body as {blueprint: unknown}).blueprint;
 
                 const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {
-                    blueprint: buildBlueprint(),
-                    sourceWorkbookPath: "/games/in.par.xlsx",
+                    blueprint: appliedBlueprint,
+                    sourceWorkbookPath: workbookPath,
                 });
 
                 expect(status).toBe(201);
@@ -1854,20 +1864,20 @@ describe("StudioServer", () => {
                     status: "ok",
                     path: expectedPath,
                     name: "sample-slot",
-                    blueprintHash: computeGameBlueprintHash(buildBlueprint()),
-                    sourceWorkbookPath: "/games/in.par.xlsx",
+                    blueprintHash: computeGameBlueprintHash(appliedBlueprint),
+                    sourceWorkbookPath: workbookPath,
                     registeredProject: expect.objectContaining({
                         location: expectedPath,
                         origin: "managed",
                         type: "blueprint",
                         status: "ok",
-                        importedFromParSheetPath: "/games/in.par.xlsx",
+                        importedFromParSheetPath: workbookPath,
                     }),
                 });
 
                 const entries = await managedRegistry.list();
                 expect(entries).toHaveLength(1);
-                expect(entries[0]).toMatchObject({location: expectedPath, origin: "managed", importedFromParSheetPath: "/games/in.par.xlsx"});
+                expect(entries[0]).toMatchObject({location: expectedPath, origin: "managed", importedFromParSheetPath: workbookPath});
             });
 
             it("rejects a non-string sourceWorkbookPath", async () => {

@@ -454,7 +454,21 @@ export class StudioBlueprintService {
     // (see StudioServer's own handleBlueprintSaveManaged, which forwards it to
     // StudioProjectRegistrationService.registerManaged). Omitted entirely for an ordinary "first Save" with
     // no PAR import behind it.
-    public saveManaged(blueprint: unknown, sourceWorkbookPath?: string, _conversionEvidence?: StudioParSheetConversionEvidence): StudioBlueprintSaveManagedView {
+    public saveManaged(blueprint: unknown): StudioBlueprintSaveManagedView;
+    public saveManaged(blueprint: unknown, sourceWorkbookPath: string, _conversionEvidence?: StudioParSheetConversionEvidence): Promise<StudioBlueprintSaveManagedView>;
+    public saveManaged(blueprint: unknown, sourceWorkbookPath?: string, _conversionEvidence?: StudioParSheetConversionEvidence): StudioBlueprintSaveManagedView | Promise<StudioBlueprintSaveManagedView>;
+    public saveManaged(blueprint: unknown, sourceWorkbookPath?: string, _conversionEvidence?: StudioParSheetConversionEvidence): StudioBlueprintSaveManagedView | Promise<StudioBlueprintSaveManagedView> {
+        // PAR-backed first saves are a real artifact publication, not an
+        // editor-local JSON write with copied diagnostics.  The async branch
+        // below prepares and executes the same byte/destination-bound
+        // Blueprint plan that the CLI uses.  Ordinary draft saves retain the
+        // synchronous editor contract.
+        if (sourceWorkbookPath !== undefined) return this.saveManagedParImport(blueprint, sourceWorkbookPath);
+        return this.saveManagedDraft(blueprint);
+    }
+
+    /** @internal Split out so ordinary editor saves keep their synchronous contract. */
+    public saveManagedDraft(blueprint: unknown): StudioBlueprintSaveManagedView {
         const baseName = deriveManagedBlueprintName(blueprint);
         const destination = resolveAvailableManagedDestination(this.pathResolver, baseName);
         if (destination.status === "invalid-name") {
@@ -470,41 +484,75 @@ export class StudioBlueprintService {
             fs.mkdirSync(destination.directory, {recursive: true});
             artworkPaths.push(...this.materializeSymbolArtwork(destination.targetPath, blueprint));
             writeBlueprintAtomically(destination.targetPath, blueprint);
-            const conversionEvidencePath = `${destination.targetPath}.conversion-evidence.json`;
-            const trustedConversionEvidence = sourceWorkbookPath === undefined ? undefined : this.loadPreparedParImport(sourceWorkbookPath);
-            if (sourceWorkbookPath !== undefined && trustedConversionEvidence === undefined) {
-                // The browser's DTO is deliberately not a recovery channel:
-                // it can be edited by any caller and is therefore never
-                // conversion evidence.  A server restart retains prepared
-                // records; a missing/stale record requires a fresh Apply.
-                throw new Error("The PAR import preparation is unavailable or the workbook changed. Import the workbook again before saving.");
-            }
-            if (sourceWorkbookPath !== undefined) {
-                try {
-                    const savedBlueprintHash = computeGameBlueprintHash(blueprint);
-                    // The workbook evidence describes the exact imported
-                    // Blueprint, never a later editor revision.  Do this at
-                    // the server-owned publication boundary rather than
-                    // trusting the browser's retained `losslessEligible`.
-                    const stillMatchesImportedBlueprint = trustedConversionEvidence!.importedBlueprintHash === savedBlueprintHash;
-                    writeJsonAtomically(conversionEvidencePath, {
-                        schemaVersion: 1,
-                        sourceWorkbook: path.resolve(sourceWorkbookPath),
-                        provenance: trustedConversionEvidence!.provenance,
-                        metaSheet: trustedConversionEvidence!.metaSheet,
-                        facts: trustedConversionEvidence!.facts,
-                        losslessEligible: trustedConversionEvidence!.losslessEligible && stillMatchesImportedBlueprint,
-                        importedBlueprintHash: trustedConversionEvidence!.importedBlueprintHash,
-                        provenanceHashMatches: trustedConversionEvidence!.provenanceHashMatches,
-                    });
-                } catch (error) {
-                    // This pair is one user-visible publication.  The managed
-                    // destination was allocated by this call, so removing it
-                    // cannot affect a pre-existing project.
-                    this.cleanupManagedSaveArtifacts(destination.targetPath, artworkPaths, directoryCreated);
-                    throw error;
-                }
-            }
+            this.managedSaveArtifacts.set(destination.targetPath, {artworkPaths, directoryCreated});
+            return {
+                status: "ok",
+                path: destination.targetPath,
+                name: destination.name,
+                blueprintHash: computeGameBlueprintHash(blueprint),
+            };
+        } catch (error) {
+            this.cleanupManagedSaveArtifacts(destination.targetPath, artworkPaths, directoryCreated);
+            return {status: "error", error: error instanceof Error ? error.message : String(error)};
+        }
+    }
+
+    /**
+     * Publish a PAR Apply through the registry at the final managed path.
+     * The persisted Apply record authorizes the workbook only after its byte
+     * binding still matches; executePlan then independently binds that same
+     * workbook and this newly allocated destination before either file is
+     * published.  Browser evidence is intentionally not an input here.
+     */
+    /** @internal Shared registry publication used by the managed PAR save route. */
+    public async saveManagedParImport(blueprint: unknown, sourceWorkbookPath: string): Promise<StudioBlueprintSaveManagedView> {
+        const trusted = this.loadPreparedParImport(sourceWorkbookPath);
+        if (trusted === undefined) {
+            return {status: "error", error: "The PAR import preparation is unavailable or the workbook changed. Import the workbook again before saving."};
+        }
+        const baseName = deriveManagedBlueprintName(blueprint);
+        const destination = resolveAvailableManagedDestination(this.pathResolver, baseName);
+        if (destination.status === "invalid-name") return {status: "invalid-name", error: destination.message};
+        if (destination.status !== "valid") return {status: "unavailable", error: destination.message};
+
+        const directoryCreated = !fs.existsSync(destination.directory);
+        const artworkPaths: string[] = [];
+        const source = {
+            type: "parWorkbook" as const,
+            rootPath: path.resolve(sourceWorkbookPath),
+            capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+            provenance: "Studio PAR Apply workbook",
+        };
+        try {
+            await fs.promises.mkdir(destination.directory, {recursive: true});
+            const plan = await this.artifactRegistry.preparePlan(source, "blueprint", {destinationPath: destination.targetPath});
+            if (plan.status !== "planned") throw new Error(plan.diagnostic?.message ?? "PAR import could not be prepared.");
+            const publication = await this.artifactRegistry.executePlan(plan, source, destination.targetPath);
+            const importedBlueprint = JSON.parse(await fs.promises.readFile(publication.outputPath, "utf8"));
+            const publishedEvidence = JSON.parse(await fs.promises.readFile(publication.conversionEvidencePath!, "utf8")) as {
+                provenance?: StudioParSheetConversionEvidence["provenance"];
+                metaSheet?: StudioParSheetConversionEvidence["metaSheet"];
+                facts?: StudioParSheetConversionEvidence["facts"];
+                losslessEligible?: boolean;
+                importedBlueprintHash?: string;
+                provenanceHashMatches?: boolean;
+            };
+            // The editor may have made legitimate changes after Apply.  Keep
+            // the server-authored PAR provenance, but never retain its
+            // lossless claim once the exact imported model differs.
+            artworkPaths.push(...this.materializeSymbolArtwork(destination.targetPath, blueprint));
+            writeBlueprintAtomically(destination.targetPath, blueprint);
+            writeJsonAtomically(publication.conversionEvidencePath!, {
+                schemaVersion: 1,
+                sourceWorkbook: source.rootPath,
+                provenance: publishedEvidence.provenance ?? trusted.provenance,
+                metaSheet: publishedEvidence.metaSheet ?? trusted.metaSheet,
+                facts: publishedEvidence.facts ?? trusted.facts,
+                losslessEligible: (publishedEvidence.losslessEligible ?? trusted.losslessEligible) &&
+                    computeGameBlueprintHash(importedBlueprint) === computeGameBlueprintHash(blueprint),
+                importedBlueprintHash: publishedEvidence.importedBlueprintHash ?? trusted.importedBlueprintHash,
+                provenanceHashMatches: publishedEvidence.provenanceHashMatches ?? trusted.provenanceHashMatches,
+            });
             this.managedSaveArtifacts.set(destination.targetPath, {artworkPaths, directoryCreated});
             return {
                 status: "ok",
@@ -512,7 +560,7 @@ export class StudioBlueprintService {
                 name: destination.name,
                 blueprintHash: computeGameBlueprintHash(blueprint),
                 sourceWorkbookPath,
-                ...(sourceWorkbookPath !== undefined ? {conversionEvidencePath} : {}),
+                conversionEvidencePath: publication.conversionEvidencePath,
             };
         } catch (error) {
             this.cleanupManagedSaveArtifacts(destination.targetPath, artworkPaths, directoryCreated);

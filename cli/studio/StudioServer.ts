@@ -1361,7 +1361,10 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = this.blueprintService.saveManaged(validated.blueprint, validated.sourceWorkbookPath);
+        // A PAR-backed managed save executes the shared prepared artifact
+        // publication asynchronously; a normal draft save remains immediate.
+        // Awaiting both keeps registration behind the same terminal boundary.
+        const result = await Promise.resolve(this.blueprintService.saveManaged(validated.blueprint, validated.sourceWorkbookPath));
         if (result.status === "ok") {
             let registration;
             try {
