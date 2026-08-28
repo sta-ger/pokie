@@ -68,6 +68,31 @@ a replacement and saving, or by removing the stale reference. This is a
 durable, user-visible presentation companion with picker-path provenance; it
 is not embedded Blueprint JSON and is not a prerequisite for game logic.
 
+The dev server has a separate, opt-in durable session boundary. `pokie serve`
+always uses `InMemorySessionRepository`, so its process-local session state is
+lost on restart. A server embedding the public root export can instead pass
+`new FileSessionRepository(directory)` to `PokieDevServer`. `POST /sessions`
+and committed spins then write one JSON record per session below that configured
+directory; the filename is `sha256(sessionId).json`, so an untrusted URL id
+cannot choose a path outside the configured directory. `GET /sessions/:id`
+and a restarted server's spin cache miss read that record, restoring a valid
+serializable `PokieSessionState` after the new server is constructed. This
+record is mutable server state, not a Blueprint/project asset, RoundArtifact,
+replay descriptor, or wallet ledger.
+
+The normal on-disk form is `{version, state}`. Every save advances its
+per-session version, while a legacy raw `PokieSessionState` reads as version 0
+and upgrades on the next save. Missing or corrupt JSON reads as no state and
+therefore follows the normal unknown-session `404` path rather than crashing.
+Persisted state deliberately excludes credits; a restarted default wallet and
+idempotency repository reset independently, and reconstruction can restore only
+the state supported by the session's serialization/feature-state contracts.
+The repository serializes writes for one session through an in-process queue and
+re-reads before versioned writes, but it has no OS-level lock: two repository
+objects/processes sharing a directory can still race and lose one write. A
+deployment needing cross-process consistency, or durable wallet/idempotency
+state, must provide its own locking or transactional stores.
+
 Two durable metadata companions make derived Outcome Library discovery survive
 process boundaries without becoming source artifacts. For managed compatible
 library reuse, `ManagedOutcomeProjectService` atomically writes the

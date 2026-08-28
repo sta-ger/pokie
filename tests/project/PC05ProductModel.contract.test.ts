@@ -142,6 +142,7 @@ describe("PC-05 product-model contract", () => {
                 "wasmComponent",
                 "roundArtifact",
                 "runtimeSession",
+                "fileSessionRepositoryRecord",
                 "simulationReport",
                 "simulationReportSet",
                 "validationReport",
@@ -169,6 +170,21 @@ describe("PC-05 product-model contract", () => {
         const roundArtifact = registry.artifact_kinds.find((item) => item.id === "roundArtifact");
         expect(roundArtifact?.imports_from).toEqual(expect.arrayContaining(["tsPackage", "outcomeLibrary", "runtimeSession"]));
         expect(roundArtifact?.exports_to).toEqual(expect.arrayContaining(["runtimeReplayDescriptor", "certificationEvidenceBundle"]));
+        const fileSessionRecord = registry.artifact_kinds.find((item) => item.id === "fileSessionRepositoryRecord");
+        expect(fileSessionRecord).toEqual(expect.objectContaining({
+            label: "FileSessionRepository session-state record",
+            "imports_from": ["runtimeSession"],
+            "exports_to": ["runtimeSession"],
+            "prerequisite_for": ["runtimeSession"],
+            "support_status": "supported-opt-in-durable-server-state-with-cross-process-consistency-limit",
+            provenance: expect.stringContaining("legacy raw PokieSessionState"),
+            stale: expect.stringContaining("wallet/idempotency"),
+            compatibility: expect.stringContaining("VersionedSessionRepository"),
+            containment: expect.stringContaining("SHA-256"),
+            diagnostics: expect.stringContaining("404"),
+            recovery: expect.stringContaining("cross-process atomicity"),
+        }));
+        expect(fileSessionRecord?.shape).toContain("not a project artifact, replay descriptor");
         const stakeImportConfig = registry.artifact_kinds.find((item) => item.id === "stakeImportReExportConfig");
         expect(stakeImportConfig?.imports_from).toEqual(expect.arrayContaining(["stakeAdapter", "outcomeLibrary"]));
         const outcomeLibraryDescriptor = registry.artifact_kinds.find((item) => item.id === "outcomeLibraryBundleDescriptor");
@@ -376,6 +392,50 @@ describe("PC-05 product-model contract", () => {
         expect(productModel).toContain("`outcomeLibraryBundleDescriptor`");
         expect(productModel).toContain("`stakeEngineExportDescriptor`");
         expect(productModel).toContain("`stakeImportReExportConfig`");
+    });
+
+    it("source-backs the opt-in durable FileSessionRepository contract without treating server state as a project or replay artifact", () => {
+        const registry = readRegistry();
+        const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
+        const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
+        const repository = fs.readFileSync(path.join(__dirname, "..", "..", "src", "server", "session", "FileSessionRepository.ts"), "utf-8");
+        const server = fs.readFileSync(path.join(__dirname, "..", "..", "src", "server", "PokieDevServer.ts"), "utf-8");
+        const rootIndex = fs.readFileSync(path.join(__dirname, "..", "..", "src", "index.ts"), "utf-8");
+        const cliDocs = fs.readFileSync(path.join(__dirname, "..", "..", "docs", "cli.md"), "utf-8");
+
+        expect(repository).toContain("export class FileSessionRepository implements VersionedSessionRepository");
+        expect(repository).toContain('createHash("sha256").update(sessionId).digest("hex")');
+        expect(repository).toContain(["return path.join(this.directory, `", String.fromCharCode(36), "{fileName}.json`)"].join(""));
+        expect(repository).toContain("return {version: 0, state: parsed as unknown as PokieSessionState}");
+        expect(repository).toContain("} catch {\n            return undefined;");
+        expect(repository).toContain("there is no OS-level file lock");
+        expect(server).toContain("this.sessionRepository = options.sessionRepository ?? new InMemorySessionRepository()");
+        expect(server).toContain("await this.sessionRepository.save(sessionId, state)");
+        expect(server).toContain("await this.sessionRepository.loadVersioned(sessionId)");
+        expect(server).toContain(["this.sendJson(res, 404, {error: `Unknown sessionId \"", String.fromCharCode(36), "{sessionId}\".`})"].join(""));
+        expect(rootIndex).toContain('export * from "./server/session/FileSessionRepository.js"');
+        expect(cliDocs).toContain("`FileSessionRepository` — one JSON file per session under a directory you choose");
+        expect(cliDocs).toContain("ids are hashed into filenames");
+        expect(cliDocs).toContain("no OS-level file lock");
+        expect(cliDocs).toContain("sessionRepository: new FileSessionRepository(\"./sessions\")");
+
+        const record = registry.artifact_kinds.find((item) => item.id === "fileSessionRepositoryRecord");
+        expect(record?.created_by).toEqual(expect.arrayContaining([
+            "PokieDevServer:POST /sessions via configured FileSessionRepository.save",
+            "SpinCommandHandler:POST /sessions/:id/spin via configured FileSessionRepository.save/saveVersioned",
+        ]));
+        expect(record?.recognized_by).toEqual(expect.arrayContaining([
+            "FileSessionRepository:load/loadVersioned",
+            "PokieDevServer:GET /sessions/:id",
+            "SpinCommandHandler cache-miss session reconstruction after restart",
+        ]));
+        expect(record?.shape).toContain("not a project artifact, replay descriptor, round record, or wallet ledger");
+        expect(matrix).toContain("| Persist a dev-server session across restart |");
+        expect(matrix).toContain("`serve` itself always uses process-local `InMemorySessionRepository`");
+        expect(matrix).toContain("no OS lock closes a two-process shared-directory race");
+        expect(productModel).toContain("The dev server has a separate, opt-in durable session boundary.");
+        expect(productModel).toContain("This\nrecord is mutable server state, not a Blueprint/project asset, RoundArtifact,");
+        expect(productModel).toMatch(/two repository\nobjects\/processes sharing a directory can still race and lose one write/);
     });
 
     it("source-backs streamed outcomes, certification descriptors, runtime cache state and persisted Studio Projects", () => {
