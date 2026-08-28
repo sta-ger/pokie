@@ -308,21 +308,31 @@ export class ParCommand implements CliCommandHandling {
     }
 
     private async executeExport(blueprintPath: string, outPath: string): Promise<number> {
-        const blueprint = this.loadBlueprint(blueprintPath);
-
-        // Keep shared PAR validation ahead of the destination precondition. This preserves the
-        // actionable field-level diagnostic (and its no-write guarantee) for an invalid Blueprint,
-        // even if a stale file happens to occupy --out. The exporter repeats this shared preflight
-        // before writing, as it must for direct library callers too.
-        const preflight = prepareBlueprintForParSheetExport(blueprint);
-        const preflightErrors = preflight.issues.filter((issue) => issue.severity === "error");
-        if (preflightErrors.length > 0) {
-            this.printExportErrors(blueprintPath, outPath, preflightErrors);
-            return 1;
-        }
-
-        this.assertDestinationIsAvailable(blueprintPath, outPath);
-        const issues = await this.exporter.exportToFile(blueprint, outPath, blueprintPath);
+        // A standalone Blueprint JSON remains a supported CLI input, but it is
+        // no longer a direct writer lifecycle.  Bind its canonical identity to
+        // a prepared conversion and let the shared operation sequence read,
+        // destination policy, publication, cancellation and rollback.
+        const source = {
+            kind: "blueprint" as const,
+            canonicalLocation: path.resolve(blueprintPath),
+            recognitionProvenance: "CLI Blueprint export descriptor",
+            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+        };
+        const plan = this.planner.planIdentity(source, "parWorkbook", {destinationPath: outPath});
+        const cancellation = createCliImportCancellation();
+        const execution = await this.planner.executeConversionPlan(plan, {
+            currentSource: () => source,
+            read: () => {
+                const blueprint = this.loadBlueprint(blueprintPath);
+                return {blueprint, issues: prepareBlueprintForParSheetExport(blueprint).issues};
+            },
+            canPublish: (read) => read.issues.every((issue) => issue.severity !== "error"),
+            assertDestinationAvailable: () => this.assertDestinationIsAvailable(blueprintPath, outPath),
+            publish: (read) => this.exporter.exportToFile(read.blueprint, outPath, blueprintPath),
+            rollback: () => fs.promises.rm(outPath, {force: true}),
+            signal: cancellation.signal,
+        }).finally(cancellation.cleanup);
+        const issues = execution.published ? execution.publication! : execution.read.issues;
         const errors = issues.filter((issue) => issue.severity === "error");
         const warnings = issues.filter((issue) => issue.severity !== "error");
 

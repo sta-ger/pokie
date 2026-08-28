@@ -1,5 +1,5 @@
 import path from "path";
-import {ArtifactBuilderRegistry, ProjectTargetResolver, type ArtifactTargetType, type ProjectResolving} from "pokie";
+import {ArtifactBuilderRegistry, ArtifactConversionPlanner, PROJECT_TYPE_CAPABILITIES, ProjectTargetResolver, type ArtifactTargetType, type ProjectResolving} from "pokie";
 import {Command} from "commander";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {OutcomeLibraryCommand} from "./OutcomeLibraryCommand.js";
@@ -21,6 +21,7 @@ export class ExportCommand implements CliCommandHandling {
     private readonly stake: StakeEngineCommand;
     private readonly registry: ArtifactBuilderRegistry;
     private readonly resolveProject: ProjectResolving;
+    private readonly planner = new ArtifactConversionPlanner();
 
     constructor(pokieVersion: string, resolveProject: ProjectResolving = new ProjectTargetResolver()) {
         this.outcomeLibrary = new OutcomeLibraryCommand(pokieVersion);
@@ -57,41 +58,7 @@ export class ExportCommand implements CliCommandHandling {
             return this.runProjectExport(parsed, project);
         }
 
-        if (parsed.dryRun) {
-            return this.validateDryRunSource(parsed).then(() => {
-                const destination = this.resolveDestination(parsed);
-                const destinationCheck = this.registry.checkDestination(this.artifactTarget(parsed.target), destination, parsed.source);
-                if (!destinationCheck.available) {
-                    throw new Error(this.describeDestinationConflict(parsed.target, destinationCheck.message));
-                }
-                console.log(`Dry run -- would export target "${parsed.target}" from "${parsed.source}" to "${destination}". No files written.`);
-                return 0;
-            });
-        }
-        const destination = this.resolveDestination(parsed);
-        const destinationCheck = this.registry.checkDestination(this.artifactTarget(parsed.target), destination, parsed.source);
-        if (!destinationCheck.available) {
-            return Promise.reject(new Error(this.describeDestinationConflict(parsed.target, destinationCheck.message)));
-        }
-
-        const forwarded = args.filter((value, index) => value !== "--to" && args[index - 1] !== "--to" && value !== "--dry-run");
-        let forwardedRun: Promise<number>;
-        if (parsed.target === "outcomes") {
-            forwardedRun = this.outcomeLibrary.run(["build", ...forwarded]);
-        } else if (parsed.target === "adapter") {
-            forwardedRun = this.stake.run(["export", ...forwarded]);
-        } else {
-            forwardedRun = this.par.run(["export", ...forwarded]);
-        }
-        return forwardedRun.catch((error: unknown) => {
-            if (error instanceof Error && (/already exists|source itself|destination/i).test(error.message)) {
-                throw new Error(
-                    `Cannot export target "${parsed.target}" because its destination is unavailable. ${error.message} ` +
-                        "Next: choose a different --out path or remove the existing destination, then retry.",
-                );
-            }
-            throw error;
-        });
+        return this.runDescriptorExport(parsed, args);
     }
 
     // The original config-descriptor exports remain available for users who already have standalone
@@ -210,6 +177,66 @@ export class ExportCommand implements CliCommandHandling {
         } catch {
             throw new Error(this.describeSourceFailure(args));
         }
+    }
+
+    /**
+     * Legacy descriptors retain their documented readers, but no longer take a
+     * detour through another public command.  The outer `export` action binds
+     * source and destination once; its prepared operation owns validation
+     * ordering, destination safety, cancellation, rollback and the terminal
+     * diagnostic boundary.
+     */
+    private async runDescriptorExport(args: ExportArgs, argv: string[]): Promise<number> {
+        const destination = this.resolveDestination(args);
+        const target = this.artifactTarget(args.target);
+        const source = {
+            kind: args.target === "workbook" ? "blueprint" as const : "outcomeLibrary" as const,
+            canonicalLocation: path.resolve(args.source),
+            recognitionProvenance: "CLI export descriptor",
+            capabilities: args.target === "workbook" ? PROJECT_TYPE_CAPABILITIES.blueprint : PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+        };
+        const plan = this.planner.planIdentity(source, target, {destinationPath: destination});
+        const controller = new AbortController();
+        const onCancel = () => controller.abort();
+        process.once("SIGINT", onCancel);
+        const forwarded = argv.filter((value, index) => value !== "--to" && argv[index - 1] !== "--to" && value !== "--dry-run");
+        try {
+            await this.planner.executeConversionPlan(plan, {
+                currentSource: () => source,
+                read: async () => {
+                    await this.validateDryRunSource(args);
+                    return undefined;
+                },
+                canPublish: () => true,
+                assertDestinationAvailable: () => {
+                    const check = this.registry.checkDestination(target, destination, args.source);
+                    if (!check.available) throw new Error(this.describeDestinationConflict(args.target, check.message ?? "The destination is unavailable."));
+                },
+                publish: async () => {
+                    if (args.dryRun) return 0;
+                    let commandResult: number;
+                    if (args.target === "outcomes") {
+                        commandResult = await this.outcomeLibrary.run(["build", ...forwarded]);
+                    } else if (args.target === "adapter") {
+                        commandResult = await this.stake.run(["export", ...forwarded]);
+                    } else {
+                        commandResult = await this.par.run(["export", ...forwarded]);
+                    }
+                    if (commandResult !== 0) throw new Error(this.describeSourceFailure(args));
+                    return commandResult;
+                },
+                rollback: async () => {
+                    if (!args.dryRun) await import("fs").then(({promises}) => promises.rm(destination, {recursive: true, force: true}));
+                },
+                signal: controller.signal,
+            });
+        } finally {
+            process.off("SIGINT", onCancel);
+        }
+        if (args.dryRun) {
+            console.log(`Dry run -- would export target "${args.target}" from "${args.source}" to "${destination}". No files written.`);
+        }
+        return 0;
     }
 
     private describeSourceFailure(args: ExportArgs): string {

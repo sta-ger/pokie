@@ -87,6 +87,32 @@ export type ArtifactConversionPlan = {
 };
 
 /**
+ * The executable half of an ArtifactConversionPlan.  Format adapters may
+ * provide readers and atomic writers, but they never decide whether a plan is
+ * still current or which terminal lifecycle phase runs next.  This is also
+ * used by the older descriptor-oriented commands: those descriptors are
+ * inputs to a prepared operation, not an escape hatch around it.
+ */
+export type ArtifactConversionExecution<ReadResult, PublishedResult> = {
+    readonly currentSource: () => Promise<ArtifactIdentity> | ArtifactIdentity;
+    readonly read: () => Promise<ReadResult> | ReadResult;
+    readonly canPublish: (read: ReadResult) => boolean;
+    readonly assertDestinationAvailable?: () => Promise<void> | void;
+    readonly publish: (read: ReadResult) => Promise<PublishedResult> | PublishedResult;
+    readonly register?: (published: PublishedResult) => Promise<void> | void;
+    readonly rollback?: (published: PublishedResult) => Promise<void> | void;
+    readonly cleanup?: (context: {readonly read?: ReadResult; readonly publication?: PublishedResult; readonly error?: unknown}) => Promise<void> | void;
+    readonly signal?: AbortSignal;
+    readonly onTerminalFailure?: (error: unknown) => Promise<void> | void;
+};
+
+export type ArtifactConversionExecutionResult<ReadResult, PublishedResult> = {
+    readonly read: ReadResult;
+    readonly published: boolean;
+    readonly publication?: PublishedResult;
+};
+
+/**
  * Import is deliberately modelled separately from the build graph.  A PAR
  * workbook and a Stake export are exchange inputs: reading either one creates
  * a new durable POKIE artifact, but does not make a reverse/lossless build
@@ -154,6 +180,17 @@ export type ArtifactImportOutputExecutionResult<ReadResult, PublishedResult> = {
 
 function assertImportOperationNotCancelled(signal: AbortSignal | undefined): void {
     if (signal?.aborted) throw new Error("The prepared import was cancelled before durable publication.");
+}
+
+function sameArtifactIdentity(left: ArtifactIdentity, right: ArtifactIdentity): boolean {
+    return left.kind === right.kind &&
+        left.canonicalLocation === right.canonicalLocation &&
+        left.recognitionProvenance === right.recognitionProvenance &&
+        left.capabilities.join("\u0000") === right.capabilities.join("\u0000") &&
+        left.configurationProvenance?.configurationHash === right.configurationProvenance?.configurationHash &&
+        left.configurationProvenance?.generationSemantics === right.configurationProvenance?.generationSemantics &&
+        left.configurationProvenance?.sampleCount === right.configurationProvenance?.sampleCount &&
+        left.configurationProvenance?.sampleSeed === right.configurationProvenance?.sampleSeed;
 }
 
 // Presentation-only compatibility wording for callers that historically showed the product matrix.  It is
@@ -288,6 +325,58 @@ export class ArtifactConversionPlanner {
 
     public planType(source: ProjectType, target: ArtifactTargetType): ArtifactConversionPlan {
         return this.planIdentity({kind: source, capabilities: PROJECT_TYPE_CAPABILITIES[source]}, target);
+    }
+
+    /**
+     * Runs an immutable prepared conversion.  The source is rebound before
+     * reading and again before durable publication, cancellation rolls back
+     * only a publication allocated by this operation, and cleanup always runs.
+     * It deliberately mirrors the import operation so public adapters have one
+     * lifecycle contract regardless of whether their source is a project or an
+     * exchange descriptor.
+     */
+    public async executeConversionPlan<ReadResult, PublishedResult>(
+        plan: ArtifactConversionPlan,
+        execution: ArtifactConversionExecution<ReadResult, PublishedResult>,
+    ): Promise<ArtifactConversionExecutionResult<ReadResult, PublishedResult>> {
+        if (plan.status !== "planned") {
+            throw new Error(`${plan.diagnostic?.message ?? "This conversion cannot be planned."} Next: ${plan.diagnostic?.recovery ?? "resolve a supported source and retry."}`);
+        }
+        let read: ReadResult | undefined;
+        let publication: PublishedResult | undefined;
+        let cleanedUp = false;
+        const assertCurrent = async (): Promise<void> => {
+            const current = await execution.currentSource();
+            if (!sameArtifactIdentity(plan.source, current)) {
+                throw new Error("The conversion source changed after this operation was prepared; prepare a new conversion before executing it.");
+            }
+        };
+        try {
+            await assertCurrent();
+            assertImportOperationNotCancelled(execution.signal);
+            read = await execution.read();
+            assertImportOperationNotCancelled(execution.signal);
+            if (!execution.canPublish(read)) return {read, published: false};
+            await assertCurrent();
+            await execution.assertDestinationAvailable?.();
+            assertImportOperationNotCancelled(execution.signal);
+            publication = await execution.publish(read);
+            assertImportOperationNotCancelled(execution.signal);
+            await execution.register?.(publication);
+            assertImportOperationNotCancelled(execution.signal);
+            return {read, published: true, publication};
+        } catch (error) {
+            try {
+                if (publication !== undefined) await execution.rollback?.(publication);
+            } finally {
+                await execution.cleanup?.({...(read === undefined ? {} : {read}), ...(publication === undefined ? {} : {publication}), error});
+                cleanedUp = true;
+                await execution.onTerminalFailure?.(error);
+            }
+            throw error;
+        } finally {
+            if (!cleanedUp) await execution.cleanup?.({...(read === undefined ? {} : {read}), ...(publication === undefined ? {} : {publication})});
+        }
     }
 
     /**

@@ -1,4 +1,5 @@
 import {
+    ArtifactConversionPlanner,
     computeWeightedOutcomeLibraryHash,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleReading,
@@ -67,6 +68,7 @@ export class StudioStakeEngineExportService {
     private readonly stakeEngineImporter: StakeEngineImporting<string>;
     private readonly readFile: (resolvedPath: string) => string;
     private readonly realpath: (resolvedPath: string) => string;
+    private readonly planner = new ArtifactConversionPlanner();
     // Supplied by StudioServer through its materializing Project-runtime boundary. Keeping this as a
     // narrow hash resolver lets this service reject a stale canonical bundle without learning how a
     // Blueprint Project is materialized or how a game is loaded.
@@ -182,23 +184,39 @@ export class StudioStakeEngineExportService {
             return {status: "load-error", error: resolvedOutDir.message, plan};
         }
 
-        const loaded = await this.loadModes(projectRoot, selectedModes);
-        if (loaded.status === "load-error") {
-            return {...loaded, plan};
-        }
-
-        let result;
         try {
-            result = await this.exporter.exportToDirectory(loaded.loaded, resolvedOutDir.resolvedPath);
+            const execution = await this.planner.executeConversionPlan(plan, {
+                // Re-plan the selected recognised bundle at the publication
+                // boundary. The prepared operation rejects a different source
+                // rather than allowing a selector to drift between preview and
+                // the atomic Stake writer.
+                currentSource: async () => (await this.prepareForSelectedBundles(projectRoot, selectedModes, resolvedOutDir.resolvedPath)).source,
+                read: () => this.loadModes(projectRoot, selectedModes),
+                canPublish: (loaded) => loaded.status === "ok",
+                assertDestinationAvailable: async () => {
+                    const current = await this.prepareForSelectedBundles(projectRoot, selectedModes, resolvedOutDir.resolvedPath);
+                    if (current.status !== "planned") throw new Error(current.diagnostic?.message ?? "The Stake Engine destination is unavailable.");
+                },
+                publish: (loaded) => this.exporter.exportToDirectory((loaded as Extract<LoadModesResult, {status: "ok"}>).loaded, resolvedOutDir.resolvedPath),
+                rollback: () => fs.promises.rm(resolvedOutDir.resolvedPath, {recursive: true, force: true}),
+            });
+            if (!execution.published) {
+                // canPublish only declines a load-error; keep the explicit
+                // branch defensive if a future reader adds another terminal
+                // non-publish result.
+                return execution.read.status === "load-error"
+                    ? {...execution.read, plan}
+                    : {status: "load-error", error: "The prepared Stake export did not produce publishable mode inputs.", plan};
+            }
+            const result = execution.publication!;
+            const errors = result.issues.filter((issue) => issue.severity === "error");
+            if (result.manifest === undefined || errors.length > 0) {
+                return {status: "invalid", errors, warnings: result.issues.filter((issue) => issue.severity !== "error"), plan};
+            }
+            return {status: "ok", outDir: result.outDir, files: result.files, manifest: result.manifest, warnings: result.issues, plan};
         } catch (error) {
             return {status: "load-error", error: `Could not export to "${outDir}": ${error instanceof Error ? error.message : String(error)}`, plan};
         }
-
-        const errors = result.issues.filter((issue) => issue.severity === "error");
-        if (result.manifest === undefined || errors.length > 0) {
-            return {status: "invalid", errors, warnings: result.issues.filter((issue) => issue.severity !== "error"), plan};
-        }
-        return {status: "ok", outDir: result.outDir, files: result.files, manifest: result.manifest, warnings: result.issues, plan};
     }
 
     private selectModes(

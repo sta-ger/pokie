@@ -2,6 +2,8 @@ import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
+    ArtifactBuilderRegistry,
+    ArtifactConversionPlanner,
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     ExactEnumerationCheckpoint,
     GenerateExactWeightedOutcomeLibraryOptions,
@@ -14,6 +16,7 @@ import {
     OutcomeLibraryBundleWriteValidator,
     OutcomeSpaceEstimate,
     PokieGame,
+    PROJECT_TYPE_CAPABILITIES,
     ValidationIssue,
     WeightedOutcomeInput,
     WeightedOutcomeLibrary,
@@ -147,6 +150,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     private readonly fileExists: (filePath: string) => boolean;
     private readonly removeFile: (filePath: string) => void;
     private readonly process: NodeJS.Process;
+    private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
         pokieVersion: string,
@@ -676,24 +680,46 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     }
 
     private async executeBuild(configPath: string, outDir: string): Promise<number> {
-        const descriptor = this.loadDescriptor(configPath);
-        const configDir = path.dirname(configPath);
-
-        const modes: OutcomeLibraryBundleModeInput[] = descriptor.modes.map((entry) => {
-            if (entry.libraryPath !== undefined) {
-                const library = this.loadJson(path.resolve(configDir, entry.libraryPath)) as WeightedOutcomeLibrary;
-                return {modeName: entry.modeName, libraryId: library.libraryId, schemaVersion: library.schemaVersion, outcomes: library.outcomes};
-            }
-            return {
-                modeName: entry.modeName,
-                // Safe: loadDescriptor already requires libraryId whenever outcomesPath is present.
-                libraryId: entry.libraryId as string,
-                schemaVersion: entry.schemaVersion,
-                outcomes: this.streamOutcomes(path.resolve(configDir, entry.outcomesPath as string)),
-            };
-        });
-
-        const result = await this.writer.writeToDirectory(modes, outDir);
+        // Descriptor builds are a format reader/writer supplied to the common
+        // prepared operation; this command only parses and renders its result.
+        const source = {
+            kind: "outcomeLibrary" as const,
+            canonicalLocation: path.resolve(configPath),
+            recognitionProvenance: "CLI Outcome Library build descriptor",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+        };
+        const plan = this.planner.planIdentity(source, "outcomeLibrary", {destinationPath: outDir});
+        const cancellation = new AbortController();
+        const onCancel = () => cancellation.abort();
+        this.process.once("SIGINT", onCancel);
+        const execution = await this.planner.executeConversionPlan(plan, {
+            currentSource: () => source,
+            read: () => {
+                const descriptor = this.loadDescriptor(configPath);
+                const configDir = path.dirname(configPath);
+                const modes: OutcomeLibraryBundleModeInput[] = descriptor.modes.map((entry) => entry.libraryPath !== undefined
+                    ? (() => {
+                        const library = this.loadJson(path.resolve(configDir, entry.libraryPath!)) as WeightedOutcomeLibrary;
+                        return {modeName: entry.modeName, libraryId: library.libraryId, schemaVersion: library.schemaVersion, outcomes: library.outcomes};
+                    })()
+                    : {
+                        modeName: entry.modeName,
+                        libraryId: entry.libraryId as string,
+                        schemaVersion: entry.schemaVersion,
+                        outcomes: this.streamOutcomes(path.resolve(configDir, entry.outcomesPath as string)),
+                    });
+                return modes;
+            },
+            canPublish: () => true,
+            assertDestinationAvailable: () => {
+                const destination = new ArtifactBuilderRegistry(this.pokieVersion).checkDestination("outcomeLibrary", outDir, configPath);
+                if (!destination.available) throw new Error(destination.message);
+            },
+            publish: (modes) => this.writer.writeToDirectory(modes, outDir),
+            rollback: () => fs.promises.rm(outDir, {recursive: true, force: true}),
+            signal: cancellation.signal,
+        }).finally(() => this.process.off("SIGINT", onCancel));
+        const result = execution.publication!;
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
 
