@@ -128,6 +128,7 @@ describe("StakeEngineCommand", () => {
         expect(importHelp).toContain("only from a POKIE-produced Stake Engine export with pokie-manifest.json");
         expect(importHelp).toContain("use analyze/report or diff for compatible foreign directories");
         expect(importHelp).toContain("Reconstruction does not accept a compatible foreign directory");
+        expect(importHelp).toContain("--format <format>");
     });
 
     it("rejects when run with no subcommand", async () => {
@@ -355,9 +356,12 @@ describe("StakeEngineCommand", () => {
             expect(writer.calledWith?.importResult).toBe(successImportResult);
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain("Imported");
+            expect(printed).toContain("manifest.json");
+            expect(printed).toContain("index_base.json");
+            expect(printed).toContain("outcomes_base.jsonl");
+            expect(printed).toContain("index_bonus.json");
+            expect(printed).toContain("outcomes_bonus.jsonl");
             expect(printed).toContain("config.json");
-            expect(printed).toContain("libraries/base.json");
-            expect(printed).toContain("libraries/bonus.json");
         });
 
         it("honors a custom --out path", async () => {
@@ -368,6 +372,21 @@ describe("StakeEngineCommand", () => {
             await command.run(["import", "/project/stake", "--out", "/custom/out"]);
 
             expect(writer.calledWith?.outDir).toBe("/custom/out");
+        });
+
+        it("accepts --format json and prints the reusable import result as JSON", async () => {
+            const importer = createStubImporter(successImportResult);
+            const writer = createStubImportWriter();
+            const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, writer);
+
+            expect(await command.run(["import", "/project/stake", "--format", "json"])).toBe(0);
+
+            expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toEqual({
+                stakeDir: "/project/stake",
+                outDir: "/project/stake-imported",
+                files: ["manifest.json", "index_base.json", "outcomes_base.jsonl", "index_bonus.json", "outcomes_bonus.jsonl", "config.json"],
+                issues: [],
+            });
         });
 
         it("prints an error summary and returns 1 when the importer reports error-level issues, never calling the writer", async () => {
@@ -411,6 +430,20 @@ describe("StakeEngineCommand", () => {
             expect(printed).toContain("could not remove stale backup");
         });
 
+        it("prints a write error and returns 1 when the canonical Outcome Library writer rejects the import", async () => {
+            const writerIssues: ValidationIssue[] = [
+                {code: "outcome-library-bundle-write-supplemental-file-invalid", severity: "error", message: "invalid companion file"},
+            ];
+            const importer = createStubImporter(successImportResult);
+            const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, createStubImportWriter(writerIssues));
+
+            const exitCode = await command.run(["import", "/project/stake"]);
+
+            expect(exitCode).toBe(1);
+            expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("Could not write imported Outcome Library");
+            expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("invalid companion file");
+        });
+
         it("throws a descriptive error when no stakeDir is given", async () => {
             const command = new StakeEngineCommand("1.3.0");
 
@@ -427,6 +460,14 @@ describe("StakeEngineCommand", () => {
             const command = new StakeEngineCommand("1.3.0", undefined, createStubImporter(successImportResult));
 
             await expect(command.run(["import", "/project/stake", "--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
+        });
+
+        it("rejects an unsupported --format value before importing", async () => {
+            const importer = createStubImporter(successImportResult);
+            const command = new StakeEngineCommand("1.3.0", undefined, importer);
+
+            await expect(command.run(["import", "/project/stake", "--format", "xml"])).rejects.toThrow('--format only supports "json"');
+            expect(importer.calledWith).toBeUndefined();
         });
     });
 });

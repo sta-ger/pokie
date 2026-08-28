@@ -8,9 +8,20 @@ export type OutcomeLibraryBundleWriteProgress = {
     readonly message: string;
 };
 
+// A caller may keep a small, non-bundle companion document beside a canonical bundle (for example,
+// a deployment descriptor that refers back to this bundle). These files are intentionally excluded
+// from manifest.files: that inventory remains the exact canonical bundle contract validated by
+// OutcomeLibraryBundleValidator.
+export type OutcomeLibraryBundleSupplementalFile = {
+    readonly fileName: string;
+    readonly contents: string;
+};
+
 export type OutcomeLibraryBundleWriteOptions = {
     readonly signal?: AbortSignal;
     readonly onProgress?: (progress: OutcomeLibraryBundleWriteProgress) => void;
+    readonly supplementalFiles?: readonly OutcomeLibraryBundleSupplementalFile[];
+    readonly generatedBy?: string;
 };
 
 export class OutcomeLibraryBundleWriteCancelledError extends Error {

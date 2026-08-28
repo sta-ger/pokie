@@ -1,10 +1,17 @@
-import {existsSync} from "fs";
+import {existsSync, mkdirSync} from "fs";
 import {fileURLToPath} from "url";
 import path from "path";
 import jestConfigIgnore from "./jest.config.ignore.mjs";
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const jestCacheDirectory = path.join(configDir, "node_modules", ".cache", "jest");
+const jestTemporaryDirectory = path.join(configDir, "node_modules", ".cache", "pokie-tmp");
+
+// The package test scripts set TMPDIR themselves, but focused Jest invocations can load this
+// configuration without going through those wrappers. Keep their filesystem-heavy fixtures out
+// of the shared system temporary directory as well.
+mkdirSync(jestTemporaryDirectory, {recursive: true});
+process.env.TMPDIR ??= jestTemporaryDirectory;
 // The "pokie-examples" project below discovers tests in a sibling checkout that isn't part of
 // this repo's own git history (see its own comment). That sibling is present in some sandboxes
 // but not guaranteed in every environment that runs this config (eg. a fresh clone of just this

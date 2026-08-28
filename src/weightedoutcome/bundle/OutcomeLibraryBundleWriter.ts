@@ -92,6 +92,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
     ): Promise<OutcomeLibraryBundleWriteResult> {
         assertNotCancelled(options);
         const upfrontIssues = this.validator.validate(modes);
+        const supplementalFiles = validateSupplementalFiles(options?.supplementalFiles, modes, upfrontIssues);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
         }
@@ -191,7 +192,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             const relativeFiles = [...manifestEntries.flatMap((entry) => [entry.indexFile, entry.outcomesFile]), "manifest.json"];
             const manifest: OutcomeLibraryBundleManifest = {
                 schemaVersion: OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION,
-                generatedBy: "pokie outcomelibrary build",
+                generatedBy: options?.generatedBy ?? "pokie outcomelibrary build",
                 pokieVersion: this.pokieVersion,
                 generatedAt: this.now().toISOString(),
                 game: gameManifest,
@@ -202,13 +203,18 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             };
             assertNotCancelled(options);
             this.writeFile(path.join(stagingDir, "manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+            for (const file of supplementalFiles) {
+                this.writeFile(path.join(stagingDir, file.fileName), file.contents);
+            }
+
+            const filesToPublish = [...relativeFiles, ...supplementalFiles.map((file) => file.fileName)];
 
             const {cleanupWarning} = publishDirectoryAtomically({
                 outDir,
                 renameDirectory: this.renameDirectory,
                 removeDirectory: this.removeDirectory,
                 writeFilesIntoTempDir: (tempDir) => {
-                    for (const file of relativeFiles) {
+                    for (const file of filesToPublish) {
                         assertNotCancelled(options);
                         this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
                         options?.onProgress?.({completed, message: `Publishing Outcome file ${file}`});
@@ -228,7 +234,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                     ? [...issues, {code: "outcome-library-bundle-write-stale-cleanup-failed", severity: "warning" as const, message: cleanupWarning, details: {outDir}}]
                     : issues;
 
-            return {outDir, files: relativeFiles, manifest, issues: finalIssues};
+            return {outDir, files: filesToPublish, manifest, issues: finalIssues};
         } finally {
             try {
                 this.removeDirectory(stagingDir);
@@ -238,6 +244,41 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             }
         }
     }
+}
+
+function validateSupplementalFiles<T extends string | number>(
+    supplementalFiles: OutcomeLibraryBundleWriteOptions["supplementalFiles"],
+    modes: readonly OutcomeLibraryBundleModeInput<T>[],
+    issues: ValidationIssue[],
+): readonly {readonly fileName: string; readonly contents: string}[] {
+    const files = supplementalFiles ?? [];
+    const reservedNames = new Set(["manifest.json", ...modes.flatMap((mode) => [`index_${mode.modeName}.json`, `outcomes_${mode.modeName}.jsonl`])].map((name) => name.toLowerCase()));
+    const seen = new Set<string>();
+
+    for (const file of files) {
+        const normalizedName = typeof file?.fileName === "string" ? file.fileName : "";
+        const key = normalizedName.toLowerCase();
+        if (
+            path.basename(normalizedName) !== normalizedName ||
+            normalizedName === "." ||
+            normalizedName === ".." ||
+            normalizedName.includes("/") ||
+            normalizedName.includes("\\") ||
+            normalizedName.length === 0 ||
+            reservedNames.has(key) ||
+            seen.has(key) ||
+            typeof file?.contents !== "string"
+        ) {
+            issues.push({
+                code: "outcome-library-bundle-write-supplemental-file-invalid",
+                severity: "error",
+                message: `Supplemental file ${JSON.stringify(normalizedName)} must be a unique safe filename that does not overlap a canonical bundle file, with string contents.`,
+            });
+            continue;
+        }
+        seen.add(key);
+    }
+    return files as readonly {readonly fileName: string; readonly contents: string}[];
 }
 
 function assertNotCancelled(options: OutcomeLibraryBundleWriteOptions | undefined): void {

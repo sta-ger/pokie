@@ -98,6 +98,46 @@ describe("OutcomeLibraryBundleWriter", () => {
         }
     });
 
+    it("publishes portable supplemental files alongside the canonical bundle files", async () => {
+        const result = await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(modes(), outDir, {
+            supplementalFiles: [{fileName: "config.json", contents: "{\"modes\": []}\n"}],
+        });
+
+        expect(result.issues).toEqual([]);
+        expect(result.files).toContain("config.json");
+        expect(fs.readFileSync(path.join(outDir, "config.json"), "utf-8")).toBe("{\"modes\": []}\n");
+    });
+
+    it.each([".", "..", "nested/config.json", "nested\\config.json"])(
+        "rejects unsafe supplemental filename %j without creating or changing a destination",
+        async (fileName) => {
+            const result = await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(modes(), outDir, {
+                supplementalFiles: [{fileName, contents: "ignored"}],
+            });
+
+            expect(result.files).toEqual([]);
+            expect(result.issues).toEqual(
+                expect.arrayContaining([expect.objectContaining({code: "outcome-library-bundle-write-supplemental-file-invalid", severity: "error"})]),
+            );
+            expect(fs.existsSync(outDir)).toBe(false);
+            expect(siblingLeftovers(outDir)).toEqual([]);
+
+            fs.mkdirSync(outDir);
+            const sentinelPath = path.join(outDir, "existing.txt");
+            fs.writeFileSync(sentinelPath, "unchanged");
+            const existingResult = await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(modes(), outDir, {
+                supplementalFiles: [{fileName, contents: "ignored"}],
+            });
+
+            expect(existingResult.issues).toEqual(
+                expect.arrayContaining([expect.objectContaining({code: "outcome-library-bundle-write-supplemental-file-invalid", severity: "error"})]),
+            );
+            expect(fs.readFileSync(sentinelPath, "utf-8")).toBe("unchanged");
+            expect(fs.readdirSync(outDir)).toEqual(["existing.txt"]);
+            expect(siblingLeftovers(outDir)).toEqual([]);
+        },
+    );
+
     it("reports outcome-library-bundle-write-outcomes-not-sorted / -duplicate-outcome-id for a source that doesn't arrive in canonical order", async () => {
         const writer = new OutcomeLibraryBundleWriter("1.3.0");
         const outOfOrder = buildOutcomeLibraryBundleModeInput("base", "lib");

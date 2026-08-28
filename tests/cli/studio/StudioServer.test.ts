@@ -416,6 +416,14 @@ describe("StudioServer", () => {
         expect(await response.text()).toBe("<html>studio</html>");
     });
 
+    it("serves the app shell for a direct Projects route", async () => {
+        const response = await fetch(`${baseUrl}/home/projects`);
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toContain("text/html");
+        expect(await response.text()).toBe("<html>studio</html>");
+    });
+
     it("returns 404 for a file that doesn't exist", async () => {
         const response = await fetch(`${baseUrl}/does-not-exist.js`);
 

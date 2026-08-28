@@ -3,6 +3,9 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
+import {InspectCommand} from "../../cli/commands/InspectCommand.js";
+import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
+import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {StudioOutcomeLibraryGenerateService} from "../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {StudioStakeEngineExportService} from "../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
 
@@ -121,5 +124,19 @@ describe("Stake Engine Export: package -> generate library -> registry discovery
         const serialized = JSON.stringify(exportView);
         expect(serialized).not.toContain("ENOENT");
         expect(serialized).not.toContain("Error:");
+
+        // Reuse handoff: import the real Stake adapter into a directory that is itself a public Outcome
+        // Library project. Inspect and deep validation consume the same imported files users receive, rather
+        // than a test-only reconstructed library object.
+        const importedDir = path.join(workDir, "stakeengine-imported");
+        expect(await new StakeEngineCommand(POKIE_VERSION).run(["import", path.join(packageRoot, "stakeengine"), "--out", importedDir])).toBe(0);
+        expect(fs.existsSync(path.join(importedDir, "manifest.json"))).toBe(true);
+        expect(fs.existsSync(path.join(importedDir, "config.json"))).toBe(true);
+        expect(await new InspectCommand().run([importedDir])).toBe(0);
+        expect(await new ValidateCommand().run([importedDir, "--deep"])).toBe(0);
+
+        const reExportedDir = path.join(workDir, "stakeengine-re-exported");
+        expect(await new StakeEngineCommand(POKIE_VERSION).run(["export", path.join(importedDir, "config.json"), "--out", reExportedDir])).toBe(0);
+        expect(fs.existsSync(path.join(reExportedDir, "pokie-manifest.json"))).toBe(true);
     });
 });
