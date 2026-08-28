@@ -1199,6 +1199,12 @@ export type StudioStakeEngineExportModeSummary = {
 // cli/studio/stakeengine/StudioStakeEngineExportValidateView.ts's own doc comment.
 export type StudioStakeEngineExportValidateView =
     | {status: "ok"; modes: StudioStakeEngineExportModeSummary[]; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
+    // Validation is a planner terminal action just like export.  Keep every
+    // server state representable in the browser rather than making callers
+    // treat an unavailable source or destination conflict as a transport
+    // failure.
+    | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "unavailable"; error: string; plan: StudioArtifactConversionPlan}
     | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
 
 // Mirrors pokie's own StakeEngineManifest/StakeEngineManifestModeEntry
