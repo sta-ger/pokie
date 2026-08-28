@@ -748,8 +748,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (base)"}));
 
         expect(stakeRequest).toEqual({modes: [], outDir: "stakeengine", overwrite: false});
-        expect(await screen.findByText("No recognized Outcome Library is available.")).toBeInTheDocument();
-        expect(screen.getByText(/Server plan:.*Unavailable/)).toBeInTheDocument();
+        expect(await screen.findByText("Server plan: Unavailable — No recognized Outcome Library is available.")).toBeInTheDocument();
     });
 
     it("lets a project above the exact-generation cap explicitly generate bounded coverage and continue to Stake Engine Export", async () => {

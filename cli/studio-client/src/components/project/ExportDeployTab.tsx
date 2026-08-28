@@ -135,9 +135,13 @@ function describeStakeEngineResultError(view: Exclude<StudioStakeEngineExportVie
 
 function PlannerSummary({plan, label = "Server plan"}: {plan: StudioArtifactConversionPlan | undefined; label?: string}) {
     if (plan === undefined) return null;
+    const summary =
+        plan.status === "planned"
+            ? plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No publication required"
+            : `${plan.status === "conflict" ? "Conflict" : "Unavailable"}${plan.diagnostic?.message === undefined ? "" : ` — ${plan.diagnostic.message}`}`;
     return (
         <Text size="sm" c="dimmed" mt={4}>
-            {label}: {plan.status === "planned" ? plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No publication required" : plan.diagnostic?.message ?? "Unavailable"}
+            {label}: {summary}
         </Text>
     );
 }
