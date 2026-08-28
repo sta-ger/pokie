@@ -40,6 +40,7 @@ export const REQUIRED_SHEETS = ["Manifest", "Symbols", "Paytable"];
 const OPTIONAL_SHEETS = ["ReelStrips", "Paylines", "AvailableBets", "WinModel", "Mechanics", "BetModes", "Meta"];
 const KNOWN_SHEETS = [...REQUIRED_SHEETS, ...OPTIONAL_SHEETS];
 const BLUEPRINT_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
+type ConversionFact = NonNullable<ParSheetImportResult["conversionEvidence"]>["facts"][number];
 
 export class ParSheetImporter implements ParSheetImporting {
     private readonly manifestMapper: ManifestSheetMapping;
@@ -92,10 +93,12 @@ export class ParSheetImporter implements ParSheetImporting {
     public async importFromFile(filePath: string): Promise<ParSheetImportResult> {
         const workbook = await this.readWorkbookOrThrow(filePath);
         const issues: ValidationIssue[] = [];
+        const facts: ConversionFact[] = [];
 
         const sheetsByName = new Map(workbook.worksheets.map((worksheet): [string, ExcelJS.Worksheet] => [worksheet.name, worksheet]));
         for (const name of sheetsByName.keys()) {
             if (!KNOWN_SHEETS.includes(name)) {
+                facts.push({kind: "ignored", code: "parsheet-unknown-sheet", message: `Sheet "${name}" is not a recognized PAR sheet and is ignored.`, details: {sheet: name}});
                 issues.push({
                     code: "parsheet-unknown-sheet",
                     severity: "warning",
@@ -106,6 +109,7 @@ export class ParSheetImporter implements ParSheetImporting {
         }
         for (const name of REQUIRED_SHEETS) {
             if (!sheetsByName.has(name)) {
+                facts.push({kind: "inferredOrDefaulted", code: "parsheet-missing-sheet", message: `Required sheet "${name}" is missing.`, details: {sheet: name}});
                 issues.push({
                     code: "parsheet-missing-sheet",
                     severity: "error",
@@ -117,7 +121,7 @@ export class ParSheetImporter implements ParSheetImporting {
 
         const gridFor = (name: string): SheetGrid => {
             const worksheet = sheetsByName.get(name);
-            return worksheet ? sheetToGrid(worksheet, name, issues) : [];
+            return worksheet ? sheetToGrid(worksheet, name, issues, facts) : [];
         };
 
         const manifestResult = this.manifestMapper.fromRows(gridFor("Manifest"));
@@ -198,12 +202,14 @@ export class ParSheetImporter implements ParSheetImporting {
 
         issues.push(...this.validator.validate(blueprint));
 
-        const facts = issues.map((issue) => ({
-            kind: conversionFactKind(issue.code),
-            code: issue.code,
-            message: issue.message,
-            ...(issue.details === undefined ? {} : {details: issue.details}),
-        }));
+        // Diagnostics remain durable without guessing semantic loss classes
+        // from arbitrary mapper wording. Explicit importer observations above
+        // own ignored, formula, and required-value facts.
+        for (const issue of issues) {
+            if (!facts.some((fact) => fact.code === issue.code && fact.message === issue.message)) {
+                facts.push({kind: "diagnostic", code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})});
+            }
+        }
         // A canonical export has matching Meta provenance and no importer
         // transformation warning/error.  Informational provenance-present is
         // intentionally not a loss boundary.
@@ -306,7 +312,7 @@ export class ParSheetImporter implements ParSheetImporting {
 // spreadsheet template can easily have dozens of formula cells (e.g. a "Total" column), and a separate
 // issue per cell would drown out every other diagnostic without adding information a reader couldn't
 // already get by opening the workbook itself.
-function sheetToGrid(worksheet: ExcelJS.Worksheet, sheetName: string, issues: ValidationIssue[]): SheetGrid {
+function sheetToGrid(worksheet: ExcelJS.Worksheet, sheetName: string, issues: ValidationIssue[], facts: ConversionFact[]): SheetGrid {
     const grid: SheetGrid = [];
     let formulaCellCount = 0;
     worksheet.eachRow({includeEmpty: true}, (row) => {
@@ -320,6 +326,12 @@ function sheetToGrid(worksheet: ExcelJS.Worksheet, sheetName: string, issues: Va
         grid.push(cells);
     });
     if (formulaCellCount > 0) {
+        facts.push({
+            kind: "formulaMaterialized",
+            code: "parsheet-formula-cell",
+            message: `Sheet "${sheetName}" has ${formulaCellCount} cell(s) containing a formula; its last computed result was imported as a plain value.`,
+            details: {sheet: sheetName, count: formulaCellCount},
+        });
         issues.push({
             code: "parsheet-formula-cell",
             severity: "warning",
@@ -360,19 +372,6 @@ function cellValueToPrimitive(value: ExcelJS.CellValue): unknown {
         return value.text;
     }
     return undefined;
-}
-
-function conversionFactKind(code: string): "ignored" | "formulaMaterialized" | "inferredOrDefaulted" | "diagnostic" {
-    if (code === "parsheet-formula-cell") return "formulaMaterialized";
-    if (code === "parsheet-unknown-sheet" || code === "parsheet-unknown-column") return "ignored";
-    // Mapper diagnostics use stable PAR codes; classify those exact facts,
-    // never the human wording, so a translated/error-message change cannot
-    // silently alter durable conversion evidence.
-    if (new Set([
-        "parsheet-missing-sheet", "parsheet-missing-column", "parsheet-missing-value",
-        "parsheet-defaulted-value", "parsheet-inferred-value",
-    ]).has(code)) return "inferredOrDefaulted";
-    return "diagnostic";
 }
 
 function rawSheetToGrid(worksheet: ExcelJS.Worksheet): readonly (readonly unknown[])[] {

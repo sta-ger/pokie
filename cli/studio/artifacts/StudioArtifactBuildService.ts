@@ -14,6 +14,7 @@ import {
     ProjectTargetResolver,
 } from "pokie";
 import path from "path";
+import fs from "fs";
 import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
 import type {StudioArtifactBuildJobView, StudioArtifactBuildProgressView} from "./StudioArtifactBuildJobView.js";
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
@@ -181,12 +182,31 @@ export class StudioArtifactBuildService {
                 // A PAR import's Blueprint is itself a durable Studio project,
                 // not merely a transient prerequisite like an Outcome bundle.
                 ...(target === "blueprint" ? [result.outputPath] : []),
+                // Every PAR-derived terminal artifact owns a durable imported
+                // Blueprint.  Register that model as well as the terminal so
+                // a restart can reopen its workbook/evidence provenance.
+                ...(result.importedBlueprintPath === undefined ? [] : [result.importedBlueprintPath]),
             ]);
             const provenance = await this.parImportRegistrationProvenance(result.conversionEvidencePath);
-            await Promise.all(Array.from(managedProjectRoots, (projectRoot) => this.registerManagedProject(
-                projectRoot,
-                projectRoot === result.outputPath ? provenance : undefined,
-            )));
+            try {
+                await Promise.all(Array.from(managedProjectRoots, (projectRoot) => this.registerManagedProject(
+                    projectRoot,
+                    // The terminal and the durable imported Blueprint both
+                    // retain the same workbook/evidence provenance.
+                    projectRoot === result.outputPath || projectRoot === result.importedBlueprintPath ? provenance : undefined,
+                )));
+            } catch (error) {
+                // A Studio build is not successful until its publication is
+                // registered.  The registry has already guaranteed these are
+                // fresh plan-owned destinations, so remove them rather than
+                // leaving a plausible but undiscoverable result.
+                await Promise.all(Array.from(managedProjectRoots, async (projectRoot) => {
+                    if (projectRoot === result.outputPath || projectRoot === result.importedBlueprintPath) {
+                        await fs.promises.rm(projectRoot, {recursive: true, force: true}).catch(() => undefined);
+                    }
+                }));
+                throw error;
+            }
             return {
                 status: "ok",
                 target,

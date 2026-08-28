@@ -449,6 +449,9 @@ export class BuildCommand implements CliCommandHandling {
         for (const step of plan.steps) {
             console.log(`  intermediate     ${step.choice} ${step.output.kind}${step.output.canonicalLocation ? ` at ${step.output.canonicalLocation}` : ""}`);
         }
+        if (plan.steps.some((step) => step.kind === "importParWorkbook")) {
+            console.log("  evidence eligibility determined by durable PAR conversion facts and Meta/hash provenance");
+        }
         if (plan.preflight.losses.length > 0) console.log(`  data boundary    ${plan.preflight.losses.join(" ")}`);
     }
 }

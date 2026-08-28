@@ -409,6 +409,7 @@ export function ProjectsPanel({
                 <Group gap={6} wrap="nowrap">
                     <Text component="span">{entry.origin === "managed" ? "Created in Studio" : "Added from your computer"}</Text>
                     {entry.importedFromParSheetPath && <Badge size="xs" color="grape">Imported from PAR</Badge>}
+                    {entry.conversionEvidencePath && <Text size="xs" c="dimmed">Conversion evidence: {entry.conversionEvidencePath}</Text>}
                 </Group>
             </Table.Td>
             <Table.Td data-label="Last opened">{formatTimestamp(entry.lastOpenedAt)}</Table.Td>

@@ -32,7 +32,7 @@ import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
-import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import {assertArtifactBuildNotCancelled, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
 import {ArtifactConversionPlanner, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type ArtifactConfigurationProvenance, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions, type ArtifactIdentity} from "./ArtifactConversionPlanner.js";
 import {
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
@@ -416,11 +416,15 @@ export class ArtifactBuilderRegistry {
         }
         const intermediateDirectory = await fs.promises.mkdtemp(path.join(path.dirname(destinationPath), ".pokie-par-import-"));
         const intermediatePath = path.join(intermediateDirectory, "imported.blueprint.json");
+        let imported: PokieProject | undefined;
+        let selectedPlan: ArtifactConversionPlan | undefined;
+        let result: ArtifactBuildResult | undefined;
         try {
+            assertArtifactBuildNotCancelled(options);
             const blueprintBuilder = this.builders.get("blueprint");
             if (blueprintBuilder === undefined) throw new Error(this.unavailableTargetMessage("blueprint"));
             await blueprintBuilder.build(source, intermediatePath, options);
-            const imported: PokieProject = {
+            imported = {
                 type: "blueprint",
                 rootPath: intermediatePath,
                 provenance: `imported from PAR workbook ${source.rootPath}`,
@@ -430,8 +434,8 @@ export class ArtifactBuilderRegistry {
             // Hydrate its imported-Blueprint identity with the materialized
             // runtime provenance, then execute those selected stages directly;
             // calling build() here would silently prepare a second plan.
-            const selectedPlan = await this.hydrateParDerivedPlan(plan, imported, options);
-            const result = await this.executeSelectedPlan(selectedPlan, imported, destinationPath, options);
+            selectedPlan = await this.hydrateParDerivedPlan(plan, imported, options);
+            result = await this.executeSelectedPlan(selectedPlan, imported, destinationPath, options);
             // The temporary Blueprint is only an execution allocation.  Once
             // the selected terminal writer succeeds, retain an inspectable
             // copy and its evidence under the final artifact instead of
@@ -441,13 +445,21 @@ export class ArtifactBuilderRegistry {
             const durableBlueprint = path.join(durableDirectory, "imported.blueprint.json");
             const durableEvidence = path.join(durableDirectory, "conversion-evidence.json");
             try {
+                // Cancellation is a terminal lifecycle failure too: do not
+                // attach a half-copied provenance record after the caller has
+                // cancelled the operation.
+                assertArtifactBuildNotCancelled(options);
                 await fs.promises.mkdir(durableDirectory, {recursive: true});
                 await fs.promises.copyFile(intermediatePath, durableBlueprint);
+                assertArtifactBuildNotCancelled(options);
                 await fs.promises.copyFile(evidenceSource, durableEvidence);
+                assertArtifactBuildNotCancelled(options);
             } catch (error) {
-                // The terminal output is operation-owned: do not report an
-                // artifact whose required evidence reference is absent.
-                await fs.promises.rm(result.outputPath, {recursive: true, force: true}).catch(() => undefined);
+                // Publication, generated managed prerequisites, and durable
+                // attachment are one operation.  Remove only roots selected
+                // for materialization by this plan; a reused managed Outcome
+                // belongs to an earlier operation and must survive.
+                await this.rollbackParDerivedPublication(result, imported, selectedPlan);
                 throw error;
             }
             return {...result, conversionEvidencePath: durableEvidence, importedBlueprintPath: durableBlueprint};
@@ -457,6 +469,17 @@ export class ArtifactBuilderRegistry {
             // terminal publication into an intermediate-cleanup failure.
             await fs.promises.rm(intermediateDirectory, {recursive: true, force: true, maxRetries: 8, retryDelay: 25});
         }
+    }
+
+    private async rollbackParDerivedPublication(result: ArtifactBuildResult, imported: PokieProject, plan: ArtifactConversionPlan): Promise<void> {
+        const reused = plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary");
+        if (!reused) {
+            for (const root of new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])])) {
+                await this.managedOutcomeProjects.release(imported.rootPath, root).catch(() => undefined);
+                if (root !== result.outputPath) await fs.promises.rm(root, {recursive: true, force: true}).catch(() => undefined);
+            }
+        }
+        await fs.promises.rm(result.outputPath, {recursive: true, force: true}).catch(() => undefined);
     }
 
     private async hydrateParDerivedPlan(plan: ArtifactConversionPlan, imported: PokieProject, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {

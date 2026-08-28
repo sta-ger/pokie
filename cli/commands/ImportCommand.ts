@@ -82,12 +82,26 @@ export class ImportCommand implements CliCommandHandling {
             if (options.dryRun) {
                 console.log(`Dry run -- would import PAR workbook "${source.rootPath}" to "${destination}" (file destination). No files written.`);
                 console.log(`Conversion plan: ${prepared.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ")}.`);
-                console.log(`Evidence: generated beside the imported Blueprint at "${destination}.conversion-evidence.json".`);
+                console.log(`Final destination: ${prepared.target.canonicalLocation ?? destination} (${prepared.preflight.destinationKind}).`);
+                for (const step of prepared.steps) console.log(`Intermediate: ${step.choice} ${step.output.kind}${step.output.canonicalLocation === undefined ? "" : ` at ${step.output.canonicalLocation}`}.`);
+                console.log(`Evidence: generated beside the imported Blueprint at "${destination}.conversion-evidence.json"; lossless eligibility is determined from the workbook's Meta/hash and explicit import facts.`);
+                if (prepared.preflight.losses.length > 0) console.log(`Data boundary: ${prepared.preflight.losses.join(" ")}`);
                 return 0;
             }
             const result = await this.registry.executePlan(prepared, source, destination);
             if (options.format === "json") console.log(JSON.stringify({outputPath: result.outputPath, conversionEvidencePath: result.conversionEvidencePath}, null, 4));
             else console.log(`Imported "${source.rootPath}" to "${result.outputPath}" with conversion evidence "${result.conversionEvidencePath}".`);
+            return 0;
+        }
+        if (options.dryRun) {
+            // Stake imports have their own one-way prepared operation, but a
+            // preview must remain as non-writing as a PAR/registry preview.
+            // Do not delegate to runPreparedImport: that method publishes.
+            console.log(`Dry run -- would import Stake Engine export "${source.rootPath}" to "${destination}" (directory destination). No files written.`);
+            console.log(`Conversion plan: materialize ${plan.operation}.`);
+            console.log(`Final destination: ${plan.output.canonicalLocation ?? destination}.`);
+            console.log(`Destination kind: ${plan.preflight.destinationKind}.`);
+            if (plan.preflight.losses.length > 0) console.log(`Data boundary: ${plan.preflight.losses.join(" ")}`);
             return 0;
         }
         return this.stake.runPreparedImport(source, plan, options.input, destination, options.format === "json" ? "json" : "summary");

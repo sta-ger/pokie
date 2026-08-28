@@ -205,8 +205,8 @@ export class ParCommand implements CliCommandHandling {
                     const plan = await this.registry.preparePlan(source, "blueprint", {destinationPath: outPath});
                     await this.registry.validate("blueprint", source, plan);
                     console.log(`Dry run -- would import PAR workbook "${source.rootPath}" to "${outPath}" (file destination). No files written.`);
-                    console.log(`Conversion plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ")}.`);
-                    console.log(`Evidence: generated beside the imported Blueprint at "${outPath}.conversion-evidence.json".`);
+                    this.printPreparedPlan(plan);
+                    console.log(`Evidence: generated beside the imported Blueprint at "${outPath}.conversion-evidence.json"; lossless eligibility is determined from the workbook's Meta/hash and explicit import facts.`);
                     exitCodeRef.value = 0;
                     return;
                 }
@@ -229,7 +229,7 @@ export class ParCommand implements CliCommandHandling {
                     const prepared = this.prepareDescriptorExportOperation(blueprintPath, outPath);
                     await prepared.validate();
                     console.log(`Dry run -- would export PAR workbook "${blueprintPath}" to "${outPath}" (file destination). No files written.`);
-                    console.log(`Conversion plan: ${prepared.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}.`);
+                    this.printPreparedPlan(prepared.plan);
                     return;
                 }
                 exitCodeRef.value = await this.executeExport(blueprintPath, outPath);
@@ -312,6 +312,15 @@ export class ParCommand implements CliCommandHandling {
 
     private usesDefaultRegistryLifecycle(): boolean {
         return this.importer instanceof ParSheetImporter && this.writeFile === writeBlueprintFileAtomically;
+    }
+
+    private printPreparedPlan(plan: import("pokie").ArtifactConversionPlan): void {
+        console.log(`Conversion plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}.`);
+        console.log(`Final destination: ${plan.target.canonicalLocation ?? "selected destination"} (${plan.preflight.destinationKind}).`);
+        for (const step of plan.steps) {
+            console.log(`Intermediate: ${step.choice} ${step.output.kind}${step.output.canonicalLocation === undefined ? "" : ` at ${step.output.canonicalLocation}`}.`);
+        }
+        if (plan.preflight.losses.length > 0) console.log(`Data boundary: ${plan.preflight.losses.join(" ")}`);
     }
 
     private async prepareImportSource(inputPath: string): Promise<PokieProject> {

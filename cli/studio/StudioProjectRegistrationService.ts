@@ -124,6 +124,7 @@ export class StudioProjectRegistrationService {
             origin: existing?.origin ?? "external",
             lastOpenedAt: new Date().toISOString(),
             importedFromParSheetPath: existing?.importedFromParSheetPath,
+            conversionEvidencePath: existing?.conversionEvidencePath,
         };
         await this.replace(entry, matchingEntries);
         return {status: "ok", entry: {...entry, status: "ok"}};

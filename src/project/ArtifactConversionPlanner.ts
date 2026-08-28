@@ -698,6 +698,13 @@ export class ArtifactConversionPlanner {
             capabilities: TARGET_CAPABILITIES.blueprint,
             recognitionProvenance: "PAR workbook import intermediate",
             configurationProvenance: source.configurationProvenance,
+            // This is not an implementation-private temporary path.  A PAR
+            // conversion keeps its imported model and evidence under the
+            // terminal artifact, so preview clients can name the exact
+            // durable intermediate before publication begins.
+            ...(target.canonicalLocation === undefined
+                ? {}
+                : {canonicalLocation: path.join(target.canonicalLocation, ".pokie", "par-import", "imported.blueprint.json")}),
         };
         const importStep: ArtifactConversionStep = {
             kind: "importParWorkbook", input: source, output: target.kind === "blueprint" ? target : importedBlueprint,

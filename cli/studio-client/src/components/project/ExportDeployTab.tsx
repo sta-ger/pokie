@@ -420,10 +420,19 @@ function TargetCard({
                             <Text size="sm">Target: {card.label}</Text>
                             <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>
                             <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
+                            <Text size="sm">Destination kind: {artifactPreview.result.destinationKind}</Text>
                             <Text size="sm">Status: {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}</Text>
                             {artifactPreview.result.plan !== undefined && (
                                 <>
                                     <Text size="sm">Plan: {artifactPreview.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}</Text>
+                                    {artifactPreview.result.plan.steps.map((step, index) => (
+                                        <Text key={`${step.kind}-${index}`} size="sm" c="dimmed">
+                                            {step.choice === "reuse" ? "Reused" : "Durable/generated"} {step.output.kind}{step.output.canonicalLocation ? `: ${step.output.canonicalLocation}` : ""}
+                                        </Text>
+                                    ))}
+                                    {artifactPreview.result.plan.steps.some((step) => step.kind === "importParWorkbook") && (
+                                        <Text size="sm" c="dimmed">PAR evidence eligibility is verified from explicit import facts and Meta/hash provenance.</Text>
+                                    )}
                                     {artifactPreview.result.plan.preflight.losses.length > 0 && (
                                         <Text size="sm" c="dimmed">Data boundary: {artifactPreview.result.plan.preflight.losses.join(" ")}</Text>
                                     )}
