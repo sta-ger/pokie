@@ -11,6 +11,10 @@ type InventoryItem = {
     exports_to?: string[];
     validates_by?: string[];
     prerequisite_for?: string[];
+    provenance?: string;
+    stale?: string;
+    compatibility?: string;
+    recovery?: string;
 };
 
 type ProductModelRegistry = {
@@ -19,6 +23,21 @@ type ProductModelRegistry = {
     artifact_kinds: InventoryItem[];
     non_artifact_prerequisites: InventoryItem[];
 };
+
+// Concrete persistence branches audited by PC-05.  Each listed branch must map
+// to an artifact kind rather than silently becoming an undocumented JSON file.
+const PERSISTED_OUTPUT_CONTRACTS: Array<{branch: string; artifactIds: string[]}> = [
+    {branch: "cli:generate", artifactIds: ["weightedOutcomeLibraryJson"]},
+    {branch: "cli:generate --resume on cancellation", artifactIds: ["outcomeLibraryGenerationCheckpoint"]},
+    {branch: "cli:validate --out", artifactIds: ["validationReport"]},
+    {branch: "cli:diff --out", artifactIds: ["simulationComparisonReport", "outcomeSourceComparisonReport"]},
+    {branch: "cli:report --format json --out", artifactIds: ["simulationReport", "simulationReportSet"]},
+    {branch: "cli:report --out for simulation reports", artifactIds: ["renderedReport"]},
+    {branch: "cli:report --out for outcome sources", artifactIds: ["outcomeSourceAnalysisReport"]},
+    {branch: "cli:stakeengine analyze --out", artifactIds: ["stakeEngineAnalysisReport"]},
+    {branch: "cli:stakeengine diff --out", artifactIds: ["stakeEngineComparisonReport"]},
+    {branch: "cli:outcomesource diff --out", artifactIds: ["outcomeSourceComparisonReport"]},
+];
 
 const PRODUCT_MODEL_DIR = path.join(__dirname, "..", "..", "docs", "evidence", "phase7-product-coherence", "pc-05-product-model");
 const REGISTRY_PATH = path.join(PRODUCT_MODEL_DIR, "artifact-registry.json");
@@ -49,7 +68,7 @@ function acceptanceOwnershipRow(productModel: string, step: string): string {
 }
 
 describe("PC-05 product-model contract", () => {
-    it("closes the artifact graph and inventories portable rounds, Stake-import companions and the three fairness artifacts", () => {
+    it("closes the artifact graph and inventories raw generation, portable rounds, Stake-import companions and the three fairness artifacts", () => {
         const registry = readRegistry();
         const items = [...registry.artifact_kinds, ...registry.non_artifact_prerequisites];
         const ids = items.map((item) => item.id);
@@ -73,6 +92,8 @@ describe("PC-05 product-model contract", () => {
                 "blueprint",
                 "tsPackage",
                 "parWorkbook",
+                "weightedOutcomeLibraryJson",
+                "outcomeLibraryGenerationCheckpoint",
                 "outcomeLibrary",
                 "stakeAdapter",
                 "wasmComponent",
@@ -80,6 +101,12 @@ describe("PC-05 product-model contract", () => {
                 "runtimeSession",
                 "simulationReport",
                 "simulationReportSet",
+                "validationReport",
+                "simulationComparisonReport",
+                "outcomeSourceComparisonReport",
+                "stakeEngineAnalysisReport",
+                "stakeEngineComparisonReport",
+                "outcomeSourceAnalysisReport",
                 "renderedReport",
                 "runtimeReplayDescriptor",
                 "certificationEvidenceBundle",
@@ -96,6 +123,70 @@ describe("PC-05 product-model contract", () => {
         expect(roundArtifact?.exports_to).toEqual(expect.arrayContaining(["runtimeReplayDescriptor", "certificationEvidenceBundle"]));
         const stakeImportConfig = registry.artifact_kinds.find((item) => item.id === "stakeImportReExportConfig");
         expect(stakeImportConfig?.imports_from).toEqual(expect.arrayContaining(["stakeAdapter", "outcomeLibrary"]));
+        const rawLibrary = registry.artifact_kinds.find((item) => item.id === "weightedOutcomeLibraryJson");
+        const generationCheckpoint = registry.artifact_kinds.find((item) => item.id === "outcomeLibraryGenerationCheckpoint");
+        const outcomeLibrary = registry.artifact_kinds.find((item) => item.id === "outcomeLibrary");
+        expect(rawLibrary).toEqual(
+            expect.objectContaining({
+                "label": "WeightedOutcomeLibrary JSON",
+                "created_by": expect.arrayContaining(["cli:generate", "cli:outcomelibrary generate"]),
+                "recognized_by": expect.arrayContaining(["cli:export --to outcomes"]),
+                "imports_from": ["tsPackage"],
+                "exports_to": expect.arrayContaining(["outcomeLibrary"]),
+                "prerequisite_for": expect.arrayContaining(["outcomeLibrary"]),
+            }),
+        );
+        expect(generationCheckpoint).toEqual(
+            expect.objectContaining({
+                "label": "ExactEnumerationCheckpoint",
+                "created_by": expect.arrayContaining(["cli:generate --resume on cancellation"]),
+                "recognized_by": expect.arrayContaining(["cli:generate --resume"]),
+                "exports_to": ["weightedOutcomeLibraryJson"],
+                "prerequisite_for": ["weightedOutcomeLibraryJson"],
+            }),
+        );
+        expect(outcomeLibrary?.created_by).not.toContain("cli:generate");
+        expect(outcomeLibrary).toEqual(
+            expect.objectContaining({
+                "imports_from": expect.arrayContaining(["weightedOutcomeLibraryJson"]),
+                "created_by": expect.arrayContaining(["cli:outcomelibrary build", "studio:outcome-library-generate"]),
+            }),
+        );
+        expect(rawLibrary?.recovery).toContain("pokie export <config.json> --to outcomes --out <dir>");
+        for (const artifactId of [
+            "weightedOutcomeLibraryJson",
+            "outcomeLibraryGenerationCheckpoint",
+            "validationReport",
+            "simulationComparisonReport",
+            "outcomeSourceComparisonReport",
+            "stakeEngineAnalysisReport",
+            "stakeEngineComparisonReport",
+            "outcomeSourceAnalysisReport",
+            "renderedReport",
+        ]) {
+            expect(registry.artifact_kinds.find((item) => item.id === artifactId)).toEqual(
+                expect.objectContaining({
+                    provenance: expect.any(String),
+                    stale: expect.any(String),
+                    compatibility: expect.any(String),
+                    recovery: expect.any(String),
+                }),
+            );
+        }
+        expect(registry.artifact_kinds.find((item) => item.id === "validationReport")?.created_by).toEqual(["cli:validate --out"]);
+        expect(registry.artifact_kinds.find((item) => item.id === "simulationComparisonReport")?.created_by).toEqual(["cli:diff --out"]);
+        expect(registry.artifact_kinds.find((item) => item.id === "outcomeSourceComparisonReport")?.created_by).toEqual(
+            expect.arrayContaining(["cli:diff --out for outcome sources", "cli:outcomesource diff --out"]),
+        );
+        expect(registry.artifact_kinds.find((item) => item.id === "stakeEngineAnalysisReport")?.created_by).toEqual(["cli:stakeengine analyze --out"]);
+        expect(registry.artifact_kinds.find((item) => item.id === "stakeEngineComparisonReport")?.created_by).toEqual(["cli:stakeengine diff --out"]);
+        expect(registry.artifact_kinds.find((item) => item.id === "outcomeSourceAnalysisReport")?.created_by).toEqual(["cli:report --out for outcome sources"]);
+        expect(registry.artifact_kinds.find((item) => item.id === "simulationReport")?.created_by).toEqual(
+            expect.arrayContaining(["cli:sim --out", "cli:report --format json --out for a SimulationReport"]),
+        );
+        expect(registry.artifact_kinds.find((item) => item.id === "simulationReportSet")?.created_by).toEqual(
+            expect.arrayContaining(["cli:sim --mode all", "cli:report --format json --out for a SimulationReportSet"]),
+        );
         const serverSeedCommitment = registry.artifact_kinds.find((item) => item.id === "fairnessServerSeedCommitment");
         const fairnessCommitment = registry.artifact_kinds.find((item) => item.id === "fairnessCommitment");
         const fairnessProof = registry.artifact_kinds.find((item) => item.id === "fairnessProof");
@@ -188,6 +279,39 @@ describe("PC-05 product-model contract", () => {
         expect(routeInventory).toContain("Studio domain route");
     });
 
+    it("does not conflate public raw generation with bundle materialization or omit persisted public result branches", () => {
+        const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
+        const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
+        const registry = readRegistry();
+
+        expect(matrix).toContain("| Generate raw weighted outcomes | `generate --out <file>`");
+        expect(matrix).toContain("one `WeightedOutcomeLibrary` JSON value");
+        expect(matrix).toContain("`--resume` persists an `ExactEnumerationCheckpoint` only on cancellation");
+        expect(matrix).toContain("| Materialize a canonical Outcome Library bundle | `build --target outcomeLibrary` from a recognized compatible project, `export <config.json> --to outcomes` from a descriptor");
+        expect(matrix).toContain("`generate` as already having built a directory bundle");
+        expect(matrix).toContain("`validate --out <file>` writes a `ValidateReport`");
+        expect(matrix).toContain("`report --out <file>`");
+        expect(matrix).toContain("`diff --out <file>`; legacy/internal `outcomesource diff --out`, `stakeengine diff --out`");
+        expect(matrix).toContain("`stakeengine analyze/diff --out`");
+        expect(closureOwner(matrix, "PC-05-HANDOFF-01")).toBe("PC-09 Outcome Library sweep");
+        expect(closureRow(matrix, "PC-05-HANDOFF-01")).toContain("raw `WeightedOutcomeLibrary` JSON");
+        expect(productModel).toContain("`pokie generate` is deliberately the first, raw stage");
+        expect(productModel).toContain("`pokie outcomelibrary build` consumes");
+        expect(productModel).toContain("PC-05-HANDOFF-01");
+        for (const {branch, artifactIds} of PERSISTED_OUTPUT_CONTRACTS) {
+            for (const artifactId of artifactIds) {
+                const artifact = registry.artifact_kinds.find((item) => item.id === artifactId);
+                expect(artifact).toEqual(expect.objectContaining({
+                    provenance: expect.any(String),
+                    stale: expect.any(String),
+                    compatibility: expect.any(String),
+                    recovery: expect.any(String),
+                }));
+                expect(artifact?.created_by?.some((producer) => producer.startsWith(branch))).toBe(true);
+            }
+        }
+    });
+
     it("keeps frozen findings while assigning every closure surface to its roadmap-valid owner", () => {
         const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
         const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
@@ -197,6 +321,7 @@ describe("PC-05 product-model contract", () => {
             "PC-05-CLI-03": "PC-15 public CLI/help/docs sweep",
             "PC-05-STUDIO-01": "PC-16 Studio recovery sweep",
             "PC-05-STUDIO-02": "PC-11 Studio validation/certification sweep",
+            "PC-05-HANDOFF-01": "PC-09 Outcome Library sweep",
             "PC-05-DUP-01A": "PC-09 Outcome Library sweep",
             "PC-05-DUP-01B": "PC-10 Stake export sweep",
             "PC-05-DUP-01C": "PC-11 PAR conversion sweep",
@@ -212,7 +337,7 @@ describe("PC-05 product-model contract", () => {
         for (const [id, owner] of Object.entries(expectedOwners)) {
             expect(closureOwner(matrix, id)).toBe(owner);
         }
-        expect(Object.keys(expectedOwners)).toHaveLength(15);
+        expect(Object.keys(expectedOwners)).toHaveLength(16);
         expect(matrix).not.toContain("| PC-05-DUP-01 |");
         expect(closureRow(matrix, "PC-05-STUDIO-01")).not.toContain("PC-07");
         expect(closureRow(matrix, "PC-05-STUDIO-01")).not.toContain("PC-10");
@@ -223,6 +348,7 @@ describe("PC-05 product-model contract", () => {
         expect(closureRow(matrix, "PC-05-DUP-01D")).not.toContain("PC-16");
         expect(closureRow(matrix, "PC-05-DUP-01E")).not.toContain("PC-15");
         expect(acceptanceOwnershipRow(productModel, "PC-09")).toContain("DUP-01A");
+        expect(acceptanceOwnershipRow(productModel, "PC-09")).toContain("HANDOFF-01");
         expect(acceptanceOwnershipRow(productModel, "PC-10")).toContain("DUP-01B");
         expect(acceptanceOwnershipRow(productModel, "PC-11")).toContain("DUP-01C");
         expect(acceptanceOwnershipRow(productModel, "PC-15")).toContain("CLI-03");

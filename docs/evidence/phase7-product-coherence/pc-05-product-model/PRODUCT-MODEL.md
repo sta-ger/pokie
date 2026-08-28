@@ -35,11 +35,24 @@ Blueprint ──build──> TypeScript package ──run──> session / Round
     │                    │                         │
     ├──PAR export/import─┘                         └──best-effort replay
     │                    │
-    └──generate/resolve──> Outcome Library ──> exact sim/replay/serve
-                              │       │  └──> certification/fairness
-                              │       └──> external deployment target
-                              └──> Stake Engine export ──import──> Outcome Library
+    └──generate──> raw WeightedOutcomeLibrary JSON ──build/materialize──> Outcome Library bundle
+                                      │                                      │       │  └──> certification/fairness
+                                      └──cancel/resume checkpoint             │       └──> external deployment target
+                                                                             └──> Stake Engine export ──import──> Outcome Library
 ```
+
+`pokie generate` is deliberately the first, raw stage: its `--out` value is a
+single `WeightedOutcomeLibrary` JSON file, and a cancelled run can persist an
+`ExactEnumerationCheckpoint` only when `--resume` was supplied.  Neither file
+is a native Outcome Library bundle. `pokie outcomelibrary build` consumes
+descriptor-named raw-library JSON to materialize the canonical directory
+bundle. Its supported public entry point is
+`pokie export <config.json> --to outcomes --out <dir>`; public
+`build --target outcomeLibrary` is separately a recognized-project-source
+materialization route, not a way to pass a raw JSON file without a descriptor.
+Studio Generate currently combines the raw generation and bundle write in one
+request, which is a Studio convenience, not evidence that the CLI raw file is
+already a bundle.
 
 The two branches have different guarantees.  A TypeScript package executes
 game logic; native Outcome Library operations select pre-generated outcomes.
@@ -57,6 +70,17 @@ packaging preflight is advisory in-memory analysis, not a WASM build. A
 multi-mode simulation is a distinct per-mode report set and never a blended
 result. These classifications keep the inventory closed without inventing
 formats POKIE does not persist.
+
+Persisted public result outputs are also inventory entries, even though they
+are not source projects or conversion prerequisites: `ValidateReport`, single
+and per-mode simulation comparisons, outcome-source comparisons, standalone
+Stake analysis and comparison reports, outcome-source analysis renderings, and
+simulation renderings. Their `--out` paths preserve an observation of named
+inputs, not a new runnable or importable source. They must be regenerated when
+those inputs change; a result JSON must never be passed off as a Blueprint,
+Outcome Library, Stake directory, simulation input, or replay descriptor.
+The registry names the producer, allowed consumer, provenance, stale rule,
+compatibility boundary and recovery path for each result class.
 
 ## Loss, provenance, stale and compatibility rules
 
@@ -78,6 +102,7 @@ formats POKIE does not persist.
 | Artifact-kind diagnostic failure | Failure names an implementation shape instead of the user artifact and recovery. | PC-05-CLI-02. | PC-06 |
 | Destructive/replacement recovery failure | An import/open action destroys or replaces editable context without an explained recovery. | PC-05-STUDIO-01. | PC-16 |
 | Cross-surface capability asymmetry | One client offers a lifecycle subset without an explicit handoff/boundary. | PC-05-STUDIO-02: certification verify; deployment CLI absence. | PC-11 |
+| Public pipeline handoff | A public operation writes a durable intermediate whose next canonical materialization stage is hidden or misnamed. | PC-05-HANDOFF-01: raw `generate` JSON/checkpoint versus bundle build; Studio combines the stages. | PC-09 |
 | Duplicate conversion ownership | Product-domain, public CLI and Studio entry points must not independently define one conversion contract. | PC-05-DUP-01A Outcome Library; PC-05-DUP-01B Stake; PC-05-DUP-01C PAR; PC-05-DUP-01D public CLI aliases; PC-05-DUP-01E Studio controls. | PC-09 / PC-10 / PC-11 / PC-15 / PC-16 |
 | Runtime-source semantic duplication | The same verb means runtime execution for one source and pre-generated selection for another. | PC-05-DUP-02: simulation/replay/serve. | PC-06 |
 | Validation surface asymmetry | Clients expose different portions of a target-specific validation lifecycle. | PC-05-DUP-03A/B: Blueprint/library/Stake/certification validation. | PC-06 / PC-11 |
@@ -92,7 +117,7 @@ must close an owned row rather than merely create a new observation:
 | Step | Owns | Required proof |
 | --- | --- | --- |
 | PC-06 CLI capability, validation and provenance sweep | CLI-01, CLI-02, DUP-02 and DUP-03A; CLI-04 is already remediated in PC-04 | focused CLI contracts exercise accepted/default/rejected forms and source kind recovery |
-| PC-09 Outcome Library sweep | Outcome Library conversion contract (DUP-01A) | exact-enumeration prerequisites, bundle validation and conversion diagnostics agree |
+| PC-09 Outcome Library sweep | raw-generation/bundle handoff (HANDOFF-01) and Outcome Library conversion contract (DUP-01A) | raw generation/checkpoint/resume, descriptor materialization, bundle validation and conversion diagnostics agree |
 | PC-10 Stake export sweep | Stake conversion contract (DUP-01B) | export prerequisites, provenance and output safety agree |
 | PC-11 PAR and Studio validation/certification sweep | PAR conversion contract (DUP-01C); Studio certification verification handoff and validation controls (STUDIO-02, DUP-03B) | PAR exchange preserves its explicit boundary; controls, disabled states and explicit CLI handoffs match the matrix |
 | PC-15 public CLI/help/docs sweep | generated-command recovery (CLI-03), public CLI conversion aliases (DUP-01D) and public-documentation alignment (DOC-01A) | parser, help, generated actions and public docs agree on canonical routes, prerequisites and recovery |
