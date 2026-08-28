@@ -330,6 +330,8 @@ export class ParCommand implements CliCommandHandling {
         for (const step of plan.steps) {
             console.log(`Intermediate: ${step.choice} ${step.output.kind}${step.output.canonicalLocation === undefined ? "" : ` at ${step.output.canonicalLocation}`}.`);
         }
+        const parImportLosses = plan.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []);
+        if (parImportLosses.length > 0) console.log(`PAR import boundary: ${parImportLosses.join(" ")}`);
         if (plan.preflight.losses.length > 0) console.log(`Data boundary: ${plan.preflight.losses.join(" ")}`);
     }
 

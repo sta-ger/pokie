@@ -85,6 +85,8 @@ export class ExportCommand implements CliCommandHandling {
             if (plan.steps.some((step) => step.kind === "importParWorkbook")) {
                 console.log("Evidence eligibility: determined by durable PAR conversion facts and Meta/hash provenance.");
             }
+            const parImportLosses = plan.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []);
+            if (parImportLosses.length > 0) console.log(`PAR import boundary: ${parImportLosses.join(" ")}`);
             if (plan.preflight.losses.length > 0) console.log(`Data boundary: ${plan.preflight.losses.join(" ")}`);
             return 0;
         }

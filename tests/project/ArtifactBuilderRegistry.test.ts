@@ -149,6 +149,49 @@ describe("ArtifactBuilderRegistry", () => {
             fs.rmSync(directory, {recursive: true, force: true});
         });
 
+        it.each(["promotion failure", "promotion cancellation"])("rolls back a PAR Outcome publication and preserves a caller-owned empty destination on %s", async (failureMode) => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-promotion-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const destination = path.join(directory, "outcomes");
+            const managedOutcomes = new ManagedOutcomeProjectService();
+            const controller = new AbortController();
+            let registrations = 0;
+            const failingPromotionService = {
+                findCompatible: (...args: Parameters<ManagedOutcomeProjectService["findCompatible"]>) => managedOutcomes.findCompatible(...args),
+                allocateRoot: (...args: Parameters<ManagedOutcomeProjectService["allocateRoot"]>) => managedOutcomes.allocateRoot(...args),
+                release: (...args: Parameters<ManagedOutcomeProjectService["release"]>) => managedOutcomes.release(...args),
+                registerAndOpen: async (...args: Parameters<ManagedOutcomeProjectService["registerAndOpen"]>) => {
+                    registrations++;
+                    if (registrations === 2 && failureMode === "promotion failure") throw new Error("promotion registration failed");
+                    const project = await managedOutcomes.registerAndOpen(...args);
+                    if (registrations === 2 && failureMode === "promotion cancellation") controller.abort();
+                    return project;
+                },
+            };
+            const withPromotionFailure = new ArtifactBuilderRegistry("1.3.0", undefined as never, failingPromotionService);
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+            fs.mkdirSync(destination);
+
+            try {
+                await expect(withPromotionFailure.build("outcomeLibrary", source, destination, {signal: controller.signal})).rejects.toThrow(
+                    failureMode === "promotion failure" ? "promotion registration failed" : /cancelled/i,
+                );
+                expect(fs.existsSync(workbookPath)).toBe(true);
+                expect(fs.existsSync(destination)).toBe(true);
+                expect(fs.readdirSync(destination)).toEqual([]);
+                expect(fs.existsSync(path.join(destination, ".pokie", "par-import", "conversion-evidence.json"))).toBe(false);
+                expect(fs.existsSync(path.join(directory, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
         it("rejects a fabricated graph even when its source and destination identities match", async () => {
             const builder = fakeBuilder("tsPackage");
             const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));

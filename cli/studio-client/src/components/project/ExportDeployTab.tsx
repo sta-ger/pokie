@@ -433,6 +433,9 @@ function TargetCard({
                                     {artifactPreview.result.plan.steps.some((step) => step.kind === "importParWorkbook") && (
                                         <Text size="sm" c="dimmed">PAR evidence eligibility is verified from explicit import facts and Meta/hash provenance.</Text>
                                     )}
+                                    {artifactPreview.result.plan.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []).map((loss) => (
+                                        <Text key={loss} size="sm" c="dimmed">PAR import boundary: {loss}</Text>
+                                    ))}
                                     {artifactPreview.result.plan.preflight.losses.length > 0 && (
                                         <Text size="sm" c="dimmed">Data boundary: {artifactPreview.result.plan.preflight.losses.join(" ")}</Text>
                                     )}

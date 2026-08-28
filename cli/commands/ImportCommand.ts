@@ -85,6 +85,8 @@ export class ImportCommand implements CliCommandHandling {
                 console.log(`Final destination: ${prepared.target.canonicalLocation ?? destination} (${prepared.preflight.destinationKind}).`);
                 for (const step of prepared.steps) console.log(`Intermediate: ${step.choice} ${step.output.kind}${step.output.canonicalLocation === undefined ? "" : ` at ${step.output.canonicalLocation}`}.`);
                 console.log(`Evidence: generated beside the imported Blueprint at "${destination}.conversion-evidence.json"; lossless eligibility is determined from the workbook's Meta/hash and explicit import facts.`);
+                const parImportLosses = prepared.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []);
+                if (parImportLosses.length > 0) console.log(`PAR import boundary: ${parImportLosses.join(" ")}`);
                 if (prepared.preflight.losses.length > 0) console.log(`Data boundary: ${prepared.preflight.losses.join(" ")}`);
                 return 0;
             }

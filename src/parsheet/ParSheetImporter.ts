@@ -205,12 +205,14 @@ export class ParSheetImporter implements ParSheetImporting {
 
         issues.push(...this.validator.validate(blueprint));
 
-        // Diagnostics remain durable without guessing semantic loss classes
-        // from arbitrary mapper wording. Explicit importer observations above
-        // own ignored, formula, and required-value facts.
+        // Mapper diagnostics are the only place some parsers report that an
+        // input was discarded (for example an unknown Key/column or a
+        // duplicate row). Promote those observations into explicit evidence;
+        // leaving them as generic diagnostics would let a matching Meta hash
+        // incorrectly advertise an edited workbook as lossless.
         for (const issue of issues) {
             if (!facts.some((fact) => fact.code === issue.code && fact.message === issue.message)) {
-                facts.push({kind: "diagnostic", code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})});
+                facts.push({kind: conversionFactKindForIssue(issue), code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})});
             }
         }
         // A canonical export has matching Meta provenance and no importer
@@ -311,6 +313,20 @@ export class ParSheetImporter implements ParSheetImporting {
 
         return issues;
     }
+}
+
+/**
+ * Mapper contracts intentionally use ValidationIssue for both validation and
+ * conversion reporting. Every PAR mapper observation is conversion evidence:
+ * an invalid, missing, duplicate, or unsupported cell either changes what
+ * reaches the model or prevents it from being recovered. Ordinary Blueprint
+ * validation and Meta provenance verification remain diagnostics because
+ * they do not themselves transform workbook input.
+ */
+function conversionFactKindForIssue(issue: ValidationIssue): ConversionFact["kind"] {
+    return issue.code.startsWith("parsheet-") && !issue.code.startsWith("parsheet-provenance-")
+        ? "ignored"
+        : "diagnostic";
 }
 
 // ManifestSheetMapper intentionally supplies a structurally usable model even

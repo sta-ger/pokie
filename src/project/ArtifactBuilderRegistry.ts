@@ -448,6 +448,10 @@ export class ArtifactBuilderRegistry {
             return builder.build(source, destinationPath, options);
         }
         const intermediateDirectory = await fs.promises.mkdtemp(path.join(path.dirname(destinationPath), ".pokie-par-import-"));
+        // An empty caller-supplied directory is an allowed destination.  It
+        // remains caller-owned if a later PAR publication phase fails: remove
+        // the files this operation created, but leave the directory itself.
+        const destinationExistedEmpty = await this.isExistingEmptyDirectory(destinationPath);
         const intermediatePath = path.join(intermediateDirectory, "imported.blueprint.json");
         let imported: PokieProject | undefined;
         let selectedPlan: ArtifactConversionPlan | undefined;
@@ -487,15 +491,15 @@ export class ArtifactBuilderRegistry {
                 assertArtifactBuildNotCancelled(options);
                 await fs.promises.copyFile(evidenceSource, durableEvidence);
                 assertArtifactBuildNotCancelled(options);
+                result = await this.promoteParManagedOutcomes(result, imported, durableBlueprint, selectedPlan, durableDirectory, options);
             } catch (error) {
                 // Publication, generated managed prerequisites, and durable
                 // attachment are one operation.  Remove only roots selected
                 // for materialization by this plan; a reused managed Outcome
                 // belongs to an earlier operation and must survive.
-                await this.rollbackParDerivedPublication(result, imported, selectedPlan);
+                await this.rollbackParDerivedPublication(result, imported, selectedPlan, destinationExistedEmpty);
                 throw error;
             }
-            result = await this.promoteParManagedOutcomes(result, imported, durableBlueprint, selectedPlan, durableDirectory);
             return {...result, conversionEvidencePath: durableEvidence, importedBlueprintPath: durableBlueprint};
         } finally {
             // Outcome streaming can finish its final writer callback while the
@@ -505,14 +509,14 @@ export class ArtifactBuilderRegistry {
         }
     }
 
-    private async rollbackParDerivedPublication(result: ArtifactBuildResult, imported: PokieProject, plan: ArtifactConversionPlan): Promise<void> {
+    private async rollbackParDerivedPublication(result: ArtifactBuildResult, imported: PokieProject, plan: ArtifactConversionPlan, preserveDestinationDirectory = false): Promise<void> {
         const ownership = this.managedOutcomeOwnership(result, plan, imported.rootPath);
         for (const entry of ownership) {
             if (entry.disposition !== "owned") continue;
             await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
             if (entry.rootPath !== result.outputPath) await fs.promises.rm(entry.rootPath, {recursive: true, force: true}).catch(() => undefined);
         }
-        await fs.promises.rm(result.outputPath, {recursive: true, force: true}).catch(() => undefined);
+        await this.removeParOperationOutput(result.outputPath, preserveDestinationDirectory);
     }
 
     /**
@@ -528,6 +532,7 @@ export class ArtifactBuilderRegistry {
         durableBlueprintPath: string,
         plan: ArtifactConversionPlan,
         durableDirectory: string,
+        options?: ArtifactBuildOptions,
     ): Promise<ArtifactBuildResult> {
         const ownership = this.managedOutcomeOwnership(result, plan, imported.rootPath);
         const owned = ownership.filter((entry) => entry.disposition === "owned");
@@ -535,17 +540,37 @@ export class ArtifactBuilderRegistry {
 
         const compatibility = this.compatibilityFromPlan(plan.source);
         const promoted = new Map<string, string>();
-        for (const entry of owned) {
-            const durableRoot = entry.rootPath === result.outputPath
-                ? entry.rootPath
-                : path.join(durableDirectory, "outcome-library");
-            await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath);
-            if (durableRoot !== entry.rootPath) {
-                await fs.promises.rm(durableRoot, {recursive: true, force: true});
-                await fs.promises.rename(entry.rootPath, durableRoot);
+        const registered: {readonly rootPath: string; readonly sourceRootPath: string}[] = [];
+        try {
+            for (const entry of owned) {
+                assertArtifactBuildNotCancelled(options);
+                const durableRoot = entry.rootPath === result.outputPath
+                    ? entry.rootPath
+                    : path.join(durableDirectory, "outcome-library");
+                await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath);
+                if (durableRoot !== entry.rootPath) {
+                    await fs.promises.rm(durableRoot, {recursive: true, force: true});
+                    await fs.promises.rename(entry.rootPath, durableRoot);
+                }
+                assertArtifactBuildNotCancelled(options);
+                await this.managedOutcomeProjects.registerAndOpen(durableBlueprintPath, durableRoot, compatibility);
+                registered.push({rootPath: durableRoot, sourceRootPath: durableBlueprintPath});
+                promoted.set(entry.rootPath, durableRoot);
+                assertArtifactBuildNotCancelled(options);
             }
-            await this.managedOutcomeProjects.registerAndOpen(durableBlueprintPath, durableRoot, compatibility);
-            promoted.set(entry.rootPath, durableRoot);
+        } catch (error) {
+            // Promotion is publication, not a best-effort relocation.  Undo
+            // every record/root already moved before the outer lifecycle
+            // removes the terminal and durable evidence attachment.
+            for (const entry of registered.reverse()) {
+                await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
+            }
+            for (const entry of owned) {
+                const rootPath = promoted.get(entry.rootPath) ?? entry.rootPath;
+                await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
+                if (rootPath !== result.outputPath) await fs.promises.rm(rootPath, {recursive: true, force: true}).catch(() => undefined);
+            }
+            throw error;
         }
         const relocate = (root: string): string => promoted.get(root) ?? root;
         return {
@@ -558,6 +583,30 @@ export class ArtifactBuilderRegistry {
                 sourceRootPath: durableBlueprintPath,
             }),
         };
+    }
+
+    private async isExistingEmptyDirectory(destinationPath: string): Promise<boolean> {
+        try {
+            return (await fs.promises.stat(destinationPath)).isDirectory() && (await fs.promises.readdir(destinationPath)).length === 0;
+        } catch {
+            return false;
+        }
+    }
+
+    private async removeParOperationOutput(outputPath: string, preserveDestinationDirectory: boolean): Promise<void> {
+        if (!preserveDestinationDirectory) {
+            await fs.promises.rm(outputPath, {recursive: true, force: true}).catch(() => undefined);
+            return;
+        }
+        // The directory was empty before this operation, so every entry now
+        // below it was allocated by this operation. Do not remove the root.
+        try {
+            for (const entry of await fs.promises.readdir(outputPath)) {
+                await fs.promises.rm(path.join(outputPath, entry), {recursive: true, force: true});
+            }
+        } catch {
+            // A failed writer may not have created the destination after all.
+        }
     }
 
     private async hydrateParDerivedPlan(plan: ArtifactConversionPlan, imported: PokieProject, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
