@@ -1,6 +1,5 @@
 import path from "path";
-import {ArtifactBuilderRegistry, ArtifactConversionPlanner, computeArtifactConfigurationHash, PROJECT_TYPE_CAPABILITIES, ProjectTargetResolver, type ArtifactIdentity, type ArtifactTargetType, type ProjectResolving} from "pokie";
-import fs from "fs";
+import {ArtifactBuilderRegistry, ArtifactConversionPlanner, ProjectTargetResolver, type ArtifactConversionExecution, type ArtifactTargetType, type ProjectResolving} from "pokie";
 import {Command} from "commander";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {OutcomeLibraryCommand} from "./OutcomeLibraryCommand.js";
@@ -59,7 +58,7 @@ export class ExportCommand implements CliCommandHandling {
             return this.runProjectExport(parsed, project);
         }
 
-        return this.runDescriptorExport(parsed, args);
+        return this.runDescriptorExport(parsed);
     }
 
     // The original config-descriptor exports remain available for users who already have standalone
@@ -166,20 +165,6 @@ export class ExportCommand implements CliCommandHandling {
             "Next: choose a different --out path or remove the existing destination, then retry.";
     }
 
-    private async validateDryRunSource(args: ExportArgs): Promise<void> {
-        try {
-            if (args.target === "outcomes") {
-                await this.outcomeLibrary.validateBuildSource(args.source);
-            } else if (args.target === "adapter") {
-                await this.stake.validateExportSource(args.source);
-            } else {
-                this.par.validateExportSource(args.source);
-            }
-        } catch {
-            throw new Error(this.describeSourceFailure(args));
-        }
-    }
-
     /**
      * Legacy descriptors retain their documented readers, but no longer take a
      * detour through another public command.  The outer `export` action binds
@@ -187,48 +172,33 @@ export class ExportCommand implements CliCommandHandling {
      * ordering, destination safety, cancellation, rollback and the terminal
      * diagnostic boundary.
      */
-    private async runDescriptorExport(args: ExportArgs, argv: string[]): Promise<number> {
+    private async runDescriptorExport(args: ExportArgs): Promise<number> {
         const destination = this.resolveDestination(args);
-        const target = this.artifactTarget(args.target);
-        // Descriptor formats are supported inputs, but not native projects.
-        // Bind their actual on-disk bytes so preparation cannot silently use a
-        // changed config while retaining a synthetic source identity.
-        const currentSource = (): ArtifactIdentity => this.descriptorSource(args);
-        const plan = this.planner.planIdentity(currentSource(), target, {destinationPath: destination});
         const controller = new AbortController();
         const onCancel = () => controller.abort();
         process.once("SIGINT", onCancel);
-        const forwarded = argv.filter((value, index) => value !== "--to" && argv[index - 1] !== "--to" && value !== "--dry-run");
         try {
-            await this.planner.executeConversionPlan(plan, {
-                currentSource,
-                read: async () => {
-                    await this.validateDryRunSource(args);
-                    return undefined;
-                },
-                canPublish: () => true,
-                assertDestinationAvailable: () => {
-                    const check = this.registry.checkDestination(target, destination, args.source);
-                    if (!check.available) throw new Error(this.describeDestinationConflict(args.target, check.message ?? "The destination is unavailable."));
-                },
-                publish: async () => {
-                    if (args.dryRun) return 0;
-                    let commandResult: number;
-                    if (args.target === "outcomes") {
-                        commandResult = await this.outcomeLibrary.run(["build", ...forwarded]);
-                    } else if (args.target === "adapter") {
-                        commandResult = await this.stake.run(["export", ...forwarded]);
-                    } else {
-                        commandResult = await this.par.run(["export", ...forwarded]);
-                    }
-                    if (commandResult !== 0) throw new Error(this.describeSourceFailure(args));
-                    return commandResult;
-                },
-                rollback: async () => {
-                    if (!args.dryRun) await import("fs").then(({promises}) => promises.rm(destination, {recursive: true, force: true}));
-                },
-                signal: controller.signal,
-            });
+            // A descriptor's parser and writer are format adapters only.  The
+            // Export command executes their returned hooks through exactly one
+            // planner operation; it never dispatches another public command.
+            if (args.target === "outcomes") {
+                const prepared = this.outcomeLibrary.prepareDescriptorBuildOperation(args.source, destination, controller.signal);
+                await this.executeDescriptorOperation(prepared, args.dryRun);
+            } else if (args.target === "adapter") {
+                const prepared = this.stake.prepareDescriptorExportOperation(args.source, destination, controller.signal);
+                await this.executeDescriptorOperation(prepared, args.dryRun);
+            } else {
+                const prepared = this.par.prepareDescriptorExportOperation(args.source, destination, controller.signal);
+                await this.executeDescriptorOperation(prepared, args.dryRun);
+            }
+        } catch (error) {
+            if (error instanceof Error && (/already exists|source itself|destination|occupied/i).test(error.message)) {
+                throw new Error(this.describeDestinationConflict(args.target, error.message));
+            }
+            // Descriptor parsers have detailed format diagnostics internally;
+            // the public target alias deliberately keeps its established,
+            // target-aware recovery wording.
+            throw new Error(this.describeSourceFailure(args));
         } finally {
             process.off("SIGINT", onCancel);
         }
@@ -236,6 +206,24 @@ export class ExportCommand implements CliCommandHandling {
             console.log(`Dry run -- would export target "${args.target}" from "${args.source}" to "${destination}". No files written.`);
         }
         return 0;
+    }
+
+    private async executeDescriptorOperation(
+        prepared: {readonly plan: import("pokie").ArtifactConversionPlan; readonly validate: () => Promise<void> | void; readonly execution: ArtifactConversionExecution<unknown, unknown>},
+        dryRun: boolean,
+    ): Promise<void> {
+        if (!dryRun) {
+            await this.planner.executeConversionPlan(prepared.plan, prepared.execution);
+            return;
+        }
+        await prepared.validate();
+        await this.planner.executeConversionPlan(prepared.plan, {
+            ...prepared.execution,
+            // Keep destination policy and source drift checks active for a
+            // preview while making its publisher a no-op.
+            publish: () => Promise.resolve(undefined),
+            rollback: () => Promise.resolve(undefined),
+        });
     }
 
     private describeSourceFailure(args: ExportArgs): string {
@@ -254,18 +242,4 @@ export class ExportCommand implements CliCommandHandling {
         return `Cannot export target "${args.target}" because source "${args.source}" is not compatible. Next: ${recovery}, then retry.`;
     }
 
-    private descriptorSource(args: ExportArgs): ArtifactIdentity {
-        const descriptorPath = path.resolve(args.source);
-        return {
-            kind: args.target === "workbook" ? "blueprint" : "outcomeLibrary",
-            canonicalLocation: descriptorPath,
-            recognitionProvenance: "verified CLI export descriptor",
-            capabilities: args.target === "workbook" ? PROJECT_TYPE_CAPABILITIES.blueprint : PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
-            // A missing path remains a normal descriptor validation failure so
-            // the public command can retain its actionable recovery wording.
-            ...(fs.existsSync(descriptorPath)
-                ? {configurationProvenance: {configurationHash: computeArtifactConfigurationHash(fs.readFileSync(descriptorPath))}}
-                : {}),
-        };
-    }
 }

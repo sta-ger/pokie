@@ -4,7 +4,7 @@ import path from "path";
 import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
-    computeArtifactConfigurationHash,
+    computeArtifactInputBindingHash,
     ArtifactImportOutputPlan,
     loadWeightedOutcomeLibraryFromBundle,
     StakeEngineBundleStreamingExporter,
@@ -418,49 +418,9 @@ export class StakeEngineCommand implements CliCommandHandling {
     }
 
     private async runExport(options: ExportOptions): Promise<number> {
-        // Config descriptors are a public compatibility input, not permission
-        // for this command to own a second export lifecycle.  Bind the
-        // descriptor to the same immutable conversion operation used by
-        // recognized Outcome Library projects.
-        const currentSource = () => this.exportDescriptorSource(options.configPath);
-        const plan = this.planner.planIdentity(currentSource(), "stakeAdapter", {destinationPath: options.outDir});
         const cancellation = createCliImportCancellation();
-        const execution = await this.planner.executeConversionPlan(plan, {
-            currentSource,
-            read: async () => {
-                const descriptor = this.loadDescriptor(options.configPath);
-                const configDir = path.dirname(options.configPath);
-                const allBundleSourced = descriptor.modes.every((entry) => entry.bundleDir !== undefined);
-                const modes = allBundleSourced ? undefined : await Promise.all(
-                    descriptor.modes.map(async (entry): Promise<StakeEngineExportModeInput> => ({
-                        modeName: entry.modeName,
-                        cost: entry.cost,
-                        library: entry.libraryPath !== undefined
-                            ? (this.loadJsonChecked(path.resolve(configDir, entry.libraryPath), `mode "${entry.modeName}"'s outcome library`) as WeightedOutcomeLibrary)
-                            : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
-                    })),
-                );
-                return {descriptor, configDir, allBundleSourced, modes};
-            },
-            canPublish: () => true,
-            assertDestinationAvailable: () => {
-                const destination = new ArtifactBuilderRegistry().checkDestination("stakeAdapter", options.outDir, options.configPath);
-                if (!destination.available) throw new Error(destination.message);
-            },
-            publish: (read) => read.allBundleSourced
-                ? this.bundleStreamingExporter.exportToDirectory(
-                    read.descriptor.modes.map((entry) => ({
-                        modeName: entry.modeName,
-                        cost: entry.cost,
-                        bundleDir: path.resolve(read.configDir, entry.bundleDir as string),
-                        bundleModeName: entry.bundleModeName ?? entry.modeName,
-                    })),
-                    options.outDir,
-                )
-                : this.exporter.exportToDirectory(read.modes!, options.outDir),
-            rollback: () => fs.promises.rm(options.outDir, {recursive: true, force: true}),
-            signal: cancellation.signal,
-        }).finally(cancellation.cleanup);
+        const prepared = this.prepareDescriptorExportOperation(options.configPath, options.outDir, cancellation.signal);
+        const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution).finally(cancellation.cleanup);
         const result = execution.publication!;
 
         const errors = result.issues.filter((issue) => issue.severity === "error");
@@ -483,14 +443,60 @@ export class StakeEngineCommand implements CliCommandHandling {
         return 0;
     }
 
+    /** Returns format hooks for one immutable descriptor export operation. */
+    // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for ExportCommand
+    public prepareDescriptorExportOperation(configPath: string, outDir: string, signal?: AbortSignal) {
+        const currentSource = () => this.exportDescriptorSource(configPath);
+        return {plan: this.planner.planIdentity(currentSource(), "stakeAdapter", {destinationPath: outDir}), validate: () => this.validateExportSource(configPath), execution: {
+            currentSource,
+            read: async () => {
+                const descriptor = this.loadDescriptor(configPath);
+                const configDir = path.dirname(configPath);
+                const allBundleSourced = descriptor.modes.every((entry) => entry.bundleDir !== undefined);
+                const modes = allBundleSourced ? undefined : await Promise.all(
+                    descriptor.modes.map(async (entry): Promise<StakeEngineExportModeInput> => ({
+                        modeName: entry.modeName,
+                        cost: entry.cost,
+                        library: entry.libraryPath !== undefined
+                            ? (this.loadJsonChecked(path.resolve(configDir, entry.libraryPath), `mode "${entry.modeName}"'s outcome library`) as WeightedOutcomeLibrary)
+                            : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
+                    })),
+                );
+                return {descriptor, configDir, allBundleSourced, modes};
+            },
+            canPublish: () => true,
+            assertDestinationAvailable: () => {
+                const destination = new ArtifactBuilderRegistry().checkDestination("stakeAdapter", outDir, configPath);
+                if (!destination.available) throw new Error(destination.message);
+            },
+            publish: (read) => read.allBundleSourced
+                ? this.bundleStreamingExporter.exportToDirectory(
+                    read.descriptor.modes.map((entry) => ({
+                        modeName: entry.modeName,
+                        cost: entry.cost,
+                        bundleDir: path.resolve(read.configDir, entry.bundleDir as string),
+                        bundleModeName: entry.bundleModeName ?? entry.modeName,
+                    })),
+                    outDir,
+                )
+                : this.exporter.exportToDirectory(read.modes!, outDir),
+            rollback: () => fs.promises.rm(outDir, {recursive: true, force: true}),
+            ...(signal === undefined ? {} : {signal}),
+        }};
+    }
+
     private exportDescriptorSource(configPath: string): import("pokie").ArtifactIdentity {
         const canonicalLocation = path.resolve(configPath);
+        const descriptor = this.loadDescriptor(canonicalLocation);
+        const referencedInputs = descriptor.modes.map((entry) => path.resolve(
+            path.dirname(canonicalLocation), entry.libraryPath ?? entry.bundleDir!,
+        ));
         return {
             kind: "outcomeLibrary",
             canonicalLocation,
             recognitionProvenance: "verified CLI Stake export descriptor",
             capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
-            configurationProvenance: {configurationHash: computeArtifactConfigurationHash(JSON.stringify(this.loadDescriptor(canonicalLocation)))},
+            configurationProvenance: {configurationHash: computeArtifactInputBindingHash([canonicalLocation, ...referencedInputs])},
         };
     }
 

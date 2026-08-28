@@ -1,5 +1,6 @@
 import path from "path";
 import crypto from "crypto";
+import fs from "fs";
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
 import type {PokieProject} from "./PokieProject.js";
 import {
@@ -52,6 +53,44 @@ export type ArtifactConfigurationProvenance = {
  */
 export function computeArtifactConfigurationHash(contents: string | Buffer): string {
     return `sha256:${crypto.createHash("sha256").update(contents).digest("hex")}`;
+}
+
+/**
+ * Hashes a descriptor together with every file or directory it names.  A
+ * descriptor is only a trustworthy prepared source while its referenced
+ * libraries, streams, and bundle inputs remain unchanged too.  Missing and
+ * symlinked inputs are represented explicitly so replacing either state is
+ * detected by the operation's final source rebind.
+ */
+export function computeArtifactInputBindingHash(inputPaths: readonly string[]): string {
+    const hash = crypto.createHash("sha256");
+    const seen = new Set<string>();
+    const visit = (inputPath: string): void => {
+        const resolved = path.resolve(inputPath);
+        if (seen.has(resolved)) return;
+        seen.add(resolved);
+        hash.update(`path:${resolved}\0`);
+        try {
+            const stat = fs.lstatSync(resolved);
+            if (stat.isSymbolicLink()) {
+                hash.update(`symlink:${fs.readlinkSync(resolved)}\0`);
+                visit(fs.realpathSync(resolved));
+            } else if (stat.isDirectory()) {
+                hash.update("directory\0");
+                for (const entry of fs.readdirSync(resolved).sort()) visit(path.join(resolved, entry));
+            } else if (stat.isFile()) {
+                hash.update("file\0");
+                hash.update(fs.readFileSync(resolved));
+            } else {
+                hash.update("unsupported-input\0");
+            }
+        } catch (error) {
+            const reason = error instanceof Error ? ((error as NodeJS.ErrnoException).code ?? error.message) : String(error);
+            hash.update(`unreadable:${reason}\0`);
+        }
+    };
+    for (const inputPath of inputPaths) visit(inputPath);
+    return `sha256:${hash.digest("hex")}`;
 }
 
 export type ArtifactConversionStepKind =

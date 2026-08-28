@@ -4,7 +4,7 @@ import path from "path";
 import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
-    computeArtifactConfigurationHash,
+    computeArtifactInputBindingHash,
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     ExactEnumerationCheckpoint,
     GenerateExactWeightedOutcomeLibraryOptions,
@@ -681,14 +681,42 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     }
 
     private async executeBuild(configPath: string, outDir: string): Promise<number> {
-        // Descriptor builds are a format reader/writer supplied to the common
-        // prepared operation; this command only parses and renders its result.
-        const currentSource = () => this.buildDescriptorSource(configPath);
-        const plan = this.planner.planIdentity(currentSource(), "outcomeLibrary", {destinationPath: outDir});
         const cancellation = new AbortController();
         const onCancel = () => cancellation.abort();
         this.process.once("SIGINT", onCancel);
-        const execution = await this.planner.executeConversionPlan(plan, {
+        const prepared = this.prepareDescriptorBuildOperation(configPath, outDir, cancellation.signal);
+        const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution).finally(() => this.process.off("SIGINT", onCancel));
+        const result = execution.publication!;
+        const errors = result.issues.filter((issue) => issue.severity === "error");
+        const warnings = result.issues.filter((issue) => issue.severity !== "error");
+
+        if (errors.length > 0) {
+            console.error(`Could not build an outcome library bundle from "${configPath}" to "${outDir}" (${errors.length} error(s)):`);
+            this.printIssues(errors);
+            return 1;
+        }
+
+        console.log(`Built an outcome library bundle from "${configPath}" to "${outDir}":`);
+        for (const file of result.files) {
+            console.log(`  wrote  ${file}`);
+        }
+        for (const issue of warnings) {
+            console.log(`  warning  ${issue.code}: ${issue.message}`);
+        }
+
+        return 0;
+    }
+
+    /**
+     * Supplies the descriptor reader/writer to a caller-owned prepared operation.
+     * This is deliberately not a command dispatch surface: ExportCommand uses the
+     * returned plan and execution hooks directly, so it cannot delegate to a
+     * second public CLI command after its source was prepared.
+     */
+    // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for ExportCommand
+    public prepareDescriptorBuildOperation(configPath: string, outDir: string, signal?: AbortSignal) {
+        const currentSource = () => this.buildDescriptorSource(configPath);
+        return {plan: this.planner.planIdentity(currentSource(), "outcomeLibrary", {destinationPath: outDir}), validate: () => this.validateBuildSource(configPath), execution: {
             currentSource,
             read: () => {
                 const descriptor = this.loadDescriptor(configPath);
@@ -713,37 +741,22 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             },
             publish: (modes) => this.writer.writeToDirectory(modes, outDir),
             rollback: () => fs.promises.rm(outDir, {recursive: true, force: true}),
-            signal: cancellation.signal,
-        }).finally(() => this.process.off("SIGINT", onCancel));
-        const result = execution.publication!;
-        const errors = result.issues.filter((issue) => issue.severity === "error");
-        const warnings = result.issues.filter((issue) => issue.severity !== "error");
-
-        if (errors.length > 0) {
-            console.error(`Could not build an outcome library bundle from "${configPath}" to "${outDir}" (${errors.length} error(s)):`);
-            this.printIssues(errors);
-            return 1;
-        }
-
-        console.log(`Built an outcome library bundle from "${configPath}" to "${outDir}":`);
-        for (const file of result.files) {
-            console.log(`  wrote  ${file}`);
-        }
-        for (const issue of warnings) {
-            console.log(`  warning  ${issue.code}: ${issue.message}`);
-        }
-
-        return 0;
+            ...(signal === undefined ? {} : {signal}),
+        }};
     }
 
     private buildDescriptorSource(configPath: string): import("pokie").ArtifactIdentity {
         const canonicalLocation = path.resolve(configPath);
+        const descriptor = this.loadDescriptor(canonicalLocation);
+        const referencedInputs = descriptor.modes.map((entry) => path.resolve(
+            path.dirname(canonicalLocation), entry.libraryPath ?? entry.outcomesPath!,
+        ));
         return {
             kind: "outcomeLibrary",
             canonicalLocation,
             recognitionProvenance: "verified CLI Outcome Library build descriptor",
             capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
-            configurationProvenance: {configurationHash: computeArtifactConfigurationHash(JSON.stringify(this.loadDescriptor(canonicalLocation)))},
+            configurationProvenance: {configurationHash: computeArtifactInputBindingHash([canonicalLocation, ...referencedInputs])},
         };
     }
 

@@ -6,7 +6,7 @@ import {
     ArtifactConversionPlanner,
     ArtifactImportOutputPlan,
     ArtifactDestinationCheck,
-    computeArtifactConfigurationHash,
+    computeArtifactInputBindingHash,
     describeUnsupportedProjectOperation,
     GameBlueprint,
     loadGameBlueprint,
@@ -309,25 +309,9 @@ export class ParCommand implements CliCommandHandling {
     }
 
     private async executeExport(blueprintPath: string, outPath: string): Promise<number> {
-        // A standalone Blueprint JSON remains a supported CLI input, but it is
-        // no longer a direct writer lifecycle.  Bind its canonical identity to
-        // a prepared conversion and let the shared operation sequence read,
-        // destination policy, publication, cancellation and rollback.
-        const currentSource = () => this.exportDescriptorSource(blueprintPath);
-        const plan = this.planner.planIdentity(currentSource(), "parWorkbook", {destinationPath: outPath});
         const cancellation = createCliImportCancellation();
-        const execution = await this.planner.executeConversionPlan(plan, {
-            currentSource,
-            read: () => {
-                const blueprint = this.loadBlueprint(blueprintPath);
-                return {blueprint, issues: prepareBlueprintForParSheetExport(blueprint).issues};
-            },
-            canPublish: (read) => read.issues.every((issue) => issue.severity !== "error"),
-            assertDestinationAvailable: () => this.assertDestinationIsAvailable(blueprintPath, outPath),
-            publish: (read) => this.exporter.exportToFile(read.blueprint, outPath, blueprintPath),
-            rollback: () => fs.promises.rm(outPath, {force: true}),
-            signal: cancellation.signal,
-        }).finally(cancellation.cleanup);
+        const prepared = this.prepareDescriptorExportOperation(blueprintPath, outPath, cancellation.signal);
+        const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution).finally(cancellation.cleanup);
         const issues = execution.published ? execution.publication! : execution.read.issues;
         const errors = issues.filter((issue) => issue.severity === "error");
         const warnings = issues.filter((issue) => issue.severity !== "error");
@@ -348,6 +332,24 @@ export class ParCommand implements CliCommandHandling {
         return 0;
     }
 
+    /** Returns format hooks for one immutable Blueprint-to-PAR operation. */
+    // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for ExportCommand
+    public prepareDescriptorExportOperation(blueprintPath: string, outPath: string, signal?: AbortSignal) {
+        const currentSource = () => this.exportDescriptorSource(blueprintPath);
+        return {plan: this.planner.planIdentity(currentSource(), "parWorkbook", {destinationPath: outPath}), validate: () => this.validateExportSource(blueprintPath), execution: {
+            currentSource,
+            read: () => {
+                const blueprint = this.loadBlueprint(blueprintPath);
+                return {blueprint, issues: prepareBlueprintForParSheetExport(blueprint).issues};
+            },
+            canPublish: (read) => read.issues.every((issue) => issue.severity !== "error"),
+            assertDestinationAvailable: () => this.assertDestinationIsAvailable(blueprintPath, outPath),
+            publish: (read) => this.exporter.exportToFile(read.blueprint, outPath, blueprintPath),
+            rollback: () => fs.promises.rm(outPath, {force: true}),
+            ...(signal === undefined ? {} : {signal}),
+        }};
+    }
+
     private assertDestinationIsAvailable(sourcePath: string, destinationPath: string): void {
         const destination = this.checkDestination(sourcePath, destinationPath);
         if (!destination.available) {
@@ -362,7 +364,7 @@ export class ParCommand implements CliCommandHandling {
             canonicalLocation,
             recognitionProvenance: "verified CLI Blueprint export descriptor",
             capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
-            configurationProvenance: {configurationHash: computeArtifactConfigurationHash(JSON.stringify(this.loadBlueprint(canonicalLocation)))},
+            configurationProvenance: {configurationHash: computeArtifactInputBindingHash([canonicalLocation])},
         };
     }
 

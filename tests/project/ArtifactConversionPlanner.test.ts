@@ -1,4 +1,7 @@
-import {ArtifactConversionPlanner, describeArtifactConversionPlanDiagnostic, type PokieProject} from "../../src/index.js";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import {ArtifactConversionPlanner, computeArtifactInputBindingHash, describeArtifactConversionPlanDiagnostic, type PokieProject} from "../../src/index.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 
 function project(type: PokieProject["type"]): PokieProject {
@@ -7,6 +10,24 @@ function project(type: PokieProject["type"]): PokieProject {
 
 describe("ArtifactConversionPlanner", () => {
     const planner = new ArtifactConversionPlanner();
+
+    it("binds descriptor preparation to every referenced file and directory", () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-artifact-input-binding-"));
+        const descriptor = path.join(directory, "descriptor.json");
+        const nested = path.join(directory, "bundle", "mode.json");
+        try {
+            fs.mkdirSync(path.dirname(nested));
+            fs.writeFileSync(descriptor, '{"mode":"base"}');
+            fs.writeFileSync(nested, '{"outcomes":1}');
+            const prepared = computeArtifactInputBindingHash([descriptor, path.dirname(nested)]);
+            fs.writeFileSync(nested, '{"outcomes":2}');
+            expect(computeArtifactInputBindingHash([descriptor, path.dirname(nested)])).not.toBe(prepared);
+            fs.unlinkSync(nested);
+            expect(computeArtifactInputBindingHash([descriptor, path.dirname(nested)])).not.toBe(prepared);
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
 
     it("plans the non-circular Blueprint to Stake path through a canonical Outcome Library", () => {
         const plan = planner.plan(project("blueprint"), "stakeAdapter", {destinationPath: "/exports/stake"});
