@@ -28,6 +28,7 @@ import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import {ArtifactConversionPlanner, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions} from "./ArtifactConversionPlanner.js";
 import {
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
@@ -119,6 +120,7 @@ export class ArtifactBuilderRegistry {
     private readonly builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder>;
     private readonly blueprintStakeWorkflow: BlueprintStakeOutcomeLibraryWorkflow;
     private readonly managedOutcomeProjects: ManagedOutcomeProjectServicing;
+    private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
         pokieVersion = "0.0.0",
@@ -151,6 +153,25 @@ export class ArtifactBuilderRegistry {
         return ADVERTISED_ARTIFACT_BUILD_TARGETS.filter((target) => this.descriptors.has(target) && this.builders.has(target));
     }
 
+    // The public conversion contract used by all adapters. The registry adds its filesystem-backed
+    // destination policy to the pure planner result so previews and execution reject the same path.
+    public plan(source: PokieProject, target: ArtifactTargetType, options: ArtifactConversionPlanningOptions = {}): ArtifactConversionPlan {
+        const plan = this.planner.plan(source, target, options);
+        if (plan.status !== "planned" || options.destinationPath === undefined) return plan;
+        const destination = this.checkDestination(target, options.destinationPath, source.rootPath);
+        if (destination.available) return plan;
+        return {
+            ...plan,
+            status: "conflict",
+            diagnostic: {
+                code: "destination-conflict",
+                failedEdge: {from: source.type, to: target},
+                message: destination.message ?? "The destination is unavailable.",
+                recovery: "Choose an empty destination that is not the source or one of its descendants.",
+            },
+        };
+    }
+
     public describe(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
         const descriptor = this.descriptors.get(target);
         if (descriptor === undefined || !this.builders.has(target)) {
@@ -166,7 +187,7 @@ export class ArtifactBuilderRegistry {
     // describeUnsupportedProjectOperation performs for a PokieOperation, exposed target-first so a caller
     // building toward a specific artifact doesn't need to know which PokieOperation id backs it.
     public supportsConversionFrom(target: ArtifactTargetType, source: ProjectType): boolean {
-        return getBuildProductMatrixCell(source, target).state === "supported";
+        return this.planner.planType(source, target).status === "planned";
     }
 
     // Reports whether `destinationPath` would be accepted by `target`'s own build() -- the exact same

@@ -100,13 +100,13 @@ export class ExportCommand implements CliCommandHandling {
     // advertises in its help text.
     private async runProjectExport(args: ExportArgs, project: Awaited<ReturnType<ProjectResolving["resolve"]>> & {}): Promise<number> {
         const target = this.artifactTarget(args.target);
-        if (!this.registry.supportsConversionFrom(target, project.type)) {
+        const destination = this.resolveDestination(args);
+        const plan = this.registry.plan(project, target, {destinationPath: destination});
+        if (plan.status === "unavailable") {
             throw new Error(this.describeSourceFailure(args));
         }
-        const destination = this.resolveDestination(args);
-        const destinationCheck = this.registry.checkDestination(target, destination, project.rootPath);
-        if (!destinationCheck.available) {
-            throw new Error(this.describeDestinationConflict(args.target, destinationCheck.message));
+        if (plan.status === "conflict") {
+            throw new Error(this.describeDestinationConflict(args.target, plan.diagnostic!.message));
         }
         if (args.dryRun) {
             try {

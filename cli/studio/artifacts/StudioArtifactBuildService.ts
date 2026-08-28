@@ -1,12 +1,12 @@
 import {
     ArtifactBuildConflictError,
     ArtifactBuildCancelledError,
+    type ArtifactConversionPlan,
     type ArtifactBuildOptions,
     type ArtifactBuildProgress,
     ArtifactBuilderRegistry,
     ArtifactTargetType,
     describeBuildProductMatrixDiagnostic,
-    getBuildProductMatrixCell,
     ManagedOutcomeProjectService,
     ManagedOutcomeProjectServicing,
     PokieProject,
@@ -95,12 +95,12 @@ export class StudioArtifactBuildService {
         const project = await this.resolveProject.resolve(projectRoot);
         return this.registry.listTargets().map((target) => {
             const descriptor = this.registry.describe(target);
-            const cell = project === undefined ? undefined : getBuildProductMatrixCell(project.type, target);
+            const plan = project === undefined ? undefined : this.plan(project, target);
             return {
                 target,
-                supported: cell?.state === "supported",
-                state: cell?.state ?? "diagnostic-required",
-                ...(cell !== undefined && cell.state !== "supported"
+                supported: plan?.status === "planned",
+                state: plan?.status === "planned" ? "supported" : "diagnostic-required",
+                ...(plan?.status === "unavailable"
                     ? {diagnostic: describeBuildProductMatrixDiagnostic(project!.type, target, project!.rootPath)}
                     : {}),
                 unsupportedNotes: descriptor.unsupportedNotes,
@@ -122,13 +122,12 @@ export class StudioArtifactBuildService {
         const destinationKind = destinationKindFor(target);
         const plannedOutputs = plannedOutputsFor(target);
 
-        if (!this.registry.supportsConversionFrom(target, project.type)) {
+        const plan = this.plan(project, target, destination);
+        if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describeUnsupportedMessage(target, project)};
         }
-
-        const destinationCheck = this.registry.checkDestination(target, destination, project.rootPath);
-        if (!destinationCheck.available) {
-            return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: destinationCheck.message};
+        if (plan.status === "conflict") {
+            return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: plan.diagnostic!.message};
         }
 
         return {status: "ok", target, destination, destinationKind, plannedOutputs, sourceType: project.type};
@@ -154,9 +153,11 @@ export class StudioArtifactBuildService {
         }
         const {project, destination} = resolved;
 
-        if (!this.registry.supportsConversionFrom(target, project.type)) {
+        const plan = this.plan(project, target, destination);
+        if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describeUnsupportedMessage(target, project)};
         }
+        if (plan.status === "conflict") return {status: "conflict", target, message: plan.diagnostic!.message};
 
         try {
             const result = await this.registry.build(target, project, destination, options);
@@ -293,6 +294,18 @@ export class StudioArtifactBuildService {
             const oldest = terminal.shift();
             if (oldest !== undefined) this.jobs.delete(oldest.id);
         }
+    }
+
+    // Registry implementations before PC-06 are still accepted for embedded Studio tests/extensions. In
+    // production this always delegates to the shared planner; the fallback is intentionally only an
+    // injection compatibility shim and carries no target-specific rules.
+    private plan(project: PokieProject, target: ArtifactTargetType, destinationPath?: string): ArtifactConversionPlan {
+        const registry = this.registry as ArtifactBuilderRegistry & {plan?: (source: PokieProject, artifact: ArtifactTargetType, options?: {destinationPath?: string}) => ArtifactConversionPlan};
+        if (registry.plan !== undefined) return registry.plan(project, target, {destinationPath});
+        if (this.registry.supportsConversionFrom(target, project.type)) {
+            return {status: "planned"} as ArtifactConversionPlan;
+        }
+        return {status: "unavailable"} as ArtifactConversionPlan;
     }
 
     // Resolves `projectRoot` into a PokieProject and `target`'s own default destination -- the exact same

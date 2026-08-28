@@ -1,4 +1,5 @@
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
+import {ArtifactConversionPlanner} from "./ArtifactConversionPlanner.js";
 import type {ProjectType} from "./ProjectType.js";
 
 // The build product contract is deliberately data, rather than a collection of capability checks spread
@@ -45,47 +46,26 @@ const PUBLIC_PROJECT_TYPE_NAMES: Readonly<Record<ProjectType, string>> = {
     wasm: "POKIE WASM component",
 };
 
+// Compatibility wording retained for callers of the former matrix API. The matrix state itself is now
+// derived from ArtifactConversionPlanner; new callers should use its path-aware diagnostic instead.
 const TARGET_PREREQUISITES: Readonly<Record<ArtifactTargetType, {missingPrerequisite: string; nextAction: string}>> = {
-    tsPackage: {
-        missingPrerequisite: "a Game Blueprint source",
-        nextAction: "Open a Game Blueprint, then run `pokie build <path> --target tsPackage`.",
-    },
-    outcomeLibrary: {
-        missingPrerequisite: "a Game Blueprint, POKIE game package, or Outcome Library",
-        nextAction: "Open one of those sources, then run `pokie build <path> --target outcomeLibrary`.",
-    },
-    stakeAdapter: {
-        missingPrerequisite: "a Game Blueprint, POKIE game package, Outcome Library, or Stake Engine export",
-        nextAction: "Open one of those sources, then run `pokie build <path> --target stakeAdapter`.",
-    },
-    parWorkbook: {
-        missingPrerequisite: "a Game Blueprint or PAR workbook",
-        nextAction: "Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target parWorkbook`.",
-    },
+    tsPackage: {missingPrerequisite: "a Game Blueprint source", nextAction: "Open a Game Blueprint, then run `pokie build <path> --target tsPackage`."},
+    outcomeLibrary: {missingPrerequisite: "a Game Blueprint, POKIE game package, or Outcome Library", nextAction: "Open one of those sources, then run `pokie build <path> --target outcomeLibrary`."},
+    stakeAdapter: {missingPrerequisite: "a Game Blueprint, POKIE game package, Outcome Library, or Stake Engine export", nextAction: "Open one of those sources, then run `pokie build <path> --target stakeAdapter`."},
+    parWorkbook: {missingPrerequisite: "a Game Blueprint or PAR workbook", nextAction: "Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target parWorkbook`."},
 };
 
-const SUPPORTED_CELLS = new Set<string>([
-    "blueprint:tsPackage",
-    "blueprint:outcomeLibrary",
-    "blueprint:stakeAdapter",
-    "blueprint:parWorkbook",
-    "tsPackage:outcomeLibrary",
-    "tsPackage:stakeAdapter",
-    "outcomeLibrary:outcomeLibrary",
-    "outcomeLibrary:stakeAdapter",
-    "stakeAdapter:stakeAdapter",
-    "parWorkbook:parWorkbook",
-]);
-
-function cellKey(source: ProjectType, target: ArtifactTargetType): string {
-    return `${source}:${target}`;
-}
-
 function buildCell(source: ProjectType, target: ArtifactTargetType): BuildProductMatrixCell {
-    if (SUPPORTED_CELLS.has(cellKey(source, target))) {
+    const plan = new ArtifactConversionPlanner().planType(source, target);
+    if (plan.status === "planned") {
         return {source, target, state: "supported"};
     }
-    return {source, target, state: "diagnostic-required", ...TARGET_PREREQUISITES[target]};
+    return {
+        source,
+        target,
+        state: "diagnostic-required",
+        ...TARGET_PREREQUISITES[target],
+    };
 }
 
 export const BUILD_PRODUCT_MATRIX: Readonly<Record<ProjectType, Readonly<Record<ArtifactTargetType, BuildProductMatrixCell>>>> =

@@ -170,11 +170,16 @@ export class BuildCommand implements CliCommandHandling {
             throw new Error(`"${projectPath}" was not recognized as a POKIE project.\n\n${PROJECT_HINT}`);
         }
 
-        if (!this.registry.supportsConversionFrom(options.target, project.type)) {
-            throw new Error(describeBuildProductMatrixDiagnostic(project.type, options.target, projectPath));
-        }
-
         const out = options.out ?? this.resolveDestination(project.rootPath, options.target);
+        const conversionPlan = this.registry.plan(project, options.target, {destinationPath: out});
+        if (conversionPlan.status === "unavailable") {
+            // Keep the long-standing CLI wording as a compatibility appendix, but lead with the planner's
+            // failed edge so a path-aware request is never answered with a target-wide source matrix alone.
+            throw new Error(`${conversionPlan.diagnostic!.message} Next: ${conversionPlan.diagnostic!.recovery}\n${describeBuildProductMatrixDiagnostic(project.type, options.target, projectPath)}`);
+        }
+        if (conversionPlan.status === "conflict") {
+            throw new Error(describeDestinationConflict(options.target, conversionPlan.diagnostic!.message));
+        }
 
         if (options.dryRun) {
             const destinationCheck = this.registry.checkDestination(options.target, out, project.rootPath);
