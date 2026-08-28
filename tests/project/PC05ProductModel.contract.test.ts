@@ -25,9 +25,11 @@ type InventoryItem = {
     persisted_by_pokie?: boolean;
 };
 
+type ArtifactReferenceField = "imports_from" | "exports_to" | "prerequisite_for";
+
 type ProductModelRegistry = {
     schema_version: number;
-    reference_fields: Array<keyof InventoryItem>;
+    reference_fields: ArtifactReferenceField[];
     artifact_kinds: InventoryItem[];
     non_artifact_prerequisites: InventoryItem[];
     persisted_public_output_contracts: PersistedPublicOutputContract[];
