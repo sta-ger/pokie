@@ -4,6 +4,7 @@ import path from "path";
 import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
+    computeArtifactConfigurationHash,
     ArtifactImportOutputPlan,
     loadWeightedOutcomeLibraryFromBundle,
     StakeEngineBundleStreamingExporter,
@@ -421,16 +422,11 @@ export class StakeEngineCommand implements CliCommandHandling {
         // for this command to own a second export lifecycle.  Bind the
         // descriptor to the same immutable conversion operation used by
         // recognized Outcome Library projects.
-        const source = {
-            kind: "outcomeLibrary" as const,
-            canonicalLocation: path.resolve(options.configPath),
-            recognitionProvenance: "CLI Stake export descriptor",
-            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
-        };
-        const plan = this.planner.planIdentity(source, "stakeAdapter", {destinationPath: options.outDir});
+        const currentSource = () => this.exportDescriptorSource(options.configPath);
+        const plan = this.planner.planIdentity(currentSource(), "stakeAdapter", {destinationPath: options.outDir});
         const cancellation = createCliImportCancellation();
         const execution = await this.planner.executeConversionPlan(plan, {
-            currentSource: () => source,
+            currentSource,
             read: async () => {
                 const descriptor = this.loadDescriptor(options.configPath);
                 const configDir = path.dirname(options.configPath);
@@ -485,6 +481,17 @@ export class StakeEngineCommand implements CliCommandHandling {
         }
 
         return 0;
+    }
+
+    private exportDescriptorSource(configPath: string): import("pokie").ArtifactIdentity {
+        const canonicalLocation = path.resolve(configPath);
+        return {
+            kind: "outcomeLibrary",
+            canonicalLocation,
+            recognitionProvenance: "verified CLI Stake export descriptor",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+            configurationProvenance: {configurationHash: computeArtifactConfigurationHash(JSON.stringify(this.loadDescriptor(canonicalLocation)))},
+        };
     }
 
     // Writes a canonical Outcome Library bundle plus a config.json that names its bundle modes, and (when

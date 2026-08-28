@@ -327,6 +327,45 @@ describe("ArtifactConversionPlanner", () => {
         expect(read).not.toHaveBeenCalled();
     });
 
+    it("rejects descriptor provenance drift before its durable conversion publication", async () => {
+        const source = {
+            ...project("outcomeLibrary"),
+            configurationProvenance: {configurationHash: "sha256:prepared", manifestIdentity: "descriptor-v1"},
+        };
+        const plan = planner.plan(source, "stakeAdapter", {destinationPath: "/exports/stake"});
+        const publish = jest.fn();
+
+        await expect(planner.executeConversionPlan(plan, {
+            currentSource: () => ({
+                ...plan.source,
+                configurationProvenance: {configurationHash: "sha256:changed", manifestIdentity: "descriptor-v1"},
+            }),
+            read: () => ({valid: true}),
+            canPublish: () => true,
+            publish,
+        })).rejects.toThrow(/source changed/i);
+
+        expect(publish).not.toHaveBeenCalled();
+    });
+
+    it("rejects a manifest identity change even when the configuration hash is unchanged", async () => {
+        const source = {
+            ...project("outcomeLibrary"),
+            configurationProvenance: {configurationHash: "sha256:same", manifestIdentity: "descriptor-v1"},
+        };
+        const plan = planner.plan(source, "stakeAdapter", {destinationPath: "/exports/stake"});
+
+        await expect(planner.executeConversionPlan(plan, {
+            currentSource: () => ({
+                ...plan.source,
+                configurationProvenance: {configurationHash: "sha256:same", manifestIdentity: "descriptor-v2"},
+            }),
+            read: () => ({valid: true}),
+            canPublish: () => true,
+            publish: () => "published",
+        })).rejects.toThrow(/source changed/i);
+    });
+
     it("owns cleanup and one terminal diagnostic when import registration fails", async () => {
         const source = project("stakeAdapter");
         const plan = planner.planImportOutput(source, "outcomeLibrary", "/imports/outcomes");

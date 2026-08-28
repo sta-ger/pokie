@@ -1,4 +1,5 @@
 import path from "path";
+import crypto from "crypto";
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
 import type {PokieProject} from "./PokieProject.js";
 import {
@@ -40,6 +41,18 @@ export type ArtifactConfigurationProvenance = {
     readonly sampleCount?: string;
     readonly sampleSeed?: string;
 };
+
+/**
+ * The content binding used by descriptor-backed adapters.  A descriptor is
+ * not a native project merely because an older command can read it; however,
+ * once an adapter has accepted that descriptor as a format input, its exact
+ * bytes are part of the prepared operation's source identity.  Keeping this
+ * small primitive in the domain layer prevents each adapter from inventing a
+ * static "native" identity that cannot observe a changed descriptor.
+ */
+export function computeArtifactConfigurationHash(contents: string | Buffer): string {
+    return `sha256:${crypto.createHash("sha256").update(contents).digest("hex")}`;
+}
 
 export type ArtifactConversionStepKind =
     | "publish"
@@ -190,7 +203,11 @@ function sameArtifactIdentity(left: ArtifactIdentity, right: ArtifactIdentity): 
         left.configurationProvenance?.configurationHash === right.configurationProvenance?.configurationHash &&
         left.configurationProvenance?.generationSemantics === right.configurationProvenance?.generationSemantics &&
         left.configurationProvenance?.sampleCount === right.configurationProvenance?.sampleCount &&
-        left.configurationProvenance?.sampleSeed === right.configurationProvenance?.sampleSeed;
+        left.configurationProvenance?.sampleSeed === right.configurationProvenance?.sampleSeed &&
+        left.configurationProvenance?.pokieVersion === right.configurationProvenance?.pokieVersion &&
+        left.configurationProvenance?.gameId === right.configurationProvenance?.gameId &&
+        left.configurationProvenance?.gameVersion === right.configurationProvenance?.gameVersion &&
+        left.configurationProvenance?.manifestIdentity === right.configurationProvenance?.manifestIdentity;
 }
 
 // Presentation-only compatibility wording for callers that historically showed the product matrix.  It is

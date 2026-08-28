@@ -4,6 +4,7 @@ import path from "path";
 import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
+    computeArtifactConfigurationHash,
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     ExactEnumerationCheckpoint,
     GenerateExactWeightedOutcomeLibraryOptions,
@@ -682,18 +683,13 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     private async executeBuild(configPath: string, outDir: string): Promise<number> {
         // Descriptor builds are a format reader/writer supplied to the common
         // prepared operation; this command only parses and renders its result.
-        const source = {
-            kind: "outcomeLibrary" as const,
-            canonicalLocation: path.resolve(configPath),
-            recognitionProvenance: "CLI Outcome Library build descriptor",
-            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
-        };
-        const plan = this.planner.planIdentity(source, "outcomeLibrary", {destinationPath: outDir});
+        const currentSource = () => this.buildDescriptorSource(configPath);
+        const plan = this.planner.planIdentity(currentSource(), "outcomeLibrary", {destinationPath: outDir});
         const cancellation = new AbortController();
         const onCancel = () => cancellation.abort();
         this.process.once("SIGINT", onCancel);
         const execution = await this.planner.executeConversionPlan(plan, {
-            currentSource: () => source,
+            currentSource,
             read: () => {
                 const descriptor = this.loadDescriptor(configPath);
                 const configDir = path.dirname(configPath);
@@ -738,6 +734,17 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         }
 
         return 0;
+    }
+
+    private buildDescriptorSource(configPath: string): import("pokie").ArtifactIdentity {
+        const canonicalLocation = path.resolve(configPath);
+        return {
+            kind: "outcomeLibrary",
+            canonicalLocation,
+            recognitionProvenance: "verified CLI Outcome Library build descriptor",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+            configurationProvenance: {configurationHash: computeArtifactConfigurationHash(JSON.stringify(this.loadDescriptor(canonicalLocation)))},
+        };
     }
 
     private async readStreamedOutcomes(filePath: string): Promise<WeightedOutcomeInput[]> {

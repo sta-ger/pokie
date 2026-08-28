@@ -1,5 +1,6 @@
 import path from "path";
-import {ArtifactBuilderRegistry, ArtifactConversionPlanner, PROJECT_TYPE_CAPABILITIES, ProjectTargetResolver, type ArtifactTargetType, type ProjectResolving} from "pokie";
+import {ArtifactBuilderRegistry, ArtifactConversionPlanner, computeArtifactConfigurationHash, PROJECT_TYPE_CAPABILITIES, ProjectTargetResolver, type ArtifactIdentity, type ArtifactTargetType, type ProjectResolving} from "pokie";
+import fs from "fs";
 import {Command} from "commander";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {OutcomeLibraryCommand} from "./OutcomeLibraryCommand.js";
@@ -189,20 +190,18 @@ export class ExportCommand implements CliCommandHandling {
     private async runDescriptorExport(args: ExportArgs, argv: string[]): Promise<number> {
         const destination = this.resolveDestination(args);
         const target = this.artifactTarget(args.target);
-        const source = {
-            kind: args.target === "workbook" ? "blueprint" as const : "outcomeLibrary" as const,
-            canonicalLocation: path.resolve(args.source),
-            recognitionProvenance: "CLI export descriptor",
-            capabilities: args.target === "workbook" ? PROJECT_TYPE_CAPABILITIES.blueprint : PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
-        };
-        const plan = this.planner.planIdentity(source, target, {destinationPath: destination});
+        // Descriptor formats are supported inputs, but not native projects.
+        // Bind their actual on-disk bytes so preparation cannot silently use a
+        // changed config while retaining a synthetic source identity.
+        const currentSource = (): ArtifactIdentity => this.descriptorSource(args);
+        const plan = this.planner.planIdentity(currentSource(), target, {destinationPath: destination});
         const controller = new AbortController();
         const onCancel = () => controller.abort();
         process.once("SIGINT", onCancel);
         const forwarded = argv.filter((value, index) => value !== "--to" && argv[index - 1] !== "--to" && value !== "--dry-run");
         try {
             await this.planner.executeConversionPlan(plan, {
-                currentSource: () => source,
+                currentSource,
                 read: async () => {
                     await this.validateDryRunSource(args);
                     return undefined;
@@ -253,5 +252,20 @@ export class ExportCommand implements CliCommandHandling {
                 break;
         }
         return `Cannot export target "${args.target}" because source "${args.source}" is not compatible. Next: ${recovery}, then retry.`;
+    }
+
+    private descriptorSource(args: ExportArgs): ArtifactIdentity {
+        const descriptorPath = path.resolve(args.source);
+        return {
+            kind: args.target === "workbook" ? "blueprint" : "outcomeLibrary",
+            canonicalLocation: descriptorPath,
+            recognitionProvenance: "verified CLI export descriptor",
+            capabilities: args.target === "workbook" ? PROJECT_TYPE_CAPABILITIES.blueprint : PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+            // A missing path remains a normal descriptor validation failure so
+            // the public command can retain its actionable recovery wording.
+            ...(fs.existsSync(descriptorPath)
+                ? {configurationProvenance: {configurationHash: computeArtifactConfigurationHash(fs.readFileSync(descriptorPath))}}
+                : {}),
+        };
     }
 }

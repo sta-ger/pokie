@@ -6,6 +6,7 @@ import {
     ArtifactConversionPlanner,
     ArtifactImportOutputPlan,
     ArtifactDestinationCheck,
+    computeArtifactConfigurationHash,
     describeUnsupportedProjectOperation,
     GameBlueprint,
     loadGameBlueprint,
@@ -312,16 +313,11 @@ export class ParCommand implements CliCommandHandling {
         // no longer a direct writer lifecycle.  Bind its canonical identity to
         // a prepared conversion and let the shared operation sequence read,
         // destination policy, publication, cancellation and rollback.
-        const source = {
-            kind: "blueprint" as const,
-            canonicalLocation: path.resolve(blueprintPath),
-            recognitionProvenance: "CLI Blueprint export descriptor",
-            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
-        };
-        const plan = this.planner.planIdentity(source, "parWorkbook", {destinationPath: outPath});
+        const currentSource = () => this.exportDescriptorSource(blueprintPath);
+        const plan = this.planner.planIdentity(currentSource(), "parWorkbook", {destinationPath: outPath});
         const cancellation = createCliImportCancellation();
         const execution = await this.planner.executeConversionPlan(plan, {
-            currentSource: () => source,
+            currentSource,
             read: () => {
                 const blueprint = this.loadBlueprint(blueprintPath);
                 return {blueprint, issues: prepareBlueprintForParSheetExport(blueprint).issues};
@@ -357,6 +353,17 @@ export class ParCommand implements CliCommandHandling {
         if (!destination.available) {
             throw new Error(destination.message);
         }
+    }
+
+    private exportDescriptorSource(blueprintPath: string): import("pokie").ArtifactIdentity {
+        const canonicalLocation = path.resolve(blueprintPath);
+        return {
+            kind: "blueprint",
+            canonicalLocation,
+            recognitionProvenance: "verified CLI Blueprint export descriptor",
+            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+            configurationProvenance: {configurationHash: computeArtifactConfigurationHash(JSON.stringify(this.loadBlueprint(canonicalLocation)))},
+        };
     }
 
     private printExportErrors(blueprintPath: string, outPath: string, errors: ValidationIssue[]): void {
