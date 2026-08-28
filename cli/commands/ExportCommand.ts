@@ -89,7 +89,15 @@ export class ExportCommand implements CliCommandHandling {
             return 0;
         }
         try {
-            const result = await this.registry.executePlan(plan, project, destination);
+            const controller = new AbortController();
+            const onCancel = () => controller.abort();
+            process.once("SIGINT", onCancel);
+            let result;
+            try {
+                result = await this.registry.executePlan(plan, project, destination, {signal: controller.signal});
+            } finally {
+                process.off("SIGINT", onCancel);
+            }
             console.log(`Artifact "${args.target}" exported to "${result.outputPath}".`);
             if (result.importedBlueprintPath !== undefined) console.log(`Imported Blueprint: ${result.importedBlueprintPath}.`);
             if (result.conversionEvidencePath !== undefined) console.log(`Conversion evidence: ${result.conversionEvidencePath}.`);

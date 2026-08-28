@@ -1361,7 +1361,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = this.blueprintService.saveManaged(validated.blueprint, validated.sourceWorkbookPath, validated.conversionEvidence);
+        const result = this.blueprintService.saveManaged(validated.blueprint, validated.sourceWorkbookPath);
         if (result.status === "ok") {
             let registration;
             try {

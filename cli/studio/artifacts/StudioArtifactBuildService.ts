@@ -12,6 +12,7 @@ import {
     PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
+    assertArtifactBuildNotCancelled,
 } from "pokie";
 import path from "path";
 import fs from "fs";
@@ -182,6 +183,10 @@ export class StudioArtifactBuildService {
 
         try {
             const result = await this.registry.executePlan(plan, project, destination, options);
+            // executePlan's terminal writer has returned, but Studio has one
+            // more publication boundary: project registration.  Honour the
+            // same signal before exposing any registry entry or success DTO.
+            assertArtifactBuildNotCancelled(options);
             // Blueprint -> Outcome and Blueprint -> Stake both return the exact managed Outcome Project
             // the registry generated or reopened. Register it with Studio before reporting success; no
             // Studio-only outcome-path index is maintained here.
@@ -200,6 +205,7 @@ export class StudioArtifactBuildService {
             try {
                 const provenance = await this.parImportRegistrationProvenance(result.conversionEvidencePath);
                 for (const projectRoot of managedProjectRoots) {
+                    assertArtifactBuildNotCancelled(options);
                     await this.registerManagedProject(
                         projectRoot,
                         // The terminal and the durable imported Blueprint both
@@ -207,6 +213,7 @@ export class StudioArtifactBuildService {
                         projectRoot === result.outputPath || projectRoot === result.importedBlueprintPath ? provenance : undefined,
                     );
                     registeredRoots.push(projectRoot);
+                    assertArtifactBuildNotCancelled(options);
                 }
             } catch (error) {
                 // A Studio build is not successful until every operation-owned

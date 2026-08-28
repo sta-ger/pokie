@@ -88,7 +88,15 @@ export class ImportCommand implements CliCommandHandling {
                 if (prepared.preflight.losses.length > 0) console.log(`Data boundary: ${prepared.preflight.losses.join(" ")}`);
                 return 0;
             }
-            const result = await this.registry.executePlan(prepared, source, destination);
+            const controller = new AbortController();
+            const onCancel = () => controller.abort();
+            process.once("SIGINT", onCancel);
+            let result;
+            try {
+                result = await this.registry.executePlan(prepared, source, destination, {signal: controller.signal});
+            } finally {
+                process.off("SIGINT", onCancel);
+            }
             if (options.format === "json") console.log(JSON.stringify({outputPath: result.outputPath, conversionEvidencePath: result.conversionEvidencePath}, null, 4));
             else console.log(`Imported "${source.rootPath}" to "${result.outputPath}" with conversion evidence "${result.conversionEvidencePath}".`);
             return 0;

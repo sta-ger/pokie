@@ -1113,22 +1113,45 @@ describe("StudioBlueprintService", () => {
         // workbook it came from -- see StudioProjectRegistryEntry's own doc comment for why that
         // provenance lives in the registry entry StudioServer registers from this result, never inside the
         // blueprint file itself.
-        it("echoes sourceWorkbookPath back on ok when a PAR Apply is behind this first Save", () => {
+        it("requires a server-authored PAR Apply record rather than trusting a workbook path from the browser", () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
             const service = createServiceWithManagedDirectory(managedDir);
 
             const result = service.saveManaged(buildBlueprint(), "/games/in.par.xlsx");
 
-            expect(result).toEqual({
-                status: "ok",
-                path: path.join(managedDir, "blueprint.json"),
-                name: "sample-slot",
-                blueprintHash: computeGameBlueprintHash(buildBlueprint()),
-                sourceWorkbookPath: "/games/in.par.xlsx",
-            });
+            expect(result).toEqual(expect.objectContaining({status: "error", error: expect.stringContaining("Import the workbook again")}));
+            expect(fs.existsSync(path.join(managedDir, "blueprint.json"))).toBe(false);
         });
 
-        it("publishes PAR conversion evidence beside an Applied managed Blueprint and removes the pair on rollback", () => {
+        it("persists a trusted PAR Apply record across a Studio restart and binds it to workbook bytes", async () => {
+            const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
+            const workbookPath = path.join(tmpDir, "trusted.par.xlsx");
+            const workbook = new ExcelJS.Workbook();
+            workbook.addWorksheet("Manifest").addRows([["Key", "Value"], ["Id", "sample-slot"], ["Name", "Sample Slot"], ["Version", "0.1.0"], ["Reels", 2], ["Rows", 2]]);
+            workbook.addWorksheet("Symbols").addRows([["Symbol", "Wild", "Scatter"], ["A", false, false], ["W", true, false]]);
+            workbook.addWorksheet("Paytable").addRows([["Symbol", "Matches", "Multiplier"], ["A", 2, 5]]);
+            await workbook.xlsx.writeFile(workbookPath);
+
+            const applied = await createServiceWithManagedDirectory(managedDir).importParSheet(workbookPath);
+            if (applied.status !== "ok") throw new Error("expected PAR Apply to succeed");
+
+            // A new service represents the server process after the user has
+            // reviewed the Apply result but before pressing managed Save.
+            const restarted = createServiceWithManagedDirectory(managedDir);
+            const saved = restarted.saveManaged(applied.blueprint, workbookPath, {
+                metaSheet: undefined, facts: [], losslessEligible: true, importedBlueprintHash: "forged", provenanceHashMatches: true,
+            });
+            expect(saved).toMatchObject({status: "ok", sourceWorkbookPath: workbookPath});
+            if (saved.status !== "ok" || saved.conversionEvidencePath === undefined) throw new Error("expected trusted evidence");
+            const evidence = JSON.parse(fs.readFileSync(saved.conversionEvidencePath, "utf8"));
+            expect(evidence.importedBlueprintHash).toBe(computeGameBlueprintHash(applied.blueprint));
+
+            fs.appendFileSync(workbookPath, "drift");
+            const afterDrift = createServiceWithManagedDirectory(path.join(tmpDir, "POKIE Projects", "drifted-slot")).saveManaged(applied.blueprint, workbookPath);
+            expect(afterDrift).toEqual(expect.objectContaining({status: "error", error: expect.stringContaining("workbook changed")}));
+        });
+
+        it("does not accept client-supplied PAR conversion evidence as an authority", () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
             const service = createServiceWithManagedDirectory(managedDir);
             const evidence = {
@@ -1141,15 +1164,11 @@ describe("StudioBlueprintService", () => {
 
             const result = service.saveManaged(buildBlueprint(), "/games/in.par.xlsx", evidence);
 
-            expect(result).toMatchObject({status: "ok", conversionEvidencePath: path.join(managedDir, "blueprint.json.conversion-evidence.json")});
-            if (result.status !== "ok" || result.conversionEvidencePath === undefined) throw new Error("expected evidence publication");
-            expect(JSON.parse(fs.readFileSync(result.conversionEvidencePath, "utf8"))).toMatchObject({sourceWorkbook: "/games/in.par.xlsx", facts: evidence.facts});
-            service.discardManagedSave(result.path);
-            expect(fs.existsSync(result.path)).toBe(false);
-            expect(fs.existsSync(result.conversionEvidencePath)).toBe(false);
+            expect(result).toEqual(expect.objectContaining({status: "error", error: expect.stringContaining("Import the workbook again")}));
+            expect(fs.existsSync(path.join(managedDir, "blueprint.json.conversion-evidence.json"))).toBe(false);
         });
 
-        it("invalidates a lossless PAR claim when the saved Blueprint differs from the imported hash", () => {
+        it("rejects a forged lossless PAR claim when no server preparation exists", () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
             const service = createServiceWithManagedDirectory(managedDir);
             const imported = buildBlueprint();
@@ -1162,12 +1181,10 @@ describe("StudioBlueprintService", () => {
                 provenanceHashMatches: true,
             });
 
-            expect(result.status).toBe("ok");
-            if (result.status !== "ok" || result.conversionEvidencePath === undefined) throw new Error("expected PAR evidence publication");
-            expect(JSON.parse(fs.readFileSync(result.conversionEvidencePath, "utf8"))).toMatchObject({losslessEligible: false});
+            expect(result).toEqual(expect.objectContaining({status: "error", error: expect.stringContaining("Import the workbook again")}));
         });
 
-        it("retains parsed PAR provenance and rolls back only artwork allocated by a failed managed registration", () => {
+        it("does not publish staged artwork when a forged PAR save is rejected", () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
             const service = createServiceWithManagedDirectory(managedDir);
             const artworkSource = path.join(tmpDir, "symbol.png");
@@ -1184,15 +1201,7 @@ describe("StudioBlueprintService", () => {
             };
             const result = service.saveManaged({...buildBlueprint(), symbolArtwork: {A: staged.reference}}, "/games/in.par.xlsx", evidence);
 
-            expect(result.status).toBe("ok");
-            if (result.status !== "ok" || result.conversionEvidencePath === undefined) throw new Error("expected managed PAR save");
-            expect(JSON.parse(fs.readFileSync(result.conversionEvidencePath, "utf8"))).toMatchObject({provenance: evidence.provenance, metaSheet: evidence.metaSheet});
-            expect(fs.existsSync(path.join(managedDir, staged.reference))).toBe(true);
-
-            service.discardManagedSave(result.path);
-
-            expect(fs.existsSync(result.path)).toBe(false);
-            expect(fs.existsSync(result.conversionEvidencePath)).toBe(false);
+            expect(result).toEqual(expect.objectContaining({status: "error", error: expect.stringContaining("Import the workbook again")}));
             expect(fs.existsSync(path.join(managedDir, staged.reference))).toBe(false);
             expect(fs.existsSync(managedDir)).toBe(false);
         });
@@ -1207,15 +1216,13 @@ describe("StudioBlueprintService", () => {
             expect((result as {sourceWorkbookPath?: string}).sourceWorkbookPath).toBeUndefined();
         });
 
-        it("never writes sourceWorkbookPath into the blueprint file itself -- the managed Blueprint stays the one editable source", () => {
+        it("does not create a managed Blueprint for an unprepared PAR workbook", () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
             const service = createServiceWithManagedDirectory(managedDir);
 
-            service.saveManaged(buildBlueprint(), "/games/in.par.xlsx");
-
-            const written = fs.readFileSync(path.join(managedDir, "blueprint.json"), "utf-8");
-            expect(written).not.toContain("in.par.xlsx");
-            expect(JSON.parse(written)).toEqual(buildBlueprint());
+            const result = service.saveManaged(buildBlueprint(), "/games/in.par.xlsx");
+            expect(result.status).toBe("error");
+            expect(fs.existsSync(path.join(managedDir, "blueprint.json"))).toBe(false);
         });
 
         it("registers a managed save and retains that registration after a registry restart/reload", async () => {

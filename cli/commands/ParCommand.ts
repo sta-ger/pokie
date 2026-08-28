@@ -256,7 +256,13 @@ export class ParCommand implements CliCommandHandling {
             const source = await this.prepareImportSource(inputPath);
             if (this.usesDefaultRegistryLifecycle()) {
                 const plan = await this.registry.preparePlan(source, "blueprint", {destinationPath: outPath});
-                const result = await this.registry.executePlan(plan, source, outPath);
+                const cancellation = createCliImportCancellation();
+                let result;
+                try {
+                    result = await this.registry.executePlan(plan, source, outPath, {signal: cancellation.signal});
+                } finally {
+                    cancellation.cleanup();
+                }
                 const evidence = JSON.parse(await fs.promises.readFile(result.conversionEvidencePath!, "utf8")) as {
                     provenance?: unknown;
                     metaSheet?: unknown;

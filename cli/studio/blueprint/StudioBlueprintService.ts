@@ -1,11 +1,13 @@
 import {
     ArtifactConversionPlanner,
+    ArtifactBuilderRegistry,
     ArtifactBuildConflictError,
     assertPreparedArtifactDestinationAvailable,
     BLUEPRINT_BUILD_CAPABILITY,
     buildGameBuildInfo,
     buildGameModelProjection,
     computeGameBlueprintHash,
+    computeArtifactInputBindingHash,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
@@ -20,6 +22,7 @@ import {
     RandomGameBlueprintGenerating,
     RandomGameBlueprintGenerator,
     RandomGameBlueprintVariantStrategy,
+    PROJECT_TYPE_CAPABILITIES,
     ReelStrip,
     ReelStripAnalyzer,
     ReelStripGenerationSummary,
@@ -192,16 +195,16 @@ export class StudioBlueprintService {
     private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly pathResolver: PokiePathResolver;
     private readonly stagedArtwork = new Map<string, string>();
-    // A PAR Apply is a two-step UI interaction, but the evidence must remain
-    // server-authored between those steps.  The client may echo it for draft
-    // recovery compatibility; once Studio has imported this workbook the
-    // saved sidecar always uses this prepared observation instead.
+    // A PAR Apply is a two-step UI interaction.  This in-memory index is only
+    // a cache of the durable server record below; it is never an authority and
+    // a restarted Studio process can reload the same record.
     private readonly preparedParImports = new Map<string, StudioParSheetConversionEvidence>();
     // A managed save chooses a fresh Blueprint path.  Retain the exact files
     // it copied until registration settles, so a failed registration removes
     // only this operation's artwork rather than a pre-existing assets folder.
     private readonly managedSaveArtifacts = new Map<string, {readonly artworkPaths: readonly string[]; readonly directoryCreated: boolean}>();
     private readonly planner = new ArtifactConversionPlanner();
+    private readonly artifactRegistry: ArtifactBuilderRegistry;
 
     constructor(
         pokieVersion: string,
@@ -246,6 +249,7 @@ export class StudioBlueprintService {
         this.randomBlueprintGenerator = randomBlueprintGenerator;
         this.variantRandomBlueprintGenerator = variantRandomBlueprintGenerator;
         this.pathResolver = pathResolver;
+        this.artifactRegistry = new ArtifactBuilderRegistry(pokieVersion);
     }
 
     // Drives the Blueprint Editor's "Generate random" New-flow option via the exact same
@@ -450,7 +454,7 @@ export class StudioBlueprintService {
     // (see StudioServer's own handleBlueprintSaveManaged, which forwards it to
     // StudioProjectRegistrationService.registerManaged). Omitted entirely for an ordinary "first Save" with
     // no PAR import behind it.
-    public saveManaged(blueprint: unknown, sourceWorkbookPath?: string, conversionEvidence?: StudioParSheetConversionEvidence): StudioBlueprintSaveManagedView {
+    public saveManaged(blueprint: unknown, sourceWorkbookPath?: string, _conversionEvidence?: StudioParSheetConversionEvidence): StudioBlueprintSaveManagedView {
         const baseName = deriveManagedBlueprintName(blueprint);
         const destination = resolveAvailableManagedDestination(this.pathResolver, baseName);
         if (destination.status === "invalid-name") {
@@ -467,25 +471,31 @@ export class StudioBlueprintService {
             artworkPaths.push(...this.materializeSymbolArtwork(destination.targetPath, blueprint));
             writeBlueprintAtomically(destination.targetPath, blueprint);
             const conversionEvidencePath = `${destination.targetPath}.conversion-evidence.json`;
-            const preparedEvidence = sourceWorkbookPath === undefined ? undefined : this.preparedParImports.get(path.resolve(sourceWorkbookPath));
-            const trustedConversionEvidence = preparedEvidence ?? conversionEvidence;
-            if (sourceWorkbookPath !== undefined && trustedConversionEvidence !== undefined) {
+            const trustedConversionEvidence = sourceWorkbookPath === undefined ? undefined : this.loadPreparedParImport(sourceWorkbookPath);
+            if (sourceWorkbookPath !== undefined && trustedConversionEvidence === undefined) {
+                // The browser's DTO is deliberately not a recovery channel:
+                // it can be edited by any caller and is therefore never
+                // conversion evidence.  A server restart retains prepared
+                // records; a missing/stale record requires a fresh Apply.
+                throw new Error("The PAR import preparation is unavailable or the workbook changed. Import the workbook again before saving.");
+            }
+            if (sourceWorkbookPath !== undefined) {
                 try {
                     const savedBlueprintHash = computeGameBlueprintHash(blueprint);
                     // The workbook evidence describes the exact imported
                     // Blueprint, never a later editor revision.  Do this at
                     // the server-owned publication boundary rather than
                     // trusting the browser's retained `losslessEligible`.
-                    const stillMatchesImportedBlueprint = trustedConversionEvidence.importedBlueprintHash === savedBlueprintHash;
+                    const stillMatchesImportedBlueprint = trustedConversionEvidence!.importedBlueprintHash === savedBlueprintHash;
                     writeJsonAtomically(conversionEvidencePath, {
                         schemaVersion: 1,
                         sourceWorkbook: path.resolve(sourceWorkbookPath),
-                        provenance: trustedConversionEvidence.provenance,
-                        metaSheet: trustedConversionEvidence.metaSheet,
-                        facts: trustedConversionEvidence.facts,
-                        losslessEligible: trustedConversionEvidence.losslessEligible && stillMatchesImportedBlueprint,
-                        importedBlueprintHash: trustedConversionEvidence.importedBlueprintHash,
-                        provenanceHashMatches: trustedConversionEvidence.provenanceHashMatches,
+                        provenance: trustedConversionEvidence!.provenance,
+                        metaSheet: trustedConversionEvidence!.metaSheet,
+                        facts: trustedConversionEvidence!.facts,
+                        losslessEligible: trustedConversionEvidence!.losslessEligible && stillMatchesImportedBlueprint,
+                        importedBlueprintHash: trustedConversionEvidence!.importedBlueprintHash,
+                        provenanceHashMatches: trustedConversionEvidence!.provenanceHashMatches,
                     });
                 } catch (error) {
                     // This pair is one user-visible publication.  The managed
@@ -502,7 +512,7 @@ export class StudioBlueprintService {
                 name: destination.name,
                 blueprintHash: computeGameBlueprintHash(blueprint),
                 sourceWorkbookPath,
-                ...(sourceWorkbookPath !== undefined && trustedConversionEvidence !== undefined ? {conversionEvidencePath} : {}),
+                ...(sourceWorkbookPath !== undefined ? {conversionEvidencePath} : {}),
             };
         } catch (error) {
             this.cleanupManagedSaveArtifacts(destination.targetPath, artworkPaths, directoryCreated);
@@ -611,9 +621,17 @@ export class StudioBlueprintService {
         }
 
         try {
-            const result = await this.parSheetImporter.importFromFile(resolved);
+            // The diagnostic preview retains the importer result (including a
+            // malformed workbook's actionable mapping facts). A valid Apply
+            // is then published through the same registry-owned Blueprint
+            // contract as CLI, rather than treating Studio as a parallel
+            // importer/writer authority.
+            let result = await this.parSheetImporter.importFromFile(resolved);
             const errors = result.issues.filter((issue) => issue.severity === "error");
             const warnings = result.issues.filter((issue) => issue.severity !== "error");
+            if (errors.length === 0 && this.parSheetImporter instanceof ParSheetImporter) {
+                result = await this.prepareParApplyThroughRegistry(resolved);
+            }
             const conversionEvidence: StudioParSheetConversionEvidence = {...(result.conversionEvidence ?? {
                 metaSheet: undefined,
                 facts: result.issues.map((issue) => ({kind: "diagnostic" as const, code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})})),
@@ -621,7 +639,7 @@ export class StudioBlueprintService {
                 importedBlueprintHash: computeGameBlueprintHash(result.blueprint),
                 provenanceHashMatches: false,
             }), ...(result.provenance === undefined ? {} : {provenance: result.provenance})};
-            this.preparedParImports.set(resolved, conversionEvidence);
+            this.storePreparedParImport(resolved, conversionEvidence);
             return {
                 status: "ok",
                 path: resolved,
@@ -918,6 +936,98 @@ export class StudioBlueprintService {
             capabilities: [BLUEPRINT_BUILD_CAPABILITY],
             configurationProvenance: {configurationHash: computeGameBlueprintHash(blueprint)},
         };
+    }
+
+    private async prepareParApplyThroughRegistry(sourceWorkbookPath: string): Promise<Awaited<ReturnType<ParSheetImporting["importFromFile"]>>> {
+        const temporaryDirectory = path.join(this.studioRoot, "prepared-par-imports");
+        const temporaryBlueprint = path.join(temporaryDirectory, `.apply-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.blueprint.json`);
+        const source = {
+            type: "parWorkbook" as const,
+            rootPath: sourceWorkbookPath,
+            capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+            provenance: "Studio PAR Apply workbook",
+        };
+        fs.mkdirSync(temporaryDirectory, {recursive: true});
+        const plan = await this.artifactRegistry.preparePlan(source, "blueprint", {destinationPath: temporaryBlueprint});
+        if (plan.status !== "planned") throw new Error(plan.diagnostic?.message ?? "PAR import could not be prepared.");
+        let result;
+        try {
+            result = await this.artifactRegistry.executePlan(plan, source, temporaryBlueprint);
+            const evidence = JSON.parse(await fs.promises.readFile(result.conversionEvidencePath!, "utf8")) as {
+                provenance?: StudioParSheetConversionEvidence["provenance"];
+                metaSheet?: StudioParSheetConversionEvidence["metaSheet"];
+                facts?: StudioParSheetConversionEvidence["facts"];
+                losslessEligible?: boolean;
+                importedBlueprintHash?: string;
+                provenanceHashMatches?: boolean;
+                issues?: Awaited<ReturnType<ParSheetImporting["importFromFile"]>>["issues"];
+            };
+            return {
+                blueprint: JSON.parse(await fs.promises.readFile(result.outputPath, "utf8")),
+                provenance: evidence.provenance,
+                issues: evidence.issues ?? [],
+                conversionEvidence: {
+                    metaSheet: evidence.metaSheet,
+                    facts: evidence.facts ?? [],
+                    losslessEligible: evidence.losslessEligible ?? false,
+                    importedBlueprintHash: evidence.importedBlueprintHash ?? "",
+                    provenanceHashMatches: evidence.provenanceHashMatches ?? false,
+                },
+            };
+        } finally {
+            await Promise.all([
+                fs.promises.rm(temporaryBlueprint, {force: true}),
+                fs.promises.rm(`${temporaryBlueprint}.conversion-evidence.json`, {force: true}),
+            ]);
+        }
+    }
+
+    private preparedParImportPath(sourceWorkbookPath: string): string {
+        // Do not use the workbook's basename as an identifier: two distinct
+        // workbooks with the same name must never share trust state.
+        const binding = computeArtifactInputBindingHash([path.resolve(sourceWorkbookPath)]).replace(/^sha256:/, "");
+        return path.join(this.studioRoot, "prepared-par-imports", `${binding}.json`);
+    }
+
+    private storePreparedParImport(sourceWorkbookPath: string, evidence: StudioParSheetConversionEvidence): void {
+        const resolved = path.resolve(sourceWorkbookPath);
+        const recordPath = this.preparedParImportPath(resolved);
+        fs.mkdirSync(path.dirname(recordPath), {recursive: true});
+        writeJsonAtomically(recordPath, {
+            schemaVersion: 1,
+            sourceWorkbookPath: resolved,
+            sourceBindingHash: computeArtifactInputBindingHash([resolved]),
+            conversionEvidence: evidence,
+        });
+        this.preparedParImports.set(resolved, evidence);
+    }
+
+    private loadPreparedParImport(sourceWorkbookPath: string): StudioParSheetConversionEvidence | undefined {
+        const resolved = path.resolve(sourceWorkbookPath);
+        const cached = this.preparedParImports.get(resolved);
+        const binding = computeArtifactInputBindingHash([resolved]);
+        if (cached !== undefined) {
+            // The durable file below is still read on a restart, but keeping a
+            // cache avoids parsing it for the normal Apply -> Save path.
+            try {
+                const record = JSON.parse(fs.readFileSync(this.preparedParImportPath(resolved), "utf8")) as {sourceBindingHash?: unknown};
+                if (record.sourceBindingHash === binding) return cached;
+            } catch {
+                return undefined;
+            }
+        }
+        try {
+            const record = JSON.parse(fs.readFileSync(this.preparedParImportPath(resolved), "utf8")) as {
+                sourceWorkbookPath?: unknown;
+                sourceBindingHash?: unknown;
+                conversionEvidence?: StudioParSheetConversionEvidence;
+            };
+            if (record.sourceWorkbookPath !== resolved || record.sourceBindingHash !== binding || record.conversionEvidence === undefined) return undefined;
+            this.preparedParImports.set(resolved, record.conversionEvidence);
+            return record.conversionEvidence;
+        } catch {
+            return undefined;
+        }
     }
 
     private cleanupManagedSaveArtifacts(targetPath: string, artworkPaths: readonly string[], directoryCreated: boolean): void {

@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
+import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import type {ParSheetImporting} from "../parsheet/ParSheetImporting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
@@ -66,7 +67,12 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
                 issues: imported.issues,
                 facts: imported.conversionEvidence?.facts ?? imported.issues.map((issue) => ({kind: "diagnostic", code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})})),
                 losslessEligible: imported.conversionEvidence?.losslessEligible ?? false,
-                importedBlueprintHash: imported.conversionEvidence?.importedBlueprintHash,
+                // The durable publication is JSON. Hash that exact
+                // serializable model rather than the mapper's in-memory
+                // object, whose optional undefined members are intentionally
+                // omitted by JSON.stringify and otherwise make a freshly
+                // reloaded Blueprint appear to have drifted.
+                importedBlueprintHash: computeGameBlueprintHash(JSON.parse(JSON.stringify(imported.blueprint))),
                 provenanceHashMatches: imported.conversionEvidence?.provenanceHashMatches ?? false,
             }, null, 4)}\n`, "utf8");
             assertArtifactBuildNotCancelled(options);
