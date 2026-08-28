@@ -1,5 +1,6 @@
 import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {act} from "react";
 import {BlueprintEditorPage} from "../../../../../../cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
@@ -309,9 +310,11 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         await user.click(screen.getByRole("button", {name: "Add symbol"}));
         await waitFor(() => expect(screen.queryByText("Writing…")).not.toBeInTheDocument());
 
-        resolveExport?.(await jsonResponse({status: "ok", path: "/games/out.par.xlsx", warnings: []}));
-        await new Promise((resolveTimeout) => {
-            setTimeout(resolveTimeout, 100);
+        await act(async () => {
+            resolveExport?.(await jsonResponse({status: "ok", path: "/games/out.par.xlsx", warnings: []}));
+            await new Promise((resolveTimeout) => {
+                setTimeout(resolveTimeout, 100);
+            });
         });
         expect(screen.queryByText("Exported successfully")).not.toBeInTheDocument();
     });
@@ -410,25 +413,27 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         expect(screen.queryByText(/id: "imported-game"/)).not.toBeInTheDocument();
 
         // A's late response now arrives -- it must be ignored, since B has since been imported.
-        resolvePreviewA?.(
-            await jsonResponse({
-                status: "ok",
-                warnings: [],
-                manifest: IMPORTED_BLUEPRINT.manifest,
-                reels: 2,
-                rows: 2,
-                symbolsCount: 2,
-                blueprintHash: "sha256:a",
-                expectedFiles: ["package.json"],
-                projectRoot: "/games/imported-game",
-                destinationHasContent: false,
-                createFiles: ["package.json"],
-                updateFiles: [],
-                deleteFiles: [],
-            }),
-        );
-        await new Promise((resolveTimeout) => {
-            setTimeout(resolveTimeout, 50);
+        await act(async () => {
+            resolvePreviewA?.(
+                await jsonResponse({
+                    status: "ok",
+                    warnings: [],
+                    manifest: IMPORTED_BLUEPRINT.manifest,
+                    reels: 2,
+                    rows: 2,
+                    symbolsCount: 2,
+                    blueprintHash: "sha256:a",
+                    expectedFiles: ["package.json"],
+                    projectRoot: "/games/imported-game",
+                    destinationHasContent: false,
+                    createFiles: ["package.json"],
+                    updateFiles: [],
+                    deleteFiles: [],
+                }),
+            );
+            await new Promise((resolveTimeout) => {
+                setTimeout(resolveTimeout, 50);
+            });
         });
         expect(screen.queryByText(/id: "imported-game"/)).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Continue to Apply / Export"})).not.toBeInTheDocument();
