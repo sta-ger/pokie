@@ -848,7 +848,23 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                 }
                 if (requestPath === "/api/project/artifacts/build/job-cancel") {
                     return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(cancelled
-                        ? {id: "job-cancel", target: "tsPackage", status: "cancelled", cancellationRequested: true, result: {status: "cancelled", message: "Artifact build was cancelled."}}
+                        ? {
+                            id: "job-cancel",
+                            target: "tsPackage",
+                            status: "cancelled",
+                            cancellationRequested: true,
+                            result: {
+                                status: "cancelled",
+                                message: "Artifact build was cancelled.",
+                                plan: {
+                                    status: "planned",
+                                    source: {kind: "blueprint", capabilities: []},
+                                    target: {kind: "tsPackage", capabilities: []},
+                                    steps: [],
+                                    preflight: {destinationKind: "directory", estimatedWork: "publish", losses: [], oneWay: false},
+                                },
+                            },
+                        }
                         : {id: "job-cancel", target: "tsPackage", status: "running", cancellationRequested: false, progress: {status: "running", message: "Writing outcomes"}})});
                 }
                 return fetchImplFrom(BASE_ROUTES)(url, init);

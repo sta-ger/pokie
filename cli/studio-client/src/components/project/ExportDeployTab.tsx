@@ -152,8 +152,8 @@ type ArtifactBuildRunView =
     // complete between React renders; without retaining it, the user never sees the estimate that
     // governed the build they just started.
     | {status: "ok"; result: Extract<StudioArtifactBuildView, {status: "ok"}>; progress?: StudioArtifactBuildJobView["progress"]}
-    | {status: "cancelled"}
-    | {status: "error"; message: string};
+    | {status: "cancelled"; plan: StudioArtifactConversionPlan}
+    | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
 function describeArtifactBuildResultError(view: Exclude<StudioArtifactBuildView, {status: "ok"}>): string {
     return view.message;
@@ -956,8 +956,10 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                     return;
                 }
                 Reflect.deleteProperty(artifactBuildPollTimers.current, target);
-                if (job.status === "cancelled") {
-                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "cancelled"}}));
+                if (job.status === "cancelled" && job.result?.status === "cancelled") {
+                    // The terminal response is authoritative.  Do not turn a
+                    // cancelled job into a client-side capability decision.
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "cancelled", plan: job.result!.plan}}));
                 } else if (job.result !== undefined && job.result.status === "ok") {
                     const result = job.result;
                     setArtifactBuildRuns((runs) => ({
@@ -972,7 +974,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                     const result = job.result;
                     setArtifactBuildRuns((runs) => ({
                         ...runs,
-                        [target]: {status: "error", message: result !== undefined ? describeArtifactBuildResultError(result) : "Artifact build ended without a result."},
+                        [target]: {
+                            status: "error",
+                            message: result !== undefined ? describeArtifactBuildResultError(result) : "Artifact build ended without a result.",
+                            ...(result !== undefined ? {plan: result.plan} : {}),
+                        },
                     }));
                 }
             })

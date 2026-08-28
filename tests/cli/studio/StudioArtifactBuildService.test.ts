@@ -303,7 +303,10 @@ describe("StudioArtifactBuildService", () => {
                     resolve();
                 }, 0);
             });
-            expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({status: "cancelled", result: {status: "cancelled"}});
+            expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({
+                status: "cancelled",
+                result: {status: "cancelled", plan: {status: "planned", target: {kind: "outcomeLibrary"}}},
+            });
         });
 
         it("cancels a running real Outcome publish through the job workflow without publishing output or registering a managed Project", async () => {
@@ -376,7 +379,7 @@ describe("StudioArtifactBuildService", () => {
             expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({
                 status: "cancelled",
                 cancellationRequested: true,
-                result: {status: "cancelled"},
+                result: {status: "cancelled", plan: {status: "planned", target: {kind: "outcomeLibrary"}}},
             });
             expect(fs.existsSync(outputPath)).toBe(false);
             expect(fs.readdirSync(workDir).filter((entry) => entry.startsWith("cancelled-outcome-library.staging-"))).toEqual([]);

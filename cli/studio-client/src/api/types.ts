@@ -1286,8 +1286,8 @@ export type StudioArtifactBuildView =
       }
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
     | {status: "conflict"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
-    | {status: "cancelled"; message: string}
-    | {status: "error"; message: string};
+    | {status: "cancelled"; message: string; plan: StudioArtifactConversionPlan}
+    | {status: "error"; message: string; plan: StudioArtifactConversionPlan};
 
 // The Build/Export artifact publisher is a server-side job, not a held-open request.  This lets the
 // screen render the same ArtifactBuildOptions preflight/progress callbacks that the CLI receives.

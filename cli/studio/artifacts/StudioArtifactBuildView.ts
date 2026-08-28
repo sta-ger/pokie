@@ -22,5 +22,9 @@ export type StudioArtifactBuildView =
       }
     | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "conflict"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "cancelled"; readonly message: string}
-    | {readonly status: "error"; readonly message: string};
+    // A terminal job must retain the decision it was executing.  In particular,
+    // cancellation is not a second, plan-less result protocol: callers need the
+    // same provenance/destination/recovery context to decide whether retrying is
+    // safe.
+    | {readonly status: "cancelled"; readonly message: string; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "error"; readonly message: string; readonly plan: ArtifactConversionPlan};

@@ -18,6 +18,7 @@ import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
 import type {StudioArtifactBuildJobView, StudioArtifactBuildProgressView} from "./StudioArtifactBuildJobView.js";
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
+import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPlan.js";
 
 // "parWorkbook" is the one target whose artifact is a single file rather than a directory -- its default
 // destination needs a real file extension, mirroring BuildCommand's own PAR_WORKBOOK_DEFAULT_EXTENSION.
@@ -148,7 +149,8 @@ export class StudioArtifactBuildService {
     ): Promise<StudioArtifactBuildView> {
         const resolved = await this.resolveForTarget(projectRoot, target, outDir);
         if (resolved === undefined) {
-            return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`};
+            const plan = createUnresolvedRuntimePlan(projectRoot, target, outDir);
+            return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`, plan};
         }
         const {project, destination} = resolved;
 
@@ -198,9 +200,9 @@ export class StudioArtifactBuildService {
                 return {status: "conflict", target, message: error.message, plan};
             }
             if (error instanceof ArtifactBuildCancelledError) {
-                return {status: "cancelled", message: "Artifact build was cancelled."};
+                return {status: "cancelled", message: "Artifact build was cancelled.", plan};
             }
-            return {status: "error", message: error instanceof Error ? error.message : String(error)};
+            return {status: "error", message: error instanceof Error ? error.message : String(error), plan};
         }
     }
 
