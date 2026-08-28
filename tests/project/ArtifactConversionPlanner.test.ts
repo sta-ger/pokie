@@ -32,6 +32,29 @@ describe("ArtifactConversionPlanner", () => {
         expect(stale).toMatchObject({status: "unavailable", diagnostic: {code: "stale-provenance", message: expect.stringContaining("configuration hash changed")}});
     });
 
+    it("publishes a selected managed reuse to the requested Outcome destination", () => {
+        const reusable = planner.plan(project("tsPackage"), "outcomeLibrary", {
+            destinationPath: "/exports/outcomes",
+            managedOutcome: {
+                verified: true,
+                identity: {
+                    kind: "outcomeLibrary",
+                    canonicalLocation: "/managed/outcomes",
+                    capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+                },
+            },
+        });
+
+        expect(reusable).toMatchObject({
+            status: "planned",
+            target: {canonicalLocation: "/exports/outcomes"},
+            steps: [
+                {kind: "reuseManagedOutcomeLibrary", choice: "reuse"},
+                {kind: "publish", choice: "publish", output: {canonicalLocation: "/exports/outcomes"}},
+            ],
+        });
+    });
+
     it("does not trust a managed candidate flag when its persisted sampled provenance differs", () => {
         const source = {
             ...project("tsPackage"),

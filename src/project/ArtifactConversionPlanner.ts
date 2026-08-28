@@ -271,7 +271,26 @@ export class ArtifactConversionPlanner {
             return unavailable("stale-provenance", `The managed Outcome Library cannot be reused: ${candidate.staleReason ?? "its provenance was not verified"}.`, "Regenerate the Outcome Library from the recognized source.");
         }
         if (candidate?.verified && options.managedOutcome !== undefined) {
-            return this.planned(source, target, preflight, [{kind: "reuseManagedOutcomeLibrary", input: source, output: options.managedOutcome.identity, choice: "reuse", estimatedWork: "none"}]);
+            const reuse: ArtifactConversionStep = {
+                kind: "reuseManagedOutcomeLibrary",
+                input: source,
+                output: options.managedOutcome.identity,
+                choice: "reuse",
+                estimatedWork: "none",
+            };
+            // A managed bundle is an input to a requested Outcome publication,
+            // not permission to silently ignore the requested destination.  A
+            // destination-less plan is still useful for a pure reuse preview;
+            // once a destination is supplied its publication is an explicit,
+            // executable step just like the Stake publish below.
+            return this.planned(
+                source,
+                target,
+                preflight,
+                options.destinationPath === undefined
+                    ? [reuse]
+                    : [reuse, {kind: "publish", input: options.managedOutcome.identity, output: target, choice: "publish", estimatedWork: "publish"}],
+            );
         }
         const runtime: ArtifactIdentity = {kind: "tsPackage", capabilities: TARGET_CAPABILITIES.tsPackage};
         return this.planned(source, target, preflight, [
@@ -288,7 +307,16 @@ export class ArtifactConversionPlanner {
         unavailable: (code: ArtifactConversionDiagnostic["code"], message: string, recovery: string) => ArtifactConversionPlan,
     ): ArtifactConversionPlan {
         const outcome = this.targetIdentity("outcomeLibrary", undefined, options.generationSemantics);
-        const outcomePlan = this.planOutcomeFromRuntime(source, outcome, this.preflight("outcomeLibrary", source.kind as ProjectType, options.generationSemantics), options, unavailable);
+        // The requested destination belongs to the final Stake publication.
+        // An intermediate reused Outcome Library must never be republished to
+        // that Stake directory before the selected Stake publish executes.
+        const outcomePlan = this.planOutcomeFromRuntime(
+            source,
+            outcome,
+            this.preflight("outcomeLibrary", source.kind as ProjectType, options.generationSemantics),
+            {...options, destinationPath: undefined},
+            unavailable,
+        );
         if (outcomePlan.status !== "planned") return outcomePlan;
         const prerequisiteOutput = outcomePlan.steps[outcomePlan.steps.length - 1]?.output ?? outcome;
         return this.planned(source, target, preflight, [...outcomePlan.steps, {kind: "publish", input: prerequisiteOutput, output: target, choice: "publish", estimatedWork: "publish"}]);

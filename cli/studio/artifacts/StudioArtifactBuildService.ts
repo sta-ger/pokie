@@ -123,7 +123,7 @@ export class StudioArtifactBuildService {
 
         const plan = await this.plan(project, target, destination);
         if (plan.status === "unavailable") {
-            return {status: "unsupported", target, message: this.describePlanDiagnostic(plan)};
+            return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
         }
         if (plan.status === "conflict") {
             return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: plan.diagnostic!.message, plan};
@@ -154,9 +154,9 @@ export class StudioArtifactBuildService {
 
         const plan = await this.plan(project, target, destination, options);
         if (plan.status === "unavailable") {
-            return {status: "unsupported", target, message: this.describePlanDiagnostic(plan)};
+            return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
         }
-        if (plan.status === "conflict") return {status: "conflict", target, message: plan.diagnostic!.message};
+        if (plan.status === "conflict") return {status: "conflict", target, message: plan.diagnostic!.message, plan};
 
         try {
             const result = await this.registry.executePlan(plan, project, destination, options);

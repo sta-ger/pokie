@@ -16,7 +16,7 @@ export type StudioArtifactPreviewView =
           readonly sourceType: ProjectType;
           readonly plan: ArtifactConversionPlan;
       }
-    | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string}
+    | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}
     | {
           readonly status: "conflict";
           readonly target: ArtifactTargetType;

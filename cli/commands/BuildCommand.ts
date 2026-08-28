@@ -256,6 +256,7 @@ export class BuildCommand implements CliCommandHandling {
             }
 
             this.printDryRunSummary(blueprint as GameBlueprint, project.rootPath, out);
+            this.printPlanSummary(plan);
             return 0;
         }
 
@@ -315,6 +316,7 @@ export class BuildCommand implements CliCommandHandling {
     ): Promise<number> {
         if (dryRun) {
             console.log(`Dry run -- would build "${target}" from "${project.rootPath}" (${project.provenance}) to "${out}". No files written.`);
+            this.printPlanSummary(plan);
             return 0;
         }
 
@@ -430,6 +432,18 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  blueprint hash   ${buildInfo.blueprintHash}`);
         console.log(`  would generate   ${buildInfo.files!.join(", ")}`);
         console.log(`  destination      ${destination}`);
+    }
+
+    // The planner is the dry-run contract.  Keep the established human
+    // summary, but expose the selected executable steps, reuse choice and
+    // irreversible boundary instead of making a user infer them from target
+    // names or a command-specific branch.
+    private printPlanSummary(plan: ArtifactConversionPlan): void {
+        console.log("Conversion plan:");
+        console.log(`  steps            ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}`);
+        console.log(`  estimated work   ${plan.preflight.estimatedWork}`);
+        console.log(`  destination kind ${plan.preflight.destinationKind}`);
+        if (plan.preflight.losses.length > 0) console.log(`  data boundary    ${plan.preflight.losses.join(" ")}`);
     }
 }
 

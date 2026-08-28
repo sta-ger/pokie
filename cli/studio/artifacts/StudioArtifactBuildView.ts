@@ -20,7 +20,7 @@ export type StudioArtifactBuildView =
           readonly reusedCompatibleProject?: boolean;
           readonly preflight?: {readonly estimatedItemCount?: string; readonly estimatedBytes?: string; readonly complexityWarning?: string};
       }
-    | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string}
-    | {readonly status: "conflict"; readonly target: ArtifactTargetType; readonly message: string}
+    | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "conflict"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "cancelled"; readonly message: string}
     | {readonly status: "error"; readonly message: string};

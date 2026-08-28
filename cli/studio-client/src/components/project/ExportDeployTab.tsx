@@ -17,6 +17,7 @@ import type {
     OutcomeLibrarySelector,
     StudioArtifactBuildView,
     StudioArtifactBuildJobView,
+    StudioArtifactConversionPlan,
     StudioArtifactPreviewView,
     StudioArtifactTargetType,
     StudioArtifactTargetView,
@@ -156,7 +157,7 @@ function describeArtifactBuildResultError(view: Exclude<StudioArtifactBuildView,
 type ArtifactPreviewRunView =
     | {status: "loading"}
     | {status: "ok"; result: Extract<StudioArtifactPreviewView, {status: "ok"}>}
-    | {status: "unsupported"; message: string}
+    | {status: "unsupported"; message: string; plan: StudioArtifactConversionPlan}
     | {status: "conflict"; result: Extract<StudioArtifactPreviewView, {status: "conflict"}>}
     | {status: "error"; message: string};
 
@@ -167,7 +168,9 @@ function toArtifactPreviewRunView(view: StudioArtifactPreviewView): ArtifactPrev
     if (view.status === "conflict") {
         return {status: "conflict", result: view};
     }
-    return {status: view.status === "unsupported" ? "unsupported" : "error", message: view.message};
+    return view.status === "unsupported"
+        ? {status: "unsupported", message: view.message, plan: view.plan}
+        : {status: "error", message: view.message};
 }
 
 function TargetCard({
@@ -414,7 +417,14 @@ function TargetCard({
                         </div>
                     )}
                     {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (
-                        <ErrorState message={artifactPreview.message} />
+                        <>
+                            <ErrorState message={artifactPreview.message} />
+                            {artifactPreview.status === "unsupported" && (
+                                <Text size="sm" c="dimmed" mt={4}>
+                                    Planner diagnostic: {artifactPreview.plan.diagnostic?.message ?? "No executable conversion steps."}
+                                </Text>
+                            )}
+                        </>
                     )}
                     <Button size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"} disabled={!canBuildArtifact}>
                         Build
@@ -458,9 +468,11 @@ function TargetCard({
                             <Text size="sm" mt={4}>
                                 Built to {artifactBuildRun.result.outputPath}.
                             </Text>
-                            <Text size="sm" c="dimmed" mt={4}>
-                                Executed plan: {artifactBuildRun.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}.
-                            </Text>
+                            {artifactBuildRun.result.plan !== undefined && (
+                                <Text size="sm" c="dimmed" mt={4}>
+                                    Executed plan: {artifactBuildRun.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}.
+                                </Text>
+                            )}
                             {artifactBuildRun.result.preflight && (
                                 <Text size="sm" c="dimmed" mt={4}>
                                     Published {artifactBuildRun.result.preflight.estimatedItemCount ?? "the estimated"} item(s)

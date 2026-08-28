@@ -110,7 +110,10 @@ export class ExportCommand implements CliCommandHandling {
         }
         if (args.dryRun) {
             await this.registry.validate(target, project);
-            console.log(`Dry run -- plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ")}. Would export target "${args.target}" from "${project.rootPath}" to "${destination}". No files written.`);
+            console.log(`Dry run -- would export target "${args.target}" from "${project.rootPath}" to "${destination}". No files written.`);
+            console.log(`Conversion plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}.`);
+            console.log(`Preflight: ${plan.preflight.estimatedWork} work; ${plan.preflight.destinationKind} destination.`);
+            if (plan.preflight.losses.length > 0) console.log(`Data boundary: ${plan.preflight.losses.join(" ")}`);
             return 0;
         }
         try {

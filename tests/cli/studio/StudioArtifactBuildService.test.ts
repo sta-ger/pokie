@@ -218,7 +218,7 @@ describe("StudioArtifactBuildService", () => {
                 outputPath: secondOutcomeDir,
                 outputKind: "directory",
                 sourceType: "blueprint",
-                plan: {status: "planned", steps: expect.arrayContaining([expect.objectContaining({kind: "generateOutcomeLibrary"})])},
+                plan: {status: "planned", steps: [expect.objectContaining({kind: "reuseManagedOutcomeLibrary"}), expect.objectContaining({kind: "publish"})]},
             });
             expect(fs.existsSync(path.join(secondOutcomeDir, "manifest.json"))).toBe(true);
         });

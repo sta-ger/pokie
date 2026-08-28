@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
+import type {ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
@@ -220,15 +221,21 @@ describe("ArtifactBuilderRegistry", () => {
                     expect.objectContaining({rootPath: outcomeDir, gameId: "direct-outcome-slot", gameVersion: "1.0.0", configHash: expect.any(String)}),
                 ]);
 
-                const stake = await registry.build("stakeAdapter", blueprintProject, stakeDir);
+                // A plan is a public JSON payload, not a process-local token.
+                // Reopening this serialized selected reuse plan proves direct
+                // execution does not depend on registry WeakMap state.
+                const stakePlan = JSON.parse(JSON.stringify(await registry.preparePlan(blueprintProject, "stakeAdapter", {destinationPath: stakeDir}))) as ArtifactConversionPlan;
+                expect(stakePlan.steps.map((step) => step.kind)).toEqual(["reuseManagedOutcomeLibrary", "publish"]);
+                const stake = await registry.executePlan(stakePlan, blueprintProject, stakeDir);
                 expect(stake.prerequisiteProjectRoots).toEqual([outcomeDir]);
                 expect(stake.managedProjectRoots).toEqual([outcomeDir]);
                 expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);
 
                 const secondOutcomeDir = path.join(workDir, "second-outcome");
-                await expect(registry.build("outcomeLibrary", blueprintProject, secondOutcomeDir)).resolves.toEqual({
+                await expect(registry.build("outcomeLibrary", blueprintProject, secondOutcomeDir)).resolves.toMatchObject({
                     outputPath: secondOutcomeDir,
                     managedProjectRoots: [secondOutcomeDir],
+                    reusedCompatibleProject: true,
                 });
                 expect(fs.existsSync(path.join(secondOutcomeDir, "manifest.json"))).toBe(true);
             } finally {

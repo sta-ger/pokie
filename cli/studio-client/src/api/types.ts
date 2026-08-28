@@ -1275,8 +1275,8 @@ export type StudioArtifactBuildView =
           plan: StudioArtifactConversionPlan;
           preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
       }
-    | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
-    | {status: "conflict"; target: StudioArtifactTargetType; message: string}
+    | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
+    | {status: "conflict"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
     | {status: "cancelled"; message: string}
     | {status: "error"; message: string};
 
@@ -1311,7 +1311,7 @@ export type StudioArtifactPreviewView =
           sourceType: StudioProjectType;
           plan: StudioArtifactConversionPlan;
       }
-    | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
+    | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
     | {
           status: "conflict";
           target: StudioArtifactTargetType;

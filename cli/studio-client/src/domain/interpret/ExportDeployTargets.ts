@@ -1,4 +1,4 @@
-import type {StudioArtifactTargetType, StudioArtifactTargetView, StudioDeploymentTargetSummary, StudioProjectCapability} from "../../api/types";
+import type {StudioArtifactConversionPlan, StudioArtifactTargetType, StudioArtifactTargetView, StudioDeploymentTargetSummary, StudioProjectCapability} from "../../api/types";
 import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
 import {BLUEPRINT_BUILD_CAPABILITY, OUTCOME_LIBRARY_READ_CAPABILITY, RUNTIME_EXECUTE_CAPABILITY} from "./ProjectDashboard";
 
@@ -51,6 +51,8 @@ export type ExportDeployTargetCard = {
     // The ArtifactBuilderRegistry target this card describes -- present only for "buildArtifact" cards, so
     // ExportDeployTab can run buildArtifact(fetchImpl, card.artifactTarget) directly against it.
     readonly artifactTarget?: StudioArtifactTargetType;
+    /** Exact server-selected conversion; browser presentation never infers an edge. */
+    readonly artifactPlan?: StudioArtifactConversionPlan;
 };
 
 // Short, presentation-only prose per ArtifactBuilderRegistry target -- mirrors the exact same
@@ -100,6 +102,7 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
 // making an unavailable output look as though Studio forgot to offer it.
 function unavailableReasonsForArtifactTarget(entry: StudioArtifactTargetView, fallbackReason: string): readonly string[] {
     if (entry.supported) return [];
+    if (entry.plan?.diagnostic !== undefined) return [entry.plan.diagnostic.message, entry.plan.diagnostic.recovery];
     if (entry.diagnostic !== undefined) return [entry.diagnostic];
     if (entry.unsupportedNotes.length > 0) return entry.unsupportedNotes;
     return [fallbackReason];
@@ -126,7 +129,9 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
                     "A registry-backed preview reports the resolved destination (and any conflict) before Build is ever clicked; Build itself still writes the artifact to disk in one step, and a destination that already exists and isn't empty is refused untouched.",
                 capabilities: [],
                 limits: [],
-                prerequisites: entry.supported ? ["This project is ready to build. Choose a destination or use the default."] : [],
+                prerequisites: entry.plan?.status === "planned"
+                    ? entry.plan.steps.map((step) => `${step.choice} ${step.kind}`)
+                    : [],
                 // The server's descriptor remains the authority whenever it provides a reason. Some
                 // transitional or third-party Studio responses have no descriptor prose, however, so the
                 // card still needs a useful, target-specific next step instead of a generic unavailable
@@ -136,6 +141,7 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
                 locality: "local",
                 compatibility: "The exact same ArtifactBuilderRegistry conversion runs in the CLI and Studio, so they always agree on what's buildable and what it writes.",
                 artifactTarget: entry.target,
+                ...(entry.plan === undefined ? {} : {artifactPlan: entry.plan}),
             };
         });
 }
