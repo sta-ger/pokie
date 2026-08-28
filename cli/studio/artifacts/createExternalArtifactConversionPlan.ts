@@ -3,16 +3,18 @@ import {
     ArtifactConversionPlanner,
     ArtifactTargetType,
     OUTCOME_LIBRARY_GENERATE_CAPABILITY,
-    OUTCOME_LIBRARY_READ_CAPABILITY,
-    STAKE_ADAPTER_EXPORT_CAPABILITY,
 } from "pokie";
 
 /**
- * Gives selector-backed Studio actions the same explicit planner terminal
- * contract as a resolved POKIE project.  A standalone JSON library is still a
- * legitimate read-only Outcome Library input, but it has no managed-project
- * provenance; mixed selectors have no single source identity and are therefore
- * deliberately unavailable instead of being decorated with the open project.
+ * Gives selector-backed Studio actions an explicit *unavailable* planner
+ * terminal contract. A JSON file or a set of mixed selectors is not a
+ * recognized POKIE Outcome Library bundle: it has neither canonical artifact
+ * identity nor verified capabilities/provenance. Do not promote its shape to
+ * an Outcome Library capability just because a legacy reader can parse it.
+ *
+ * Callers must resolve a single source through StudioArtifactConversionPlanning
+ * before they can obtain a planned conversion. This helper is intentionally a
+ * recovery boundary, not a second source recognizer.
  */
 export function createExternalOutcomeLibraryPlan(
     sourcePath: string | undefined,
@@ -26,7 +28,11 @@ export function createExternalOutcomeLibraryPlan(
             ...(sourcePath === undefined
                 ? {recognitionProvenance: "mixed external Studio selectors"}
                 : {canonicalLocation: sourcePath, recognitionProvenance: "external Studio selector"}),
-            capabilities: [OUTCOME_LIBRARY_READ_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY],
+            // An empty capability set is meaningful: the planner returns its
+            // structured missing-recognized-source boundary instead of an
+            // executable edge fabricated from a selector's filename or JSON
+            // structure.
+            capabilities: [],
         },
         target,
         destinationPath === undefined ? {} : {destinationPath},
@@ -44,6 +50,8 @@ export function createUnresolvedRuntimePlan(
             kind: "tsPackage",
             canonicalLocation: sourcePath,
             recognitionProvenance: "unresolved Studio project runtime",
+            // This is a recovery plan for the Studio runtime loader, whose
+            // package contract is independently verified by that loader.
             capabilities: [OUTCOME_LIBRARY_GENERATE_CAPABILITY],
         },
         target,
