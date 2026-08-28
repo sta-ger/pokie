@@ -17,8 +17,8 @@ import {
     ProjectResolving,
     PokieProject,
     ProjectTargetResolver,
+    PROJECT_TYPE_CAPABILITIES,
     ValidationIssue,
-    describeArtifactConversionPlanDiagnostic,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
@@ -200,31 +200,6 @@ export class ParCommand implements CliCommandHandling {
         return parent;
     }
 
-    // Routes `inputPath` through the same ProjectTargetResolver every migrated CLI command already
-    // crosses (see BuildCommand's own analogous check) before ever handing it to the real
-    // ParSheetImporting -- but only ever rejects a *recognized*-but-wrong-type target (a tsPackage/
-    // outcomeLibrary/stakeAdapter/blueprint/wasm path someone pointed "pokie par import" at by mistake)
-    // with a capability diagnostic explaining exactly why import can't run against it. An unrecognized
-    // path -- resolve() returns undefined, e.g. a missing file or an ordinary/corrupt .xlsx that isn't a
-    // PAR sheet workbook at all -- falls straight through to the real importer exactly as it always has,
-    // so its own "load-error"/"missing sheet" diagnostics are unaffected.
-    private async checkImportTarget(inputPath: string): Promise<void> {
-        const project = await this.resolveProject.resolve(inputPath);
-        if (project === undefined || project.type === "parWorkbook") {
-            if (project?.type === "parWorkbook") {
-                const plan = this.planner.plan(project, "parWorkbook");
-                if (plan.status !== "planned") {
-                    throw new Error(describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "The PAR workbook cannot be imported.");
-                }
-            }
-            return;
-        }
-        const diagnostic = describeUnsupportedProjectOperation(project, PAR_IMPORT_OPERATION);
-        if (diagnostic !== undefined) {
-            throw new UnsupportedProjectOperationError(diagnostic);
-        }
-    }
-
     private async executeImport(
         inputPath: string,
         outPath: string,
@@ -232,9 +207,13 @@ export class ParCommand implements CliCommandHandling {
         prepared?: {readonly source: PokieProject; readonly plan: ArtifactImportOutputPlan},
     ): Promise<number> {
         if (prepared === undefined) {
-            await this.checkImportTarget(inputPath);
-            const result = await this.importer.importFromFile(inputPath);
-            return this.reportAndPublishImport(inputPath, outPath, format, result);
+            // `par import` is a public import entry point in its own right.  Do
+            // not let its legacy spelling take a separate read/write path from
+            // `pokie import`: bind the reader and atomic writer to one prepared
+            // exchange-import operation before either can run.
+            const source = await this.prepareImportSource(inputPath);
+            const plan = this.planner.planImportOutput(source, "blueprint", outPath);
+            return this.executeImport(inputPath, outPath, format, {source, plan});
         }
         const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, outPath, {
             read: () => this.importer.importFromFile(inputPath),
@@ -243,6 +222,25 @@ export class ParCommand implements CliCommandHandling {
             publish: (result) => this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`),
         });
         return this.reportAndPublishImport(inputPath, outPath, format, execution.read, execution.published, execution.publication);
+    }
+
+    private async prepareImportSource(inputPath: string): Promise<PokieProject> {
+        const project = await this.resolveProject.resolve(inputPath);
+        if (project === undefined) {
+            // The importer remains the authority for workbook-format diagnostics.
+            // Model that legacy exchange input explicitly, rather than allowing
+            // an unplanned reader/writer fallback outside the planner lifecycle.
+            return {
+                type: "parWorkbook",
+                rootPath: path.resolve(inputPath),
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "legacy PAR exchange input",
+            };
+        }
+        if (project.type === "parWorkbook") return project;
+        const diagnostic = describeUnsupportedProjectOperation(project, PAR_IMPORT_OPERATION);
+        if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
+        throw new Error(`"${inputPath}" is not a recognized PAR workbook.`);
     }
 
     /** Presents the terminal result only; prepared imports have already run their reader/publisher lifecycle. */

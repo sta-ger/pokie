@@ -27,6 +27,9 @@ import {
     StakeEngineStandaloneAnalyzer,
     StakeEngineStandaloneExactDecimal,
     PokieProject,
+    ProjectResolving,
+    ProjectTargetResolver,
+    PROJECT_TYPE_CAPABILITIES,
     ValidationIssue,
     WeightedOutcomeLibrary,
 } from "pokie";
@@ -134,6 +137,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly standaloneAnalysisDiffer: StakeEngineStandaloneAnalysisDiffing;
     private readonly writeAnalyzeFile: (file: string, contents: string) => void;
     private readonly writeNewDiffFile: (file: string, contents: string) => void;
+    private readonly resolveProject: ProjectResolving;
     private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
@@ -150,6 +154,8 @@ export class StakeEngineCommand implements CliCommandHandling {
         writeAnalyzeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
         standaloneAnalysisDiffer: StakeEngineStandaloneAnalysisDiffing = new StakeEngineStandaloneAnalysisDiffer(),
         writeNewDiffFile: (file: string, contents: string) => void = writeNewStakeEngineDiffFileAtomically,
+        // Appended to preserve the long-standing injectable command constructor.
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
     ) {
         this.exporter = exporter;
         this.importer = importer;
@@ -162,6 +168,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         this.writeAnalyzeFile = writeAnalyzeFile;
         this.standaloneAnalysisDiffer = standaloneAnalysisDiffer;
         this.writeNewDiffFile = writeNewDiffFile;
+        this.resolveProject = resolveProject;
     }
 
     public getName(): string {
@@ -465,8 +472,13 @@ export class StakeEngineCommand implements CliCommandHandling {
         prepared?: {readonly source: PokieProject; readonly plan: ArtifactImportOutputPlan},
     ): Promise<number> {
         if (prepared === undefined) {
-            const result = await this.importer.importFromDirectory(options.stakeDir);
-            return this.reportImport(options, result);
+            // The namespaced import is not a lower-level escape hatch.  It
+            // prepares the same one-way durable output operation as `pokie
+            // import`, so destination policy, cancellation, and rollback stay
+            // owned by the planner execution boundary.
+            const source = await this.prepareImportSource(options.stakeDir);
+            const plan = this.planner.planImportOutput(source, "outcomeLibrary", options.outDir);
+            return this.runImport(options, {source, plan});
         }
         const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, options.outDir, {
             read: () => this.importer.importFromDirectory(options.stakeDir),
@@ -478,6 +490,22 @@ export class StakeEngineCommand implements CliCommandHandling {
             publish: (result) => this.importWriter.writeToDirectory(result, options.outDir),
         });
         return this.reportImport(options, execution.read, execution.published, execution.publication);
+    }
+
+    private async prepareImportSource(stakeDir: string): Promise<PokieProject> {
+        const project = await this.resolveProject.resolve(stakeDir);
+        if (project === undefined) {
+            // Keep the format reader's manifest diagnostics for legacy callers,
+            // but never let that compatibility path bypass a prepared operation.
+            return {
+                type: "stakeAdapter",
+                rootPath: path.resolve(stakeDir),
+                capabilities: PROJECT_TYPE_CAPABILITIES.stakeAdapter,
+                provenance: "legacy Stake Engine exchange input",
+            };
+        }
+        if (project.type === "stakeAdapter") return project;
+        throw new Error(`"${stakeDir}" is not a recognized POKIE-produced Stake Engine export with pokie-manifest.json.`);
     }
 
     /** Adapters present an import operation's result; the prepared plan owns its durable publication boundary. */
