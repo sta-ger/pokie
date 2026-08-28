@@ -82,6 +82,15 @@ Outcome Library, Stake directory, simulation input, or replay descriptor.
 The registry names the producer, allowed consumer, provenance, stale rule,
 compatibility boundary and recovery path for each result class.
 
+To keep this promise auditable as commands evolve,
+`artifact-registry.json` has a `persisted_public_output_contracts` ledger. It
+enumerates every public `--out` and cancellation-only `--resume` writer, the
+command implementation that exposes it, the artifact it produces and the
+condition under which it is persisted. This includes source artifacts such as
+Blueprints and bundles as well as terminal result records. A new writer is not
+an undocumented convenience: it must enter that ledger and point to an
+artifact with the applicable lifecycle contract.
+
 ## Loss, provenance, stale and compatibility rules
 
 | Situation | Required product meaning | Required diagnostic / recovery |

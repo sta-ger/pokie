@@ -31,6 +31,14 @@ some other route.
 | Generate/inspect reel strips | `reel generate` | Blueprint reel tools | `reel-strip-generation.md` | `resolveReelStripGeneration` | Blueprint constraints | generation failure is design validation, not runtime failure | PC-09 docs/surface sweep |
 | Assess WASM compatibility | `inspect` resolves compatible sidecar; no `wasm` command | register/open/inspect metadata only | `wasm-compatibility-boundary.md` | `WasmProjectTargetAdapter`, manifest validator | compatible `.wasm` + sidecar manifest | inspection-only; explicitly reject build/run/simulate/validate-logic promises | PC-13 WASM boundary sweep |
 
+`artifact-registry.json` also carries the machine-readable
+`persisted_public_output_contracts` inventory. It records every public
+`--out`/`--resume` persistence branch, its producing command source and the
+artifact kind it writes. Result records are intentionally listed alongside
+source artifacts so validation, comparison, analysis and report JSON cannot
+silently disappear from the lifecycle model merely because no later POKIE
+command consumes them.
+
 ## Public route inventory and aliases
 
 The public CLI inventory is the command tree registered by `registerCliCommands()`.

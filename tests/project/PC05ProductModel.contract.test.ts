@@ -15,6 +15,7 @@ type InventoryItem = {
     stale?: string;
     compatibility?: string;
     recovery?: string;
+    support_status?: string;
 };
 
 type ProductModelRegistry = {
@@ -22,21 +23,28 @@ type ProductModelRegistry = {
     reference_fields: Array<keyof InventoryItem>;
     artifact_kinds: InventoryItem[];
     non_artifact_prerequisites: InventoryItem[];
+    persisted_public_output_contracts: PersistedPublicOutputContract[];
 };
 
-// Concrete persistence branches audited by PC-05.  Each listed branch must map
-// to an artifact kind rather than silently becoming an undocumented JSON file.
-const PERSISTED_OUTPUT_CONTRACTS: Array<{branch: string; artifactIds: string[]}> = [
-    {branch: "cli:generate", artifactIds: ["weightedOutcomeLibraryJson"]},
-    {branch: "cli:generate --resume on cancellation", artifactIds: ["outcomeLibraryGenerationCheckpoint"]},
-    {branch: "cli:validate --out", artifactIds: ["validationReport"]},
-    {branch: "cli:diff --out", artifactIds: ["simulationComparisonReport", "outcomeSourceComparisonReport"]},
-    {branch: "cli:report --format json --out", artifactIds: ["simulationReport", "simulationReportSet"]},
-    {branch: "cli:report --out for simulation reports", artifactIds: ["renderedReport"]},
-    {branch: "cli:report --out for outcome sources", artifactIds: ["outcomeSourceAnalysisReport"]},
-    {branch: "cli:stakeengine analyze --out", artifactIds: ["stakeEngineAnalysisReport"]},
-    {branch: "cli:stakeengine diff --out", artifactIds: ["stakeEngineComparisonReport"]},
-    {branch: "cli:outcomesource diff --out", artifactIds: ["outcomeSourceComparisonReport"]},
+type PersistedPublicOutputContract = {
+    id: string;
+    producer: string;
+    artifact_id: string;
+    command_file: string;
+    persistence_trigger: string;
+};
+
+// This is deliberately the complete public write inventory, rather than a
+// hand-picked artifact subset.  A new public --out/--resume writer must add a
+// contract row and an artifact lifecycle, or this test fails.
+const PERSISTED_PUBLIC_OUTPUT_IDS = [
+    "create-blueprint", "edit-blueprint", "reel-blueprint", "par-import-blueprint", "par-export-workbook",
+    "build-package", "build-outcome-bundle", "build-stake", "build-par",
+    "export-outcome-bundle", "export-stake", "export-par", "stake-import-library",
+    "generate-raw-library", "generate-resume-checkpoint", "validate-report",
+    "simulate-report", "simulate-report-set", "report-simulation-json", "report-simulation-report-set-json", "report-simulation-rendering", "report-outcome-source-analysis",
+    "diff-simulation", "diff-outcome-source", "outcome-source-diff", "stake-analysis", "stake-diff",
+    "replay-descriptor", "certification-bundle", "fairness-seed-commitment", "fairness-commitment", "fairness-proof",
 ];
 
 const PRODUCT_MODEL_DIR = path.join(__dirname, "..", "..", "docs", "evidence", "phase7-product-coherence", "pc-05-product-model");
@@ -129,7 +137,7 @@ describe("PC-05 product-model contract", () => {
         expect(rawLibrary).toEqual(
             expect.objectContaining({
                 "label": "WeightedOutcomeLibrary JSON",
-                "created_by": expect.arrayContaining(["cli:generate", "cli:outcomelibrary generate"]),
+                "created_by": expect.arrayContaining(["cli:generate --out", "cli:outcomelibrary generate --out"]),
                 "recognized_by": expect.arrayContaining(["cli:export --to outcomes"]),
                 "imports_from": ["tsPackage"],
                 "exports_to": expect.arrayContaining(["outcomeLibrary"]),
@@ -298,16 +306,39 @@ describe("PC-05 product-model contract", () => {
         expect(productModel).toContain("`pokie generate` is deliberately the first, raw stage");
         expect(productModel).toContain("`pokie outcomelibrary build` consumes");
         expect(productModel).toContain("PC-05-HANDOFF-01");
-        for (const {branch, artifactIds} of PERSISTED_OUTPUT_CONTRACTS) {
-            for (const artifactId of artifactIds) {
-                const artifact = registry.artifact_kinds.find((item) => item.id === artifactId);
+        const generateFacade = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "GenerateCommand.ts"), "utf-8");
+        const outcomeLibraryCommand = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "OutcomeLibraryCommand.ts"), "utf-8");
+        expect(generateFacade).toContain('this.outcomeLibrary.run(["generate", ...args])');
+        expect(outcomeLibraryCommand).toContain('this.writeFile(options.out, JSON.stringify(result.library, null, 4))');
+        expect(outcomeLibraryCommand).toContain('this.writeFile(options.resume, JSON.stringify(this.serializeCheckpoint(error.checkpoint), null, 4))');
+        expect(outcomeLibraryCommand).toContain("private async executeBuild(configPath: string, outDir: string)");
+        const contracts = registry.persisted_public_output_contracts;
+        expect(new Set(contracts.map((contract) => contract.id)).size).toBe(contracts.length);
+        expect(contracts.map((contract) => contract.id)).toEqual(expect.arrayContaining(PERSISTED_PUBLIC_OUTPUT_IDS));
+        expect(contracts).toHaveLength(PERSISTED_PUBLIC_OUTPUT_IDS.length);
+        for (const contract of contracts) {
+            expect(contract.persistence_trigger).toEqual(expect.any(String));
+            const artifact = registry.artifact_kinds.find((item) => item.id === contract.artifact_id);
+            if (
+                contract.artifact_id === "weightedOutcomeLibraryJson" ||
+                contract.artifact_id === "outcomeLibraryGenerationCheckpoint" ||
+                artifact?.support_status === "supported-result-artifact"
+            ) {
                 expect(artifact).toEqual(expect.objectContaining({
                     provenance: expect.any(String),
                     stale: expect.any(String),
                     compatibility: expect.any(String),
                     recovery: expect.any(String),
                 }));
-                expect(artifact?.created_by?.some((producer) => producer.startsWith(branch))).toBe(true);
+            }
+            expect(artifact?.created_by).toContain(contract.producer);
+
+            // Check the actual command implementation advertises its write
+            // surface. This keeps registry coverage independent of prose.
+            const source = fs.readFileSync(path.join(__dirname, "..", "..", contract.command_file), "utf-8");
+            expect(source).toContain("--out");
+            if (contract.producer.includes("--resume")) {
+                expect(source).toContain("--resume");
             }
         }
     });
