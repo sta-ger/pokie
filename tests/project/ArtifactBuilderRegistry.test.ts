@@ -4,6 +4,7 @@ import path from "path";
 import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
 import type {ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
+import {ManagedOutcomeProjectService} from "../../src/project/ManagedOutcomeProjectService.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
@@ -214,6 +215,50 @@ describe("ArtifactBuilderRegistry", () => {
                 expect(fs.existsSync(path.join(firstStakeDir, "index.json"))).toBe(true);
                 expect(fs.existsSync(path.join(secondStakeDir, "index.json"))).toBe(true);
                 expect(fs.readFileSync(path.join(libraryDir, "manifest.json"), "utf-8")).toBe(manifestBeforeReuse);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
+        it("releases a newly materialized managed prerequisite when its planned Stake publication fails", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stake-prerequisite-rollback-test-"));
+            const blueprintPath = path.join(workDir, "game.blueprint.json");
+            const stakeDir = path.join(workDir, "stake");
+            fs.writeFileSync(
+                blueprintPath,
+                JSON.stringify({
+                    manifest: {id: "rollback-slot", name: "Rollback Slot", version: "1.0.0"},
+                    reels: 3,
+                    rows: 1,
+                    symbols: ["A"],
+                    paytable: {A: {2: 1, 3: 2}},
+                    reelStrips: [["A"], ["A"], ["A"]],
+                    availableBets: [1],
+                }),
+            );
+            const source: PokieProject = {
+                type: "blueprint",
+                rootPath: blueprintPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                provenance: "test fixture",
+            } as PokieProject;
+            const failingStakeBuilder: ArtifactBuilder = {
+                target: "stakeAdapter",
+                destinationKind: "directory",
+                build: () => Promise.reject(new Error("Stake publication failed")),
+            };
+            const registry = new ArtifactBuilderRegistry(
+                "1.3.0",
+                new Map([["stakeAdapter", failingStakeBuilder]]),
+                new ManagedOutcomeProjectService(),
+            );
+
+            try {
+                await expect(registry.build("stakeAdapter", source, stakeDir)).rejects.toThrow("Stake publication failed");
+                expect(fs.existsSync(stakeDir)).toBe(false);
+                const managedRoot = path.join(workDir, ".pokie", "outcome-libraries");
+                expect(fs.existsSync(managedRoot) ? fs.readdirSync(managedRoot) : []).toEqual([]);
+                expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }

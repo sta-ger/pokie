@@ -26,6 +26,13 @@ export interface ManagedOutcomeProjectServicing {
     findCompatible(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject | undefined>;
     allocateRoot(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): string;
     registerAndOpen(sourceRootPath: string, rootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject>;
+    /**
+     * Removes a registry record for a planner-owned publication which did not
+     * reach its terminal consumer.  The caller owns deleting the publication
+     * itself; keeping that ownership separate prevents a registry operation
+     * from ever deleting a borrowed/reused bundle.
+     */
+    release(sourceRootPath: string, rootPath: string): Promise<void>;
 }
 
 export type ManagedOutcomeInspection = {
@@ -150,6 +157,26 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
             throw error;
         }
         return project;
+    }
+
+    public async release(sourceRootPath: string, rootPath: string): Promise<void> {
+        let document: RegistryDocument;
+        try {
+            document = await this.readRegistry(sourceRootPath);
+        } catch {
+            // A failed Stake publication must not turn its best-effort
+            // registration rollback into a new, masking lifecycle error.
+            return;
+        }
+        const canonicalRoot = path.resolve(rootPath);
+        const projects = document.projects.filter((entry) => path.resolve(entry.rootPath) !== canonicalRoot);
+        if (projects.length === document.projects.length) return;
+        const registryPath = this.registryPath(sourceRootPath);
+        if (projects.length === 0) {
+            await this.files.remove(registryPath, {force: true});
+            return;
+        }
+        await this.writeRegistry(registryPath, {projects});
     }
 
     private async openIfCompatible(rootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject | undefined> {

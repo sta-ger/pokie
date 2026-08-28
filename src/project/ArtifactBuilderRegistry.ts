@@ -365,15 +365,31 @@ export class ArtifactBuilderRegistry {
     }
 
     private async buildStakeFromPlannedOutcome(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options: ArtifactBuildOptions | undefined, reused?: PokieProject): Promise<ArtifactBuildResult> {
-        const outcomeLibrary = reused ?? (await this.generatePlannedManagedOutcome(plan, source, options)).project;
+        // A materialized prerequisite is planner-owned only until the final
+        // Stake publication succeeds.  A reused managed library predates this
+        // plan and must survive a failed/cancelled publication unchanged.
+        const generated = reused === undefined ? await this.generatePlannedManagedOutcome(plan, source, options) : undefined;
+        const outcomeLibrary = reused ?? generated!.project;
         const builder = this.builders.get("stakeAdapter");
         if (builder === undefined) throw new Error(this.unavailableTargetMessage("stakeAdapter"));
-        const result = await builder.build(outcomeLibrary, destinationPath, options);
-        return {
-            ...result,
-            prerequisiteProjectRoots: [outcomeLibrary.rootPath],
-            managedProjectRoots: [outcomeLibrary.rootPath],
-        };
+        try {
+            const result = await builder.build(outcomeLibrary, destinationPath, options);
+            return {
+                ...result,
+                prerequisiteProjectRoots: [outcomeLibrary.rootPath],
+                managedProjectRoots: [outcomeLibrary.rootPath],
+            };
+        } catch (error) {
+            if (generated !== undefined) {
+                // generatePrepared registered this intermediate so later plans
+                // could safely reuse it.  That registration is not valid when
+                // the selected plan's terminal publication failed: release the
+                // record before deleting only this planner-owned root.
+                await this.managedOutcomeProjects.release(source.rootPath, outcomeLibrary.rootPath).catch(() => undefined);
+                await fs.promises.rm(outcomeLibrary.rootPath, {recursive: true, force: true}).catch(() => undefined);
+            }
+            throw error;
+        }
     }
 
     /**
