@@ -843,7 +843,10 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const filePath = this.resolveStaticFilePath(url.pathname);
+        // Studio uses hash routing, but public links and browser refreshes can still arrive at a
+        // client route such as /home/projects. Serve the app shell for those extensionless routes
+        // so the client can restore its Home/project state instead of exposing a server 404.
+        const filePath = this.resolveStaticFilePath(url.pathname) ?? this.resolveAppShellFilePath(url.pathname);
         if (filePath === undefined) {
             this.sendJson(res, 404, {error: `Not found: ${url.pathname}`});
             return;
@@ -2651,6 +2654,16 @@ export class StudioServer implements StudioServerHandling {
             return undefined;
         }
         return resolved;
+    }
+
+    // Keeps a missing JavaScript/CSS/image request observable as a 404 while allowing the
+    // extensionless paths owned by Studio's client router to load the same app shell as GET /.
+    // API paths are deliberately excluded: unknown API endpoints must retain their JSON 404.
+    private resolveAppShellFilePath(pathname: string): string | undefined {
+        if (pathname === "/api" || pathname.startsWith("/api/") || path.extname(pathname) !== "") {
+            return undefined;
+        }
+        return this.resolveStaticFilePath("/");
     }
 
     private sendFile(res: ServerResponse, filePath: string): void {
