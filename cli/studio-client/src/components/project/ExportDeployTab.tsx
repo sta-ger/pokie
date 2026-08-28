@@ -884,15 +884,25 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     // exact resolved mode/library selector the caller already has in hand (freshly resolved for the
     // initial run, or the one a prior conflict was reported against for Overwrite), never re-resolved
     // here, so Overwrite can never end up pairing a since-changed selector with `overwrite: true`.
-    function runStaticExport(source: Extract<OutcomeLibrarySelector, {kind: "bundle"}>, overwrite: boolean): void {
+    function runStaticExport(source: Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined, overwrite: boolean): void {
         setStaticExportRun({status: "running"});
-        exportStakeEngine(fetchImpl, [{modeName: source.modeName, librarySelector: source, cost: 1}], STAKE_ENGINE_DEFAULT_OUT_DIR, overwrite)
+        // Always submit the click.  With no selected library the server returns
+        // its planner-owned unavailable terminal result instead of leaving the
+        // user with a button that appears to do nothing.
+        exportStakeEngine(fetchImpl, source === undefined ? [] : [{modeName: source.modeName, librarySelector: source, cost: 1}], STAKE_ENGINE_DEFAULT_OUT_DIR, overwrite)
             .then((view) => {
                 staticExportGuard.end();
                 if (view.status === "ok") {
                     setStaticExportRun({status: "ok", result: view});
                 } else if (view.status === "conflict") {
-                    setStaticExportRun({status: "conflict", result: view, source});
+                    // An empty selector request cannot validly be overwritten:
+                    // retain its server terminal message rather than inventing a
+                    // local recovery source.
+                    if (source !== undefined) {
+                        setStaticExportRun({status: "conflict", result: view, source});
+                    } else {
+                        setStaticExportRun({status: "error", message: view.error, plan: view.plan});
+                    }
                 } else {
                     setStaticExportRun({status: "error", message: describeStakeEngineResultError(view), plan: view.plan});
                 }
@@ -905,7 +915,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
 
     function handleRunStaticExport(): void {
         const source = resolveOutcomeLibrarySource();
-        if (source === undefined || !staticExportGuard.begin()) {
+        if (!staticExportGuard.begin()) {
             return;
         }
         runStaticExport(source, false);

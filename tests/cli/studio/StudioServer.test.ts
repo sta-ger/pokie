@@ -5627,6 +5627,22 @@ describe("StudioServer", () => {
             expect((missingOutDir.body as {error: string}).error).toMatch(/outDir/);
         });
 
+        it("returns a planner-owned unavailable terminal result for an empty Stake action", async () => {
+            const projectBaseUrl = await startServerForProject(stakeProjectRoot);
+
+            const response = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
+                modes: [],
+                outDir: "stakeengine",
+            });
+
+            expect(response.status).toBe(200);
+            expect(response.body).toMatchObject({
+                status: "unavailable",
+                plan: {status: "unavailable", source: {capabilities: []}, target: {kind: "stakeAdapter"}},
+            });
+            expect(fs.existsSync(path.join(stakeProjectRoot, "stakeengine"))).toBe(false);
+        });
+
         it("returns an unavailable plan for raw JSON before Stake validation or export", async () => {
             writeLibrary("base.json", {libraryId: "base-lib", betMode: "base", stake: 1});
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);

@@ -711,6 +711,47 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(await screen.findByText("Generating outcome library from this project's current build…")).toBeInTheDocument();
     });
 
+    it("submits the Stake action without a local selector and renders the server planner terminal result", async () => {
+        const user = userEvent.setup();
+        let stakeRequest: unknown;
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
+            "/api/project/stakeengine/export": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "unavailable",
+                    error: "No recognized Outcome Library is available.",
+                    plan: {
+                        status: "unavailable",
+                        source: {kind: "outcomeLibrary", capabilities: []},
+                        target: {kind: "stakeAdapter", capabilities: []},
+                        steps: [],
+                        preflight: {destinationKind: "directory", estimatedWork: "none", losses: [], oneWay: false},
+                        diagnostic: {message: "No recognized Outcome Library is available."},
+                    },
+                },
+            }),
+        };
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/stakeengine/export") {
+                stakeRequest = JSON.parse(String(init?.body));
+            }
+            return fetchImplFrom(routes)(url, init);
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (base)"}));
+
+        expect(stakeRequest).toEqual({modes: [], outDir: "stakeengine", overwrite: false});
+        expect(await screen.findByText("No recognized Outcome Library is available.")).toBeInTheDocument();
+        expect(screen.getByText(/Server plan:.*Unavailable/)).toBeInTheDocument();
+    });
+
     it("lets a project above the exact-generation cap explicitly generate bounded coverage and continue to Stake Engine Export", async () => {
         const user = userEvent.setup();
         let generationRequest: unknown;

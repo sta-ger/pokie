@@ -12,9 +12,9 @@ function isNonEmptyString(value: unknown): value is string {
 // two can never disagree on what counts as a well-formed mode row. "librarySelector" is validated the same
 // way (and against the same shared shape) as a Deployment mode's own librarySelector — see
 // validateOutcomeLibrarySelector.
-export function validateStakeEngineExportModeInputs(modes: unknown): StudioStakeEngineExportModeInput[] {
-    if (!Array.isArray(modes) || modes.length === 0) {
-        throw new Error('"modes" must be a non-empty array.');
+export function validateStakeEngineExportModeInputs(modes: unknown, allowEmpty = false): StudioStakeEngineExportModeInput[] {
+    if (!Array.isArray(modes) || (!allowEmpty && modes.length === 0)) {
+        throw new Error(`"modes" must be a ${allowEmpty ? "array" : "non-empty array"}.`);
     }
 
     return modes.map((entry, position) => {
