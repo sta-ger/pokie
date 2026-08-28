@@ -1,4 +1,5 @@
 import {Command} from "commander";
+import fs from "fs";
 import path from "path";
 import {
     ArtifactBuilderRegistry,
@@ -219,9 +220,16 @@ export class ParCommand implements CliCommandHandling {
             read: () => this.importer.importFromFile(inputPath),
             canPublish: (result) => result.issues.every((issue) => issue.severity !== "error"),
             assertDestinationAvailable: () => this.assertDestinationIsAvailable(inputPath, outPath),
-            publish: (result) => this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`),
+            // Return the allocated path, not merely the writer's diagnostic,
+            // so the prepared import has an unambiguous rollback target if a
+            // later lifecycle phase is cancelled or fails.
+            publish: (result) => {
+                this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`);
+                return outPath;
+            },
+            rollback: (publishedPath) => fs.rmSync(publishedPath, {force: true}),
         });
-        return this.reportAndPublishImport(inputPath, outPath, format, execution.read, execution.published, execution.publication);
+        return this.reportAndPublishImport(inputPath, outPath, format, execution.read, execution.published, undefined);
     }
 
     private async prepareImportSource(inputPath: string): Promise<PokieProject> {

@@ -382,6 +382,11 @@ export class ArtifactConversionPlanner {
             publication = await execution.publish(read);
             assertImportOperationNotCancelled(execution.signal);
             await execution.register?.(publication);
+            // Registration can itself be asynchronous.  Treat a cancellation
+            // observed while it was running exactly like a failed
+            // registration: the prepared operation, rather than its adapter,
+            // releases the publication it just acquired.
+            assertImportOperationNotCancelled(execution.signal);
             return {read, published: true, publication};
         } catch (error) {
             if (publication !== undefined) await execution.rollback?.(publication);

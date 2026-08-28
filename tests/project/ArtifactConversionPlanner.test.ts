@@ -285,6 +285,32 @@ describe("ArtifactConversionPlanner", () => {
         expect(events).toEqual(["destination", "publish", "register", "rollback:published"]);
     });
 
+    it("rolls back publication when cancellation arrives during registration", async () => {
+        const source = project("stakeAdapter");
+        const plan = planner.planImportOutput(source, "outcomeLibrary", "/imports/outcomes");
+        const controller = new AbortController();
+        const events: string[] = [];
+
+        await expect(planner.executeImportOutputPlan(plan, source, "/imports/outcomes", {
+            read: () => ({valid: true}),
+            canPublish: (read) => read.valid,
+            publish: () => {
+                events.push("publish");
+                return "published";
+            },
+            register: () => {
+                events.push("register");
+                controller.abort();
+            },
+            rollback: (published) => {
+                events.push(`rollback:${published}`);
+            },
+            signal: controller.signal,
+        })).rejects.toThrow(/cancelled/i);
+
+        expect(events).toEqual(["publish", "register", "rollback:published"]);
+    });
+
     it("does not read or publish a cancelled prepared import", async () => {
         const source = project("parWorkbook");
         const plan = planner.planImportOutput(source, "blueprint", "/imports/slot.blueprint.json");

@@ -488,6 +488,11 @@ export class StakeEngineCommand implements CliCommandHandling {
                 if (!destination.available) throw new Error(destination.message ?? `The import destination "${options.outDir}" is unavailable.`);
             },
             publish: (result) => this.importWriter.writeToDirectory(result, options.outDir),
+            // StakeEngineImportWriter publishes an atomic directory.  Once it
+            // has returned, that directory belongs to this prepared operation
+            // until its terminal result is reported; remove only this newly
+            // allocated destination if a later lifecycle phase fails.
+            rollback: () => fs.promises.rm(options.outDir, {recursive: true, force: true}),
         });
         return this.reportImport(options, execution.read, execution.published, execution.publication);
     }
