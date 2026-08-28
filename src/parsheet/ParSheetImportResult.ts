@@ -13,4 +13,16 @@ export type ParSheetImportResult = {
     // through the existing GameBlueprintValidator (reachability, paytable quality, ...), merged into
     // one list — split by severity the same way BuildCommand/ValidateCommand already do.
     issues: ValidationIssue[];
+    /**
+     * Durable-import consumers persist this verbatim observation rather than
+     * attempting to reconstruct diagnostics from console output.  The facts
+     * are deliberately derived from the importer issues, so unknown cells,
+     * formula materialization and parser defaults cannot be reported as a
+     * lossless conversion.
+     */
+    conversionEvidence?: {
+        readonly metaSheet: readonly (readonly unknown[])[] | undefined;
+        readonly facts: readonly {readonly kind: "ignored" | "formulaMaterialized" | "inferredOrDefaulted" | "diagnostic"; readonly code: string; readonly message: string; readonly details?: unknown}[];
+        readonly losslessEligible: boolean;
+    };
 };

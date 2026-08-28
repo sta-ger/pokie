@@ -178,6 +178,9 @@ export class StudioArtifactBuildService {
             const managedProjectRoots = new Set([
                 ...(result.prerequisiteProjectRoots ?? []),
                 ...(result.managedProjectRoots ?? []),
+                // A PAR import's Blueprint is itself a durable Studio project,
+                // not merely a transient prerequisite like an Outcome bundle.
+                ...(target === "blueprint" ? [result.outputPath] : []),
             ]);
             await Promise.all(Array.from(managedProjectRoots, (projectRoot) => this.registerManagedProject(projectRoot)));
             return {

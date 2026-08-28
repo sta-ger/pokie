@@ -421,7 +421,26 @@ export class ArtifactBuilderRegistry {
                 provenance: `imported from PAR workbook ${source.rootPath}`,
                 capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
             };
-            return this.build(target, imported, destinationPath, options);
+            const result = await this.build(target, imported, destinationPath, options);
+            // The temporary Blueprint is only an execution allocation.  Once
+            // the selected terminal writer succeeds, retain an inspectable
+            // copy and its evidence under the final artifact instead of
+            // leaking a private temp path into provenance.
+            const evidenceSource = `${intermediatePath}.conversion-evidence.json`;
+            const durableDirectory = path.join(result.outputPath, ".pokie", "par-import");
+            const durableBlueprint = path.join(durableDirectory, "imported.blueprint.json");
+            const durableEvidence = path.join(durableDirectory, "conversion-evidence.json");
+            try {
+                await fs.promises.mkdir(durableDirectory, {recursive: true});
+                await fs.promises.copyFile(intermediatePath, durableBlueprint);
+                await fs.promises.copyFile(evidenceSource, durableEvidence);
+            } catch (error) {
+                // The terminal output is operation-owned: do not report an
+                // artifact whose required evidence reference is absent.
+                await fs.promises.rm(result.outputPath, {recursive: true, force: true}).catch(() => undefined);
+                throw error;
+            }
+            return {...result, conversionEvidencePath: durableEvidence, importedBlueprintPath: durableBlueprint};
         } finally {
             // Outcome streaming can finish its final writer callback while the
             // caller unwinds. Retry ENOTEMPTY rather than turning a completed

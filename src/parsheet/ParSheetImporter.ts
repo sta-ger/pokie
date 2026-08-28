@@ -180,8 +180,10 @@ export class ParSheetImporter implements ParSheetImporting {
             }
         }
         let provenance: ParSheetProvenance | undefined;
+        let metaSheet: SheetGrid | undefined;
         if (sheetsByName.has("Meta")) {
-            provenance = this.provenanceMapper.fromRows(gridFor("Meta")).value;
+            metaSheet = gridFor("Meta").map((row) => [...row]);
+            provenance = this.provenanceMapper.fromRows(metaSheet).value;
             issues.push(...this.verifyProvenance(provenance, blueprint));
         } else {
             issues.push({
@@ -193,7 +195,17 @@ export class ParSheetImporter implements ParSheetImporting {
 
         issues.push(...this.validator.validate(blueprint));
 
-        return {blueprint, provenance, issues};
+        const facts = issues.map((issue) => ({
+            kind: conversionFactKind(issue.code, issue.message),
+            code: issue.code,
+            message: issue.message,
+            ...(issue.details === undefined ? {} : {details: issue.details}),
+        }));
+        // A canonical export has matching Meta provenance and no importer
+        // transformation warning/error.  Informational provenance-present is
+        // intentionally not a loss boundary.
+        const losslessEligible = issues.every((issue) => issue.severity === "info" && issue.code === "parsheet-provenance-present");
+        return {blueprint, provenance, issues, conversionEvidence: {metaSheet, facts, losslessEligible}};
     }
 
     // Wraps whatever readWorkbook throws (ExcelJS's own raw errors -- e.g. "Can't find end of central
@@ -343,4 +355,11 @@ function cellValueToPrimitive(value: ExcelJS.CellValue): unknown {
         return value.text;
     }
     return undefined;
+}
+
+function conversionFactKind(code: string, message: string): "ignored" | "formulaMaterialized" | "inferredOrDefaulted" | "diagnostic" {
+    if (code === "parsheet-formula-cell") return "formulaMaterialized";
+    if ((/default|infer|missing/i).test(`${code} ${message}`)) return "inferredOrDefaulted";
+    if ((/ignored|unknown/i).test(`${code} ${message}`)) return "ignored";
+    return "diagnostic";
 }

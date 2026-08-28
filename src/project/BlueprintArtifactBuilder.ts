@@ -45,9 +45,17 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
             const temp = path.join(path.dirname(destinationPath), `.${path.basename(destinationPath)}.${process.pid}.${Date.now()}.tmp`);
             await fs.promises.writeFile(temp, `${JSON.stringify(imported.blueprint, null, 4)}\n`, "utf8");
             await fs.promises.rename(temp, destinationPath);
-            await fs.promises.writeFile(evidencePath, `${JSON.stringify({sourceWorkbook: path.resolve(source.rootPath), provenance: imported.provenance, issues: imported.issues}, null, 4)}\n`, "utf8");
+            await fs.promises.writeFile(evidencePath, `${JSON.stringify({
+                schemaVersion: 1,
+                sourceWorkbook: path.resolve(source.rootPath),
+                provenance: imported.provenance,
+                metaSheet: imported.conversionEvidence?.metaSheet,
+                issues: imported.issues,
+                facts: imported.conversionEvidence?.facts ?? imported.issues.map((issue) => ({kind: "diagnostic", code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})})),
+                losslessEligible: imported.conversionEvidence?.losslessEligible ?? false,
+            }, null, 4)}\n`, "utf8");
             reportArtifactBuildProgress(options, {status: "completed"});
-            return {outputPath: destinationPath};
+            return {outputPath: destinationPath, conversionEvidencePath: evidencePath};
         } catch (error) {
             await cleanupIncompleteArtifactOutput(destinationPath, state);
             await fs.promises.rm(evidencePath, {force: true}).catch(() => undefined);

@@ -20,4 +20,8 @@ export type ArtifactBuildResult = {
     // A completed build repeats its up-front estimate so callers can retain an honest job summary after the
     // transient progress callback has gone away.
     readonly preflight?: import("./ArtifactBuildOptions.js").ArtifactBuildPreflight;
+    /** Durable PAR import record retained beside this artifact, when it was derived from a workbook. */
+    readonly conversionEvidencePath?: string;
+    /** Durable imported Blueprint retained with a PAR-derived downstream artifact. */
+    readonly importedBlueprintPath?: string;
 };

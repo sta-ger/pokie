@@ -58,6 +58,7 @@ export class ParCommand implements CliCommandHandling {
     private readonly checkDestination: ParSheetDestinationChecking;
     private readonly registerImport: ParImportRegistering | undefined;
     private readonly planner = new ArtifactConversionPlanner();
+    private readonly registry: ArtifactBuilderRegistry;
 
     constructor(
         pokieVersion: string,
@@ -75,6 +76,7 @@ export class ParCommand implements CliCommandHandling {
         checkDestination: ParSheetDestinationChecking = (sourcePath, destinationPath) =>
             new ArtifactBuilderRegistry(pokieVersion).checkDestination("parWorkbook", destinationPath, sourcePath),
         registerImport: ParImportRegistering | undefined = undefined,
+        registry: ArtifactBuilderRegistry = new ArtifactBuilderRegistry(pokieVersion),
     ) {
         this.importer = importer;
         this.exporter = exporter;
@@ -83,6 +85,7 @@ export class ParCommand implements CliCommandHandling {
         this.resolveProject = resolveProject;
         this.checkDestination = checkDestination;
         this.registerImport = registerImport;
+        this.registry = registry;
     }
 
     public getName(): string {
@@ -191,11 +194,22 @@ export class ParCommand implements CliCommandHandling {
                 }
                 return "json";
             }, "summary" as ImportFormat)
-            .action(async (inputPath: string, excess: string[], options: {out?: string; format: ImportFormat}) => {
+            .option("--dry-run", "preview the prepared import without writing anything")
+            .action(async (inputPath: string, excess: string[], options: {out?: string; format: ImportFormat; dryRun?: boolean}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${IMPORT_USAGE}`);
                 }
                 const outPath = options.out ?? defaultBlueprintPath(inputPath);
+                if (options.dryRun && this.usesDefaultRegistryLifecycle()) {
+                    const source = await this.prepareImportSource(inputPath);
+                    const plan = await this.registry.preparePlan(source, "blueprint", {destinationPath: outPath});
+                    await this.registry.validate("blueprint", source, plan);
+                    console.log(`Dry run -- would import PAR workbook "${source.rootPath}" to "${outPath}" (file destination). No files written.`);
+                    console.log(`Conversion plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ")}.`);
+                    console.log(`Evidence: generated beside the imported Blueprint at "${outPath}.conversion-evidence.json".`);
+                    exitCodeRef.value = 0;
+                    return;
+                }
                 exitCodeRef.value = await this.executeImport(inputPath, outPath, options.format);
             });
 
@@ -228,6 +242,16 @@ export class ParCommand implements CliCommandHandling {
             // `pokie import`: bind the reader and atomic writer to one prepared
             // exchange-import operation before either can run.
             const source = await this.prepareImportSource(inputPath);
+            if (this.usesDefaultRegistryLifecycle()) {
+                const plan = await this.registry.preparePlan(source, "blueprint", {destinationPath: outPath});
+                const result = await this.registry.executePlan(plan, source, outPath);
+                const evidence = JSON.parse(await fs.promises.readFile(result.conversionEvidencePath!, "utf8")) as {issues?: ValidationIssue[]};
+                for (const issue of evidence.issues ?? []) {
+                    console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
+                }
+                console.log(`Imported "${source.rootPath}" to "${result.outputPath}" with conversion evidence "${result.conversionEvidencePath}".`);
+                return 0;
+            }
             const plan = this.planner.planImportOutput(source, "blueprint", outPath);
             return this.executeImport(inputPath, outPath, format, {source, plan});
         }
@@ -249,6 +273,10 @@ export class ParCommand implements CliCommandHandling {
             cleanup: () => cancellation.cleanup(),
         });
         return this.reportAndPublishImport(inputPath, outPath, format, execution.read, execution.published, undefined);
+    }
+
+    private usesDefaultRegistryLifecycle(): boolean {
+        return this.importer instanceof ParSheetImporter && this.writeFile === writeBlueprintFileAtomically;
     }
 
     private async prepareImportSource(inputPath: string): Promise<PokieProject> {

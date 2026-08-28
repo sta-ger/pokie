@@ -1,14 +1,14 @@
 import {Command} from "commander";
 import path from "path";
-import {ArtifactConversionPlanner, ProjectResolving, ProjectTargetResolver} from "pokie";
+import {ArtifactBuilderRegistry, ArtifactConversionPlanner, ProjectResolving, ProjectTargetResolver} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {ParCommand} from "./ParCommand.js";
 import {StakeEngineCommand} from "./StakeEngineCommand.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
-const USAGE = "Usage: pokie import <source> [--out <path>] [--format json]";
+const USAGE = "Usage: pokie import <source> [--out <path>] [--format json] [--dry-run]";
 type ImportFormat = "json";
-type ImportOptions = {input: string; out?: string; format?: ImportFormat};
+type ImportOptions = {input: string; out?: string; format?: ImportFormat; dryRun?: boolean};
 
 // A source's path is the user-facing contract here: a workbook imports as a Blueprint and a
 // POKIE-produced Stake Engine export directory imports as reconstructed outcome libraries.
@@ -21,6 +21,7 @@ export class ImportCommand implements CliCommandHandling {
     private readonly stake: StakeEngineCommand;
     private readonly resolveProject: ProjectResolving;
     private readonly planner: ArtifactConversionPlanner;
+    private readonly registry: ArtifactBuilderRegistry;
 
     constructor(
         pokieVersion: string,
@@ -31,6 +32,7 @@ export class ImportCommand implements CliCommandHandling {
         this.stake = new StakeEngineCommand(pokieVersion);
         this.resolveProject = resolveProject;
         this.planner = planner;
+        this.registry = new ArtifactBuilderRegistry(pokieVersion);
     }
 
     public getName(): string {
@@ -74,7 +76,19 @@ export class ImportCommand implements CliCommandHandling {
             throw new Error(`${plan.diagnostic?.message ?? "This import source is unavailable."} Next: ${plan.diagnostic?.recovery ?? "resolve a supported exchange source and retry."}`);
         }
         if (source.type === "parWorkbook") {
-            return this.par.runPreparedImport(source, plan, options.input, destination, options.format === "json" ? "json" : "summary");
+            const prepared = await this.registry.preparePlan(source, "blueprint", {destinationPath: destination});
+            if (prepared.status !== "planned") throw new Error(prepared.diagnostic?.message ?? "PAR import could not be planned.");
+            await this.registry.validate("blueprint", source, prepared);
+            if (options.dryRun) {
+                console.log(`Dry run -- would import PAR workbook "${source.rootPath}" to "${destination}" (file destination). No files written.`);
+                console.log(`Conversion plan: ${prepared.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ")}.`);
+                console.log(`Evidence: generated beside the imported Blueprint at "${destination}.conversion-evidence.json".`);
+                return 0;
+            }
+            const result = await this.registry.executePlan(prepared, source, destination);
+            if (options.format === "json") console.log(JSON.stringify({outputPath: result.outputPath, conversionEvidencePath: result.conversionEvidencePath}, null, 4));
+            else console.log(`Imported "${source.rootPath}" to "${result.outputPath}" with conversion evidence "${result.conversionEvidencePath}".`);
+            return 0;
         }
         return this.stake.runPreparedImport(source, plan, options.input, destination, options.format === "json" ? "json" : "summary");
     }
@@ -93,20 +107,21 @@ export class ImportCommand implements CliCommandHandling {
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--out <path>", "where to write imported artifacts")
             .option("--format <format>", 'only "json" is supported; it selects JSON output')
+            .option("--dry-run", "preview the prepared import without writing anything")
             .action(() => undefined);
     }
 
     private parse(args: string[]): ImportOptions {
         const command = this.command();
         let options: ImportOptions | undefined;
-        command.action((source: string, excess: string[], parsedOptions: {out?: string; format?: string}) => {
+        command.action((source: string, excess: string[], parsedOptions: {out?: string; format?: string; dryRun?: boolean}) => {
             if (!source || excess.length > 0) {
                 throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
             }
             if (parsedOptions.format !== undefined && parsedOptions.format !== "json") {
                 throw new Error(`--format only supports "json". ${USAGE}`);
             }
-            options = {input: source, out: parsedOptions.out, format: parsedOptions.format as ImportFormat | undefined};
+            options = {input: source, out: parsedOptions.out, format: parsedOptions.format as ImportFormat | undefined, dryRun: parsedOptions.dryRun};
         });
         try {
             command.parse(args, {from: "user"});
