@@ -260,17 +260,13 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         expect(exportInput).toHaveAttribute("placeholder", "./game.par.xlsx");
     });
 
-    it("exports the current blueprint successfully, and handles a conflict via Overwrite", async () => {
+    it("keeps an occupied export destination as a conflict and never offers overwrite", async () => {
         const user = userEvent.setup();
-        let firstAttempt = true;
         const fetchImpl: FetchLike = (url, init) => {
             if (url === EXPORT_URL) {
                 const body = JSON.parse((init?.body as string | undefined) ?? "{}") as {overwrite?: boolean};
-                if (firstAttempt && !body.overwrite) {
-                    firstAttempt = false;
-                    return jsonResponse({status: "conflict", path: "/games/out.par.xlsx", error: "already exists"}, 409);
-                }
-                return jsonResponse({status: "ok", path: "/games/out.par.xlsx", warnings: []});
+                expect(body.overwrite).toBe(false);
+                return jsonResponse({status: "conflict", path: "/games/out.par.xlsx", error: "already exists"}, 409);
             }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
         };
@@ -282,10 +278,9 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         await user.type(screen.getByLabelText("Export to path"), "./out.par.xlsx");
         await user.click(screen.getByRole("button", {name: "Export"}));
 
-        expect(await screen.findByText("already exists")).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Overwrite"}));
-
-        expect(await screen.findByText("Exported successfully")).toBeInTheDocument();
+        expect(await screen.findByText(/already exists/)).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Overwrite"})).not.toBeInTheDocument();
+        expect(screen.getByText(/Choose a different export path; existing artifacts are never overwritten\./)).toBeInTheDocument();
     });
 
     it("drops a stale export response when the blueprint is edited elsewhere while the request is in flight", async () => {

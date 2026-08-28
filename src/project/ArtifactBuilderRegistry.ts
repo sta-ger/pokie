@@ -37,6 +37,22 @@ import {
     getBuildProductMatrixCell,
 } from "./BuildProductMatrix.js";
 
+/**
+ * The prepared-operation destination boundary shared by registry builds and
+ * adapters that publish a format directly.  In particular, an adapter must
+ * not reinterpret an explicit overwrite confirmation as permission to bypass
+ * the source-alias or occupied-output checks enforced by every registry
+ * build.
+ */
+export function assertPreparedArtifactDestinationAvailable(
+    sourcePath: string | undefined,
+    destinationPath: string,
+    kind: "file" | "directory",
+): void {
+    if (sourcePath !== undefined) assertArtifactDestinationIsSafe(sourcePath, destinationPath);
+    assertArtifactDestinationAvailable(destinationPath, kind);
+}
+
 // Which PokieOperation actually produces each ArtifactTargetType as a brand-new artifact -- "build" writes a
 // tsPackage, "outcomeLibrary.build" writes an outcomeLibrary bundle, "stakeEngine.export" writes a stakeAdapter
 // export, and "par.export" writes a parWorkbook file. Every other
@@ -261,8 +277,7 @@ export class ArtifactBuilderRegistry {
         if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
 
         try {
-            if (sourcePath !== undefined) assertArtifactDestinationIsSafe(sourcePath, destinationPath);
-            assertArtifactDestinationAvailable(destinationPath, builder.destinationKind);
+            assertPreparedArtifactDestinationAvailable(sourcePath, destinationPath, builder.destinationKind);
             return {available: true};
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {

@@ -563,15 +563,41 @@ describe("StudioBlueprintService", () => {
             expect(fs.readFileSync(filePath, "utf-8")).toBe("existing content");
         });
 
-        it("overwrites the file when overwrite is true", async () => {
+        it("refuses to overwrite an existing file even when overwrite is true", async () => {
             const service = createService();
             const filePath = path.join(tmpDir, "out.par.xlsx");
             fs.writeFileSync(filePath, "existing content");
 
             const result = await service.exportParSheet(exportableBlueprint, filePath, true);
 
-            expect(result.status).toBe("ok");
-            expect(fs.readFileSync(filePath, "utf-8")).not.toBe("existing content");
+            expect(result.status).toBe("conflict");
+            expect(fs.readFileSync(filePath, "utf-8")).toBe("existing content");
+        });
+
+        it("refuses an occupied directory even when overwrite is true", async () => {
+            const service = createService();
+            const directoryPath = path.join(tmpDir, "existing.par.xlsx");
+            fs.mkdirSync(directoryPath);
+
+            const result = await service.exportParSheet(exportableBlueprint, directoryPath, true);
+
+            expect(result.status).toBe("conflict");
+            expect(fs.statSync(directoryPath).isDirectory()).toBe(true);
+        });
+
+        it("rejects a source file and its symlink alias as PAR destinations", async () => {
+            const service = createService();
+            const sourcePath = path.join(tmpDir, "blueprint.json");
+            const aliasPath = path.join(tmpDir, "blueprint-alias.par.xlsx");
+            fs.writeFileSync(sourcePath, JSON.stringify(exportableBlueprint));
+            fs.symlinkSync(sourcePath, aliasPath);
+
+            const sourceResult = await service.exportParSheet(exportableBlueprint, sourcePath, true, sourcePath);
+            const aliasResult = await service.exportParSheet(exportableBlueprint, aliasPath, true, sourcePath);
+
+            expect(sourceResult.status).toBe("conflict");
+            expect(aliasResult.status).toBe("conflict");
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe(JSON.stringify(exportableBlueprint));
         });
 
         it("materializes a generated reel source into a PAR workbook", async () => {
@@ -601,11 +627,9 @@ describe("StudioBlueprintService", () => {
             expect(fs.existsSync(filePath)).toBe(false);
         });
 
-        it("returns the actionable seed diagnostic and preserves an existing workbook for an unseeded generated reel", async () => {
+        it("returns the actionable seed diagnostic for an unseeded generated reel", async () => {
             const service = createService();
             const filePath = path.join(tmpDir, "out.par.xlsx");
-            const sentinel = "existing workbook stays untouched";
-            fs.writeFileSync(filePath, sentinel);
 
             const result = await service.exportParSheet(buildBlueprint({
                 reelStripGeneration: [
@@ -613,12 +637,12 @@ describe("StudioBlueprintService", () => {
                     {type: "literal", strip: ["B", "A"]},
                     {type: "literal", strip: ["A", "B"]},
                 ] as unknown as GameBlueprint["reelStripGeneration"],
-            }), filePath, true);
+            }), filePath, false);
 
             expect(result).toMatchObject({status: "invalid"});
             expect(JSON.stringify(result)).toContain("parsheet-reel-generation-seed-required");
             expect(JSON.stringify(result)).toContain("reelStripGeneration[0].seed");
-            expect(fs.readFileSync(filePath, "utf-8")).toBe(sentinel);
+            expect(fs.existsSync(filePath)).toBe(false);
         });
 
         it("rejects a path that resolves inside Studio's own internal directory", async () => {
@@ -1259,6 +1283,25 @@ describe("StudioBlueprintService", () => {
 
             expect(first.status).toBe("ok");
             expect(second.status).toBe("error");
+        });
+
+        it("rejects the source directory, a descendant, and a symlink alias before package publication", async () => {
+            const service = createService();
+            const sourceDirectory = path.join(tmpDir, "source");
+            const descendant = path.join(sourceDirectory, "dist");
+            const aliasDirectory = path.join(tmpDir, "source-alias");
+            fs.mkdirSync(sourceDirectory);
+            fs.symlinkSync(sourceDirectory, aliasDirectory, "dir");
+
+            const self = await service.build(buildBlueprint(), sourceDirectory, sourceDirectory);
+            const nested = await service.build(buildBlueprint(), descendant, sourceDirectory);
+            const alias = await service.build(buildBlueprint(), path.join(aliasDirectory, "dist"), sourceDirectory);
+
+            expect(self.status).toBe("error");
+            expect(nested.status).toBe("error");
+            expect(alias.status).toBe("error");
+            expect(fs.existsSync(descendant)).toBe(false);
+            expect(await repository.list()).toEqual([]);
         });
 
         it("rejects an outDir that resolves inside Studio's own internal directory", async () => {

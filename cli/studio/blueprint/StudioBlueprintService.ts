@@ -1,5 +1,7 @@
 import {
     ArtifactConversionPlanner,
+    ArtifactBuildConflictError,
+    assertPreparedArtifactDestinationAvailable,
     BLUEPRINT_BUILD_CAPABILITY,
     buildGameBuildInfo,
     buildGameModelProjection,
@@ -559,14 +561,17 @@ export class StudioBlueprintService {
     }
 
     // Writes a PAR sheet .xlsx workbook via ParSheetExporting (the exact same service "pokie par export"
-    // itself uses) — same overwrite-confirmation contract as save() (a "conflict" is reported, never a
-    // write, unless the request already set `overwrite: true`), checked *before* ParSheetExporting.
-    // exportToFile is ever called, since that call's own validation is comparatively expensive and the
-    // conflict check needs no I/O beyond an existsSync. Every validation/export diagnostic in the "ok"/
-    // "invalid" result comes straight from exportToFile's own returned issues (which already includes
+    // itself uses). A conflict is reported, never a write: no request flag can replace an explicit output.
+    // The prepared operation runs the shared registry destination check before exportToFile can allocate a
+    // workbook. Every validation/export diagnostic in the "ok"/"invalid" result comes straight from
+    // exportToFile's own returned issues (which already includes
     // running the exact same GameBlueprintValidator every other Studio DTO uses, plus PAR export's own
     // reel-source checks) — none of that is reimplemented or re-derived here.
-    public async exportParSheet(blueprint: unknown, rawOutPath: string, overwrite: boolean, sourcePath?: string): Promise<StudioParSheetExportView> {
+    public async exportParSheet(blueprint: unknown, rawOutPath: string, _overwrite: boolean, sourcePath?: string): Promise<StudioParSheetExportView> {
+        // The Studio request still accepts this legacy confirmation field, but
+        // prepared artifact publication never overwrites an explicit output.
+        // Keeping it in the request shape avoids a protocol break while
+        // ensuring it cannot bypass the registry's destination policy.
         const resolved = path.resolve(process.cwd(), rawOutPath);
         if (isPathWithin(this.studioRoot, resolved)) {
             return {status: "error", error: outsideStudioRootMessage(rawOutPath)};
@@ -582,17 +587,12 @@ export class StudioBlueprintService {
             const execution = await this.planner.executeConversionPlan(plan, {
                 currentSource: () => this.blueprintSourceIdentity(blueprint, sourcePath),
                 currentDestination: () => resolved,
-                // An explicitly confirmed replacement remains supported by the
-                // Blueprint editor, but this policy is evaluated by the
-                // prepared operation at publication time rather than before
-                // planning.  The atomic PAR writer never exposes a partial
-                // replacement, and rollback therefore never removes a
-                // borrowed pre-existing workbook.
-                assertDestinationAvailable: () => {
-                    if (fs.existsSync(resolved) && !overwrite) {
-                        throw new Error(`"${resolved}" already exists. Resubmit with "overwrite": true to replace it.`);
-                    }
-                },
+                // Use the same source-alias and occupied-output boundary as
+                // ArtifactBuilderRegistry.  It intentionally runs inside the
+                // prepared operation, after source/destination rebinding and
+                // before the writer can allocate a workbook.
+                assertDestinationAvailable: () =>
+                    assertPreparedArtifactDestinationAvailable(source.canonicalLocation, resolved, "file"),
                 // The format writer validates its generated-reel details as
                 // it publishes, but the stable Blueprint validation belongs
                 // in the operation's read phase so destination policy is
@@ -606,9 +606,8 @@ export class StudioBlueprintService {
                 // is already structurally invalid.
                 canPublish: () => true,
                 // PAR export performs its own atomic publication. The
-                // operation owns its ordering and terminal boundary, while
-                // intentionally having no deletion rollback for a
-                // caller-owned overwrite target.
+                // operation owns its ordering and terminal boundary; the
+                // shared policy has already ruled out a borrowed target.
                 publish: () => this.parSheetExporter.exportToFile(blueprint, resolved, sourcePath, {signal: controller.signal}),
                 cleanup: () => undefined,
                 signal: controller.signal,
@@ -631,7 +630,7 @@ export class StudioBlueprintService {
         } catch (error) {
             const message = terminalFailure ?? error;
             const rendered = message instanceof Error ? message.message : String(message);
-            return rendered.includes("already exists. Resubmit with \"overwrite\": true")
+            return message instanceof ArtifactBuildConflictError
                 ? {status: "conflict", path: resolved, error: rendered}
                 : {status: "error", error: rendered};
         }
@@ -792,11 +791,12 @@ export class StudioBlueprintService {
             const execution = await this.planner.executeConversionPlan(plan, {
                 currentSource: () => this.blueprintSourceIdentity(blueprint, sourcePath),
                 currentDestination: () => destination,
-                assertDestinationAvailable: () => {
-                    if (fs.existsSync(destination) && fs.readdirSync(destination).length > 0) {
-                        throw new Error(`The build destination "${destination}" already exists and is not empty.`);
-                    }
-                },
+                // Do not let an empty source alias or an occupied output
+                // reach GamePackageGenerator.  This is the registry's exact
+                // prepared publication policy, including realpath-based
+                // source/self/descendant checks for symlink aliases.
+                assertDestinationAvailable: () =>
+                    assertPreparedArtifactDestinationAvailable(source.canonicalLocation, destination, "directory"),
                 // validate() above has established the immutable draft's
                 // structural read result.  Keep the actual generator in the
                 // publication phase so the prepared operation applies its

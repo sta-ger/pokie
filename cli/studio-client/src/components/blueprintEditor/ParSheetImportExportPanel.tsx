@@ -30,7 +30,6 @@ import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
 import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
-import {RecoveryNotice} from "../common/RecoveryNotice";
 
 const IMPORT_OUTCOME_BANNER: Record<ParSheetImportOutcome, {color: string; icon: ReactNode; title: string}> = {
     success: {color: "green", icon: <IconCircleCheck size={16} />, title: "Imported successfully"},
@@ -271,7 +270,7 @@ export function ParSheetImportExportPanel({
         }
     }
 
-    function runExport(overwrite: boolean): void {
+    function runExport(): void {
         if (exportPath.trim().length === 0 || !exportGuard.begin()) {
             return;
         }
@@ -280,7 +279,7 @@ export function ParSheetImportExportPanel({
         const isStale = (): boolean => requestId !== exportRequestIdRef.current || isStaleParSheetExportRequest(requestedRevision, revisionRef.current);
         setExportView({status: "loading"});
         setExportOutcome(undefined);
-        exportParSheet(fetchImpl, blueprint, exportPath.trim(), overwrite)
+        exportParSheet(fetchImpl, blueprint, exportPath.trim(), false, blueprintPath)
             .then((result) => {
                 if (isStale()) {
                     return;
@@ -441,7 +440,7 @@ export function ParSheetImportExportPanel({
                                 onChange={(event) => handleExportPathChange(event.currentTarget.value)}
                                 onPathSelected={handleExportPathChange}
                             />
-                            <Button onClick={() => runExport(false)} loading={exportView.status === "loading"}>
+                            <Button onClick={runExport} loading={exportView.status === "loading"}>
                                 Export
                             </Button>
                         </QuickActions>
@@ -453,7 +452,7 @@ export function ParSheetImportExportPanel({
                             <ErrorState message={describePathActionError("The PAR sheet export destination", exportView.message)} />
                         )}
                         {exportView.status === "conflict" && (
-                            <RecoveryNotice title={exportView.error} message={null} actionLabel="Overwrite" actionColor="red" onAction={() => runExport(true)} />
+                            <ErrorState message={`${exportView.error} Choose a different export path; existing artifacts are never overwritten.`} />
                         )}
                         {exportOutcome !== undefined && (exportView.status === "ok" || exportView.status === "invalid") && (
                             <OutcomeBanner
