@@ -46,7 +46,6 @@ import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
-import {RecoveryNotice} from "../common/RecoveryNotice";
 import {PathInput} from "../common/PathInput";
 
 const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: string}> = {
@@ -105,11 +104,7 @@ type StaticExportRunView =
     | {status: "idle"}
     | {status: "running"}
     | {status: "ok"; result: Extract<StudioStakeEngineExportView, {status: "ok"}>}
-    // `source` is the exact resolved mode/library selector the conflicting request was submitted with --
-    // Overwrite resubmits that same pairing (never re-resolves it), so an Outcome Libraries change made
-    // while the conflict is on screen can never make Overwrite silently write a different library than
-    // what the conflict itself was reported against.
-    | {status: "conflict"; result: Extract<StudioStakeEngineExportView, {status: "conflict"}>; source: Extract<OutcomeLibrarySelector, {kind: "bundle"}>}
+    | {status: "conflict"; result: Extract<StudioStakeEngineExportView, {status: "conflict"}>}
     | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
 function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>): string {
@@ -123,8 +118,8 @@ function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateR
     return view.error;
 }
 
-// Never called for a "conflict" result -- that status renders its own recovery UI (Overwrite when
-// `overwritable`, otherwise its own already-actionable `error` message) directly in TargetCard below.
+// Never called for a "conflict" result -- the shared planner's destination policy is authoritative,
+// so the card renders its server-provided recovery rather than inventing an overwrite route.
 function describeStakeEngineResultError(view: Exclude<StudioStakeEngineExportView, {status: "ok"} | {status: "conflict"}>): string {
     if (view.status === "load-error" || view.status === "unavailable") {
         return describePathActionError("The Stake Engine export's outcome library", view.error);
@@ -199,7 +194,6 @@ function TargetCard({
     resolveDeploymentModes,
     staticExportRun,
     onRunStaticExport,
-    onOverwriteStaticExport,
     deployment,
     onOpenFolder,
     artifactPreview,
@@ -225,7 +219,6 @@ function TargetCard({
     resolveDeploymentModes: () => StudioDeploymentModeInput[] | undefined;
     staticExportRun: StaticExportRunView;
     onRunStaticExport: () => void;
-    onOverwriteStaticExport: () => void;
     deployment: DeploymentManager;
     onOpenFolder: (path: string) => void;
     artifactPreview: ArtifactPreviewRunView;
@@ -375,21 +368,12 @@ function TargetCard({
                             <PlannerSummary plan={staticExportRun.plan} />
                         </>
                     )}
-                    {staticExportRun.status === "conflict" &&
-                        (staticExportRun.result.overwritable ? (
-                            <RecoveryNotice
-                                title={staticExportRun.result.error}
-                                message="Exporting will replace the existing directory's contents."
-                                actionLabel="Overwrite"
-                                actionColor="red"
-                                onAction={onOverwriteStaticExport}
-                            />
-                        ) : (
-                            <>
-                                <ErrorState message={staticExportRun.result.error} />
-                                <PlannerSummary plan={staticExportRun.result.plan} />
-                            </>
-                        ))}
+                    {staticExportRun.status === "conflict" && (
+                        <>
+                            <ErrorState message={staticExportRun.result.error} />
+                            <PlannerSummary plan={staticExportRun.result.plan} />
+                        </>
+                    )}
                     {staticExportRun.status === "ok" && (
                         <>
                             <Text size="sm" mt={4}>
@@ -884,29 +868,20 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         return source === undefined ? undefined : [{modeName: source.modeName, librarySelector: source}];
     }
 
-    // Shared by the initial run and the conflict card's own Overwrite action -- `source` is always the
-    // exact resolved mode/library selector the caller already has in hand (freshly resolved for the
-    // initial run, or the one a prior conflict was reported against for Overwrite), never re-resolved
-    // here, so Overwrite can never end up pairing a since-changed selector with `overwrite: true`.
-    function runStaticExport(source: Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined, overwrite: boolean): void {
+    // The browser submits the selected source only; destination safety and every terminal recovery
+    // remain server/planner-owned. In particular, it never turns a conflict into a local overwrite flow.
+    function runStaticExport(source: Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined): void {
         setStaticExportRun({status: "running"});
         // Always submit the click.  With no selected library the server returns
         // its planner-owned unavailable terminal result instead of leaving the
         // user with a button that appears to do nothing.
-        exportStakeEngine(fetchImpl, source === undefined ? [] : [{modeName: source.modeName, librarySelector: source, cost: 1}], STAKE_ENGINE_DEFAULT_OUT_DIR, overwrite)
+        exportStakeEngine(fetchImpl, source === undefined ? [] : [{modeName: source.modeName, librarySelector: source, cost: 1}], STAKE_ENGINE_DEFAULT_OUT_DIR, false)
             .then((view) => {
                 staticExportGuard.end();
                 if (view.status === "ok") {
                     setStaticExportRun({status: "ok", result: view});
                 } else if (view.status === "conflict") {
-                    // An empty selector request cannot validly be overwritten:
-                    // retain its server terminal message rather than inventing a
-                    // local recovery source.
-                    if (source !== undefined) {
-                        setStaticExportRun({status: "conflict", result: view, source});
-                    } else {
-                        setStaticExportRun({status: "error", message: view.error, plan: view.plan});
-                    }
+                    setStaticExportRun({status: "conflict", result: view});
                 } else {
                     setStaticExportRun({status: "error", message: describeStakeEngineResultError(view), plan: view.plan});
                 }
@@ -922,14 +897,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         if (!staticExportGuard.begin()) {
             return;
         }
-        runStaticExport(source, false);
-    }
-
-    function handleOverwriteStaticExport(): void {
-        if (staticExportRun.status !== "conflict" || !staticExportGuard.begin()) {
-            return;
-        }
-        runStaticExport(staticExportRun.source, true);
+        runStaticExport(source);
     }
 
     // Runs a single "Build artifact" card's own target through ArtifactBuilderRegistry (via
@@ -1075,7 +1043,6 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                                             resolveDeploymentModes={resolveDeploymentModes}
                                             staticExportRun={staticExportRun}
                                             onRunStaticExport={handleRunStaticExport}
-                                            onOverwriteStaticExport={handleOverwriteStaticExport}
                                             deployment={deployment}
                                             onOpenFolder={handleOpenFolder}
                                             artifactPreview={artifactPreview}

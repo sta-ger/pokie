@@ -503,7 +503,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         ]);
     });
 
-    it("offers an in-place Overwrite action for an overwritable Stake Engine export conflict, and resubmits the identical resolved mode/library selector with overwrite: true", async () => {
+    it("renders an occupied Stake Engine destination as the server planner's terminal conflict without a local overwrite action", async () => {
         const user = userEvent.setup();
         const capturedBodies: {modes?: unknown; outDir?: string; overwrite?: boolean}[] = [];
         const routes = {
@@ -541,23 +541,16 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             if (path === "/api/project/stakeengine/export") {
                 const body = JSON.parse((init?.body as string | undefined) ?? "{}") as {modes?: unknown; outDir?: string; overwrite?: boolean};
                 capturedBodies.push(body);
-                if (!body.overwrite) {
-                    return Promise.resolve({
-                        ok: false,
-                        status: 409,
-                        json: () =>
-                            Promise.resolve({
-                                status: "conflict",
-                                outDir: "stakeengine",
-                                overwritable: true,
-                                error: '"stakeengine" already exists and is not empty. Resubmit with "overwrite": true to replace it.',
-                            }),
-                    });
-                }
                 return Promise.resolve({
-                    ok: true,
-                    status: 200,
-                    json: () => Promise.resolve({status: "ok", outDir: "stakeengine", files: ["index.json"], manifest: {}, warnings: []}),
+                    ok: false,
+                    status: 409,
+                    json: () =>
+                        Promise.resolve({
+                            status: "conflict",
+                            outDir: "stakeengine",
+                            overwritable: false,
+                            error: '"stakeengine" is occupied. Choose a new output directory and retry.',
+                        }),
                 });
             }
             return fetchImplFrom(routes)(url, init);
@@ -568,15 +561,11 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (base)"}));
 
-        expect(await screen.findByText('"stakeengine" already exists and is not empty. Resubmit with "overwrite": true to replace it.')).toBeInTheDocument();
+        expect(await screen.findByText('"stakeengine" is occupied. Choose a new output directory and retry.')).toBeInTheDocument();
         expect(screen.queryByText(/open Stake Engine Export directly/)).not.toBeInTheDocument();
-
-        await user.click(screen.getByRole("button", {name: "Overwrite"}));
-
-        expect(await screen.findByText("Exported 1 file(s) to stakeengine.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Overwrite"})).not.toBeInTheDocument();
         expect(capturedBodies).toEqual([
             {modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}, cost: 1}], outDir: "stakeengine", overwrite: false},
-            {modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}, cost: 1}], outDir: "stakeengine", overwrite: true},
         ]);
     });
 

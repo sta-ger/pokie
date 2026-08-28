@@ -1,6 +1,5 @@
 import {
     computeWeightedOutcomeLibraryHash,
-    isRecognizedStakeEngineExportDirectory,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleReading,
     StakeEngineExporter,
@@ -134,19 +133,14 @@ export class StudioStakeEngineExportService {
     // full validation again here (never trusted from an earlier validate() call, which could be stale by
     // the time Export is actually clicked) and never writes anything on any validation error.
     //
-    // A pre-existing, non-empty outDir is refused with "conflict" unless `overwrite` is set — the same
-    // fs.existsSync/overwrite gate StudioBlueprintService.exportParSheet() uses (see its own doc comment).
-    // This only ever adds a confirmation step in *front* of the exporter's own write: the exporter itself
-    // still refuses (throws) an existing directory it doesn't recognize as one of its own prior runs
-    // regardless of `overwrite` — see assertSafeToReplaceStakeEngineExportDirectory — so the conflict view's
-    // own `overwritable` flag (via isRecognizedStakeEngineExportDirectory, the same recognition check) tells
-    // the caller up front whether resubmitting with `overwrite: true` could ever succeed, rather than letting
-    // it try and only find out from a generic load-error once the exporter itself has already refused.
+    // ArtifactConversionPlan owns destination policy.  A planned Stake export
+    // never replaces a populated destination, including a previous POKIE
+    // export: callers must choose a fresh destination and prepare that plan.
     public async export(
         projectRoot: string,
         modes: readonly StudioStakeEngineExportModeInput[],
         outDir: string,
-        overwrite: boolean,
+        _overwrite: boolean,
     ): Promise<StudioStakeEngineExportView> {
         const plan = await this.prepareForSelectedBundles(projectRoot, modes, path.resolve(projectRoot, outDir));
         // The exported plan owns destination safety as well as reachability.
@@ -178,19 +172,6 @@ export class StudioStakeEngineExportService {
         const loaded = await this.loadModes(projectRoot, modes);
         if (loaded.status === "load-error") {
             return {...loaded, plan};
-        }
-
-        if (fs.existsSync(resolvedOutDir.resolvedPath) && fs.readdirSync(resolvedOutDir.resolvedPath).length > 0 && !overwrite) {
-            const overwritable = isRecognizedStakeEngineExportDirectory(resolvedOutDir.resolvedPath);
-            return {
-                status: "conflict",
-                outDir: resolvedOutDir.resolvedPath,
-                overwritable,
-                error: overwritable
-                    ? `"${outDir}" already exists and is not empty. Resubmit with "overwrite": true to replace it.`
-                    : `"${outDir}" already exists and is not empty, and wasn't produced by a previous Stake Engine export. Choose a different output directory or empty it first.`,
-                plan,
-            };
         }
 
         let result;
