@@ -76,6 +76,7 @@ type ExportOptions = {configPath: string; outDir: string};
 type ImportFormat = "summary" | "json";
 type ImportOptions = {stakeDir: string; outDir: string; format: ImportFormat};
 type ImportReport = {stakeDir: string; outDir: string; files: readonly string[]; issues: readonly ValidationIssue[]};
+type StakeImportRegistering = (published: Awaited<ReturnType<StakeEngineImportWriting["writeToDirectory"]>>) => Promise<void> | void;
 type AnalyzeFormat = "summary" | "json";
 type AnalyzeOptions = {stakeDir: string; format: AnalyzeFormat; out?: string};
 type AnalyzeReport = {stakeDir: string; issues: ValidationIssue[]; analysis: StakeEngineStandaloneAnalysis | undefined};
@@ -94,6 +95,13 @@ type ExportDescriptorModeEntry = {
     bundleModeName?: string;
 };
 type ExportDescriptor = {modes: ExportDescriptorModeEntry[]};
+
+function createCliImportCancellation(): {readonly signal: AbortSignal; readonly cleanup: () => void} {
+    const controller = new AbortController();
+    const onCancel = () => controller.abort();
+    process.once("SIGINT", onCancel);
+    return {signal: controller.signal, cleanup: () => process.off("SIGINT", onCancel)};
+}
 
 function newOutputPathMessage(file: string, reason: string): string {
     return `Cannot write Stake Engine diff to "${file}" because ${reason}. Choose a new unused --out path and retry.`;
@@ -138,6 +146,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly writeAnalyzeFile: (file: string, contents: string) => void;
     private readonly writeNewDiffFile: (file: string, contents: string) => void;
     private readonly resolveProject: ProjectResolving;
+    private readonly registerImport: StakeImportRegistering | undefined;
     private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
@@ -156,6 +165,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         writeNewDiffFile: (file: string, contents: string) => void = writeNewStakeEngineDiffFileAtomically,
         // Appended to preserve the long-standing injectable command constructor.
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        registerImport: StakeImportRegistering | undefined = undefined,
     ) {
         this.exporter = exporter;
         this.importer = importer;
@@ -169,6 +179,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         this.standaloneAnalysisDiffer = standaloneAnalysisDiffer;
         this.writeNewDiffFile = writeNewDiffFile;
         this.resolveProject = resolveProject;
+        this.registerImport = registerImport;
     }
 
     public getName(): string {
@@ -480,6 +491,7 @@ export class StakeEngineCommand implements CliCommandHandling {
             const plan = this.planner.planImportOutput(source, "outcomeLibrary", options.outDir);
             return this.runImport(options, {source, plan});
         }
+        const cancellation = createCliImportCancellation();
         const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, options.outDir, {
             read: () => this.importer.importFromDirectory(options.stakeDir),
             canPublish: (result) => result.issues.every((issue) => issue.severity !== "error"),
@@ -488,11 +500,14 @@ export class StakeEngineCommand implements CliCommandHandling {
                 if (!destination.available) throw new Error(destination.message ?? `The import destination "${options.outDir}" is unavailable.`);
             },
             publish: (result) => this.importWriter.writeToDirectory(result, options.outDir),
+            signal: cancellation.signal,
+            register: this.registerImport,
             // StakeEngineImportWriter publishes an atomic directory.  Once it
             // has returned, that directory belongs to this prepared operation
             // until its terminal result is reported; remove only this newly
             // allocated destination if a later lifecycle phase fails.
             rollback: () => fs.promises.rm(options.outDir, {recursive: true, force: true}),
+            cleanup: () => cancellation.cleanup(),
         });
         return this.reportImport(options, execution.read, execution.published, execution.publication);
     }

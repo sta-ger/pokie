@@ -131,6 +131,19 @@ export type ArtifactImportOutputExecution<ReadResult, PublishedResult> = {
     readonly rollback?: (published: PublishedResult) => Promise<void> | void;
     /** Cancellation is checked before reading, publishing, and registration. */
     readonly signal?: AbortSignal;
+    /**
+     * Releases reader-owned temporary state on every terminal path.  This is
+     * deliberately separate from rollback: rollback removes a publication
+     * which this operation created, while cleanup must never remove a borrowed
+     * source or a previously existing destination.
+     */
+    readonly cleanup?: (context: {readonly read?: ReadResult; readonly publication?: PublishedResult; readonly error?: unknown}) => Promise<void> | void;
+    /**
+     * Presentation/recovery is notified by the prepared operation after it
+     * has rolled back its own publication.  Adapters can therefore report one
+     * terminal diagnostic without taking lifecycle ownership back themselves.
+     */
+    readonly onTerminalFailure?: (error: unknown) => Promise<void> | void;
 };
 
 export type ArtifactImportOutputExecutionResult<ReadResult, PublishedResult> = {
@@ -363,22 +376,24 @@ export class ArtifactConversionPlanner {
         destinationPath: string,
         execution: ArtifactImportOutputExecution<ReadResult, PublishedResult>,
     ): Promise<ArtifactImportOutputExecutionResult<ReadResult, PublishedResult>> {
-        this.assertImportOutputPlanCurrent(plan, source, destinationPath);
-        assertImportOperationNotCancelled(execution.signal);
-        const read = await execution.read();
-        assertImportOperationNotCancelled(execution.signal);
-        if (!execution.canPublish(read)) return {read, published: false};
-        // The destination policy belongs at the durable-publication boundary,
-        // after format diagnostics but before any writer allocates output.
-        this.assertImportOutputPlanCurrent(plan, source, destinationPath);
-        await execution.assertDestinationAvailable?.();
-        // Compatibility for the initial planner boundary.  The planner still
-        // owns ordering and current-plan verification around this hook.
-        await execution.beforePublish?.();
-        this.assertImportOutputPlanCurrent(plan, source, destinationPath);
-        assertImportOperationNotCancelled(execution.signal);
+        let read: ReadResult | undefined;
         let publication: PublishedResult | undefined;
+        let cleanedUp = false;
         try {
+            this.assertImportOutputPlanCurrent(plan, source, destinationPath);
+            assertImportOperationNotCancelled(execution.signal);
+            read = await execution.read();
+            assertImportOperationNotCancelled(execution.signal);
+            if (!execution.canPublish(read)) return {read, published: false};
+            // The destination policy belongs at the durable-publication boundary,
+            // after format diagnostics but before any writer allocates output.
+            this.assertImportOutputPlanCurrent(plan, source, destinationPath);
+            await execution.assertDestinationAvailable?.();
+            // Compatibility for the initial planner boundary.  The planner still
+            // owns ordering and current-plan verification around this hook.
+            await execution.beforePublish?.();
+            this.assertImportOutputPlanCurrent(plan, source, destinationPath);
+            assertImportOperationNotCancelled(execution.signal);
             publication = await execution.publish(read);
             assertImportOperationNotCancelled(execution.signal);
             await execution.register?.(publication);
@@ -389,8 +404,22 @@ export class ArtifactConversionPlanner {
             assertImportOperationNotCancelled(execution.signal);
             return {read, published: true, publication};
         } catch (error) {
-            if (publication !== undefined) await execution.rollback?.(publication);
+            try {
+                if (publication !== undefined) await execution.rollback?.(publication);
+            } finally {
+                await execution.cleanup?.({...(read === undefined ? {} : {read}), ...(publication === undefined ? {} : {publication}), error});
+                cleanedUp = true;
+                await execution.onTerminalFailure?.(error);
+            }
             throw error;
+        } finally {
+            // Validation failures have no publication to roll back, but a
+            // streaming reader may still own a temporary runtime/materialized
+            // input.  Successful publication deliberately keeps its durable
+            // output while still releasing only that reader-owned state.
+            if (!cleanedUp) {
+                await execution.cleanup?.({...(read === undefined ? {} : {read}), ...(publication === undefined ? {} : {publication})});
+            }
         }
     }
 

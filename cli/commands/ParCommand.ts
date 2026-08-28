@@ -35,6 +35,14 @@ const EXPORT_USAGE = "Usage: pokie par export <config.json> [--out <output.xlsx>
 type ImportFormat = "summary" | "json";
 type BlueprintFileWriting = (filePath: string, contents: string) => void | BlueprintFileWriteResult;
 type ParSheetDestinationChecking = (sourcePath: string, destinationPath: string) => ArtifactDestinationCheck;
+type ParImportRegistering = (publishedPath: string) => Promise<void> | void;
+
+function createCliImportCancellation(): {readonly signal: AbortSignal; readonly cleanup: () => void} {
+    const controller = new AbortController();
+    const onCancel = () => controller.abort();
+    process.once("SIGINT", onCancel);
+    return {signal: controller.signal, cleanup: () => process.off("SIGINT", onCancel)};
+}
 
 // One CLI verb ("pokie par <import|export>") rather than two top-level commands, matching how PAR
 // sheet import/export is really one round-trip feature with a shared vocabulary (see
@@ -47,6 +55,7 @@ export class ParCommand implements CliCommandHandling {
     private readonly writeFile: BlueprintFileWriting;
     private readonly resolveProject: ProjectResolving;
     private readonly checkDestination: ParSheetDestinationChecking;
+    private readonly registerImport: ParImportRegistering | undefined;
     private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
@@ -64,6 +73,7 @@ export class ParCommand implements CliCommandHandling {
         // check for unit callers that do not use the filesystem.
         checkDestination: ParSheetDestinationChecking = (sourcePath, destinationPath) =>
             new ArtifactBuilderRegistry(pokieVersion).checkDestination("parWorkbook", destinationPath, sourcePath),
+        registerImport: ParImportRegistering | undefined = undefined,
     ) {
         this.importer = importer;
         this.exporter = exporter;
@@ -71,6 +81,7 @@ export class ParCommand implements CliCommandHandling {
         this.writeFile = writeFile;
         this.resolveProject = resolveProject;
         this.checkDestination = checkDestination;
+        this.registerImport = registerImport;
     }
 
     public getName(): string {
@@ -216,6 +227,7 @@ export class ParCommand implements CliCommandHandling {
             const plan = this.planner.planImportOutput(source, "blueprint", outPath);
             return this.executeImport(inputPath, outPath, format, {source, plan});
         }
+        const cancellation = createCliImportCancellation();
         const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, outPath, {
             read: () => this.importer.importFromFile(inputPath),
             canPublish: (result) => result.issues.every((issue) => issue.severity !== "error"),
@@ -227,7 +239,10 @@ export class ParCommand implements CliCommandHandling {
                 this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`);
                 return outPath;
             },
+            signal: cancellation.signal,
+            register: this.registerImport,
             rollback: (publishedPath) => fs.rmSync(publishedPath, {force: true}),
+            cleanup: () => cancellation.cleanup(),
         });
         return this.reportAndPublishImport(inputPath, outPath, format, execution.read, execution.published, undefined);
     }

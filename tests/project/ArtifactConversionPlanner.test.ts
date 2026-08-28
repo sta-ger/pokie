@@ -326,4 +326,30 @@ describe("ArtifactConversionPlanner", () => {
         })).rejects.toThrow(/cancelled/i);
         expect(read).not.toHaveBeenCalled();
     });
+
+    it("owns cleanup and one terminal diagnostic when import registration fails", async () => {
+        const source = project("stakeAdapter");
+        const plan = planner.planImportOutput(source, "outcomeLibrary", "/imports/outcomes");
+        const events: string[] = [];
+
+        await expect(planner.executeImportOutputPlan(plan, source, "/imports/outcomes", {
+            read: () => ({valid: true}),
+            canPublish: (read) => read.valid,
+            publish: () => "published",
+            register: () => {
+                throw new Error("registration failed");
+            },
+            rollback: () => {
+                events.push("rollback");
+            },
+            cleanup: ({publication, error}) => {
+                events.push(`cleanup:${publication}:${error instanceof Error ? error.message : "none"}`);
+            },
+            onTerminalFailure: (error) => {
+                events.push(`diagnostic:${error instanceof Error ? error.message : "none"}`);
+            },
+        })).rejects.toThrow("registration failed");
+
+        expect(events).toEqual(["rollback", "cleanup:published:registration failed", "diagnostic:registration failed"]);
+    });
 });
