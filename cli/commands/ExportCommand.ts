@@ -103,17 +103,13 @@ export class ExportCommand implements CliCommandHandling {
         const destination = this.resolveDestination(args);
         const plan = this.registry.plan(project, target, {destinationPath: destination});
         if (plan.status === "unavailable") {
-            throw new Error(this.describeSourceFailure(args));
+            throw new Error(`${plan.diagnostic!.message} Next: ${plan.diagnostic!.recovery}`);
         }
         if (plan.status === "conflict") {
             throw new Error(this.describeDestinationConflict(args.target, plan.diagnostic!.message));
         }
         if (args.dryRun) {
-            try {
-                await this.registry.validate(target, project);
-            } catch {
-                throw new Error(this.describeSourceFailure(args));
-            }
+            await this.registry.validate(target, project);
             console.log(`Dry run -- would export target "${args.target}" from "${project.rootPath}" to "${destination}". No files written.`);
             return 0;
         }

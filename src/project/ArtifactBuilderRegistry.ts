@@ -28,11 +28,10 @@ import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
-import {ArtifactConversionPlanner, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions} from "./ArtifactConversionPlanner.js";
+import {ArtifactConversionPlanner, describeArtifactConversionPlanDiagnostic, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions} from "./ArtifactConversionPlanner.js";
 import {
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
-    describeBuildProductMatrixDiagnostic,
     getBuildProductMatrixCell,
 } from "./BuildProductMatrix.js";
 
@@ -217,9 +216,7 @@ export class ArtifactBuilderRegistry {
     // or invoking any writer. This is intentionally separate from checkDestination(): a usable output also
     // requires readable source data, so callers must not report dry-run success after checking only a path.
     public async validate(target: ArtifactTargetType, source: PokieProject): Promise<void> {
-        if (!this.supportsConversionFrom(target, source.type)) {
-            throw new Error(describeBuildProductMatrixDiagnostic(source.type, target, source.rootPath));
-        }
+        this.assertExecutablePlan(this.plan(source, target));
         this.assertTargetAvailable(target);
 
         if (source.type === "blueprint" && target !== "parWorkbook") {
@@ -248,32 +245,45 @@ export class ArtifactBuilderRegistry {
     // is safe to call directly without a caller re-deriving the same check itself), then hands off to the
     // registered ArtifactBuilder. Every ArtifactTargetType has a registered production builder.
     public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
-        if (!this.supportsConversionFrom(target, source.type)) {
-            return Promise.reject(new Error(describeBuildProductMatrixDiagnostic(source.type, target, source.rootPath)));
-        }
         try {
+            const plan = this.plan(source, target, {destinationPath});
+            this.assertExecutablePlan(plan);
             this.assertTargetAvailable(target);
+            // Execution follows the planner's selected executable steps.  This keeps direct registry
+            // callers on exactly the same prerequisite path as CLI and Studio previews.
+            if (plan.steps.some((step) => step.kind === "generateOutcomeLibrary") && target === "outcomeLibrary") {
+                return this.buildManagedOutcomeFromRuntime(source, destinationPath, options);
+            }
+            if (plan.steps.some((step) => step.kind === "generateOutcomeLibrary") && target === "stakeAdapter") {
+                return this.buildStakeFromPlannedOutcome(source, destinationPath, options);
+            }
         } catch (error) {
             return Promise.reject(error);
-        }
-        if (target === "outcomeLibrary" && (source.type === "blueprint" || source.type === "tsPackage")) {
-            return this.buildManagedOutcomeFromRuntime(source, destinationPath, options);
-        }
-        if (target === "stakeAdapter" && (source.type === "blueprint" || source.type === "tsPackage")) {
-            return this.blueprintStakeWorkflow
-                .resolveOrGenerate(source, (compatibility) => this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility), options)
-                .then(({project: outcomeLibrary}) =>
-                    this.build("stakeAdapter", outcomeLibrary, destinationPath, options).then((result) => ({
-                        ...result,
-                        prerequisiteProjectRoots: [outcomeLibrary.rootPath],
-                        managedProjectRoots: [outcomeLibrary.rootPath],
-                    })),
-                );
         }
         const builder = this.builders.get(target);
         if (builder === undefined) return Promise.reject(new Error(this.unavailableTargetMessage(target)));
 
         return builder.build(source, destinationPath, options);
+    }
+
+    private buildStakeFromPlannedOutcome(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        return this.blueprintStakeWorkflow
+            .resolveOrGenerate(source, (compatibility) => this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility), options)
+            .then(({project: outcomeLibrary}) =>
+                this.build("stakeAdapter", outcomeLibrary, destinationPath, options).then((result) => ({
+                    ...result,
+                    prerequisiteProjectRoots: [outcomeLibrary.rootPath],
+                    managedProjectRoots: [outcomeLibrary.rootPath],
+                })),
+            );
+    }
+
+    private assertExecutablePlan(plan: ArtifactConversionPlan): void {
+        if (plan.status === "planned") return;
+        const diagnostic = plan.diagnostic;
+        if (diagnostic === undefined) throw new Error("Artifact conversion could not be planned.");
+        const compatibility = describeArtifactConversionPlanDiagnostic(plan);
+        throw new Error(`${diagnostic.message} Next: ${diagnostic.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
     }
 
     private async buildManagedOutcomeFromRuntime(

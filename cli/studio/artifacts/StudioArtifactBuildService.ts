@@ -6,7 +6,7 @@ import {
     type ArtifactBuildProgress,
     ArtifactBuilderRegistry,
     ArtifactTargetType,
-    describeBuildProductMatrixDiagnostic,
+    describeArtifactConversionPlanDiagnostic,
     ManagedOutcomeProjectService,
     ManagedOutcomeProjectServicing,
     PokieProject,
@@ -96,13 +96,12 @@ export class StudioArtifactBuildService {
         return this.registry.listTargets().map((target) => {
             const descriptor = this.registry.describe(target);
             const plan = project === undefined ? undefined : this.plan(project, target);
+            const plannerFields = this.targetPlannerFields(plan);
             return {
                 target,
                 supported: plan?.status === "planned",
                 state: plan?.status === "planned" ? "supported" : "diagnostic-required",
-                ...(plan?.status === "unavailable"
-                    ? {diagnostic: describeBuildProductMatrixDiagnostic(project!.type, target, project!.rootPath)}
-                    : {}),
+                ...plannerFields,
                 unsupportedNotes: descriptor.unsupportedNotes,
             };
         });
@@ -124,13 +123,13 @@ export class StudioArtifactBuildService {
 
         const plan = this.plan(project, target, destination);
         if (plan.status === "unavailable") {
-            return {status: "unsupported", target, message: this.describeUnsupportedMessage(target, project)};
+            return {status: "unsupported", target, message: this.describePlanDiagnostic(plan)};
         }
         if (plan.status === "conflict") {
-            return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: plan.diagnostic!.message};
+            return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: plan.diagnostic!.message, plan};
         }
 
-        return {status: "ok", target, destination, destinationKind, plannedOutputs, sourceType: project.type};
+        return {status: "ok", target, destination, destinationKind, plannedOutputs, sourceType: project.type, plan};
     }
 
     // Executes a real build against the active project -- resolves `projectRoot` into a PokieProject
@@ -155,7 +154,7 @@ export class StudioArtifactBuildService {
 
         const plan = this.plan(project, target, destination);
         if (plan.status === "unavailable") {
-            return {status: "unsupported", target, message: this.describeUnsupportedMessage(target, project)};
+            return {status: "unsupported", target, message: this.describePlanDiagnostic(plan)};
         }
         if (plan.status === "conflict") return {status: "conflict", target, message: plan.diagnostic!.message};
 
@@ -324,13 +323,17 @@ export class StudioArtifactBuildService {
         return {project, destination: outDir ?? resolveDefaultDestination(project.rootPath, target)};
     }
 
-    // The exact prose build() and preview() both report for a target this project's own resolved type
-    // doesn't support -- the same registry.supportsConversionFrom() capability diagnostic, worded identically
-    // in both places so a preview's "unsupported" and a subsequent build's own "unsupported" (should a stale
-    // client ever call build() without previewing first) are never two differently-worded statements of the
-    // same fact.
-    private describeUnsupportedMessage(target: ArtifactTargetType, project: PokieProject): string {
-        return describeBuildProductMatrixDiagnostic(project.type, target, project.rootPath);
+    private describePlanDiagnostic(plan: ArtifactConversionPlan): string {
+        const diagnostic = plan.diagnostic;
+        return diagnostic === undefined
+            ? "Artifact conversion is unavailable."
+            : describeArtifactConversionPlanDiagnostic(plan) ?? `${diagnostic.message} Next: ${diagnostic.recovery}`;
+    }
+
+    private targetPlannerFields(plan: ArtifactConversionPlan | undefined): {readonly diagnostic?: string; readonly plan?: ArtifactConversionPlan} {
+        if (plan === undefined) return {};
+        if (plan.status === "unavailable") return {diagnostic: this.describePlanDiagnostic(plan), plan};
+        return {plan};
     }
 }
 

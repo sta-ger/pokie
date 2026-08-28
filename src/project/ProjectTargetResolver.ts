@@ -12,6 +12,10 @@ import {ProjectTargetUnsupportedError} from "./ProjectTargetUnsupportedError.js"
 import {StakeAdapterProjectTargetAdapter} from "./StakeAdapterProjectTargetAdapter.js";
 import {TsPackageProjectTargetAdapter} from "./TsPackageProjectTargetAdapter.js";
 import {WasmProjectTargetAdapter, wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
+import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
+import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
+import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
+import type {ArtifactConfigurationProvenance} from "./ArtifactConversionPlanner.js";
 
 // The one file extension resolve() explicitly rejects rather than silently reporting undefined for — see its
 // ProjectTargetUnsupportedError usage below.
@@ -110,12 +114,20 @@ export class ProjectTargetResolver implements ProjectResolving {
         }
 
         const [{adapter, provenance}] = matches;
-        return {
+        const configurationProvenance = await this.configurationProvenance(adapter.type, resolvedPath);
+        const project = {
             type: adapter.type,
             rootPath: resolvedPath,
             capabilities: PROJECT_TYPE_CAPABILITIES[adapter.type],
             provenance,
         } as PokieProject;
+        // Keep the established enumerable project DTO stable for older command consumers while making
+        // verified configuration facts available to the planner. Public planner/API payloads explicitly
+        // project this field, so it is never accidentally lost at the conversion boundary.
+        if (configurationProvenance !== undefined) {
+            Reflect.defineProperty(project, "configurationProvenance", {value: configurationProvenance, enumerable: false});
+        }
+        return project;
     }
 
     private async recognizeAll(
@@ -129,5 +141,36 @@ export class ProjectTargetResolver implements ProjectResolving {
             }),
         );
         return results.filter((match): match is ProjectTargetMatch => match !== undefined);
+    }
+
+    // Recognition proves an on-disk shape; this second, read-only extraction records the immutable facts
+    // a conversion planner needs for reuse decisions.  A malformed optional provenance payload never makes a
+    // project unrecognizable, but it also never becomes evidence that a generated output is reusable.
+    private async configurationProvenance(type: PokieProject["type"], rootPath: string): Promise<ArtifactConfigurationProvenance | undefined> {
+        try {
+            if (type === "blueprint") {
+                const blueprint = loadGameBlueprint(rootPath) as {manifest: {id: string; version: string}};
+                return {
+                    configurationHash: computeGameBlueprintHash(blueprint as never),
+                    gameId: blueprint.manifest.id,
+                    gameVersion: blueprint.manifest.version,
+                    manifestIdentity: `${blueprint.manifest.id}@${blueprint.manifest.version}`,
+                };
+            }
+            if (type === "outcomeLibrary") {
+                const manifest = await new OutcomeLibraryBundleReader().readManifest(rootPath);
+                return {
+                    configurationHash: manifest.configHash,
+                    pokieVersion: manifest.artifactPokieVersion,
+                    gameId: manifest.game.id,
+                    gameVersion: manifest.game.version,
+                    manifestIdentity: `${manifest.game.id}@${manifest.game.version}`,
+                };
+            }
+        } catch {
+            // The type adapter has already supplied the authoritative recognition outcome. Missing or
+            // malformed optional provenance must fail closed for reuse, not turn into invented metadata.
+        }
+        return undefined;
     }
 }

@@ -1238,6 +1238,17 @@ export type StudioStakeEngineExportView =
 // mirror, same convention as StudioProjectType above.
 export type StudioArtifactTargetType = "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "parWorkbook";
 
+// JSON-safe mirror of the server planner.  Studio deliberately consumes this payload instead of maintaining
+// another source/target table in the browser.
+export type StudioArtifactConversionPlan = {
+    status: "planned" | "unavailable" | "conflict";
+    source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; gameId?: string; gameVersion?: string; manifestIdentity?: string}};
+    target: {kind: string; canonicalLocation?: string; capabilities: string[]; configurationProvenance?: {generationSemantics?: "exact" | "boundedSample"}};
+    steps: {kind: "publish" | "materializeRuntime" | "generateOutcomeLibrary" | "reuseManagedOutcomeLibrary"; choice: "materialize" | "reuse" | "publish"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses?: string[]}[];
+    preflight: {destinationKind: "file" | "directory"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses: string[]; oneWay: boolean};
+    diagnostic?: {code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict"; failedEdge: {from: StudioProjectType; to: StudioArtifactTargetType}; message: string; recovery: string};
+};
+
 // GET /api/project/artifacts/targets' own DTO — see cli/studio/artifacts/StudioArtifactTargetView.ts's
 // own doc comment. `supported` is already resolved against the active project's own ProjectType server-side
 // (the exact same ArtifactBuilderRegistry.supportsConversionFrom() check "pokie build" itself runs) — the
@@ -1248,6 +1259,7 @@ export type StudioArtifactTargetView = {
     state: "supported" | "diagnostic-required" | "hidden/unadvertised";
     diagnostic?: string;
     unsupportedNotes: string[];
+    plan?: StudioArtifactConversionPlan;
 };
 
 // POST /api/project/artifacts/build's own DTO — see cli/studio/artifacts/StudioArtifactBuildView.ts's own
@@ -1296,6 +1308,7 @@ export type StudioArtifactPreviewView =
           destinationKind: "file" | "directory";
           plannedOutputs: string[];
           sourceType: StudioProjectType;
+          plan: StudioArtifactConversionPlan;
       }
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
     | {
@@ -1305,5 +1318,6 @@ export type StudioArtifactPreviewView =
           destinationKind: "file" | "directory";
           plannedOutputs: string[];
           message: string;
+          plan: StudioArtifactConversionPlan;
       }
     | {status: "error"; message: string};

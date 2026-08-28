@@ -5,8 +5,8 @@ import {
     ArtifactTargetType,
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
     computeGameBlueprintHash,
+    describeArtifactConversionPlanDiagnostic,
     buildGameBuildInfo,
-    describeBuildProductMatrixDiagnostic,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
@@ -173,9 +173,8 @@ export class BuildCommand implements CliCommandHandling {
         const out = options.out ?? this.resolveDestination(project.rootPath, options.target);
         const conversionPlan = this.registry.plan(project, options.target, {destinationPath: out});
         if (conversionPlan.status === "unavailable") {
-            // Keep the long-standing CLI wording as a compatibility appendix, but lead with the planner's
-            // failed edge so a path-aware request is never answered with a target-wide source matrix alone.
-            throw new Error(`${conversionPlan.diagnostic!.message} Next: ${conversionPlan.diagnostic!.recovery}\n${describeBuildProductMatrixDiagnostic(project.type, options.target, projectPath)}`);
+            const compatibility = describeArtifactConversionPlanDiagnostic(conversionPlan);
+            throw new Error(`${conversionPlan.diagnostic!.message} Next: ${conversionPlan.diagnostic!.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
         }
         if (conversionPlan.status === "conflict") {
             throw new Error(describeDestinationConflict(options.target, conversionPlan.diagnostic!.message));

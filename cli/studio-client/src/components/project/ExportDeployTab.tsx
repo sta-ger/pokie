@@ -402,6 +402,14 @@ function TargetCard({
                             <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>
                             <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
                             <Text size="sm">Status: {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}</Text>
+                            {artifactPreview.result.plan !== undefined && (
+                                <>
+                                    <Text size="sm">Plan: {artifactPreview.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}</Text>
+                                    {artifactPreview.result.plan.preflight.losses.length > 0 && (
+                                        <Text size="sm" c="dimmed">Data boundary: {artifactPreview.result.plan.preflight.losses.join(" ")}</Text>
+                                    )}
+                                </>
+                            )}
                             {artifactPreview.status === "conflict" && <ErrorState message="This destination already contains files. Choose a different destination; Build will not overwrite it." />}
                         </div>
                     )}

@@ -129,7 +129,21 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
                 manifest.artifactPokieVersion !== compatibility.pokieVersion
             ) return undefined;
             const project = await this.resolveProject.resolve(rootPath);
-            return project?.type === "outcomeLibrary" ? project : undefined;
+            if (project?.type !== "outcomeLibrary") return undefined;
+            // A resolver's format-recognition provenance is intentionally not reuse evidence. Attach the
+            // independently verified registry/manifest facts only after every compatibility field above
+            // agrees, so planner consumers cannot mistake a moved or stale bundle for an exact match.
+            return {
+                ...project,
+                configurationProvenance: {
+                    configurationHash: compatibility.configHash,
+                    pokieVersion: compatibility.pokieVersion,
+                    generationSemantics: (compatibility.generation ?? "exact") === "exact" ? "exact" : "boundedSample",
+                    gameId: compatibility.gameId,
+                    gameVersion: compatibility.gameVersion,
+                    manifestIdentity: `${compatibility.gameId}@${compatibility.gameVersion}`,
+                },
+            };
         } catch {
             return undefined;
         }
