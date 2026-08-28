@@ -125,7 +125,9 @@ function operationOwner(matrix: string, operation: string): string {
 describe("PC-05 product-model contract", () => {
     it("closes the artifact graph and inventories sources, descriptors, runtime state, durable registries, portable rounds, Stake-import companions and the three fairness artifacts", () => {
         const registry = readRegistry();
-        const items: InventoryItem[] = registry.artifact_kinds.concat(registry.non_artifact_prerequisites);
+        const items: InventoryItem[] = [];
+        registry.artifact_kinds.forEach((item) => items.push(item));
+        registry.non_artifact_prerequisites.forEach((item) => items.push(item));
         const ids = items.map((item) => item.id);
 
         expect(registry.schema_version).toBeGreaterThanOrEqual(2);
