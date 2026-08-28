@@ -1,4 +1,6 @@
 import {
+    ArtifactConversionPlanner,
+    BLUEPRINT_BUILD_CAPABILITY,
     buildGameBuildInfo,
     buildGameModelProjection,
     computeGameBlueprintHash,
@@ -21,7 +23,6 @@ import {
     ReelStripGenerationSummary,
     resolveReelStripGeneration,
     SlotGameNameGenerator,
-    ValidationIssue,
 } from "pokie";
 import fs from "fs";
 import os from "os";
@@ -171,6 +172,7 @@ export class StudioBlueprintService {
     private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly pathResolver: PokiePathResolver;
     private readonly stagedArtwork = new Map<string, string>();
+    private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
         pokieVersion: string,
@@ -569,27 +571,70 @@ export class StudioBlueprintService {
         if (isPathWithin(this.studioRoot, resolved)) {
             return {status: "error", error: outsideStudioRootMessage(rawOutPath)};
         }
-
-        if (fs.existsSync(resolved) && !overwrite) {
-            return {
-                status: "conflict",
-                path: resolved,
-                error: `"${resolved}" already exists. Resubmit with "overwrite": true to replace it.`,
-            };
+        const source = this.blueprintSourceIdentity(blueprint, sourcePath);
+        const plan = this.planner.planIdentity(source, "parWorkbook", {destinationPath: resolved});
+        if (plan.status !== "planned") {
+            return {status: "error", error: plan.diagnostic?.message ?? "PAR export is unavailable."};
         }
-
-        let issues: ValidationIssue[];
+        const controller = new AbortController();
+        let terminalFailure: unknown;
         try {
-            issues = await this.parSheetExporter.exportToFile(blueprint, resolved, sourcePath);
+            const execution = await this.planner.executeConversionPlan(plan, {
+                currentSource: () => this.blueprintSourceIdentity(blueprint, sourcePath),
+                currentDestination: () => resolved,
+                // An explicitly confirmed replacement remains supported by the
+                // Blueprint editor, but this policy is evaluated by the
+                // prepared operation at publication time rather than before
+                // planning.  The atomic PAR writer never exposes a partial
+                // replacement, and rollback therefore never removes a
+                // borrowed pre-existing workbook.
+                assertDestinationAvailable: () => {
+                    if (fs.existsSync(resolved) && !overwrite) {
+                        throw new Error(`"${resolved}" already exists. Resubmit with "overwrite": true to replace it.`);
+                    }
+                },
+                // The format writer validates its generated-reel details as
+                // it publishes, but the stable Blueprint validation belongs
+                // in the operation's read phase so destination policy is
+                // always checked before a workbook writer is invoked.
+                read: () => this.validate(blueprint),
+                // ParSheetExporter owns additional generated-reel preflight
+                // diagnostics that GameBlueprintValidator deliberately does
+                // not duplicate.  It is atomic and returns those failures
+                // without creating a workbook, so let that format boundary
+                // run after planner destination checks even for a draft that
+                // is already structurally invalid.
+                canPublish: () => true,
+                // PAR export performs its own atomic publication. The
+                // operation owns its ordering and terminal boundary, while
+                // intentionally having no deletion rollback for a
+                // caller-owned overwrite target.
+                publish: () => this.parSheetExporter.exportToFile(blueprint, resolved, sourcePath, {signal: controller.signal}),
+                cleanup: () => undefined,
+                signal: controller.signal,
+                onTerminalFailure: (error) => {
+                    terminalFailure = error;
+                },
+            });
+            if (!execution.published) {
+                const validation = execution.read;
+                return validation.status === "invalid"
+                    ? {status: "invalid", errors: validation.errors, warnings: validation.warnings}
+                    : {status: "error", error: "The prepared PAR export did not produce a publication."};
+            }
+            const issues = execution.publication!;
+            const errors = issues.filter((issue) => issue.severity === "error");
+            if (errors.length > 0) {
+                return {status: "invalid", errors, warnings: issues.filter((issue) => issue.severity !== "error")};
+            }
+            return {status: "ok", path: resolved, warnings: issues};
         } catch (error) {
-            return {status: "error", error: error instanceof Error ? error.message : String(error)};
+            const message = terminalFailure ?? error;
+            const rendered = message instanceof Error ? message.message : String(message);
+            return rendered.includes("already exists. Resubmit with \"overwrite\": true")
+                ? {status: "conflict", path: resolved, error: rendered}
+                : {status: "error", error: rendered};
         }
-
-        const errors = issues.filter((issue) => issue.severity === "error");
-        if (errors.length > 0) {
-            return {status: "invalid", errors, warnings: issues.filter((issue) => issue.severity !== "error")};
-        }
-        return {status: "ok", path: resolved, warnings: issues};
     }
 
     // Never writes anything — same technique as StudioHomeService.previewBuild()/BuildCommand's own
@@ -735,23 +780,67 @@ export class StudioBlueprintService {
             }
         }
 
-        let generated;
-        try {
-            generated = this.gamePackageGenerator.generate(blueprint as GameBlueprint, process.cwd(), outDir);
-        } catch (error) {
-            return {status: "error", error: error instanceof Error ? error.message : String(error)};
+        const destination = path.resolve(process.cwd(), outDir ?? (blueprint as GameBlueprint).manifest.id);
+        const source = this.blueprintSourceIdentity(blueprint, sourcePath);
+        const plan = this.planner.planIdentity(source, "tsPackage", {destinationPath: destination});
+        if (plan.status !== "planned") {
+            return {status: "error", error: plan.diagnostic?.message ?? "Package build is unavailable."};
         }
+        const controller = new AbortController();
+        let terminalFailure: unknown;
+        try {
+            const execution = await this.planner.executeConversionPlan(plan, {
+                currentSource: () => this.blueprintSourceIdentity(blueprint, sourcePath),
+                currentDestination: () => destination,
+                assertDestinationAvailable: () => {
+                    if (fs.existsSync(destination) && fs.readdirSync(destination).length > 0) {
+                        throw new Error(`The build destination "${destination}" already exists and is not empty.`);
+                    }
+                },
+                // validate() above has established the immutable draft's
+                // structural read result.  Keep the actual generator in the
+                // publication phase so the prepared operation applies its
+                // destination and cancellation checks before it can allocate
+                // the package directory.
+                read: () => blueprint as GameBlueprint,
+                canPublish: () => true,
+                publish: () => this.gamePackageGenerator.generate(blueprint as GameBlueprint, process.cwd(), outDir, undefined, {signal: controller.signal}),
+                register: (generated) => this.homeService.rememberRecentProject(generated.projectRoot, generated.manifest.name),
+                // GamePackageGenerator owns a newly-created destination only
+                // after it has returned successfully.  If registration or a
+                // cancellation fails, release that publication and never a
+                // borrowed existing directory (which destination policy has
+                // already rejected).
+                rollback: (generated) => fs.promises.rm(generated.projectRoot, {recursive: true, force: true}),
+                cleanup: () => undefined,
+                signal: controller.signal,
+                onTerminalFailure: (error) => {
+                    terminalFailure = error;
+                },
+            });
+            if (!execution.published) return {status: "error", error: "The prepared package build did not produce a publication."};
+            const generated = execution.publication!;
+            return {
+                status: "ok",
+                projectRoot: generated.projectRoot,
+                manifest: generated.manifest,
+                createdFiles: generated.createdFiles,
+                buildInfo: buildGameBuildInfo(blueprint as GameBlueprint, this.pokieVersion, sourcePath, undefined, generated.createdFiles),
+                warnings: validated.warnings,
+            };
+        } catch (error) {
+            const message = terminalFailure ?? error;
+            return {status: "error", error: message instanceof Error ? message.message : String(message)};
+        }
+    }
 
-        await this.homeService.rememberRecentProject(generated.projectRoot, generated.manifest.name);
+    private blueprintSourceIdentity(blueprint: unknown, sourcePath?: string) {
         return {
-            status: "ok",
-            projectRoot: generated.projectRoot,
-            manifest: generated.manifest,
-            createdFiles: generated.createdFiles,
-            // Computed purely for this API response -- never persisted into the built package itself
-            // (see GamePackageGenerator's own doc comment).
-            buildInfo: buildGameBuildInfo(blueprint as GameBlueprint, this.pokieVersion, sourcePath, undefined, generated.createdFiles),
-            warnings: validated.warnings,
+            kind: "blueprint" as const,
+            ...(sourcePath === undefined ? {} : {canonicalLocation: path.resolve(process.cwd(), sourcePath)}),
+            recognitionProvenance: "Studio Blueprint editor draft",
+            capabilities: [BLUEPRINT_BUILD_CAPABILITY],
+            configurationProvenance: {configurationHash: computeGameBlueprintHash(blueprint)},
         };
     }
 }

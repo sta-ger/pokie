@@ -147,6 +147,12 @@ export type ArtifactConversionPlan = {
  */
 export type ArtifactConversionExecution<ReadResult, PublishedResult> = {
     readonly currentSource: () => Promise<ArtifactIdentity> | ArtifactIdentity;
+    /**
+     * Rebind the physical output chosen while preparing this operation.  A
+     * writer must not quietly switch from the planned destination to a later
+     * caller-provided alias between its read and publication phases.
+     */
+    readonly currentDestination?: () => Promise<string | undefined> | string | undefined;
     readonly read: () => Promise<ReadResult> | ReadResult;
     readonly canPublish: (read: ReadResult) => boolean;
     readonly assertDestinationAvailable?: () => Promise<void> | void;
@@ -405,6 +411,10 @@ export class ArtifactConversionPlanner {
             const current = await execution.currentSource();
             if (!sameArtifactIdentity(plan.source, current)) {
                 throw new Error("The conversion source changed after this operation was prepared; prepare a new conversion before executing it.");
+            }
+            const currentDestination = await execution.currentDestination?.();
+            if (currentDestination !== undefined && path.resolve(currentDestination) !== plan.target.canonicalLocation) {
+                throw new Error("The conversion destination changed after this operation was prepared; prepare a new conversion before executing it.");
             }
         };
         try {

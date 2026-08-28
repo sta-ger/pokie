@@ -155,6 +155,7 @@ export class StudioStakeEngineExportService {
         modes: readonly StudioStakeEngineExportModeInput[],
         outDir: string,
         _overwrite: boolean,
+        signal?: AbortSignal,
     ): Promise<StudioStakeEngineExportView> {
         const selectedModes = await this.selectModes(projectRoot, modes);
         const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes, path.resolve(projectRoot, outDir));
@@ -184,6 +185,15 @@ export class StudioStakeEngineExportService {
             return {status: "load-error", error: resolvedOutDir.message, plan};
         }
 
+        // The controller is created with the prepared operation, rather than
+        // at the Studio route.  An optional caller signal only requests this
+        // operation's cancellation; selector loading, destination checking,
+        // cleanup, rollback, and terminal failure stay inside the planner.
+        const controller = new AbortController();
+        const abortPreparedOperation = () => controller.abort();
+        if (signal?.aborted) abortPreparedOperation();
+        else signal?.addEventListener("abort", abortPreparedOperation, {once: true});
+        let terminalFailure: unknown;
         try {
             const execution = await this.planner.executeConversionPlan(plan, {
                 // Re-plan the selected recognised bundle at the publication
@@ -191,6 +201,7 @@ export class StudioStakeEngineExportService {
                 // rather than allowing a selector to drift between preview and
                 // the atomic Stake writer.
                 currentSource: async () => (await this.prepareForSelectedBundles(projectRoot, selectedModes, resolvedOutDir.resolvedPath)).source,
+                currentDestination: () => resolvedOutDir.resolvedPath,
                 read: () => this.loadModes(projectRoot, selectedModes),
                 canPublish: (loaded) => loaded.status === "ok",
                 assertDestinationAvailable: async () => {
@@ -198,7 +209,15 @@ export class StudioStakeEngineExportService {
                     if (current.status !== "planned") throw new Error(current.diagnostic?.message ?? "The Stake Engine destination is unavailable.");
                 },
                 publish: (loaded) => this.exporter.exportToDirectory((loaded as Extract<LoadModesResult, {status: "ok"}>).loaded, resolvedOutDir.resolvedPath),
+                // The writer's atomic directory replacement owns only its
+                // staged directory.  This cleanup deliberately does not
+                // touch the selected Outcome bundle or a borrowed output.
+                cleanup: () => undefined,
                 rollback: () => fs.promises.rm(resolvedOutDir.resolvedPath, {recursive: true, force: true}),
+                signal: controller.signal,
+                onTerminalFailure: (error) => {
+                    terminalFailure = error;
+                },
             });
             if (!execution.published) {
                 // canPublish only declines a load-error; keep the explicit
@@ -215,7 +234,10 @@ export class StudioStakeEngineExportService {
             }
             return {status: "ok", outDir: result.outDir, files: result.files, manifest: result.manifest, warnings: result.issues, plan};
         } catch (error) {
-            return {status: "load-error", error: `Could not export to "${outDir}": ${error instanceof Error ? error.message : String(error)}`, plan};
+            const failure = terminalFailure ?? error;
+            return {status: "load-error", error: `Could not export to "${outDir}": ${failure instanceof Error ? failure.message : String(failure)}`, plan};
+        } finally {
+            signal?.removeEventListener("abort", abortPreparedOperation);
         }
     }
 
