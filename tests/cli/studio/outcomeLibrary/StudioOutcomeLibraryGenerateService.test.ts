@@ -37,6 +37,30 @@ describe("StudioOutcomeLibraryGenerateService", () => {
     }
 
     describe("estimate", () => {
+        it("does not load a runtime after the shared planner rejects the generation prerequisite", async () => {
+            const unavailable: ArtifactConversionPlan = {
+                ...plannedOutcomeLibrary,
+                status: "unavailable",
+                steps: [],
+                diagnostic: {
+                    code: "missing-capability",
+                    failedEdge: {from: "tsPackage", to: "outcomeLibrary"},
+                    message: "No verified runtime is available.",
+                    recovery: "Build a verified package.",
+                },
+            };
+            const loadGame = jest.fn(() => Promise.reject(new Error("runtime must not load")));
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                loadGame,
+                undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+                {prepare: () => Promise.resolve(unavailable)},
+            );
+
+            await expect(svc.estimate(projectRoot, {})).resolves.toMatchObject({status: "unsupported", plan: unavailable});
+            expect(loadGame).not.toHaveBeenCalled();
+        });
+
         it("carries the server planner decision through estimate and generation", async () => {
             const planning = {prepare: jest.fn(() => Promise.resolve(plannedOutcomeLibrary))};
             const svc = new StudioOutcomeLibraryGenerateService(

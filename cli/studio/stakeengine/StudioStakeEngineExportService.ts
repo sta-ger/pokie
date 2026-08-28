@@ -132,6 +132,19 @@ export class StudioStakeEngineExportService {
         overwrite: boolean,
     ): Promise<StudioStakeEngineExportView> {
         const plan = await this.planning.prepare(projectRoot, "stakeAdapter", path.resolve(projectRoot, outDir));
+        // The exported plan owns destination safety as well as reachability.
+        // In particular, an explicit Studio output path must not bypass the
+        // registry's alias/source/occupied-destination checks through this
+        // older exporter-specific overwrite flow.
+        if (plan?.status === "conflict") {
+            return {
+                status: "conflict",
+                outDir: path.resolve(projectRoot, outDir),
+                overwritable: false,
+                error: plan.diagnostic?.message ?? "Stake Engine export has a destination conflict.",
+                plan,
+            };
+        }
         if (plan?.status === "unavailable") {
             return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
         }

@@ -9,6 +9,7 @@ import {
     OutcomeLibraryBundleReading,
     StakeEngineImporter,
     StakeEngineImporting,
+    describeArtifactConversionPlanDiagnostic,
 } from "pokie";
 import fs from "fs";
 import path from "path";
@@ -28,7 +29,7 @@ export type StudioDeploymentRunResult =
     | {readonly status: "ok"; readonly view: StudioDeploymentRunView}
     | {readonly status: "target-not-found"}
     | {readonly status: "invalid-modes"; readonly error: string}
-    | {readonly status: "load-error"; readonly error: string};
+    | {readonly status: "load-error"; readonly error: string; readonly plan?: import("pokie").ArtifactConversionPlan};
 
 // Domain-language remediation for a request naming a mode absent/stale from the current build (see
 // resolveCurrentBuildModeIds's own doc comment) -- never the raw "modeName" schema path, always which
@@ -144,6 +145,14 @@ export class StudioDeploymentService {
         // planner-governed prerequisite.  Carry that exact server plan forward so
         // the browser never has to infer whether it can create/reuse one.
         const plan = await this.planning.prepare(projectRoot, "outcomeLibrary");
+        // Deployment may consume a pre-existing library selector, but it must
+        // never claim that the current project can recover or regenerate one
+        // when the canonical planner rejects that prerequisite.  Keep the
+        // selected plan attached to the terminal action result instead of
+        // letting selector-specific checks replace its recovery diagnostic.
+        if (plan?.status !== undefined && plan.status !== "planned") {
+            return {status: "load-error", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library deployment is unavailable.", plan};
+        }
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
         if (target === undefined) {

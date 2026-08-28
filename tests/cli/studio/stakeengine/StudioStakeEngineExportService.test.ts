@@ -31,6 +31,32 @@ describe("StudioStakeEngineExportService", () => {
     });
 
     describe("validate", () => {
+        it("returns the planner destination conflict before loading any selector", async () => {
+            const conflict: ArtifactConversionPlan = {
+                ...plannedStakeExport,
+                status: "conflict",
+                diagnostic: {
+                    code: "destination-conflict",
+                    failedEdge: {from: "outcomeLibrary", to: "stakeAdapter"},
+                    message: "The selected directory is occupied.",
+                    recovery: "Choose another directory.",
+                },
+            };
+            const planning = {prepare: jest.fn(() => Promise.resolve(conflict))};
+            const service = new StudioStakeEngineExportService(
+                TEST_POKIE_VERSION,
+                undefined, undefined,
+                jest.fn(() => {
+                    throw new Error("selector must not load");
+                }),
+                undefined, undefined, undefined, undefined, planning,
+            );
+
+            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}], "stakeengine", false);
+
+            expect(view).toMatchObject({status: "conflict", overwritable: false, plan: conflict});
+        });
+
         it("serializes the same planner decision during validate and export", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
             writeLibraryFile(tmpRoot, "base.json", library);

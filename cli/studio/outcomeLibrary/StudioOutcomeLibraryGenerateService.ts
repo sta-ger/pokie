@@ -123,6 +123,13 @@ export class StudioOutcomeLibraryGenerateService {
     // same package/options.
     public async estimate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateEstimateRequest): Promise<StudioOutcomeLibraryGenerateEstimateView> {
         const plan = await this.planning.prepare(projectRoot, "outcomeLibrary");
+        // The estimate is a preview of this action, not a second source-capability
+        // probe.  Once the shared planner says that the opened project cannot
+        // reach an Outcome Library, do not load its runtime and accidentally
+        // present an executable-looking estimate.
+        if (plan?.status !== undefined && plan.status !== "planned") {
+            return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
+        }
         let game: PokieGame;
         try {
             game = await this.loadGame(projectRoot);
@@ -170,6 +177,9 @@ export class StudioOutcomeLibraryGenerateService {
         // Ask the planner for the source/prerequisite decision, while this writer
         // retains its established atomic in-bundle update contract.
         const plan = await this.planning.prepare(projectRoot, "outcomeLibrary");
+        if (plan?.status === "conflict") {
+            return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
+        }
         if (plan?.status === "unavailable") {
             return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
         }
