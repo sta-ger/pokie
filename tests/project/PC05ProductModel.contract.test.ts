@@ -19,6 +19,10 @@ type InventoryItem = {
     diagnostics?: string;
     recovery?: string;
     support_status?: string;
+    purpose?: string;
+    producer?: string;
+    consumer?: string;
+    persisted_by_pokie?: boolean;
 };
 
 type ProductModelRegistry = {
@@ -166,6 +170,7 @@ describe("PC-05 product-model contract", () => {
                 "studioOutcomeLibraryRegistryIndex",
                 "stakeImportReExportConfig",
                 "stakeImportSourceProvenance",
+                "preparationStateMarker",
             ]),
         );
         const roundArtifact = registry.artifact_kinds.find((item) => item.id === "roundArtifact");
@@ -437,6 +442,108 @@ describe("PC-05 product-model contract", () => {
         expect(productModel).toContain("The dev server has a separate, opt-in durable session boundary.");
         expect(productModel).toContain("This\nrecord is mutable server state, not a Blueprint/project asset, RoundArtifact,");
         expect(productModel).toMatch(/two repository\nobjects\/processes sharing a directory can still race and lose one write/);
+    });
+
+    it("source-backs preparation recovery and every public Studio download envelope without promoting browser delivery or job state to a project input", () => {
+        const registry = readRegistry();
+        const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
+        const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
+        const preparer = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "prepare", "GamePackagePreparer.ts"), "utf-8");
+        const preparationStateStore = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "prepare", "PreparationStateStore.ts"), "utf-8");
+        const studioServer = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "StudioServer.ts"), "utf-8");
+        const reportDownload = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "simulation", "buildSimulationReportDownload.ts"), "utf-8");
+        const replayTab = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio-client", "src", "components", "project", "ReplayTab.tsx"), "utf-8");
+        const certificationTab = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio-client", "src", "components", "project", "CertificationTab.tsx"), "utf-8");
+        const simulationRepository = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "simulation", "InMemoryStudioSimulationRepository.ts"), "utf-8");
+        const replayRepository = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "replay", "InMemoryStudioReplayRepository.ts"), "utf-8");
+        const roundRecorder = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "runtime", "StudioRoundRecorder.ts"), "utf-8");
+        const cliDocs = fs.readFileSync(path.join(__dirname, "..", "..", "docs", "cli.md"), "utf-8");
+        const dollar = String.fromCharCode(36);
+
+        expect(preparer).toContain("readPreparationState(scaffold.projectRoot)?.phasesCompleted");
+        expect(preparer).toContain("writePreparationState(scaffold.projectRoot");
+        expect(preparer).toContain("clearPreparationState(scaffold.projectRoot)");
+        expect(preparer).toContain("re-run preparation with the same parentDir/name");
+        expect(preparationStateStore).toContain('PREPARATION_STATE_FILE = ".pokie-prepare-state.json"');
+        expect(preparationStateStore).toContain("} catch {\n        return undefined;");
+        expect(preparationStateStore).toContain("fs.rmSync(statePath)");
+
+        expect(studioServer).toContain("private handleDownloadReport");
+        expect(studioServer).toContain("buildSimulationReportDownload(result.report, id, format)");
+        expect(studioServer).toContain("private handleDownloadReplay");
+        expect(studioServer).toContain("buildReplayDownload(result.descriptor, id)");
+        expect(studioServer).toContain('"Content-Disposition": `attachment; filename="' + dollar + '{download.filename}"`');
+        expect(reportDownload).toContain("export function buildSimulationReportDownload(");
+        expect(reportDownload).toContain("value.replace(/[^a-zA-Z0-9._-]+/g, \"-\")");
+        expect(replayTab).toContain("new Blob([JSON.stringify(data, null, 2)]");
+        expect(replayTab).toContain("downloadJsonBlob(`spin-" + dollar + "{selectedSpin.sessionId}.json`, selectedSpin)");
+        expect(replayTab).toContain("buildReplayDownloadUrl(result.id)");
+        expect(certificationTab).toContain("new Blob([JSON.stringify(data, null, 2)]");
+        expect(certificationTab).toContain("Download manifest.json");
+        expect(certificationTab).toContain("certification-" + dollar + "{buildResult.manifest.game.id}-" + dollar + "{buildResult.manifest.game.version}-manifest.json");
+        expect(simulationRepository).toContain("a queued/running job is never evicted");
+        expect(replayRepository).toContain("a queued/running replay is never evicted");
+        expect(roundRecorder).toContain("private static readonly MAX_RECORDS = 20");
+        expect(roundRecorder).toContain("public clearAll(): void");
+        expect(cliDocs).toContain("Only **completed** simulations ever appear in the list");
+        expect(cliDocs).toContain("Studio keeps at most the 20 most recently completed/failed/cancelled simulations per project");
+        expect(cliDocs).toContain("Download JSON** downloads the result as JSON: for Session Spin, a client-built blob");
+        expect(cliDocs).toContain("GET /api/project/reports/:id/download?format=json|markdown|html");
+        expect(cliDocs).toContain("GET /api/project/replays/:id/download");
+
+        const preparationMarker = registry.artifact_kinds.find((item) => item.id === "preparationStateMarker");
+        expect(preparationMarker).toEqual(expect.objectContaining({
+            label: "Game package preparation recovery marker",
+            shape: expect.stringContaining(".pokie-prepare-state.json"),
+            "created_by": expect.arrayContaining(["GamePackagePreparer:runCreatePhase"]),
+            "recognized_by": expect.arrayContaining(["PreparationStateStore:readPreparationState", "GamePackagePreparer:runCreatePhase retry"]),
+            provenance: expect.stringContaining("partial preparer-owned scaffold"),
+            stale: expect.stringContaining("Successful verify clears it"),
+            compatibility: expect.stringContaining("Missing or corrupt state means start create normally"),
+            containment: expect.stringContaining("fixed hidden filename"),
+            diagnostics: expect.stringContaining("Missing/corrupt state"),
+            recovery: expect.stringContaining("same parentDir/name"),
+            "support_status": "supported-retry-only-preparation-state-companion-not-project-input",
+        }));
+
+        const deliveryIds = [
+            "studioSimulationJobState",
+            "studioSimulationReportDownload",
+            "studioReplayJobState",
+            "studioReplayDownload",
+            "studioSessionSpinDownload",
+            "studioCertificationBuildState",
+            "studioCertificationManifestDownload",
+        ];
+        for (const id of deliveryIds) {
+            const item = registry.non_artifact_prerequisites.find((candidate) => candidate.id === id);
+            expect(item).toEqual(expect.objectContaining({id, type: "non-artifact-prerequisite", "persisted_by_pokie": false}));
+            for (const field of ["purpose", "producer", "consumer", "provenance", "compatibility", "diagnostics", "recovery"] as const) {
+                expect(item?.[field]).toEqual(expect.any(String));
+            }
+            expect(JSON.stringify(item)).toMatch(/not .*project|never an input project|no retained job is a project|not a new replay artifact/i);
+        }
+        expect(registry.artifact_kinds.find((item) => item.id === "simulationReport")?.exports_to).toEqual(expect.arrayContaining([
+            "studioSimulationJobState",
+            "studioSimulationReportDownload",
+        ]));
+        expect(registry.artifact_kinds.find((item) => item.id === "runtimeReplayDescriptor")?.exports_to).toEqual(expect.arrayContaining([
+            "studioReplayJobState",
+            "studioReplayDownload",
+        ]));
+        expect(registry.artifact_kinds.find((item) => item.id === "certificationEvidenceBundle")?.exports_to).toEqual(expect.arrayContaining([
+            "studioCertificationBuildState",
+            "studioCertificationManifestDownload",
+        ]));
+        expect(registry.artifact_kinds.find((item) => item.id === "roundArtifact")?.exports_to).toContain("studioSessionSpinDownload");
+        expect(matrix).toContain("| Resume a failed prepared-package lifecycle |");
+        expect(matrix).toContain("`studioSimulationJobState` is not the durable `simulationReport`");
+        expect(matrix).toContain("Session Spin builds a selected-view JSON Blob");
+        expect(matrix).toContain("`studioCertificationBuildState`/`studioCertificationManifestDownload`");
+        expect(productModel).toContain("Preparation has a narrower recovery companion, not another package format.");
+        expect(productModel).toContain("Studio delivery is deliberately separate from Studio's process-local work");
+        expect(productModel).toContain("Session Spin is distinct from a replay job.");
+        expect(productModel).toContain("Certification has a third delivery shape.");
     });
 
     it("source-backs streamed outcomes, certification descriptors, runtime cache state and persisted Studio Projects", () => {

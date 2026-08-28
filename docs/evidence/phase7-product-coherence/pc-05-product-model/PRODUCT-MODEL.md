@@ -93,6 +93,22 @@ objects/processes sharing a directory can still race and lose one write. A
 deployment needing cross-process consistency, or durable wallet/idempotency
 state, must provide its own locking or transactional stores.
 
+Preparation has a narrower recovery companion, not another package format.
+`GamePackagePreparer` writes `<projectRoot>/.pokie-prepare-state.json` after
+it creates the scaffold and updates it after dependencies and build. The JSON
+contains the preparer's manifest, created-file list and completed phase
+provenance, so a retry of the same parent/name can resume a preparer-owned
+partial scaffold rather than failing create with an already-exists error. A
+failed dependencies/build/verify phase leaves that marker and gives the author
+the phase-specific fix-and-retry action. `PreparationStateStore` reads missing,
+unreadable or corrupt JSON as no marker; it does not throw or grant resume
+rights to an arbitrary directory. Therefore the normal create safety guard
+still rejects an unrelated existing directory instead of silently overwriting
+it. The fixed hidden filename is joined under the chosen project root, never
+selected from package metadata. Successful verification clears the marker.
+It is retry state only: do not copy it as ownership proof, register it as a
+project, or pass it to build, conversion, replay or runtime workflows.
+
 Two durable metadata companions make derived Outcome Library discovery survive
 process boundaries without becoming source artifacts. For managed compatible
 library reuse, `ManagedOutcomeProjectService` atomically writes the
@@ -252,6 +268,54 @@ packaging preflight is advisory in-memory analysis, not a WASM build. A
 multi-mode simulation is a distinct per-mode report set and never a blended
 result. These classifications keep the inventory closed without inventing
 formats POKIE does not persist.
+
+Studio delivery is deliberately separate from Studio's process-local work
+state. `StudioSimulationService` and `StudioReplayExecutionService` retain
+jobs only in their in-memory repositories. A record is queued, running,
+completed, failed or cancelled; terminal records are bounded per project and
+oldest terminal records are evicted while active jobs are never evicted.
+Restarting Studio, changing projects, or eviction makes the id unavailable.
+Cancellation becomes terminal only at a chunk boundary and the recovery is to
+poll while active, then run again with the same parameters or submit a new job.
+The report/replay APIs correctly expose this boundary: unknown, evicted or
+other-project ids return `404`; queued/running and terminal jobs without a
+report/descriptor return `409`; only a completed job with the canonical value
+can download. A failed or cancelled job does not gain an empty report or replay
+file merely to make Export appear successful.
+
+`GET /api/project/reports/:id/download?format=json|markdown|html` calls
+`buildSimulationReportDownload()` to deliver the completed canonical
+`simulationReport`: JSON is that report and Markdown/HTML use the same report
+renderers as the CLI. `GET /api/project/replays/:id/download` similarly wraps
+the completed canonical `runtimeReplayDescriptor` via `buildReplayDownload()`.
+Both are HTTP attachment envelopes, not server-side project writes: their
+filenames sanitize game id/version/job id to safe filename characters and the
+browser alone chooses whether and where to save a durable copy. The envelope
+inherits its source/job provenance and is historical after source/settings
+change; it never becomes a runnable project or conversion prerequisite. A
+saved replay descriptor may be deliberately pasted into Replay Artifact
+inspection, but that is the descriptor's existing contract, not a new identity
+created by the download envelope.
+
+Session Spin is distinct from a replay job. `StudioRoundRecorder` retains the
+most-recent-first, project-scoped session views in memory (currently 20),
+deduplicates retrying the same request id, and clears all state on project
+switch or Studio shutdown. `ReplayTab` can turn the currently selected retained
+view into a `spin-<sessionId>.json` Blob; its browser-selected filename and
+contents are inspection output only, not a canonical replay descriptor, project
+or conversion input. If no selected spin remains after empty history, eviction,
+switch or restart, Download JSON is unavailable; play or reproduce another
+round, or retain a browser copy, to recover.
+
+Certification has a third delivery shape. Studio writes the durable canonical
+`certificationEvidenceBundle` directory, including its manifest and sampled
+files. The Certification tab's `buildResult` is browser/process-local state:
+only while it exists can `CertificationTab` serialize its existing manifest to
+a JSON Blob with a suggested certification filename. The Blob is a quick
+reference for a certifier, not the full evidence directory, a verification
+result, a project, conversion prerequisite or replay input. Tab-state loss or a
+later source/build change makes it unavailable or historical; rebuild after
+repair and hand off the durable evidence directory for sampled artifacts.
 
 Persisted public result outputs are also inventory entries, even though they
 are not source projects or conversion prerequisites: `ValidateReport`, single
