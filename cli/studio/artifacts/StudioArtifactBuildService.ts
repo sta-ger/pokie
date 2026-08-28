@@ -93,9 +93,9 @@ export class StudioArtifactBuildService {
     // capability rule of its own.
     public async listTargets(projectRoot: string): Promise<readonly StudioArtifactTargetView[]> {
         const project = await this.resolveProject.resolve(projectRoot);
-        return this.registry.listTargets().map((target) => {
+        return Promise.all(this.registry.listTargets().map(async (target) => {
             const descriptor = this.registry.describe(target);
-            const plan = project === undefined ? undefined : this.plan(project, target);
+            const plan = project === undefined ? undefined : await this.plan(project, target);
             const plannerFields = this.targetPlannerFields(plan);
             return {
                 target,
@@ -104,7 +104,7 @@ export class StudioArtifactBuildService {
                 ...plannerFields,
                 unsupportedNotes: descriptor.unsupportedNotes,
             };
-        });
+        }));
     }
 
     // Reports what a build against the active project would do, without ever invoking a builder -- the same
@@ -121,7 +121,7 @@ export class StudioArtifactBuildService {
         const destinationKind = destinationKindFor(target);
         const plannedOutputs = plannedOutputsFor(target);
 
-        const plan = this.plan(project, target, destination);
+        const plan = await this.plan(project, target, destination);
         if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describePlanDiagnostic(plan)};
         }
@@ -152,14 +152,14 @@ export class StudioArtifactBuildService {
         }
         const {project, destination} = resolved;
 
-        const plan = this.plan(project, target, destination);
+        const plan = await this.plan(project, target, destination, options);
         if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describePlanDiagnostic(plan)};
         }
         if (plan.status === "conflict") return {status: "conflict", target, message: plan.diagnostic!.message};
 
         try {
-            const result = await this.registry.build(target, project, destination, options);
+            const result = await this.registry.executePlan(plan, project, destination, options);
             // Blueprint -> Outcome and Blueprint -> Stake both return the exact managed Outcome Project
             // the registry generated or reopened. Register it with Studio before reporting success; no
             // Studio-only outcome-path index is maintained here.
@@ -174,6 +174,7 @@ export class StudioArtifactBuildService {
                 outputPath: result.outputPath,
                 outputKind: destinationKindFor(target),
                 sourceType: project.type,
+                plan,
                 ...(result.preflight !== undefined
                     ? {
                         preflight: {
@@ -295,16 +296,8 @@ export class StudioArtifactBuildService {
         }
     }
 
-    // Registry implementations before PC-06 are still accepted for embedded Studio tests/extensions. In
-    // production this always delegates to the shared planner; the fallback is intentionally only an
-    // injection compatibility shim and carries no target-specific rules.
-    private plan(project: PokieProject, target: ArtifactTargetType, destinationPath?: string): ArtifactConversionPlan {
-        const registry = this.registry as ArtifactBuilderRegistry & {plan?: (source: PokieProject, artifact: ArtifactTargetType, options?: {destinationPath?: string}) => ArtifactConversionPlan};
-        if (registry.plan !== undefined) return registry.plan(project, target, {destinationPath});
-        if (this.registry.supportsConversionFrom(target, project.type)) {
-            return {status: "planned"} as ArtifactConversionPlan;
-        }
-        return {status: "unavailable"} as ArtifactConversionPlan;
+    private plan(project: PokieProject, target: ArtifactTargetType, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
+        return this.registry.preparePlan(project, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
     }
 
     // Resolves `projectRoot` into a PokieProject and `target`'s own default destination -- the exact same

@@ -32,6 +32,34 @@ describe("ArtifactConversionPlanner", () => {
         expect(stale).toMatchObject({status: "unavailable", diagnostic: {code: "stale-provenance", message: expect.stringContaining("configuration hash changed")}});
     });
 
+    it("does not trust a managed candidate flag when its persisted sampled provenance differs", () => {
+        const source = {
+            ...project("tsPackage"),
+            configurationProvenance: {
+                configurationHash: "source-hash",
+                gameId: "slot",
+                gameVersion: "1.0.0",
+                manifestIdentity: "slot@1.0.0",
+                pokieVersion: "1.3.0",
+                generationSemantics: "boundedSample" as const,
+                sampleCount: "100",
+                sampleSeed: "seed-a",
+            },
+        };
+        const plan = planner.plan(source, "outcomeLibrary", {
+            managedOutcome: {
+                verified: true,
+                identity: {
+                    kind: "outcomeLibrary",
+                    capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+                    configurationProvenance: {...source.configurationProvenance, sampleSeed: "seed-b"},
+                },
+            },
+        });
+
+        expect(plan).toMatchObject({status: "unavailable", diagnostic: {code: "stale-provenance", message: expect.stringContaining("sample seed")}});
+    });
+
     it("reports the exact unsupported boundary rather than a generic source matrix", () => {
         const outcomeToPackage = planner.plan(project("outcomeLibrary"), "tsPackage");
         const wasm = planner.plan(project("wasm"), "outcomeLibrary");

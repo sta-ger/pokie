@@ -51,7 +51,7 @@ import {
 export const DEFAULT_MANAGED_EXACT_OUTCOME_SPACE_SIZE = BigInt(50_000);
 export const DEFAULT_MANAGED_SAMPLED_OUTCOME_COUNT = BigInt(5_000);
 
-type ManagedOutcomeGeneration = {
+export type ManagedOutcomeGeneration = {
     readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
 };
 
@@ -113,22 +113,8 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         reuseCompatible = true,
     ): Promise<{readonly project: PokieProject; readonly reused: boolean}> {
         assertArtifactBuildNotCancelled(options);
-        const game = source.type === "blueprint" ? this.loadMaterializedGame(this.validateAndMaterialize(source.rootPath)) : await this.loadGame(source.rootPath);
-        const configHash = game.getConfigHash?.();
-        if (configHash === undefined) {
-            throw new Error(`Project "${source.rootPath}" did not materialize a configuration hash; cannot safely register its outcome library.`);
-        }
-        const generation = resolveManagedOutcomeGeneration(game, configHash, options?.outcomeLibraryGeneration);
-
-        const compatibility = {
-            gameId: game.getManifest().id,
-            gameVersion: game.getManifest().version,
-            configHash,
-            pokieVersion: this.pokieVersion,
-            generation: generation.sampled === undefined
-                ? "exact"
-                : `sample:${generation.sampled.sampleSize}:${generation.sampled.seed}`,
-        };
+        const prepared = await this.prepare(source, options);
+        const {game, configHash, generation, compatibility} = prepared;
         if (reuseCompatible) {
             const compatible = await this.managedOutcomeProjects.findCompatible(source.rootPath, compatibility);
             if (compatible !== undefined) {
@@ -164,6 +150,38 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             } else reportArtifactBuildProgress(options, {status: "failed", preflight});
             throw error;
         }
+    }
+
+    // Read-only half of the managed lifecycle.  The registry uses this before
+    // planning so a preview carries the same exact/sampled compatibility key
+    // that the later writer will consume.  It intentionally shares the real
+    // validation/materialization path rather than guessing from CLI flags.
+    public async prepare(source: PokieProject, options?: ArtifactBuildOptions): Promise<{
+        readonly game: PokieGame;
+        readonly configHash: string;
+        readonly generation: ManagedOutcomeGeneration;
+        readonly compatibility: OutcomeProjectCompatibility;
+    }> {
+        const game = source.type === "blueprint" ? this.loadMaterializedGame(this.validateAndMaterialize(source.rootPath)) : await this.loadGame(source.rootPath);
+        const configHash = game.getConfigHash?.();
+        if (configHash === undefined) {
+            throw new Error(`Project "${source.rootPath}" did not materialize a configuration hash; cannot safely register its outcome library.`);
+        }
+        const generation = resolveManagedOutcomeGeneration(game, configHash, options?.outcomeLibraryGeneration);
+        return {
+            game,
+            configHash,
+            generation,
+            compatibility: {
+                gameId: game.getManifest().id,
+                gameVersion: game.getManifest().version,
+                configHash,
+                pokieVersion: this.pokieVersion,
+                generation: generation.sampled === undefined
+                    ? "exact"
+                    : `sample:${generation.sampled.sampleSize}:${generation.sampled.seed}`,
+            },
+        };
     }
 
     private async generateBundle(

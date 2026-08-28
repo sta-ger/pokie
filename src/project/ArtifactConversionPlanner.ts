@@ -29,6 +29,11 @@ export type ArtifactConfigurationProvenance = {
     readonly gameId?: string;
     readonly gameVersion?: string;
     readonly manifestIdentity?: string;
+    // Bounded generation is only reproducible when both values agree.  Keeping these
+    // separate from the display-oriented generationSemantics string makes a sampled
+    // bundle ineligible for an exact (or differently seeded) request.
+    readonly sampleCount?: string;
+    readonly sampleSeed?: string;
 };
 
 export type ArtifactConversionStepKind =
@@ -97,9 +102,50 @@ export function describeArtifactConversionPlanDiagnostic(plan: ArtifactConversio
 export type ArtifactConversionPlanningOptions = {
     readonly destinationPath?: string;
     readonly generationSemantics?: "exact" | "boundedSample";
+    readonly sampleCount?: bigint | string;
+    readonly sampleSeed?: string;
+    readonly pokieVersion?: string;
     /** A registry lookup may offer a managed outcome bundle. It is reusable only when independently verified. */
     readonly managedOutcome?: {readonly identity: ArtifactIdentity; readonly verified: boolean; readonly staleReason?: string};
 };
+
+/**
+ * Checks the persisted bundle facts against the source facts the selected edge
+ * consumes.  `verified` is deliberately not trusted as an adapter assertion:
+ * callers may use it to report an I/O failure, but matching provenance is the
+ * condition that makes reuse executable.
+ */
+export function verifyManagedOutcomeCandidate(
+    source: ArtifactIdentity,
+    candidate: NonNullable<ArtifactConversionPlanningOptions["managedOutcome"]>,
+    options: ArtifactConversionPlanningOptions = {},
+): {readonly verified: boolean; readonly staleReason?: string} {
+    if (!candidate.verified) return {verified: false, staleReason: candidate.staleReason ?? "its manifest could not be verified"};
+    const expected = source.configurationProvenance;
+    const actual = candidate.identity.configurationProvenance;
+    // Legacy/in-memory projects have no persisted provenance.  They remain
+    // usable only for the old explicit verified contract; a resolved source
+    // with provenance always fails closed when the candidate lacks it.
+    if (expected === undefined) return {verified: true};
+    if (actual === undefined) return {verified: false, staleReason: "the managed bundle has no persisted provenance"};
+    const expectedGeneration = options.generationSemantics ?? expected.generationSemantics;
+    const expectedSampleCount = options.sampleCount === undefined ? expected.sampleCount : String(options.sampleCount);
+    const expectedSampleSeed = options.sampleSeed ?? expected.sampleSeed;
+    const comparisons: readonly [string, string | undefined, string | undefined][] = [
+        ["configuration hash", expected.configurationHash, actual.configurationHash],
+        ["game id", expected.gameId, actual.gameId],
+        ["game version", expected.gameVersion, actual.gameVersion],
+        ["manifest identity", expected.manifestIdentity, actual.manifestIdentity],
+        ["POKIE version", options.pokieVersion ?? expected.pokieVersion, actual.pokieVersion],
+        ["generation semantics", expectedGeneration, actual.generationSemantics],
+        ["sample count", expectedSampleCount, actual.sampleCount],
+        ["sample seed", expectedSampleSeed, actual.sampleSeed],
+    ];
+    const mismatch = comparisons.find(([, wanted, found]) => wanted !== undefined && wanted !== found);
+    return mismatch === undefined
+        ? {verified: true}
+        : {verified: false, staleReason: `${mismatch[0]} does not match the recognized source`};
+}
 
 const TARGET_CAPABILITIES: Readonly<Record<ArtifactTargetType, readonly ProjectCapability[]>> = {
     tsPackage: PROJECT_TYPE_CAPABILITIES.tsPackage,
@@ -218,10 +264,13 @@ export class ArtifactConversionPlanner {
         options: ArtifactConversionPlanningOptions,
         unavailable: (code: ArtifactConversionDiagnostic["code"], message: string, recovery: string) => ArtifactConversionPlan,
     ): ArtifactConversionPlan {
-        if (options.managedOutcome !== undefined && !options.managedOutcome.verified) {
-            return unavailable("stale-provenance", `The managed Outcome Library cannot be reused: ${options.managedOutcome.staleReason ?? "its provenance was not verified"}.`, "Regenerate the Outcome Library from the recognized source.");
+        const candidate = options.managedOutcome === undefined
+            ? undefined
+            : verifyManagedOutcomeCandidate(source, options.managedOutcome, options);
+        if (candidate !== undefined && !candidate.verified) {
+            return unavailable("stale-provenance", `The managed Outcome Library cannot be reused: ${candidate.staleReason ?? "its provenance was not verified"}.`, "Regenerate the Outcome Library from the recognized source.");
         }
-        if (options.managedOutcome?.verified) {
+        if (candidate?.verified && options.managedOutcome !== undefined) {
             return this.planned(source, target, preflight, [{kind: "reuseManagedOutcomeLibrary", input: source, output: options.managedOutcome.identity, choice: "reuse", estimatedWork: "none"}]);
         }
         const runtime: ArtifactIdentity = {kind: "tsPackage", capabilities: TARGET_CAPABILITIES.tsPackage};

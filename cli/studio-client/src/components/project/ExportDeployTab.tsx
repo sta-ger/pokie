@@ -458,6 +458,9 @@ function TargetCard({
                             <Text size="sm" mt={4}>
                                 Built to {artifactBuildRun.result.outputPath}.
                             </Text>
+                            <Text size="sm" c="dimmed" mt={4}>
+                                Executed plan: {artifactBuildRun.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}.
+                            </Text>
                             {artifactBuildRun.result.preflight && (
                                 <Text size="sm" c="dimmed" mt={4}>
                                     Published {artifactBuildRun.result.preflight.estimatedItemCount ?? "the estimated"} item(s)

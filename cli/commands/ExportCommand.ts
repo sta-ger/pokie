@@ -101,7 +101,7 @@ export class ExportCommand implements CliCommandHandling {
     private async runProjectExport(args: ExportArgs, project: Awaited<ReturnType<ProjectResolving["resolve"]>> & {}): Promise<number> {
         const target = this.artifactTarget(args.target);
         const destination = this.resolveDestination(args);
-        const plan = this.registry.plan(project, target, {destinationPath: destination});
+        const plan = await this.registry.preparePlan(project, target, {destinationPath: destination});
         if (plan.status === "unavailable") {
             throw new Error(`${plan.diagnostic!.message} Next: ${plan.diagnostic!.recovery}`);
         }
@@ -110,11 +110,11 @@ export class ExportCommand implements CliCommandHandling {
         }
         if (args.dryRun) {
             await this.registry.validate(target, project);
-            console.log(`Dry run -- would export target "${args.target}" from "${project.rootPath}" to "${destination}". No files written.`);
+            console.log(`Dry run -- plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ")}. Would export target "${args.target}" from "${project.rootPath}" to "${destination}". No files written.`);
             return 0;
         }
         try {
-            const result = await this.registry.build(target, project, destination);
+            const result = await this.registry.executePlan(plan, project, destination);
             console.log(`Artifact "${args.target}" exported to "${result.outputPath}".`);
             return 0;
         } catch (error) {

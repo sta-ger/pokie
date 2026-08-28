@@ -28,7 +28,7 @@ import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
-import {ArtifactConversionPlanner, describeArtifactConversionPlanDiagnostic, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions} from "./ArtifactConversionPlanner.js";
+import {ArtifactConversionPlanner, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type ArtifactConfigurationProvenance, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions} from "./ArtifactConversionPlanner.js";
 import {
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
@@ -120,6 +120,10 @@ export class ArtifactBuilderRegistry {
     private readonly blueprintStakeWorkflow: BlueprintStakeOutcomeLibraryWorkflow;
     private readonly managedOutcomeProjects: ManagedOutcomeProjectServicing;
     private readonly planner = new ArtifactConversionPlanner();
+    // A prepared plan is the executable choice.  The project object itself is
+    // intentionally not serialized in ArtifactConversionPlan, so keep it at
+    // this registry boundary until the selected plan is executed.
+    private readonly plannedManagedProjects = new WeakMap<object, PokieProject>();
 
     constructor(
         pokieVersion = "0.0.0",
@@ -169,6 +173,63 @@ export class ArtifactBuilderRegistry {
                 recovery: "Choose an empty destination that is not the source or one of its descendants.",
             },
         };
+    }
+
+    /**
+     * Produces the plan used by a real build/preview.  Managed outcomes are
+     * inspected before planning, with the exact generation key used by the
+     * workflow, so the plan never advertises materialization and later reuses
+     * (or the reverse).
+     */
+    public async preparePlan(
+        source: PokieProject,
+        target: ArtifactTargetType,
+        options: ArtifactConversionPlanningOptions & Pick<ArtifactBuildOptions, "outcomeLibraryGeneration"> = {},
+    ): Promise<ArtifactConversionPlan> {
+        let plannedSource = source;
+        let managedOutcome = options.managedOutcome;
+        let planningOptions: ArtifactConversionPlanningOptions = options;
+        let inspectedProject: PokieProject | undefined;
+        if ((source.type === "blueprint" || source.type === "tsPackage") && (target === "outcomeLibrary" || target === "stakeAdapter")) {
+            const prepared = await this.blueprintStakeWorkflow.prepare(source, {outcomeLibraryGeneration: options.outcomeLibraryGeneration});
+            const generation = prepared.generation.sampled;
+            const configurationProvenance: ArtifactConfigurationProvenance = {
+                configurationHash: prepared.configHash,
+                pokieVersion: prepared.compatibility.pokieVersion,
+                gameId: prepared.compatibility.gameId,
+                gameVersion: prepared.compatibility.gameVersion,
+                manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
+                generationSemantics: generation === undefined ? "exact" : "boundedSample",
+                ...(generation === undefined ? {} : {sampleCount: generation.sampleSize.toString(), sampleSeed: generation.seed}),
+            };
+            plannedSource = {...source, configurationProvenance};
+            // An explicit Outcome destination is a publication request, not a
+            // cache lookup.  Stake has no Outcome destination of its own, so
+            // it may reuse the registered canonical prerequisite.
+            if (target === "stakeAdapter") {
+                const inspection = await this.inspectManagedOutcome(source.rootPath, prepared.compatibility);
+                inspectedProject = inspection.project;
+                if (inspection.project !== undefined) {
+                    managedOutcome = {identity: resolveArtifactIdentity(inspection.project), verified: true};
+                } else if (inspection.staleReason !== undefined) {
+                    managedOutcome = {
+                        identity: {kind: "outcomeLibrary", capabilities: []},
+                        verified: false,
+                        staleReason: inspection.staleReason,
+                    };
+                }
+            }
+            planningOptions = {
+                ...options,
+                managedOutcome,
+                pokieVersion: prepared.compatibility.pokieVersion,
+                generationSemantics: generation === undefined ? "exact" : "boundedSample",
+                ...(generation === undefined ? {} : {sampleCount: generation.sampleSize, sampleSeed: generation.seed}),
+            };
+        }
+        const plan = this.plan(plannedSource, target, planningOptions);
+        if (plan.status === "planned" && inspectedProject !== undefined) this.plannedManagedProjects.set(plan, inspectedProject);
+        return plan;
     }
 
     public describe(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
@@ -244,38 +305,50 @@ export class ArtifactBuilderRegistry {
     // capability diagnostic describe()/supportsConversionFrom() already report, checked again here so build()
     // is safe to call directly without a caller re-deriving the same check itself), then hands off to the
     // registered ArtifactBuilder. Every ArtifactTargetType has a registered production builder.
-    public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
-        try {
-            const plan = this.plan(source, target, {destinationPath});
-            this.assertExecutablePlan(plan);
-            this.assertTargetAvailable(target);
-            // Execution follows the planner's selected executable steps.  This keeps direct registry
-            // callers on exactly the same prerequisite path as CLI and Studio previews.
-            if (plan.steps.some((step) => step.kind === "generateOutcomeLibrary") && target === "outcomeLibrary") {
-                return this.buildManagedOutcomeFromRuntime(source, destinationPath, options);
-            }
-            if (plan.steps.some((step) => step.kind === "generateOutcomeLibrary") && target === "stakeAdapter") {
-                return this.buildStakeFromPlannedOutcome(source, destinationPath, options);
-            }
-        } catch (error) {
-            return Promise.reject(error);
+    public async build(target: ArtifactTargetType, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        const plan = await this.preparePlan(source, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
+        return this.executePlan(plan, source, destinationPath, options);
+    }
+
+    /** Execute only the steps selected by preparePlan; no lifecycle lookup re-decides reuse. */
+    public async executePlan(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        // Preserve the public asynchronous execution boundary even for a
+        // reuse-only plan, so adapters observe one lifecycle shape.
+        await Promise.resolve();
+        this.assertExecutablePlan(plan);
+        this.assertTargetAvailable(plan.target.kind as ArtifactTargetType);
+        const target = plan.target.kind as ArtifactTargetType;
+        const managed = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary") === undefined
+            ? undefined
+            : this.plannedManagedProjects.get(plan);
+        if (plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary") && managed === undefined) {
+            throw new Error("The selected managed Outcome Library plan is no longer available; prepare a new plan before executing it.");
+        }
+        if (target === "outcomeLibrary" && managed !== undefined) {
+            return {outputPath: managed.rootPath, requestedDestinationPath: destinationPath, reusedCompatibleProject: true, managedProjectRoots: [managed.rootPath]};
+        }
+        if (plan.steps.some((step) => step.kind === "generateOutcomeLibrary") && target === "outcomeLibrary") {
+            return this.buildManagedOutcomeFromRuntime(source, destinationPath, options);
+        }
+        if (target === "stakeAdapter" && (managed !== undefined || plan.steps.some((step) => step.kind === "generateOutcomeLibrary"))) {
+            return this.buildStakeFromPlannedOutcome(source, destinationPath, options, managed);
         }
         const builder = this.builders.get(target);
-        if (builder === undefined) return Promise.reject(new Error(this.unavailableTargetMessage(target)));
-
+        if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
         return builder.build(source, destinationPath, options);
     }
 
-    private buildStakeFromPlannedOutcome(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
-        return this.blueprintStakeWorkflow
-            .resolveOrGenerate(source, (compatibility) => this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility), options)
-            .then(({project: outcomeLibrary}) =>
-                this.build("stakeAdapter", outcomeLibrary, destinationPath, options).then((result) => ({
-                    ...result,
-                    prerequisiteProjectRoots: [outcomeLibrary.rootPath],
-                    managedProjectRoots: [outcomeLibrary.rootPath],
-                })),
-            );
+    private async buildStakeFromPlannedOutcome(source: PokieProject, destinationPath: string, options: ArtifactBuildOptions | undefined, reused?: PokieProject): Promise<ArtifactBuildResult> {
+        const outcomeLibrary = reused ?? (await this.blueprintStakeWorkflow
+            .resolveOrGenerate(source, (compatibility) => this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility), options, false)).project;
+        const builder = this.builders.get("stakeAdapter");
+        if (builder === undefined) throw new Error(this.unavailableTargetMessage("stakeAdapter"));
+        const result = await builder.build(outcomeLibrary, destinationPath, options);
+        return {
+            ...result,
+            prerequisiteProjectRoots: [outcomeLibrary.rootPath],
+            managedProjectRoots: [outcomeLibrary.rootPath],
+        };
     }
 
     private assertExecutablePlan(plan: ArtifactConversionPlan): void {
@@ -310,6 +383,15 @@ export class ArtifactBuilderRegistry {
                 : {}),
             managedProjectRoots: [outcomeLibrary.project.rootPath],
         };
+    }
+
+    private async inspectManagedOutcome(sourceRootPath: string, compatibility: import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility): Promise<{readonly project?: PokieProject; readonly staleReason?: string}> {
+        const service = this.managedOutcomeProjects as ManagedOutcomeProjectServicing & {
+            inspect?: (sourceRootPath: string, compatibility: import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility) => Promise<{readonly project?: PokieProject; readonly staleReason?: string}>;
+        };
+        if (service.inspect !== undefined) return service.inspect(sourceRootPath, compatibility);
+        const project = await service.findCompatible(sourceRootPath, compatibility);
+        return project === undefined ? {} : {project};
     }
 
     private unavailableTargetMessage(target: ArtifactTargetType): string {

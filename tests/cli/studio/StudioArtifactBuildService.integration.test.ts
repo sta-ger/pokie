@@ -51,12 +51,13 @@ describe("StudioArtifactBuildService (integration)", () => {
             sourceType: "tsPackage",
             outputPath: outcomeDir,
         });
-        await expect(service.build(packageRoot, "outcomeLibrary", secondOutcomeDir)).resolves.toEqual({
+        await expect(service.build(packageRoot, "outcomeLibrary", secondOutcomeDir)).resolves.toMatchObject({
             status: "ok",
             target: "outcomeLibrary",
             outputPath: secondOutcomeDir,
             outputKind: "directory",
             sourceType: "tsPackage",
+            plan: {status: "planned", steps: expect.arrayContaining([expect.objectContaining({kind: "generateOutcomeLibrary"})])},
         });
         await expect(service.build(packageRoot, "stakeAdapter", stakeDir)).resolves.toMatchObject({
             status: "ok",

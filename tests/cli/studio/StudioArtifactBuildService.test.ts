@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
-import {ArtifactBuildCancelledError, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactBuilderRegistry, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
+import {ArtifactBuildCancelledError, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactBuilderRegistry, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -212,12 +212,13 @@ describe("StudioArtifactBuildService", () => {
                 status: "ok",
                 outputPath: firstOutcomeDir,
             });
-            await expect(service.build(blueprintPath, "outcomeLibrary", secondOutcomeDir)).resolves.toEqual({
+            await expect(service.build(blueprintPath, "outcomeLibrary", secondOutcomeDir)).resolves.toMatchObject({
                 status: "ok",
                 target: "outcomeLibrary",
                 outputPath: secondOutcomeDir,
                 outputKind: "directory",
                 sourceType: "blueprint",
+                plan: {status: "planned", steps: expect.arrayContaining([expect.objectContaining({kind: "generateOutcomeLibrary"})])},
             });
             expect(fs.existsSync(path.join(secondOutcomeDir, "manifest.json"))).toBe(true);
         });
@@ -267,7 +268,7 @@ describe("StudioArtifactBuildService", () => {
             } as PokieProject;
             const resolver: ProjectResolving = {resolve: () => Promise.resolve(project)};
             const registry = {
-                supportsConversionFrom: () => true,
+                preparePlan: (_source: PokieProject, target: string) => Promise.resolve({status: "planned", target: {kind: target}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "publish", losses: [], oneWay: false}}),
                 build: async (_target: string, _source: PokieProject, _destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => {
                     options.onProgress?.({status: "preflight", preflight: {estimatedItemCount: BigInt(12), estimatedBytes: BigInt(34), complexityWarning: "Large publish"}});
                     options.onProgress?.({status: "running", completed: BigInt(1), total: BigInt(12), message: "Writing outcomes"});
@@ -275,6 +276,7 @@ describe("StudioArtifactBuildService", () => {
                     if (options.signal?.aborted) throw new ArtifactBuildCancelledError();
                     return {outputPath: path.join(workDir, "out")};
                 },
+                executePlan: (_plan: unknown, target: ArtifactTargetType, source: PokieProject, destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => registry.build(target, source, destination, options),
             } as unknown as ArtifactBuilderRegistry;
             service = new StudioArtifactBuildService("1.3.0", registry, resolver);
 
@@ -329,7 +331,7 @@ describe("StudioArtifactBuildService", () => {
                 }
             }
             const registry = {
-                supportsConversionFrom: () => true,
+                preparePlan: (_source: PokieProject, target: string) => Promise.resolve({status: "planned", target: {kind: target}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "publish", losses: [], oneWay: false}}),
                 build: async (_target: string, _source: PokieProject, destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => {
                     options.onProgress?.({status: "preflight", preflight: {estimatedItemCount: BigInt(512), estimatedBytes: BigInt(0), complexityWarning: "Large publish"}});
                     let result;
@@ -352,6 +354,7 @@ describe("StudioArtifactBuildService", () => {
                     if (result.manifest === undefined) throw new Error("Expected the real Outcome writer to publish a valid bundle.");
                     return {outputPath: destination, managedProjectRoots: [destination]};
                 },
+                executePlan: (_plan: unknown, target: ArtifactTargetType, source: PokieProject, destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => registry.build(target, source, destination, options),
             } as unknown as ArtifactBuilderRegistry;
             service = new StudioArtifactBuildService("1.3.0", registry, resolver, (projectRoot) => {
                 managedProjects.push(projectRoot);

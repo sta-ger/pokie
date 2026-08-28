@@ -1,4 +1,4 @@
-import type {ArtifactTargetType, ProjectType} from "pokie";
+import type {ArtifactConversionPlan, ArtifactTargetType, ProjectType} from "pokie";
 
 // POST /api/project/artifacts/build's own DTO -- mirrors ArtifactBuilderRegistry.build()'s own outcomes
 // exactly, the same ones "pokie build <project> --target <target>" itself can hit: a successful build's
@@ -13,6 +13,9 @@ export type StudioArtifactBuildView =
           readonly outputPath: string;
           readonly outputKind: "file" | "directory";
           readonly sourceType: ProjectType;
+          // The exact server-selected executable plan, retained with the
+          // result so the browser never infers reuse or prerequisites.
+          readonly plan: ArtifactConversionPlan;
           readonly requestedDestinationPath?: string;
           readonly reusedCompatibleProject?: boolean;
           readonly preflight?: {readonly estimatedItemCount?: string; readonly estimatedBytes?: string; readonly complexityWarning?: string};

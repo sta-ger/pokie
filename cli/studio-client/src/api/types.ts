@@ -1242,8 +1242,8 @@ export type StudioArtifactTargetType = "tsPackage" | "outcomeLibrary" | "stakeAd
 // another source/target table in the browser.
 export type StudioArtifactConversionPlan = {
     status: "planned" | "unavailable" | "conflict";
-    source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; gameId?: string; gameVersion?: string; manifestIdentity?: string}};
-    target: {kind: string; canonicalLocation?: string; capabilities: string[]; configurationProvenance?: {generationSemantics?: "exact" | "boundedSample"}};
+    source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; gameId?: string; gameVersion?: string; manifestIdentity?: string; sampleCount?: string; sampleSeed?: string}};
+    target: {kind: string; canonicalLocation?: string; capabilities: string[]; configurationProvenance?: {generationSemantics?: "exact" | "boundedSample"; sampleCount?: string; sampleSeed?: string}};
     steps: {kind: "publish" | "materializeRuntime" | "generateOutcomeLibrary" | "reuseManagedOutcomeLibrary"; choice: "materialize" | "reuse" | "publish"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses?: string[]}[];
     preflight: {destinationKind: "file" | "directory"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses: string[]; oneWay: boolean};
     diagnostic?: {code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict"; failedEdge: {from: StudioProjectType; to: StudioArtifactTargetType}; message: string; recovery: string};
@@ -1272,6 +1272,7 @@ export type StudioArtifactBuildView =
           outputPath: string;
           outputKind: "file" | "directory";
           sourceType: StudioProjectType;
+          plan: StudioArtifactConversionPlan;
           preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
       }
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string}

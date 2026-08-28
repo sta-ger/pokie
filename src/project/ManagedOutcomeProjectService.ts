@@ -28,6 +28,11 @@ export interface ManagedOutcomeProjectServicing {
     registerAndOpen(sourceRootPath: string, rootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject>;
 }
 
+export type ManagedOutcomeInspection = {
+    readonly project?: PokieProject;
+    readonly staleReason?: string;
+};
+
 type RegisteredOutcomeProject = OutcomeProjectCompatibility & {readonly rootPath: string};
 type RegistryDocument = {readonly projects: readonly RegisteredOutcomeProject[]};
 
@@ -92,6 +97,23 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
         return legacyProject;
     }
 
+    // Planning needs to distinguish "nothing has been generated yet" from a
+    // registered artifact that is no longer safe to reuse.  Do this read-only
+    // before a planner advertises reuse; execution still uses the exact plan
+    // and never re-runs this lookup to make a different choice.
+    public async inspect(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): Promise<ManagedOutcomeInspection> {
+        const document = await this.readRegistry(sourceRootPath);
+        if (document.projects.length === 0) return {};
+        const matching = document.projects.find((entry) => sameCompatibility(entry, compatibility));
+        if (matching === undefined) {
+            return {staleReason: "the registered managed Outcome Library has different game, configuration, POKIE version, or generation provenance"};
+        }
+        const project = await this.openIfCompatible(matching.rootPath, compatibility);
+        return project === undefined
+            ? {staleReason: "the registered managed Outcome Library was moved, malformed, or no longer matches its manifest"}
+            : {project};
+    }
+
     public allocateRoot(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): string {
         return path.join(
             path.dirname(sourceRootPath),
@@ -142,6 +164,7 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
                     gameId: compatibility.gameId,
                     gameVersion: compatibility.gameVersion,
                     manifestIdentity: `${compatibility.gameId}@${compatibility.gameVersion}`,
+                    ...(generationProvenance(compatibility.generation)),
                 },
             };
         } catch {
@@ -190,6 +213,14 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
     private registryPath(sourceRootPath: string): string {
         return path.join(path.dirname(sourceRootPath), ".pokie", "managed-outcome-projects.json");
     }
+}
+
+function generationProvenance(generation: string | undefined): Pick<NonNullable<PokieProject["configurationProvenance"]>, "generationSemantics" | "sampleCount" | "sampleSeed"> {
+    if (generation === undefined || generation === "exact") return {generationSemantics: "exact"};
+    const [, sampleCount, sampleSeed] = (/^sample:([^:]+):(.*)$/).exec(generation) ?? [];
+    return sampleCount === undefined || sampleSeed === undefined
+        ? {generationSemantics: "boundedSample"}
+        : {generationSemantics: "boundedSample", sampleCount, sampleSeed};
 }
 
 function sameCompatibility(left: OutcomeProjectCompatibility, right: OutcomeProjectCompatibility): boolean {

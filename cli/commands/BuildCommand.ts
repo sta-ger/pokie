@@ -2,6 +2,7 @@ import {
     ArtifactBuilderRegistry,
     ArtifactBuildConflictError,
     type ArtifactBuildOptions,
+    type ArtifactConversionPlan,
     ArtifactTargetType,
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
     computeGameBlueprintHash,
@@ -171,7 +172,10 @@ export class BuildCommand implements CliCommandHandling {
         }
 
         const out = options.out ?? this.resolveDestination(project.rootPath, options.target);
-        const conversionPlan = this.registry.plan(project, options.target, {destinationPath: out});
+        const conversionPlan = await this.registry.preparePlan(project, options.target, {
+            destinationPath: out,
+            outcomeLibraryGeneration: generation,
+        });
         if (conversionPlan.status === "unavailable") {
             const compatibility = describeArtifactConversionPlanDiagnostic(conversionPlan);
             throw new Error(`${conversionPlan.diagnostic!.message} Next: ${conversionPlan.diagnostic!.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
@@ -193,10 +197,10 @@ export class BuildCommand implements CliCommandHandling {
         }
 
         if (options.target === "tsPackage" && project.type === "blueprint") {
-            return this.buildTsPackageFromBlueprint(project, out, options.dryRun ?? false);
+            return this.buildTsPackageFromBlueprint(project, out, options.dryRun ?? false, conversionPlan);
         }
 
-        return this.buildArtifact(options.target, project, out, options.dryRun ?? false, generation);
+        return this.buildArtifact(options.target, project, out, options.dryRun ?? false, generation, conversionPlan);
     }
 
     // The default --out when it's omitted: a `target`-named sibling of the resolved project's own rootPath --
@@ -217,7 +221,7 @@ export class BuildCommand implements CliCommandHandling {
     // load -> validate -> materialize reels -> generate sequence, so the CLI must not run a second, subtly
     // different copy before calling the registry. Dry runs are intentionally read-only previews and therefore
     // retain their own validation/materialization probe without producing an artifact.
-    private async buildTsPackageFromBlueprint(project: PokieProject, out: string, dryRun: boolean): Promise<number> {
+    private async buildTsPackageFromBlueprint(project: PokieProject, out: string, dryRun: boolean, plan: ArtifactConversionPlan): Promise<number> {
         if (dryRun) {
             const blueprint = this.loadBlueprint(project.rootPath);
             const issues = this.validator.validate(blueprint);
@@ -257,7 +261,7 @@ export class BuildCommand implements CliCommandHandling {
 
         let result: {readonly outputPath: string};
         try {
-            result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.build("tsPackage", project, out, lifecycle));
+            result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.executePlan(plan, project, out, lifecycle));
         } catch (error) {
             // Reel-strip constraints are an authored Blueprint condition, not an invocation failure.
             // The registry remains the only build path; this CLI boundary merely turns its structured
@@ -307,6 +311,7 @@ export class BuildCommand implements CliCommandHandling {
         out: string,
         dryRun: boolean,
         generation: ArtifactBuildOptions["outcomeLibraryGeneration"],
+        plan: ArtifactConversionPlan,
     ): Promise<number> {
         if (dryRun) {
             console.log(`Dry run -- would build "${target}" from "${project.rootPath}" (${project.provenance}) to "${out}". No files written.`);
@@ -315,7 +320,7 @@ export class BuildCommand implements CliCommandHandling {
 
         let result;
         try {
-            result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.build(target, project, out, {...lifecycle, ...(generation !== undefined ? {outcomeLibraryGeneration: generation} : {})}));
+            result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.executePlan(plan, project, out, {...lifecycle, ...(generation !== undefined ? {outcomeLibraryGeneration: generation} : {})}));
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
                 throw new Error(describeDestinationConflict(target, error.message));

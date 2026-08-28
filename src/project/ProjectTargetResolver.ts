@@ -15,6 +15,7 @@ import {WasmProjectTargetAdapter, wasmComponentManifestSidecarPath} from "./Wasm
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
+import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
 import type {ArtifactConfigurationProvenance} from "./ArtifactConversionPlanner.js";
 
 // The one file extension resolve() explicitly rejects rather than silently reporting undefined for — see its
@@ -165,6 +166,17 @@ export class ProjectTargetResolver implements ProjectResolving {
                     gameId: manifest.game.id,
                     gameVersion: manifest.game.version,
                     manifestIdentity: `${manifest.game.id}@${manifest.game.version}`,
+                };
+            }
+            if (type === "tsPackage") {
+                const game = await loadPokieGame(rootPath);
+                const manifest = game.getManifest();
+                const configurationHash = game.getConfigHash?.();
+                return {
+                    ...(configurationHash === undefined ? {} : {configurationHash}),
+                    gameId: manifest.id,
+                    gameVersion: manifest.version,
+                    manifestIdentity: `${manifest.id}@${manifest.version}`,
                 };
             }
         } catch {
