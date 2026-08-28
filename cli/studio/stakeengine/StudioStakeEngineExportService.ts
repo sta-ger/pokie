@@ -19,6 +19,7 @@ import type {OutcomeLibrarySelector} from "../outcomeLibrary/OutcomeLibrarySelec
 import {resolveProjectDirectory} from "../outcomeLibrary/resolveProjectDirectory.js";
 import {canonicalizeOutcomeIdsForStakeEngine} from "./canonicalizeOutcomeIdsForStakeEngine.js";
 import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
+import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
 import type {StudioStakeEngineExportModeInput} from "./StudioStakeEngineExportModeInput.js";
 import type {StudioStakeEngineExportValidateView} from "./StudioStakeEngineExportValidateView.js";
 import type {StudioStakeEngineExportView} from "./StudioStakeEngineExportView.js";
@@ -102,6 +103,11 @@ export class StudioStakeEngineExportService {
         if (plan?.status === "unavailable") {
             return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
         }
+        const selectedSource = this.selectedBundleSource(projectRoot, modes);
+        const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "stakeAdapter");
+        if (planDrift !== undefined) {
+            return {status: "load-error", error: planDrift, plan};
+        }
         const loaded = await this.loadModes(projectRoot, modes);
         if (loaded.status === "load-error") {
             return {...loaded, ...(plan === undefined ? {} : {plan})};
@@ -157,6 +163,11 @@ export class StudioStakeEngineExportService {
         }
         if (plan?.status === "unavailable") {
             return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
+        }
+        const selectedSource = this.selectedBundleSource(projectRoot, modes);
+        const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "stakeAdapter", path.resolve(projectRoot, outDir));
+        if (planDrift !== undefined) {
+            return {status: "load-error", error: planDrift, plan};
         }
         const resolvedOutDir = resolveProjectDirectory(projectRoot, outDir, this.realpath);
         if (resolvedOutDir.status === "error") {
@@ -251,16 +262,23 @@ export class StudioStakeEngineExportService {
         modes: readonly StudioStakeEngineExportModeInput[],
         destinationPath: string | undefined,
     ) {
+        const selectedSource = this.selectedBundleSource(projectRoot, modes);
+        if (selectedSource !== undefined) {
+            return destinationPath === undefined
+                ? this.planning.prepare(selectedSource, "stakeAdapter")
+                : this.planning.prepare(selectedSource, "stakeAdapter", destinationPath);
+        }
+        // A raw JSON/Stake selector or multiple bundle roots is not one durable
+        // POKIE artifact identity.  Do not attach a project-root plan to an
+        // action that will consume a different selector; its reader remains the
+        // authority for that explicitly external input.
+        return Promise.resolve(undefined);
+    }
+
+    private selectedBundleSource(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): string | undefined {
         const bundleDirs = modes.map((mode) => mode.librarySelector).filter((selector): selector is Extract<OutcomeLibrarySelector, {kind: "bundle"}> => selector.kind === "bundle");
         const uniqueBundleDirs = Array.from(new Set(bundleDirs.map((selector) => path.resolve(projectRoot, selector.bundleDir))));
-        if (bundleDirs.length === modes.length && uniqueBundleDirs.length === 1) {
-            return destinationPath === undefined
-                ? this.planning.prepare(uniqueBundleDirs[0], "stakeAdapter")
-                : this.planning.prepare(uniqueBundleDirs[0], "stakeAdapter", destinationPath);
-        }
-        return destinationPath === undefined
-            ? this.planning.prepare(projectRoot, "stakeAdapter")
-            : this.planning.prepare(projectRoot, "stakeAdapter", destinationPath);
+        return bundleDirs.length === modes.length && uniqueBundleDirs.length === 1 ? uniqueBundleDirs[0] : undefined;
     }
 
     // A bundle is the only selector format that records its producing Project configuration. JSON

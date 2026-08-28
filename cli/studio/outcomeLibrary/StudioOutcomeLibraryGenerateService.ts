@@ -20,6 +20,7 @@ import fs from "fs";
 import path from "path";
 import {resolveProjectDirectory} from "./resolveProjectDirectory.js";
 import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
+import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
 import type {StudioOutcomeLibraryGenerateEstimateView} from "./StudioOutcomeLibraryGenerateEstimateView.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "./StudioOutcomeLibraryGenerateResultView.js";
 import type {StudioOutcomeLibraryRegistryView} from "./StudioOutcomeLibraryRegistryView.js";
@@ -188,6 +189,17 @@ export class StudioOutcomeLibraryGenerateService {
         }
         if (plan?.status === "unavailable") {
             return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
+        }
+        const planDrift = describePreparedArtifactPlanDrift(plan, projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration.generationSemantics);
+        if (planDrift !== undefined) {
+            return {status: "load-error", error: planDrift, ...(plan === undefined ? {} : {plan})};
+        }
+        if (plan?.status === "planned" && !plan.steps.some((step) => step.kind === "generateOutcomeLibrary")) {
+            return {
+                status: "load-error",
+                error: "The prepared conversion reuses an existing Outcome Library, but this action requested regeneration. Refresh the preview with the requested generation action.",
+                plan,
+            };
         }
         let game: PokieGame;
         try {

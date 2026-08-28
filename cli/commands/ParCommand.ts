@@ -2,6 +2,7 @@ import {Command} from "commander";
 import path from "path";
 import {
     ArtifactBuilderRegistry,
+    ArtifactConversionPlanner,
     ArtifactDestinationCheck,
     describeUnsupportedProjectOperation,
     GameBlueprint,
@@ -15,6 +16,7 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     ValidationIssue,
+    describeArtifactConversionPlanDiagnostic,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
@@ -42,6 +44,7 @@ export class ParCommand implements CliCommandHandling {
     private readonly writeFile: BlueprintFileWriting;
     private readonly resolveProject: ProjectResolving;
     private readonly checkDestination: ParSheetDestinationChecking;
+    private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
         pokieVersion: string,
@@ -194,6 +197,12 @@ export class ParCommand implements CliCommandHandling {
     private async checkImportTarget(inputPath: string): Promise<void> {
         const project = await this.resolveProject.resolve(inputPath);
         if (project === undefined || project.type === "parWorkbook") {
+            if (project?.type === "parWorkbook") {
+                const plan = this.planner.plan(project, "parWorkbook");
+                if (plan.status !== "planned") {
+                    throw new Error(describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "The PAR workbook cannot be imported.");
+                }
+            }
             return;
         }
         const diagnostic = describeUnsupportedProjectOperation(project, PAR_IMPORT_OPERATION);

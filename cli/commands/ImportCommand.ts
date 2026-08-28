@@ -1,5 +1,5 @@
-import path from "path";
 import {Command} from "commander";
+import {ArtifactConversionPlanner, ProjectResolving, ProjectTargetResolver, describeArtifactConversionPlanDiagnostic} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {ParCommand} from "./ParCommand.js";
 import {StakeEngineCommand} from "./StakeEngineCommand.js";
@@ -18,10 +18,18 @@ type ImportOptions = {input: string; out?: string; format?: ImportFormat};
 export class ImportCommand implements CliCommandHandling {
     private readonly par: ParCommand;
     private readonly stake: StakeEngineCommand;
+    private readonly resolveProject: ProjectResolving;
+    private readonly planner: ArtifactConversionPlanner;
 
-    constructor(pokieVersion: string) {
+    constructor(
+        pokieVersion: string,
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        planner: ArtifactConversionPlanner = new ArtifactConversionPlanner(),
+    ) {
         this.par = new ParCommand(pokieVersion);
         this.stake = new StakeEngineCommand(pokieVersion);
+        this.resolveProject = resolveProject;
+        this.planner = planner;
     }
 
     public getName(): string {
@@ -46,9 +54,25 @@ export class ImportCommand implements CliCommandHandling {
             }
             throw error;
         }
-        // Filesystems routinely preserve a producer's uppercase `.XLSX` suffix. Extension casing
-        // is not a workbook-format distinction, so normalize it before selecting the PAR reader.
-        const delegate = path.extname(options.input).toLowerCase() === ".xlsx" ? this.par : this.stake;
+        return this.delegate(options);
+    }
+
+    private async delegate(options: ImportOptions): Promise<number> {
+        const source = await this.resolveProject.resolve(options.input);
+        if (source === undefined || (source.type !== "parWorkbook" && source.type !== "stakeAdapter")) {
+            throw new Error(`"${options.input}" is not a recognized PAR workbook or POKIE-produced Stake Engine export. ${USAGE}`);
+        }
+        // Import has intentionally different durable outputs (Blueprint for PAR,
+        // canonical Outcome Library for Stake), so it does not pretend that it is
+        // a reverse build edge.  It still obtains recognition, provenance and its
+        // true readable-source boundary from the shared planner before choosing the
+        // format-specific reader.
+        const target = source.type === "parWorkbook" ? "parWorkbook" : "stakeAdapter";
+        const plan = this.planner.plan(source, target);
+        if (plan.status !== "planned") {
+            throw new Error(describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "This import source is unavailable.");
+        }
+        const delegate = source.type === "parWorkbook" ? this.par : this.stake;
         // `import` owns its public options before dispatching to a format-specific command. Rebuild
         // the delegated argv from the parsed public contract so every delegate receives exactly
         // the public options it supports, rather than the original, unvalidated token sequence.

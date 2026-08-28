@@ -31,7 +31,7 @@ describe("StudioStakeEngineExportService", () => {
     });
 
     describe("validate", () => {
-        it("returns an unavailable prepared plan before loading selectors", async () => {
+        it("does not attach a project-root plan to an external JSON selector", async () => {
             const unavailable: ArtifactConversionPlan = {
                 ...plannedStakeExport,
                 status: "unavailable",
@@ -53,10 +53,11 @@ describe("StudioStakeEngineExportService", () => {
             );
 
             await expect(service.validate(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}]))
-                .resolves.toMatchObject({status: "unavailable", plan: unavailable});
+                .resolves.toMatchObject({status: "load-error"});
+            expect(planning.prepare).not.toHaveBeenCalled();
         });
 
-        it("returns the planner destination conflict before loading any selector", async () => {
+        it("does not attach a project-root conflict to an external JSON selector", async () => {
             const conflict: ArtifactConversionPlan = {
                 ...plannedStakeExport,
                 status: "conflict",
@@ -79,10 +80,11 @@ describe("StudioStakeEngineExportService", () => {
 
             const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}], "stakeengine", false);
 
-            expect(view).toMatchObject({status: "conflict", overwritable: false, plan: conflict});
+            expect(view).toMatchObject({status: "load-error"});
+            expect(planning.prepare).not.toHaveBeenCalled();
         });
 
-        it("serializes the same planner decision during validate and export", async () => {
+        it("does not claim a JSON selector was planned from the project root", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
             writeLibraryFile(tmpRoot, "base.json", library);
             const planning = {prepare: jest.fn(() => Promise.resolve(plannedStakeExport))};
@@ -102,10 +104,11 @@ describe("StudioStakeEngineExportService", () => {
             const validation = await service.validate(tmpRoot, modes);
             const exported = await service.export(tmpRoot, modes, "stakeengine", false);
 
-            expect(validation).toMatchObject({status: "ok", plan: plannedStakeExport});
-            expect(exported).toMatchObject({status: "ok", plan: plannedStakeExport});
-            expect(planning.prepare).toHaveBeenNthCalledWith(1, tmpRoot, "stakeAdapter");
-            expect(planning.prepare).toHaveBeenNthCalledWith(2, tmpRoot, "stakeAdapter", path.resolve(tmpRoot, "stakeengine"));
+            expect(validation).toMatchObject({status: "ok"});
+            expect(exported).toMatchObject({status: "ok"});
+            expect("plan" in validation).toBe(false);
+            expect("plan" in exported).toBe(false);
+            expect(planning.prepare).not.toHaveBeenCalled();
         });
 
         it("returns a clean diagnostics view with per-mode provenance for a real library", async () => {

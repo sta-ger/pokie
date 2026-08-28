@@ -237,10 +237,6 @@ function TargetCard({
 }) {
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
     const staticExportSource = resolveOutcomeLibrarySource();
-    const canRunStaticExport = staticExportSource !== undefined;
-    // A remote check consumes the same canonical source as the static export.  Do not make a
-    // capability-eligible target look runnable while its concrete prerequisite is still absent.
-    const canRunRemoteDeployment = staticExportSource !== undefined;
     const staticExportModeName = staticExportSource?.modeName ?? defaultModeName;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
@@ -364,12 +360,9 @@ function TargetCard({
 
             {card.kind === "staticExport" && (
                 <>
-                    <Button size="xs" mt="sm" onClick={onRunStaticExport} loading={staticExportRun.status === "running"} disabled={!canRunStaticExport}>
+                    <Button size="xs" mt="sm" onClick={onRunStaticExport} loading={staticExportRun.status === "running"}>
                         Run Stake Engine Export ({staticExportModeName})
                     </Button>
-                    {!canRunStaticExport && staticExportRun.status !== "ok" && staticExportRun.status !== "conflict" && (
-                        <EmptyState message="Generate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports." />
-                    )}
                     {staticExportRun.status === "error" && (
                         <>
                             <ErrorState message={staticExportRun.message} />
@@ -549,7 +542,7 @@ function TargetCard({
                         size="xs"
                         mt="sm"
                         loading={isActiveTarget && deployment.runLoading}
-                        disabled={card.deploymentTarget === undefined || !canRunRemoteDeployment}
+                        disabled={card.deploymentTarget === undefined}
                         onClick={() => {
                             if (card.deploymentTarget !== undefined) {
                                 deployment.run(false, card.deploymentTarget, resolveDeploymentModes());
@@ -558,18 +551,13 @@ function TargetCard({
                     >
                         Check compatibility
                     </Button>
-                    {(!canRunRemoteDeployment || card.deploymentTarget === undefined) && (
-                        <Text size="sm" c="dimmed" mt={4}>
-                            Generate a compatible outcome library above in Build/Export before checking a configured remote destination.
-                        </Text>
-                    )}
                     {previewedOk && (
                         <Button
                             size="xs"
                             mt="xs"
                             ml="xs"
                             loading={isActiveTarget && deployment.runLoading}
-                            disabled={!canRunRemoteDeployment}
+                            disabled={card.deploymentTarget === undefined}
                             onClick={() => deployment.run(true, card.deploymentTarget, resolveDeploymentModes())}
                         >
                             Publish

@@ -22,6 +22,7 @@ import type {StudioDeploymentTargetSummary} from "./StudioDeploymentTargetSummar
 import {toStudioDeploymentRunView} from "./toStudioDeploymentRunView.js";
 import type {ValidatedDeploymentRunRequest} from "./validateDeploymentRunRequest.js";
 import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
+import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
 
 const DEPLOYMENT_OUTPUT_DIRNAME = "deployment";
 
@@ -169,6 +170,11 @@ export class StudioDeploymentService {
         if (plan?.status !== undefined && plan.status !== "planned") {
             return {status: "load-error", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library deployment is unavailable.", plan};
         }
+        const selectedSource = this.selectedBundleSource(projectRoot, request.modes);
+        const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "outcomeLibrary");
+        if (planDrift !== undefined) {
+            return {status: "load-error", error: planDrift, plan};
+        }
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
         if (target === undefined) {
@@ -236,11 +242,19 @@ export class StudioDeploymentService {
      * a durable planner source, so deployment cannot preview a project-root plan
      * and then consume an unrelated selected bundle. */
     private prepareForSelectedBundles(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): Promise<import("pokie").ArtifactConversionPlan | undefined> {
+        const selectedSource = this.selectedBundleSource(projectRoot, modes);
+        if (selectedSource !== undefined) {
+            return this.planning.prepare(selectedSource, "outcomeLibrary");
+        }
+        // Do not decorate an external or mixed selector request with a plan for
+        // the open project.  That would make the response claim provenance for
+        // a source the deployment never reads.
+        return Promise.resolve(undefined);
+    }
+
+    private selectedBundleSource(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): string | undefined {
         const bundleDirs = modes.map((mode) => mode.librarySelector).filter((selector): selector is Extract<typeof selector, {kind: "bundle"}> => selector.kind === "bundle");
         const uniqueBundleDirs = Array.from(new Set(bundleDirs.map((selector) => path.resolve(projectRoot, selector.bundleDir))));
-        if (bundleDirs.length === modes.length && uniqueBundleDirs.length === 1) {
-            return this.planning.prepare(uniqueBundleDirs[0], "outcomeLibrary");
-        }
-        return this.planning.prepare(projectRoot, "outcomeLibrary");
+        return bundleDirs.length === modes.length && uniqueBundleDirs.length === 1 ? uniqueBundleDirs[0] : undefined;
     }
 }

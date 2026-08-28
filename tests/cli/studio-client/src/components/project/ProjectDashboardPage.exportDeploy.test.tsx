@@ -148,7 +148,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled();
     });
 
-    it("keeps fresh-profile remote delivery visibly disabled and recovers only through the reachable Build/Export outcome-library generator", async () => {
+    it("leaves target availability to the server while still offering the reachable outcome-library generator", async () => {
         const user = userEvent.setup();
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
@@ -166,11 +166,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
         expect(await within(remoteSection).findByText("Remote delivery is not set up")).toBeInTheDocument();
         expect(within(remoteSection).getByRole("button", {name: "Check compatibility"})).toBeDisabled();
-        expect(
-            within(remoteSection).getByText(
-                "Generate a compatible outcome library above in Build/Export before checking a configured remote destination.",
-            ),
-        ).toBeInTheDocument();
+        expect(within(remoteSection).queryByText(/Generate a compatible outcome library above/)).not.toBeInTheDocument();
         expect(within(remoteSection).queryByText(/Add a remote delivery destination/)).not.toBeInTheDocument();
         expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled();
     });
@@ -297,7 +293,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.queryByRole("button", {name: "Preview artifacts"})).not.toBeInTheDocument();
     });
 
-    it("keeps a remote compatibility action disabled until the project has a compatible outcome library, with a concrete recovery path", async () => {
+    it("does not locally gate remote compatibility on registry-derived library readiness", async () => {
         const user = userEvent.setup();
         const routes = {
             ...BASE_ROUTES,
@@ -315,12 +311,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
-        expect(await within(remoteSection).findByRole("button", {name: "Check compatibility"})).toBeDisabled();
-        expect(
-            within(remoteSection).getByText(
-                "Generate a compatible outcome library above in Build/Export before checking a configured remote destination.",
-            ),
-        ).toBeInTheDocument();
+        expect(await within(remoteSection).findByRole("button", {name: "Check compatibility"})).toBeEnabled();
 
         const outcomeLibrarySection = screen.getByText("Outcome libraries").closest("fieldset") as HTMLElement;
         expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled();
