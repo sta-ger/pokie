@@ -170,6 +170,58 @@ describe("StudioArtifactBuildService", () => {
             expect(result.outputPath).toBe(explicitOut);
         });
 
+        it("rolls back PAR terminal, durable evidence, generated prerequisite, and registrations when Studio registration fails", async () => {
+            const outputPath = path.join(workDir, "package");
+            const importedBlueprintPath = path.join(outputPath, ".pokie", "par-import", "imported.blueprint.json");
+            const prerequisitePath = path.join(workDir, "generated-outcome");
+            const project: PokieProject = {
+                type: "parWorkbook",
+                rootPath: path.join(workDir, "source.xlsx"),
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            fs.writeFileSync(project.rootPath, "source");
+            const resolver: ProjectResolving = {resolve: () => Promise.resolve(project)};
+            const registry = {
+                preparePlan: (_source: PokieProject, target: string) => Promise.resolve({status: "planned", target: {kind: target}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "publish", losses: [], oneWay: false}}),
+                executePlan: () => {
+                    fs.mkdirSync(outputPath);
+                    fs.mkdirSync(path.dirname(importedBlueprintPath), {recursive: true});
+                    fs.writeFileSync(path.join(outputPath, "package.json"), "terminal artifact");
+                    fs.writeFileSync(importedBlueprintPath, "imported blueprint");
+                    fs.writeFileSync(`${importedBlueprintPath}.conversion-evidence.json`, "evidence");
+                    fs.mkdirSync(prerequisitePath);
+                    return Promise.resolve({
+                        outputPath,
+                        importedBlueprintPath,
+                        conversionEvidencePath: path.join(path.dirname(importedBlueprintPath), "conversion-evidence.json"),
+                        prerequisiteProjectRoots: [prerequisitePath],
+                        managedProjectRoots: [prerequisitePath],
+                    });
+                },
+            } as unknown as ArtifactBuilderRegistry;
+            const unregistered: string[] = [];
+            service = new StudioArtifactBuildService(
+                "1.3.0",
+                registry,
+                resolver,
+                () => Promise.reject(new Error("registry unavailable")),
+                undefined,
+                undefined,
+                (root) => {
+                    unregistered.push(root);
+                    return Promise.resolve();
+                },
+            );
+
+            await expect(service.build(project.rootPath, "tsPackage", outputPath)).resolves.toMatchObject({status: "error"});
+
+            expect(fs.existsSync(outputPath)).toBe(false);
+            expect(fs.existsSync(importedBlueprintPath)).toBe(false);
+            expect(fs.existsSync(prerequisitePath)).toBe(false);
+            expect(unregistered).toEqual(expect.arrayContaining([outputPath, importedBlueprintPath, prerequisitePath]));
+        });
+
         it("builds Blueprint -> Stake through the shared registry and registers the generated Outcome Project", async () => {
             const blueprintPath = writeBlueprintFile();
             const registeredProjects: string[] = [];

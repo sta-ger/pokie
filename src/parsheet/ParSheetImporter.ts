@@ -214,11 +214,16 @@ export class ParSheetImporter implements ParSheetImporting {
             }
         }
         // A canonical export has matching Meta provenance and no importer
-        // transformation warning/error.  Informational provenance-present is
-        // intentionally not a loss boundary.
+        // transformation.  Validation warnings can describe the playable
+        // model (for example a payout recommendation) without changing any
+        // PAR-representable field; ignored/formula/default facts are the
+        // actual loss boundary. Errors remain ineligible even if a malformed
+        // workbook happens to carry a matching hash.
         const importedBlueprintHash = computeBlueprintHash(blueprint);
         const provenanceHashMatches = provenance?.blueprintHash === importedBlueprintHash;
-        const losslessEligible = provenanceHashMatches && issues.every((issue) => issue.severity === "info" && issue.code === "parsheet-provenance-present");
+        const losslessEligible = provenanceHashMatches &&
+            !issues.some((issue) => issue.severity === "error") &&
+            !facts.some((fact) => fact.kind === "ignored" || fact.kind === "formulaMaterialized" || fact.kind === "inferredOrDefaulted");
         return {blueprint, provenance, issues, conversionEvidence: {metaSheet, facts, losslessEligible, importedBlueprintHash, provenanceHashMatches}};
     }
 

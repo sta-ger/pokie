@@ -304,6 +304,11 @@ describe("ParCommand", () => {
                     const sourceContents = JSON.stringify(blueprint, null, 4);
                     fs.writeFileSync(sourcePath, sourceContents);
 
+                    expect(await command.run(["export", sourcePath, "--out", workbookPath, "--dry-run"])).toBe(0);
+                    expect(logSpy.mock.calls.flat().join("\n")).toContain(
+                        name === "generated" ? "parsheet-generated-reels-materialized" : "parsheet-weighted-reels-materialized",
+                    );
+                    expect(fs.existsSync(workbookPath)).toBe(false);
                     expect(await command.run(["export", sourcePath, "--out", workbookPath])).toBe(0);
                     expect(fs.existsSync(workbookPath)).toBe(true);
                     expect(fs.readFileSync(sourcePath, "utf-8")).toBe(sourceContents);

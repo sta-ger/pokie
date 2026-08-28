@@ -5,7 +5,7 @@ import {ExportCommand} from "../../cli/commands/ExportCommand.js";
 import {ImportCommand} from "../../cli/commands/ImportCommand.js";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
-import {ArtifactBuilderRegistry, GameBlueprint, ParSheetImporter, ProjectTargetResolver} from "pokie";
+import {ArtifactBuilderRegistry, computeBlueprintHash, GameBlueprint, ParSheetImporter, ProjectTargetResolver} from "pokie";
 
 // End-to-end round trip for "pokie par export"/"pokie par import": the actual example blueprint
 // shipped in examples/parsheets/ (see also examples/parsheets/README.md), exported to a real .xlsx
@@ -49,6 +49,15 @@ describe("CLI workflow (integration): pokie par export -> pokie par import round
 
         const roundTripped = JSON.parse(fs.readFileSync(roundTrippedBlueprintPath, "utf-8"));
         expect(roundTripped).toEqual(originalBlueprint);
+        const evidence = JSON.parse(fs.readFileSync(`${roundTrippedBlueprintPath}.conversion-evidence.json`, "utf-8"));
+        expect(evidence).toMatchObject({
+            sourceWorkbook: parSheetPath,
+            provenance: {blueprintHash: computeBlueprintHash(originalBlueprint)},
+            importedBlueprintHash: computeBlueprintHash(originalBlueprint),
+            provenanceHashMatches: true,
+            losslessEligible: true,
+        });
+        expect(evidence.metaSheet).toEqual(expect.any(Array));
     });
 
     it("imports the already-shipped starter.par.xlsx back to the same blueprint, with no error-level issues", async () => {
@@ -102,6 +111,7 @@ describe("CLI workflow (integration): pokie par export -> pokie par import round
         const command = new BuildCommand("1.3.0", undefined, undefined, resolver, new ArtifactBuilderRegistry("1.3.0"));
 
         expect(await command.run([generatedPath, "--target", "parWorkbook", "--dry-run"])).toBe(0);
+        expect(await new ParCommand("1.3.0").run(["export", generatedPath, "--out", path.join(workDir, "generated.preview.xlsx"), "--dry-run"])).toBe(0);
         expect(fs.existsSync(defaultWorkbook)).toBe(false);
         expect(await command.run([generatedPath, "--target", "parWorkbook"])).toBe(0);
         expect(fs.existsSync(defaultWorkbook)).toBe(true);
@@ -115,6 +125,10 @@ describe("CLI workflow (integration): pokie par export -> pokie par import round
             paytable: generatedBlueprint.paytable,
         });
         expect(imported.blueprint.reelStrips).toHaveLength(2);
+        // The literal workbook is valid, but it cannot recover generated
+        // authoring semantics. The export preflight makes that boundary
+        // explicit rather than presenting this as a lossless round trip.
+        expect((console.log as jest.Mock).mock.calls.flat().join("\n")).toContain("parsheet-generated-reels-materialized");
         expect(JSON.parse(fs.readFileSync(generatedPath, "utf-8"))).toEqual(generatedBlueprint);
 
         const conflictWorkbook = path.join(workDir, "conflict.xlsx");

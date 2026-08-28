@@ -192,6 +192,10 @@ export class StudioBlueprintService {
     private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly pathResolver: PokiePathResolver;
     private readonly stagedArtwork = new Map<string, string>();
+    // A managed save chooses a fresh Blueprint path.  Retain the exact files
+    // it copied until registration settles, so a failed registration removes
+    // only this operation's artwork rather than a pre-existing assets folder.
+    private readonly managedSaveArtifacts = new Map<string, {readonly artworkPaths: readonly string[]; readonly directoryCreated: boolean}>();
     private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
@@ -451,9 +455,11 @@ export class StudioBlueprintService {
             return {status: "unavailable", error: destination.message};
         }
 
+        const directoryCreated = !fs.existsSync(destination.directory);
+        const artworkPaths: string[] = [];
         try {
             fs.mkdirSync(destination.directory, {recursive: true});
-            this.materializeSymbolArtwork(destination.targetPath, blueprint);
+            artworkPaths.push(...this.materializeSymbolArtwork(destination.targetPath, blueprint));
             writeBlueprintAtomically(destination.targetPath, blueprint);
             const conversionEvidencePath = `${destination.targetPath}.conversion-evidence.json`;
             if (sourceWorkbookPath !== undefined && conversionEvidence !== undefined) {
@@ -461,7 +467,7 @@ export class StudioBlueprintService {
                     writeJsonAtomically(conversionEvidencePath, {
                         schemaVersion: 1,
                         sourceWorkbook: path.resolve(sourceWorkbookPath),
-                        provenance: undefined,
+                        provenance: conversionEvidence.provenance,
                         metaSheet: conversionEvidence.metaSheet,
                         facts: conversionEvidence.facts,
                         losslessEligible: conversionEvidence.losslessEligible,
@@ -472,11 +478,11 @@ export class StudioBlueprintService {
                     // This pair is one user-visible publication.  The managed
                     // destination was allocated by this call, so removing it
                     // cannot affect a pre-existing project.
-                    fs.rmSync(destination.targetPath, {force: true});
-                    fs.rmSync(conversionEvidencePath, {force: true});
+                    this.cleanupManagedSaveArtifacts(destination.targetPath, artworkPaths, directoryCreated);
                     throw error;
                 }
             }
+            this.managedSaveArtifacts.set(destination.targetPath, {artworkPaths, directoryCreated});
             return {
                 status: "ok",
                 path: destination.targetPath,
@@ -486,6 +492,7 @@ export class StudioBlueprintService {
                 ...(sourceWorkbookPath !== undefined && conversionEvidence !== undefined ? {conversionEvidencePath} : {}),
             };
         } catch (error) {
+            this.cleanupManagedSaveArtifacts(destination.targetPath, artworkPaths, directoryCreated);
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }
     }
@@ -494,14 +501,9 @@ export class StudioBlueprintService {
     // deliberately narrower than a general delete API: the path came from this saveManaged() call, so
     // rolling it back cannot remove a user-selected or pre-existing Blueprint.
     public discardManagedSave(targetPath: string): void {
-        try {
-            fs.unlinkSync(targetPath);
-            fs.rmSync(`${targetPath}.conversion-evidence.json`, {force: true});
-            fs.rmdirSync(path.dirname(targetPath));
-        } catch {
-            // Rollback is best effort.  The route still reports registration failure rather than a
-            // misleading success, and any empty directory is harmless.
-        }
+        const allocated = this.managedSaveArtifacts.get(targetPath);
+        this.managedSaveArtifacts.delete(targetPath);
+        this.cleanupManagedSaveArtifacts(targetPath, allocated?.artworkPaths ?? [], allocated?.directoryCreated ?? false);
     }
 
     // Imports are deliberately staged outside the Blueprint: the document records only this stable,
@@ -559,7 +561,8 @@ export class StudioBlueprintService {
         return loaded.status === "ok" ? symbolArtwork(loaded.blueprint) : {};
     }
 
-    public materializeSymbolArtwork(blueprintPath: string, blueprint: unknown): void {
+    public materializeSymbolArtwork(blueprintPath: string, blueprint: unknown): string[] {
+        const materialized: string[] = [];
         for (const reference of symbolArtworkReferences(blueprint)) {
             if (!isSafeSymbolArtworkReference(reference)) {
                 continue;
@@ -575,7 +578,9 @@ export class StudioBlueprintService {
             fs.mkdirSync(path.dirname(destination), {recursive: true});
             fs.copyFileSync(staged, destination);
             this.stagedArtwork.delete(reference);
+            materialized.push(destination);
         }
+        return materialized;
     }
 
     // Reads and maps a PAR sheet .xlsx workbook via ParSheetImporting (the exact same service "pokie par
@@ -601,13 +606,13 @@ export class StudioBlueprintService {
                 path: resolved,
                 blueprint: result.blueprint,
                 provenance: result.provenance,
-                conversionEvidence: result.conversionEvidence ?? {
+                conversionEvidence: {...(result.conversionEvidence ?? {
                     metaSheet: undefined,
                     facts: result.issues.map((issue) => ({kind: "diagnostic" as const, code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})})),
                     losslessEligible: false,
                     importedBlueprintHash: computeGameBlueprintHash(result.blueprint),
                     provenanceHashMatches: false,
-                },
+                }), ...(result.provenance === undefined ? {} : {provenance: result.provenance})},
                 errors,
                 warnings,
             };
@@ -898,5 +903,36 @@ export class StudioBlueprintService {
             capabilities: [BLUEPRINT_BUILD_CAPABILITY],
             configurationProvenance: {configurationHash: computeGameBlueprintHash(blueprint)},
         };
+    }
+
+    private cleanupManagedSaveArtifacts(targetPath: string, artworkPaths: readonly string[], directoryCreated: boolean): void {
+        try {
+            fs.rmSync(targetPath, {force: true});
+            fs.rmSync(`${targetPath}.conversion-evidence.json`, {force: true});
+            for (const artworkPath of artworkPaths) {
+                fs.rmSync(artworkPath, {force: true});
+                this.removeEmptyArtworkParents(path.dirname(artworkPath), path.dirname(targetPath));
+            }
+            if (directoryCreated) {
+                fs.rmSync(path.dirname(targetPath), {recursive: true, force: true});
+            } else {
+                fs.rmdirSync(path.dirname(targetPath));
+            }
+        } catch {
+            // Rollback is best effort. The caller still reports registration
+            // failure rather than presenting an orphan as a saved project.
+        }
+    }
+
+    private removeEmptyArtworkParents(candidate: string, stopAt: string): void {
+        let current = candidate;
+        while (isPathWithin(stopAt, current) && current !== stopAt) {
+            try {
+                fs.rmdirSync(current);
+                current = path.dirname(current);
+            } catch {
+                return;
+            }
+        }
     }
 }

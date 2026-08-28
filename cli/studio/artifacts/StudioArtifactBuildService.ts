@@ -191,9 +191,9 @@ export class StudioArtifactBuildService {
                 // a restart can reopen its workbook/evidence provenance.
                 ...(result.importedBlueprintPath === undefined ? [] : [result.importedBlueprintPath]),
             ]);
-            const provenance = await this.parImportRegistrationProvenance(result.conversionEvidencePath);
             const registeredRoots: string[] = [];
             try {
+                const provenance = await this.parImportRegistrationProvenance(result.conversionEvidencePath);
                 for (const projectRoot of managedProjectRoots) {
                     await this.registerManagedProject(
                         projectRoot,
@@ -204,21 +204,12 @@ export class StudioArtifactBuildService {
                     registeredRoots.push(projectRoot);
                 }
             } catch (error) {
-                // A Studio build is not successful until its publication is
-                // registered.  The registry has already guaranteed these are
-                // fresh plan-owned destinations, so remove them rather than
-                // leaving a plausible but undiscoverable result.
-                await Promise.all([
-                    ...registeredRoots.map((projectRoot) => this.unregisterManagedProject(projectRoot).catch(() => undefined)),
-                    ...Array.from(managedProjectRoots, async (projectRoot) => {
-                        if (projectRoot === result.outputPath || projectRoot === result.importedBlueprintPath) {
-                            await fs.promises.rm(projectRoot, {recursive: true, force: true}).catch(() => undefined);
-                            // Blueprints publish their evidence as a sibling file,
-                            // rather than inside their (file-kind) project root.
-                            await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
-                        }
-                    }),
-                ]);
+                // A Studio build is not successful until every operation-owned
+                // publication is registered.  A managed Outcome may have been
+                // registered by its generator before Studio reaches this loop,
+                // so rollback is based on the selected plan's ownership, not
+                // only the subset of callbacks that happened to return first.
+                await this.rollbackRegistrationFailure(result, plan, registeredRoots);
                 throw error;
             }
             return {
@@ -381,6 +372,36 @@ export class StudioArtifactBuildService {
     private targetPlannerFields(plan: ArtifactConversionPlan): {readonly diagnostic?: string; readonly plan: ArtifactConversionPlan} {
         if (plan.status === "unavailable") return {diagnostic: this.describePlanDiagnostic(plan), plan};
         return {plan};
+    }
+
+    private async rollbackRegistrationFailure(
+        result: import("pokie").ArtifactBuildResult,
+        plan: ArtifactConversionPlan,
+        registeredRoots: readonly string[],
+    ): Promise<void> {
+        const reusesManagedOutcome = plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary");
+        // The terminal is always newly allocated after the registry's
+        // destination check.  The imported Blueprint is likewise a fresh
+        // durable PAR intermediate. Generated prerequisite roots are owned by
+        // this operation; reused managed outcomes are deliberately excluded.
+        const ownedRoots = new Set<string>([
+            result.outputPath,
+            ...(result.importedBlueprintPath === undefined ? [] : [result.importedBlueprintPath]),
+            ...(reusesManagedOutcome ? [] : result.prerequisiteProjectRoots ?? []),
+            ...(reusesManagedOutcome ? [] : result.managedProjectRoots ?? []),
+        ]);
+
+        await Promise.all([
+            // Do not limit this to `registeredRoots`: ManagedOutcomeProjectService
+            // can register generated roots while materializing them, before the
+            // Studio-level registration loop starts.
+            ...new Set([...registeredRoots, ...ownedRoots]).values(),
+        ].map(async (projectRoot) => {
+            if (!ownedRoots.has(projectRoot)) return;
+            await this.unregisterManagedProject(projectRoot).catch(() => undefined);
+            await fs.promises.rm(projectRoot, {recursive: true, force: true}).catch(() => undefined);
+            await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
+        }));
     }
 
     private async parImportRegistrationProvenance(conversionEvidencePath: string | undefined): Promise<{readonly sourceWorkbookPath?: string; readonly conversionEvidencePath?: string} | undefined> {

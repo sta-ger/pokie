@@ -120,6 +120,7 @@ describe("ParSheetExporter", () => {
             const issues = await exporter.exportToFile(withoutReelStrips, filePath);
 
             expect(issues.some((issue) => issue.severity === "error")).toBe(false);
+            expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-default-reels-materialized", severity: "warning"})]));
             const imported = await new ParSheetImporter().importFromFile(filePath);
             expect(imported.blueprint.reelStrips).toHaveLength(withoutReelStrips.reels);
             expect(withoutReelStrips.reelStrips).toBeUndefined();

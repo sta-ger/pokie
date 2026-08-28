@@ -68,16 +68,38 @@ export function prepareBlueprintForParSheetExport(
                 ],
             };
         }
-        return {blueprint: removeSharedWeights(materializeReelStrips(authored, resolution.reelStripGeneration)), issues: validationIssues};
+        return {
+            blueprint: removeSharedWeights(materializeReelStrips(authored, resolution.reelStripGeneration)),
+            issues: [...validationIssues, materializationIssue(
+                "parsheet-generated-reels-materialized",
+                "Generated reelStripGeneration entries were resolved to literal ReelStrips for the PAR workbook; importing this workbook cannot restore the generated source.",
+            )],
+        };
     }
 
     if (authored.reelStrips !== undefined) return {blueprint: removeSharedWeights({...authored}), issues: validationIssues};
 
     // `symbolWeights` and the omitted engine-default weighting both describe playable canonical
     // Blueprints but have no physical strip. Freeze the same deterministic sample Studio presents.
+    const weighted = authored.symbolWeights !== undefined;
     return {
         blueprint: removeSharedWeights({...authored, reelStrips: convertSharedWeightsToReelStrips(authored)}),
-        issues: validationIssues,
+        issues: [...validationIssues, materializationIssue(
+            weighted ? "parsheet-weighted-reels-materialized" : "parsheet-default-reels-materialized",
+            weighted
+                ? "symbolWeights were materialized to literal ReelStrips for the PAR workbook; importing this workbook cannot restore the weighted source."
+                : "The default reel source was materialized to literal ReelStrips for the PAR workbook; importing this workbook cannot restore the default source.",
+        )],
+    };
+}
+
+function materializationIssue(code: string, message: string): ValidationIssue {
+    return {
+        code,
+        severity: "warning",
+        message,
+        suggestion: "Keep the original Blueprint when the authored reel source must remain editable.",
+        details: {losslessEligible: false, boundary: "reel-materialization"},
     };
 }
 

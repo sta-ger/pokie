@@ -1149,6 +1149,36 @@ describe("StudioBlueprintService", () => {
             expect(fs.existsSync(result.conversionEvidencePath)).toBe(false);
         });
 
+        it("retains parsed PAR provenance and rolls back only artwork allocated by a failed managed registration", () => {
+            const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
+            const service = createServiceWithManagedDirectory(managedDir);
+            const artworkSource = path.join(tmpDir, "symbol.png");
+            fs.writeFileSync(artworkSource, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+            const staged = service.importSymbolArtwork(artworkSource);
+            if (staged.status !== "ok") throw new Error("expected staged artwork");
+            const evidence = {
+                provenance: {pokieVersion: "1.3.0", blueprintHash: "sha256:source"},
+                metaSheet: [["Key", "Value"], ["Blueprint Hash", "sha256:source"]],
+                facts: [],
+                losslessEligible: false,
+                importedBlueprintHash: "sha256:imported",
+                provenanceHashMatches: false,
+            };
+            const result = service.saveManaged({...buildBlueprint(), symbolArtwork: {A: staged.reference}}, "/games/in.par.xlsx", evidence);
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok" || result.conversionEvidencePath === undefined) throw new Error("expected managed PAR save");
+            expect(JSON.parse(fs.readFileSync(result.conversionEvidencePath, "utf8"))).toMatchObject({provenance: evidence.provenance, metaSheet: evidence.metaSheet});
+            expect(fs.existsSync(path.join(managedDir, staged.reference))).toBe(true);
+
+            service.discardManagedSave(result.path);
+
+            expect(fs.existsSync(result.path)).toBe(false);
+            expect(fs.existsSync(result.conversionEvidencePath)).toBe(false);
+            expect(fs.existsSync(path.join(managedDir, staged.reference))).toBe(false);
+            expect(fs.existsSync(managedDir)).toBe(false);
+        });
+
         it("omits sourceWorkbookPath entirely for an ordinary first Save with no PAR import behind it", () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
             const service = createServiceWithManagedDirectory(managedDir);

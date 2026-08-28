@@ -537,6 +537,10 @@ export type StudioParSheetImportView =
     | {status: "load-error"; error: string};
 
 export type ParSheetConversionEvidence = {
+    // Persisted with the evidence sidecar on an Apply -> managed save.  This
+    // duplicates the import view's convenience field intentionally: drafts
+    // retain the evidence object, not the transient import response.
+    provenance?: ParSheetProvenance;
     metaSheet?: readonly (readonly unknown[])[];
     facts: readonly {kind: "ignored" | "formulaMaterialized" | "inferredOrDefaulted" | "diagnostic"; code: string; message: string; details?: unknown}[];
     losslessEligible: boolean;
