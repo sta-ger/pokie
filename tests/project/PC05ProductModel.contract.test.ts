@@ -107,7 +107,7 @@ function operationOwner(matrix: string, operation: string): string {
 }
 
 describe("PC-05 product-model contract", () => {
-    it("closes the artifact graph and inventories raw generation, descriptor prerequisites, portable rounds, Stake-import companions and the three fairness artifacts", () => {
+    it("closes the artifact graph and inventories sources, descriptors, runtime state, durable registries, portable rounds, Stake-import companions and the three fairness artifacts", () => {
         const registry = readRegistry();
         const items = [...registry.artifact_kinds, ...registry.non_artifact_prerequisites];
         const ids = items.map((item) => item.id);
@@ -133,6 +133,7 @@ describe("PC-05 product-model contract", () => {
                 "tsPackage",
                 "parWorkbook",
                 "weightedOutcomeLibraryJson",
+                "canonicalOutcomeJsonl",
                 "outcomeLibraryBundleDescriptor",
                 "outcomeLibraryGenerationCheckpoint",
                 "outcomeLibrary",
@@ -152,6 +153,9 @@ describe("PC-05 product-model contract", () => {
                 "renderedReport",
                 "runtimeReplayDescriptor",
                 "certificationEvidenceBundle",
+                "certificationBuildDescriptor",
+                "blueprintRuntimeMaterializationCache",
+                "blueprintRuntimeMaterializationMarker",
                 "fairnessServerSeedCommitment",
                 "fairnessCommitment",
                 "fairnessProof",
@@ -183,7 +187,7 @@ describe("PC-05 product-model contract", () => {
         expect(outcomeLibraryDescriptor).toEqual(expect.objectContaining({
             label: "Outcome Library bundle descriptor",
             "created_by": ["user-authored Outcome Library bundle config (POKIE does not create this descriptor)"],
-            "imports_from": ["weightedOutcomeLibraryJson"],
+            "imports_from": expect.arrayContaining(["weightedOutcomeLibraryJson", "canonicalOutcomeJsonl"]),
             "exports_to": ["outcomeLibrary"],
         }));
         expect(outcomeLibraryDescriptor?.compatibility).toContain("outcomesPath");
@@ -372,6 +376,99 @@ describe("PC-05 product-model contract", () => {
         expect(productModel).toContain("`outcomeLibraryBundleDescriptor`");
         expect(productModel).toContain("`stakeEngineExportDescriptor`");
         expect(productModel).toContain("`stakeImportReExportConfig`");
+    });
+
+    it("source-backs streamed outcomes, certification descriptors, runtime cache state and persisted Studio Projects", () => {
+        const registry = readRegistry();
+        const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
+        const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
+        const outcomeLibraryCommand = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "OutcomeLibraryCommand.ts"), "utf-8");
+        const certificationCommand = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "CertificationCommand.ts"), "utf-8");
+        const materializer = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "materialize", "BlueprintProjectMaterializer.ts"), "utf-8");
+        const runtimeResolver = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "materialize", "materializeRuntimePackage.ts"), "utf-8");
+        const cliRegistration = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "registerCliCommands.ts"), "utf-8");
+        const studioCommand = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "StudioCommand.ts"), "utf-8");
+        const studioServer = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "StudioServer.ts"), "utf-8");
+        const fileRegistry = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "FileStudioProjectRegistry.ts"), "utf-8");
+        const studioRegistry = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "StudioProjectRegistrationService.ts"), "utf-8");
+
+        expect(outcomeLibraryCommand).toContain("private loadDescriptor(configPath: string): BuildDescriptor");
+        expect(outcomeLibraryCommand).toContain('uses "outcomesPath" and so requires a string "libraryId"');
+        expect(outcomeLibraryCommand).toContain("private async readStreamedOutcomes(filePath: string)");
+        expect(certificationCommand).toContain("private loadDescriptor(configPath: string): BuildDescriptor");
+        expect(certificationCommand).toContain('must be an object with a string "modeName"/"seed" and a number "sampleCount"');
+        expect(certificationCommand).toContain("await this.builder.buildFromBundle(bundleDir, modes, outDir)");
+        expect(materializer).toContain('const MATERIALIZED_MARKER_FILE = ".pokie-materialized.json"');
+        expect(materializer).toContain("private async acquireLock(lockDir: string)");
+        expect(materializer).toContain("await this.evictStale(cacheDir)");
+        expect(materializer).toContain("this.markReady(stagingDir, cacheKey)");
+        expect(runtimeResolver).toContain("new BlueprintProjectMaterializer(");
+        for (const operation of ["DEV_OPERATION", "REPLAY_OPERATION", "SERVE_OPERATION", "SIM_OPERATION"]) {
+            expect(cliRegistration).toContain(`createMaterializingRuntimePackageResolver(version, ${operation}, pokiePackageRoot)`);
+        }
+        expect(studioCommand).toContain("createMaterializingRuntimePackageResolver(pokieVersion, STUDIO_OPERATION, pokiePackageRoot)");
+        expect(studioServer).toContain("new StudioSimulationService(");
+        expect(studioServer).toContain("this.resolveRuntimePackageRoot,");
+        expect(studioServer).toContain("new StudioReplayExecutionService(undefined, loadCurrentProjectGame");
+        expect(studioServer).toContain("new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot");
+        expect(fileRegistry).toContain("writeFileAtomically(this.registryFile");
+        expect(fileRegistry).toContain('if ((error as NodeJS.ErrnoException)?.code === "ENOENT")');
+        expect(fileRegistry).toContain("return Array.isArray(parsed) ?");
+        expect(studioRegistry).toContain('export const PROJECT_REGISTRY_FILE_NAME = "projects.json"');
+        expect(studioRegistry).toContain("new FileStudioProjectRegistry(path.join(appDataDirectory, PROJECT_REGISTRY_FILE_NAME))");
+        expect(studioRegistry).toContain("status: this.pathExists(location) ? \"ok\" : \"missing\"");
+        expect(studioRegistry).toContain("public async relocate(");
+        expect(studioRegistry).toContain("private async canonicalize(location: string)");
+
+        const stream = registry.artifact_kinds.find((item) => item.id === "canonicalOutcomeJsonl");
+        const certificationDescriptor = registry.artifact_kinds.find((item) => item.id === "certificationBuildDescriptor");
+        const runtimeCache = registry.artifact_kinds.find((item) => item.id === "blueprintRuntimeMaterializationCache");
+        const runtimeMarker = registry.artifact_kinds.find((item) => item.id === "blueprintRuntimeMaterializationMarker");
+        const studioProjects = registry.artifact_kinds.find((item) => item.id === "studioProjectRegistryEntry");
+        for (const contract of [stream, certificationDescriptor, runtimeCache, runtimeMarker, studioProjects]) {
+            expect(contract).toEqual(expect.objectContaining({
+                provenance: expect.any(String),
+                stale: expect.any(String),
+                compatibility: expect.any(String),
+                containment: expect.any(String),
+                diagnostics: expect.any(String),
+                recovery: expect.any(String),
+            }));
+        }
+        expect(stream).toEqual(expect.objectContaining({
+            "recognized_by": expect.arrayContaining(["OutcomeLibraryCommand:loadDescriptor outcomesPath", "OutcomeLibraryCommand:readStreamedOutcomes"]),
+            "exports_to": expect.arrayContaining(["outcomeLibraryBundleDescriptor", "outcomeLibrary"]),
+        }));
+        expect(certificationDescriptor).toEqual(expect.objectContaining({
+            "recognized_by": expect.arrayContaining(["CertificationCommand:loadDescriptor", "CertificationCommand:executeBuild"]),
+            "imports_from": ["outcomeLibrary"],
+            "exports_to": ["certificationEvidenceBundle"],
+            "support_status": "supported-user-supplied-prerequisite-contract",
+        }));
+        expect(runtimeCache).toEqual(expect.objectContaining({
+            "imports_from": expect.arrayContaining(["blueprint", "blueprintRuntimeMaterializationMarker"]),
+            "prerequisite_for": expect.arrayContaining(["runtimeSession", "simulationReport", "runtimeReplayDescriptor"]),
+            "support_status": "supported-internal-runtime-state-not-user-artifact",
+        }));
+        expect(runtimeMarker?.exports_to).toEqual(["blueprintRuntimeMaterializationCache"]);
+        expect(registry.non_artifact_prerequisites).toContainEqual(expect.objectContaining({
+            id: "blueprintRuntimeMaterializationLock",
+            type: "non-artifact-prerequisite",
+        }));
+        expect(studioProjects).toEqual(expect.objectContaining({
+            shape: expect.stringContaining("projects.json"),
+            "created_by": expect.arrayContaining(["FileStudioProjectRegistry:upsert atomically writes projects.json"]),
+            "recognized_by": expect.arrayContaining(["FileStudioProjectRegistry:list/read", "StudioProjectRegistrationService:list"]),
+            "support_status": "supported-durable-app-data-metadata-companion",
+        }));
+        expect(matrix).toContain("canonical streamed `outcomesPath` JSONL");
+        expect(matrix).toContain("canonical `certificationBuildDescriptor`");
+        expect(matrix).toContain("`blueprintRuntimeMaterializationCache`");
+        expect(matrix).toContain("| Persist and recover Studio Projects |");
+        expect(productModel).toContain("`canonicalOutcomeJsonl`");
+        expect(productModel).toContain("`certificationBuildDescriptor`");
+        expect(productModel).toContain("`blueprintRuntimeMaterializationCache`");
+        expect(productModel).toContain("`FileStudioProjectRegistry`");
     });
 
     it("covers every registered public route and records its legacy aliases without advertising them", () => {

@@ -114,6 +114,20 @@ Studio Generate currently combines the raw generation and bundle write in one
 request, which is a Studio convenience, not evidence that the CLI raw file is
 already a bundle.
 
+`outcomesPath` names a third, distinct durable source contract:
+`canonicalOutcomeJsonl`, a newline-delimited stream of canonical outcome
+records. It is not the raw JSON object and it is not a native bundle merely
+because a bundle later contains per-mode JSONL. The author/external producer
+supplies the stream and the descriptor supplies its `libraryId` (and optional
+schema version); `OutcomeLibraryCommand.loadDescriptor()` rejects missing
+identity, then its stream reader, weighted-library validation, bundle writer
+validation and cross-mode provenance checks consume it. The named path is
+resolved from the descriptor directory for read-only access, without a false
+project-root containment promise. A moved, truncated, malformed or
+provenance-incompatible stream is stale: repair/restore it and its descriptor,
+then rematerialize through `export --to outcomes`; it can never be sampled,
+served or replayed directly.
+
 These source descriptors are durable prerequisite contracts, not incidental
 CLI argument files. `ExportCommand` resolves a recognized project first, then
 delegates an unrecognized `--to outcomes` source to
@@ -148,6 +162,54 @@ not erase user-authored `libraryPath` descriptors. If that companion is moved,
 stale, malformed, or incompatible, normal Stake descriptor diagnostics apply;
 repair a generic config or re-import the valid POKIE Stake directory to recreate
 it.
+
+Certification has the same durable-prerequisite distinction. The user-authored
+`certificationBuildDescriptor` is the second positional config for
+`pokie certification build <bundleDir> <config.json>`, not a throwaway CLI
+value. `CertificationCommand.loadDescriptor()` requires a `modes[]` array of
+string `modeName`/`seed` and numeric `sampleCount`, after which the command
+classifies the independently supplied bundle and passes the samples to the
+evidence builder. The descriptor has no nested path fields; POKIE reads its
+explicit path, while the bundle is resolved separately and output safety stays
+with the evidence writer. A malformed descriptor reports its path, mode and
+certification config hint; a wrong recognized source reports the capability
+boundary. Repair its policy, restore/rebuild a stale library, and retry the
+build at a safe destination. `certification verify --source` remains the
+separate post-build proof path.
+
+Blueprint runtime execution is also a pipeline stage, not a user-owned
+package artifact. CLI `dev`, `serve`, `sim` and `replay`, and Studio Home,
+Play, Simulation and Replay routes cross
+`createMaterializingRuntimePackageResolver`. For a Blueprint it borrows or
+creates `blueprintRuntimeMaterializationCache` under the OS temporary
+directory: a content-addressed generated TypeScript runtime keyed by exact
+Blueprint hash, POKIE/build-contract version and runtime installation identity.
+The cache becomes ready only after validation, generation, dependency install
+and package verification write a matching `.pokie-materialized.json` marker;
+an existing package passes through unchanged. Missing/malformed/mismatched
+markers are stale and rebuild, failed staging is cleaned up, and phase-specific
+materialization diagnostics remain user-facing. The `<cacheDir>.lock` and its
+holder PID/token are explicitly synchronization state, not artifacts: they
+serialize eviction/publication, preserve ready entries, wait for live holders
+and reclaim abandoned ones. No user should copy, edit, select or expect this
+temporary cache as a Blueprint, package, replay or output destination.
+
+Studio's Projects lifecycle is a separate durable app-data contract. When a
+platform app-data directory is available,
+`createDefaultStudioProjectRegistrationService()` wires
+`FileStudioProjectRegistry` to fixed `projects.json`; it atomically writes the
+whole JSON-array registry, and a fresh server reads it after restart.
+`StudioProjectRegistrationService` records canonical location, origin, name,
+type/capabilities, recency and optional PAR provenance only after resolver
+recognition. It realpath-canonicalizes locations when possible (otherwise keeps
+an absolute missing spelling), de-duplicates aliases, recalculates `missing`
+on every list and re-resolves open/relocate rather than trusting stale fields.
+Missing file is an empty fresh registry; malformed/non-array content also
+fails open to an empty list rather than crashing Studio. A moved/deleted
+project remains visible for explicit relocate or remove; the next successful
+write repairs corrupt content. If app-data is unavailable Studio intentionally
+uses in-memory state for that process, so restoring app-data and re-registering
+is the recovery for cross-restart persistence.
 
 The two branches have different guarantees.  A TypeScript package executes
 game logic; native Outcome Library operations select pre-generated outcomes.
