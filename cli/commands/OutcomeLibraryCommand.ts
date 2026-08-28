@@ -2,6 +2,10 @@ import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
+    ArtifactBuilderRegistry,
+    ArtifactConversionPlanner,
+    assertPreparedArtifactDestinationAvailable,
+    computeArtifactInputBindingHash,
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     ExactEnumerationCheckpoint,
     GenerateExactWeightedOutcomeLibraryOptions,
@@ -14,6 +18,7 @@ import {
     OutcomeLibraryBundleWriteValidator,
     OutcomeSpaceEstimate,
     PokieGame,
+    PROJECT_TYPE_CAPABILITIES,
     ValidationIssue,
     WeightedOutcomeInput,
     WeightedOutcomeLibrary,
@@ -147,6 +152,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     private readonly fileExists: (filePath: string) => boolean;
     private readonly removeFile: (filePath: string) => void;
     private readonly process: NodeJS.Process;
+    private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
         pokieVersion: string,
@@ -195,6 +201,16 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         return this.buildCommand();
     }
 
+    /** The public `generate` facade reuses this grammar without delegating a command invocation. */
+    public getGenerateCommanderCommand(): Command {
+        return this.buildCommand().commands.find((candidate) => candidate.name() === "generate")!;
+    }
+
+    /** Executes the generate grammar as an explicit prepared-operation surface. */
+    public runGenerate(args: string[]): Promise<number> {
+        return this.run(["generate", ...args]);
+    }
+
     // ExportCommand uses this read-only counterpart to `build`: it resolves the exact same descriptor
     // and source files, then applies the structural checks that can run without staging an artifact.
     // Keeping it here prevents the target-oriented alias from inventing a second config format.
@@ -229,8 +245,12 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         }
         issues.push(...new OutcomeLibraryBundleWriteValidator().validate(modes));
         issues.push(...this.validateCrossModeProvenance(provenances));
-        if (issues.some((issue) => issue.severity === "error")) {
-            throw new Error("The outcome-library source does not satisfy the export contract.");
+        const errors = issues.filter((issue) => issue.severity === "error");
+        if (errors.length > 0) {
+            throw new Error(
+                `The outcome-library source does not satisfy the export contract: ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")} ` +
+                "Next: fix the listed source errors, then prepare the export again.",
+            );
         }
     }
 
@@ -475,18 +495,9 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         // filesystem" discipline every other command's own parseArgs() already follows.
         const sampling = this.buildSampledOptions(options);
 
-        const game = await this.loadGame(packageRoot);
-
         if (options.estimate || options.dryRun) {
+            const game = await this.loadGame(packageRoot);
             return this.executeEstimate(game, options);
-        }
-
-        const manifest = game.getManifest();
-        const libraryId = options.libraryId ?? `${manifest.id}${options.mode !== undefined ? `-${options.mode}` : ""}`;
-
-        let resumeFrom: ExactEnumerationCheckpoint | undefined;
-        if (options.resume !== undefined && this.fileExists(options.resume)) {
-            resumeFrom = this.readCheckpoint(options.resume);
         }
 
         const controller = new AbortController();
@@ -494,31 +505,9 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         this.process.once("SIGINT", onCancel);
 
         try {
-            const generateOptions: GenerateExactWeightedOutcomeLibraryOptions = {
-                libraryId,
-                game,
-                pokieVersion: this.pokieVersion,
-                ...(options.configHash !== undefined ? {configHash: options.configHash} : {}),
-                ...(options.mode !== undefined ? {betMode: options.mode} : {}),
-                ...(options.stake !== undefined ? {stake: options.stake} : {}),
-                ...(options.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: options.maxOutcomeSpaceSize} : {}),
-                ...(options.exact ? {exact: true} : {}),
-                ...sampling,
-                ...(resumeFrom !== undefined ? {resumeFrom} : {}),
-                signal: controller.signal,
-                ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
-            };
-
-            const result = await this.generate(generateOptions);
-
-            // The sweep completed to a real, un-cancelled library -- a checkpoint left over from an
-            // earlier cancelled attempt at this same --resume path is now stale, never silently reused
-            // by a later, unrelated run of the same command.
-            if (options.resume !== undefined && this.fileExists(options.resume)) {
-                this.removeFile(options.resume);
-            }
-
-            this.printGenerateResult(result, options);
+            const prepared = this.prepareRawGenerationOperation(packageRoot, options, sampling, controller.signal);
+            const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution);
+            this.printGenerateResult(execution.read, options);
             return 0;
         } catch (error) {
             if (error instanceof WeightedOutcomeLibraryGenerationCancelledError) {
@@ -544,6 +533,90 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         } finally {
             this.process.off("SIGINT", onCancel);
         }
+    }
+
+    /**
+     * Raw generation is a conversion operation too.  The CLI only supplies a
+     * runtime reader and an optional raw-JSON file publisher; the planner
+     * rebinds the package/checkpoint input before and after enumeration and
+     * owns the cancellation rollback/cleanup ordering.  The explicit file
+     * publication plan intentionally does not advertise raw JSON as a native
+     * Outcome Library bundle conversion route.
+     */
+    private prepareRawGenerationOperation(
+        packageRoot: string,
+        options: GenerateCliOptions,
+        sampling: {sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}},
+        signal: AbortSignal,
+    ) {
+        const sourcePaths = [packageRoot, ...(options.resume === undefined ? [] : [options.resume])];
+        const currentSource = () => ({
+            kind: "tsPackage" as const,
+            canonicalLocation: path.resolve(packageRoot),
+            recognitionProvenance: "CLI runnable POKIE package input",
+            capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage,
+            configurationProvenance: {
+                configurationHash: computeArtifactInputBindingHash(sourcePaths),
+                pokieVersion: this.pokieVersion,
+                generationSemantics: sampling.sampled === undefined && sampling.bounded === undefined ? "exact" as const : "boundedSample" as const,
+                ...(sampling.sampled === undefined && sampling.bounded === undefined ? {} : {
+                    sampleCount: String((sampling.sampled ?? sampling.bounded)!.sampleSize),
+                    sampleSeed: (sampling.sampled ?? sampling.bounded)!.seed,
+                }),
+            },
+        });
+        const rawOutput = options.out === undefined ? undefined : path.resolve(options.out);
+        let publishedOutput = false;
+        return {
+            plan: this.planner.planRawOutcomeLibraryJsonPublication(currentSource(), rawOutput),
+            execution: {
+                currentSource,
+                currentDestination: () => rawOutput,
+                read: async () => {
+                    const game = await this.loadGame(packageRoot);
+                    const manifest = game.getManifest();
+                    const resumeFrom = options.resume !== undefined && this.fileExists(options.resume) ? this.readCheckpoint(options.resume) : undefined;
+                    return this.generate({
+                        libraryId: options.libraryId ?? `${manifest.id}${options.mode !== undefined ? `-${options.mode}` : ""}`,
+                        game,
+                        pokieVersion: this.pokieVersion,
+                        ...(options.configHash === undefined ? {} : {configHash: options.configHash}),
+                        ...(options.mode === undefined ? {} : {betMode: options.mode}),
+                        ...(options.stake === undefined ? {} : {stake: options.stake}),
+                        ...(options.maxOutcomeSpaceSize === undefined ? {} : {maxOutcomeSpaceSize: options.maxOutcomeSpaceSize}),
+                        ...(options.exact ? {exact: true} : {}),
+                        ...sampling,
+                        ...(resumeFrom === undefined ? {} : {resumeFrom}),
+                        signal,
+                        ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
+                    });
+                },
+                canPublish: () => rawOutput !== undefined,
+                assertDestinationAvailable: () => {
+                    if (rawOutput === undefined) return;
+                    assertPreparedArtifactDestinationAvailable(packageRoot, rawOutput, "file");
+                },
+                publish: (result: GenerateExactWeightedOutcomeLibraryResult) => {
+                    // The operation has already established a fresh destination.
+                    // Keep the legacy injectable writer so test and embedding
+                    // callers retain their narrow file-system boundary.
+                    this.writeFile(options.out!, JSON.stringify(result.library, null, 4));
+                    publishedOutput = true;
+                },
+                rollback: () => {
+                    if (publishedOutput && rawOutput !== undefined) this.removeFile(rawOutput);
+                },
+                cleanup: ({error}: {readonly error?: unknown}) => {
+                    if (error === undefined && options.resume !== undefined && this.fileExists(options.resume)) this.removeFile(options.resume);
+                },
+                onTerminalFailure: (error: unknown) => {
+                    if (error instanceof WeightedOutcomeLibraryGenerationCancelledError && options.resume !== undefined) {
+                        this.writeFile(options.resume, JSON.stringify(this.serializeCheckpoint(error.checkpoint), null, 4));
+                    }
+                },
+                signal,
+            },
+        };
     }
 
     // --estimate/--dry-run: the cheap, non-enumerating dry run over estimateExactOutcomeSpaceSize --
@@ -621,10 +694,6 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     }
 
     private printGenerateResult(result: GenerateExactWeightedOutcomeLibraryResult, options: GenerateCliOptions): void {
-        if (options.out !== undefined) {
-            this.writeFile(options.out, JSON.stringify(result.library, null, 4));
-        }
-
         if (options.format === "json") {
             console.log(JSON.stringify(result, null, 4));
         } else {
@@ -676,24 +745,12 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     }
 
     private async executeBuild(configPath: string, outDir: string): Promise<number> {
-        const descriptor = this.loadDescriptor(configPath);
-        const configDir = path.dirname(configPath);
-
-        const modes: OutcomeLibraryBundleModeInput[] = descriptor.modes.map((entry) => {
-            if (entry.libraryPath !== undefined) {
-                const library = this.loadJson(path.resolve(configDir, entry.libraryPath)) as WeightedOutcomeLibrary;
-                return {modeName: entry.modeName, libraryId: library.libraryId, schemaVersion: library.schemaVersion, outcomes: library.outcomes};
-            }
-            return {
-                modeName: entry.modeName,
-                // Safe: loadDescriptor already requires libraryId whenever outcomesPath is present.
-                libraryId: entry.libraryId as string,
-                schemaVersion: entry.schemaVersion,
-                outcomes: this.streamOutcomes(path.resolve(configDir, entry.outcomesPath as string)),
-            };
-        });
-
-        const result = await this.writer.writeToDirectory(modes, outDir);
+        const cancellation = new AbortController();
+        const onCancel = () => cancellation.abort();
+        this.process.once("SIGINT", onCancel);
+        const prepared = this.prepareDescriptorBuildOperation(configPath, outDir, cancellation.signal);
+        const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution).finally(() => this.process.off("SIGINT", onCancel));
+        const result = execution.publication!;
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
 
@@ -712,6 +769,59 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         }
 
         return 0;
+    }
+
+    /**
+     * Supplies the descriptor reader/writer to a caller-owned prepared operation.
+     * This is deliberately not a command dispatch surface: ExportCommand uses the
+     * returned plan and execution hooks directly, so it cannot delegate to a
+     * second public CLI command after its source was prepared.
+     */
+    // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for ExportCommand
+    public prepareDescriptorBuildOperation(configPath: string, outDir: string, signal?: AbortSignal) {
+        const currentSource = () => this.buildDescriptorSource(configPath);
+        return {plan: this.planner.planIdentity(currentSource(), "outcomeLibrary", {destinationPath: outDir}), validate: () => this.validateBuildSource(configPath), execution: {
+            currentSource,
+            read: () => {
+                const descriptor = this.loadDescriptor(configPath);
+                const configDir = path.dirname(configPath);
+                const modes: OutcomeLibraryBundleModeInput[] = descriptor.modes.map((entry) => entry.libraryPath !== undefined
+                    ? (() => {
+                        const library = this.loadJson(path.resolve(configDir, entry.libraryPath!)) as WeightedOutcomeLibrary;
+                        return {modeName: entry.modeName, libraryId: library.libraryId, schemaVersion: library.schemaVersion, outcomes: library.outcomes};
+                    })()
+                    : {
+                        modeName: entry.modeName,
+                        libraryId: entry.libraryId as string,
+                        schemaVersion: entry.schemaVersion,
+                        outcomes: this.streamOutcomes(path.resolve(configDir, entry.outcomesPath as string)),
+                    });
+                return modes;
+            },
+            canPublish: () => true,
+            assertDestinationAvailable: () => {
+                const destination = new ArtifactBuilderRegistry(this.pokieVersion).checkDestination("outcomeLibrary", outDir, configPath);
+                if (!destination.available) throw new Error(destination.message);
+            },
+            publish: (modes) => this.writer.writeToDirectory(modes, outDir),
+            rollback: () => fs.promises.rm(outDir, {recursive: true, force: true}),
+            ...(signal === undefined ? {} : {signal}),
+        }};
+    }
+
+    private buildDescriptorSource(configPath: string): import("pokie").ArtifactIdentity {
+        const canonicalLocation = path.resolve(configPath);
+        const descriptor = this.loadDescriptor(canonicalLocation);
+        const referencedInputs = descriptor.modes.map((entry) => path.resolve(
+            path.dirname(canonicalLocation), entry.libraryPath ?? entry.outcomesPath!,
+        ));
+        return {
+            kind: "outcomeLibrary",
+            canonicalLocation,
+            recognitionProvenance: "verified CLI Outcome Library build descriptor",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+            configurationProvenance: {configurationHash: computeArtifactInputBindingHash([canonicalLocation, ...referencedInputs])},
+        };
     }
 
     private async readStreamedOutcomes(filePath: string): Promise<WeightedOutcomeInput[]> {

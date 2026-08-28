@@ -900,13 +900,13 @@ export async function getDeploymentBuildModes(fetchImpl: FetchLike): Promise<Stu
 export async function runDeployment(
     fetchImpl: FetchLike,
     targetId: string,
-    modes: StudioDeploymentModeInput[],
+    modes: StudioDeploymentModeInput[] | undefined,
     publish: boolean,
 ): Promise<StudioDeploymentRunView> {
     const response = await fetchImpl("/api/project/deployment/runs", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({targetId, modes, publish}),
+        body: JSON.stringify({targetId, ...(modes === undefined ? {} : {modes}), publish}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to run deployment"));

@@ -1,4 +1,4 @@
-import {computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleWriter, WeightedOutcomeLibrary} from "pokie";
+import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleWriter, WeightedOutcomeLibrary} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -7,8 +7,23 @@ import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestF
 
 const TEST_POKIE_VERSION = "1.3.0";
 
-function writeLibraryFile(projectRoot: string, relativePath: string, library: WeightedOutcomeLibrary<string>): void {
-    fs.writeFileSync(path.join(projectRoot, relativePath), JSON.stringify(library));
+const plannedStakeExport: ArtifactConversionPlan = {
+    status: "planned",
+    source: {kind: "outcomeLibrary", capabilities: ["stake-adapter-export"]},
+    target: {kind: "stakeAdapter", capabilities: ["stake-adapter-export"]},
+    steps: [{kind: "publish", choice: "publish", estimatedWork: "publish", input: {kind: "outcomeLibrary", capabilities: []}, output: {kind: "stakeAdapter", capabilities: []}}],
+    preflight: {destinationKind: "directory", estimatedWork: "publish", losses: [], oneWay: true},
+};
+
+async function writeLibraryBundle(projectRoot: string, relativePath: string, library: WeightedOutcomeLibrary<string>, modeName = "base"): Promise<void> {
+    await new OutcomeLibraryBundleWriter(TEST_POKIE_VERSION).writeToDirectory(
+        [{modeName, libraryId: library.libraryId, schemaVersion: library.schemaVersion, outcomes: library.outcomes}],
+        path.join(projectRoot, relativePath),
+    );
+}
+
+function bundleSelector(modeName: string): {kind: "bundle"; bundleDir: string; modeName: string} {
+    return {kind: "bundle", bundleDir: "outcomelibrary", modeName};
 }
 
 describe("StudioStakeEngineExportService", () => {
@@ -23,12 +38,90 @@ describe("StudioStakeEngineExportService", () => {
     });
 
     describe("validate", () => {
+        it("does not attach a project-root plan to an external JSON selector", async () => {
+            const unavailable: ArtifactConversionPlan = {
+                ...plannedStakeExport,
+                status: "unavailable",
+                diagnostic: {
+                    code: "missing-capability",
+                    failedEdge: {from: "outcomeLibrary", to: "stakeAdapter"},
+                    message: "The source cannot export Stake.",
+                    recovery: "Open a compatible source.",
+                },
+            };
+            const planning = {prepare: jest.fn(() => Promise.resolve(unavailable))};
+            const service = new StudioStakeEngineExportService(
+                TEST_POKIE_VERSION,
+                undefined, undefined,
+                jest.fn(() => {
+                    throw new Error("selector must not load");
+                }),
+                undefined, undefined, undefined, undefined, planning,
+            );
+
+            await expect(service.validate(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}]))
+                .resolves.toMatchObject({status: "unavailable", plan: {diagnostic: {code: "unrecognized-source"}}});
+            expect(planning.prepare).not.toHaveBeenCalled();
+        });
+
+        it("does not attach a project-root conflict to an external JSON selector", async () => {
+            const conflict: ArtifactConversionPlan = {
+                ...plannedStakeExport,
+                status: "conflict",
+                diagnostic: {
+                    code: "destination-conflict",
+                    failedEdge: {from: "outcomeLibrary", to: "stakeAdapter"},
+                    message: "The selected directory is occupied.",
+                    recovery: "Choose another directory.",
+                },
+            };
+            const planning = {prepare: jest.fn(() => Promise.resolve(conflict))};
+            const service = new StudioStakeEngineExportService(
+                TEST_POKIE_VERSION,
+                undefined, undefined,
+                jest.fn(() => {
+                    throw new Error("selector must not load");
+                }),
+                undefined, undefined, undefined, undefined, planning,
+            );
+
+            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}], "stakeengine", false);
+
+            expect(view).toMatchObject({status: "unavailable", plan: {diagnostic: {code: "unrecognized-source"}}});
+            expect(planning.prepare).not.toHaveBeenCalled();
+        });
+
+        it("returns a truthful unavailable plan for a raw JSON selector before it is read", async () => {
+            const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
+            const planning = {prepare: jest.fn(() => Promise.resolve(plannedStakeExport))};
+            const service = new StudioStakeEngineExportService(
+                TEST_POKIE_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                planning,
+            );
+            const modes = [{modeName: "base", librarySelector: {kind: "json" as const, path: "base.json"}, cost: 1}];
+
+            const validation = await service.validate(tmpRoot, modes);
+            const exported = await service.export(tmpRoot, modes, "stakeengine", false);
+
+            expect(validation).toMatchObject({status: "unavailable", plan: {diagnostic: {code: "unrecognized-source"}}});
+            expect(exported).toMatchObject({status: "unavailable", plan: {diagnostic: {code: "unrecognized-source"}}});
+            expect(planning.prepare).not.toHaveBeenCalled();
+        });
+
         it("returns a clean diagnostics view with per-mode provenance for a real library", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
-            writeLibraryFile(tmpRoot, "base.json", library);
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
             const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
 
-            const view = await service.validate(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}]);
+            const view = await service.validate(tmpRoot, [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1}]);
 
             expect(view.status).toBe("ok");
             if (view.status !== "ok") throw new Error("expected ok");
@@ -49,10 +142,10 @@ describe("StudioStakeEngineExportService", () => {
             // which StakeEngineExportValidator reports as a "not representable in Stake units" error --
             // the same preflight the Export step's own StakeEngineExporter runs internally.
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
-            writeLibraryFile(tmpRoot, "base.json", library);
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
             const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
 
-            const view = await service.validate(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1 / 3}]);
+            const view = await service.validate(tmpRoot, [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1 / 3}]);
 
             expect(view.status).toBe("ok");
             if (view.status !== "ok") throw new Error("expected ok");
@@ -64,10 +157,9 @@ describe("StudioStakeEngineExportService", () => {
 
             const view = await service.validate(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "../outside.json"}, cost: 1}]);
 
-            expect(view.status).toBe("load-error");
-            if (view.status !== "load-error") throw new Error("expected load-error");
-            expect(view.error).toContain('mode "base"');
-            expect(view.error).toContain("outside the project root");
+            expect(view.status).toBe("unavailable");
+            if (view.status !== "unavailable") throw new Error("expected unavailable");
+            expect(view.plan.diagnostic?.code).toBe("unrecognized-source");
         });
 
         it("reports load-error for a libraryPath that doesn't exist", async () => {
@@ -75,9 +167,9 @@ describe("StudioStakeEngineExportService", () => {
 
             const view = await service.validate(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "missing.json"}, cost: 1}]);
 
-            expect(view.status).toBe("load-error");
-            if (view.status !== "load-error") throw new Error("expected load-error");
-            expect(view.error).toContain('mode "base"');
+            expect(view.status).toBe("unavailable");
+            if (view.status !== "unavailable") throw new Error("expected unavailable");
+            expect(view.plan.diagnostic?.code).toBe("unrecognized-source");
         });
 
         // The registry-integration case this tab exists for: a "bundle" selector -- exactly what the
@@ -91,6 +183,7 @@ describe("StudioStakeEngineExportService", () => {
             );
             const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
 
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1}));
             const view = await service.validate(tmpRoot, [
                 {modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}, cost: 1},
             ]);
@@ -110,6 +203,7 @@ describe("StudioStakeEngineExportService", () => {
         });
 
         it("rejects a bundle selector whose own modeName names a different mode than its export row, before reading anything", async () => {
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1}));
             const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
 
             const view = await service.validate(tmpRoot, [
@@ -124,12 +218,40 @@ describe("StudioStakeEngineExportService", () => {
     });
 
     describe("export", () => {
+        it("resolves an empty dashboard request to the server-selected compatible bundle before preparing and publishing", async () => {
+            const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
+            const selectServerModes = jest.fn(() => Promise.resolve([
+                {modeName: "base", librarySelector: bundleSelector("base"), cost: 1},
+            ]));
+            const service = new StudioStakeEngineExportService(
+                TEST_POKIE_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                selectServerModes,
+            );
+
+            const view = await service.export(tmpRoot, [], "stakeengine", false);
+
+            expect(selectServerModes).toHaveBeenCalledWith(tmpRoot);
+            expect(view.status).toBe("ok");
+            if (view.status !== "ok") throw new Error("expected ok");
+            expect(view.plan.source.canonicalLocation).toBe(path.join(tmpRoot, "outcomelibrary"));
+            expect(fs.existsSync(path.join(tmpRoot, "stakeengine", "index.json"))).toBe(true);
+        });
+
         it("exports a real library and returns its manifest/files", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
-            writeLibraryFile(tmpRoot, "base.json", library);
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
             const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
 
-            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}], "stakeengine", false);
+            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1}], "stakeengine", false);
 
             expect(view.status).toBe("ok");
             if (view.status !== "ok") throw new Error("expected ok");
@@ -200,10 +322,10 @@ describe("StudioStakeEngineExportService", () => {
 
         it("returns an invalid view (no manifest) for an unsupported cost/outcome combination", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
-            writeLibraryFile(tmpRoot, "base.json", library);
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
             const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
 
-            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1 / 3}], "stakeengine", false);
+            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1 / 3}], "stakeengine", false);
 
             expect(view.status).toBe("invalid");
             if (view.status !== "invalid") throw new Error("expected invalid");
@@ -213,12 +335,12 @@ describe("StudioStakeEngineExportService", () => {
 
         it("returns a non-overwritable conflict view (never writes) for a pre-existing directory unrelated to any prior export", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
-            writeLibraryFile(tmpRoot, "base.json", library);
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
             fs.mkdirSync(path.join(tmpRoot, "stakeengine"));
             fs.writeFileSync(path.join(tmpRoot, "stakeengine", "unrelated.txt"), "pre-existing content");
             const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
 
-            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}], "stakeengine", false);
+            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1}], "stakeengine", false);
 
             expect(view.status).toBe("conflict");
             if (view.status !== "conflict") throw new Error("expected conflict");
@@ -233,52 +355,54 @@ describe("StudioStakeEngineExportService", () => {
 
         it("still refuses (as load-error, never writing) an unrelated directory even when overwrite:true is explicitly requested", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
-            writeLibraryFile(tmpRoot, "base.json", library);
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
             fs.mkdirSync(path.join(tmpRoot, "stakeengine"));
             fs.writeFileSync(path.join(tmpRoot, "stakeengine", "unrelated.txt"), "pre-existing content");
             const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
 
-            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}], "stakeengine", true);
+            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1}], "stakeengine", true);
 
-            expect(view.status).toBe("load-error");
+            expect(view.status).toBe("conflict");
+            if (view.status !== "conflict") throw new Error("expected conflict");
+            expect(view.plan.diagnostic?.code).toBe("destination-conflict");
             expect(fs.readFileSync(path.join(tmpRoot, "stakeengine", "unrelated.txt"), "utf-8")).toBe("pre-existing content");
         });
 
         it("returns an overwritable conflict view for a pre-existing directory recognized as a prior export's own output", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
-            writeLibraryFile(tmpRoot, "base.json", library);
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
             const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
-            await service.export(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}], "stakeengine", false);
+            await service.export(tmpRoot, [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1}], "stakeengine", false);
 
-            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}], "stakeengine", false);
+            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1}], "stakeengine", false);
 
             expect(view.status).toBe("conflict");
             if (view.status !== "conflict") throw new Error("expected conflict");
-            expect(view.overwritable).toBe(true);
-            expect(view.error).toContain("overwrite");
+            expect(view.overwritable).toBe(false);
+            expect(view.plan.diagnostic?.code).toBe("destination-conflict");
         });
 
         it("resubmitting with overwrite:true replaces a directory recognized as a prior export's own output", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
-            writeLibraryFile(tmpRoot, "base.json", library);
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
             const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
-            await service.export(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}], "stakeengine", false);
+            await service.export(tmpRoot, [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1}], "stakeengine", false);
 
             const secondLibrary = buildStakeEngineTestLibrary({libraryId: "bonus-lib", betMode: "bonus", stake: 1});
-            writeLibraryFile(tmpRoot, "bonus.json", secondLibrary);
-            const view = await service.export(tmpRoot, [{modeName: "bonus", librarySelector: {kind: "json", path: "bonus.json"}, cost: 1}], "stakeengine", true);
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", secondLibrary, "bonus");
+            const view = await service.export(tmpRoot, [{modeName: "bonus", librarySelector: bundleSelector("bonus"), cost: 1}], "stakeengine", true);
 
-            expect(view.status).toBe("ok");
-            if (view.status !== "ok") throw new Error("expected ok");
-            expect(view.manifest.modes.map((mode) => mode.name)).toEqual(["bonus"]);
+            expect(view.status).toBe("conflict");
+            if (view.status !== "conflict") throw new Error("expected conflict");
+            expect(view.plan.diagnostic?.code).toBe("destination-conflict");
         });
 
         it("returns load-error for an outDir that resolves outside the project root", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
-            writeLibraryFile(tmpRoot, "base.json", library);
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
             const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
 
-            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}], "../outside-out", false);
+            const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1}], "../outside-out", false);
 
             expect(view.status).toBe("load-error");
         });
@@ -288,9 +412,9 @@ describe("StudioStakeEngineExportService", () => {
 
             const view = await service.export(tmpRoot, [{modeName: "base", librarySelector: {kind: "json", path: "../outside.json"}, cost: 1}], "stakeengine", false);
 
-            expect(view.status).toBe("load-error");
-            if (view.status !== "load-error") throw new Error("expected load-error");
-            expect(view.error).toContain('mode "base"');
+            expect(view.status).toBe("unavailable");
+            if (view.status !== "unavailable") throw new Error("expected unavailable");
+            expect(view.plan.diagnostic?.code).toBe("unrecognized-source");
             expect(fs.existsSync(path.join(tmpRoot, "stakeengine"))).toBe(false);
         });
     });

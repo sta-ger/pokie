@@ -1,7 +1,36 @@
 import {describeArtifactBuildTargetCards, describeExportDeployTargetCards} from "../../../../../../cli/studio-client/src/domain/interpret/ExportDeployTargets";
-import type {StudioDeploymentTargetSummary, StudioProjectCapability} from "../../../../../../cli/studio-client/src/api/types";
+import type {StudioArtifactConversionPlan, StudioArtifactTargetType, StudioArtifactTargetView, StudioDeploymentTargetSummary} from "../../../../../../cli/studio-client/src/api/types";
 
-const BUILDABLE_CAPABILITIES: StudioProjectCapability[] = ["blueprint.build"];
+function planned(target: StudioArtifactTargetType): StudioArtifactConversionPlan {
+    return {
+        status: "planned",
+        source: {kind: "blueprint", capabilities: ["blueprint.build"]},
+        target: {kind: target, capabilities: []},
+        steps: [{kind: "publish", choice: "publish", estimatedWork: "publish"}],
+        preflight: {destinationKind: "directory", estimatedWork: "publish", losses: [], oneWay: false},
+    };
+}
+
+function unavailable(target: StudioArtifactTargetType): StudioArtifactConversionPlan {
+    return {
+        ...planned(target),
+        status: "unavailable",
+        steps: [],
+        diagnostic: {
+            code: "missing-capability",
+            failedEdge: {from: "wasm", to: target},
+            message: `The server cannot prepare ${target}.`,
+            recovery: "Open a supported project and retry.",
+        },
+    };
+}
+
+function artifactTargets(outcomePlan: StudioArtifactConversionPlan = planned("outcomeLibrary"), stakePlan: StudioArtifactConversionPlan = planned("stakeAdapter")): StudioArtifactTargetView[] {
+    return [
+        {target: "outcomeLibrary", supported: outcomePlan.status === "planned", state: outcomePlan.status === "planned" ? "supported" : "diagnostic-required", unsupportedNotes: [], plan: outcomePlan},
+        {target: "stakeAdapter", supported: stakePlan.status === "planned", state: stakePlan.status === "planned" ? "supported" : "diagnostic-required", unsupportedNotes: [], plan: stakePlan},
+    ];
+}
 
 function target(overrides: Partial<StudioDeploymentTargetSummary> = {}): StudioDeploymentTargetSummary {
     return {id: "acme-rgs-v2", version: "1.0.0", requirements: {}, capabilities: [], ...overrides};
@@ -9,7 +38,7 @@ function target(overrides: Partial<StudioDeploymentTargetSummary> = {}): StudioD
 
 describe("describeExportDeployTargetCards", () => {
     it("includes the outcome-library builder card for a buildable project, even with no registered targets", () => {
-        const cards = describeExportDeployTargetCards([], BUILDABLE_CAPABILITIES);
+        const cards = describeExportDeployTargetCards([], artifactTargets());
         const outcomeLibraryCard = cards.find((card) => card.kind === "outcomeLibrary");
         expect(outcomeLibraryCard).toBeDefined();
         expect(outcomeLibraryCard?.id).toBe("outcome-library");
@@ -18,7 +47,7 @@ describe("describeExportDeployTargetCards", () => {
     });
 
     it("includes the Stake Engine static-export card for a buildable project, even with no registered targets", () => {
-        const cards = describeExportDeployTargetCards([], BUILDABLE_CAPABILITIES);
+        const cards = describeExportDeployTargetCards([], artifactTargets());
         const stakeCard = cards.find((card) => card.kind === "staticExport");
         expect(stakeCard).toBeDefined();
         expect(stakeCard?.id).toBe("stakeengine-export");
@@ -27,7 +56,7 @@ describe("describeExportDeployTargetCards", () => {
     });
 
     it("fills the remote-deployment group with a placeholder when no registered target is remote", () => {
-        const cards = describeExportDeployTargetCards([], BUILDABLE_CAPABILITIES);
+        const cards = describeExportDeployTargetCards([], artifactTargets());
         const remoteCards = cards.filter((card) => card.kind === "remoteDeployment");
         expect(remoteCards).toHaveLength(1);
         expect(remoteCards[0].deploymentTarget).toBeUndefined();
@@ -36,7 +65,7 @@ describe("describeExportDeployTargetCards", () => {
 
     it("never describes the External Adapter SDK's own local-json-example demo target as a card, even though it's registered", () => {
         const localTarget = target({id: "local-json-example", version: "2.3.0", capabilities: ["multiMode"]});
-        const cards = describeExportDeployTargetCards([localTarget], BUILDABLE_CAPABILITIES);
+        const cards = describeExportDeployTargetCards([localTarget], artifactTargets());
         expect(cards.some((card) => card.id === "local-json-example")).toBe(false);
 
         // Nothing else is registered, so the remote-deployment group still falls back to its own
@@ -48,7 +77,7 @@ describe("describeExportDeployTargetCards", () => {
 
     it("classifies any registered (non-demo) target as remote deployment, carrying the real descriptor through and dropping the placeholder", () => {
         const remoteTarget = target({id: "acme-rgs-v2", version: "0.1.0"});
-        const cards = describeExportDeployTargetCards([remoteTarget], BUILDABLE_CAPABILITIES);
+        const cards = describeExportDeployTargetCards([remoteTarget], artifactTargets());
         const remoteCards = cards.filter((card) => card.kind === "remoteDeployment");
         expect(remoteCards).toHaveLength(1);
         expect(remoteCards[0].deploymentTarget).toBe(remoteTarget);
@@ -59,27 +88,28 @@ describe("describeExportDeployTargetCards", () => {
 
     it("classifies a registered target's own optional capabilities and describes an empty-requirements target as having no special requirements", () => {
         const remoteTarget = target({requirements: {}, capabilities: ["multiMode"]});
-        const cards = describeExportDeployTargetCards([remoteTarget], BUILDABLE_CAPABILITIES);
+        const cards = describeExportDeployTargetCards([remoteTarget], artifactTargets());
         const remoteCard = cards.find((card) => card.kind === "remoteDeployment");
         expect(remoteCard?.capabilities).toEqual(["More than one bet mode in a single deployment"]);
         expect(remoteCard?.limits).toEqual(["No special requirements -- accepts any compatible outcome library."]);
     });
 
-    it("returns no cards at all for a project with no capability any builder here needs", () => {
-        const cards = describeExportDeployTargetCards([target()], ["stakeAdapter.exchange"]);
-        expect(cards).toEqual([]);
+    it("renders server-reported unavailable planner results instead of inferring from browser capabilities", () => {
+        const cards = describeExportDeployTargetCards([target()], artifactTargets(unavailable("outcomeLibrary"), unavailable("stakeAdapter")));
+        expect(cards.filter((card) => card.kind !== "remoteDeployment").every((card) => card.supported === false)).toBe(true);
+        expect(cards.find((card) => card.kind === "outcomeLibrary")?.unavailableReasons).toContain("The server cannot prepare outcomeLibrary.");
     });
 
-    it("includes every group once a project carries runtime.execute even without blueprint.build (e.g. a tsPackage project)", () => {
-        const cards = describeExportDeployTargetCards([], ["runtime.execute"]);
+    it("includes every group when the server has prepared both conversion plans", () => {
+        const cards = describeExportDeployTargetCards([], artifactTargets());
         expect(cards.map((card) => card.kind).sort()).toEqual(["outcomeLibrary", "remoteDeployment", "staticExport"].sort());
     });
 
-    it("includes Static export and adapter cards, but never the outcome-library generator, for a project that can only read an existing canonical outcome library (e.g. an outcomeLibrary project)", () => {
+    it("keeps an unavailable outcome action visible with its server recovery while rendering a prepared Stake action", () => {
         const remoteTarget = target({id: "acme-rgs-v2"});
-        const cards = describeExportDeployTargetCards([remoteTarget], ["outcomeLibrary.read"]);
-        expect(cards.map((card) => card.kind).sort()).toEqual(["remoteDeployment", "staticExport"].sort());
-        expect(cards.some((card) => card.kind === "outcomeLibrary")).toBe(false);
+        const cards = describeExportDeployTargetCards([remoteTarget], artifactTargets(unavailable("outcomeLibrary")));
+        expect(cards.map((card) => card.kind).sort()).toEqual(["outcomeLibrary", "remoteDeployment", "staticExport"].sort());
+        expect(cards.find((card) => card.kind === "outcomeLibrary")?.supported).toBe(false);
     });
 
     // Regression for a P5-POLISH-20 audit finding: the outcome-library card's own "compatibility" prose used
@@ -91,7 +121,7 @@ describe("describeExportDeployTargetCards", () => {
     // this shell can never again read as if a separate Deployment surface still exists.
     it("never describes any card's own prose with a bare 'Deployment' -- only ever 'remote deployment', matching the Remote deployment group's own name", () => {
         const remoteTarget = target({id: "acme-rgs-v2"});
-        const cards = describeExportDeployTargetCards([remoteTarget], ["runtime.execute"]);
+        const cards = describeExportDeployTargetCards([remoteTarget], artifactTargets());
         expect(cards.length).toBeGreaterThan(0);
         const bareDeploymentPattern = /(?<!remote )(?<!Remote )\bDeployment\b/;
         for (const card of cards) {
@@ -171,7 +201,7 @@ describe("describeArtifactBuildTargetCards", () => {
     });
 
     it("uses product-facing primary destinations while retaining exact destination and write behavior as advanced detail", () => {
-        const cards = describeExportDeployTargetCards([target()], BUILDABLE_CAPABILITIES);
+        const cards = describeExportDeployTargetCards([target()], artifactTargets());
         const stakeCard = cards.find((card) => card.kind === "staticExport");
         const remoteCard = cards.find((card) => card.kind === "remoteDeployment" && card.deploymentTarget !== undefined);
 

@@ -1,5 +1,5 @@
 import path from "path";
-import {ArtifactBuilderRegistry, ProjectTargetResolver, type ArtifactTargetType, type ProjectResolving} from "pokie";
+import {ArtifactBuilderRegistry, ArtifactConversionPlanner, ProjectTargetResolver, type ArtifactConversionExecution, type ArtifactTargetType, type ProjectResolving} from "pokie";
 import {Command} from "commander";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {OutcomeLibraryCommand} from "./OutcomeLibraryCommand.js";
@@ -21,6 +21,7 @@ export class ExportCommand implements CliCommandHandling {
     private readonly stake: StakeEngineCommand;
     private readonly registry: ArtifactBuilderRegistry;
     private readonly resolveProject: ProjectResolving;
+    private readonly planner = new ArtifactConversionPlanner();
 
     constructor(pokieVersion: string, resolveProject: ProjectResolving = new ProjectTargetResolver()) {
         this.outcomeLibrary = new OutcomeLibraryCommand(pokieVersion);
@@ -57,41 +58,7 @@ export class ExportCommand implements CliCommandHandling {
             return this.runProjectExport(parsed, project);
         }
 
-        if (parsed.dryRun) {
-            return this.validateDryRunSource(parsed).then(() => {
-                const destination = this.resolveDestination(parsed);
-                const destinationCheck = this.registry.checkDestination(this.artifactTarget(parsed.target), destination, parsed.source);
-                if (!destinationCheck.available) {
-                    throw new Error(this.describeDestinationConflict(parsed.target, destinationCheck.message));
-                }
-                console.log(`Dry run -- would export target "${parsed.target}" from "${parsed.source}" to "${destination}". No files written.`);
-                return 0;
-            });
-        }
-        const destination = this.resolveDestination(parsed);
-        const destinationCheck = this.registry.checkDestination(this.artifactTarget(parsed.target), destination, parsed.source);
-        if (!destinationCheck.available) {
-            return Promise.reject(new Error(this.describeDestinationConflict(parsed.target, destinationCheck.message)));
-        }
-
-        const forwarded = args.filter((value, index) => value !== "--to" && args[index - 1] !== "--to" && value !== "--dry-run");
-        let forwardedRun: Promise<number>;
-        if (parsed.target === "outcomes") {
-            forwardedRun = this.outcomeLibrary.run(["build", ...forwarded]);
-        } else if (parsed.target === "adapter") {
-            forwardedRun = this.stake.run(["export", ...forwarded]);
-        } else {
-            forwardedRun = this.par.run(["export", ...forwarded]);
-        }
-        return forwardedRun.catch((error: unknown) => {
-            if (error instanceof Error && (/already exists|source itself|destination/i).test(error.message)) {
-                throw new Error(
-                    `Cannot export target "${parsed.target}" because its destination is unavailable. ${error.message} ` +
-                        "Next: choose a different --out path or remove the existing destination, then retry.",
-                );
-            }
-            throw error;
-        });
+        return this.runDescriptorExport(parsed);
     }
 
     // The original config-descriptor exports remain available for users who already have standalone
@@ -100,25 +67,24 @@ export class ExportCommand implements CliCommandHandling {
     // advertises in its help text.
     private async runProjectExport(args: ExportArgs, project: Awaited<ReturnType<ProjectResolving["resolve"]>> & {}): Promise<number> {
         const target = this.artifactTarget(args.target);
-        if (!this.registry.supportsConversionFrom(target, project.type)) {
-            throw new Error(this.describeSourceFailure(args));
-        }
         const destination = this.resolveDestination(args);
-        const destinationCheck = this.registry.checkDestination(target, destination, project.rootPath);
-        if (!destinationCheck.available) {
-            throw new Error(this.describeDestinationConflict(args.target, destinationCheck.message));
+        const plan = await this.registry.preparePlan(project, target, {destinationPath: destination});
+        if (plan.status === "unavailable") {
+            throw new Error(`${plan.diagnostic!.message} Next: ${plan.diagnostic!.recovery}`);
+        }
+        if (plan.status === "conflict") {
+            throw new Error(this.describeDestinationConflict(args.target, plan.diagnostic!.message));
         }
         if (args.dryRun) {
-            try {
-                await this.registry.validate(target, project);
-            } catch {
-                throw new Error(this.describeSourceFailure(args));
-            }
+            await this.registry.validate(target, project, plan);
             console.log(`Dry run -- would export target "${args.target}" from "${project.rootPath}" to "${destination}". No files written.`);
+            console.log(`Conversion plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}.`);
+            console.log(`Preflight: ${plan.preflight.estimatedWork} work; ${plan.preflight.destinationKind} destination.`);
+            if (plan.preflight.losses.length > 0) console.log(`Data boundary: ${plan.preflight.losses.join(" ")}`);
             return 0;
         }
         try {
-            const result = await this.registry.build(target, project, destination);
+            const result = await this.registry.executePlan(plan, project, destination);
             console.log(`Artifact "${args.target}" exported to "${result.outputPath}".`);
             return 0;
         } catch (error) {
@@ -199,33 +165,66 @@ export class ExportCommand implements CliCommandHandling {
             "Next: choose a different --out path or remove the existing destination, then retry.";
     }
 
-    private async validateDryRunSource(args: ExportArgs): Promise<void> {
+    /**
+     * Legacy descriptors retain their documented readers, but no longer take a
+     * detour through another public command.  The outer `export` action binds
+     * source and destination once; its prepared operation owns validation
+     * ordering, destination safety, cancellation, rollback and the terminal
+     * diagnostic boundary.
+     */
+    private async runDescriptorExport(args: ExportArgs): Promise<number> {
+        const destination = this.resolveDestination(args);
+        const controller = new AbortController();
+        const onCancel = () => controller.abort();
+        process.once("SIGINT", onCancel);
         try {
+            // A descriptor's parser and writer are format adapters only.  The
+            // Export command executes their returned hooks through exactly one
+            // planner operation; it never dispatches another public command.
             if (args.target === "outcomes") {
-                await this.outcomeLibrary.validateBuildSource(args.source);
+                const prepared = this.outcomeLibrary.prepareDescriptorBuildOperation(args.source, destination, controller.signal);
+                await this.executeDescriptorOperation(prepared, args.dryRun);
             } else if (args.target === "adapter") {
-                await this.stake.validateExportSource(args.source);
+                const prepared = this.stake.prepareDescriptorExportOperation(args.source, destination, controller.signal);
+                await this.executeDescriptorOperation(prepared, args.dryRun);
             } else {
-                this.par.validateExportSource(args.source);
+                const prepared = this.par.prepareDescriptorExportOperation(args.source, destination, controller.signal);
+                await this.executeDescriptorOperation(prepared, args.dryRun);
             }
-        } catch {
-            throw new Error(this.describeSourceFailure(args));
+        } catch (error) {
+            if (error instanceof Error && (/already exists|source itself|destination|occupied/i).test(error.message)) {
+                throw new Error(this.describeDestinationConflict(args.target, error.message));
+            }
+            // A prepared operation has already bound the exact descriptor and
+            // its reader inputs.  Preserve a drift or reader diagnostic here:
+            // reducing it to the old target-matrix wording loses the failed
+            // edge and actionable recovery the prepared operation established.
+            throw error;
+        } finally {
+            process.off("SIGINT", onCancel);
         }
+        if (args.dryRun) {
+            console.log(`Dry run -- would export target "${args.target}" from "${args.source}" to "${destination}". No files written.`);
+        }
+        return 0;
     }
 
-    private describeSourceFailure(args: ExportArgs): string {
-        let recovery: string;
-        switch (args.target) {
-            case "outcomes":
-                recovery = "provide an outcome-library config with valid mode sources";
-                break;
-            case "adapter":
-                recovery = "provide a Stake Engine export config with valid mode libraries and costs";
-                break;
-            case "workbook":
-                recovery = "provide a valid GameBlueprint JSON source";
-                break;
+    private async executeDescriptorOperation(
+        prepared: {readonly plan: import("pokie").ArtifactConversionPlan; readonly validate: () => Promise<void> | void; readonly execution: ArtifactConversionExecution<unknown, unknown>},
+        dryRun: boolean,
+    ): Promise<void> {
+        if (!dryRun) {
+            await this.planner.executeConversionPlan(prepared.plan, prepared.execution);
+            return;
         }
-        return `Cannot export target "${args.target}" because source "${args.source}" is not compatible. Next: ${recovery}, then retry.`;
+        await prepared.validate();
+        await this.planner.executeConversionPlan(prepared.plan, {
+            ...prepared.execution,
+            // Keep destination policy and source drift checks active for a
+            // preview while making its publisher a no-op.
+            publish: () => Promise.resolve(undefined),
+            rollback: () => Promise.resolve(undefined),
+        });
     }
+
 }

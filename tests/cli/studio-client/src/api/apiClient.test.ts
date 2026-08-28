@@ -28,6 +28,7 @@ import {
     ProjectOpenError,
     registerProjectImport,
     removeProjectRegistryEntry,
+    runDeployment,
     runReplay,
     saveBlueprint,
     saveManagedBlueprint,
@@ -53,6 +54,39 @@ function createFakeFetch(handler: (call: FakeCall) => {ok: boolean; status: numb
 }
 
 describe("studio-client apiClient", () => {
+    describe("runDeployment", () => {
+        it("preserves a planner-terminal deployment result instead of turning it into a transport error", async () => {
+            const terminal = {
+                status: "unavailable",
+                error: "Regenerate the outcome library before deploying.",
+                targetId: "local-json-example",
+                publish: false,
+                stages: [],
+                descriptorIssues: [],
+                compatibilityIssues: [],
+                projectionIssues: [],
+                artifactIssues: [],
+                plan: {
+                    status: "unavailable",
+                    source: {kind: "outcomeLibrary", capabilities: []},
+                    target: {kind: "outcomeLibrary", capabilities: []},
+                    steps: [],
+                    preflight: {destinationKind: "directory", estimatedWork: "none", losses: [], oneWay: false},
+                    diagnostic: {
+                        code: "stale-provenance",
+                        failedEdge: {from: "outcomeLibrary", to: "outcomeLibrary"},
+                        message: "Regenerate the outcome library before deploying.",
+                        recovery: "Regenerate the library and retry.",
+                    },
+                },
+            };
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: terminal}));
+
+            await expect(runDeployment(fetchImpl, "local-json-example", [], false)).resolves.toEqual(terminal);
+            expect(calls[0].url).toBe("/api/project/deployment/runs");
+        });
+    });
+
     describe("getContext", () => {
         it("GETs /api/context", async () => {
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {mode: "home"}}));

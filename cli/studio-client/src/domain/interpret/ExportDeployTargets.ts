@@ -1,6 +1,5 @@
-import type {StudioArtifactTargetType, StudioArtifactTargetView, StudioDeploymentTargetSummary, StudioProjectCapability} from "../../api/types";
+import type {StudioArtifactConversionPlan, StudioArtifactTargetType, StudioArtifactTargetView, StudioDeploymentTargetSummary} from "../../api/types";
 import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
-import {BLUEPRINT_BUILD_CAPABILITY, OUTCOME_LIBRARY_READ_CAPABILITY, RUNTIME_EXECUTE_CAPABILITY} from "./ProjectDashboard";
 
 // Pure view-model for the shared Build/Export shell (see ExportDeployTab) -- the sole Studio surface a
 // project's outputs are built/published from. It classifies, but never merges, the four backend pipelines
@@ -51,6 +50,8 @@ export type ExportDeployTargetCard = {
     // The ArtifactBuilderRegistry target this card describes -- present only for "buildArtifact" cards, so
     // ExportDeployTab can run buildArtifact(fetchImpl, card.artifactTarget) directly against it.
     readonly artifactTarget?: StudioArtifactTargetType;
+    /** Exact server-selected conversion; browser presentation never infers an edge. */
+    readonly artifactPlan?: StudioArtifactConversionPlan;
 };
 
 // Short, presentation-only prose per ArtifactBuilderRegistry target -- mirrors the exact same
@@ -100,6 +101,7 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
 // making an unavailable output look as though Studio forgot to offer it.
 function unavailableReasonsForArtifactTarget(entry: StudioArtifactTargetView, fallbackReason: string): readonly string[] {
     if (entry.supported) return [];
+    if (entry.plan?.diagnostic !== undefined) return [entry.plan.diagnostic.message, entry.plan.diagnostic.recovery];
     if (entry.diagnostic !== undefined) return [entry.diagnostic];
     if (entry.unsupportedNotes.length > 0) return entry.unsupportedNotes;
     return [fallbackReason];
@@ -126,7 +128,9 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
                     "A registry-backed preview reports the resolved destination (and any conflict) before Build is ever clicked; Build itself still writes the artifact to disk in one step, and a destination that already exists and isn't empty is refused untouched.",
                 capabilities: [],
                 limits: [],
-                prerequisites: entry.supported ? ["This project is ready to build. Choose a destination or use the default."] : [],
+                prerequisites: entry.plan?.status === "planned"
+                    ? entry.plan.steps.map((step) => `${step.choice} ${step.kind}`)
+                    : [],
                 // The server's descriptor remains the authority whenever it provides a reason. Some
                 // transitional or third-party Studio responses have no descriptor prose, however, so the
                 // card still needs a useful, target-specific next step instead of a generic unavailable
@@ -136,6 +140,7 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
                 locality: "local",
                 compatibility: "The exact same ArtifactBuilderRegistry conversion runs in the CLI and Studio, so they always agree on what's buildable and what it writes.",
                 artifactTarget: entry.target,
+                ...(entry.plan === undefined ? {} : {artifactPlan: entry.plan}),
             };
         });
 }
@@ -253,48 +258,46 @@ const REMOTE_DEPLOYMENT_PLACEHOLDER_CARD: ExportDeployTargetCard = {
     compatibility: "Once registered, goes through the same ExternalDeploymentCompatibilityValidator contract every other target already does.",
 };
 
-// Whether this project can generate a brand-new canonical outcome library from its own current build --
-// what the outcome-library generator card itself requires. A "blueprint" project never carries
-// RUNTIME_EXECUTE_CAPABILITY itself, but Studio always materializes it into a runnable tsPackage before
-// ever loading it (see RUNTIME_EXECUTE_CAPABILITY's own doc comment), so BLUEPRINT_BUILD_CAPABILITY is an
-// equally sufficient signal here -- mirrors ProjectDashboardPage's own RUNTIME_CAPABLE_CAPABILITIES gate
-// for the tab as a whole.
-function canGenerateOutcomeLibrary(capabilities: readonly StudioProjectCapability[]): boolean {
-    return capabilities.includes(BLUEPRINT_BUILD_CAPABILITY) || capabilities.includes(RUNTIME_EXECUTE_CAPABILITY);
-}
-
-// Whether this project can reach *some* canonical outcome library -- either by generating a fresh one
-// (see canGenerateOutcomeLibrary above) or because it already *is* one (OUTCOME_LIBRARY_READ_CAPABILITY,
-// granted only to a resolved "outcomeLibrary" project -- see PROJECT_TYPE_CAPABILITIES). Static export and
-// every adapter card only ever *read* an existing canonical library (see their own "prerequisites"), so
-// unlike the generator card above, they don't themselves need this project to be buildable/runnable --
-// an already-read-only outcome-library project can still export/deploy the library it already is, even
-// though it can never generate a fresh one itself.
-function canReachCanonicalOutcomeLibrary(capabilities: readonly StudioProjectCapability[]): boolean {
-    return canGenerateOutcomeLibrary(capabilities) || capabilities.includes(OUTCOME_LIBRARY_READ_CAPABILITY);
-}
-
-// Builds the shell's own card list from the live registered-target list (StudioDeploymentTargetSummary[],
-// exactly what useDeploymentManager.targetsView already carries) and the resolved project's own
-// capabilities -- each group is only ever included once this project's own capabilities actually grant
-// what that group needs (see canGenerateOutcomeLibrary/canReachCanonicalOutcomeLibrary above), never as an
-// all-or-nothing bundle. The SDK's own local-json-example demo target is filtered out before any adapter
-// card is built, on every project, regardless of capabilities -- every genuinely registered target left
-// classifies as "remoteDeployment", and the placeholder above fills that group only while it would
-// otherwise be empty.
+// Builds the shell's own card list from live server data.  These cards describe
+// independent services; their concrete planner availability is rendered from
+// the server's artifact plans, never reconstructed from browser capabilities.
 export function describeExportDeployTargetCards(
     deploymentTargets: readonly StudioDeploymentTargetSummary[],
-    capabilities: readonly StudioProjectCapability[],
+    artifactTargets: readonly StudioArtifactTargetView[],
 ): ExportDeployTargetCard[] {
-    const cards: ExportDeployTargetCard[] = [];
-    if (canGenerateOutcomeLibrary(capabilities)) {
-        cards.push(OUTCOME_LIBRARY_CARD);
-    }
-    if (!canReachCanonicalOutcomeLibrary(capabilities)) {
-        return cards;
-    }
-    cards.push(STAKE_ENGINE_EXPORT_CARD);
+    const cards: ExportDeployTargetCard[] = [
+        plannerBackedCard(OUTCOME_LIBRARY_CARD, "outcomeLibrary", artifactTargets),
+        plannerBackedCard(STAKE_ENGINE_EXPORT_CARD, "stakeAdapter", artifactTargets),
+    ];
     const adapterCards = deploymentTargets.filter((target) => target.id !== LOCAL_JSON_EXAMPLE_TARGET_ID).map(describeExternalAdapterTargetCard);
     cards.push(...adapterCards, ...(adapterCards.length > 0 ? [] : [REMOTE_DEPLOYMENT_PLACEHOLDER_CARD]));
     return cards;
+}
+
+// Outcome generation and Stake export keep their distinct Studio writers, but
+// whether they are reachable is a server decision.  In particular, this must
+// not be reconstructed from a stale browser capability snapshot: the plan
+// carries managed-outcome reuse, regeneration, losses, and recovery guidance.
+function plannerBackedCard(
+    card: ExportDeployTargetCard,
+    target: StudioArtifactTargetType,
+    artifactTargets: readonly StudioArtifactTargetView[],
+): ExportDeployTargetCard {
+    const entry = artifactTargets.find((candidate) => candidate.target === target);
+    const plan = entry?.plan;
+    // Older Studio servers did not serialize plans for this independent
+    // writer. Keep their established card usable during a rolling upgrade;
+    // current servers always send a plan and take the branch below.
+    if (entry === undefined || plan === undefined) {
+        return card;
+    }
+    return {
+        ...card,
+        supported: plan?.status === "planned",
+        prerequisites: plan?.status === "planned"
+            ? plan.steps.map((step) => `${step.choice} ${step.kind}`)
+            : [],
+        unavailableReasons: unavailableReasonsForArtifactTarget(entry, "The server could not plan this action."),
+        ...(plan === undefined ? {} : {artifactPlan: plan}),
+    };
 }

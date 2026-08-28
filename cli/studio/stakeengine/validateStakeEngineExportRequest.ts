@@ -22,5 +22,9 @@ export function validateStakeEngineExportRequest(input: StakeEngineExportRequest
         throw new Error('"overwrite" must be a boolean when given.');
     }
 
-    return {modes: validateStakeEngineExportModeInputs(input.modes), outDir: input.outDir, overwrite: input.overwrite === true};
+    // An empty action request is a valid Studio lifecycle input: the service
+    // turns it into the planner's structured unavailable result.  Rejecting it
+    // at transport validation used to make the Build/Export button silently do
+    // nothing when no local selector was available.
+    return {modes: validateStakeEngineExportModeInputs(input.modes, true), outDir: input.outDir, overwrite: input.overwrite === true};
 }

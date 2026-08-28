@@ -769,7 +769,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         refreshRecentSpins();
         deployment.resetForProjectSwitch();
         deployment.refreshTargets();
-        deployment.refreshProjectModesAndRegistry();
+        deployment.refreshProjectModes();
         // Deliberately keyed only on projectKey -- these refreshers should run once per newly-loaded
         // project, not every time one of their own (stable, useCallback-memoized) references changes.
         // eslint-disable-next-line react-hooks/exhaustive-deps

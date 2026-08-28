@@ -1,12 +1,12 @@
 import {
     ArtifactBuildConflictError,
     ArtifactBuildCancelledError,
+    type ArtifactConversionPlan,
     type ArtifactBuildOptions,
     type ArtifactBuildProgress,
     ArtifactBuilderRegistry,
     ArtifactTargetType,
-    describeBuildProductMatrixDiagnostic,
-    getBuildProductMatrixCell,
+    describeArtifactConversionPlanDiagnostic,
     ManagedOutcomeProjectService,
     ManagedOutcomeProjectServicing,
     PokieProject,
@@ -18,6 +18,7 @@ import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
 import type {StudioArtifactBuildJobView, StudioArtifactBuildProgressView} from "./StudioArtifactBuildJobView.js";
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
+import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPlan.js";
 
 // "parWorkbook" is the one target whose artifact is a single file rather than a directory -- its default
 // destination needs a real file extension, mirroring BuildCommand's own PAR_WORKBOOK_DEFAULT_EXTENSION.
@@ -93,19 +94,20 @@ export class StudioArtifactBuildService {
     // capability rule of its own.
     public async listTargets(projectRoot: string): Promise<readonly StudioArtifactTargetView[]> {
         const project = await this.resolveProject.resolve(projectRoot);
-        return this.registry.listTargets().map((target) => {
+        return Promise.all(this.registry.listTargets().map(async (target) => {
             const descriptor = this.registry.describe(target);
-            const cell = project === undefined ? undefined : getBuildProductMatrixCell(project.type, target);
+            const plan = project === undefined
+                ? createUnresolvedRuntimePlan(projectRoot, target)
+                : await this.plan(project, target);
+            const plannerFields = this.targetPlannerFields(plan);
             return {
                 target,
-                supported: cell?.state === "supported",
-                state: cell?.state ?? "diagnostic-required",
-                ...(cell !== undefined && cell.state !== "supported"
-                    ? {diagnostic: describeBuildProductMatrixDiagnostic(project!.type, target, project!.rootPath)}
-                    : {}),
+                supported: plan?.status === "planned",
+                state: plan?.status === "planned" ? "supported" : "diagnostic-required",
+                ...plannerFields,
                 unsupportedNotes: descriptor.unsupportedNotes,
             };
-        });
+        }));
     }
 
     // Reports what a build against the active project would do, without ever invoking a builder -- the same
@@ -116,22 +118,25 @@ export class StudioArtifactBuildService {
     public async preview(projectRoot: string, target: ArtifactTargetType, outDir?: string): Promise<StudioArtifactPreviewView> {
         const resolved = await this.resolveForTarget(projectRoot, target, outDir);
         if (resolved === undefined) {
-            return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`};
+            return {
+                status: "error",
+                message: `"${projectRoot}" was not recognized as a POKIE project.`,
+                plan: createUnresolvedRuntimePlan(projectRoot, target, outDir),
+            };
         }
         const {project, destination} = resolved;
         const destinationKind = destinationKindFor(target);
         const plannedOutputs = plannedOutputsFor(target);
 
-        if (!this.registry.supportsConversionFrom(target, project.type)) {
-            return {status: "unsupported", target, message: this.describeUnsupportedMessage(target, project)};
+        const plan = await this.plan(project, target, destination);
+        if (plan.status === "unavailable") {
+            return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
+        }
+        if (plan.status === "conflict") {
+            return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: plan.diagnostic!.message, plan};
         }
 
-        const destinationCheck = this.registry.checkDestination(target, destination, project.rootPath);
-        if (!destinationCheck.available) {
-            return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: destinationCheck.message};
-        }
-
-        return {status: "ok", target, destination, destinationKind, plannedOutputs, sourceType: project.type};
+        return {status: "ok", target, destination, destinationKind, plannedOutputs, sourceType: project.type, plan};
     }
 
     // Executes a real build against the active project -- resolves `projectRoot` into a PokieProject
@@ -150,16 +155,19 @@ export class StudioArtifactBuildService {
     ): Promise<StudioArtifactBuildView> {
         const resolved = await this.resolveForTarget(projectRoot, target, outDir);
         if (resolved === undefined) {
-            return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`};
+            const plan = createUnresolvedRuntimePlan(projectRoot, target, outDir);
+            return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`, plan};
         }
         const {project, destination} = resolved;
 
-        if (!this.registry.supportsConversionFrom(target, project.type)) {
-            return {status: "unsupported", target, message: this.describeUnsupportedMessage(target, project)};
+        const plan = await this.plan(project, target, destination, options);
+        if (plan.status === "unavailable") {
+            return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
         }
+        if (plan.status === "conflict") return {status: "conflict", target, message: plan.diagnostic!.message, plan};
 
         try {
-            const result = await this.registry.build(target, project, destination, options);
+            const result = await this.registry.executePlan(plan, project, destination, options);
             // Blueprint -> Outcome and Blueprint -> Stake both return the exact managed Outcome Project
             // the registry generated or reopened. Register it with Studio before reporting success; no
             // Studio-only outcome-path index is maintained here.
@@ -174,6 +182,7 @@ export class StudioArtifactBuildService {
                 outputPath: result.outputPath,
                 outputKind: destinationKindFor(target),
                 sourceType: project.type,
+                plan,
                 ...(result.preflight !== undefined
                     ? {
                         preflight: {
@@ -194,12 +203,12 @@ export class StudioArtifactBuildService {
             };
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
-                return {status: "conflict", target, message: error.message};
+                return {status: "conflict", target, message: error.message, plan};
             }
             if (error instanceof ArtifactBuildCancelledError) {
-                return {status: "cancelled", message: "Artifact build was cancelled."};
+                return {status: "cancelled", message: "Artifact build was cancelled.", plan};
             }
-            return {status: "error", message: error instanceof Error ? error.message : String(error)};
+            return {status: "error", message: error instanceof Error ? error.message : String(error), plan};
         }
     }
 
@@ -295,6 +304,10 @@ export class StudioArtifactBuildService {
         }
     }
 
+    private plan(project: PokieProject, target: ArtifactTargetType, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
+        return this.registry.preparePlan(project, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
+    }
+
     // Resolves `projectRoot` into a PokieProject and `target`'s own default destination -- the exact same
     // resolve/default-destination steps both preview() and build() need before they diverge into "just check"
     // vs. "actually write". Returns `undefined` for an unrecognized project (both callers report their own
@@ -311,13 +324,16 @@ export class StudioArtifactBuildService {
         return {project, destination: outDir ?? resolveDefaultDestination(project.rootPath, target)};
     }
 
-    // The exact prose build() and preview() both report for a target this project's own resolved type
-    // doesn't support -- the same registry.supportsConversionFrom() capability diagnostic, worded identically
-    // in both places so a preview's "unsupported" and a subsequent build's own "unsupported" (should a stale
-    // client ever call build() without previewing first) are never two differently-worded statements of the
-    // same fact.
-    private describeUnsupportedMessage(target: ArtifactTargetType, project: PokieProject): string {
-        return describeBuildProductMatrixDiagnostic(project.type, target, project.rootPath);
+    private describePlanDiagnostic(plan: ArtifactConversionPlan): string {
+        const diagnostic = plan.diagnostic;
+        return diagnostic === undefined
+            ? "Artifact conversion is unavailable."
+            : describeArtifactConversionPlanDiagnostic(plan) ?? `${diagnostic.message} Next: ${diagnostic.recovery}`;
+    }
+
+    private targetPlannerFields(plan: ArtifactConversionPlan): {readonly diagnostic?: string; readonly plan: ArtifactConversionPlan} {
+        if (plan.status === "unavailable") return {diagnostic: this.describePlanDiagnostic(plan), plan};
+        return {plan};
     }
 }
 

@@ -10,6 +10,25 @@ import {
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 describe("ManagedOutcomeProjectService atomic registry writes", () => {
+    it("reports a malformed managed registry as a path-aware ineligible candidate", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-managed-outcome-malformed-"));
+        const blueprintPath = path.join(workDir, "game.blueprint.json");
+        const compatibility = {gameId: "sample-slot", gameVersion: "0.1.0", configHash: "config-hash", pokieVersion: "1.3.0"};
+        fs.writeFileSync(blueprintPath, "{}");
+        const registryPath = path.join(workDir, ".pokie", "managed-outcome-projects.json");
+        fs.mkdirSync(path.dirname(registryPath), {recursive: true});
+        fs.writeFileSync(registryPath, "{not-json");
+
+        try {
+            const inspection = await new ManagedOutcomeProjectService().inspect(blueprintPath, compatibility);
+            expect(inspection.project).toBeUndefined();
+            expect(inspection.staleReason).toContain(registryPath);
+            expect(inspection.staleReason).toMatch(/malformed|unreadable/);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it.each(["write", "rename"])("removes a temporary registry fragment and does not register a Project when %s fails", async (failure) => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-managed-outcome-registry-"));
         const blueprintPath = path.join(workDir, "game.blueprint.json");

@@ -1,24 +1,16 @@
 import {useCallback, useEffect, useRef, useState} from "react";
-import {getDeploymentBuildModes, getOutcomeLibraryRegistry, listDeploymentTargets, runDeployment} from "../api/apiClient";
-import type {OutcomeLibrarySelector, StudioDeploymentModeInput, StudioDeploymentTargetSummary, StudioOutcomeLibraryRegistryView} from "../api/types";
+import {getDeploymentBuildModes, listDeploymentTargets, runDeployment} from "../api/apiClient";
+import type {StudioDeploymentTargetSummary} from "../api/types";
 import {useStudioApi} from "../context/StudioApiProvider";
 import {DeploymentRunTracker} from "../domain/deploymentRunTracker";
 import {errorMessage} from "../domain/errorMessage";
 import {
-    canAddDeploymentMode,
     describeDeploymentRunResult,
     describeDeploymentTargetsList,
-    discoverDeploymentModeLibrarySelector,
     hasTargetDescriptorChanged,
-    isAutoDiscoverableLibrarySelector,
-    MULTI_MODE_CAPABILITY_ID,
-    remainingDeploymentModeChoices,
     type DeploymentRunResultView,
     type DeploymentTargetsListView,
 } from "../domain/interpret/Deployment";
-
-const BLANK_JSON_SELECTOR: OutcomeLibrarySelector = {kind: "json", path: ""};
-const EMPTY_MODE: StudioDeploymentModeInput = {modeName: "", librarySelector: BLANK_JSON_SELECTOR};
 
 // The project's own *current built package* modes (see getDeploymentBuildModes/
 // resolveCurrentBuildModeIds's own doc comment) -- deliberately not CertificationTab's own
@@ -28,16 +20,6 @@ const EMPTY_MODE: StudioDeploymentModeInput = {modeName: "", librarySelector: BL
 // mode, and deployment preflight entirely until this resolves to "ok" (see
 // describeBuildModesUnavailable), rather than falling back to a hand-typed mode name.
 export type DeploymentProjectModesView = {status: "loading"} | {status: "unavailable"} | {status: "ok"; modeIds: readonly string[]};
-
-// A freshly added/auto-filled row's own librarySelector -- discovered from the registry when a compatible
-// bundle already exists for this exact mode, otherwise left blank so the row's own status reads "missing"
-// and offers Choose/Generate/open the hub, rather than silently guessing.
-function defaultLibrarySelectorFor(modeName: string, registryView: StudioOutcomeLibraryRegistryView | undefined): OutcomeLibrarySelector {
-    if (modeName.trim().length === 0 || registryView === undefined) {
-        return BLANK_JSON_SELECTOR;
-    }
-    return discoverDeploymentModeLibrarySelector(modeName.trim(), registryView) ?? BLANK_JSON_SELECTOR;
-}
 
 // Owns the Deployment tab's state, including the DeploymentRunTracker (ported unchanged) that guards
 // against double-submits and stale/out-of-order responses -- a page-level hook for the same "must
@@ -63,9 +45,7 @@ export function useDeploymentManager() {
     // resetForProjectSwitch() ran, no render needed) already reflects the reset, so the response can
     // never rebind to a same-id target from a different project.
     const selectedTargetRef = useRef<StudioDeploymentTargetSummary | undefined>(undefined);
-    const [modes, setModes] = useState<StudioDeploymentModeInput[]>([EMPTY_MODE]);
     const [projectModesView, setProjectModesView] = useState<DeploymentProjectModesView>({status: "loading"});
-    const [registryView, setRegistryView] = useState<StudioOutcomeLibraryRegistryView>();
     const [runResult, setRunResult] = useState<DeploymentRunResultView>();
     const [runError, setRunError] = useState<string>();
     const [runLoading, setRunLoading] = useState(false);
@@ -172,18 +152,13 @@ export function useDeploymentManager() {
             });
     }, [fetchImpl, markConfigChanged]);
 
-    // The Configure step's own two discovery inputs -- the project's own current build modes (see
-    // getDeploymentBuildModes's own doc comment, backed by the same authoritative resolver
-    // StudioDeploymentService.run() itself checks a request against) and the outcome library registry
-    // (see ExportDeployTab's own Registry panel). Neither ever blocks the rest of the tab: a
-    // failed/unavailable build-modes lookup blocks mode-name entry entirely (see
-    // describeBuildModesUnavailable), while a failed/unavailable registry lookup alone just leaves every
-    // row "missing" until a library is chosen by hand.
+    // The Build/Export tab only reads current build modes to label outcome
+    // generation. Deployment itself sends no selector: the server owns the
+    // prerequisite lookup, plan preparation, and terminal result.
     const modesRequestIdRef = useRef(0);
-    const refreshProjectModesAndRegistry = useCallback(() => {
+    const refreshProjectModes = useCallback(() => {
         const requestId = ++modesRequestIdRef.current;
         setProjectModesView({status: "loading"});
-        setRegistryView(undefined);
 
         getDeploymentBuildModes(fetchImpl)
             .then((view) => {
@@ -197,37 +172,7 @@ export function useDeploymentManager() {
                 }
             });
 
-        getOutcomeLibraryRegistry(fetchImpl)
-            .then((view) => {
-                if (requestId === modesRequestIdRef.current) {
-                    setRegistryView(view);
-                }
-            })
-            .catch((error: unknown) => {
-                if (requestId === modesRequestIdRef.current) {
-                    setRegistryView({status: "load-error", error: errorMessage(error)});
-                }
-            });
     }, [fetchImpl]);
-
-    // Auto-selects the project's own sole build mode into an otherwise-untouched first row the moment
-    // both the project's modes and the registry are known -- covers the common single-mode project, where
-    // there is nothing to actually choose between. Never fires again once it has (or once the user has
-    // touched the modes themselves -- modes.length !== 1 || the row already has a mode name), and never
-    // overrides a deliberate blank.
-    const autoFilledRef = useRef(false);
-    useEffect(() => {
-        if (autoFilledRef.current || projectModesView.status !== "ok" || registryView === undefined) {
-            return;
-        }
-        autoFilledRef.current = true;
-        if (projectModesView.modeIds.length !== 1 || modes.length !== 1 || modes[0].modeName.trim().length > 0) {
-            return;
-        }
-        const [modeName] = projectModesView.modeIds;
-        setModes([{modeName, librarySelector: defaultLibrarySelectorFor(modeName, registryView)}]);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectModesView, registryView]);
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
     // never show a trace of the previous one's target selection, modes, or run result. Reuses
@@ -250,12 +195,9 @@ export function useDeploymentManager() {
         setPreflightOutdated(false);
         selectedTargetRef.current = undefined;
         setSelectedTarget(undefined);
-        setModes([EMPTY_MODE]);
         setTargetsView({status: "loading"});
         setTargetsError(undefined);
         setProjectModesView({status: "loading"});
-        setRegistryView(undefined);
-        autoFilledRef.current = false;
     }, [invalidate]);
 
     const selectTarget = useCallback(
@@ -274,67 +216,19 @@ export function useDeploymentManager() {
     // auto-discovered (see isAutoDiscoverableLibrarySelector's own doc comment); a selector the user
     // picked by hand (Choose) is left untouched by a mode-name edit, only ever replaced by an explicit
     // setModeLibrarySelector call below.
-    const setModeName = useCallback(
-        (index: number, modeName: string) => {
-            setModes((prev) =>
-                prev.map((mode, i) =>
-                    i === index
-                        ? {modeName, librarySelector: isAutoDiscoverableLibrarySelector(mode.librarySelector) ? defaultLibrarySelectorFor(modeName, registryView) : mode.librarySelector}
-                        : mode,
-                ),
-            );
-            markConfigChanged();
-        },
-        [markConfigChanged, registryView],
-    );
-
-    const setModeLibrarySelector = useCallback(
-        (index: number, librarySelector: OutcomeLibrarySelector) => {
-            setModes((prev) => prev.map((mode, i) => (i === index ? {...mode, librarySelector} : mode)));
-            markConfigChanged();
-        },
-        [markConfigChanged],
-    );
-
     // Only ever adds a row when there is a build mode left to add it for (or the project's own build
     // modes aren't known at all -- see canAddDeploymentMode's own doc comment) and the selected target
     // actually declares multiMode; the new row is auto-filled with the sole remaining choice the same way
     // the very first row is, so picking is only ever needed when there's a genuine choice to make.
-    const addMode = useCallback(() => {
-        const buildModeIds = projectModesView.status === "ok" ? projectModesView.modeIds : undefined;
-        const targetSupportsMultiMode = selectedTarget?.capabilities.includes(MULTI_MODE_CAPABILITY_ID) ?? false;
-        if (!canAddDeploymentMode(buildModeIds, modes, targetSupportsMultiMode)) {
-            return;
-        }
-        setModes((prev) => {
-            const remaining = remainingDeploymentModeChoices(buildModeIds, [...prev, EMPTY_MODE], prev.length);
-            const modeName = remaining !== undefined && remaining.length === 1 ? remaining[0] : "";
-            return [...prev, {modeName, librarySelector: defaultLibrarySelectorFor(modeName, registryView)}];
-        });
-        markConfigChanged();
-    }, [markConfigChanged, modes, projectModesView, registryView, selectedTarget]);
-
-    const removeMode = useCallback(
-        (index: number) => {
-            setModes((prev) => (prev.length > 1 ? prev.filter((_mode, i) => i !== index) : [EMPTY_MODE]));
-            markConfigChanged();
-        },
-        [markConfigChanged],
-    );
-
     const run = useCallback(
         // `targetOverride` lets a caller that owns its own target list (Build/Export's ExportDeployTab,
         // choosing straight from an ExportDeployTargetCard) select-and-run in one action, without a
         // separate selectTarget() call first landing in a stale closure of `selectedTarget` -- see
         // ExportDeployTab's own doc comment. Every other caller omits it entirely and keeps running
         // against whatever selectTarget() already put in state, unchanged.
-        // `modesOverride` gives that same caller a way to run against a mode/library pairing it resolved
-        // itself (an existing registry bundle or one just generated this session) without first funnelling
-        // it through setModeName/setModeLibrarySelector and waiting a render for `modes` state to catch up
-        // -- state updates that land the same tick this callback fires would otherwise still read the
-        // *previous* render's `modes` closure. Every existing caller omits it and keeps running against
-        // the Configure step's own `modes` state, unchanged.
-        (publish: boolean, targetOverride?: StudioDeploymentTargetSummary, modesOverride?: StudioDeploymentModeInput[]) => {
+        // The request contains no prerequisite selector. The server prepares
+        // and executes the authoritative prerequisite plan atomically.
+        (publish: boolean, targetOverride?: StudioDeploymentTargetSummary) => {
             const target = targetOverride ?? selectedTarget;
             if (target === undefined) {
                 return;
@@ -363,7 +257,10 @@ export function useDeploymentManager() {
             setRunResult(undefined);
             setRunLoading(true);
 
-            runDeployment(fetchImpl, target.id, modesOverride ?? modes, publish)
+            // The server selects and verifies the deployment prerequisite. The
+            // browser state is never an authority or a selector submitted with
+            // this action.
+            runDeployment(fetchImpl, target.id, undefined, publish)
                 .then((view) => {
                     trackerRef.current.endRun();
                     setRunLoading(trackerRef.current.isRunInFlight());
@@ -384,28 +281,22 @@ export function useDeploymentManager() {
                     setRunError(errorMessage(error));
                 });
         },
-        [fetchImpl, selectedTarget, modes],
+        [fetchImpl, selectedTarget],
     );
 
     return {
         targetsView,
         targetsError,
         selectedTarget,
-        modes,
         projectModesView,
-        registryView,
         runResult,
         runError,
         runLoading,
         preflightOutdated,
         selectedArtifactPath,
         refreshTargets,
-        refreshProjectModesAndRegistry,
+        refreshProjectModes,
         selectTarget,
-        setModeName,
-        setModeLibrarySelector,
-        addMode,
-        removeMode,
         run,
         selectArtifact: setSelectedArtifactPath,
         resetForProjectSwitch,

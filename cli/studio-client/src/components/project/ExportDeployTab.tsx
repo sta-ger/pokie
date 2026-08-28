@@ -14,13 +14,12 @@ import {
     startArtifactBuild,
 } from "../../api/apiClient";
 import type {
-    OutcomeLibrarySelector,
     StudioArtifactBuildView,
     StudioArtifactBuildJobView,
+    StudioArtifactConversionPlan,
     StudioArtifactPreviewView,
     StudioArtifactTargetType,
     StudioArtifactTargetView,
-    StudioDeploymentModeInput,
     StudioOutcomeLibraryGenerateResultView,
     StudioProjectCapability,
     StudioStakeEngineExportView,
@@ -45,7 +44,6 @@ import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
-import {RecoveryNotice} from "../common/RecoveryNotice";
 import {PathInput} from "../common/PathInput";
 
 const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: string}> = {
@@ -98,18 +96,14 @@ type OutcomeLibraryRunView =
     | {status: "idle"}
     | {status: "running"}
     | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>}
-    | {status: "error"; message: string};
+    | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
 type StaticExportRunView =
     | {status: "idle"}
     | {status: "running"}
     | {status: "ok"; result: Extract<StudioStakeEngineExportView, {status: "ok"}>}
-    // `source` is the exact resolved mode/library selector the conflicting request was submitted with --
-    // Overwrite resubmits that same pairing (never re-resolves it), so an Outcome Libraries change made
-    // while the conflict is on screen can never make Overwrite silently write a different library than
-    // what the conflict itself was reported against.
-    | {status: "conflict"; result: Extract<StudioStakeEngineExportView, {status: "conflict"}>; source: Extract<OutcomeLibrarySelector, {kind: "bundle"}>}
-    | {status: "error"; message: string};
+    | {status: "conflict"; result: Extract<StudioStakeEngineExportView, {status: "conflict"}>}
+    | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
 function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>): string {
     if (view.status === "load-error") {
@@ -122,14 +116,27 @@ function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateR
     return view.error;
 }
 
-// Never called for a "conflict" result -- that status renders its own recovery UI (Overwrite when
-// `overwritable`, otherwise its own already-actionable `error` message) directly in TargetCard below.
+// Never called for a "conflict" result -- the shared planner's destination policy is authoritative,
+// so the card renders its server-provided recovery rather than inventing an overwrite route.
 function describeStakeEngineResultError(view: Exclude<StudioStakeEngineExportView, {status: "ok"} | {status: "conflict"}>): string {
-    if (view.status === "load-error") {
+    if (view.status === "load-error" || view.status === "unavailable") {
         return describePathActionError("The Stake Engine export's outcome library", view.error);
     }
     const [firstError] = view.errors;
     return firstError?.message ?? "The Stake Engine export failed validation.";
+}
+
+function PlannerSummary({plan, label = "Server plan"}: {plan: StudioArtifactConversionPlan | undefined; label?: string}) {
+    if (plan === undefined) return null;
+    const summary =
+        plan.status === "planned"
+            ? plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No publication required"
+            : `${plan.status === "conflict" ? "Conflict" : "Unavailable"}${plan.diagnostic?.message === undefined ? "" : ` — ${plan.diagnostic.message}`}`;
+    return (
+        <Text size="sm" c="dimmed" mt={4}>
+            {label}: {summary}
+        </Text>
+    );
 }
 
 // One entry per "buildArtifact" card, keyed by its own artifactTarget -- each target runs (and reports)
@@ -142,8 +149,8 @@ type ArtifactBuildRunView =
     // complete between React renders; without retaining it, the user never sees the estimate that
     // governed the build they just started.
     | {status: "ok"; result: Extract<StudioArtifactBuildView, {status: "ok"}>; progress?: StudioArtifactBuildJobView["progress"]}
-    | {status: "cancelled"}
-    | {status: "error"; message: string};
+    | {status: "cancelled"; plan: StudioArtifactConversionPlan}
+    | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
 function describeArtifactBuildResultError(view: Exclude<StudioArtifactBuildView, {status: "ok"}>): string {
     return view.message;
@@ -156,9 +163,11 @@ function describeArtifactBuildResultError(view: Exclude<StudioArtifactBuildView,
 type ArtifactPreviewRunView =
     | {status: "loading"}
     | {status: "ok"; result: Extract<StudioArtifactPreviewView, {status: "ok"}>}
-    | {status: "unsupported"; message: string}
+    | {status: "unsupported"; message: string; plan: StudioArtifactConversionPlan}
     | {status: "conflict"; result: Extract<StudioArtifactPreviewView, {status: "conflict"}>}
-    | {status: "error"; message: string};
+    // Transport failures have no server terminal result. Every server preview
+    // error still carries its mandatory plan through toArtifactPreviewRunView.
+    | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
 function toArtifactPreviewRunView(view: StudioArtifactPreviewView): ArtifactPreviewRunView {
     if (view.status === "ok") {
@@ -167,7 +176,9 @@ function toArtifactPreviewRunView(view: StudioArtifactPreviewView): ArtifactPrev
     if (view.status === "conflict") {
         return {status: "conflict", result: view};
     }
-    return {status: view.status === "unsupported" ? "unsupported" : "error", message: view.message};
+    return view.status === "unsupported"
+        ? {status: "unsupported", message: view.message, plan: view.plan}
+        : {status: "error", message: view.message, plan: view.plan};
 }
 
 function TargetCard({
@@ -177,11 +188,8 @@ function TargetCard({
     onGenerateOutcomeLibrary,
     outcomeLibraryGenerationOptions,
     onOutcomeLibraryGenerationOptionsChange,
-    resolveOutcomeLibrarySource,
-    resolveDeploymentModes,
     staticExportRun,
     onRunStaticExport,
-    onOverwriteStaticExport,
     deployment,
     onOpenFolder,
     artifactPreview,
@@ -203,11 +211,8 @@ function TargetCard({
     onGenerateOutcomeLibrary: () => void;
     outcomeLibraryGenerationOptions: OutcomeLibraryGenerationOptions;
     onOutcomeLibraryGenerationOptionsChange: (options: OutcomeLibraryGenerationOptions) => void;
-    resolveOutcomeLibrarySource: () => Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined;
-    resolveDeploymentModes: () => StudioDeploymentModeInput[] | undefined;
     staticExportRun: StaticExportRunView;
     onRunStaticExport: () => void;
-    onOverwriteStaticExport: () => void;
     deployment: DeploymentManager;
     onOpenFolder: (path: string) => void;
     artifactPreview: ArtifactPreviewRunView;
@@ -224,12 +229,7 @@ function TargetCard({
     onCopyPath: (path: string) => void;
 }) {
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
-    const staticExportSource = resolveOutcomeLibrarySource();
-    const canRunStaticExport = staticExportSource !== undefined;
-    // A remote check consumes the same canonical source as the static export.  Do not make a
-    // capability-eligible target look runnable while its concrete prerequisite is still absent.
-    const canRunRemoteDeployment = staticExportSource !== undefined;
-    const staticExportModeName = staticExportSource?.modeName ?? defaultModeName;
+    const staticExportModeName = defaultModeName;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
 
@@ -324,52 +324,59 @@ function TargetCard({
                     {outcomeLibraryRun.status === "running" && (
                         <LoadingState label="Generating outcome library from this project's current build…" />
                     )}
-                    {outcomeLibraryRun.status === "error" && <ErrorState message={outcomeLibraryRun.message} />}
+                    {outcomeLibraryRun.status === "error" && (
+                        <>
+                            <ErrorState message={outcomeLibraryRun.message} />
+                            <PlannerSummary plan={outcomeLibraryRun.plan} />
+                        </>
+                    )}
                     {outcomeLibraryRun.status === "ok" && (
-                        <Text size="sm" mt={4}>
-                            Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
-                            {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
-                            {outcomeLibraryRun.result.generator.strategy === "bounded-coverage"
-                                ? ` (${(outcomeLibraryRun.result.coverage * 100).toFixed(4)}% of the raw space)`
-                                : ""}
-                            {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
-                            {outcomeLibraryRun.result.bundleDir}.{" "}
-                            <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.bundleDir)}>
-                                Open output folder
-                            </Button>
-                        </Text>
+                        <>
+                            <Text size="sm" mt={4}>
+                                Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
+                                {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
+                                {outcomeLibraryRun.result.generator.strategy === "bounded-coverage"
+                                    ? ` (${(outcomeLibraryRun.result.coverage * 100).toFixed(4)}% of the raw space)`
+                                    : ""}
+                                {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
+                                {outcomeLibraryRun.result.bundleDir}.{" "}
+                                <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.bundleDir)}>
+                                    Open output folder
+                                </Button>
+                            </Text>
+                            <PlannerSummary plan={outcomeLibraryRun.result.plan} />
+                        </>
                     )}
                 </>
             )}
 
             {card.kind === "staticExport" && (
                 <>
-                    <Button size="xs" mt="sm" onClick={onRunStaticExport} loading={staticExportRun.status === "running"} disabled={!canRunStaticExport}>
+                    <Button size="xs" mt="sm" onClick={onRunStaticExport} loading={staticExportRun.status === "running"}>
                         Run Stake Engine Export ({staticExportModeName})
                     </Button>
-                    {!canRunStaticExport && staticExportRun.status !== "ok" && staticExportRun.status !== "conflict" && (
-                        <EmptyState message="Generate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports." />
+                    {staticExportRun.status === "error" && (
+                        <>
+                            <ErrorState message={staticExportRun.message} />
+                            <PlannerSummary plan={staticExportRun.plan} />
+                        </>
                     )}
-                    {staticExportRun.status === "error" && <ErrorState message={staticExportRun.message} />}
-                    {staticExportRun.status === "conflict" &&
-                        (staticExportRun.result.overwritable ? (
-                            <RecoveryNotice
-                                title={staticExportRun.result.error}
-                                message="Exporting will replace the existing directory's contents."
-                                actionLabel="Overwrite"
-                                actionColor="red"
-                                onAction={onOverwriteStaticExport}
-                            />
-                        ) : (
+                    {staticExportRun.status === "conflict" && (
+                        <>
                             <ErrorState message={staticExportRun.result.error} />
-                        ))}
+                            <PlannerSummary plan={staticExportRun.result.plan} />
+                        </>
+                    )}
                     {staticExportRun.status === "ok" && (
-                        <Text size="sm" mt={4}>
-                            Exported {staticExportRun.result.files.length} file(s) to {staticExportRun.result.outDir}.{" "}
-                            <Button size="xs" variant="default" onClick={() => onOpenFolder(staticExportRun.result.outDir)}>
-                                Open output folder
-                            </Button>
-                        </Text>
+                        <>
+                            <Text size="sm" mt={4}>
+                                Exported {staticExportRun.result.files.length} file(s) to {staticExportRun.result.outDir}.{" "}
+                                <Button size="xs" variant="default" onClick={() => onOpenFolder(staticExportRun.result.outDir)}>
+                                    Open output folder
+                                </Button>
+                            </Text>
+                            <PlannerSummary plan={staticExportRun.result.plan} />
+                        </>
                     )}
                 </>
             )}
@@ -402,11 +409,26 @@ function TargetCard({
                             <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>
                             <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
                             <Text size="sm">Status: {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}</Text>
+                            {artifactPreview.result.plan !== undefined && (
+                                <>
+                                    <Text size="sm">Plan: {artifactPreview.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}</Text>
+                                    {artifactPreview.result.plan.preflight.losses.length > 0 && (
+                                        <Text size="sm" c="dimmed">Data boundary: {artifactPreview.result.plan.preflight.losses.join(" ")}</Text>
+                                    )}
+                                </>
+                            )}
                             {artifactPreview.status === "conflict" && <ErrorState message="This destination already contains files. Choose a different destination; Build will not overwrite it." />}
                         </div>
                     )}
                     {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (
-                        <ErrorState message={artifactPreview.message} />
+                        <>
+                            <ErrorState message={artifactPreview.message} />
+                            {artifactPreview.status === "unsupported" && (
+                                <Text size="sm" c="dimmed" mt={4}>
+                                    Planner diagnostic: {artifactPreview.plan.diagnostic?.message ?? "No executable conversion steps."}
+                                </Text>
+                            )}
+                        </>
                     )}
                     <Button size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"} disabled={!canBuildArtifact}>
                         Build
@@ -450,6 +472,11 @@ function TargetCard({
                             <Text size="sm" mt={4}>
                                 Built to {artifactBuildRun.result.outputPath}.
                             </Text>
+                            {artifactBuildRun.result.plan !== undefined && (
+                                <Text size="sm" c="dimmed" mt={4}>
+                                    Executed plan: {artifactBuildRun.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}.
+                                </Text>
+                            )}
                             {artifactBuildRun.result.preflight && (
                                 <Text size="sm" c="dimmed" mt={4}>
                                     Published {artifactBuildRun.result.preflight.estimatedItemCount ?? "the estimated"} item(s)
@@ -498,28 +525,23 @@ function TargetCard({
                         size="xs"
                         mt="sm"
                         loading={isActiveTarget && deployment.runLoading}
-                        disabled={card.deploymentTarget === undefined || !canRunRemoteDeployment}
+                        disabled={card.deploymentTarget === undefined}
                         onClick={() => {
                             if (card.deploymentTarget !== undefined) {
-                                deployment.run(false, card.deploymentTarget, resolveDeploymentModes());
+                                deployment.run(false, card.deploymentTarget);
                             }
                         }}
                     >
                         Check compatibility
                     </Button>
-                    {(!canRunRemoteDeployment || card.deploymentTarget === undefined) && (
-                        <Text size="sm" c="dimmed" mt={4}>
-                            Generate a compatible outcome library above in Build/Export before checking a configured remote destination.
-                        </Text>
-                    )}
                     {previewedOk && (
                         <Button
                             size="xs"
                             mt="xs"
                             ml="xs"
                             loading={isActiveTarget && deployment.runLoading}
-                            disabled={!canRunRemoteDeployment}
-                            onClick={() => deployment.run(true, card.deploymentTarget, resolveDeploymentModes())}
+                            disabled={card.deploymentTarget === undefined}
+                            onClick={() => deployment.run(true, card.deploymentTarget)}
                         >
                             Publish
                         </Button>
@@ -527,13 +549,20 @@ function TargetCard({
                     {isActiveTarget && deployment.runError && <ErrorState message={describeProjectActionError("The remote deployment", deployment.runError)} />}
                     {isActiveTarget && deployment.runResult && !deployment.runLoading && (
                         deployment.runResult.ok ? (
-                            <Text size="sm" mt={4}>
-                                {deployment.runResult.publish
-                                    ? `Published${deployment.runResult.delivered ? "." : " -- delivery could not be confirmed."}`
-                                    : "Compatible -- ready to publish."}
-                            </Text>
+                            <>
+                                <Text size="sm" mt={4}>
+                                    {deployment.runResult.publish
+                                        ? `Published${deployment.runResult.delivered ? "." : " -- delivery could not be confirmed."}`
+                                        : "Compatible -- ready to publish."}
+                                </Text>
+                                <PlannerSummary plan={deployment.runResult.plan} label="Deployment prerequisite plan" />
+                            </>
                         ) : (
-                            <IssueList title="Build issues" issues={deployment.runResult.stages.flatMap((stage) => stage.issues)} />
+                            <>
+                                {deployment.runResult.error !== undefined && <ErrorState message={deployment.runResult.error} />}
+                                <PlannerSummary plan={deployment.runResult.plan} label="Deployment prerequisite plan" />
+                                <IssueList title="Build issues" issues={deployment.runResult.stages.flatMap((stage) => stage.issues)} />
+                            </>
                         )
                     )}
                 </>
@@ -618,16 +647,14 @@ function TargetCard({
 // status/error convention (ErrorState + a plain-language result line), rather than navigating away into a
 // separate legacy Stepper-driven workflow first. Deployment's own selection/run/registry state is owned by
 // the shared useDeploymentManager hook (see DeploymentManager) -- ExportDeployTab drives it directly
-// (deployment.run(publish, target, modes)) instead of duplicating it. An adapter card's own Check/Publish
-// always runs against resolveDeploymentModes()'s own resolved library -- a session-generated bundle or an
-// already-registered one, whichever resolveOutcomeLibrarySource() itself finds -- passed straight into
-// deployment.run() as an explicit override, so neither case depends on the Configure step's own `modes`
-// state already agreeing with it first. Every adapter card's own action always checks compatibility
+// (deployment.run(publish, target)) instead of reconstructing a prerequisite selector from registry or
+// session state. The server owns the selected deployment request and returns its planner terminal result.
+// Every adapter card's own action always checks compatibility
 // first (publish:false) and only offers "Publish" once that check comes back clean -- never a first-click
 // auto-publish outside this machine. (The SDK's own
 // local-json-example demo target -- the one case that could ever run straight to publish:true without a
 // preview step -- is never described as a card at all here; see ExportDeployTargets.ts's own doc comment.)
-export function ExportDeployTab({capabilities, deployment}: {capabilities: readonly StudioProjectCapability[]; deployment: DeploymentManager}) {
+export function ExportDeployTab({capabilities: _capabilities, deployment}: {capabilities: readonly StudioProjectCapability[]; deployment: DeploymentManager}) {
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
     const deploymentTargets = deployment.targetsView.status === "loaded" ? deployment.targetsView.targets : [];
@@ -668,7 +695,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
         };
     }, [fetchImpl]);
     const artifactCards = describeArtifactBuildTargetCards(artifactTargets);
-    const cards = [...describeExportDeployTargetCards(deploymentTargets, capabilities), ...artifactCards];
+    const cards = [...describeExportDeployTargetCards(deploymentTargets, artifactTargets), ...artifactCards];
 
     // One registry-backed preview per supported artifactTarget (keyed by StudioArtifactTargetType), fetched
     // automatically as soon as artifactTargets reports it supported -- see ArtifactPreviewRunView's own doc
@@ -788,13 +815,13 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                 outcomeLibraryGuard.end();
                 if (view.status === "ok") {
                     setOutcomeLibraryRun({status: "ok", result: view});
-                    // Feeds the freshly generated bundle straight into the shared Deployment mode row --
-                    // see this file's own top-level doc comment.
-                    deployment.setModeName(0, view.mode.modeName);
-                    deployment.setModeLibrarySelector(0, {kind: "bundle", bundleDir: view.bundleDir, modeName: view.mode.modeName});
-                    deployment.refreshProjectModesAndRegistry();
+                    // Refreshes server discovery for the separate deployment
+                    // lifecycle, but intentionally does not copy this selector
+                    // into browser state.  Any later action prepares its own
+                    // source and provenance on the server.
+                    deployment.refreshProjectModes();
                 } else {
-                    setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(view)});
+                    setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(view), plan: view.plan});
                 }
             })
             .catch((error: unknown) => {
@@ -803,50 +830,21 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
             });
     }
 
-    // The Stake Engine Export card's own source: prefer the library this same session just generated
-    // (outcomeLibraryRun), falling back to whatever the registry already reports as compatible for
-    // `defaultModeName` -- a project that already had a fresh library before Build/Export was even opened
-    // never needs a redundant re-generate click first.
-    function resolveOutcomeLibrarySource(): Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined {
-        if (outcomeLibraryRun.status === "ok") {
-            return {kind: "bundle", bundleDir: outcomeLibraryRun.result.bundleDir, modeName: outcomeLibraryRun.result.mode.modeName};
-        }
-        const {registryView} = deployment;
-        if (registryView?.status === "ok" && registryView.buildStatus !== "missing") {
-            const mode = registryView.modes.find((entry) => entry.modeName === defaultModeName) ?? registryView.modes[0];
-            if (mode !== undefined && mode.buildStatus === "compatible") {
-                return {kind: "bundle", bundleDir: mode.bundleDir, modeName: mode.modeName};
-            }
-        }
-        return undefined;
-    }
-
-    // A remote adapter card's own run source: the exact same resolved library resolveOutcomeLibrarySource()
-    // already found -- a session-generated bundle or an already-registered one -- carried into a
-    // StudioDeploymentModeInput whose modeName is always the *selector's own* mode (never defaultModeName
-    // blindly), so a registry fallback onto a different mode than defaultModeName can never send a
-    // request pairing one mode's name with another mode's library. `undefined` (no resolved library yet)
-    // falls back to deployment.run()'s own default of the Configure step's `modes` state, unchanged.
-    function resolveDeploymentModes(): StudioDeploymentModeInput[] | undefined {
-        const source = resolveOutcomeLibrarySource();
-        return source === undefined ? undefined : [{modeName: source.modeName, librarySelector: source}];
-    }
-
-    // Shared by the initial run and the conflict card's own Overwrite action -- `source` is always the
-    // exact resolved mode/library selector the caller already has in hand (freshly resolved for the
-    // initial run, or the one a prior conflict was reported against for Overwrite), never re-resolved
-    // here, so Overwrite can never end up pairing a since-changed selector with `overwrite: true`.
-    function runStaticExport(source: Extract<OutcomeLibrarySelector, {kind: "bundle"}>, overwrite: boolean): void {
+    // The browser never selects a prerequisite.  An empty request means the
+    // server resolves the verified managed Outcome Library and prepares the
+    // exact plan it will execute; unavailable/conflict outcomes remain
+    // terminal server DTOs rather than local inferred states.
+    function runStaticExport(): void {
         setStaticExportRun({status: "running"});
-        exportStakeEngine(fetchImpl, [{modeName: source.modeName, librarySelector: source, cost: 1}], STAKE_ENGINE_DEFAULT_OUT_DIR, overwrite)
+        exportStakeEngine(fetchImpl, [], STAKE_ENGINE_DEFAULT_OUT_DIR, false)
             .then((view) => {
                 staticExportGuard.end();
                 if (view.status === "ok") {
                     setStaticExportRun({status: "ok", result: view});
                 } else if (view.status === "conflict") {
-                    setStaticExportRun({status: "conflict", result: view, source});
+                    setStaticExportRun({status: "conflict", result: view});
                 } else {
-                    setStaticExportRun({status: "error", message: describeStakeEngineResultError(view)});
+                    setStaticExportRun({status: "error", message: describeStakeEngineResultError(view), plan: view.plan});
                 }
             })
             .catch((error: unknown) => {
@@ -856,18 +854,10 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
     }
 
     function handleRunStaticExport(): void {
-        const source = resolveOutcomeLibrarySource();
-        if (source === undefined || !staticExportGuard.begin()) {
+        if (!staticExportGuard.begin()) {
             return;
         }
-        runStaticExport(source, false);
-    }
-
-    function handleOverwriteStaticExport(): void {
-        if (staticExportRun.status !== "conflict" || !staticExportGuard.begin()) {
-            return;
-        }
-        runStaticExport(staticExportRun.source, true);
+        runStaticExport();
     }
 
     // Runs a single "Build artifact" card's own target through ArtifactBuilderRegistry (via
@@ -910,8 +900,10 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                     return;
                 }
                 Reflect.deleteProperty(artifactBuildPollTimers.current, target);
-                if (job.status === "cancelled") {
-                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "cancelled"}}));
+                if (job.status === "cancelled" && job.result?.status === "cancelled") {
+                    // The terminal response is authoritative.  Do not turn a
+                    // cancelled job into a client-side capability decision.
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "cancelled", plan: job.result!.plan}}));
                 } else if (job.result !== undefined && job.result.status === "ok") {
                     const result = job.result;
                     setArtifactBuildRuns((runs) => ({
@@ -926,7 +918,11 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                     const result = job.result;
                     setArtifactBuildRuns((runs) => ({
                         ...runs,
-                        [target]: {status: "error", message: result !== undefined ? describeArtifactBuildResultError(result) : "Artifact build ended without a result."},
+                        [target]: {
+                            status: "error",
+                            message: result !== undefined ? describeArtifactBuildResultError(result) : "Artifact build ended without a result.",
+                            ...(result !== undefined ? {plan: result.plan} : {}),
+                        },
                     }));
                 }
             })
@@ -1003,11 +999,8 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                                             onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
                                             outcomeLibraryGenerationOptions={outcomeLibraryGenerationOptions}
                                             onOutcomeLibraryGenerationOptionsChange={setOutcomeLibraryGenerationOptions}
-                                            resolveOutcomeLibrarySource={resolveOutcomeLibrarySource}
-                                            resolveDeploymentModes={resolveDeploymentModes}
                                             staticExportRun={staticExportRun}
                                             onRunStaticExport={handleRunStaticExport}
-                                            onOverwriteStaticExport={handleOverwriteStaticExport}
                                             deployment={deployment}
                                             onOpenFolder={handleOpenFolder}
                                             artifactPreview={artifactPreview}

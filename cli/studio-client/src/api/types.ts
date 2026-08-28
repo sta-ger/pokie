@@ -943,6 +943,9 @@ export type StudioDeploymentStageSummary = {
 // own doc comment. `stages` is the authoritative per-stage status; the fields below it are the raw
 // ExternalDeploymentResult mirror `stages` was itself computed from.
 export type StudioDeploymentRunView = {
+    plan: StudioArtifactConversionPlan;
+    status?: "ok" | "unavailable" | "conflict";
+    error?: string;
     targetId: string;
     publish: boolean;
     stages: StudioDeploymentStageSummary[];
@@ -998,9 +1001,11 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           maxOutcomeSpaceSize: number | string;
           strategy: OutcomeLibraryGenerationStrategy;
           requiresBounded: boolean;
+          plan: StudioArtifactConversionPlan;
       }
-    | {status: "unsupported"; error: string}
-    | {status: "load-error"; error: string};
+    | {status: "unsupported"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
 
 // OutcomeLibraryGeneratorDiagnostics, embedded verbatim -- see its own doc comment
 // (src/weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.ts).
@@ -1029,11 +1034,13 @@ export type StudioOutcomeLibraryGenerateResultView =
           generator: OutcomeLibraryGeneratorDiagnostics;
           coverage: number;
           selector: OutcomeLibrarySelector;
+          plan: StudioArtifactConversionPlan;
       }
-    | {status: "unsupported"; error: string}
-    | {status: "generation-error"; code: string; error: string}
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {status: "load-error"; error: string};
+    | {status: "unsupported"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "generation-error"; code: string; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
+    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
 
 export type StudioOutcomeLibraryRegistryModeEntry = {
     modeName: string;
@@ -1191,8 +1198,14 @@ export type StudioStakeEngineExportModeSummary = {
 // POST /api/project/stakeengine/validate's own DTO — see
 // cli/studio/stakeengine/StudioStakeEngineExportValidateView.ts's own doc comment.
 export type StudioStakeEngineExportValidateView =
-    | {status: "ok"; modes: StudioStakeEngineExportModeSummary[]; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {status: "load-error"; error: string};
+    | {status: "ok"; modes: StudioStakeEngineExportModeSummary[]; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
+    // Validation is a planner terminal action just like export.  Keep every
+    // server state representable in the browser rather than making callers
+    // treat an unavailable source or destination conflict as a transport
+    // failure.
+    | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "unavailable"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
 
 // Mirrors pokie's own StakeEngineManifest/StakeEngineManifestModeEntry
 // (src/stakeengine/StakeEngineManifest.ts) — every hash/metric here is read verbatim off the export
@@ -1227,16 +1240,29 @@ export type StakeEngineManifest = {
 // `true` when `outDir` is recognized as a prior Stake Engine export's own output — resubmitting with
 // `overwrite: true` can never succeed otherwise, so the UI must never offer that action when it's `false`.
 export type StudioStakeEngineExportView =
-    | {status: "ok"; outDir: string; files: string[]; manifest: StakeEngineManifest; warnings: ValidationIssue[]}
-    | {status: "conflict"; outDir: string; overwritable: boolean; error: string}
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {status: "load-error"; error: string};
+    | {status: "ok"; outDir: string; files: string[]; manifest: StakeEngineManifest; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
+    | {status: "conflict"; outDir: string; overwritable: boolean; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "unavailable"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
+    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
 
 // Mirrors the "pokie" package's own ArtifactTargetType -- the closed vocabulary ArtifactBuilderRegistry
 // (and "pokie build <project> --target <target>") builds toward. Studio-client never imports the pokie
 // package directly (see ExportDeployTargets.ts's own top-level doc comment), so this is a plain literal
 // mirror, same convention as StudioProjectType above.
 export type StudioArtifactTargetType = "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "parWorkbook";
+
+// JSON-safe mirror of the server planner.  Studio deliberately consumes this payload instead of maintaining
+// another source/target table in the browser.
+export type StudioArtifactConversionPlan = {
+    status: "planned" | "unavailable" | "conflict";
+    source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; gameId?: string; gameVersion?: string; manifestIdentity?: string; sampleCount?: string; sampleSeed?: string}};
+    target: {kind: string; canonicalLocation?: string; capabilities: string[]; configurationProvenance?: {generationSemantics?: "exact" | "boundedSample"; sampleCount?: string; sampleSeed?: string}};
+    steps: {kind: "publish" | "materializeRuntime" | "generateOutcomeLibrary" | "reuseManagedOutcomeLibrary"; choice: "materialize" | "reuse" | "publish"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses?: string[]}[];
+    preflight: {destinationKind: "file" | "directory"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses: string[]; oneWay: boolean};
+    managedOutcome?: {disposition: "reused" | "ineligible"; reason?: string};
+    diagnostic?: {code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict" | "unrecognized-source"; failedEdge: {from: StudioProjectType; to: StudioArtifactTargetType}; message: string; recovery: string};
+};
 
 // GET /api/project/artifacts/targets' own DTO — see cli/studio/artifacts/StudioArtifactTargetView.ts's
 // own doc comment. `supported` is already resolved against the active project's own ProjectType server-side
@@ -1248,6 +1274,7 @@ export type StudioArtifactTargetView = {
     state: "supported" | "diagnostic-required" | "hidden/unadvertised";
     diagnostic?: string;
     unsupportedNotes: string[];
+    plan: StudioArtifactConversionPlan;
 };
 
 // POST /api/project/artifacts/build's own DTO — see cli/studio/artifacts/StudioArtifactBuildView.ts's own
@@ -1260,12 +1287,13 @@ export type StudioArtifactBuildView =
           outputPath: string;
           outputKind: "file" | "directory";
           sourceType: StudioProjectType;
+          plan: StudioArtifactConversionPlan;
           preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
       }
-    | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
-    | {status: "conflict"; target: StudioArtifactTargetType; message: string}
-    | {status: "cancelled"; message: string}
-    | {status: "error"; message: string};
+    | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
+    | {status: "conflict"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
+    | {status: "cancelled"; message: string; plan: StudioArtifactConversionPlan}
+    | {status: "error"; message: string; plan: StudioArtifactConversionPlan};
 
 // The Build/Export artifact publisher is a server-side job, not a held-open request.  This lets the
 // screen render the same ArtifactBuildOptions preflight/progress callbacks that the CLI receives.
@@ -1296,8 +1324,9 @@ export type StudioArtifactPreviewView =
           destinationKind: "file" | "directory";
           plannedOutputs: string[];
           sourceType: StudioProjectType;
+          plan: StudioArtifactConversionPlan;
       }
-    | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
+    | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
     | {
           status: "conflict";
           target: StudioArtifactTargetType;
@@ -1305,5 +1334,6 @@ export type StudioArtifactPreviewView =
           destinationKind: "file" | "directory";
           plannedOutputs: string[];
           message: string;
+          plan: StudioArtifactConversionPlan;
       }
-    | {status: "error"; message: string};
+    | {status: "error"; message: string; plan: StudioArtifactConversionPlan};

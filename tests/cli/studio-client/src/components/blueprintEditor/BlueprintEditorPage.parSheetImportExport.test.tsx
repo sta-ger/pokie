@@ -1,5 +1,6 @@
 import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {act} from "react";
 import {BlueprintEditorPage} from "../../../../../../cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
@@ -260,17 +261,13 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         expect(exportInput).toHaveAttribute("placeholder", "./game.par.xlsx");
     });
 
-    it("exports the current blueprint successfully, and handles a conflict via Overwrite", async () => {
+    it("keeps an occupied export destination as a conflict and never offers overwrite", async () => {
         const user = userEvent.setup();
-        let firstAttempt = true;
         const fetchImpl: FetchLike = (url, init) => {
             if (url === EXPORT_URL) {
                 const body = JSON.parse((init?.body as string | undefined) ?? "{}") as {overwrite?: boolean};
-                if (firstAttempt && !body.overwrite) {
-                    firstAttempt = false;
-                    return jsonResponse({status: "conflict", path: "/games/out.par.xlsx", error: "already exists"}, 409);
-                }
-                return jsonResponse({status: "ok", path: "/games/out.par.xlsx", warnings: []});
+                expect(body.overwrite).toBe(false);
+                return jsonResponse({status: "conflict", path: "/games/out.par.xlsx", error: "already exists"}, 409);
             }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
         };
@@ -282,10 +279,9 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         await user.type(screen.getByLabelText("Export to path"), "./out.par.xlsx");
         await user.click(screen.getByRole("button", {name: "Export"}));
 
-        expect(await screen.findByText("already exists")).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Overwrite"}));
-
-        expect(await screen.findByText("Exported successfully")).toBeInTheDocument();
+        expect(await screen.findByText(/already exists/)).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Overwrite"})).not.toBeInTheDocument();
+        expect(screen.getByText(/Choose a different export path; existing artifacts are never overwritten\./)).toBeInTheDocument();
     });
 
     it("drops a stale export response when the blueprint is edited elsewhere while the request is in flight", async () => {
@@ -314,9 +310,11 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         await user.click(screen.getByRole("button", {name: "Add symbol"}));
         await waitFor(() => expect(screen.queryByText("Writing…")).not.toBeInTheDocument());
 
-        resolveExport?.(await jsonResponse({status: "ok", path: "/games/out.par.xlsx", warnings: []}));
-        await new Promise((resolveTimeout) => {
-            setTimeout(resolveTimeout, 100);
+        await act(async () => {
+            resolveExport?.(await jsonResponse({status: "ok", path: "/games/out.par.xlsx", warnings: []}));
+            await new Promise((resolveTimeout) => {
+                setTimeout(resolveTimeout, 100);
+            });
         });
         expect(screen.queryByText("Exported successfully")).not.toBeInTheDocument();
     });
@@ -415,25 +413,27 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         expect(screen.queryByText(/id: "imported-game"/)).not.toBeInTheDocument();
 
         // A's late response now arrives -- it must be ignored, since B has since been imported.
-        resolvePreviewA?.(
-            await jsonResponse({
-                status: "ok",
-                warnings: [],
-                manifest: IMPORTED_BLUEPRINT.manifest,
-                reels: 2,
-                rows: 2,
-                symbolsCount: 2,
-                blueprintHash: "sha256:a",
-                expectedFiles: ["package.json"],
-                projectRoot: "/games/imported-game",
-                destinationHasContent: false,
-                createFiles: ["package.json"],
-                updateFiles: [],
-                deleteFiles: [],
-            }),
-        );
-        await new Promise((resolveTimeout) => {
-            setTimeout(resolveTimeout, 50);
+        await act(async () => {
+            resolvePreviewA?.(
+                await jsonResponse({
+                    status: "ok",
+                    warnings: [],
+                    manifest: IMPORTED_BLUEPRINT.manifest,
+                    reels: 2,
+                    rows: 2,
+                    symbolsCount: 2,
+                    blueprintHash: "sha256:a",
+                    expectedFiles: ["package.json"],
+                    projectRoot: "/games/imported-game",
+                    destinationHasContent: false,
+                    createFiles: ["package.json"],
+                    updateFiles: [],
+                    deleteFiles: [],
+                }),
+            );
+            await new Promise((resolveTimeout) => {
+                setTimeout(resolveTimeout, 50);
+            });
         });
         expect(screen.queryByText(/id: "imported-game"/)).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Continue to Apply / Export"})).not.toBeInTheDocument();

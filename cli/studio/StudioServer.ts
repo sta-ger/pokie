@@ -1,4 +1,5 @@
 import {
+    ArtifactConversionPlan,
     GamePackageInspecting,
     GamePackageInspectionReport,
     GamePackageInspector,
@@ -51,6 +52,7 @@ import {
     CertificationSourceValidateRequestInput,
 } from "./certification/validateCertificationSourceValidateRequest.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
+import type {StudioDeploymentRunView} from "./deployment/StudioDeploymentRunView.js";
 import {validateDeploymentRunRequest, DeploymentRunRequestInput} from "./deployment/validateDeploymentRunRequest.js";
 import {createMaterializingRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
@@ -306,15 +308,56 @@ export class StudioServer implements StudioServerHandling {
         this.playService =
             options.playService ??
             new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion, undefined, undefined, undefined, this.roundRecorder);
-        this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, loadCurrentProjectGame);
+        this.deploymentService = options.deploymentService ?? StudioDeploymentService.withPokieVersion(
+            this.pokieVersion,
+            async (projectRoot) => {
+                const registry = await this.outcomeLibraryGenerateService.registry(projectRoot);
+                if (registry.status !== "ok" || registry.buildStatus !== "compatible") {
+                    return [];
+                }
+                return registry.modes
+                    .filter((mode) => mode.buildStatus === "compatible")
+                    .map((mode) => ({
+                        modeName: mode.modeName,
+                        librarySelector: {kind: "bundle" as const, bundleDir: mode.bundleDir, modeName: mode.modeName},
+                    }));
+            },
+        );
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
         this.fairnessService = options.fairnessService ?? new StudioFairnessService();
         this.stakeEngineExportService =
-            options.stakeEngineExportService ?? new StudioStakeEngineExportService(this.pokieVersion, undefined, undefined, undefined, undefined, undefined, undefined, async (projectRoot) => {
-                const game = await loadCurrentProjectGame(projectRoot);
-                return game.getConfigHash?.();
-            });
+            options.stakeEngineExportService ?? new StudioStakeEngineExportService(
+                this.pokieVersion,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                async (projectRoot) => {
+                    const game = await loadCurrentProjectGame(projectRoot);
+                    return game.getConfigHash?.();
+                },
+                undefined,
+                async (projectRoot) => {
+                    // The Build/Export card posts no prerequisite selector.  Pick
+                    // only a registry entry independently verified against this
+                    // project's current build, so a stale/moved bundle cannot be
+                    // revived from browser state between preflight and export.
+                    const registry = await this.outcomeLibraryGenerateService.registry(projectRoot);
+                    if (registry.status !== "ok" || registry.buildStatus !== "compatible") {
+                        return [];
+                    }
+                    return registry.modes
+                        .filter((mode) => mode.buildStatus === "compatible")
+                        .map((mode) => ({
+                            modeName: mode.modeName,
+                            librarySelector: {kind: "bundle" as const, bundleDir: mode.bundleDir, modeName: mode.modeName},
+                            cost: 1,
+                        }));
+                },
+            );
         this.projectRegistrationService = options.projectRegistrationService ?? createDefaultStudioProjectRegistrationService();
         this.artifactBuildService =
             options.artifactBuildService ??
@@ -1701,9 +1744,11 @@ export class StudioServer implements StudioServerHandling {
     }
 
     // A well-formed request that fails at the domain level (unknown targetId, an unreadable/malformed
-    // library file) still gets its own precise status (404 / 400) here, same as everywhere else in this
-    // class — only the pipeline's own findings (incompatible content, a failed projector, ...) are
-    // ever carried in the 200 response's own DTO, via StudioDeploymentService.run()'s "ok" branch.
+    // library file) is still returned in the action DTO.  Its prerequisite plan
+    // is terminalized below as well: a plan may describe a reusable Outcome
+    // Library before a request is checked, but it must not tell the browser that
+    // this particular deployment can proceed after a later request preflight
+    // has rejected it.
     private async handleRunDeployment(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
@@ -1720,15 +1765,73 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const result = await this.deploymentService.run(this.currentContext.projectRoot, validated);
-        if (result.status === "target-not-found") {
-            this.sendJson(res, 404, {error: `Unknown deployment target "${validated.targetId}".`});
+        // A validated request's planner outcome is part of the action lifecycle,
+        // including unavailable/conflict recovery.  Keep it in the normal DTO so
+        // apiClient does not discard it while translating a non-2xx response.
+        if (result.status === "ok") {
+            this.sendJson(res, 200, result.view);
             return;
         }
-        if (result.status === "invalid-modes" || result.status === "load-error") {
-            this.sendJson(res, 400, {error: result.error});
-            return;
-        }
-        this.sendJson(res, 200, result.view);
+        const terminalError = result.status === "target-not-found" ? `Unknown deployment target "${validated.targetId}".` : result.error;
+        this.sendJson(res, 200, this.deploymentPlannerTerminalView(result.status, terminalError, result.plan, validated));
+    }
+
+    private deploymentPlannerTerminalView(
+        resultStatus: "target-not-found" | "invalid-modes" | "load-error",
+        error: string,
+        plan: ArtifactConversionPlan | undefined,
+        request: {targetId: string; publish: boolean},
+    ): StudioDeploymentRunView & {status: "unavailable"; error: string} {
+        const fallbackPlan: ArtifactConversionPlan = {
+            status: "unavailable" as const,
+            source: {kind: "outcomeLibrary" as const, capabilities: []},
+            target: {kind: "outcomeLibrary" as const, capabilities: []},
+            steps: [],
+            preflight: {destinationKind: "directory" as const, estimatedWork: "none" as const, losses: [], oneWay: false},
+            diagnostic: {
+                code: "missing-data" as const,
+                failedEdge: {from: "outcomeLibrary" as const, to: "outcomeLibrary" as const},
+                message: error,
+                recovery: "Open a recognized POKIE project and retry.",
+            },
+        };
+        // `StudioDeploymentService` prepares the selected library's conversion
+        // plan before it can discover request-specific blockers such as an
+        // unknown deployment target, stale mode, or unreadable selected file.
+        // Preserve that plan's source, target, and prospective steps, but make
+        // the response's executable state and diagnostic describe the blocker
+        // that actually terminated this request.
+        const terminalPlan: ArtifactConversionPlan = plan?.status === "planned"
+            ? {
+                ...plan,
+                status: "unavailable",
+                diagnostic: {
+                    // A target id names a deployment endpoint, never an artifact
+                    // destination.  In particular an unknown id must not be
+                    // rendered as an occupied-output conflict: no conversion
+                    // destination was selected or inspected at this point.
+                    code: "missing-data",
+                    failedEdge: {from: plan.source.kind, to: plan.target.kind},
+                    message: error,
+                    recovery: "Correct the deployment request or selected library, then try again.",
+                },
+            }
+            : plan ?? fallbackPlan;
+        return {
+            // Every rejected deployment request is unavailable to execute. A
+            // `conflict` terminal state is reserved for planner-owned output
+            // destination policy, which deployment does not exercise.
+            status: "unavailable",
+            error,
+            plan: terminalPlan,
+            targetId: request.targetId,
+            publish: request.publish,
+            stages: [],
+            descriptorIssues: [],
+            compatibilityIssues: [],
+            projectionIssues: [],
+            artifactIssues: [],
+        };
     }
 
     private async handleEstimateOutcomeLibraryGeneration(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -2059,7 +2162,7 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, this.statusForStakeEngineExport(result.status), result);
     }
 
-    private statusForStakeEngineExport(status: "ok" | "conflict" | "invalid" | "load-error"): number {
+    private statusForStakeEngineExport(status: "ok" | "conflict" | "unavailable" | "invalid" | "load-error"): number {
         if (status === "ok") {
             return 201;
         }

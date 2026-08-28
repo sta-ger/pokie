@@ -51,12 +51,13 @@ describe("StudioArtifactBuildService (integration)", () => {
             sourceType: "tsPackage",
             outputPath: outcomeDir,
         });
-        await expect(service.build(packageRoot, "outcomeLibrary", secondOutcomeDir)).resolves.toEqual({
+        await expect(service.build(packageRoot, "outcomeLibrary", secondOutcomeDir)).resolves.toMatchObject({
             status: "ok",
             target: "outcomeLibrary",
             outputPath: secondOutcomeDir,
             outputKind: "directory",
             sourceType: "tsPackage",
+            plan: {status: "planned", steps: [expect.objectContaining({kind: "reuseManagedOutcomeLibrary"}), expect.objectContaining({kind: "publish"})]},
         });
         await expect(service.build(packageRoot, "stakeAdapter", stakeDir)).resolves.toMatchObject({
             status: "ok",
@@ -75,12 +76,13 @@ describe("StudioArtifactBuildService (integration)", () => {
         if (unsupportedBuild.status !== "unsupported") {
             throw new Error("expected unsupported");
         }
-        expect(unsupportedBuild).toEqual({
+        expect(unsupportedBuild).toMatchObject({
             status: "unsupported",
             target: "parWorkbook",
             message:
                 `"${packageRoot}" is a POKIE game package. It cannot build a PAR workbook. ` +
                 "Missing prerequisite: a Game Blueprint or PAR workbook. Next: Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target parWorkbook`.",
+            plan: {status: "unavailable", diagnostic: {failedEdge: {from: "tsPackage", to: "parWorkbook"}}},
         });
     });
 

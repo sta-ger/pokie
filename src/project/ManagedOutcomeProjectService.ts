@@ -26,7 +26,19 @@ export interface ManagedOutcomeProjectServicing {
     findCompatible(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject | undefined>;
     allocateRoot(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): string;
     registerAndOpen(sourceRootPath: string, rootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject>;
+    /**
+     * Removes a registry record for a planner-owned publication which did not
+     * reach its terminal consumer.  The caller owns deleting the publication
+     * itself; keeping that ownership separate prevents a registry operation
+     * from ever deleting a borrowed/reused bundle.
+     */
+    release(sourceRootPath: string, rootPath: string): Promise<void>;
 }
+
+export type ManagedOutcomeInspection = {
+    readonly project?: PokieProject;
+    readonly staleReason?: string;
+};
 
 type RegisteredOutcomeProject = OutcomeProjectCompatibility & {readonly rootPath: string};
 type RegistryDocument = {readonly projects: readonly RegisteredOutcomeProject[]};
@@ -92,6 +104,34 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
         return legacyProject;
     }
 
+    // Planning needs to distinguish "nothing has been generated yet" from a
+    // registered artifact that is no longer safe to reuse.  Do this read-only
+    // before a planner advertises reuse; execution still uses the exact plan
+    // and never re-runs this lookup to make a different choice.
+    public async inspect(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): Promise<ManagedOutcomeInspection> {
+        let document: RegistryDocument;
+        try {
+            document = await this.readRegistry(sourceRootPath);
+        } catch (error) {
+            return {
+                staleReason: `the managed Outcome registry at "${this.registryPath(sourceRootPath)}" is malformed or unreadable (${describeRegistryError(error)})`,
+            };
+        }
+        if (document.projects.length === 0) return {};
+        const matching = document.projects.find((entry) => sameCompatibility(entry, compatibility));
+        // Historical entries are explicitly ineligible for this request. The
+        // planner records that disposition while still selecting the reachable
+        // regeneration route; it must never silently reuse them or let their
+        // presence suppress generation.
+        if (matching === undefined) {
+            return {staleReason: `the managed Outcome registry at "${this.registryPath(sourceRootPath)}" has different game, configuration, POKIE version, or generation provenance`};
+        }
+        const project = await this.openIfCompatible(matching.rootPath, compatibility);
+        return project === undefined
+            ? {staleReason: `the managed Outcome Library at "${matching.rootPath}" was moved, corrupt, or no longer matches its manifest`}
+            : {project};
+    }
+
     public allocateRoot(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): string {
         return path.join(
             path.dirname(sourceRootPath),
@@ -119,6 +159,26 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
         return project;
     }
 
+    public async release(sourceRootPath: string, rootPath: string): Promise<void> {
+        let document: RegistryDocument;
+        try {
+            document = await this.readRegistry(sourceRootPath);
+        } catch {
+            // A failed Stake publication must not turn its best-effort
+            // registration rollback into a new, masking lifecycle error.
+            return;
+        }
+        const canonicalRoot = path.resolve(rootPath);
+        const projects = document.projects.filter((entry) => path.resolve(entry.rootPath) !== canonicalRoot);
+        if (projects.length === document.projects.length) return;
+        const registryPath = this.registryPath(sourceRootPath);
+        if (projects.length === 0) {
+            await this.files.remove(registryPath, {force: true});
+            return;
+        }
+        await this.writeRegistry(registryPath, {projects});
+    }
+
     private async openIfCompatible(rootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject | undefined> {
         try {
             const manifest = await this.reader.readManifest(rootPath);
@@ -129,7 +189,22 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
                 manifest.artifactPokieVersion !== compatibility.pokieVersion
             ) return undefined;
             const project = await this.resolveProject.resolve(rootPath);
-            return project?.type === "outcomeLibrary" ? project : undefined;
+            if (project?.type !== "outcomeLibrary") return undefined;
+            // A resolver's format-recognition provenance is intentionally not reuse evidence. Attach the
+            // independently verified registry/manifest facts only after every compatibility field above
+            // agrees, so planner consumers cannot mistake a moved or stale bundle for an exact match.
+            return {
+                ...project,
+                configurationProvenance: {
+                    configurationHash: compatibility.configHash,
+                    pokieVersion: compatibility.pokieVersion,
+                    generationSemantics: (compatibility.generation ?? "exact") === "exact" ? "exact" : "boundedSample",
+                    gameId: compatibility.gameId,
+                    gameVersion: compatibility.gameVersion,
+                    manifestIdentity: `${compatibility.gameId}@${compatibility.gameVersion}`,
+                    ...(generationProvenance(compatibility.generation)),
+                },
+            };
         } catch {
             return undefined;
         }
@@ -166,7 +241,10 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
     private async readRegistry(sourceRootPath: string): Promise<RegistryDocument> {
         try {
             const parsed = JSON.parse(await this.files.readFile(this.registryPath(sourceRootPath), "utf-8")) as RegistryDocument;
-            return Array.isArray(parsed.projects) ? parsed : {projects: []};
+            if (!Array.isArray(parsed.projects) || !parsed.projects.every(isRegisteredOutcomeProject)) {
+                throw new Error("registry does not contain a valid projects array");
+            }
+            return parsed;
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === "ENOENT") return {projects: []};
             throw error;
@@ -178,6 +256,14 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
     }
 }
 
+function generationProvenance(generation: string | undefined): Pick<NonNullable<PokieProject["configurationProvenance"]>, "generationSemantics" | "sampleCount" | "sampleSeed"> {
+    if (generation === undefined || generation === "exact") return {generationSemantics: "exact"};
+    const [, sampleCount, sampleSeed] = (/^sample:([^:]+):(.*)$/).exec(generation) ?? [];
+    return sampleCount === undefined || sampleSeed === undefined
+        ? {generationSemantics: "boundedSample"}
+        : {generationSemantics: "boundedSample", sampleCount, sampleSeed};
+}
+
 function sameCompatibility(left: OutcomeProjectCompatibility, right: OutcomeProjectCompatibility): boolean {
     return (
         left.gameId === right.gameId &&
@@ -186,4 +272,17 @@ function sameCompatibility(left: OutcomeProjectCompatibility, right: OutcomeProj
         left.pokieVersion === right.pokieVersion &&
         (left.generation ?? "exact") === (right.generation ?? "exact")
     );
+}
+
+function isRegisteredOutcomeProject(value: unknown): value is RegisteredOutcomeProject {
+    if (typeof value !== "object" || value === null) return false;
+    const entry = value as Partial<RegisteredOutcomeProject>;
+    return typeof entry.rootPath === "string" && typeof entry.gameId === "string" &&
+        typeof entry.gameVersion === "string" && typeof entry.configHash === "string" &&
+        typeof entry.pokieVersion === "string" &&
+        (entry.generation === undefined || typeof entry.generation === "string");
+}
+
+function describeRegistryError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }

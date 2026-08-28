@@ -343,6 +343,9 @@ export function describeDeploymentPreflightArtifactNote(target: StudioDeployment
 }
 
 export type DeploymentRunResultView = {
+    /** Server-selected prerequisite; this interpreter never derives one. */
+    readonly plan?: StudioDeploymentRunView["plan"];
+    readonly error?: string;
     readonly stages: readonly StudioDeploymentStageSummary[];
     readonly artifacts: readonly StudioDeploymentArtifactView[];
     // True only once every stage that ran reported no error — mirrors what the "Deploy"/"Preview"
@@ -354,9 +357,11 @@ export type DeploymentRunResultView = {
 
 export function describeDeploymentRunResult(view: StudioDeploymentRunView): DeploymentRunResultView {
     return {
+        ...(view.plan === undefined ? {} : {plan: view.plan}),
+        ...(view.error === undefined ? {} : {error: view.error}),
         stages: view.stages,
         artifacts: view.generation?.artifacts ?? [],
-        ok: view.stages.every((stage) => stage.status !== "error"),
+        ok: view.status !== "unavailable" && view.status !== "conflict" && view.stages.every((stage) => stage.status !== "error"),
         publish: view.publish,
         delivered: view.delivery?.delivered,
     };

@@ -1,4 +1,4 @@
-import {OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, PokieGame} from "pokie";
+import {ArtifactConversionPlan, OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, PokieGame} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -6,6 +6,14 @@ import {StudioOutcomeLibraryGenerateService} from "../../../../cli/studio/outcom
 import {buildAlternateFixtureGame, buildFixtureGame, buildUnsupportedFixtureGame} from "../../../weightedoutcome/generate/GenerateTestFixtures.js";
 
 const POKIE_VERSION = "9.9.9";
+
+const plannedOutcomeLibrary: ArtifactConversionPlan = {
+    status: "planned",
+    source: {kind: "tsPackage", capabilities: ["outcome-library-generate"]},
+    target: {kind: "outcomeLibrary", capabilities: ["outcome-library-read"]},
+    steps: [{kind: "generateOutcomeLibrary", choice: "materialize", estimatedWork: "generate", input: {kind: "tsPackage", capabilities: []}, output: {kind: "outcomeLibrary", capabilities: []}}],
+    preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false},
+};
 
 // Real generateExactWeightedOutcomeLibrary/estimateExactOutcomeSpaceSize/OutcomeLibraryBundleWriter/Reader
 // against a real temp directory -- same discipline as OutcomeLibraryGenerateWorkflow.integration.test.ts,
@@ -25,10 +33,106 @@ describe("StudioOutcomeLibraryGenerateService", () => {
     });
 
     function service(pokieVersion: string = POKIE_VERSION, game: PokieGame = buildFixtureGame()): StudioOutcomeLibraryGenerateService {
-        return new StudioOutcomeLibraryGenerateService(pokieVersion, () => Promise.resolve(game));
+        // The runtime seam deliberately does not turn this temporary directory
+        // into a recognized package. Supply the already-prepared package plan
+        // that production obtains from the resolver so these tests exercise
+        // generation rather than fabricated source recognition.
+        return new StudioOutcomeLibraryGenerateService(
+            pokieVersion,
+            () => Promise.resolve(game),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            {prepare: () => Promise.resolve(plannedOutcomeLibrary)},
+        );
     }
 
     describe("estimate", () => {
+        it("does not load a runtime after the shared planner rejects the generation prerequisite", async () => {
+            const unavailable: ArtifactConversionPlan = {
+                ...plannedOutcomeLibrary,
+                status: "unavailable",
+                steps: [],
+                diagnostic: {
+                    code: "missing-capability",
+                    failedEdge: {from: "tsPackage", to: "outcomeLibrary"},
+                    message: "No verified runtime is available.",
+                    recovery: "Build a verified package.",
+                },
+            };
+            const loadGame = jest.fn(() => Promise.reject(new Error("runtime must not load")));
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                loadGame,
+                undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+                {prepare: () => Promise.resolve(unavailable)},
+            );
+
+            await expect(svc.estimate(projectRoot, {})).resolves.toMatchObject({status: "unsupported", plan: unavailable});
+            expect(loadGame).not.toHaveBeenCalled();
+        });
+
+        it("carries the server planner decision through estimate and generation", async () => {
+            const planning = {prepare: jest.fn(() => Promise.resolve(plannedOutcomeLibrary))};
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(buildFixtureGame()),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                planning,
+            );
+
+            const estimate = await svc.estimate(projectRoot, {});
+            const generated = await svc.generate(projectRoot, {});
+
+            expect(estimate).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
+            expect(generated).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
+            expect(planning.prepare).toHaveBeenNthCalledWith(1, projectRoot, "outcomeLibrary");
+            expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
+        });
+
+        it("prepares bounded generation with its exact sample provenance", async () => {
+            const planning = {prepare: jest.fn(() => Promise.resolve(plannedOutcomeLibrary))};
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(buildFixtureGame()),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                planning,
+            );
+
+            await svc.generate(projectRoot, {bounded: {sampleSize: BigInt(2), seed: "fixture-seed"}});
+
+            expect(planning.prepare).toHaveBeenCalledWith(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {
+                generationSemantics: "boundedSample",
+                sampleCount: BigInt(2),
+                sampleSeed: "fixture-seed",
+            });
+        });
+
         it("reports the exact strategy for a small fixture game", async () => {
             const result = await service().estimate(projectRoot, {});
             expect(result).toMatchObject({status: "ok", strategy: "exact", requiresBounded: false, totalOutcomeSpaceSize: 6});
@@ -45,13 +149,82 @@ describe("StudioOutcomeLibraryGenerateService", () => {
         });
 
         it("reports load-error when the package fails to load", async () => {
-            const failing = new StudioOutcomeLibraryGenerateService(POKIE_VERSION, () => Promise.reject(new Error("boom")));
+            const failing = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.reject(new Error("boom")),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {prepare: () => Promise.resolve(plannedOutcomeLibrary)},
+            );
             const result = await failing.estimate(projectRoot, {});
-            expect(result).toEqual({status: "load-error", error: "boom"});
+            expect(result).toMatchObject({status: "load-error", error: "boom", plan: {status: "planned", source: {kind: "tsPackage"}}});
         });
     });
 
     describe("generate", () => {
+        it("materializes the exact managed bundle selected by a reuse plan without regenerating it", async () => {
+            const managed = await service().generate(projectRoot, {outDir: "managed-outcomes"});
+            expect(managed.status).toBe("ok");
+
+            const destination = path.join(projectRoot, "reused-outcomes");
+            const reusePlan: ArtifactConversionPlan = {
+                ...plannedOutcomeLibrary,
+                target: {
+                    ...plannedOutcomeLibrary.target,
+                    canonicalLocation: destination,
+                },
+                steps: [
+                    {
+                        kind: "reuseManagedOutcomeLibrary",
+                        choice: "reuse",
+                        estimatedWork: "none",
+                        input: plannedOutcomeLibrary.source,
+                        output: {kind: "outcomeLibrary", canonicalLocation: path.join(projectRoot, "managed-outcomes"), capabilities: ["outcome-library-read"]},
+                    },
+                    {
+                        kind: "publish",
+                        choice: "publish",
+                        estimatedWork: "publish",
+                        input: {kind: "outcomeLibrary", canonicalLocation: path.join(projectRoot, "managed-outcomes"), capabilities: ["outcome-library-read"]},
+                        output: {...plannedOutcomeLibrary.target, canonicalLocation: destination},
+                    },
+                ],
+                managedOutcome: {disposition: "reused"},
+            };
+            const regenerate = () => Promise.reject(new Error("reuse must not regenerate"));
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(buildFixtureGame()),
+                undefined,
+                regenerate,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {prepare: () => Promise.resolve(reusePlan)},
+            );
+
+            await expect(svc.generate(projectRoot, {outDir: "reused-outcomes"})).resolves.toMatchObject({
+                status: "ok",
+                bundleDir: "reused-outcomes",
+                plan: reusePlan,
+                generator: {strategy: "exact"},
+            });
+            await expect(new OutcomeLibraryBundleReader().readManifest(destination)).resolves.toMatchObject({modes: [{modeName: "base"}]});
+        });
+
         it("writes the default bundle directory and reports path/files/provenance/hash/generator/count/weight/RTP/coverage", async () => {
             const result = await service().generate(projectRoot, {});
             if (result.status !== "ok") {
@@ -254,7 +427,21 @@ describe("StudioOutcomeLibraryGenerateService", () => {
         it("keeps only the most recently generated occurrence when the same mode is later regenerated into a different output directory", async () => {
             let clock = new Date("2026-01-01T00:00:00.000Z");
             const writer = new OutcomeLibraryBundleWriter<string>(POKIE_VERSION, undefined, () => clock);
-            const svc = new StudioOutcomeLibraryGenerateService(POKIE_VERSION, () => Promise.resolve(buildFixtureGame()), undefined, undefined, writer);
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(buildFixtureGame()),
+                undefined,
+                undefined,
+                writer,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {prepare: () => Promise.resolve(plannedOutcomeLibrary)},
+            );
 
             await svc.generate(projectRoot, {mode: "base", outDir: "first-out"});
             clock = new Date("2026-01-02T00:00:00.000Z");

@@ -1,4 +1,4 @@
-import type {ArtifactTargetType, ProjectType} from "pokie";
+import type {ArtifactConversionPlan, ArtifactTargetType, ProjectType} from "pokie";
 
 // POST /api/project/artifacts/preview's own DTO -- the pre-build counterpart to StudioArtifactBuildView
 // (see its own doc comment): the exact same registry-resolved target/destination/sourceType a subsequent
@@ -14,8 +14,9 @@ export type StudioArtifactPreviewView =
           readonly destinationKind: "file" | "directory";
           readonly plannedOutputs: readonly string[];
           readonly sourceType: ProjectType;
+          readonly plan: ArtifactConversionPlan;
       }
-    | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string}
+    | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}
     | {
           readonly status: "conflict";
           readonly target: ArtifactTargetType;
@@ -23,5 +24,6 @@ export type StudioArtifactPreviewView =
           readonly destinationKind: "file" | "directory";
           readonly plannedOutputs: readonly string[];
           readonly message: string;
+          readonly plan: ArtifactConversionPlan;
       }
-    | {readonly status: "error"; readonly message: string};
+    | {readonly status: "error"; readonly message: string; readonly plan: ArtifactConversionPlan};

@@ -14,8 +14,20 @@ import {
     WeightedOutcomeLibraryAnalyzer,
     WinEvaluationResult,
 } from "pokie";
-import {StudioDeploymentService} from "../../../../cli/studio/deployment/StudioDeploymentService.js";
+import {StudioDeploymentService as ConfiguredStudioDeploymentService} from "../../../../cli/studio/deployment/StudioDeploymentService.js";
 import type {ValidatedDeploymentRunRequest} from "../../../../cli/studio/deployment/validateDeploymentRunRequest.js";
+
+// Production construction must name Studio's configured version. These legacy
+// dependency-injection tests focus on delivery behavior, so their local adapter
+// supplies an explicit test version instead of relying on a service default.
+class StudioDeploymentService extends ConfiguredStudioDeploymentService {
+    constructor(...args: ConstructorParameters<typeof ConfiguredStudioDeploymentService>) {
+        if (args[8] === undefined) {
+            args[8] = "test-pokie-version";
+        }
+        super(...args);
+    }
+}
 
 class FakeBundleReader implements OutcomeLibraryBundleReading<string> {
     private readonly manifest: OutcomeLibraryBundleManifest;
@@ -111,6 +123,10 @@ const identityRealpath = (resolvedPath: string): string => resolvedPath;
 const buildModeIdsIncludingBase = () => Promise.resolve(["base"] as readonly string[] | undefined);
 
 describe("StudioDeploymentService", () => {
+    it("requires configured POKIE versioning for direct construction", () => {
+        expect(() => new ConfiguredStudioDeploymentService()).toThrow("requires the configured POKIE version");
+    });
+
     it("lists the injected target's own id/version/requirements/capabilities", () => {
         const target = stubTarget({requirements: {minPokieVersion: "1.0.0"}, capabilities: ["multiMode"]});
         const service = new StudioDeploymentService(undefined, () => target);
@@ -125,7 +141,63 @@ describe("StudioDeploymentService", () => {
 
         const result = await service.run("/project", runRequest({targetId: "does-not-exist"}));
 
-        expect(result).toEqual({status: "target-not-found"});
+        expect(result).toMatchObject({status: "target-not-found", plan: {status: "unavailable", source: {canonicalLocation: "/project/base.json"}, diagnostic: {code: "unrecognized-source"}}});
+    });
+
+    it("resolves selector-less Build/Export runs on the server before preparing their planner input", async () => {
+        const resolveServerSelectedModes = jest.fn(() => Promise.resolve([
+            {modeName: "base", librarySelector: {kind: "bundle" as const, bundleDir: "outcomelibrary", modeName: "base"}},
+        ]));
+        const service = new StudioDeploymentService(
+            undefined,
+            () => stubTarget(),
+            undefined,
+            identityRealpath,
+            undefined,
+            undefined,
+            buildModeIdsIncludingBase,
+            undefined,
+            "1.3.0",
+            resolveServerSelectedModes,
+        );
+
+        const result = await service.run("/project", {targetId: "does-not-exist", modes: [], publish: false});
+
+        expect(resolveServerSelectedModes).toHaveBeenCalledWith("/project");
+        expect(result).toMatchObject({
+            status: "target-not-found",
+            plan: {source: {canonicalLocation: "/project/outcomelibrary"}},
+        });
+    });
+
+    it("rejects a caller-selected bundle that is not the opened project's current compatible managed Outcome Library", async () => {
+        const readFile = jest.fn(() => {
+            throw new Error("a rejected selector must not be read");
+        });
+        const service = new StudioDeploymentService(
+            undefined,
+            () => stubTarget(),
+            readFile,
+            identityRealpath,
+            undefined,
+            undefined,
+            buildModeIdsIncludingBase,
+            undefined,
+            "1.3.0",
+            () => Promise.resolve([
+                {modeName: "base", librarySelector: {kind: "bundle" as const, bundleDir: "outcomelibrary", modeName: "base"}},
+            ]),
+        );
+
+        const result = await service.run("/project", runRequest({
+            modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "stale-or-foreign", modeName: "base"}}],
+        }));
+
+        expect(result).toMatchObject({
+            status: "load-error",
+            error: expect.stringMatching(/current compatible managed Outcome Library/),
+        });
+        expect(readFile).not.toHaveBeenCalled();
     });
 
     it("rejects a mode absent from the active project's own current build, without ever reading its library", async () => {
@@ -136,7 +208,7 @@ describe("StudioDeploymentService", () => {
 
         const result = await service.run("/project", runRequest());
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             status: "invalid-modes",
             error: 'mode "base" isn\'t part of this project\'s current build -- rebuild the project, then pick from: bonus.',
         });
@@ -164,13 +236,13 @@ describe("StudioDeploymentService", () => {
             }),
         );
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             status: "invalid-modes",
             error: 'mode "base", mode "super" aren\'t part of this project\'s current build -- rebuild the project, then pick from: bonus.',
         });
     });
 
-    it("deploys a mode that is part of the active project's own current build", async () => {
+    it("returns an unavailable planner boundary for a raw JSON selector even when its mode is current", async () => {
         const library = testLibrary();
         const service = new StudioDeploymentService(
             undefined,
@@ -184,7 +256,7 @@ describe("StudioDeploymentService", () => {
 
         const result = await service.run("/project", runRequest());
 
-        expect(result.status).toBe("ok");
+        expect(result).toMatchObject({status: "load-error", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
     });
 
     it("rejects, with domain-level remediation, when the active project has no inspectable current build (e.g. an ungenerated project, or one whose entry module fails to load) — never reaching library loading", async () => {
@@ -195,14 +267,14 @@ describe("StudioDeploymentService", () => {
 
         const result = await service.run("/project", runRequest());
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             status: "invalid-modes",
             error: 'This project has no current build to deploy against -- run "pokie build" (or the Certification tab\'s own build step), then try again.',
         });
         expect(readFile).not.toHaveBeenCalled();
     });
 
-    it("returns load-error, prefixed with the mode name, when a library fails to load", async () => {
+    it("does not read a raw selector after the planner reports its unavailable boundary", async () => {
         const readFile = () => {
             throw new Error("simulated read failure");
         };
@@ -210,9 +282,7 @@ describe("StudioDeploymentService", () => {
 
         const result = await service.run("/project", runRequest());
 
-        expect(result.status).toBe("load-error");
-        expect(result.status === "load-error" && result.error).toContain('mode "base"');
-        expect(result.status === "load-error" && result.error).toContain("simulated read failure");
+        expect(result).toMatchObject({status: "load-error", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
     });
 
     it("stops at the first mode that fails to load and never calls the generator", async () => {
@@ -235,7 +305,7 @@ describe("StudioDeploymentService", () => {
         expect(generate).not.toHaveBeenCalled();
     });
 
-    it("previews (publish: false) without ever calling the target's own runtimeAdapter", async () => {
+    it("does not preview a raw selector or call its target runtime adapter", async () => {
         const deliver = jest.fn(() => Promise.resolve({delivered: true}));
         const library = testLibrary();
         const service = new StudioDeploymentService(
@@ -250,13 +320,11 @@ describe("StudioDeploymentService", () => {
 
         const result = await service.run("/project", runRequest({publish: false}));
 
-        expect(result.status).toBe("ok");
-        expect(result.status === "ok" && result.view.publish).toBe(false);
-        expect(result.status === "ok" && result.view.delivery).toBeUndefined();
+        expect(result).toMatchObject({status: "load-error", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
         expect(deliver).not.toHaveBeenCalled();
     });
 
-    it("deploys (publish: true) and calls the target's own runtimeAdapter", async () => {
+    it("does not deploy a raw selector or call its target runtime adapter", async () => {
         const deliver = jest.fn(() => Promise.resolve({delivered: true, details: {published: true}}));
         const library = testLibrary();
         const service = new StudioDeploymentService(
@@ -271,13 +339,11 @@ describe("StudioDeploymentService", () => {
 
         const result = await service.run("/project", runRequest({publish: true}));
 
-        expect(result.status).toBe("ok");
-        expect(result.status === "ok" && result.view.publish).toBe(true);
-        expect(result.status === "ok" && result.view.delivery?.delivered).toBe(true);
-        expect(deliver).toHaveBeenCalledTimes(1);
+        expect(result).toMatchObject({status: "load-error", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
+        expect(deliver).not.toHaveBeenCalled();
     });
 
-    it("surfaces compatibility issues without ever reaching the generator, for a genuinely incompatible library", async () => {
+    it("does not inspect raw JSON compatibility after the planner rejects the selector", async () => {
         const generate = jest.fn(stubGenerator().generate);
         const malformedLibrary = {schemaVersion: 1, libraryId: "", outcomes: []};
         const service = new StudioDeploymentService(
@@ -292,13 +358,11 @@ describe("StudioDeploymentService", () => {
 
         const result = await service.run("/project", runRequest());
 
-        expect(result.status).toBe("ok");
-        expect(result.status === "ok" && result.view.compatibilityIssues.length).toBeGreaterThan(0);
-        expect(result.status === "ok" && result.view.generation).toBeUndefined();
+        expect(result).toMatchObject({status: "load-error", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
         expect(generate).not.toHaveBeenCalled();
     });
 
-    it("decodes Buffer artifact content into a plain string in the returned view", async () => {
+    it("does not reach artifact generation for an unrecognized raw selector", async () => {
         const bufferGenerator = {
             generate: (_modes: readonly ExternalDeploymentProjectedModeInput[]): ExternalArtifactGenerationResult => ({
                 artifacts: [{relativePath: "index.json", content: Buffer.from('{"fromBuffer":true}')}],
@@ -318,13 +382,10 @@ describe("StudioDeploymentService", () => {
 
         const result = await service.run("/project", runRequest());
 
-        expect(result.status).toBe("ok");
-        const content = result.status === "ok" ? result.view.generation?.artifacts[0]?.content : undefined;
-        expect(content).toBe('{"fromBuffer":true}');
-        expect(typeof content).toBe("string");
+        expect(result).toMatchObject({status: "load-error", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
     });
 
-    it("deploys a mode whose librarySelector points at a bundle, not only a flat JSON file", async () => {
+    it("does not treat an in-memory bundle reader as independent artifact recognition", async () => {
         const library = testLibrary();
         const analyzer = new WeightedOutcomeLibraryAnalyzer<string>();
         const manifest: OutcomeLibraryBundleManifest = {
@@ -367,8 +428,7 @@ describe("StudioDeploymentService", () => {
             runRequest({modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}}]}),
         );
 
-        expect(result.status).toBe("ok");
-        expect(result.status === "ok" && result.view.compatibilityIssues).toEqual([]);
+        expect(result).toMatchObject({status: "load-error", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
     });
 
     it("returns load-error, prefixed with the mode name, when a bundle librarySelector's mode isn't in the bundle", async () => {
@@ -412,9 +472,7 @@ describe("StudioDeploymentService", () => {
             runRequest({modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}}]}),
         );
 
-        expect(result.status).toBe("load-error");
-        expect(result.status === "load-error" && result.error).toContain('mode "base"');
-        expect(result.status === "load-error" && result.error).toContain('unknown mode "base"');
+        expect(result).toMatchObject({status: "load-error", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
     });
 
     it("rejects a bundle librarySelector whose modeName differs from its own deployment row's mode, before ever reading the bundle", async () => {
@@ -435,7 +493,7 @@ describe("StudioDeploymentService", () => {
             runRequest({modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "bonus"}}]}),
         );
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             status: "invalid-modes",
             error: 'mode "base"\'s library selector names mode "bonus" -- a bundle/Stake Engine selector must name the exact same mode as its own deployment row.',
         });
@@ -456,7 +514,7 @@ describe("StudioDeploymentService", () => {
             runRequest({modes: [{modeName: "base", librarySelector: {kind: "stakeengine", stakeDir: "stakeexport", modeName: "bonus"}}]}),
         );
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             status: "invalid-modes",
             error: 'mode "base"\'s library selector names mode "bonus" -- a bundle/Stake Engine selector must name the exact same mode as its own deployment row.',
         });
@@ -504,6 +562,6 @@ describe("StudioDeploymentService", () => {
             runRequest({modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}}]}),
         );
 
-        expect(result.status).toBe("ok");
+        expect(result).toMatchObject({status: "load-error", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
     });
 });

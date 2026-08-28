@@ -3,6 +3,8 @@ import os from "os";
 import path from "path";
 import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
+import type {ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
+import {ManagedOutcomeProjectService} from "../../src/project/ManagedOutcomeProjectService.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
@@ -114,6 +116,40 @@ describe("ArtifactBuilderRegistry", () => {
             expect(builder.calls).toBe(1);
         });
 
+        it("rejects a prepared plan when its source or destination identity drifts", async () => {
+            const builder = fakeBuilder("tsPackage");
+            const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
+            const source = projectOf("blueprint");
+            const plan = await withBuilder.preparePlan(source, "tsPackage", {destinationPath: "/out/prepared-game"});
+
+            await expect(withBuilder.executePlan(plan, {...source, rootPath: "/projects/moved-blueprint"}, "/out/prepared-game")).rejects.toThrow(/source identity changed/);
+            await expect(withBuilder.executePlan(plan, source, "/out/other-game")).rejects.toThrow(/destination changed/);
+            expect(builder.calls).toBe(0);
+        });
+
+        it("rejects a fabricated graph even when its source and destination identities match", async () => {
+            const builder = fakeBuilder("tsPackage");
+            const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
+            const source = projectOf("blueprint");
+            const plan = await withBuilder.preparePlan(source, "tsPackage", {destinationPath: "/out/prepared-game"});
+            const fabricated = {
+                ...plan,
+                steps: [],
+            } as ArtifactConversionPlan;
+
+            await expect(withBuilder.executePlan(fabricated, source, "/out/prepared-game")).rejects.toThrow(/graph is stale or invalid/);
+            expect(builder.calls).toBe(0);
+        });
+
+        it("rejects validation against a different target than the prepared plan", async () => {
+            const builder = fakeBuilder("tsPackage");
+            const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
+            const source = projectOf("blueprint");
+            const plan = await withBuilder.preparePlan(source, "tsPackage");
+
+            await expect(withBuilder.validate("outcomeLibrary", source, plan)).rejects.toThrow(/requested target does not match/);
+        });
+
         it("rejects with the matrix diagnostic before invoking any builder", async () => {
             const builder = fakeBuilder("tsPackage");
             const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
@@ -184,6 +220,50 @@ describe("ArtifactBuilderRegistry", () => {
             }
         });
 
+        it("releases a newly materialized managed prerequisite when its planned Stake publication fails", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stake-prerequisite-rollback-test-"));
+            const blueprintPath = path.join(workDir, "game.blueprint.json");
+            const stakeDir = path.join(workDir, "stake");
+            fs.writeFileSync(
+                blueprintPath,
+                JSON.stringify({
+                    manifest: {id: "rollback-slot", name: "Rollback Slot", version: "1.0.0"},
+                    reels: 3,
+                    rows: 1,
+                    symbols: ["A"],
+                    paytable: {A: {2: 1, 3: 2}},
+                    reelStrips: [["A"], ["A"], ["A"]],
+                    availableBets: [1],
+                }),
+            );
+            const source: PokieProject = {
+                type: "blueprint",
+                rootPath: blueprintPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                provenance: "test fixture",
+            } as PokieProject;
+            const failingStakeBuilder: ArtifactBuilder = {
+                target: "stakeAdapter",
+                destinationKind: "directory",
+                build: () => Promise.reject(new Error("Stake publication failed")),
+            };
+            const registry = new ArtifactBuilderRegistry(
+                "1.3.0",
+                new Map([["stakeAdapter", failingStakeBuilder]]),
+                new ManagedOutcomeProjectService(),
+            );
+
+            try {
+                await expect(registry.build("stakeAdapter", source, stakeDir)).rejects.toThrow("Stake publication failed");
+                expect(fs.existsSync(stakeDir)).toBe(false);
+                const managedRoot = path.join(workDir, ".pokie", "outcome-libraries");
+                expect(fs.existsSync(managedRoot) ? fs.readdirSync(managedRoot) : []).toEqual([]);
+                expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
         it("registers and reopens a direct Blueprint Outcome Project before Stake reuses that exact record", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-blueprint-outcome-registry-test-"));
             const blueprintPath = path.join(workDir, "game.blueprint.json");
@@ -220,17 +300,63 @@ describe("ArtifactBuilderRegistry", () => {
                     expect.objectContaining({rootPath: outcomeDir, gameId: "direct-outcome-slot", gameVersion: "1.0.0", configHash: expect.any(String)}),
                 ]);
 
-                const stake = await registry.build("stakeAdapter", blueprintProject, stakeDir);
+                // A plan is a public JSON payload, not a process-local token.
+                // Reopening this serialized selected reuse plan proves direct
+                // execution does not depend on registry WeakMap state.
+                const stakePlan = JSON.parse(JSON.stringify(await registry.preparePlan(blueprintProject, "stakeAdapter", {destinationPath: stakeDir}))) as ArtifactConversionPlan;
+                expect(stakePlan.steps.map((step) => step.kind)).toEqual(["reuseManagedOutcomeLibrary", "publish"]);
+                const stake = await registry.executePlan(stakePlan, blueprintProject, stakeDir);
                 expect(stake.prerequisiteProjectRoots).toEqual([outcomeDir]);
                 expect(stake.managedProjectRoots).toEqual([outcomeDir]);
                 expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);
 
                 const secondOutcomeDir = path.join(workDir, "second-outcome");
-                await expect(registry.build("outcomeLibrary", blueprintProject, secondOutcomeDir)).resolves.toEqual({
+                await expect(registry.build("outcomeLibrary", blueprintProject, secondOutcomeDir)).resolves.toMatchObject({
                     outputPath: secondOutcomeDir,
                     managedProjectRoots: [secondOutcomeDir],
+                    reusedCompatibleProject: true,
                 });
                 expect(fs.existsSync(path.join(secondOutcomeDir, "manifest.json"))).toBe(true);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
+        it("validates and executes an unchanged bounded-sample prepared plan", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-bounded-plan-registry-test-"));
+            const blueprintPath = path.join(workDir, "game.blueprint.json");
+            const outcomeDir = path.join(workDir, "outcome");
+            fs.writeFileSync(
+                blueprintPath,
+                JSON.stringify({
+                    manifest: {id: "bounded-plan-slot", name: "Bounded Plan Slot", version: "1.0.0"},
+                    reels: 3,
+                    rows: 1,
+                    symbols: ["A", "B"],
+                    paytable: {A: {2: 1, 3: 2}},
+                    reelStrips: [["A", "B"], ["A", "B"], ["A", "B"]],
+                    availableBets: [1],
+                }),
+            );
+            const blueprintProject: PokieProject = {
+                type: "blueprint",
+                rootPath: blueprintPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                provenance: "test fixture",
+            } as PokieProject;
+            const outcomeLibraryGeneration = {sampled: {sampleSize: BigInt(4), seed: "bounded-plan-seed"}};
+
+            try {
+                const plan = await registry.preparePlan(blueprintProject, "outcomeLibrary", {destinationPath: outcomeDir, outcomeLibraryGeneration});
+
+                expect(plan.source.configurationProvenance).toMatchObject({
+                    generationSemantics: "boundedSample",
+                    sampleCount: "4",
+                    sampleSeed: "bounded-plan-seed",
+                });
+                await expect(registry.validate("outcomeLibrary", blueprintProject, plan)).resolves.toBeUndefined();
+                await expect(registry.executePlan(plan, blueprintProject, outcomeDir)).resolves.toMatchObject({outputPath: outcomeDir});
+                expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(true);
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }
@@ -269,6 +395,16 @@ describe("ArtifactBuilderRegistry", () => {
                 await registry.build("tsPackage", blueprintProject, packageDir);
                 const packageProject = projectOf("tsPackage");
                 const tsPackageProject = {...packageProject, rootPath: packageDir};
+
+                // A package's managed Outcome sidecar is the one deliberate
+                // descendant output.  Its prepared plan, dry-run validation,
+                // and execution must all accept the exact same destination.
+                const sidecarDir = path.join(packageDir, "outcomelibrary");
+                const sidecarPlan = await registry.preparePlan(tsPackageProject, "outcomeLibrary", {destinationPath: sidecarDir});
+                expect(sidecarPlan.status).toBe("planned");
+                await expect(registry.validate("outcomeLibrary", tsPackageProject, sidecarPlan)).resolves.toBeUndefined();
+                await expect(registry.executePlan(sidecarPlan, tsPackageProject, sidecarDir)).resolves.toMatchObject({outputPath: sidecarDir});
+                expect(fs.existsSync(path.join(sidecarDir, "manifest.json"))).toBe(true);
 
                 await expect(registry.build("outcomeLibrary", tsPackageProject, outcomeDir)).resolves.toMatchObject({outputPath: outcomeDir});
                 expect(JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")).modes).toEqual([

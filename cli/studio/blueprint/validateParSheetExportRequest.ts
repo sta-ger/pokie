@@ -4,8 +4,8 @@ export type ValidatedParSheetExportRequest = {blueprint: unknown; path: string; 
 
 // The one place a POST /api/home/blueprints/par-export body is turned into a trusted request --
 // throws a plain, client-safe Error (StudioServer catches this and maps it to 400) for anything
-// malformed. `overwrite` defaults to false — see StudioBlueprintService.exportParSheet()'s own doc
-// comment for what that gates. `sourcePath` is optional and, when given, is only ever recorded on the
+// malformed. `overwrite` is retained for request compatibility but cannot bypass the prepared artifact
+// destination policy. `sourcePath` is optional and, when given, is only ever recorded on the
 // exported workbook's own "Meta" sheet (see ParSheetExporting.exportToFile()'s own doc comment).
 export function validateParSheetExportRequest(input: ParSheetExportRequestInput): ValidatedParSheetExportRequest {
     const {blueprint, path, overwrite, sourcePath} = input;

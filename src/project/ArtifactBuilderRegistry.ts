@@ -1,4 +1,6 @@
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
+import fs from "fs";
+import path from "path";
 import {ArtifactBuildConflictError} from "./ArtifactBuildConflictError.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import type {ArtifactBuildTargetDescriptor} from "./ArtifactBuildTargetDescriptor.js";
@@ -28,12 +30,28 @@ import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import {ArtifactConversionPlanner, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type ArtifactConfigurationProvenance, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions, type ArtifactIdentity} from "./ArtifactConversionPlanner.js";
 import {
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
-    describeBuildProductMatrixDiagnostic,
     getBuildProductMatrixCell,
 } from "./BuildProductMatrix.js";
+
+/**
+ * The prepared-operation destination boundary shared by registry builds and
+ * adapters that publish a format directly.  In particular, an adapter must
+ * not reinterpret an explicit overwrite confirmation as permission to bypass
+ * the source-alias or occupied-output checks enforced by every registry
+ * build.
+ */
+export function assertPreparedArtifactDestinationAvailable(
+    sourcePath: string | undefined,
+    destinationPath: string,
+    kind: "file" | "directory",
+): void {
+    if (sourcePath !== undefined) assertArtifactDestinationIsSafe(sourcePath, destinationPath);
+    assertArtifactDestinationAvailable(destinationPath, kind);
+}
 
 // Which PokieOperation actually produces each ArtifactTargetType as a brand-new artifact -- "build" writes a
 // tsPackage, "outcomeLibrary.build" writes an outcomeLibrary bundle, "stakeEngine.export" writes a stakeAdapter
@@ -69,6 +87,20 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
             "PAR workbook; it does not recover a Blueprint from unrelated package or outcome artifacts.",
     ],
 };
+
+function sameConfigurationProvenance(
+    left: ArtifactConfigurationProvenance | undefined,
+    right: ArtifactConfigurationProvenance | undefined,
+): boolean {
+    return left?.configurationHash === right?.configurationHash &&
+        left?.pokieVersion === right?.pokieVersion &&
+        left?.generationSemantics === right?.generationSemantics &&
+        left?.gameId === right?.gameId &&
+        left?.gameVersion === right?.gameVersion &&
+        left?.manifestIdentity === right?.manifestIdentity &&
+        left?.sampleCount === right?.sampleCount &&
+        left?.sampleSeed === right?.sampleSeed;
+}
 
 function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
     const operation = TARGET_OPERATION[target];
@@ -119,6 +151,7 @@ export class ArtifactBuilderRegistry {
     private readonly builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder>;
     private readonly blueprintStakeWorkflow: BlueprintStakeOutcomeLibraryWorkflow;
     private readonly managedOutcomeProjects: ManagedOutcomeProjectServicing;
+    private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
         pokieVersion = "0.0.0",
@@ -151,6 +184,69 @@ export class ArtifactBuilderRegistry {
         return ADVERTISED_ARTIFACT_BUILD_TARGETS.filter((target) => this.descriptors.has(target) && this.builders.has(target));
     }
 
+    // The public conversion contract used by all adapters. The registry adds its filesystem-backed
+    // destination policy to the pure planner result so previews and execution reject the same path.
+    public async plan(
+        source: PokieProject,
+        target: ArtifactTargetType,
+        options: ArtifactConversionPlanningOptions & Pick<ArtifactBuildOptions, "outcomeLibraryGeneration"> = {},
+    ): Promise<ArtifactConversionPlan> {
+        const preparedPlan = await this.preparePlan(source, target, options);
+        return preparedPlan;
+    }
+
+    /**
+     * Produces the plan used by a real build/preview.  Managed outcomes are
+     * inspected before planning, with the exact generation key used by the
+     * workflow, so the plan never advertises materialization and later reuses
+     * (or the reverse).
+     */
+    public async preparePlan(
+        source: PokieProject,
+        target: ArtifactTargetType,
+        options: ArtifactConversionPlanningOptions & Pick<ArtifactBuildOptions, "outcomeLibraryGeneration"> = {},
+    ): Promise<ArtifactConversionPlan> {
+        let plannedSource = source;
+        let managedOutcome = options.managedOutcome;
+        let planningOptions: ArtifactConversionPlanningOptions = options;
+        if ((source.type === "blueprint" || source.type === "tsPackage") && (target === "outcomeLibrary" || target === "stakeAdapter")) {
+            const prepared = await this.blueprintStakeWorkflow.prepare(source, {outcomeLibraryGeneration: options.outcomeLibraryGeneration});
+            const generation = prepared.generation.sampled;
+            const configurationProvenance: ArtifactConfigurationProvenance = {
+                configurationHash: prepared.configHash,
+                pokieVersion: prepared.compatibility.pokieVersion,
+                gameId: prepared.compatibility.gameId,
+                gameVersion: prepared.compatibility.gameVersion,
+                manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
+                generationSemantics: generation === undefined ? "exact" : "boundedSample",
+                ...(generation === undefined ? {} : {sampleCount: generation.sampleSize.toString(), sampleSeed: generation.seed}),
+            };
+            plannedSource = {...source, configurationProvenance};
+            // Both public consumers of a managed Outcome Library inspect the
+            // same registered candidate before planning.  This makes an
+            // Outcome preview/build and its Stake prerequisite agree on the
+            // selected reuse/materialization step.
+            const inspection = await this.inspectManagedOutcome(source.rootPath, prepared.compatibility);
+            if (inspection.project !== undefined) {
+                managedOutcome = {identity: resolveArtifactIdentity(inspection.project), verified: true};
+            } else if (inspection.staleReason !== undefined) {
+                managedOutcome = {
+                    identity: {kind: "outcomeLibrary", capabilities: []},
+                    verified: false,
+                    staleReason: inspection.staleReason,
+                };
+            }
+            planningOptions = {
+                ...options,
+                managedOutcome,
+                pokieVersion: prepared.compatibility.pokieVersion,
+                generationSemantics: generation === undefined ? "exact" : "boundedSample",
+                ...(generation === undefined ? {} : {sampleCount: generation.sampleSize, sampleSeed: generation.seed}),
+            };
+        }
+        return this.applyDestinationPolicy(plannedSource, target, planningOptions, this.planner.plan(plannedSource, target, planningOptions));
+    }
+
     public describe(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
         const descriptor = this.descriptors.get(target);
         if (descriptor === undefined || !this.builders.has(target)) {
@@ -166,7 +262,7 @@ export class ArtifactBuilderRegistry {
     // describeUnsupportedProjectOperation performs for a PokieOperation, exposed target-first so a caller
     // building toward a specific artifact doesn't need to know which PokieOperation id backs it.
     public supportsConversionFrom(target: ArtifactTargetType, source: ProjectType): boolean {
-        return getBuildProductMatrixCell(source, target).state === "supported";
+        return this.planner.planType(source, target).status === "planned";
     }
 
     // Reports whether `destinationPath` would be accepted by `target`'s own build() -- the exact same
@@ -181,8 +277,7 @@ export class ArtifactBuilderRegistry {
         if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
 
         try {
-            if (sourcePath !== undefined) assertArtifactDestinationIsSafe(sourcePath, destinationPath);
-            assertArtifactDestinationAvailable(destinationPath, builder.destinationKind);
+            assertPreparedArtifactDestinationAvailable(sourcePath, destinationPath, builder.destinationKind);
             return {available: true};
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
@@ -195,10 +290,11 @@ export class ArtifactBuilderRegistry {
     // Validates the same source/artifact contract a real build consumes, without allocating a destination
     // or invoking any writer. This is intentionally separate from checkDestination(): a usable output also
     // requires readable source data, so callers must not report dry-run success after checking only a path.
-    public async validate(target: ArtifactTargetType, source: PokieProject): Promise<void> {
-        if (!this.supportsConversionFrom(target, source.type)) {
-            throw new Error(describeBuildProductMatrixDiagnostic(source.type, target, source.rootPath));
-        }
+    public async validate(target: ArtifactTargetType, source: PokieProject, plan?: ArtifactConversionPlan): Promise<void> {
+        const preparedPlan = plan ?? await this.preparePlan(source, target);
+        this.assertExecutablePlan(preparedPlan);
+        this.assertPlanTargetMatches(preparedPlan, target);
+        await this.assertPlanSourceMatches(preparedPlan, source);
         this.assertTargetAvailable(target);
 
         if (source.type === "blueprint" && target !== "parWorkbook") {
@@ -226,36 +322,146 @@ export class ArtifactBuilderRegistry {
     // capability diagnostic describe()/supportsConversionFrom() already report, checked again here so build()
     // is safe to call directly without a caller re-deriving the same check itself), then hands off to the
     // registered ArtifactBuilder. Every ArtifactTargetType has a registered production builder.
-    public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
-        if (!this.supportsConversionFrom(target, source.type)) {
-            return Promise.reject(new Error(describeBuildProductMatrixDiagnostic(source.type, target, source.rootPath)));
+    public async build(target: ArtifactTargetType, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        const plan = await this.preparePlan(source, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
+        return this.executePlan(plan, source, destinationPath, options);
+    }
+
+    /** Execute only the steps selected by preparePlan; no lifecycle lookup re-decides reuse. */
+    public async executePlan(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        // Preserve the public asynchronous execution boundary even for a
+        // reuse-only plan, so adapters observe one lifecycle shape.
+        await Promise.resolve();
+        this.assertExecutablePlan(plan);
+        this.assertTargetAvailable(plan.target.kind as ArtifactTargetType);
+        const target = plan.target.kind as ArtifactTargetType;
+        await this.assertPlanSourceMatches(plan, source);
+        this.assertPlanDestinationMatches(plan, destinationPath);
+        await this.assertPlanGraphIsCurrent(plan, source, destinationPath);
+        const reuseStep = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
+        const managed = reuseStep === undefined ? undefined : await this.reopenPlannedManagedOutcome(source, plan.source, reuseStep.output);
+        // Every selected plan is subjected to the same destination policy at
+        // execution.  In particular, reuse does not bypass a source alias or
+        // existing-output conflict merely because no new outcomes are
+        // generated.
+        const destination = this.checkDestination(target, destinationPath, this.destinationSafetySource(plan, source));
+        if (!destination.available) throw new ArtifactBuildConflictError(destination.message ?? "The destination is unavailable.");
+        if (target === "outcomeLibrary" && managed !== undefined) {
+            const builder = this.builders.get("outcomeLibrary");
+            if (builder === undefined) throw new Error(this.unavailableTargetMessage("outcomeLibrary"));
+            const result = await builder.build(managed, destinationPath, options);
+            let published: PokieProject;
+            try {
+                published = await this.registerPublishedManagedOutcome(source, plan.source, destinationPath);
+            } catch (error) {
+                // A republished bundle is not a managed artifact unless its
+                // registry publication succeeds.  Keep the same rollback
+                // policy as generation rather than leaving a plausible,
+                // unregistered output behind.
+                await fs.promises.rm(destinationPath, {recursive: true, force: true}).catch(() => undefined);
+                throw error;
+            }
+            return {
+                ...result,
+                reusedCompatibleProject: true,
+                requestedDestinationPath: destinationPath,
+                managedProjectRoots: [published.rootPath],
+            };
         }
-        try {
-            this.assertTargetAvailable(target);
-        } catch (error) {
-            return Promise.reject(error);
+        if (plan.steps.some((step) => step.kind === "generateOutcomeLibrary") && target === "outcomeLibrary") {
+            return this.buildManagedOutcomeFromRuntime(plan, source, destinationPath, options);
         }
-        if (target === "outcomeLibrary" && (source.type === "blueprint" || source.type === "tsPackage")) {
-            return this.buildManagedOutcomeFromRuntime(source, destinationPath, options);
-        }
-        if (target === "stakeAdapter" && (source.type === "blueprint" || source.type === "tsPackage")) {
-            return this.blueprintStakeWorkflow
-                .resolveOrGenerate(source, (compatibility) => this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility), options)
-                .then(({project: outcomeLibrary}) =>
-                    this.build("stakeAdapter", outcomeLibrary, destinationPath, options).then((result) => ({
-                        ...result,
-                        prerequisiteProjectRoots: [outcomeLibrary.rootPath],
-                        managedProjectRoots: [outcomeLibrary.rootPath],
-                    })),
-                );
+        if (target === "stakeAdapter" && (managed !== undefined || plan.steps.some((step) => step.kind === "generateOutcomeLibrary"))) {
+            return this.buildStakeFromPlannedOutcome(plan, source, destinationPath, options, managed);
         }
         const builder = this.builders.get(target);
-        if (builder === undefined) return Promise.reject(new Error(this.unavailableTargetMessage(target)));
-
+        if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
         return builder.build(source, destinationPath, options);
     }
 
+    private async buildStakeFromPlannedOutcome(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options: ArtifactBuildOptions | undefined, reused?: PokieProject): Promise<ArtifactBuildResult> {
+        // A materialized prerequisite is planner-owned only until the final
+        // Stake publication succeeds.  A reused managed library predates this
+        // plan and must survive a failed/cancelled publication unchanged.
+        const generated = reused === undefined ? await this.generatePlannedManagedOutcome(plan, source, options) : undefined;
+        const outcomeLibrary = reused ?? generated!.project;
+        const builder = this.builders.get("stakeAdapter");
+        if (builder === undefined) throw new Error(this.unavailableTargetMessage("stakeAdapter"));
+        try {
+            const result = await builder.build(outcomeLibrary, destinationPath, options);
+            return {
+                ...result,
+                prerequisiteProjectRoots: [outcomeLibrary.rootPath],
+                managedProjectRoots: [outcomeLibrary.rootPath],
+            };
+        } catch (error) {
+            if (generated !== undefined) {
+                // generatePrepared registered this intermediate so later plans
+                // could safely reuse it.  That registration is not valid when
+                // the selected plan's terminal publication failed: release the
+                // record before deleting only this planner-owned root.
+                await this.managedOutcomeProjects.release(source.rootPath, outcomeLibrary.rootPath).catch(() => undefined);
+                await fs.promises.rm(outcomeLibrary.rootPath, {recursive: true, force: true}).catch(() => undefined);
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Reopens exactly the persisted candidate named by a public plan.  The
+     * plan carries its canonical location and provenance, so execution does
+     * not depend on process-local object identity (and cannot select a
+     * different managed bundle if the registry changes between preview and
+     * execution).
+     */
+    private async reopenPlannedManagedOutcome(source: PokieProject, sourceIdentity: ArtifactIdentity, plannedIdentity: ArtifactIdentity): Promise<PokieProject> {
+        const provenance = sourceIdentity.configurationProvenance;
+        if (provenance?.configurationHash === undefined || provenance.gameId === undefined || provenance.gameVersion === undefined || provenance.pokieVersion === undefined) {
+            throw new Error("The selected managed Outcome Library plan has no complete provenance; prepare a new plan before executing it.");
+        }
+        const generation = provenance.generationSemantics === "boundedSample"
+            ? `sample:${provenance.sampleCount ?? ""}:${provenance.sampleSeed ?? ""}`
+            : "exact";
+        const inspection = await this.inspectManagedOutcome(source.rootPath, {
+            configHash: provenance.configurationHash,
+            gameId: provenance.gameId,
+            gameVersion: provenance.gameVersion,
+            pokieVersion: provenance.pokieVersion,
+            generation,
+        });
+        if (inspection.project === undefined || plannedIdentity.canonicalLocation === undefined ||
+            resolveArtifactIdentity(inspection.project).canonicalLocation !== plannedIdentity.canonicalLocation) {
+            throw new Error("The selected managed Outcome Library is no longer available or no longer matches the prepared plan; prepare a new plan before executing it.");
+        }
+        return inspection.project;
+    }
+
+    private registerPublishedManagedOutcome(source: PokieProject, sourceIdentity: ArtifactIdentity, destinationPath: string): Promise<PokieProject> {
+        const provenance = sourceIdentity.configurationProvenance;
+        if (provenance?.configurationHash === undefined || provenance.gameId === undefined || provenance.gameVersion === undefined || provenance.pokieVersion === undefined) {
+            throw new Error("The selected managed Outcome Library plan has no complete provenance; cannot register its publication.");
+        }
+        return this.managedOutcomeProjects.registerAndOpen(source.rootPath, destinationPath, {
+            configHash: provenance.configurationHash,
+            gameId: provenance.gameId,
+            gameVersion: provenance.gameVersion,
+            pokieVersion: provenance.pokieVersion,
+            generation: provenance.generationSemantics === "boundedSample"
+                ? `sample:${provenance.sampleCount ?? ""}:${provenance.sampleSeed ?? ""}`
+                : "exact",
+        });
+    }
+
+    private assertExecutablePlan(plan: ArtifactConversionPlan): void {
+        if (plan.status === "planned") return;
+        const diagnostic = plan.diagnostic;
+        if (diagnostic === undefined) throw new Error("Artifact conversion could not be planned.");
+        const compatibility = describeArtifactConversionPlanDiagnostic(plan);
+        throw new Error(`${diagnostic.message} Next: ${diagnostic.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
+    }
+
     private async buildManagedOutcomeFromRuntime(
+        plan: ArtifactConversionPlan,
         source: PokieProject,
         destinationPath: string,
         options?: ArtifactBuildOptions,
@@ -264,14 +470,11 @@ export class ArtifactBuilderRegistry {
         // Project already exists.  Check it before the managed-project lookup: otherwise the lookup
         // turns an explicit destination into a silently ignored hint (and can bypass the normal
         // no-overwrite policy every other artifact target enforces).
-        assertArtifactDestinationAvailable(destinationPath, "directory");
-        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
-        const outcomeLibrary = await this.blueprintStakeWorkflow.resolveOrGenerate(
-            source,
-            destinationPath,
-            options,
-            false,
-        );
+        // executePlan has already applied the destination policy from this
+        // exact prepared plan.  Do not re-derive the ordinary source-root
+        // rule here: a tsPackage's canonical outcomelibrary sidecar is an
+        // intentional, planner-approved generated child of that package.
+        const outcomeLibrary = await this.generatePlannedManagedOutcome(plan, source, options, destinationPath);
         return {
             outputPath: outcomeLibrary.project.rootPath,
             ...(outcomeLibrary.reused
@@ -279,6 +482,164 @@ export class ArtifactBuilderRegistry {
                 : {}),
             managedProjectRoots: [outcomeLibrary.project.rootPath],
         };
+    }
+
+    private async generatePlannedManagedOutcome(
+        plan: ArtifactConversionPlan,
+        source: PokieProject,
+        options?: ArtifactBuildOptions,
+        destinationPath?: string,
+    ): Promise<{readonly project: PokieProject; readonly reused: false}> {
+        const expected = this.compatibilityFromPlan(plan.source);
+        const lifecycleOptions = this.optionsForPlan(options, plan.source);
+        // Refresh the actual source before materialization and reject drift
+        // rather than generating from a different configuration under an old
+        // preview's identity.
+        const prepared = await this.blueprintStakeWorkflow.prepare(source, lifecycleOptions);
+        if (!this.sameCompatibility(prepared.compatibility, expected)) {
+            throw new Error("The recognized source changed after this conversion was prepared; prepare a new plan before executing it.");
+        }
+        const root = destinationPath ?? this.managedOutcomeProjects.allocateRoot(source.rootPath, expected);
+        return this.blueprintStakeWorkflow.generatePrepared(
+            source,
+            prepared,
+            root,
+            lifecycleOptions,
+            this.destinationSafetySource(plan, source) === undefined,
+        );
+    }
+
+    private optionsForPlan(options: ArtifactBuildOptions | undefined, source: ArtifactIdentity): ArtifactBuildOptions | undefined {
+        const provenance = source.configurationProvenance;
+        if (provenance?.generationSemantics === undefined) return options;
+        const outcomeLibraryGeneration = provenance.generationSemantics === "exact"
+            ? {exact: true as const}
+            : {
+                sampled: {
+                    sampleSize: BigInt(provenance.sampleCount ?? "0"),
+                    seed: provenance.sampleSeed ?? "",
+                },
+            };
+        return {...options, outcomeLibraryGeneration};
+    }
+
+    private compatibilityFromPlan(source: ArtifactIdentity): import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility {
+        const provenance = source.configurationProvenance;
+        if (provenance?.configurationHash === undefined || provenance.gameId === undefined || provenance.gameVersion === undefined || provenance.pokieVersion === undefined) {
+            throw new Error("The selected conversion plan has no complete source provenance; prepare a new plan before executing it.");
+        }
+        return {
+            configHash: provenance.configurationHash,
+            gameId: provenance.gameId,
+            gameVersion: provenance.gameVersion,
+            pokieVersion: provenance.pokieVersion,
+            generation: provenance.generationSemantics === "boundedSample" ? `sample:${provenance.sampleCount ?? ""}:${provenance.sampleSeed ?? ""}` : "exact",
+        };
+    }
+
+    private sameCompatibility(left: import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility, right: import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility): boolean {
+        return left.configHash === right.configHash && left.gameId === right.gameId && left.gameVersion === right.gameVersion && left.pokieVersion === right.pokieVersion && (left.generation ?? "exact") === (right.generation ?? "exact");
+    }
+
+    private async assertPlanSourceMatches(plan: ArtifactConversionPlan, source: PokieProject): Promise<void> {
+        const current = resolveArtifactIdentity(source);
+        if (current.kind !== plan.source.kind || current.canonicalLocation !== plan.source.canonicalLocation ||
+            current.recognitionProvenance !== plan.source.recognitionProvenance ||
+            current.capabilities.join("\u0000") !== plan.source.capabilities.join("\u0000")) {
+            throw new Error("The source identity changed after this conversion was prepared; prepare a new plan before executing it.");
+        }
+        // Resolved Blueprint/package provenance is computed from the runnable
+        // source, rather than copied from the project wrapper. Re-prepare it
+        // at the execution boundary so a config or generation change cannot
+        // reuse a previously selected managed candidate.
+        if (plan.source.configurationProvenance !== undefined) {
+            const refreshed = await this.preparePlan(source, plan.target.kind as ArtifactTargetType, {
+                destinationPath: plan.target.canonicalLocation,
+                // Refresh with the exact generation request that created the
+                // prepared plan.  Planning options' presentation fields are
+                // not consumed by BlueprintStakeOutcomeLibraryWorkflow;
+                // outcomeLibraryGeneration is the executable input.
+                outcomeLibraryGeneration: this.optionsForPlan(undefined, plan.source)?.outcomeLibraryGeneration,
+            });
+            if (!sameConfigurationProvenance(plan.source.configurationProvenance, refreshed.source.configurationProvenance)) {
+                throw new Error("The source configuration or generation provenance changed after this conversion was prepared; prepare a new plan before executing it.");
+            }
+        }
+    }
+
+    /**
+     * A prepared plan is a serializable public value, not a caller-authorized
+     * graph.  Rebuild the current graph at the execution boundary and require
+     * the supplied steps, reuse selection, diagnostics and output identity to
+     * be precisely the planner's result.  This rejects hand-built/deserialized
+     * graphs which try to skip an unavailable edge or change a prerequisite.
+     */
+    private async assertPlanGraphIsCurrent(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string): Promise<void> {
+        const target = plan.target.kind as ArtifactTargetType;
+        const current = await this.preparePlan(source, target, {
+            destinationPath,
+            outcomeLibraryGeneration: this.optionsForPlan(undefined, plan.source)?.outcomeLibraryGeneration,
+        });
+        if (JSON.stringify(current) !== JSON.stringify(plan)) {
+            throw new Error("The prepared conversion graph is stale or invalid; prepare a new plan before executing it.");
+        }
+    }
+
+    private assertPlanTargetMatches(plan: ArtifactConversionPlan, target: ArtifactTargetType): void {
+        if (plan.target.kind !== target) {
+            throw new Error("The requested target does not match this prepared conversion plan; prepare a new plan before validating it.");
+        }
+    }
+
+    private assertPlanDestinationMatches(plan: ArtifactConversionPlan, destinationPath: string): void {
+        if (plan.target.canonicalLocation === undefined || path.resolve(destinationPath) !== plan.target.canonicalLocation) {
+            throw new Error("The destination changed after this conversion was prepared; prepare a new plan before executing it.");
+        }
+    }
+
+    private async inspectManagedOutcome(sourceRootPath: string, compatibility: import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility): Promise<{readonly project?: PokieProject; readonly staleReason?: string}> {
+        const service = this.managedOutcomeProjects as ManagedOutcomeProjectServicing & {
+            inspect?: (sourceRootPath: string, compatibility: import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility) => Promise<{readonly project?: PokieProject; readonly staleReason?: string}>;
+        };
+        if (service.inspect !== undefined) return service.inspect(sourceRootPath, compatibility);
+        const project = await service.findCompatible(sourceRootPath, compatibility);
+        return project === undefined ? {} : {project};
+    }
+
+    private applyDestinationPolicy(source: PokieProject, target: ArtifactTargetType, options: ArtifactConversionPlanningOptions, plan: ArtifactConversionPlan): ArtifactConversionPlan {
+        if (plan.status !== "planned" || options.destinationPath === undefined) return plan;
+        // A runnable package's conventional managed Outcome Library lives at
+        // `<package>/outcomelibrary`. It is a generated sidecar, not a
+        // replacement for the package input, and Studio's server-owned
+        // generation lifecycle has always published there. Keep every other
+        // descendant blocked (including aliases), while retaining normal
+        // occupied-destination checks for this one canonical managed output.
+        const destination = this.checkDestination(target, options.destinationPath, this.destinationSafetySource(plan, source));
+        if (destination.available) return plan;
+        return {
+            ...plan,
+            status: "conflict",
+            diagnostic: {
+                code: "destination-conflict",
+                failedEdge: {from: source.type, to: target},
+                message: destination.message ?? "The destination is unavailable.",
+                recovery: "Choose an empty destination that is not the source or one of its descendants.",
+            },
+        };
+    }
+
+    /**
+     * The planner owns the one supported descendant destination: the managed
+     * Outcome sidecar of a runnable package.  Preparation, preview and
+     * execution must use this exact rule so a successful preview cannot turn
+     * into a source/descendant conflict when publishing.
+     */
+    private destinationSafetySource(plan: ArtifactConversionPlan, source: PokieProject): string | undefined {
+        const isCanonicalPackageManagedOutcome =
+            source.type === "tsPackage" &&
+            plan.target.kind === "outcomeLibrary" &&
+            plan.target.canonicalLocation === path.join(path.resolve(source.rootPath), "outcomelibrary");
+        return isCanonicalPackageManagedOutcome ? undefined : source.rootPath;
     }
 
     private unavailableTargetMessage(target: ArtifactTargetType): string {

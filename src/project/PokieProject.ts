@@ -1,4 +1,5 @@
 import type {ProjectCapabilities} from "./ProjectCapabilities.js";
+import type {ArtifactConfigurationProvenance} from "./ArtifactConversionPlanner.js";
 
 // Fields every resolved PokieProject carries regardless of type. "capabilities" is always exactly
 // PROJECT_TYPE_CAPABILITIES[type] (see ProjectCapabilities.ts) at the moment this project was resolved —
@@ -16,6 +17,9 @@ type PokieProjectBase = {
     // resolved project to a user (a CLI confirmation, a Studio import preview) can explain *why* POKIE thinks
     // this path is a blueprint/package/bundle/etc, not just assert that it is.
     readonly provenance: string;
+    // Optional persisted configuration facts supplied by a resolver or registry. They are deliberately
+    // separate from recognition provenance: a recognized bundle is not automatically safe to reuse.
+    readonly configurationProvenance?: ArtifactConfigurationProvenance;
 };
 
 export type BlueprintProject = PokieProjectBase & {readonly type: "blueprint"};

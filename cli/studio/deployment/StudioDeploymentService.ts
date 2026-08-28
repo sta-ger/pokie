@@ -1,4 +1,5 @@
 import {
+    ArtifactConversionPlanner,
     createLocalJsonExternalDeploymentTarget,
     ExternalDeploymentModeInput,
     ExternalDeploymentService,
@@ -9,6 +10,7 @@ import {
     OutcomeLibraryBundleReading,
     StakeEngineImporter,
     StakeEngineImporting,
+    describeArtifactConversionPlanDiagnostic,
 } from "pokie";
 import fs from "fs";
 import path from "path";
@@ -20,14 +22,22 @@ import type {StudioDeploymentRunView} from "./StudioDeploymentRunView.js";
 import type {StudioDeploymentTargetSummary} from "./StudioDeploymentTargetSummary.js";
 import {toStudioDeploymentRunView} from "./toStudioDeploymentRunView.js";
 import type {ValidatedDeploymentRunRequest} from "./validateDeploymentRunRequest.js";
+import type {StudioDeploymentModeInput} from "./StudioDeploymentModeInput.js";
+import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
+import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
+import {createExternalOutcomeLibraryPlan} from "../artifacts/createExternalArtifactConversionPlan.js";
 
 const DEPLOYMENT_OUTPUT_DIRNAME = "deployment";
+const NO_SERVER_SELECTED_MODES: StudioDeploymentModeResolving = () => Promise.resolve([]);
 
 export type StudioDeploymentRunResult =
     | {readonly status: "ok"; readonly view: StudioDeploymentRunView}
-    | {readonly status: "target-not-found"}
-    | {readonly status: "invalid-modes"; readonly error: string}
-    | {readonly status: "load-error"; readonly error: string};
+    | {readonly status: "target-not-found"; readonly plan: import("pokie").ArtifactConversionPlan}
+    | {readonly status: "invalid-modes"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan};
+
+/** Resolves the current project's verified deployment inputs on the server. */
+export type StudioDeploymentModeResolving = (projectRoot: string) => Promise<readonly StudioDeploymentModeInput[]>;
 
 // Domain-language remediation for a request naming a mode absent/stale from the current build (see
 // resolveCurrentBuildModeIds's own doc comment) -- never the raw "modeName" schema path, always which
@@ -63,6 +73,13 @@ function describeSelectorModeMismatch(modeName: string, selectorModeName: string
     );
 }
 
+function describeUnverifiedDeploymentSelector(modeName: string): string {
+    return (
+        `mode "${modeName}" does not select this project's current compatible managed Outcome Library -- ` +
+        "regenerate or select the server-listed compatible bundle before deploying."
+    );
+}
+
 // The Project Dashboard's Deployment tab, built directly on top of the pokie package's own External
 // Adapter SDK (see docs/external-adapter-sdk.md) — this class never projects a RoundArtifact, never
 // generates artifacts, and never validates a compatibility/artifact-shape concern itself; every one of
@@ -87,6 +104,10 @@ export class StudioDeploymentService {
     private readonly readFile: (resolvedPath: string) => string;
     private readonly realpath: (resolvedPath: string) => string;
     private readonly resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined>;
+    private readonly planning: StudioArtifactConversionPlanning;
+    private readonly planner = new ArtifactConversionPlanner();
+    private readonly resolveServerSelectedModes: StudioDeploymentModeResolving;
+    private readonly hasServerSelectedModes: boolean;
 
     constructor(
         externalDeploymentService: ExternalDeploymentServicing = new ExternalDeploymentService(),
@@ -96,6 +117,9 @@ export class StudioDeploymentService {
         bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
         stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
         resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined> = resolveCurrentBuildModeIds,
+        planning: StudioArtifactConversionPlanning | undefined = undefined,
+        pokieVersion: string | undefined = undefined,
+        resolveServerSelectedModes: StudioDeploymentModeResolving = NO_SERVER_SELECTED_MODES,
     ) {
         this.externalDeploymentService = externalDeploymentService;
         this.createLocalTarget = createLocalTarget;
@@ -104,6 +128,31 @@ export class StudioDeploymentService {
         this.bundleReader = bundleReader;
         this.stakeEngineImporter = stakeEngineImporter;
         this.resolveBuildModeIds = resolveBuildModeIds;
+        if (pokieVersion === undefined || pokieVersion.trim().length === 0) {
+            throw new Error("StudioDeploymentService requires the configured POKIE version. Use StudioDeploymentService.withPokieVersion() or pass pokieVersion explicitly.");
+        }
+        this.planning = planning ?? new StudioArtifactConversionPlanningService(pokieVersion);
+        this.resolveServerSelectedModes = resolveServerSelectedModes;
+        this.hasServerSelectedModes = resolveServerSelectedModes !== NO_SERVER_SELECTED_MODES;
+    }
+
+    /** Creates the production service with Studio's configured package version. */
+    public static withPokieVersion(
+        pokieVersion: string,
+        resolveServerSelectedModes: StudioDeploymentModeResolving = NO_SERVER_SELECTED_MODES,
+    ): StudioDeploymentService {
+        return new StudioDeploymentService(
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            pokieVersion,
+            resolveServerSelectedModes,
+        );
     }
 
     public listTargets(projectRoot: string): StudioDeploymentTargetSummary[] {
@@ -136,22 +185,34 @@ export class StudioDeploymentService {
     // that fails to load stops the whole request before ExternalDeploymentService is ever called, since
     // there's no well-formed input to give it yet), then runs the one real pipeline call.
     public async run(projectRoot: string, request: ValidatedDeploymentRunRequest): Promise<StudioDeploymentRunResult> {
+        // Deployment owns SDK-specific delivery, but the library it deploys is a
+        // planner-governed prerequisite.  Carry that exact server plan forward so
+        // the browser never has to infer whether it can create/reuse one.
+        // A selector-less request intentionally means "use the server's current
+        // verified compatible library".  Resolve it exactly once before both
+        // planning and reading, so a browser cannot choose a stale/moved bundle
+        // between those two phases.
+        const serverSelectedModes = this.hasServerSelectedModes || request.modes.length === 0
+            ? await this.resolveServerSelectedModes(projectRoot)
+            : undefined;
+        const selectedModes = request.modes.length === 0 ? serverSelectedModes! : request.modes;
+        const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes);
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
         if (target === undefined) {
-            return {status: "target-not-found"};
+            return {status: "target-not-found", plan};
         }
 
         const buildModeIds = await this.resolveBuildModeIds(projectRoot);
         if (buildModeIds === undefined) {
-            return {status: "invalid-modes", error: describeBuildModesUnavailableForDeployment()};
+            return {status: "invalid-modes", error: describeBuildModesUnavailableForDeployment(), plan};
         }
-        const staleModeNames = request.modes.map((mode) => mode.modeName).filter((modeName) => !buildModeIds.includes(modeName));
+        const staleModeNames = selectedModes.map((mode) => mode.modeName).filter((modeName) => !buildModeIds.includes(modeName));
         if (staleModeNames.length > 0) {
-            return {status: "invalid-modes", error: describeInvalidDeploymentModes(staleModeNames, buildModeIds)};
+            return {status: "invalid-modes", error: describeInvalidDeploymentModes(staleModeNames, buildModeIds), plan};
         }
 
-        const mismatchedSelectorMode = request.modes.find((mode) => {
+        const mismatchedSelectorMode = selectedModes.find((mode) => {
             const named = selectorModeName(mode.librarySelector);
             return named !== undefined && named !== mode.modeName;
         });
@@ -159,36 +220,140 @@ export class StudioDeploymentService {
             return {
                 status: "invalid-modes",
                 error: describeSelectorModeMismatch(mismatchedSelectorMode.modeName, selectorModeName(mismatchedSelectorMode.librarySelector) as string),
+                plan,
             };
         }
 
-        const modes: ExternalDeploymentModeInput[] = [];
-        for (const mode of request.modes) {
-            const loaded = await loadOutcomeLibraryFromSelector(
-                projectRoot,
-                mode.librarySelector,
-                this.bundleReader,
-                this.stakeEngineImporter,
-                this.readFile,
-                this.realpath,
-            );
-            if (loaded.status === "load-error") {
-                return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.error}`};
+        // The browser may name a mode, but it may not substitute an arbitrary
+        // bundle for the opened project's managed Outcome provenance.  Studio
+        // Server supplies the current compatible registry entries here; a
+        // supplied selector must exactly match one of them after canonical
+        // project-relative resolution.  The optional resolver keeps embedded
+        // callers backwards compatible while the production server always
+        // configures this authority.
+        if (request.modes.length > 0 && serverSelectedModes !== undefined) {
+            const unverified = selectedModes.find((mode) => !serverSelectedModes.some((current) =>
+                current.modeName === mode.modeName && this.sameCurrentManagedSelector(projectRoot, current.librarySelector, mode.librarySelector),
+            ));
+            if (unverified !== undefined) {
+                return {status: "load-error", error: describeUnverifiedDeploymentSelector(unverified.modeName), plan};
             }
-            modes.push({modeName: mode.modeName, library: loaded.library});
         }
 
-        // A frozen target's own fields can't be reassigned (see ExternalDeploymentTargetRegistry), but
-        // spreading it into a fresh object literal is exactly how the SDK's own docs describe building
-        // a "preview" variant — a brand-new, unfrozen object, never a mutation of the registered one.
-        const runnableTarget = request.publish ? target : {...target, runtimeAdapter: undefined};
-        const result = await this.externalDeploymentService.deploy(runnableTarget, modes);
-        return {status: "ok", view: toStudioDeploymentRunView(result, target.id, request.publish)};
+        // Request-level blockers have precedence over an unreadable selector:
+        // they neither consume the selector nor erase its authoritative plan.
+        // Once the request itself is valid, an unavailable selector plan is a
+        // hard boundary and must not fall through to the legacy JSON reader.
+        if (plan.status !== "planned") {
+            return {status: "load-error", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library deployment is unavailable.", plan};
+        }
+        // This class is also constructed directly by embedded callers.  A
+        // bundle is not trusted merely because it is syntactically readable:
+        // every explicit selector needs the server-owned compatible managed
+        // outcome set as its provenance authority.  Raw selectors still take
+        // the unrecognised-source planner boundary above.
+        if (request.modes.length > 0 && serverSelectedModes === undefined) {
+            return {status: "load-error", error: describeUnverifiedDeploymentSelector(selectedModes[0].modeName), plan};
+        }
+        const selectedSource = this.selectedBundleSource(projectRoot, selectedModes);
+        const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "outcomeLibrary");
+        if (planDrift !== undefined) {
+            return {status: "load-error", error: planDrift, plan};
+        }
+
+        type DeploymentRead =
+            | {readonly status: "ok"; readonly modes: readonly ExternalDeploymentModeInput[]}
+            | {readonly status: "load-error"; readonly error: string};
+        try {
+            // Loading selectors and calling the SDK are deliberately callbacks of
+            // the prepared operation.  The adapter has finished validating the
+            // request above; from this point the operation owns the final source
+            // rebind, read, terminal cleanup, and deployment publication order.
+            const execution = await this.planner.executeConversionPlan(plan, {
+                currentSource: async () => (await this.prepareForSelectedBundles(projectRoot, selectedModes)).source,
+                read: async (): Promise<DeploymentRead> => {
+                    const modes: ExternalDeploymentModeInput[] = [];
+                    for (const mode of selectedModes) {
+                        const loaded = await loadOutcomeLibraryFromSelector(
+                            projectRoot,
+                            mode.librarySelector,
+                            this.bundleReader,
+                            this.stakeEngineImporter,
+                            this.readFile,
+                            this.realpath,
+                        );
+                        if (loaded.status === "load-error") {
+                            return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.error}`};
+                        }
+                        modes.push({modeName: mode.modeName, library: loaded.library});
+                    }
+                    return {status: "ok", modes};
+                },
+                canPublish: (read) => read.status === "ok",
+                publish: (read) => {
+                    // A frozen target's own fields can't be reassigned (see
+                    // ExternalDeploymentTargetRegistry), but spreading it into
+                    // a fresh object literal is the SDK's documented preview
+                    // variant and never mutates the registered target.
+                    const runnableTarget = request.publish ? target : {...target, runtimeAdapter: undefined};
+                    if (read.status !== "ok") throw new Error(read.error);
+                    return this.externalDeploymentService.deploy(runnableTarget, read.modes);
+                },
+            });
+            if (!execution.published) {
+                return {
+                    status: "load-error",
+                    error: execution.read.status === "load-error" ? execution.read.error : "The prepared deployment did not produce readable mode inputs.",
+                    plan,
+                };
+            }
+            return {
+                status: "ok",
+                view: {
+                    ...toStudioDeploymentRunView(execution.publication!, target.id, request.publish, plan),
+                },
+            };
+        } catch (error) {
+            return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan};
+        }
     }
 
     private buildRegistry(projectRoot: string): ExternalDeploymentTargetRegistry {
         const registry = new ExternalDeploymentTargetRegistry();
         registry.register(this.createLocalTarget(path.join(projectRoot, DEPLOYMENT_OUTPUT_DIRNAME, "local-json-example")));
         return registry;
+    }
+
+    /** See StudioStakeEngineExportService's counterpart: a canonical selector is
+     * a durable planner source, so deployment cannot preview a project-root plan
+     * and then consume an unrelated selected bundle. */
+    private prepareForSelectedBundles(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): Promise<import("pokie").ArtifactConversionPlan> {
+        const selectedSource = this.selectedBundleSource(projectRoot, modes);
+        if (selectedSource !== undefined) {
+            return this.planning.prepare(selectedSource, "outcomeLibrary");
+        }
+        // A terminal deployment result always owns a plan for the input it
+        // actually reads. A single JSON selector has its canonical location;
+        // a mixed request is explicitly identified as a mixed external set,
+        // never as the project root.
+        return Promise.resolve(createExternalOutcomeLibraryPlan(this.selectedExternalSource(projectRoot, modes), "outcomeLibrary"));
+    }
+
+    private selectedBundleSource(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): string | undefined {
+        const bundleDirs = modes.map((mode) => mode.librarySelector).filter((selector): selector is Extract<typeof selector, {kind: "bundle"}> => selector.kind === "bundle");
+        const uniqueBundleDirs = Array.from(new Set(bundleDirs.map((selector) => path.resolve(projectRoot, selector.bundleDir))));
+        return bundleDirs.length === modes.length && uniqueBundleDirs.length === 1 ? uniqueBundleDirs[0] : undefined;
+    }
+
+    private selectedExternalSource(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): string | undefined {
+        const jsonPaths = modes.map((mode) => mode.librarySelector).filter((selector): selector is Extract<OutcomeLibrarySelector, {kind: "json"}> => selector.kind === "json");
+        const uniquePaths = Array.from(new Set(jsonPaths.map((selector) => path.resolve(projectRoot, selector.path))));
+        return jsonPaths.length === modes.length && uniquePaths.length === 1 ? uniquePaths[0] : undefined;
+    }
+
+    private sameCurrentManagedSelector(projectRoot: string, current: OutcomeLibrarySelector, selected: OutcomeLibrarySelector): boolean {
+        if (current.kind !== "bundle" || selected.kind !== "bundle") return false;
+        return current.modeName === selected.modeName &&
+            path.resolve(projectRoot, current.bundleDir) === path.resolve(projectRoot, selected.bundleDir);
     }
 }

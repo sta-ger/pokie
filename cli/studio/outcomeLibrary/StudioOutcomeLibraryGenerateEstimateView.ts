@@ -1,4 +1,4 @@
-import type {OutcomeLibraryGenerationStrategy, PokieGameManifest} from "pokie";
+import type {ArtifactConversionPlan, OutcomeLibraryGenerationStrategy, PokieGameManifest} from "pokie";
 
 // The Studio Generate step's own "how big is this?" preview -- mirrors "pokie outcomelibrary generate
 // --estimate" exactly (see OutcomeLibraryCommand.executeEstimate): the same estimateExactOutcomeSpaceSize
@@ -20,9 +20,10 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           // were supplied -- the same "requires --bounded --sample-size --seed" signal the CLI reports,
           // surfaced here before the caller ever commits to a real generate() run.
           readonly requiresBounded: boolean;
+          readonly plan: ArtifactConversionPlan;
       }
     // The loaded package doesn't implement createExactEnumerationSession at all -- there is no exact
     // outcome space to estimate (see WeightedOutcomeLibraryGenerationError's own
     // "weighted-outcome-library-generation-unsupported" code).
-    | {readonly status: "unsupported"; readonly error: string}
-    | {readonly status: "load-error"; readonly error: string};
+    | {readonly status: "unsupported"; readonly error: string; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan: ArtifactConversionPlan};

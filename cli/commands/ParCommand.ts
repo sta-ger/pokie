@@ -1,8 +1,12 @@
 import {Command} from "commander";
+import fs from "fs";
 import path from "path";
 import {
     ArtifactBuilderRegistry,
+    ArtifactConversionPlanner,
+    ArtifactImportOutputPlan,
     ArtifactDestinationCheck,
+    computeArtifactInputBindingHash,
     describeUnsupportedProjectOperation,
     GameBlueprint,
     loadGameBlueprint,
@@ -13,7 +17,9 @@ import {
     ParSheetImporting,
     prepareBlueprintForParSheetExport,
     ProjectResolving,
+    PokieProject,
     ProjectTargetResolver,
+    PROJECT_TYPE_CAPABILITIES,
     ValidationIssue,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -30,6 +36,14 @@ const EXPORT_USAGE = "Usage: pokie par export <config.json> [--out <output.xlsx>
 type ImportFormat = "summary" | "json";
 type BlueprintFileWriting = (filePath: string, contents: string) => void | BlueprintFileWriteResult;
 type ParSheetDestinationChecking = (sourcePath: string, destinationPath: string) => ArtifactDestinationCheck;
+type ParImportRegistering = (publishedPath: string) => Promise<void> | void;
+
+function createCliImportCancellation(): {readonly signal: AbortSignal; readonly cleanup: () => void} {
+    const controller = new AbortController();
+    const onCancel = () => controller.abort();
+    process.once("SIGINT", onCancel);
+    return {signal: controller.signal, cleanup: () => process.off("SIGINT", onCancel)};
+}
 
 // One CLI verb ("pokie par <import|export>") rather than two top-level commands, matching how PAR
 // sheet import/export is really one round-trip feature with a shared vocabulary (see
@@ -42,6 +56,8 @@ export class ParCommand implements CliCommandHandling {
     private readonly writeFile: BlueprintFileWriting;
     private readonly resolveProject: ProjectResolving;
     private readonly checkDestination: ParSheetDestinationChecking;
+    private readonly registerImport: ParImportRegistering | undefined;
+    private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
         pokieVersion: string,
@@ -58,6 +74,7 @@ export class ParCommand implements CliCommandHandling {
         // check for unit callers that do not use the filesystem.
         checkDestination: ParSheetDestinationChecking = (sourcePath, destinationPath) =>
             new ArtifactBuilderRegistry(pokieVersion).checkDestination("parWorkbook", destinationPath, sourcePath),
+        registerImport: ParImportRegistering | undefined = undefined,
     ) {
         this.importer = importer;
         this.exporter = exporter;
@@ -65,6 +82,7 @@ export class ParCommand implements CliCommandHandling {
         this.writeFile = writeFile;
         this.resolveProject = resolveProject;
         this.checkDestination = checkDestination;
+        this.registerImport = registerImport;
     }
 
     public getName(): string {
@@ -85,7 +103,10 @@ export class ParCommand implements CliCommandHandling {
         const blueprint = this.loadBlueprint(blueprintPath);
         const errors = prepareBlueprintForParSheetExport(blueprint).issues.filter((issue) => issue.severity === "error");
         if (errors.length > 0) {
-            throw new Error("The GameBlueprint source does not satisfy the PAR workbook export contract.");
+            throw new Error(
+                `The GameBlueprint source does not satisfy the PAR workbook export contract: ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")} ` +
+                "Next: fix the listed Blueprint errors, then prepare the export again.",
+            );
         }
     }
 
@@ -138,6 +159,18 @@ export class ParCommand implements CliCommandHandling {
             });
     }
 
+    /** Executes the exact generic-import operation prepared by ImportCommand. */
+    public runPreparedImport(
+        source: PokieProject,
+        plan: ArtifactImportOutputPlan,
+        inputPath: string,
+        outPath: string,
+        format: ImportFormat = "summary",
+    ): Promise<number> {
+        this.planner.assertImportOutputPlanCurrent(plan, source, outPath);
+        return this.executeImport(inputPath, outPath, format, {source, plan});
+    }
+
     // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
     // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
     // two can never drift apart. `exitCodeRef` is written by whichever verb's action actually runs;
@@ -183,28 +216,69 @@ export class ParCommand implements CliCommandHandling {
         return parent;
     }
 
-    // Routes `inputPath` through the same ProjectTargetResolver every migrated CLI command already
-    // crosses (see BuildCommand's own analogous check) before ever handing it to the real
-    // ParSheetImporting -- but only ever rejects a *recognized*-but-wrong-type target (a tsPackage/
-    // outcomeLibrary/stakeAdapter/blueprint/wasm path someone pointed "pokie par import" at by mistake)
-    // with a capability diagnostic explaining exactly why import can't run against it. An unrecognized
-    // path -- resolve() returns undefined, e.g. a missing file or an ordinary/corrupt .xlsx that isn't a
-    // PAR sheet workbook at all -- falls straight through to the real importer exactly as it always has,
-    // so its own "load-error"/"missing sheet" diagnostics are unaffected.
-    private async checkImportTarget(inputPath: string): Promise<void> {
-        const project = await this.resolveProject.resolve(inputPath);
-        if (project === undefined || project.type === "parWorkbook") {
-            return;
+    private async executeImport(
+        inputPath: string,
+        outPath: string,
+        format: ImportFormat,
+        prepared?: {readonly source: PokieProject; readonly plan: ArtifactImportOutputPlan},
+    ): Promise<number> {
+        if (prepared === undefined) {
+            // `par import` is a public import entry point in its own right.  Do
+            // not let its legacy spelling take a separate read/write path from
+            // `pokie import`: bind the reader and atomic writer to one prepared
+            // exchange-import operation before either can run.
+            const source = await this.prepareImportSource(inputPath);
+            const plan = this.planner.planImportOutput(source, "blueprint", outPath);
+            return this.executeImport(inputPath, outPath, format, {source, plan});
         }
-        const diagnostic = describeUnsupportedProjectOperation(project, PAR_IMPORT_OPERATION);
-        if (diagnostic !== undefined) {
-            throw new UnsupportedProjectOperationError(diagnostic);
-        }
+        const cancellation = createCliImportCancellation();
+        const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, outPath, {
+            read: () => this.importer.importFromFile(inputPath),
+            canPublish: (result) => result.issues.every((issue) => issue.severity !== "error"),
+            assertDestinationAvailable: () => this.assertDestinationIsAvailable(inputPath, outPath),
+            // Return the allocated path, not merely the writer's diagnostic,
+            // so the prepared import has an unambiguous rollback target if a
+            // later lifecycle phase is cancelled or fails.
+            publish: (result) => {
+                this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`);
+                return outPath;
+            },
+            signal: cancellation.signal,
+            register: this.registerImport,
+            rollback: (publishedPath) => fs.rmSync(publishedPath, {force: true}),
+            cleanup: () => cancellation.cleanup(),
+        });
+        return this.reportAndPublishImport(inputPath, outPath, format, execution.read, execution.published, undefined);
     }
 
-    private async executeImport(inputPath: string, outPath: string, format: ImportFormat): Promise<number> {
-        await this.checkImportTarget(inputPath);
-        const result = await this.importer.importFromFile(inputPath);
+    private async prepareImportSource(inputPath: string): Promise<PokieProject> {
+        const project = await this.resolveProject.resolve(inputPath);
+        if (project === undefined) {
+            // The importer remains the authority for workbook-format diagnostics.
+            // Model that legacy exchange input explicitly, rather than allowing
+            // an unplanned reader/writer fallback outside the planner lifecycle.
+            return {
+                type: "parWorkbook",
+                rootPath: path.resolve(inputPath),
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "legacy PAR exchange input",
+            };
+        }
+        if (project.type === "parWorkbook") return project;
+        const diagnostic = describeUnsupportedProjectOperation(project, PAR_IMPORT_OPERATION);
+        if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
+        throw new Error(`"${inputPath}" is not a recognized PAR workbook.`);
+    }
+
+    /** Presents the terminal result only; prepared imports have already run their reader/publisher lifecycle. */
+    private reportAndPublishImport(
+        inputPath: string,
+        outPath: string,
+        format: ImportFormat,
+        result: Awaited<ReturnType<ParSheetImporting["importFromFile"]>>,
+        published?: boolean,
+        writeResult?: void | BlueprintFileWriteResult,
+    ): number {
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
 
@@ -221,8 +295,10 @@ export class ParCommand implements CliCommandHandling {
         // Import diagnostics take precedence over output conflicts: a malformed workbook must still
         // explain what to repair, and it has not attempted any output write at this point. Once the
         // workbook is valid, enforce the exact source-alias/no-overwrite policy artifact builds use.
-        this.assertDestinationIsAvailable(inputPath, outPath);
-        const writeResult = this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`);
+        if (published === undefined) {
+            this.assertDestinationIsAvailable(inputPath, outPath);
+            writeResult = this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`);
+        }
         if (writeResult?.status === "conflict") {
             // writeBlueprintFileAtomically closes the small race after the preflight check. Re-read
             // the shared policy for the same actionable diagnostic a non-racing conflict receives.
@@ -236,21 +312,10 @@ export class ParCommand implements CliCommandHandling {
     }
 
     private async executeExport(blueprintPath: string, outPath: string): Promise<number> {
-        const blueprint = this.loadBlueprint(blueprintPath);
-
-        // Keep shared PAR validation ahead of the destination precondition. This preserves the
-        // actionable field-level diagnostic (and its no-write guarantee) for an invalid Blueprint,
-        // even if a stale file happens to occupy --out. The exporter repeats this shared preflight
-        // before writing, as it must for direct library callers too.
-        const preflight = prepareBlueprintForParSheetExport(blueprint);
-        const preflightErrors = preflight.issues.filter((issue) => issue.severity === "error");
-        if (preflightErrors.length > 0) {
-            this.printExportErrors(blueprintPath, outPath, preflightErrors);
-            return 1;
-        }
-
-        this.assertDestinationIsAvailable(blueprintPath, outPath);
-        const issues = await this.exporter.exportToFile(blueprint, outPath, blueprintPath);
+        const cancellation = createCliImportCancellation();
+        const prepared = this.prepareDescriptorExportOperation(blueprintPath, outPath, cancellation.signal);
+        const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution).finally(cancellation.cleanup);
+        const issues = execution.published ? execution.publication! : execution.read.issues;
         const errors = issues.filter((issue) => issue.severity === "error");
         const warnings = issues.filter((issue) => issue.severity !== "error");
 
@@ -270,11 +335,40 @@ export class ParCommand implements CliCommandHandling {
         return 0;
     }
 
+    /** Returns format hooks for one immutable Blueprint-to-PAR operation. */
+    // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for ExportCommand
+    public prepareDescriptorExportOperation(blueprintPath: string, outPath: string, signal?: AbortSignal) {
+        const currentSource = () => this.exportDescriptorSource(blueprintPath);
+        return {plan: this.planner.planIdentity(currentSource(), "parWorkbook", {destinationPath: outPath}), validate: () => this.validateExportSource(blueprintPath), execution: {
+            currentSource,
+            read: () => {
+                const blueprint = this.loadBlueprint(blueprintPath);
+                return {blueprint, issues: prepareBlueprintForParSheetExport(blueprint).issues};
+            },
+            canPublish: (read) => read.issues.every((issue) => issue.severity !== "error"),
+            assertDestinationAvailable: () => this.assertDestinationIsAvailable(blueprintPath, outPath),
+            publish: (read) => this.exporter.exportToFile(read.blueprint, outPath, blueprintPath),
+            rollback: () => fs.promises.rm(outPath, {force: true}),
+            ...(signal === undefined ? {} : {signal}),
+        }};
+    }
+
     private assertDestinationIsAvailable(sourcePath: string, destinationPath: string): void {
         const destination = this.checkDestination(sourcePath, destinationPath);
         if (!destination.available) {
             throw new Error(destination.message);
         }
+    }
+
+    private exportDescriptorSource(blueprintPath: string): import("pokie").ArtifactIdentity {
+        const canonicalLocation = path.resolve(blueprintPath);
+        return {
+            kind: "blueprint",
+            canonicalLocation,
+            recognitionProvenance: "verified CLI Blueprint export descriptor",
+            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+            configurationProvenance: {configurationHash: computeArtifactInputBindingHash([canonicalLocation])},
+        };
     }
 
     private printExportErrors(blueprintPath: string, outPath: string, errors: ValidationIssue[]): void {

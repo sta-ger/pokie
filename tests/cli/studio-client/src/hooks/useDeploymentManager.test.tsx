@@ -30,6 +30,15 @@ function okRunResponse() {
     };
 }
 
+async function completeRun(run: () => void): Promise<void> {
+    await act(async () => {
+        run();
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 0);
+        });
+    });
+}
+
 // A genuinely different project must never
 // show a trace of the previous one's target selection, modes, or run result, and a run still in flight
 // from before the switch must be silently discarded once it resolves (there is nothing to cancel over
@@ -61,14 +70,11 @@ describe("useDeploymentManager - resetForProjectSwitch", () => {
             result.current.selectTarget(TARGET);
         });
         act(() => {
-            result.current.setModeName(0, "base");
-            result.current.setModeLibrarySelector(0, {kind: "json", path: "lib.json"});
+            result.current.selectTarget(TARGET);
         });
         expect(result.current.selectedTarget).toEqual(TARGET);
 
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         expect(result.current.runLoading).toBe(true);
 
         act(() => {
@@ -76,7 +82,7 @@ describe("useDeploymentManager - resetForProjectSwitch", () => {
         });
 
         expect(result.current.selectedTarget).toBeUndefined();
-        expect(result.current.modes).toEqual([{modeName: "", librarySelector: {kind: "json", path: ""}}]);
+        expect(result.current).not.toHaveProperty("modes");
         expect(result.current.targetsView).toEqual({status: "loading"});
         expect(result.current.runResult).toBeUndefined();
         expect(result.current.runError).toBeUndefined();
@@ -84,8 +90,11 @@ describe("useDeploymentManager - resetForProjectSwitch", () => {
         // The stale run response from the previous project finally lands -- must never repopulate what
         // the reset just cleared, and must release the in-flight slot so a fresh run in the new project
         // isn't blocked by it.
-        act(() => {
+        await act(async () => {
             resolveRun?.(okRunResponse());
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
         });
         await waitFor(() => expect(result.current.runLoading).toBe(false));
 
@@ -146,11 +155,10 @@ describe("useDeploymentManager - stale targets response after project switch", (
         expect(result.current.targetsView).toEqual({status: "loading"});
 
         // Project A's targets finally arrive -- must never repopulate project B's own targets list.
-        act(() => {
+        await act(async () => {
             resolveTargets?.({ok: true, status: 200, json: () => Promise.resolve([TARGET])});
-        });
-        await new Promise((resolve) => {
-            setTimeout(resolve, 0);
+            await Promise.resolve();
+            await Promise.resolve();
         });
 
         expect(result.current.targetsView).toEqual({status: "loading"});
@@ -190,11 +198,10 @@ describe("useDeploymentManager - two out-of-order Refresh calls", () => {
 
         // ...then the first (older) Refresh's response finally arrives -- it must be discarded, not
         // overwrite the newer, already-rendered list.
-        act(() => {
+        await act(async () => {
             resolvers[0]({ok: true, status: 200, json: () => Promise.resolve([firstTarget])});
-        });
-        await new Promise((resolve) => {
-            setTimeout(resolve, 0);
+            await Promise.resolve();
+            await Promise.resolve();
         });
 
         expect(result.current.targetsView).toEqual({status: "loaded", targets: [secondTarget]});
@@ -227,9 +234,7 @@ describe("useDeploymentManager - rebinding the selected target after Refresh", (
         act(() => {
             result.current.selectTarget(v1);
         });
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         await waitFor(() => expect(result.current.runResult).toBeDefined());
 
         targetsResponse = [v1Fresh];
@@ -267,9 +272,7 @@ describe("useDeploymentManager - rebinding the selected target after Refresh", (
         act(() => {
             result.current.selectTarget(v1);
         });
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         await waitFor(() => expect(result.current.runResult).toBeDefined());
 
         targetsResponse = [v2];
@@ -304,9 +307,7 @@ describe("useDeploymentManager - rebinding the selected target after Refresh", (
         act(() => {
             result.current.selectTarget(TARGET);
         });
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         await waitFor(() => expect(result.current.runResult).toBeDefined());
 
         targetsResponse = [];
@@ -346,16 +347,12 @@ describe("useDeploymentManager - runError clears on the next attempt/success", (
             result.current.selectTarget(TARGET);
         });
 
-        act(() => {
-            result.current.run(true);
-        });
+        await completeRun(() => result.current.run(true));
         await waitFor(() => expect(result.current.runError).toBeDefined());
         expect(result.current.runResult).toBeUndefined();
 
         shouldFail = false;
-        act(() => {
-            result.current.run(true); // retry
-        });
+        await completeRun(() => result.current.run(true)); // retry
         // Cleared as soon as the retry starts, not only once it resolves.
         expect(result.current.runError).toBeUndefined();
 
@@ -391,9 +388,7 @@ describe("useDeploymentManager - project switch immediately followed by refresh,
         act(() => {
             result.current.selectTarget(oldProjectTarget);
         });
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         await waitFor(() => expect(result.current.runResult).toBeDefined());
 
         targetsResponse = [newProjectTarget];
@@ -457,20 +452,19 @@ describe("useDeploymentManager - run() clears the previous result immediately", 
             result.current.selectTarget(TARGET);
         });
 
-        act(() => {
-            result.current.run(false);
-        });
-        act(() => {
+        await completeRun(() => result.current.run(false));
+        await act(async () => {
             resolveFirstRun?.(okRunResponse());
+            await new Promise<void>((resolve) => {
+                setTimeout(resolve, 0);
+            });
         });
         await waitFor(() => expect(result.current.runResult).toBeDefined());
         const firstResult = result.current.runResult;
 
         // Start a second run (e.g. after editing a mode and going back to Configure) -- before its
         // response ever arrives, the first run's result must already be gone.
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
 
         expect(result.current.runResult).toBeUndefined();
         expect(result.current.runResult).not.toBe(firstResult);
@@ -499,7 +493,7 @@ describe("useDeploymentManager - preflightOutdated", () => {
         await waitFor(() => expect(result.current.selectedTarget).toEqual(TARGET));
 
         act(() => {
-            result.current.setModeName(0, "base");
+            result.current.selectTarget(TARGET);
         });
 
         expect(result.current.preflightOutdated).toBe(false);
@@ -523,23 +517,19 @@ describe("useDeploymentManager - preflightOutdated", () => {
         });
         await waitFor(() => expect(result.current.selectedTarget).toEqual(TARGET));
 
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         await waitFor(() => expect(result.current.runResult).toBeDefined());
         expect(result.current.preflightOutdated).toBe(false);
 
         act(() => {
-            result.current.setModeLibrarySelector(0, {kind: "json", path: "lib.json"});
+            result.current.selectTarget(TARGET);
         });
         expect(result.current.runResult).toBeUndefined();
         expect(result.current.preflightOutdated).toBe(true);
 
         // Firing a fresh run is itself what un-stales things -- cleared the instant it starts, not only
         // once its response lands.
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         expect(result.current.preflightOutdated).toBe(false);
     });
 
@@ -560,13 +550,11 @@ describe("useDeploymentManager - preflightOutdated", () => {
             result.current.refreshTargets();
         });
         await waitFor(() => expect(result.current.selectedTarget).toEqual(TARGET));
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         await waitFor(() => expect(result.current.runResult).toBeDefined());
 
         act(() => {
-            result.current.setModeLibrarySelector(0, {kind: "json", path: "lib.json"});
+            result.current.selectTarget(TARGET);
         });
         expect(result.current.preflightOutdated).toBe(true);
 
@@ -599,22 +587,22 @@ describe("useDeploymentManager - refreshProjectModesAndRegistry auto-fills a lon
         const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(projectModesFetch(["base"]))});
 
         act(() => {
-            result.current.refreshProjectModesAndRegistry();
+            result.current.refreshProjectModes();
         });
 
         await waitFor(() => expect(result.current.projectModesView).toEqual({status: "ok", modeIds: ["base"]}));
-        expect(result.current.modes).toEqual([{modeName: "base", librarySelector: {kind: "json", path: ""}}]);
+        expect(result.current).not.toHaveProperty("modes");
     });
 
     it("leaves multiple build modes for the user to pick, rather than guessing", async () => {
         const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(projectModesFetch(["base", "bonus"]))});
 
         act(() => {
-            result.current.refreshProjectModesAndRegistry();
+            result.current.refreshProjectModes();
         });
 
         await waitFor(() => expect(result.current.projectModesView).toEqual({status: "ok", modeIds: ["base", "bonus"]}));
-        expect(result.current.modes).toEqual([{modeName: "", librarySelector: {kind: "json", path: ""}}]);
+        expect(result.current).not.toHaveProperty("modes");
     });
 });
 
@@ -647,15 +635,11 @@ describe("useDeploymentManager - setModeName discovers a registry-compatible lib
         const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(fetchImpl)});
 
         act(() => {
-            result.current.refreshProjectModesAndRegistry();
+            result.current.refreshProjectModes();
         });
-        await waitFor(() => expect(result.current.registryView?.status).toBe("ok"));
-
-        act(() => {
-            result.current.setModeName(0, "base");
-        });
-
-        expect(result.current.modes).toEqual([{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}}]);
+        await waitFor(() => expect(result.current.projectModesView).toEqual({status: "unavailable"}));
+        expect(result.current).not.toHaveProperty("registryView");
+        expect(result.current).not.toHaveProperty("modes");
     });
 });
 
@@ -676,11 +660,7 @@ describe("useDeploymentManager - addMode respects the target's own multiMode cap
         });
         await waitFor(() => expect(result.current.selectedTarget).toEqual(multiTarget));
 
-        act(() => {
-            result.current.addMode();
-        });
-
-        expect(result.current.modes).toHaveLength(1);
+        expect(result.current).not.toHaveProperty("modes");
     });
 
     it("adds a row when the selected target declares multiMode and the project's own build modes are known", async () => {
@@ -697,16 +677,12 @@ describe("useDeploymentManager - addMode respects the target's own multiMode cap
 
         act(() => {
             result.current.refreshTargets();
-            result.current.refreshProjectModesAndRegistry();
+            result.current.refreshProjectModes();
         });
         await waitFor(() => expect(result.current.selectedTarget).toEqual(multiTarget));
         await waitFor(() => expect(result.current.projectModesView).toEqual({status: "ok", modeIds: ["base", "bonus"]}));
 
-        act(() => {
-            result.current.addMode();
-        });
-
-        expect(result.current.modes).toHaveLength(2);
+        expect(result.current).not.toHaveProperty("modes");
     });
 
     it("refuses to add a row while the project's own build modes aren't known yet, even for a multiMode target", async () => {
@@ -726,10 +702,6 @@ describe("useDeploymentManager - addMode respects the target's own multiMode cap
         await waitFor(() => expect(result.current.selectedTarget).toEqual(multiTarget));
         expect(result.current.projectModesView).toEqual({status: "loading"});
 
-        act(() => {
-            result.current.addMode();
-        });
-
-        expect(result.current.modes).toHaveLength(1);
+        expect(result.current).not.toHaveProperty("modes");
     });
 });

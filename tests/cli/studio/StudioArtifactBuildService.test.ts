@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
-import {ArtifactBuildCancelledError, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactBuilderRegistry, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
+import {ArtifactBuildCancelledError, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactBuilderRegistry, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -122,6 +122,11 @@ describe("StudioArtifactBuildService", () => {
                 throw new Error("expected error");
             }
             expect(result.message).toContain("was not recognized as a POKIE project");
+            expect(result.plan).toMatchObject({
+                status: "unavailable",
+                target: {kind: "tsPackage"},
+                diagnostic: {code: "unrecognized-source"},
+            });
         });
 
         it("previews Blueprint -> PAR Workbook with its real file destination", async () => {
@@ -212,12 +217,13 @@ describe("StudioArtifactBuildService", () => {
                 status: "ok",
                 outputPath: firstOutcomeDir,
             });
-            await expect(service.build(blueprintPath, "outcomeLibrary", secondOutcomeDir)).resolves.toEqual({
+            await expect(service.build(blueprintPath, "outcomeLibrary", secondOutcomeDir)).resolves.toMatchObject({
                 status: "ok",
                 target: "outcomeLibrary",
                 outputPath: secondOutcomeDir,
                 outputKind: "directory",
                 sourceType: "blueprint",
+                plan: {status: "planned", steps: [expect.objectContaining({kind: "reuseManagedOutcomeLibrary"}), expect.objectContaining({kind: "publish"})]},
             });
             expect(fs.existsSync(path.join(secondOutcomeDir, "manifest.json"))).toBe(true);
         });
@@ -242,6 +248,11 @@ describe("StudioArtifactBuildService", () => {
                 throw new Error("expected error");
             }
             expect(result.message).toContain("was not recognized as a POKIE project");
+            expect(result.plan).toMatchObject({
+                status: "unavailable",
+                target: {kind: "tsPackage"},
+                diagnostic: {code: "unrecognized-source"},
+            });
         });
 
         it("reports a plain error (not a crash) for an invalid blueprint", async () => {
@@ -267,7 +278,7 @@ describe("StudioArtifactBuildService", () => {
             } as PokieProject;
             const resolver: ProjectResolving = {resolve: () => Promise.resolve(project)};
             const registry = {
-                supportsConversionFrom: () => true,
+                preparePlan: (_source: PokieProject, target: string) => Promise.resolve({status: "planned", target: {kind: target}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "publish", losses: [], oneWay: false}}),
                 build: async (_target: string, _source: PokieProject, _destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => {
                     options.onProgress?.({status: "preflight", preflight: {estimatedItemCount: BigInt(12), estimatedBytes: BigInt(34), complexityWarning: "Large publish"}});
                     options.onProgress?.({status: "running", completed: BigInt(1), total: BigInt(12), message: "Writing outcomes"});
@@ -275,6 +286,7 @@ describe("StudioArtifactBuildService", () => {
                     if (options.signal?.aborted) throw new ArtifactBuildCancelledError();
                     return {outputPath: path.join(workDir, "out")};
                 },
+                executePlan: (plan: {target: {kind: ArtifactTargetType}}, source: PokieProject, destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => registry.build(plan.target.kind, source, destination, options),
             } as unknown as ArtifactBuilderRegistry;
             service = new StudioArtifactBuildService("1.3.0", registry, resolver);
 
@@ -301,7 +313,10 @@ describe("StudioArtifactBuildService", () => {
                     resolve();
                 }, 0);
             });
-            expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({status: "cancelled", result: {status: "cancelled"}});
+            expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({
+                status: "cancelled",
+                result: {status: "cancelled", plan: {status: "planned", target: {kind: "outcomeLibrary"}}},
+            });
         });
 
         it("cancels a running real Outcome publish through the job workflow without publishing output or registering a managed Project", async () => {
@@ -329,7 +344,7 @@ describe("StudioArtifactBuildService", () => {
                 }
             }
             const registry = {
-                supportsConversionFrom: () => true,
+                preparePlan: (_source: PokieProject, target: string) => Promise.resolve({status: "planned", target: {kind: target}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "publish", losses: [], oneWay: false}}),
                 build: async (_target: string, _source: PokieProject, destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => {
                     options.onProgress?.({status: "preflight", preflight: {estimatedItemCount: BigInt(512), estimatedBytes: BigInt(0), complexityWarning: "Large publish"}});
                     let result;
@@ -352,6 +367,7 @@ describe("StudioArtifactBuildService", () => {
                     if (result.manifest === undefined) throw new Error("Expected the real Outcome writer to publish a valid bundle.");
                     return {outputPath: destination, managedProjectRoots: [destination]};
                 },
+                executePlan: (plan: {target: {kind: ArtifactTargetType}}, source: PokieProject, destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => registry.build(plan.target.kind, source, destination, options),
             } as unknown as ArtifactBuilderRegistry;
             service = new StudioArtifactBuildService("1.3.0", registry, resolver, (projectRoot) => {
                 managedProjects.push(projectRoot);
@@ -373,7 +389,7 @@ describe("StudioArtifactBuildService", () => {
             expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({
                 status: "cancelled",
                 cancellationRequested: true,
-                result: {status: "cancelled"},
+                result: {status: "cancelled", plan: {status: "planned", target: {kind: "outcomeLibrary"}}},
             });
             expect(fs.existsSync(outputPath)).toBe(false);
             expect(fs.readdirSync(workDir).filter((entry) => entry.startsWith("cancelled-outcome-library.staging-"))).toEqual([]);

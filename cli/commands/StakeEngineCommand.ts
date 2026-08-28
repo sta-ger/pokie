@@ -2,6 +2,10 @@ import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
+    ArtifactBuilderRegistry,
+    ArtifactConversionPlanner,
+    computeArtifactInputBindingHash,
+    ArtifactImportOutputPlan,
     loadWeightedOutcomeLibraryFromBundle,
     StakeEngineBundleStreamingExporter,
     StakeEngineBundleStreamingExporting,
@@ -23,6 +27,10 @@ import {
     StakeEngineStandaloneAnalysisMetricDiff,
     StakeEngineStandaloneAnalyzer,
     StakeEngineStandaloneExactDecimal,
+    PokieProject,
+    ProjectResolving,
+    ProjectTargetResolver,
+    PROJECT_TYPE_CAPABILITIES,
     ValidationIssue,
     WeightedOutcomeLibrary,
 } from "pokie";
@@ -69,6 +77,7 @@ type ExportOptions = {configPath: string; outDir: string};
 type ImportFormat = "summary" | "json";
 type ImportOptions = {stakeDir: string; outDir: string; format: ImportFormat};
 type ImportReport = {stakeDir: string; outDir: string; files: readonly string[]; issues: readonly ValidationIssue[]};
+type StakeImportRegistering = (published: Awaited<ReturnType<StakeEngineImportWriting["writeToDirectory"]>>) => Promise<void> | void;
 type AnalyzeFormat = "summary" | "json";
 type AnalyzeOptions = {stakeDir: string; format: AnalyzeFormat; out?: string};
 type AnalyzeReport = {stakeDir: string; issues: ValidationIssue[]; analysis: StakeEngineStandaloneAnalysis | undefined};
@@ -87,6 +96,13 @@ type ExportDescriptorModeEntry = {
     bundleModeName?: string;
 };
 type ExportDescriptor = {modes: ExportDescriptorModeEntry[]};
+
+function createCliImportCancellation(): {readonly signal: AbortSignal; readonly cleanup: () => void} {
+    const controller = new AbortController();
+    const onCancel = () => controller.abort();
+    process.once("SIGINT", onCancel);
+    return {signal: controller.signal, cleanup: () => process.off("SIGINT", onCancel)};
+}
 
 function newOutputPathMessage(file: string, reason: string): string {
     return `Cannot write Stake Engine diff to "${file}" because ${reason}. Choose a new unused --out path and retry.`;
@@ -130,6 +146,9 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly standaloneAnalysisDiffer: StakeEngineStandaloneAnalysisDiffing;
     private readonly writeAnalyzeFile: (file: string, contents: string) => void;
     private readonly writeNewDiffFile: (file: string, contents: string) => void;
+    private readonly resolveProject: ProjectResolving;
+    private readonly registerImport: StakeImportRegistering | undefined;
+    private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
         pokieVersion: string,
@@ -145,6 +164,9 @@ export class StakeEngineCommand implements CliCommandHandling {
         writeAnalyzeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
         standaloneAnalysisDiffer: StakeEngineStandaloneAnalysisDiffing = new StakeEngineStandaloneAnalysisDiffer(),
         writeNewDiffFile: (file: string, contents: string) => void = writeNewStakeEngineDiffFileAtomically,
+        // Appended to preserve the long-standing injectable command constructor.
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        registerImport: StakeImportRegistering | undefined = undefined,
     ) {
         this.exporter = exporter;
         this.importer = importer;
@@ -157,6 +179,8 @@ export class StakeEngineCommand implements CliCommandHandling {
         this.writeAnalyzeFile = writeAnalyzeFile;
         this.standaloneAnalysisDiffer = standaloneAnalysisDiffer;
         this.writeNewDiffFile = writeNewDiffFile;
+        this.resolveProject = resolveProject;
+        this.registerImport = registerImport;
     }
 
     public getName(): string {
@@ -179,6 +203,18 @@ export class StakeEngineCommand implements CliCommandHandling {
         return this.buildCommand();
     }
 
+    /** Executes the exact generic-import operation prepared by ImportCommand. */
+    public runPreparedImport(
+        source: PokieProject,
+        plan: ArtifactImportOutputPlan,
+        stakeDir: string,
+        outDir: string,
+        format: ImportFormat = "summary",
+    ): Promise<number> {
+        this.planner.assertImportOutputPlanCurrent(plan, source, outDir);
+        return this.runImport({stakeDir, outDir, format}, {source, plan});
+    }
+
     // The target-oriented export alias must be able to prove an adapter source is usable without
     // constructing a staging directory. Resolve every configured library (including bundle-backed
     // modes) and apply the same request validator the concrete exporter applies before writing.
@@ -195,8 +231,12 @@ export class StakeEngineCommand implements CliCommandHandling {
                         : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
             })),
         );
-        if (new StakeEngineExportValidator().validate(modes).some((issue) => issue.severity === "error")) {
-            throw new Error("The Stake Engine source does not satisfy the export contract.");
+        const errors = new StakeEngineExportValidator().validate(modes).filter((issue) => issue.severity === "error");
+        if (errors.length > 0) {
+            throw new Error(
+                `The Stake Engine source does not satisfy the export contract: ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")} ` +
+                "Next: fix the listed source errors, then prepare the export again.",
+            );
         }
     }
 
@@ -382,40 +422,10 @@ export class StakeEngineCommand implements CliCommandHandling {
     }
 
     private async runExport(options: ExportOptions): Promise<number> {
-        const descriptor = this.loadDescriptor(options.configPath);
-        const configDir = path.dirname(options.configPath);
-
-        // When every mode in this run comes from a canonical outcome-library bundle, stream each one directly
-        // from its bundle (see StakeEngineBundleStreamingExporter) — never materializing a WeightedOutcomeLibrary,
-        // never calling readLibrary(). Mixing in even one "libraryPath" mode falls back to the existing,
-        // already-stabilized path (StakeEngineExporter), which needs every mode's library fully in memory anyway
-        // — a deliberate scope boundary, not an oversight: it keeps this CLI command from having to reconcile
-        // two different per-mode construction mechanisms into one combined index.json/manifest.
-        const allBundleSourced = descriptor.modes.every((entry) => entry.bundleDir !== undefined);
-
-        const result = allBundleSourced
-            ? await this.bundleStreamingExporter.exportToDirectory(
-                descriptor.modes.map((entry) => ({
-                    modeName: entry.modeName,
-                    cost: entry.cost,
-                    bundleDir: path.resolve(configDir, entry.bundleDir as string),
-                    bundleModeName: entry.bundleModeName ?? entry.modeName,
-                })),
-                options.outDir,
-            )
-            : await this.exporter.exportToDirectory(
-                await Promise.all(
-                    descriptor.modes.map(async (entry): Promise<StakeEngineExportModeInput> => ({
-                        modeName: entry.modeName,
-                        cost: entry.cost,
-                        library:
-                            entry.libraryPath !== undefined
-                                ? (this.loadJsonChecked(path.resolve(configDir, entry.libraryPath), `mode "${entry.modeName}"'s outcome library`) as WeightedOutcomeLibrary)
-                                : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
-                    })),
-                ),
-                options.outDir,
-            );
+        const cancellation = createCliImportCancellation();
+        const prepared = this.prepareDescriptorExportOperation(options.configPath, options.outDir, cancellation.signal);
+        const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution).finally(cancellation.cleanup);
+        const result = execution.publication!;
 
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
@@ -437,14 +447,126 @@ export class StakeEngineCommand implements CliCommandHandling {
         return 0;
     }
 
+    /** Returns format hooks for one immutable descriptor export operation. */
+    // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for ExportCommand
+    public prepareDescriptorExportOperation(configPath: string, outDir: string, signal?: AbortSignal) {
+        const currentSource = () => this.exportDescriptorSource(configPath);
+        return {plan: this.planner.planIdentity(currentSource(), "stakeAdapter", {destinationPath: outDir}), validate: () => this.validateExportSource(configPath), execution: {
+            currentSource,
+            read: async () => {
+                const descriptor = this.loadDescriptor(configPath);
+                const configDir = path.dirname(configPath);
+                const allBundleSourced = descriptor.modes.every((entry) => entry.bundleDir !== undefined);
+                const modes = allBundleSourced ? undefined : await Promise.all(
+                    descriptor.modes.map(async (entry): Promise<StakeEngineExportModeInput> => ({
+                        modeName: entry.modeName,
+                        cost: entry.cost,
+                        library: entry.libraryPath !== undefined
+                            ? (this.loadJsonChecked(path.resolve(configDir, entry.libraryPath), `mode "${entry.modeName}"'s outcome library`) as WeightedOutcomeLibrary)
+                            : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
+                    })),
+                );
+                return {descriptor, configDir, allBundleSourced, modes};
+            },
+            canPublish: () => true,
+            assertDestinationAvailable: () => {
+                const destination = new ArtifactBuilderRegistry().checkDestination("stakeAdapter", outDir, configPath);
+                if (!destination.available) throw new Error(destination.message);
+            },
+            publish: (read) => read.allBundleSourced
+                ? this.bundleStreamingExporter.exportToDirectory(
+                    read.descriptor.modes.map((entry) => ({
+                        modeName: entry.modeName,
+                        cost: entry.cost,
+                        bundleDir: path.resolve(read.configDir, entry.bundleDir as string),
+                        bundleModeName: entry.bundleModeName ?? entry.modeName,
+                    })),
+                    outDir,
+                )
+                : this.exporter.exportToDirectory(read.modes!, outDir),
+            rollback: () => fs.promises.rm(outDir, {recursive: true, force: true}),
+            ...(signal === undefined ? {} : {signal}),
+        }};
+    }
+
+    private exportDescriptorSource(configPath: string): import("pokie").ArtifactIdentity {
+        const canonicalLocation = path.resolve(configPath);
+        const descriptor = this.loadDescriptor(canonicalLocation);
+        const referencedInputs = descriptor.modes.map((entry) => path.resolve(
+            path.dirname(canonicalLocation), entry.libraryPath ?? entry.bundleDir!,
+        ));
+        return {
+            kind: "outcomeLibrary",
+            canonicalLocation,
+            recognitionProvenance: "verified CLI Stake export descriptor",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+            configurationProvenance: {configurationHash: computeArtifactInputBindingHash([canonicalLocation, ...referencedInputs])},
+        };
+    }
+
     // Writes a canonical Outcome Library bundle plus a config.json that names its bundle modes, and (when
     // available) source-provenance.json — so the import's own output can be fed straight back into
     // "pokie stakeengine export <outDir>/config.json" with no further editing. Written via StakeEngineImportWriter,
     // which publishes the whole --out directory atomically (temp-dir-then-swap, the same discipline
     // StakeEngineExporter uses) — a failure never leaves partial files, never alters an existing --out, and a
     // mode no longer present in this import never leaves its old library file behind.
-    private async runImport(options: ImportOptions): Promise<number> {
-        const result = await this.importer.importFromDirectory(options.stakeDir);
+    private async runImport(
+        options: ImportOptions,
+        prepared?: {readonly source: PokieProject; readonly plan: ArtifactImportOutputPlan},
+    ): Promise<number> {
+        if (prepared === undefined) {
+            // The namespaced import is not a lower-level escape hatch.  It
+            // prepares the same one-way durable output operation as `pokie
+            // import`, so destination policy, cancellation, and rollback stay
+            // owned by the planner execution boundary.
+            const source = await this.prepareImportSource(options.stakeDir);
+            const plan = this.planner.planImportOutput(source, "outcomeLibrary", options.outDir);
+            return this.runImport(options, {source, plan});
+        }
+        const cancellation = createCliImportCancellation();
+        const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, options.outDir, {
+            read: () => this.importer.importFromDirectory(options.stakeDir),
+            canPublish: (result) => result.issues.every((issue) => issue.severity !== "error"),
+            assertDestinationAvailable: () => {
+                const destination = new ArtifactBuilderRegistry().checkDestination("outcomeLibrary", options.outDir, prepared.source.rootPath);
+                if (!destination.available) throw new Error(destination.message ?? `The import destination "${options.outDir}" is unavailable.`);
+            },
+            publish: (result) => this.importWriter.writeToDirectory(result, options.outDir),
+            signal: cancellation.signal,
+            register: this.registerImport,
+            // StakeEngineImportWriter publishes an atomic directory.  Once it
+            // has returned, that directory belongs to this prepared operation
+            // until its terminal result is reported; remove only this newly
+            // allocated destination if a later lifecycle phase fails.
+            rollback: () => fs.promises.rm(options.outDir, {recursive: true, force: true}),
+            cleanup: () => cancellation.cleanup(),
+        });
+        return this.reportImport(options, execution.read, execution.published, execution.publication);
+    }
+
+    private async prepareImportSource(stakeDir: string): Promise<PokieProject> {
+        const project = await this.resolveProject.resolve(stakeDir);
+        if (project === undefined) {
+            // Keep the format reader's manifest diagnostics for legacy callers,
+            // but never let that compatibility path bypass a prepared operation.
+            return {
+                type: "stakeAdapter",
+                rootPath: path.resolve(stakeDir),
+                capabilities: PROJECT_TYPE_CAPABILITIES.stakeAdapter,
+                provenance: "legacy Stake Engine exchange input",
+            };
+        }
+        if (project.type === "stakeAdapter") return project;
+        throw new Error(`"${stakeDir}" is not a recognized POKIE-produced Stake Engine export with pokie-manifest.json.`);
+    }
+
+    /** Adapters present an import operation's result; the prepared plan owns its durable publication boundary. */
+    private async reportImport(
+        options: ImportOptions,
+        result: Awaited<ReturnType<StakeEngineImporting["importFromDirectory"]>>,
+        published?: boolean,
+        written?: Awaited<ReturnType<StakeEngineImportWriting["writeToDirectory"]>>,
+    ): Promise<number> {
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const infos = result.issues.filter((issue) => issue.severity !== "error");
 
@@ -454,7 +576,12 @@ export class StakeEngineCommand implements CliCommandHandling {
             return 1;
         }
 
-        const written = await this.importWriter.writeToDirectory(result, options.outDir);
+        if (published === undefined) {
+            written = await this.importWriter.writeToDirectory(result, options.outDir);
+        }
+        if (written === undefined) {
+            throw new Error("The prepared import did not publish its Outcome Library output.");
+        }
         const writeErrors = written.issues.filter((issue) => issue.severity === "error");
         if (writeErrors.length > 0) {
             console.error(`Could not write imported Outcome Library to "${options.outDir}" (${writeErrors.length} error(s)):`);

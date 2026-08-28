@@ -2,11 +2,12 @@ import {
     ArtifactBuilderRegistry,
     ArtifactBuildConflictError,
     type ArtifactBuildOptions,
+    type ArtifactConversionPlan,
     ArtifactTargetType,
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
     computeGameBlueprintHash,
+    describeArtifactConversionPlanDiagnostic,
     buildGameBuildInfo,
-    describeBuildProductMatrixDiagnostic,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
@@ -170,29 +171,34 @@ export class BuildCommand implements CliCommandHandling {
             throw new Error(`"${projectPath}" was not recognized as a POKIE project.\n\n${PROJECT_HINT}`);
         }
 
-        if (!this.registry.supportsConversionFrom(options.target, project.type)) {
-            throw new Error(describeBuildProductMatrixDiagnostic(project.type, options.target, projectPath));
+        const out = options.out ?? this.resolveDestination(project.rootPath, options.target);
+        const conversionPlan = await this.registry.preparePlan(project, options.target, {
+            destinationPath: out,
+            outcomeLibraryGeneration: generation,
+        });
+        if (conversionPlan.status === "unavailable") {
+            const compatibility = describeArtifactConversionPlanDiagnostic(conversionPlan);
+            throw new Error(`${conversionPlan.diagnostic!.message} Next: ${conversionPlan.diagnostic!.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
+        }
+        if (conversionPlan.status === "conflict") {
+            throw new Error(describeDestinationConflict(options.target, conversionPlan.diagnostic!.message));
         }
 
-        const out = options.out ?? this.resolveDestination(project.rootPath, options.target);
-
         if (options.dryRun) {
-            const destinationCheck = this.registry.checkDestination(options.target, out, project.rootPath);
-            if (!destinationCheck.available) throw new Error(describeDestinationConflict(options.target, destinationCheck.message));
             // Blueprint -> tsPackage retains its richer command-owned preview below, which validates the
             // injected Blueprint reader/validator and renders the complete generated-package summary.
             // Every other supported cell must validate its own registry source/artifact contract before
             // the generic dry-run branch can claim success.
             if (!(options.target === "tsPackage" && project.type === "blueprint")) {
-                await this.registry.validate(options.target, project);
+                await this.registry.validate(options.target, project, conversionPlan);
             }
         }
 
         if (options.target === "tsPackage" && project.type === "blueprint") {
-            return this.buildTsPackageFromBlueprint(project, out, options.dryRun ?? false);
+            return this.buildTsPackageFromBlueprint(project, out, options.dryRun ?? false, conversionPlan);
         }
 
-        return this.buildArtifact(options.target, project, out, options.dryRun ?? false, generation);
+        return this.buildArtifact(options.target, project, out, options.dryRun ?? false, generation, conversionPlan);
     }
 
     // The default --out when it's omitted: a `target`-named sibling of the resolved project's own rootPath --
@@ -213,7 +219,7 @@ export class BuildCommand implements CliCommandHandling {
     // load -> validate -> materialize reels -> generate sequence, so the CLI must not run a second, subtly
     // different copy before calling the registry. Dry runs are intentionally read-only previews and therefore
     // retain their own validation/materialization probe without producing an artifact.
-    private async buildTsPackageFromBlueprint(project: PokieProject, out: string, dryRun: boolean): Promise<number> {
+    private async buildTsPackageFromBlueprint(project: PokieProject, out: string, dryRun: boolean, plan: ArtifactConversionPlan): Promise<number> {
         if (dryRun) {
             const blueprint = this.loadBlueprint(project.rootPath);
             const issues = this.validator.validate(blueprint);
@@ -248,12 +254,13 @@ export class BuildCommand implements CliCommandHandling {
             }
 
             this.printDryRunSummary(blueprint as GameBlueprint, project.rootPath, out);
+            this.printPlanSummary(plan);
             return 0;
         }
 
         let result: {readonly outputPath: string};
         try {
-            result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.build("tsPackage", project, out, lifecycle));
+            result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.executePlan(plan, project, out, lifecycle));
         } catch (error) {
             // Reel-strip constraints are an authored Blueprint condition, not an invocation failure.
             // The registry remains the only build path; this CLI boundary merely turns its structured
@@ -303,15 +310,17 @@ export class BuildCommand implements CliCommandHandling {
         out: string,
         dryRun: boolean,
         generation: ArtifactBuildOptions["outcomeLibraryGeneration"],
+        plan: ArtifactConversionPlan,
     ): Promise<number> {
         if (dryRun) {
             console.log(`Dry run -- would build "${target}" from "${project.rootPath}" (${project.provenance}) to "${out}". No files written.`);
+            this.printPlanSummary(plan);
             return 0;
         }
 
         let result;
         try {
-            result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.build(target, project, out, {...lifecycle, ...(generation !== undefined ? {outcomeLibraryGeneration: generation} : {})}));
+            result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.executePlan(plan, project, out, {...lifecycle, ...(generation !== undefined ? {outcomeLibraryGeneration: generation} : {})}));
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
                 throw new Error(describeDestinationConflict(target, error.message));
@@ -421,6 +430,18 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  blueprint hash   ${buildInfo.blueprintHash}`);
         console.log(`  would generate   ${buildInfo.files!.join(", ")}`);
         console.log(`  destination      ${destination}`);
+    }
+
+    // The planner is the dry-run contract.  Keep the established human
+    // summary, but expose the selected executable steps, reuse choice and
+    // irreversible boundary instead of making a user infer them from target
+    // names or a command-specific branch.
+    private printPlanSummary(plan: ArtifactConversionPlan): void {
+        console.log("Conversion plan:");
+        console.log(`  steps            ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}`);
+        console.log(`  estimated work   ${plan.preflight.estimatedWork}`);
+        console.log(`  destination kind ${plan.preflight.destinationKind}`);
+        if (plan.preflight.losses.length > 0) console.log(`  data boundary    ${plan.preflight.losses.join(" ")}`);
     }
 }
 

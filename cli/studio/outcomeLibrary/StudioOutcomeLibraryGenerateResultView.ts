@@ -1,4 +1,4 @@
-import type {OutcomeLibraryGeneratorDiagnostics, ValidationIssue} from "pokie";
+import type {ArtifactConversionPlan, OutcomeLibraryGeneratorDiagnostics, ValidationIssue} from "pokie";
 import type {OutcomeLibrarySelector} from "./OutcomeLibrarySelector.js";
 
 // The Studio Generate step's own result: unlike "pokie outcomelibrary generate" (which only ever writes a
@@ -33,11 +33,14 @@ export type StudioOutcomeLibraryGenerateResultView =
           // later step that needs to select it (e.g. a Deployment mode's own librarySelector) never needs
           // its own parallel version of it.
           readonly selector: OutcomeLibrarySelector;
+          /** The server-selected prerequisite/publication decision for this action. */
+          readonly plan: ArtifactConversionPlan;
       }
-    | {readonly status: "unsupported"; readonly error: string}
-    | {readonly status: "generation-error"; readonly code: string; readonly error: string}
+    | {readonly status: "unsupported"; readonly error: string; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "conflict"; readonly error: string; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "generation-error"; readonly code: string; readonly error: string; readonly plan: ArtifactConversionPlan}
     // The write itself failed validation (e.g. this mode's provenance doesn't match another mode already
     // in the bundle) -- the generated outcomes were never persisted, mirroring the writer's own "no
     // partial bundle" guarantee.
-    | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]}
-    | {readonly status: "load-error"; readonly error: string};
+    | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan: ArtifactConversionPlan};
