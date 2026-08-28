@@ -158,11 +158,11 @@ export class StudioStakeEngineExportService {
         signal?: AbortSignal,
     ): Promise<StudioStakeEngineExportView> {
         const selectedModes = await this.selectModes(projectRoot, modes);
-        const resolvedOutDir = resolveProjectDirectory(projectRoot, outDir, this.realpath);
-        if (resolvedOutDir.status === "error") {
-            return {status: "load-error", error: resolvedOutDir.message};
-        }
-        const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes, resolvedOutDir.resolvedPath);
+        // Prepare and bind the source before resolving the write path.  A stale
+        // managed bundle must retain its prepared-plan diagnostic even when a
+        // requested output path is invalid; the view contract requires that
+        // terminal diagnostic to carry the plan.
+        const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes, this.resolveArtifactDestination(projectRoot, outDir));
         // The exported plan owns destination safety as well as reachability.
         // In particular, an explicit Studio output path must not bypass the
         // registry's alias/source/occupied-destination checks through this
@@ -178,6 +178,10 @@ export class StudioStakeEngineExportService {
         }
         if (plan.status === "unavailable") {
             return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
+        }
+        const resolvedOutDir = resolveProjectDirectory(projectRoot, outDir, this.realpath);
+        if (resolvedOutDir.status === "error") {
+            return {status: "load-error", error: resolvedOutDir.message, plan};
         }
         const selectedSource = this.selectedBundleSource(projectRoot, selectedModes);
         const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "stakeAdapter", resolvedOutDir.resolvedPath);
@@ -249,6 +253,15 @@ export class StudioStakeEngineExportService {
         // empty Build/Export-card request has no client-held prerequisite; it
         // is resolved once here, before planning and loading.
         return requested.length === 0 ? this.resolveServerSelectedModes(projectRoot) : Promise.resolve(requested);
+    }
+
+    private resolveArtifactDestination(projectRoot: string, outDir: string): string {
+        const resolvedProjectRoot = path.resolve(projectRoot);
+        try {
+            return path.resolve(fs.statSync(resolvedProjectRoot).isFile() ? path.dirname(resolvedProjectRoot) : resolvedProjectRoot, outDir);
+        } catch {
+            return path.resolve(resolvedProjectRoot, outDir);
+        }
     }
 
     // Rejects a bundle/Stake Engine selector whose own modeName names a different mode than its own
