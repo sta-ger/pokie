@@ -195,7 +195,7 @@ export class StudioArtifactBuildService {
             };
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
-                return {status: "conflict", target, message: error.message};
+                return {status: "conflict", target, message: error.message, plan};
             }
             if (error instanceof ArtifactBuildCancelledError) {
                 return {status: "cancelled", message: "Artifact build was cancelled."};
