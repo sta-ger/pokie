@@ -238,10 +238,14 @@ export class ArtifactConversionPlanner {
         // bundle identity and provenance required to advertise a conversion
         // edge.  Keep that boundary explicit instead of reporting a misleading
         // missing capability on an otherwise-recognized Outcome Library.
-        if (source.recognitionProvenance === "external Studio selector" || source.recognitionProvenance === "mixed external Studio selectors") {
+        if (
+            source.recognitionProvenance === "external Studio selector" ||
+            source.recognitionProvenance === "mixed external Studio selectors" ||
+            source.recognitionProvenance === "unresolved Studio project runtime"
+        ) {
             return unavailable(
                 "unrecognized-source",
-                "This Studio selector is not an independently recognized POKIE artifact and cannot be used for conversion planning.",
+                "This Studio source is not an independently recognized POKIE artifact and cannot be used for conversion planning.",
                 "Open or generate a recognized POKIE Outcome Library bundle, then retry the action.",
             );
         }

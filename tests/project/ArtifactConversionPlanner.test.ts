@@ -151,4 +151,22 @@ describe("ArtifactConversionPlanner", () => {
         expect(plan.diagnostic?.recovery).toContain("recognized POKIE Outcome Library bundle");
         expect(describeArtifactConversionPlanDiagnostic(plan)).toBe(plan.diagnostic?.message);
     });
+
+    it("rejects an unresolved Studio runtime without fabricating package capabilities", () => {
+        const plan = planner.planIdentity(
+            {
+                kind: "tsPackage",
+                canonicalLocation: "/projects/unresolved-runtime",
+                recognitionProvenance: "unresolved Studio project runtime",
+                capabilities: [],
+            },
+            "outcomeLibrary",
+        );
+
+        expect(plan).toMatchObject({
+            status: "unavailable",
+            steps: [],
+            diagnostic: {code: "unrecognized-source", failedEdge: {from: "tsPackage", to: "outcomeLibrary"}},
+        });
+    });
 });

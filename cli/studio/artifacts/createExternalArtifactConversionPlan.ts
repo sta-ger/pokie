@@ -2,7 +2,6 @@ import {
     ArtifactConversionPlan,
     ArtifactConversionPlanner,
     ArtifactTargetType,
-    OUTCOME_LIBRARY_GENERATE_CAPABILITY,
 } from "pokie";
 
 /**
@@ -39,7 +38,11 @@ export function createExternalOutcomeLibraryPlan(
     );
 }
 
-/** A project root that cannot be resolved still receives a concrete recovery plan. */
+/**
+ * A runtime loader failure is not project recognition.  Keep the path in the
+ * result for recovery, but do not assign package capabilities merely because
+ * a legacy runtime reader was asked to load it.
+ */
 export function createUnresolvedRuntimePlan(
     sourcePath: string,
     target: ArtifactTargetType,
@@ -50,9 +53,7 @@ export function createUnresolvedRuntimePlan(
             kind: "tsPackage",
             canonicalLocation: sourcePath,
             recognitionProvenance: "unresolved Studio project runtime",
-            // This is a recovery plan for the Studio runtime loader, whose
-            // package contract is independently verified by that loader.
-            capabilities: [OUTCOME_LIBRARY_GENERATE_CAPABILITY],
+            capabilities: [],
         },
         target,
         destinationPath === undefined ? {} : {destinationPath},

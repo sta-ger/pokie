@@ -33,7 +33,25 @@ describe("StudioOutcomeLibraryGenerateService", () => {
     });
 
     function service(pokieVersion: string = POKIE_VERSION, game: PokieGame = buildFixtureGame()): StudioOutcomeLibraryGenerateService {
-        return new StudioOutcomeLibraryGenerateService(pokieVersion, () => Promise.resolve(game));
+        // The runtime seam deliberately does not turn this temporary directory
+        // into a recognized package. Supply the already-prepared package plan
+        // that production obtains from the resolver so these tests exercise
+        // generation rather than fabricated source recognition.
+        return new StudioOutcomeLibraryGenerateService(
+            pokieVersion,
+            () => Promise.resolve(game),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            {prepare: () => Promise.resolve(plannedOutcomeLibrary)},
+        );
     }
 
     describe("estimate", () => {
@@ -131,9 +149,23 @@ describe("StudioOutcomeLibraryGenerateService", () => {
         });
 
         it("reports load-error when the package fails to load", async () => {
-            const failing = new StudioOutcomeLibraryGenerateService(POKIE_VERSION, () => Promise.reject(new Error("boom")));
+            const failing = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.reject(new Error("boom")),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {prepare: () => Promise.resolve(plannedOutcomeLibrary)},
+            );
             const result = await failing.estimate(projectRoot, {});
-            expect(result).toMatchObject({status: "load-error", error: "boom", plan: {status: "planned", source: {canonicalLocation: projectRoot}}});
+            expect(result).toMatchObject({status: "load-error", error: "boom", plan: {status: "planned", source: {kind: "tsPackage"}}});
         });
     });
 
@@ -340,7 +372,21 @@ describe("StudioOutcomeLibraryGenerateService", () => {
         it("keeps only the most recently generated occurrence when the same mode is later regenerated into a different output directory", async () => {
             let clock = new Date("2026-01-01T00:00:00.000Z");
             const writer = new OutcomeLibraryBundleWriter<string>(POKIE_VERSION, undefined, () => clock);
-            const svc = new StudioOutcomeLibraryGenerateService(POKIE_VERSION, () => Promise.resolve(buildFixtureGame()), undefined, undefined, writer);
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(buildFixtureGame()),
+                undefined,
+                undefined,
+                writer,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {prepare: () => Promise.resolve(plannedOutcomeLibrary)},
+            );
 
             await svc.generate(projectRoot, {mode: "base", outDir: "first-out"});
             clock = new Date("2026-01-02T00:00:00.000Z");
