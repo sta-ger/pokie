@@ -85,7 +85,34 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(estimate).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
             expect(generated).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
             expect(planning.prepare).toHaveBeenNthCalledWith(1, projectRoot, "outcomeLibrary");
-            expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary");
+            expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", undefined, {generationSemantics: "exact"});
+        });
+
+        it("prepares bounded generation with its exact sample provenance", async () => {
+            const planning = {prepare: jest.fn(() => Promise.resolve(plannedOutcomeLibrary))};
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(buildFixtureGame()),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                planning,
+            );
+
+            await svc.generate(projectRoot, {bounded: {sampleSize: BigInt(2), seed: "fixture-seed"}});
+
+            expect(planning.prepare).toHaveBeenCalledWith(projectRoot, "outcomeLibrary", undefined, {
+                generationSemantics: "boundedSample",
+                sampleCount: BigInt(2),
+                sampleSeed: "fixture-seed",
+            });
         });
 
         it("reports the exact strategy for a small fixture game", async () => {

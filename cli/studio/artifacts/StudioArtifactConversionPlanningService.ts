@@ -1,5 +1,6 @@
 import {
     ArtifactBuilderRegistry,
+    ArtifactConversionPlanningOptions,
     ArtifactConversionPlan,
     ArtifactTargetType,
     ProjectResolving,
@@ -8,7 +9,12 @@ import {
 
 /** Resolves the opened Studio project once and exposes the library planner to Studio adapters. */
 export interface StudioArtifactConversionPlanning {
-    prepare(projectRoot: string, target: ArtifactTargetType, destinationPath?: string): Promise<ArtifactConversionPlan | undefined>;
+    prepare(
+        projectRoot: string,
+        target: ArtifactTargetType,
+        destinationPath?: string,
+        options?: Omit<ArtifactConversionPlanningOptions, "destinationPath">,
+    ): Promise<ArtifactConversionPlan | undefined>;
 }
 
 /**
@@ -30,10 +36,15 @@ export class StudioArtifactConversionPlanningService implements StudioArtifactCo
         this.registry = registry;
     }
 
-    public async prepare(projectRoot: string, target: ArtifactTargetType, destinationPath?: string): Promise<ArtifactConversionPlan | undefined> {
+    public async prepare(
+        projectRoot: string,
+        target: ArtifactTargetType,
+        destinationPath?: string,
+        options: Omit<ArtifactConversionPlanningOptions, "destinationPath"> = {},
+    ): Promise<ArtifactConversionPlan | undefined> {
         try {
             const source = await this.resolver.resolve(projectRoot);
-            return source === undefined ? undefined : this.registry.preparePlan(source, target, {destinationPath});
+            return source === undefined ? undefined : this.registry.preparePlan(source, target, {...options, destinationPath});
         } catch {
             // The action's established reader owns diagnostics for an unrecognizable
             // external selector.  Do not manufacture a source identity just to make a

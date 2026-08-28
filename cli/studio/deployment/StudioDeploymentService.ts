@@ -99,7 +99,8 @@ export class StudioDeploymentService {
         bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
         stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
         resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined> = resolveCurrentBuildModeIds,
-        planning: StudioArtifactConversionPlanning = new StudioArtifactConversionPlanningService("unknown"),
+        planning: StudioArtifactConversionPlanning | undefined = undefined,
+        pokieVersion = "unknown",
     ) {
         this.externalDeploymentService = externalDeploymentService;
         this.createLocalTarget = createLocalTarget;
@@ -108,7 +109,22 @@ export class StudioDeploymentService {
         this.bundleReader = bundleReader;
         this.stakeEngineImporter = stakeEngineImporter;
         this.resolveBuildModeIds = resolveBuildModeIds;
-        this.planning = planning;
+        this.planning = planning ?? new StudioArtifactConversionPlanningService(pokieVersion);
+    }
+
+    /** Creates the production service with Studio's configured package version. */
+    public static withPokieVersion(pokieVersion: string): StudioDeploymentService {
+        return new StudioDeploymentService(
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            pokieVersion,
+        );
     }
 
     public listTargets(projectRoot: string): StudioDeploymentTargetSummary[] {

@@ -171,12 +171,15 @@ export class StudioOutcomeLibraryGenerateService {
     // this class's own doc comment); only "request.mode ?? 'base'" is (re)computed.
     public async generate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest): Promise<StudioOutcomeLibraryGenerateResultView> {
         const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
+        const requestedGeneration = request.bounded === undefined
+            ? {generationSemantics: "exact" as const}
+            : {generationSemantics: "boundedSample" as const, sampleCount: request.bounded.sampleSize, sampleSeed: request.bounded.seed};
         // A Studio generation updates one mode in the canonical bundle and deliberately
         // preserves its other modes.  It is therefore not the planner's one-shot
         // publication destination (which correctly rejects an occupied directory).
         // Ask the planner for the source/prerequisite decision, while this writer
         // retains its established atomic in-bundle update contract.
-        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary");
+        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", undefined, requestedGeneration);
         if (plan?.status === "conflict") {
             return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
         }
