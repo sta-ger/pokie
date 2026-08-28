@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "schema_version": 5,
+  "schema_version": 6,
   "purpose": "Canonical product-model inventory. This records product contracts, not proof that a particular user run produced every artifact.",
   "source_revision": "71f8bfa9",
   "reference_fields": ["imports_from", "exports_to", "prerequisite_for"],
@@ -38,13 +38,30 @@
     {"id": "fairness-seed-commitment", "producer": "cli:fairness seed-commit --out", "artifact_id": "fairnessServerSeedCommitment", "command_file": "cli/commands/FairnessCommand.ts", "persistence_trigger": "seed-commit writes the server-seed commitment when --out is supplied"},
     {"id": "fairness-commitment", "producer": "cli:fairness commit --out", "artifact_id": "fairnessCommitment", "command_file": "cli/commands/FairnessCommand.ts", "persistence_trigger": "commit writes the round commitment when --out is supplied"},
     {"id": "fairness-proof", "producer": "cli:fairness reveal --out", "artifact_id": "fairnessProof", "command_file": "cli/commands/FairnessCommand.ts", "persistence_trigger": "reveal writes the round proof when --out is supplied"}
+    ,{"id": "create-blueprint-default", "producer": "cli:create without --out", "artifact_id": "blueprint", "command_file": "cli/commands/CreateCommand.ts", "persistence_trigger": "a confirmed create writes its id-derived default Blueprint destination when --out is absent"}
+    ,{"id": "edit-blueprint-default", "producer": "cli:edit without --out", "artifact_id": "blueprint", "command_file": "cli/commands/EditCommand.ts", "persistence_trigger": "after validation and explicit confirmation, edit defaults Save to the input Blueprint path; its interactive Save to prompt may deliberately choose another path"}
+    ,{"id": "reel-apply-blueprint-default", "producer": "cli:reel generate --apply without --out", "artifact_id": "blueprint", "command_file": "cli/commands/ReelCommand.ts", "persistence_trigger": "only a successful --apply writes the input Blueprint path when --out is absent; preview and failed generation write nothing"}
+    ,{"id": "reel-materialize-blueprint-default", "producer": "cli:reel generate --materialize without --out", "artifact_id": "blueprint", "command_file": "cli/commands/ReelCommand.ts", "persistence_trigger": "only successful --materialize writes the input Blueprint path when --out is absent"}
+    ,{"id": "par-import-blueprint-default", "producer": "cli:par import without --out", "artifact_id": "blueprint", "command_file": "cli/commands/ParCommand.ts", "persistence_trigger": "a valid workbook writes the sibling <input>.blueprint.json default when --out is absent and the create-only destination is available"}
+    ,{"id": "import-par-blueprint-default", "producer": "cli:import XLSX without --out", "artifact_id": "blueprint", "command_file": "cli/commands/ImportCommand.ts", "persistence_trigger": "the public XLSX dispatcher omits --out to retain PAR import's sibling <input>.blueprint.json default"}
+    ,{"id": "par-export-workbook-default", "producer": "cli:par export without --out", "artifact_id": "parWorkbook", "command_file": "cli/commands/ParCommand.ts", "persistence_trigger": "a valid export writes the sibling <config>.par.xlsx default when --out is absent and the create-only destination is available"}
+    ,{"id": "build-ts-package-default", "producer": "cli:build --target tsPackage without --out", "artifact_id": "tsPackage", "command_file": "cli/commands/BuildCommand.ts", "persistence_trigger": "a non-dry-run compatible project build writes the target-named sibling default when --out is absent"}
+    ,{"id": "build-outcome-bundle-default", "producer": "cli:build --target outcomeLibrary without --out", "artifact_id": "outcomeLibrary", "command_file": "cli/commands/BuildCommand.ts", "persistence_trigger": "a non-dry-run compatible project build writes the target-named sibling default when --out is absent"}
+    ,{"id": "build-stake-default", "producer": "cli:build --target stakeAdapter without --out", "artifact_id": "stakeAdapter", "command_file": "cli/commands/BuildCommand.ts", "persistence_trigger": "a non-dry-run compatible project build writes the target-named sibling default when --out is absent"}
+    ,{"id": "build-par-default", "producer": "cli:build --target parWorkbook without --out", "artifact_id": "parWorkbook", "command_file": "cli/commands/BuildCommand.ts", "persistence_trigger": "a non-dry-run compatible project build writes the target-named sibling default when --out is absent"}
+    ,{"id": "export-outcome-bundle-default", "producer": "cli:export --to outcomes without --out", "artifact_id": "outcomeLibrary", "command_file": "cli/commands/ExportCommand.ts", "persistence_trigger": "a non-dry-run export writes the sibling outcomelibrary default when --out is absent and its destination is available"}
+    ,{"id": "export-stake-default", "producer": "cli:export --to adapter without --out", "artifact_id": "stakeAdapter", "command_file": "cli/commands/ExportCommand.ts", "persistence_trigger": "a non-dry-run export writes the sibling stakeengine default when --out is absent and its destination is available"}
+    ,{"id": "export-par-default", "producer": "cli:export --to workbook without --out", "artifact_id": "parWorkbook", "command_file": "cli/commands/ExportCommand.ts", "persistence_trigger": "a non-dry-run export writes the sibling <source>.par.xlsx default when --out is absent and its destination is available"}
+    ,{"id": "stake-import-library-default", "producer": "cli:import Stake without --out", "artifact_id": "outcomeLibrary", "command_file": "cli/commands/ImportCommand.ts", "persistence_trigger": "the public non-XLSX dispatcher omits --out to retain Stake import's <stakeDir>-imported default when the POKIE Stake source is valid"}
+    ,{"id": "certification-bundle-default", "producer": "cli:certification build without --out", "artifact_id": "certificationEvidenceBundle", "command_file": "cli/commands/CertificationCommand.ts", "persistence_trigger": "a successful certification build writes the sibling certification default when --out is absent"}
+    ,{"id": "init-ts-package-default", "producer": "cli:init", "artifact_id": "tsPackage", "command_file": "cli/commands/InitCommand.ts", "persistence_trigger": "init creates or merges the local TypeScript game package at the supplied directory, or the current directory when it is omitted; unsafe non-empty directories require --yes"}
   ],
   "artifact_kinds": [
     {
       "id": "blueprint",
       "label": "Game Blueprint",
       "shape": "JSON file",
-      "created_by": ["cli:create", "cli:create --out", "cli:edit --out", "cli:reel generate --out", "cli:par import --out", "cli:import --out for an XLSX source", "studio:design-create", "studio:par-import", "studio:blueprint-save"],
+      "created_by": ["cli:create", "cli:create --out", "cli:create without --out", "cli:edit --out", "cli:edit without --out", "cli:reel generate --out", "cli:reel generate --apply without --out", "cli:reel generate --materialize without --out", "cli:par import --out", "cli:par import without --out", "cli:import --out for an XLSX source", "cli:import XLSX without --out", "studio:design-create", "studio:par-import", "studio:blueprint-save"],
       "recognized_by": ["ProjectTargetResolver", "cli:inspect", "cli:validate", "studio:project-registration"],
       "imports_from": ["parWorkbook"],
       "exports_to": ["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"],
@@ -59,7 +76,7 @@
       "label": "Studio Symbol Artwork PNG",
       "shape": "separate durable project-relative PNG file at assets/symbols/<sanitized-name>-<unique>.png; the Blueprint contains only its relative reference",
       "created_by": ["studio:blueprint-symbol-artwork-import (temporary staging)", "studio:blueprint-save/materializeSymbolArtwork", "studio:blueprint-save-managed/materializeSymbolArtwork"],
-      "recognized_by": ["StudioBlueprintService:getSymbolArtwork", "StudioBlueprintService:resolveSymbolArtwork", "studio:editor SymbolPresentation", "studio:player CanonicalPlayerView", "cli:client player artwork URL"],
+      "recognized_by": ["StudioBlueprintService:getSymbolArtwork", "StudioBlueprintService:resolveSymbolArtwork", "studio:editor SymbolPresentation", "studio:player CanonicalPlayerView (Studio adapter resolves declared references and supplies URLs)", "cli:client player renderPlayer artworkUrlForSymbol callback (shared renderer; no endpoint or declared-reference consumer)"],
       "imports_from": [],
       "exports_to": [],
       "validates_by": ["StudioBlueprintService:importSymbolArtwork PNG signature/size check", "StudioBlueprintService:resolveSymbolArtwork declared-reference/path/PNG check"],
@@ -74,7 +91,7 @@
       "id": "tsPackage",
       "label": "POKIE TypeScript game package",
       "shape": "directory with package.json/pokie.entry",
-      "created_by": ["ArtifactBuilderRegistry:build(tsPackage)", "cli:build", "cli:build --target tsPackage --out", "studio:artifact-build"],
+      "created_by": ["ArtifactBuilderRegistry:build(tsPackage)", "cli:init", "cli:build", "cli:build --target tsPackage --out", "cli:build --target tsPackage without --out", "studio:artifact-build"],
       "recognized_by": ["ProjectTargetResolver", "loadPokieGame", "cli:inspect", "studio:project-registration"],
       "imports_from": ["blueprint"],
       "exports_to": ["outcomeLibrary", "stakeAdapter"],
@@ -121,7 +138,7 @@
       "id": "outcomeLibrary",
       "label": "Outcome Library bundle",
       "shape": "directory: manifest, per-mode index and JSONL outcomes",
-      "created_by": ["ArtifactBuilderRegistry:build(outcomeLibrary)", "cli:build --target outcomeLibrary", "cli:build --target outcomeLibrary --out", "cli:export --to outcomes --out", "cli:outcomelibrary build", "cli:import --out", "studio:outcome-library-generate"],
+      "created_by": ["ArtifactBuilderRegistry:build(outcomeLibrary)", "cli:build --target outcomeLibrary", "cli:build --target outcomeLibrary --out", "cli:build --target outcomeLibrary without --out", "cli:export --to outcomes --out", "cli:export --to outcomes without --out", "cli:outcomelibrary build", "cli:import --out", "cli:import Stake without --out", "studio:outcome-library-generate"],
       "recognized_by": ["ProjectTargetResolver", "OutcomeLibraryBundleReader", "cli:inspect", "studio:outcome-library-registry"],
       "imports_from": ["blueprint", "tsPackage", "weightedOutcomeLibraryJson", "stakeAdapter"],
       "exports_to": ["stakeAdapter", "certificationEvidenceBundle", "fairnessCommitment", "fairnessProof", "externalDeploymentArtifact"],
@@ -138,7 +155,7 @@
       "id": "stakeAdapter",
       "label": "Stake Engine export",
       "shape": "directory: pokie-manifest.json, index.json, lookup CSV and compressed JSONL books",
-      "created_by": ["ArtifactBuilderRegistry:build(stakeAdapter)", "cli:build", "cli:build --target stakeAdapter --out", "cli:export --to adapter --out", "studio:stake-export"],
+      "created_by": ["ArtifactBuilderRegistry:build(stakeAdapter)", "cli:build", "cli:build --target stakeAdapter --out", "cli:build --target stakeAdapter without --out", "cli:export --to adapter --out", "cli:export --to adapter without --out", "studio:stake-export"],
       "recognized_by": ["ProjectTargetResolver", "StakeEngineOutcomeSourceReader", "cli:inspect", "studio:project-registration"],
       "imports_from": ["outcomeLibrary", "blueprint", "tsPackage", "stakeAdapter"],
       "exports_to": ["outcomeLibrary", "stakeAdapter", "stakeImportReExportConfig", "stakeImportSourceProvenance"],
@@ -153,7 +170,7 @@
       "id": "parWorkbook",
       "label": "PAR workbook",
       "shape": "XLSX file",
-      "created_by": ["ArtifactBuilderRegistry:build(parWorkbook)", "cli:build --target parWorkbook --out", "cli:par export --out", "cli:export --to workbook --out", "studio:par-export"],
+      "created_by": ["ArtifactBuilderRegistry:build(parWorkbook)", "cli:build --target parWorkbook --out", "cli:build --target parWorkbook without --out", "cli:par export --out", "cli:par export without --out", "cli:export --to workbook --out", "cli:export --to workbook without --out", "studio:par-export"],
       "recognized_by": ["ProjectTargetResolver", "cli:inspect", "studio:project-registration"],
       "imports_from": ["blueprint", "parWorkbook"],
       "exports_to": ["blueprint", "parWorkbook"],
@@ -403,7 +420,7 @@
       "id": "certificationEvidenceBundle",
       "label": "Certification/evidence bundle",
       "shape": "directory with deterministic metrics, diagnostics and sampled/verifiable RoundArtifacts",
-      "created_by": ["cli:certification build", "cli:certification build --out", "studio:certification-build"],
+      "created_by": ["cli:certification build", "cli:certification build --out", "cli:certification build without --out", "studio:certification-build"],
       "recognized_by": ["CertificationEvidenceBundleValidator", "cli:certification verify"],
       "imports_from": ["outcomeLibrary", "certificationConfig"],
       "exports_to": [],
@@ -470,6 +487,38 @@
       "support_status": "supported-sdk-surface"
     },
     {
+      "id": "managedOutcomeProjectsRegistry",
+      "label": "Managed Outcome Projects registry",
+      "shape": "durable .pokie/managed-outcome-projects.json metadata document beside a source project; entries hold a canonical Outcome Library rootPath plus game id/version, config hash, POKIE version and generation kind",
+      "created_by": ["ManagedOutcomeProjectService:registerAndOpen", "ManagedOutcomeProjectService:findCompatible legacy adoption", "cli/stake export managed-library lifecycle", "studio:managed-outcome-library lifecycle"],
+      "recognized_by": ["ManagedOutcomeProjectService:findCompatible", "ManagedOutcomeProjectService:registerAndOpen", "ArtifactBuilderRegistry managed Outcome Library reuse"],
+      "imports_from": ["blueprint", "tsPackage", "outcomeLibrary"],
+      "exports_to": [],
+      "validates_by": ["OutcomeLibraryBundleReader manifest read", "ProjectTargetResolver", "OutcomeProjectCompatibility exact comparison"],
+      "prerequisite_for": [],
+      "provenance": "Each registration records the canonical absolute rootPath of a verified generated bundle together with the exact game identity, configuration hash, POKIE version and exact/direct generation identity. It is durable discovery metadata shared by CLI and Studio, not the bundle or an assertion that the path remains usable.",
+      "stale": "Entries become stale when the bundle is moved, deleted, corrupt, no longer resolves as an Outcome Library, or its manifest differs in game/version/configuration/POKIE version. findCompatible ignores such entries and does not silently reuse them; it may adopt the deterministic legacy root only after verifying it and registering it.",
+      "compatibility": "Reuse requires exact OutcomeProjectCompatibility, including generation kind. The persisted rootPath is canonicalized on write but is not trusted as a containment or compatibility proof: it is reopened through the manifest reader and resolver before use. A malformed JSON/read failure surfaces rather than being interpreted as a compatible library; a structurally wrong projects value is treated as an empty registry.",
+      "recovery": "Repair or remove a malformed registry document, then rerun the managed build/export path to regenerate or re-register a verified bundle. Missing/stale entries can be left for audit because they are ignored, or refreshed by a successful registerAndOpen; failed registration restores the prior document (or removes a newly created empty one).",
+      "support_status": "supported-durable-metadata-companion"
+    },
+    {
+      "id": "studioOutcomeLibraryRegistryIndex",
+      "label": "Studio Outcome Library discovery index",
+      "shape": "durable project-scoped .pokie/outcome-library-registry.json JSON array of Studio-generated project-relative bundle-directory names",
+      "created_by": ["StudioOutcomeLibraryGenerateService:recordDiscoveredBundleDir after successful generate"],
+      "recognized_by": ["StudioOutcomeLibraryGenerateService:readRegistryIndex", "StudioOutcomeLibraryGenerateService:registry", "Studio Outcome Library Registry panel after restart"],
+      "imports_from": ["outcomeLibrary"],
+      "exports_to": [],
+      "validates_by": ["resolveProjectDirectory containment/realpath check", "StudioOutcomeLibraryGenerateService:isDirectory", "OutcomeLibraryBundleReader manifest read"],
+      "prerequisite_for": [],
+      "provenance": "After Studio has successfully written a bundle, it best-effort appends that requested project-relative output directory to the separate index. It contains directory names only, never outcome data, and lets a fresh Studio service/server discover custom output directories as well as the conventional outcomelibrary directory.",
+      "stale": "A missing directory, blank/absolute/escaping/symlink-escaping/file entry, malformed index or non-array index is dropped or ignored while the conventional outcomelibrary directory is still checked. A safe indexed directory with a corrupt bundle manifest is reported as that bundle's load error, not silently used. A failed index write does not undo the already-successful bundle generation and leaves the bundle discoverable in the current process.",
+      "compatibility": "The index is discovery-only, never bundle truth. Both the index path and every entry must resolve inside the project through realpath-aware containment and entries must be directories; registry() then reads each bundle manifest and labels it compatible, stale or wrong against the current game/configuration/POKIE version.",
+      "recovery": "Regenerate to the desired project-relative directory to record it again, or repair/remove the index and reopen Studio; the default outcomelibrary directory remains discoverable without it. Repair or rebuild an indexed corrupt bundle before it can be listed as usable.",
+      "support_status": "supported-durable-metadata-companion"
+    },
+    {
       "id": "studioProjectRegistryEntry",
       "label": "Studio project registry entry",
       "shape": "local Studio registry record",
@@ -488,7 +537,6 @@
     {"id": "serverSeedFile", "type": "non-artifact-prerequisite", "purpose": "private Fairness seed input", "persisted_by_pokie": false},
     {"id": "certificationConfig", "type": "non-artifact-prerequisite", "purpose": "per-mode certification sample-source configuration", "persisted_by_pokie": false},
     {"id": "externalDeploymentTarget", "type": "non-artifact-prerequisite", "purpose": "registered adapter descriptor/capabilities", "persisted_by_pokie": false},
-    {"id": "managedOutcomeProject", "type": "non-artifact-prerequisite", "purpose": "registry-owned compatible Outcome Library lifecycle location", "persisted_by_pokie": true},
     {"id": "studioProjectDashboard", "type": "non-artifact-prerequisite", "purpose": "Studio UI destination enabled by a local project registry entry", "persisted_by_pokie": false},
     {"id": "stakeAdapterImport", "type": "non-artifact-prerequisite", "purpose": "the Stake-import operation, not a separate file: it consumes a Stake export and writes the separately inventoried Outcome Library plus config.json and optional source-provenance.json companions", "persisted_by_pokie": false},
     {"id": "simulationReplayDescriptor", "type": "non-artifact-prerequisite", "purpose": "legacy relationship label only; simulation replay uses the separately inventoried runtimeReplayDescriptor and, for native sources, its embedded exact outcome-source provenance rather than a second simulation-specific file", "persisted_by_pokie": false},

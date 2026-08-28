@@ -152,6 +152,8 @@ describe("PC-05 product-model contract", () => {
                 "fairnessCommitment",
                 "fairnessProof",
                 "externalDeploymentArtifact",
+                "managedOutcomeProjectsRegistry",
+                "studioOutcomeLibraryRegistryIndex",
                 "stakeImportReExportConfig",
                 "stakeImportSourceProvenance",
             ]),
@@ -196,7 +198,11 @@ describe("PC-05 product-model contract", () => {
                 "label": "Studio Symbol Artwork PNG",
                 "shape": expect.stringContaining("separate"),
                 "created_by": expect.arrayContaining(["studio:blueprint-symbol-artwork-import (temporary staging)", "studio:blueprint-save/materializeSymbolArtwork"]),
-                "recognized_by": expect.arrayContaining(["StudioBlueprintService:resolveSymbolArtwork", "studio:editor SymbolPresentation", "studio:player CanonicalPlayerView"]),
+                "recognized_by": expect.arrayContaining([
+                    "StudioBlueprintService:resolveSymbolArtwork",
+                    "studio:editor SymbolPresentation",
+                    "studio:player CanonicalPlayerView (Studio adapter resolves declared references and supplies URLs)",
+                ]),
                 provenance: expect.stringContaining("not embedded"),
                 stale: expect.stringContaining("session-local"),
                 compatibility: expect.stringContaining("assets/symbols/"),
@@ -267,6 +273,34 @@ describe("PC-05 product-model contract", () => {
         for (const nonArtifactId of ["stakeAdapterImport", "simulationReplayDescriptor", "studioReplayDownload", "wasmPackagingPreflight"]) {
             expect(registry.non_artifact_prerequisites).toContainEqual(expect.objectContaining({id: nonArtifactId, type: "non-artifact-prerequisite"}));
         }
+
+        for (const metadataId of ["managedOutcomeProjectsRegistry", "studioOutcomeLibraryRegistryIndex"]) {
+            expect(registry.artifact_kinds.find((item) => item.id === metadataId)).toEqual(
+                expect.objectContaining({
+                    provenance: expect.any(String),
+                    stale: expect.any(String),
+                    compatibility: expect.any(String),
+                    recovery: expect.any(String),
+                    "support_status": "supported-durable-metadata-companion",
+                }),
+            );
+        }
+        expect(registry.artifact_kinds.find((item) => item.id === "managedOutcomeProjectsRegistry")).toEqual(
+            expect.objectContaining({
+                shape: expect.stringContaining(".pokie/managed-outcome-projects.json"),
+                "created_by": expect.arrayContaining(["ManagedOutcomeProjectService:registerAndOpen"]),
+                "recognized_by": expect.arrayContaining(["ManagedOutcomeProjectService:findCompatible"]),
+                "validates_by": expect.arrayContaining(["OutcomeLibraryBundleReader manifest read", "ProjectTargetResolver"]),
+            }),
+        );
+        expect(registry.artifact_kinds.find((item) => item.id === "studioOutcomeLibraryRegistryIndex")).toEqual(
+            expect.objectContaining({
+                shape: expect.stringContaining(".pokie/outcome-library-registry.json"),
+                "created_by": ["StudioOutcomeLibraryGenerateService:recordDiscoveredBundleDir after successful generate"],
+                "recognized_by": expect.arrayContaining(["StudioOutcomeLibraryGenerateService:readRegistryIndex", "StudioOutcomeLibraryGenerateService:registry"]),
+                "validates_by": expect.arrayContaining(["resolveProjectDirectory containment/realpath check", "OutcomeLibraryBundleReader manifest read"]),
+            }),
+        );
     });
 
     it("covers every registered public route and records its legacy aliases without advertising them", () => {
@@ -389,20 +423,61 @@ describe("PC-05 product-model contract", () => {
             // Check the actual command implementation advertises its write
             // surface. This keeps registry coverage independent of prose.
             const source = fs.readFileSync(path.join(__dirname, "..", "..", contract.command_file), "utf-8");
-            expect(source).toContain("--out");
+            if (!contract.producer.includes("without --out") && contract.producer !== "cli:init") {
+                expect(source).toContain("--out");
+            }
             if (contract.producer.includes("--resume")) {
                 expect(source).toContain("--resume");
             }
         }
     });
 
+    it("directly audits default public write branches, including their conditional no-write paths", () => {
+        const registry = readRegistry();
+        const contracts = registry.persisted_public_output_contracts;
+        const expectedDefaults: Array<{id: string; artifactId: string; commandFile: string; sourceAssertions: string[]}> = [
+            {id: "create-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/CreateCommand.ts", sourceAssertions: ["out ?? this.defaultBlueprintPath"]},
+            {id: "edit-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/EditCommand.ts", sourceAssertions: ["defaultPathFor: () => out ?? blueprintPath", "if (!confirmed)"]},
+            {id: "reel-apply-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/ReelCommand.ts", sourceAssertions: ["if (!failed && options.apply)", "options.out ?? blueprintPath"]},
+            {id: "reel-materialize-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/ReelCommand.ts", sourceAssertions: ["const outPath = out ?? blueprintPath", "if (!resolution.success)"]},
+            {id: "par-import-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/ParCommand.ts", sourceAssertions: ["options.out ?? defaultBlueprintPath(inputPath)", "this.assertDestinationIsAvailable(inputPath, outPath)"]},
+            {id: "import-par-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/ImportCommand.ts", sourceAssertions: ["path.extname(options.input).toLowerCase() === \".xlsx\"", "options.out === undefined ? []"]},
+            {id: "par-export-workbook-default", artifactId: "parWorkbook", commandFile: "cli/commands/ParCommand.ts", sourceAssertions: ["options.out ?? defaultParSheetPath(blueprintPath)", "this.assertDestinationIsAvailable(blueprintPath, outPath)"]},
+            {id: "build-ts-package-default", artifactId: "tsPackage", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, options.target)", "if (options.dryRun)", "this.registry.build(\"tsPackage\", project, out, lifecycle)"]},
+            {id: "build-outcome-bundle-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, options.target)", "this.registry.build(target, project, out"]},
+            {id: "build-stake-default", artifactId: "stakeAdapter", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, options.target)", "this.registry.build(target, project, out"]},
+            {id: "build-par-default", artifactId: "parWorkbook", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, options.target)", "this.registry.build(target, project, out"]},
+            {id: "export-outcome-bundle-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/ExportCommand.ts", sourceAssertions: ["if (args.out !== undefined) return args.out", "return path.join(path.dirname(args.source), \"outcomelibrary\")", "if (args.dryRun)", "this.registry.build(target, project, destination)", "this.outcomeLibrary.run([\"build\", ...forwarded])"]},
+            {id: "export-stake-default", artifactId: "stakeAdapter", commandFile: "cli/commands/ExportCommand.ts", sourceAssertions: ["if (args.out !== undefined) return args.out", "return path.join(path.dirname(args.source), \"stakeengine\")", "if (args.dryRun)", "this.registry.build(target, project, destination)", "this.stake.run([\"export\", ...forwarded])"]},
+            {id: "export-par-default", artifactId: "parWorkbook", commandFile: "cli/commands/ExportCommand.ts", sourceAssertions: ["if (args.out !== undefined) return args.out", ".par.xlsx", "if (args.dryRun)", "this.registry.build(target, project, destination)", "this.par.run([\"export\", ...forwarded])"]},
+            {id: "stake-import-library-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/ImportCommand.ts", sourceAssertions: ["const delegate = path.extname(options.input).toLowerCase() === \".xlsx\" ? this.par : this.stake", "options.out === undefined ? []"]},
+            {id: "certification-bundle-default", artifactId: "certificationEvidenceBundle", commandFile: "cli/commands/CertificationCommand.ts", sourceAssertions: ["options.out ?? path.join(path.dirname(configPath), \"certification\")", "await this.builder.buildFromBundle(bundleDir, modes, outDir)"]},
+            {id: "init-ts-package-default", artifactId: "tsPackage", commandFile: "cli/commands/InitCommand.ts", sourceAssertions: ["directory: directory ?? \".\"", "const scaffold = this.merger.merge(projectRoot, overrides)"]},
+        ];
+
+        expect(contracts.filter((contract) => contract.producer.includes("without --out") || contract.producer === "cli:init")).toHaveLength(expectedDefaults.length);
+        for (const expected of expectedDefaults) {
+            const contract = contracts.find((candidate) => candidate.id === expected.id);
+            expect(contract).toEqual(expect.objectContaining({
+                "artifact_id": expected.artifactId,
+                "command_file": expected.commandFile,
+                "persistence_trigger": expect.any(String),
+            }));
+            const source = fs.readFileSync(path.join(__dirname, "..", "..", expected.commandFile), "utf-8");
+            for (const assertion of expected.sourceAssertions) expect(source).toContain(assertion);
+            expect(registry.artifact_kinds.find((item) => item.id === expected.artifactId)?.created_by).toContain(contract?.producer);
+        }
+    });
+
     it("traces Studio symbol artwork from staged import through Blueprint save to contained editor and player serving", () => {
+        const registry = readRegistry();
         const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
         const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
         const service = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "blueprint", "StudioBlueprintService.ts"), "utf-8");
         const server = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "StudioServer.ts"), "utf-8");
         const presentation = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio-client", "src", "components", "common", "SymbolPresentation.tsx"), "utf-8");
         const player = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio-client", "src", "components", "common", "CanonicalPlayerView.tsx"), "utf-8");
+        const sharedRenderer = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "client", "player", "renderPlayer.ts"), "utf-8");
 
         expect(service).toContain("public importSymbolArtwork(sourcePath: string)");
         expect(service).toContain("this.stagedArtwork.set(reference, staged)");
@@ -414,10 +489,45 @@ describe("PC-05 product-model contract", () => {
         expect(server).toContain("if (!Object.values(artwork).includes(reference))");
         expect(presentation).toContain("/api/project/symbol-artwork?path=");
         expect(player).toContain("/api/project/symbol-artwork?path=");
+        expect(player).toContain("artworkUrlForSymbol: (symbolId)");
+        expect(sharedRenderer).toContain("artworkUrlForSymbol?: (symbolId: string) => string | undefined");
+        expect(sharedRenderer).not.toContain("/api/project/symbol-artwork");
+        expect(registry.artifact_kinds.find((item) => item.id === "studioSymbolArtworkPng")?.recognized_by).toEqual(
+            expect.arrayContaining([
+                "studio:player CanonicalPlayerView (Studio adapter resolves declared references and supplies URLs)",
+                "cli:client player renderPlayer artworkUrlForSymbol callback (shared renderer; no endpoint or declared-reference consumer)",
+            ]),
+        );
         expect(matrix).toContain("| Attach Studio symbol artwork |");
+        expect(matrix).toContain("Studio's `CanonicalPlayerView` use declared references only");
         expect(matrix).toContain("not embedded Blueprint JSON");
         expect(productModel).toContain("Studio's optional symbol artwork follows a separate companion path");
         expect(productModel).toContain("The Blueprint remains the editable game-model source and stores only");
+        expect(productModel).toContain("`cli/client/player/renderPlayer`\nonly renders that optional caller-supplied URL");
+    });
+
+    it("traces durable registry companions through their real persistence, containment and recovery boundaries", () => {
+        const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
+        const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
+        const managedService = fs.readFileSync(path.join(__dirname, "..", "..", "src", "project", "ManagedOutcomeProjectService.ts"), "utf-8");
+        const studioService = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "outcomeLibrary", "StudioOutcomeLibraryGenerateService.ts"), "utf-8");
+
+        expect(managedService).toContain('path.join(path.dirname(sourceRootPath), ".pokie", "managed-outcome-projects.json")');
+        expect(managedService).toContain("await this.files.rename(temporaryPath, registryPath)");
+        expect(managedService).toContain("if ((error as NodeJS.ErrnoException).code === \"ENOENT\") return {projects: []}");
+        expect(managedService).toContain("const project = await this.openIfCompatible(entry.rootPath, compatibility)");
+        expect(managedService).toContain("await rollback().catch(() => undefined)");
+        expect(studioService).toContain('path.join(".pokie", "outcome-library-registry.json")');
+        expect(studioService).toContain("this.recordDiscoveredBundleDir(projectRoot, outDirRelative)");
+        expect(studioService).toContain("const resolvedEntry = resolveProjectDirectory(projectRoot, entry, this.realpath)");
+        expect(studioService).toContain("if (!Array.isArray(parsed))");
+        expect(studioService).toContain("called after generate()'s own bundle write has already succeeded");
+        expect(matrix).toContain("| Reuse a managed compatible Outcome Library |");
+        expect(matrix).toContain("| Discover Studio custom Outcome Library bundles across restart |");
+        expect(productModel).toContain("`.pokie/managed-outcome-projects.json`");
+        expect(productModel).toContain("`.pokie/outcome-library-registry.json`");
+        expect(productModel).toMatch(/malformed\s+registry read surfaces for repair/);
+        expect(productModel).toContain("Missing, malformed, blank, absolute");
     });
 
     it("keeps frozen findings while assigning every closure surface to its roadmap-valid owner", () => {
