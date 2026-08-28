@@ -167,6 +167,13 @@ export class StudioStakeEngineExportService {
         // In particular, an explicit Studio output path must not bypass the
         // registry's alias/source/occupied-destination checks through this
         // older exporter-specific overwrite flow.
+        if (plan.status === "unavailable") {
+            return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
+        }
+        const resolvedOutDir = resolveProjectDirectory(projectRoot, outDir, this.realpath);
+        if (resolvedOutDir.status === "error") {
+            return {status: "load-error", error: resolvedOutDir.message, plan};
+        }
         if (plan.status === "conflict") {
             return {
                 status: "conflict",
@@ -175,13 +182,6 @@ export class StudioStakeEngineExportService {
                 error: plan.diagnostic?.message ?? "Stake Engine export has a destination conflict.",
                 plan,
             };
-        }
-        if (plan.status === "unavailable") {
-            return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
-        }
-        const resolvedOutDir = resolveProjectDirectory(projectRoot, outDir, this.realpath);
-        if (resolvedOutDir.status === "error") {
-            return {status: "load-error", error: resolvedOutDir.message, plan};
         }
         const selectedSource = this.selectedBundleSource(projectRoot, selectedModes);
         const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "stakeAdapter", resolvedOutDir.resolvedPath);
