@@ -600,7 +600,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     // The operation has already established a fresh destination.
                     // Keep the legacy injectable writer so test and embedding
                     // callers retain their narrow file-system boundary.
-                    this.writeFile(rawOutput!, JSON.stringify(result.library, null, 4));
+                    this.writeFile(options.out!, JSON.stringify(result.library, null, 4));
                     publishedOutput = true;
                 },
                 rollback: () => {

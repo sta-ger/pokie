@@ -54,16 +54,16 @@ describe("validateDeploymentRunRequest", () => {
         expect(() => validateDeploymentRunRequest(validInput({targetId: 42}))).toThrow('"targetId" must be a non-empty string.');
     });
 
-    it("throws when modes is missing", () => {
-        expect(() => validateDeploymentRunRequest(validInput({modes: undefined}))).toThrow('"modes" must be a non-empty array.');
+    it("accepts omitted modes for server-side prerequisite selection", () => {
+        expect(validateDeploymentRunRequest(validInput({modes: undefined})).modes).toEqual([]);
     });
 
     it("throws when modes is an empty array", () => {
-        expect(() => validateDeploymentRunRequest(validInput({modes: []}))).toThrow('"modes" must be a non-empty array.');
+        expect(() => validateDeploymentRunRequest(validInput({modes: []}))).toThrow('"modes" must be a non-empty array when given.');
     });
 
     it("throws when modes is not an array", () => {
-        expect(() => validateDeploymentRunRequest(validInput({modes: "not-an-array"}))).toThrow('"modes" must be a non-empty array.');
+        expect(() => validateDeploymentRunRequest(validInput({modes: "not-an-array"}))).toThrow('"modes" must be a non-empty array when given.');
     });
 
     it("throws when a mode entry has a missing modeName", () => {

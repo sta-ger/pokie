@@ -158,7 +158,11 @@ export class StudioStakeEngineExportService {
         signal?: AbortSignal,
     ): Promise<StudioStakeEngineExportView> {
         const selectedModes = await this.selectModes(projectRoot, modes);
-        const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes, path.resolve(projectRoot, outDir));
+        const resolvedOutDir = resolveProjectDirectory(projectRoot, outDir, this.realpath);
+        if (resolvedOutDir.status === "error") {
+            return {status: "load-error", error: resolvedOutDir.message};
+        }
+        const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes, resolvedOutDir.resolvedPath);
         // The exported plan owns destination safety as well as reachability.
         // In particular, an explicit Studio output path must not bypass the
         // registry's alias/source/occupied-destination checks through this
@@ -166,7 +170,7 @@ export class StudioStakeEngineExportService {
         if (plan.status === "conflict") {
             return {
                 status: "conflict",
-                outDir: path.resolve(projectRoot, outDir),
+                outDir: resolvedOutDir.resolvedPath,
                 overwritable: false,
                 error: plan.diagnostic?.message ?? "Stake Engine export has a destination conflict.",
                 plan,
@@ -176,15 +180,10 @@ export class StudioStakeEngineExportService {
             return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
         }
         const selectedSource = this.selectedBundleSource(projectRoot, selectedModes);
-        const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "stakeAdapter", path.resolve(projectRoot, outDir));
+        const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "stakeAdapter", resolvedOutDir.resolvedPath);
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
         }
-        const resolvedOutDir = resolveProjectDirectory(projectRoot, outDir, this.realpath);
-        if (resolvedOutDir.status === "error") {
-            return {status: "load-error", error: resolvedOutDir.message, plan};
-        }
-
         // The controller is created with the prepared operation, rather than
         // at the Studio route.  An optional caller signal only requests this
         // operation's cancellation; selector loading, destination checking,
@@ -323,7 +322,13 @@ export class StudioStakeEngineExportService {
 
     private selectedBundleSource(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): string | undefined {
         const bundleDirs = modes.map((mode) => mode.librarySelector).filter((selector): selector is Extract<OutcomeLibrarySelector, {kind: "bundle"}> => selector.kind === "bundle");
-        const uniqueBundleDirs = Array.from(new Set(bundleDirs.map((selector) => path.resolve(projectRoot, selector.bundleDir))));
+        const resolvedBundleDirs: string[] = [];
+        for (const selector of bundleDirs) {
+            const resolved = resolveProjectDirectory(projectRoot, selector.bundleDir, this.realpath);
+            if (resolved.status === "error") return undefined;
+            resolvedBundleDirs.push(resolved.resolvedPath);
+        }
+        const uniqueBundleDirs = Array.from(new Set(resolvedBundleDirs));
         return bundleDirs.length === modes.length && uniqueBundleDirs.length === 1 ? uniqueBundleDirs[0] : undefined;
     }
 
