@@ -84,7 +84,7 @@ describe("StudioStakeEngineExportService", () => {
             expect(planning.prepare).not.toHaveBeenCalled();
         });
 
-        it("does not claim a JSON selector was planned from the project root", async () => {
+        it("returns a planner result for the JSON selector actually read, never the project root", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
             writeLibraryFile(tmpRoot, "base.json", library);
             const planning = {prepare: jest.fn(() => Promise.resolve(plannedStakeExport))};
@@ -106,8 +106,8 @@ describe("StudioStakeEngineExportService", () => {
 
             expect(validation).toMatchObject({status: "ok"});
             expect(exported).toMatchObject({status: "ok"});
-            expect("plan" in validation).toBe(false);
-            expect("plan" in exported).toBe(false);
+            expect(validation.plan).toMatchObject({status: "planned", source: {canonicalLocation: path.join(tmpRoot, "base.json")}});
+            expect(exported.plan).toMatchObject({status: "planned", source: {canonicalLocation: path.join(tmpRoot, "base.json")}});
             expect(planning.prepare).not.toHaveBeenCalled();
         });
 

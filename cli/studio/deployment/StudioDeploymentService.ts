@@ -23,14 +23,15 @@ import {toStudioDeploymentRunView} from "./toStudioDeploymentRunView.js";
 import type {ValidatedDeploymentRunRequest} from "./validateDeploymentRunRequest.js";
 import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
 import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
+import {createExternalOutcomeLibraryPlan} from "../artifacts/createExternalArtifactConversionPlan.js";
 
 const DEPLOYMENT_OUTPUT_DIRNAME = "deployment";
 
 export type StudioDeploymentRunResult =
     | {readonly status: "ok"; readonly view: StudioDeploymentRunView}
-    | {readonly status: "target-not-found"; readonly plan?: import("pokie").ArtifactConversionPlan}
-    | {readonly status: "invalid-modes"; readonly error: string; readonly plan?: import("pokie").ArtifactConversionPlan}
-    | {readonly status: "load-error"; readonly error: string; readonly plan?: import("pokie").ArtifactConversionPlan};
+    | {readonly status: "target-not-found"; readonly plan: import("pokie").ArtifactConversionPlan}
+    | {readonly status: "invalid-modes"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan};
 
 // Domain-language remediation for a request naming a mode absent/stale from the current build (see
 // resolveCurrentBuildModeIds's own doc comment) -- never the raw "modeName" schema path, always which
@@ -167,7 +168,7 @@ export class StudioDeploymentService {
         // when the canonical planner rejects that prerequisite.  Keep the
         // selected plan attached to the terminal action result instead of
         // letting selector-specific checks replace its recovery diagnostic.
-        if (plan?.status !== undefined && plan.status !== "planned") {
+        if (plan.status !== "planned") {
             return {status: "load-error", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library deployment is unavailable.", plan};
         }
         const selectedSource = this.selectedBundleSource(projectRoot, request.modes);
@@ -178,16 +179,16 @@ export class StudioDeploymentService {
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
         if (target === undefined) {
-            return {status: "target-not-found", ...(plan === undefined ? {} : {plan})};
+            return {status: "target-not-found", plan};
         }
 
         const buildModeIds = await this.resolveBuildModeIds(projectRoot);
         if (buildModeIds === undefined) {
-            return {status: "invalid-modes", error: describeBuildModesUnavailableForDeployment(), ...(plan === undefined ? {} : {plan})};
+            return {status: "invalid-modes", error: describeBuildModesUnavailableForDeployment(), plan};
         }
         const staleModeNames = request.modes.map((mode) => mode.modeName).filter((modeName) => !buildModeIds.includes(modeName));
         if (staleModeNames.length > 0) {
-            return {status: "invalid-modes", error: describeInvalidDeploymentModes(staleModeNames, buildModeIds), ...(plan === undefined ? {} : {plan})};
+            return {status: "invalid-modes", error: describeInvalidDeploymentModes(staleModeNames, buildModeIds), plan};
         }
 
         const mismatchedSelectorMode = request.modes.find((mode) => {
@@ -198,7 +199,7 @@ export class StudioDeploymentService {
             return {
                 status: "invalid-modes",
                 error: describeSelectorModeMismatch(mismatchedSelectorMode.modeName, selectorModeName(mismatchedSelectorMode.librarySelector) as string),
-                ...(plan === undefined ? {} : {plan}),
+                plan,
             };
         }
 
@@ -213,7 +214,7 @@ export class StudioDeploymentService {
                 this.realpath,
             );
             if (loaded.status === "load-error") {
-                return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.error}`, ...(plan === undefined ? {} : {plan})};
+                return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.error}`, plan};
             }
             modes.push({modeName: mode.modeName, library: loaded.library});
         }
@@ -226,8 +227,7 @@ export class StudioDeploymentService {
         return {
             status: "ok",
             view: {
-                ...toStudioDeploymentRunView(result, target.id, request.publish),
-                ...(plan === undefined ? {} : {plan}),
+                ...toStudioDeploymentRunView(result, target.id, request.publish, plan),
             },
         };
     }
@@ -241,20 +241,27 @@ export class StudioDeploymentService {
     /** See StudioStakeEngineExportService's counterpart: a canonical selector is
      * a durable planner source, so deployment cannot preview a project-root plan
      * and then consume an unrelated selected bundle. */
-    private prepareForSelectedBundles(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): Promise<import("pokie").ArtifactConversionPlan | undefined> {
+    private prepareForSelectedBundles(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): Promise<import("pokie").ArtifactConversionPlan> {
         const selectedSource = this.selectedBundleSource(projectRoot, modes);
         if (selectedSource !== undefined) {
-            return this.planning.prepare(selectedSource, "outcomeLibrary");
+            return this.planning.prepare(selectedSource, "outcomeLibrary").then((plan) => plan ?? createExternalOutcomeLibraryPlan(selectedSource, "outcomeLibrary"));
         }
-        // Do not decorate an external or mixed selector request with a plan for
-        // the open project.  That would make the response claim provenance for
-        // a source the deployment never reads.
-        return Promise.resolve(undefined);
+        // A terminal deployment result always owns a plan for the input it
+        // actually reads. A single JSON selector has its canonical location;
+        // a mixed request is explicitly identified as a mixed external set,
+        // never as the project root.
+        return Promise.resolve(createExternalOutcomeLibraryPlan(this.selectedExternalSource(projectRoot, modes), "outcomeLibrary"));
     }
 
     private selectedBundleSource(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): string | undefined {
         const bundleDirs = modes.map((mode) => mode.librarySelector).filter((selector): selector is Extract<typeof selector, {kind: "bundle"}> => selector.kind === "bundle");
         const uniqueBundleDirs = Array.from(new Set(bundleDirs.map((selector) => path.resolve(projectRoot, selector.bundleDir))));
         return bundleDirs.length === modes.length && uniqueBundleDirs.length === 1 ? uniqueBundleDirs[0] : undefined;
+    }
+
+    private selectedExternalSource(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): string | undefined {
+        const jsonPaths = modes.map((mode) => mode.librarySelector).filter((selector): selector is Extract<OutcomeLibrarySelector, {kind: "json"}> => selector.kind === "json");
+        const uniquePaths = Array.from(new Set(jsonPaths.map((selector) => path.resolve(projectRoot, selector.path))));
+        return jsonPaths.length === modes.length && uniquePaths.length === 1 ? uniquePaths[0] : undefined;
     }
 }

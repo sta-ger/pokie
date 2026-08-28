@@ -133,7 +133,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
         it("reports load-error when the package fails to load", async () => {
             const failing = new StudioOutcomeLibraryGenerateService(POKIE_VERSION, () => Promise.reject(new Error("boom")));
             const result = await failing.estimate(projectRoot, {});
-            expect(result).toEqual({status: "load-error", error: "boom"});
+            expect(result).toMatchObject({status: "load-error", error: "boom", plan: {status: "planned", source: {canonicalLocation: projectRoot}}});
         });
     });
 

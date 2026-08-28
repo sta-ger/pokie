@@ -125,7 +125,7 @@ describe("StudioDeploymentService", () => {
 
         const result = await service.run("/project", runRequest({targetId: "does-not-exist"}));
 
-        expect(result).toEqual({status: "target-not-found"});
+        expect(result).toMatchObject({status: "target-not-found", plan: {status: "planned", source: {canonicalLocation: "/project/base.json"}}});
     });
 
     it("rejects a mode absent from the active project's own current build, without ever reading its library", async () => {
@@ -136,7 +136,7 @@ describe("StudioDeploymentService", () => {
 
         const result = await service.run("/project", runRequest());
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             status: "invalid-modes",
             error: 'mode "base" isn\'t part of this project\'s current build -- rebuild the project, then pick from: bonus.',
         });
@@ -164,7 +164,7 @@ describe("StudioDeploymentService", () => {
             }),
         );
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             status: "invalid-modes",
             error: 'mode "base", mode "super" aren\'t part of this project\'s current build -- rebuild the project, then pick from: bonus.',
         });
@@ -195,7 +195,7 @@ describe("StudioDeploymentService", () => {
 
         const result = await service.run("/project", runRequest());
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             status: "invalid-modes",
             error: 'This project has no current build to deploy against -- run "pokie build" (or the Certification tab\'s own build step), then try again.',
         });
@@ -435,7 +435,7 @@ describe("StudioDeploymentService", () => {
             runRequest({modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "bonus"}}]}),
         );
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             status: "invalid-modes",
             error: 'mode "base"\'s library selector names mode "bonus" -- a bundle/Stake Engine selector must name the exact same mode as its own deployment row.',
         });
@@ -456,7 +456,7 @@ describe("StudioDeploymentService", () => {
             runRequest({modes: [{modeName: "base", librarySelector: {kind: "stakeengine", stakeDir: "stakeexport", modeName: "bonus"}}]}),
         );
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             status: "invalid-modes",
             error: 'mode "base"\'s library selector names mode "bonus" -- a bundle/Stake Engine selector must name the exact same mode as its own deployment row.',
         });

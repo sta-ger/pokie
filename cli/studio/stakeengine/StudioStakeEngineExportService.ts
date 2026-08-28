@@ -19,6 +19,7 @@ import type {OutcomeLibrarySelector} from "../outcomeLibrary/OutcomeLibrarySelec
 import {resolveProjectDirectory} from "../outcomeLibrary/resolveProjectDirectory.js";
 import {canonicalizeOutcomeIdsForStakeEngine} from "./canonicalizeOutcomeIdsForStakeEngine.js";
 import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
+import {createExternalOutcomeLibraryPlan} from "../artifacts/createExternalArtifactConversionPlan.js";
 import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
 import type {StudioStakeEngineExportModeInput} from "./StudioStakeEngineExportModeInput.js";
 import type {StudioStakeEngineExportValidateView} from "./StudioStakeEngineExportValidateView.js";
@@ -97,10 +98,10 @@ export class StudioStakeEngineExportService {
         // as export.  Do not keep resolving selector-specific inputs after a
         // prepared plan has already established that this project cannot
         // produce the requested Stake artifact.
-        if (plan?.status === "conflict") {
+        if (plan.status === "conflict") {
             return {status: "conflict", error: plan.diagnostic?.message ?? "Stake Engine export has a destination conflict.", plan};
         }
-        if (plan?.status === "unavailable") {
+        if (plan.status === "unavailable") {
             return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
         }
         const selectedSource = this.selectedBundleSource(projectRoot, modes);
@@ -110,7 +111,7 @@ export class StudioStakeEngineExportService {
         }
         const loaded = await this.loadModes(projectRoot, modes);
         if (loaded.status === "load-error") {
-            return {...loaded, ...(plan === undefined ? {} : {plan})};
+            return {...loaded, plan};
         }
 
         const issues = this.validator.validate(loaded.loaded);
@@ -125,7 +126,7 @@ export class StudioStakeEngineExportService {
             })),
             errors: issues.filter((issue) => issue.severity === "error"),
             warnings: issues.filter((issue) => issue.severity !== "error"),
-            ...(plan === undefined ? {} : {plan}),
+            plan,
         };
     }
 
@@ -152,7 +153,7 @@ export class StudioStakeEngineExportService {
         // In particular, an explicit Studio output path must not bypass the
         // registry's alias/source/occupied-destination checks through this
         // older exporter-specific overwrite flow.
-        if (plan?.status === "conflict") {
+        if (plan.status === "conflict") {
             return {
                 status: "conflict",
                 outDir: path.resolve(projectRoot, outDir),
@@ -161,7 +162,7 @@ export class StudioStakeEngineExportService {
                 plan,
             };
         }
-        if (plan?.status === "unavailable") {
+        if (plan.status === "unavailable") {
             return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
         }
         const selectedSource = this.selectedBundleSource(projectRoot, modes);
@@ -171,12 +172,12 @@ export class StudioStakeEngineExportService {
         }
         const resolvedOutDir = resolveProjectDirectory(projectRoot, outDir, this.realpath);
         if (resolvedOutDir.status === "error") {
-            return {status: "load-error", error: resolvedOutDir.message, ...(plan === undefined ? {} : {plan})};
+            return {status: "load-error", error: resolvedOutDir.message, plan};
         }
 
         const loaded = await this.loadModes(projectRoot, modes);
         if (loaded.status === "load-error") {
-            return {...loaded, ...(plan === undefined ? {} : {plan})};
+            return {...loaded, plan};
         }
 
         if (fs.existsSync(resolvedOutDir.resolvedPath) && fs.readdirSync(resolvedOutDir.resolvedPath).length > 0 && !overwrite) {
@@ -188,7 +189,7 @@ export class StudioStakeEngineExportService {
                 error: overwritable
                     ? `"${outDir}" already exists and is not empty. Resubmit with "overwrite": true to replace it.`
                     : `"${outDir}" already exists and is not empty, and wasn't produced by a previous Stake Engine export. Choose a different output directory or empty it first.`,
-                ...(plan === undefined ? {} : {plan}),
+                plan,
             };
         }
 
@@ -196,14 +197,14 @@ export class StudioStakeEngineExportService {
         try {
             result = await this.exporter.exportToDirectory(loaded.loaded, resolvedOutDir.resolvedPath);
         } catch (error) {
-            return {status: "load-error", error: `Could not export to "${outDir}": ${error instanceof Error ? error.message : String(error)}`, ...(plan === undefined ? {} : {plan})};
+            return {status: "load-error", error: `Could not export to "${outDir}": ${error instanceof Error ? error.message : String(error)}`, plan};
         }
 
         const errors = result.issues.filter((issue) => issue.severity === "error");
         if (result.manifest === undefined || errors.length > 0) {
-            return {status: "invalid", errors, warnings: result.issues.filter((issue) => issue.severity !== "error"), ...(plan === undefined ? {} : {plan})};
+            return {status: "invalid", errors, warnings: result.issues.filter((issue) => issue.severity !== "error"), plan};
         }
-        return {status: "ok", outDir: result.outDir, files: result.files, manifest: result.manifest, warnings: result.issues, ...(plan === undefined ? {} : {plan})};
+        return {status: "ok", outDir: result.outDir, files: result.files, manifest: result.manifest, warnings: result.issues, plan};
     }
 
     // Rejects a bundle/Stake Engine selector whose own modeName names a different mode than its own
@@ -261,24 +262,30 @@ export class StudioStakeEngineExportService {
         projectRoot: string,
         modes: readonly StudioStakeEngineExportModeInput[],
         destinationPath: string | undefined,
-    ) {
+    ): Promise<import("pokie").ArtifactConversionPlan> {
         const selectedSource = this.selectedBundleSource(projectRoot, modes);
         if (selectedSource !== undefined) {
             return destinationPath === undefined
-                ? this.planning.prepare(selectedSource, "stakeAdapter")
-                : this.planning.prepare(selectedSource, "stakeAdapter", destinationPath);
+                ? this.planning.prepare(selectedSource, "stakeAdapter").then((plan) => plan ?? createExternalOutcomeLibraryPlan(selectedSource, "stakeAdapter"))
+                : this.planning.prepare(selectedSource, "stakeAdapter", destinationPath).then((plan) => plan ?? createExternalOutcomeLibraryPlan(selectedSource, "stakeAdapter", destinationPath));
         }
-        // A raw JSON/Stake selector or multiple bundle roots is not one durable
-        // POKIE artifact identity.  Do not attach a project-root plan to an
-        // action that will consume a different selector; its reader remains the
-        // authority for that explicitly external input.
-        return Promise.resolve(undefined);
+        // External selectors must still yield an authoritative terminal planner
+        // payload. A single JSON library retains its canonical location; a
+        // mixed set is explicitly labelled as a mixed external selector set,
+        // never as the open project.
+        return Promise.resolve(createExternalOutcomeLibraryPlan(this.selectedExternalSource(projectRoot, modes), "stakeAdapter", destinationPath));
     }
 
     private selectedBundleSource(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): string | undefined {
         const bundleDirs = modes.map((mode) => mode.librarySelector).filter((selector): selector is Extract<OutcomeLibrarySelector, {kind: "bundle"}> => selector.kind === "bundle");
         const uniqueBundleDirs = Array.from(new Set(bundleDirs.map((selector) => path.resolve(projectRoot, selector.bundleDir))));
         return bundleDirs.length === modes.length && uniqueBundleDirs.length === 1 ? uniqueBundleDirs[0] : undefined;
+    }
+
+    private selectedExternalSource(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): string | undefined {
+        const jsonPaths = modes.map((mode) => mode.librarySelector).filter((selector): selector is Extract<OutcomeLibrarySelector, {kind: "json"}> => selector.kind === "json");
+        const uniquePaths = Array.from(new Set(jsonPaths.map((selector) => path.resolve(projectRoot, selector.path))));
+        return jsonPaths.length === modes.length && uniquePaths.length === 1 ? uniquePaths[0] : undefined;
     }
 
     // A bundle is the only selector format that records its producing Project configuration. JSON

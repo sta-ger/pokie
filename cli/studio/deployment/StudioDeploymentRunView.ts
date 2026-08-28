@@ -10,7 +10,7 @@ import type {StudioDeploymentStageSummary} from "./StudioDeploymentStageSummary.
 // ok/error/skipped status from which of the other fields below happen to be present.
 export type StudioDeploymentRunView = {
     /** The server-selected outcome-library prerequisite for this deployment. */
-    readonly plan?: ArtifactConversionPlan;
+    readonly plan: ArtifactConversionPlan;
     readonly targetId: string;
     // Whether this run's target had its runtimeAdapter attached (a real "Deploy") or stripped (a
     // side-effect-free "Preview") — see StudioDeploymentService.run()'s own doc comment. Never itself

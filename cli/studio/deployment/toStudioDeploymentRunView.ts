@@ -1,4 +1,4 @@
-import type {ExternalDeploymentResult} from "pokie";
+import type {ArtifactConversionPlan, ExternalDeploymentResult} from "pokie";
 import {computeDeploymentStages} from "./computeDeploymentStages.js";
 import type {StudioDeploymentRunView} from "./StudioDeploymentRunView.js";
 
@@ -8,8 +8,9 @@ import type {StudioDeploymentRunView} from "./StudioDeploymentRunView.js";
 // into a plain string, and computing `stages` (see computeDeploymentStages). This function never
 // re-derives, re-checks, or second-guesses anything ExternalDeploymentService already computed — see
 // StudioDeploymentService's own doc comment for why that matters.
-export function toStudioDeploymentRunView(result: ExternalDeploymentResult, targetId: string, publish: boolean): StudioDeploymentRunView {
+export function toStudioDeploymentRunView(result: ExternalDeploymentResult, targetId: string, publish: boolean, plan: ArtifactConversionPlan): StudioDeploymentRunView {
     return {
+        plan,
         targetId,
         publish,
         stages: computeDeploymentStages(result, publish),

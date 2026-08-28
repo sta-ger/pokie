@@ -21,6 +21,7 @@ import path from "path";
 import {resolveProjectDirectory} from "./resolveProjectDirectory.js";
 import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
 import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
+import {createUnresolvedRuntimePlan} from "../artifacts/createExternalArtifactConversionPlan.js";
 import type {StudioOutcomeLibraryGenerateEstimateView} from "./StudioOutcomeLibraryGenerateEstimateView.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "./StudioOutcomeLibraryGenerateResultView.js";
 import type {StudioOutcomeLibraryRegistryView} from "./StudioOutcomeLibraryRegistryView.js";
@@ -123,19 +124,19 @@ export class StudioOutcomeLibraryGenerateService {
     // Generate step's own "estimate/cost" panel never disagrees with what the CLI would report for the
     // same package/options.
     public async estimate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateEstimateRequest): Promise<StudioOutcomeLibraryGenerateEstimateView> {
-        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary");
+        const plan = (await this.planning.prepare(projectRoot, "outcomeLibrary")) ?? createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
         // The estimate is a preview of this action, not a second source-capability
         // probe.  Once the shared planner says that the opened project cannot
         // reach an Outcome Library, do not load its runtime and accidentally
         // present an executable-looking estimate.
-        if (plan?.status !== undefined && plan.status !== "planned") {
+        if (plan.status !== "planned") {
             return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
         }
         let game: PokieGame;
         try {
             game = await this.loadGame(projectRoot);
         } catch (error) {
-            return {status: "load-error", error: error instanceof Error ? error.message : String(error), ...(plan === undefined ? {} : {plan})};
+            return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan};
         }
 
         let estimate: OutcomeSpaceEstimate;
@@ -143,7 +144,7 @@ export class StudioOutcomeLibraryGenerateService {
             estimate = this.estimateSpace(game);
         } catch (error) {
             if (error instanceof WeightedOutcomeLibraryGenerationError) {
-                return {status: "unsupported", error: error.message, ...(plan === undefined ? {} : {plan})};
+                return {status: "unsupported", error: error.message, plan};
             }
             throw error;
         }
@@ -161,7 +162,7 @@ export class StudioOutcomeLibraryGenerateService {
             maxOutcomeSpaceSize: formatBigIntSafely(maxOutcomeSpaceSize),
             strategy,
             requiresBounded: strategy === "bounded-coverage",
-            ...(plan === undefined ? {} : {plan}),
+            plan,
         };
     }
 
@@ -181,20 +182,21 @@ export class StudioOutcomeLibraryGenerateService {
         // described a different publication.
         const resolvedOutDir = resolveProjectDirectory(projectRoot, outDirRelative, this.realpath);
         if (resolvedOutDir.status === "error") {
-            return {status: "load-error", error: resolvedOutDir.message};
+            return {status: "load-error", error: resolvedOutDir.message, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
-        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration);
-        if (plan?.status === "conflict") {
+        const plan = (await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration)) ??
+            createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath);
+        if (plan.status === "conflict") {
             return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
         }
-        if (plan?.status === "unavailable") {
+        if (plan.status === "unavailable") {
             return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
         }
         const planDrift = describePreparedArtifactPlanDrift(plan, projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration.generationSemantics);
         if (planDrift !== undefined) {
-            return {status: "load-error", error: planDrift, ...(plan === undefined ? {} : {plan})};
+            return {status: "load-error", error: planDrift, plan};
         }
-        if (plan?.status === "planned" && !plan.steps.some((step) => step.kind === "generateOutcomeLibrary")) {
+        if (!plan.steps.some((step) => step.kind === "generateOutcomeLibrary")) {
             return {
                 status: "load-error",
                 error: "The prepared conversion reuses an existing Outcome Library, but this action requested regeneration. Refresh the preview with the requested generation action.",
@@ -205,7 +207,7 @@ export class StudioOutcomeLibraryGenerateService {
         try {
             game = await this.loadGame(projectRoot);
         } catch (error) {
-            return {status: "load-error", error: error instanceof Error ? error.message : String(error), ...(plan === undefined ? {} : {plan})};
+            return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan};
         }
 
         const manifest = game.getManifest();
@@ -232,16 +234,16 @@ export class StudioOutcomeLibraryGenerateService {
         } catch (error) {
             if (error instanceof WeightedOutcomeLibraryGenerationError) {
                 if (error.getCode() === "weighted-outcome-library-generation-unsupported") {
-                    return {status: "unsupported", error: error.message, ...(plan === undefined ? {} : {plan})};
+                    return {status: "unsupported", error: error.message, plan};
                 }
-                return {status: "generation-error", code: error.getCode(), error: error.message, ...(plan === undefined ? {} : {plan})};
+                return {status: "generation-error", code: error.getCode(), error: error.message, plan};
             }
             throw error;
         }
 
         const otherModes = await this.readOtherModes(resolvedOutDir.resolvedPath, modeName);
         if (otherModes.status === "error") {
-            return {status: "load-error", error: otherModes.message, ...(plan === undefined ? {} : {plan})};
+            return {status: "load-error", error: otherModes.message, plan};
         }
 
         const modes: OutcomeLibraryBundleModeInput<string>[] = [
@@ -252,14 +254,14 @@ export class StudioOutcomeLibraryGenerateService {
         const writeResult = await this.writer.writeToDirectory(modes, resolvedOutDir.resolvedPath);
         const errors = writeResult.issues.filter((issue) => issue.severity === "error");
         if (errors.length > 0 || writeResult.manifest === undefined) {
-            return {status: "invalid", errors, warnings: writeResult.issues.filter((issue) => issue.severity !== "error"), ...(plan === undefined ? {} : {plan})};
+            return {status: "invalid", errors, warnings: writeResult.issues.filter((issue) => issue.severity !== "error"), plan};
         }
 
         const modeEntry = writeResult.manifest.modes.find((entry) => entry.modeName === modeName);
         if (modeEntry === undefined) {
             // Guaranteed present by the writer whenever it returns a manifest at all (one entry per input
             // mode that didn't itself error) -- reachable only if the writer's own contract changes.
-            return {status: "load-error", error: `The bundle write to "${outDirRelative}" did not report mode "${modeName}".`, ...(plan === undefined ? {} : {plan})};
+            return {status: "load-error", error: `The bundle write to "${outDirRelative}" did not report mode "${modeName}".`, plan};
         }
 
         const coverage = generated.diagnostics.strategy === "exact" ? 1 : toNumberApprox(generated.diagnostics.sampledRawCount) / toNumberApprox(generated.diagnostics.totalOutcomeSpaceSize);
@@ -286,7 +288,7 @@ export class StudioOutcomeLibraryGenerateService {
             generator: generated.diagnostics,
             coverage,
             selector: {kind: "bundle", bundleDir: outDirRelative, modeName},
-            ...(plan === undefined ? {} : {plan}),
+            plan,
         };
     }
 

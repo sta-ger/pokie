@@ -21,8 +21,8 @@ export type StudioStakeEngineExportValidateView =
           readonly modes: readonly StudioStakeEngineExportModeSummary[];
           readonly errors: readonly ValidationIssue[];
           readonly warnings: readonly ValidationIssue[];
-          readonly plan?: ArtifactConversionPlan;
+          readonly plan: ArtifactConversionPlan;
       }
     | {readonly status: "conflict"; readonly error: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "unavailable"; readonly error: string; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "load-error"; readonly error: string; readonly plan?: ArtifactConversionPlan};
+    | {readonly status: "load-error"; readonly error: string; readonly plan: ArtifactConversionPlan};

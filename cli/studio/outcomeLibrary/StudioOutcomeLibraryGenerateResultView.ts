@@ -34,13 +34,13 @@ export type StudioOutcomeLibraryGenerateResultView =
           // its own parallel version of it.
           readonly selector: OutcomeLibrarySelector;
           /** The server-selected prerequisite/publication decision for this action. */
-          readonly plan?: ArtifactConversionPlan;
+          readonly plan: ArtifactConversionPlan;
       }
-    | {readonly status: "unsupported"; readonly error: string; readonly plan?: ArtifactConversionPlan}
+    | {readonly status: "unsupported"; readonly error: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "conflict"; readonly error: string; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "generation-error"; readonly code: string; readonly error: string; readonly plan?: ArtifactConversionPlan}
+    | {readonly status: "generation-error"; readonly code: string; readonly error: string; readonly plan: ArtifactConversionPlan}
     // The write itself failed validation (e.g. this mode's provenance doesn't match another mode already
     // in the bundle) -- the generated outcomes were never persisted, mirroring the writer's own "no
     // partial bundle" guarantee.
-    | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]; readonly plan?: ArtifactConversionPlan}
-    | {readonly status: "load-error"; readonly error: string; readonly plan?: ArtifactConversionPlan};
+    | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan: ArtifactConversionPlan};

@@ -20,10 +20,10 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           // were supplied -- the same "requires --bounded --sample-size --seed" signal the CLI reports,
           // surfaced here before the caller ever commits to a real generate() run.
           readonly requiresBounded: boolean;
-          readonly plan?: ArtifactConversionPlan;
+          readonly plan: ArtifactConversionPlan;
       }
     // The loaded package doesn't implement createExactEnumerationSession at all -- there is no exact
     // outcome space to estimate (see WeightedOutcomeLibraryGenerationError's own
     // "weighted-outcome-library-generation-unsupported" code).
-    | {readonly status: "unsupported"; readonly error: string; readonly plan?: ArtifactConversionPlan}
-    | {readonly status: "load-error"; readonly error: string; readonly plan?: ArtifactConversionPlan};
+    | {readonly status: "unsupported"; readonly error: string; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan: ArtifactConversionPlan};
