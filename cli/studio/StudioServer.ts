@@ -372,6 +372,13 @@ export class StudioServer implements StudioServerHandling {
                     }
                 },
                 new ManagedOutcomeProjectService(undefined, async (project) => {
+                    // PAR materialization initially generates under a private
+                    // .pokie-par-import-* directory.  The registry promotes
+                    // that bundle beneath the durable imported Blueprint
+                    // before terminal success; registering this transient
+                    // callback would leave a Studio row for a directory its
+                    // cleanup finally removes.
+                    if (project.rootPath.split(path.sep).some((segment) => segment.startsWith(".pokie-par-import-"))) return;
                     const registered = await this.projectRegistrationService.registerManaged(project.rootPath, path.basename(project.rootPath));
                     if (registered.status !== "ok") {
                         throw new Error(`Generated Outcome Library at "${project.rootPath}" could not be registered as a Studio Project.`);

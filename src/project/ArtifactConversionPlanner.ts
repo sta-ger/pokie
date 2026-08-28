@@ -717,7 +717,15 @@ export class ArtifactConversionPlanner {
         }
         const outcomeTarget = target.kind === "outcomeLibrary"
             ? target
-            : this.targetIdentity("outcomeLibrary", undefined, options.generationSemantics, options.sampleCount, options.sampleSeed);
+            : this.targetIdentity(
+                "outcomeLibrary",
+                target.canonicalLocation === undefined
+                    ? undefined
+                    : path.join(target.canonicalLocation, ".pokie", "par-import", "outcome-library"),
+                options.generationSemantics,
+                options.sampleCount,
+                options.sampleSeed,
+            );
         const outcomePlan = this.planOutcomeFromRuntime(importedBlueprint, outcomeTarget, this.preflight("outcomeLibrary", "blueprint", options.generationSemantics), options);
         if (target.kind === "outcomeLibrary") return this.planned(source, target, preflight, [importStep, ...outcomePlan.steps], outcomePlan.managedOutcome);
         const prerequisite = outcomePlan.steps[outcomePlan.steps.length - 1]?.output ?? outcomeTarget;

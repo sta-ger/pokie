@@ -2,7 +2,7 @@ import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import fs from "fs";
 import path from "path";
 import {ArtifactBuildConflictError} from "./ArtifactBuildConflictError.js";
-import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
+import type {ArtifactBuildResult, ManagedOutcomeProjectOwnership} from "./ArtifactBuildResult.js";
 import type {ArtifactBuildTargetDescriptor} from "./ArtifactBuildTargetDescriptor.js";
 import type {ArtifactDestinationCheck} from "./ArtifactDestinationCheck.js";
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
@@ -411,6 +411,15 @@ export class ArtifactBuilderRegistry {
                 reusedCompatibleProject: true,
                 requestedDestinationPath: destinationPath,
                 managedProjectRoots: [published.rootPath],
+                // Republishing a reused library creates a *new* managed
+                // record at destinationPath.  The source library remains
+                // borrowed, but this publication must be released if a later
+                // Studio registration boundary fails.
+                managedOutcomeProjectOwnership: [{
+                    rootPath: published.rootPath,
+                    sourceRootPath: source.rootPath,
+                    disposition: "owned",
+                }],
             };
         }
         if (plan.steps.some((step) => step.kind === "generateOutcomeLibrary") && target === "outcomeLibrary") {
@@ -486,6 +495,7 @@ export class ArtifactBuilderRegistry {
                 await this.rollbackParDerivedPublication(result, imported, selectedPlan);
                 throw error;
             }
+            result = await this.promoteParManagedOutcomes(result, imported, durableBlueprint, selectedPlan, durableDirectory);
             return {...result, conversionEvidencePath: durableEvidence, importedBlueprintPath: durableBlueprint};
         } finally {
             // Outcome streaming can finish its final writer callback while the
@@ -496,14 +506,58 @@ export class ArtifactBuilderRegistry {
     }
 
     private async rollbackParDerivedPublication(result: ArtifactBuildResult, imported: PokieProject, plan: ArtifactConversionPlan): Promise<void> {
-        const reused = plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary");
-        if (!reused) {
-            for (const root of new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])])) {
-                await this.managedOutcomeProjects.release(imported.rootPath, root).catch(() => undefined);
-                if (root !== result.outputPath) await fs.promises.rm(root, {recursive: true, force: true}).catch(() => undefined);
-            }
+        const ownership = this.managedOutcomeOwnership(result, plan, imported.rootPath);
+        for (const entry of ownership) {
+            if (entry.disposition !== "owned") continue;
+            await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
+            if (entry.rootPath !== result.outputPath) await fs.promises.rm(entry.rootPath, {recursive: true, force: true}).catch(() => undefined);
         }
         await fs.promises.rm(result.outputPath, {recursive: true, force: true}).catch(() => undefined);
+    }
+
+    /**
+     * A PAR import starts in a private directory so an invalid workbook never
+     * becomes visible.  Once its terminal publication succeeds, promote any
+     * generated Outcome prerequisite to the durable imported-Blueprint tree.
+     * This keeps both managed and Studio registries away from the directory
+     * removed by executeParDerivedPlan's finally block.
+     */
+    private async promoteParManagedOutcomes(
+        result: ArtifactBuildResult,
+        imported: PokieProject,
+        durableBlueprintPath: string,
+        plan: ArtifactConversionPlan,
+        durableDirectory: string,
+    ): Promise<ArtifactBuildResult> {
+        const ownership = this.managedOutcomeOwnership(result, plan, imported.rootPath);
+        const owned = ownership.filter((entry) => entry.disposition === "owned");
+        if (owned.length === 0) return result;
+
+        const compatibility = this.compatibilityFromPlan(plan.source);
+        const promoted = new Map<string, string>();
+        for (const entry of owned) {
+            const durableRoot = entry.rootPath === result.outputPath
+                ? entry.rootPath
+                : path.join(durableDirectory, "outcome-library");
+            await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath);
+            if (durableRoot !== entry.rootPath) {
+                await fs.promises.rm(durableRoot, {recursive: true, force: true});
+                await fs.promises.rename(entry.rootPath, durableRoot);
+            }
+            await this.managedOutcomeProjects.registerAndOpen(durableBlueprintPath, durableRoot, compatibility);
+            promoted.set(entry.rootPath, durableRoot);
+        }
+        const relocate = (root: string): string => promoted.get(root) ?? root;
+        return {
+            ...result,
+            ...(result.prerequisiteProjectRoots === undefined ? {} : {prerequisiteProjectRoots: result.prerequisiteProjectRoots.map(relocate)}),
+            ...(result.managedProjectRoots === undefined ? {} : {managedProjectRoots: result.managedProjectRoots.map(relocate)}),
+            managedOutcomeProjectOwnership: ownership.map((entry) => entry.disposition !== "owned" ? entry : {
+                ...entry,
+                rootPath: relocate(entry.rootPath),
+                sourceRootPath: durableBlueprintPath,
+            }),
+        };
     }
 
     private async hydrateParDerivedPlan(plan: ArtifactConversionPlan, imported: PokieProject, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
@@ -543,6 +597,11 @@ export class ArtifactBuilderRegistry {
                 ...result,
                 prerequisiteProjectRoots: [outcomeLibrary.rootPath],
                 managedProjectRoots: [outcomeLibrary.rootPath],
+                managedOutcomeProjectOwnership: [{
+                    rootPath: outcomeLibrary.rootPath,
+                    sourceRootPath: source.rootPath,
+                    disposition: generated === undefined ? "borrowed" : "owned",
+                }],
             };
         } catch (error) {
             if (generated !== undefined) {
@@ -631,7 +690,28 @@ export class ArtifactBuilderRegistry {
                 ? {requestedDestinationPath: destinationPath, reusedCompatibleProject: true}
                 : {}),
             managedProjectRoots: [outcomeLibrary.project.rootPath],
+            managedOutcomeProjectOwnership: [{
+                rootPath: outcomeLibrary.project.rootPath,
+                sourceRootPath: source.rootPath,
+                disposition: "owned",
+            }],
         };
+    }
+
+    private managedOutcomeOwnership(
+        result: ArtifactBuildResult,
+        plan: ArtifactConversionPlan,
+        fallbackSourceRootPath: string,
+    ): readonly ManagedOutcomeProjectOwnership[] {
+        if (result.managedOutcomeProjectOwnership !== undefined) return result.managedOutcomeProjectOwnership;
+        // Compatibility for injected legacy registries in extension tests.
+        // Production results always carry per-root ownership.
+        const reuses = plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary");
+        return Array.from(new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])])).map((rootPath) => ({
+            rootPath,
+            sourceRootPath: fallbackSourceRootPath,
+            disposition: reuses ? "borrowed" : "owned",
+        }));
     }
 
     private async generatePlannedManagedOutcome(

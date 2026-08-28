@@ -312,7 +312,11 @@ describe("ArtifactBuilderRegistry", () => {
 
             try {
                 const outcome = await registry.build("outcomeLibrary", blueprintProject, outcomeDir);
-                expect(outcome).toEqual({outputPath: outcomeDir, managedProjectRoots: [outcomeDir]});
+                expect(outcome).toMatchObject({
+                    outputPath: outcomeDir,
+                    managedProjectRoots: [outcomeDir],
+                    managedOutcomeProjectOwnership: [{rootPath: outcomeDir, sourceRootPath: blueprintPath, disposition: "owned"}],
+                });
                 expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(true);
 
                 const managedRegistry = JSON.parse(fs.readFileSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"), "utf-8")) as {
@@ -509,9 +513,10 @@ describe("ArtifactBuilderRegistry", () => {
                 expect(fs.existsSync(outcomeDir)).toBe(false);
 
                 writeBlueprint(3);
-                await expect(registry.build("outcomeLibrary", project, outcomeDir)).resolves.toEqual({
+                await expect(registry.build("outcomeLibrary", project, outcomeDir)).resolves.toMatchObject({
                     outputPath: outcomeDir,
                     managedProjectRoots: [outcomeDir],
+                    managedOutcomeProjectOwnership: [{rootPath: outcomeDir, sourceRootPath: blueprintPath, disposition: "owned"}],
                 });
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});

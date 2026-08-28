@@ -252,6 +252,20 @@ describe("ArtifactConversionPlanner", () => {
         expect(planner.plan(project("stakeAdapter"), "outcomeLibrary").status).toBe("unavailable");
     });
 
+    it("names the durable generated PAR-to-Stake prerequisite in the prepared preview", () => {
+        const plan = planner.plan(project("parWorkbook"), "stakeAdapter", {destinationPath: "/exports/stake"});
+
+        expect(plan).toMatchObject({
+            status: "planned",
+            steps: [
+                {kind: "importParWorkbook", output: {canonicalLocation: "/exports/stake/.pokie/par-import/imported.blueprint.json"}},
+                {kind: "materializeRuntime"},
+                {kind: "generateOutcomeLibrary", output: {canonicalLocation: "/exports/stake/.pokie/par-import/outcome-library"}},
+                {kind: "publish"},
+            ],
+        });
+    });
+
     it("rejects a changed source or destination at import execution", () => {
         const source = project("parWorkbook");
         const plan = planner.planImportOutput(source, "blueprint", "/imports/slot.blueprint.json");

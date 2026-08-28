@@ -191,8 +191,7 @@ export class StudioArtifactBuildService {
             // the registry generated or reopened. Register it with Studio before reporting success; no
             // Studio-only outcome-path index is maintained here.
             const managedProjectRoots = new Set([
-                ...(result.prerequisiteProjectRoots ?? []),
-                ...(result.managedProjectRoots ?? []),
+                ...this.durableManagedRoots(result, plan),
                 // A PAR import's Blueprint is itself a durable Studio project,
                 // not merely a transient prerequisite like an Outcome bundle.
                 ...(target === "blueprint" || project.type === "parWorkbook" ? [result.outputPath] : []),
@@ -392,7 +391,10 @@ export class StudioArtifactBuildService {
         registeredRoots: readonly string[],
         outputDestinationExisted: boolean,
     ): Promise<void> {
-        const reusesManagedOutcome = plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary");
+        const managedOwnership = this.managedOutcomeOwnership(result, plan);
+        const ownedManagedRoots = managedOwnership
+            .filter((entry) => entry.disposition === "owned")
+            .map((entry) => entry.rootPath);
         // The terminal is always newly allocated after the registry's
         // destination check.  The imported Blueprint is likewise a fresh
         // durable PAR intermediate. Generated prerequisite roots are owned by
@@ -400,8 +402,7 @@ export class StudioArtifactBuildService {
         const ownedRoots = new Set<string>([
             result.outputPath,
             ...(result.importedBlueprintPath === undefined ? [] : [result.importedBlueprintPath]),
-            ...(reusesManagedOutcome ? [] : result.prerequisiteProjectRoots ?? []),
-            ...(reusesManagedOutcome ? [] : result.managedProjectRoots ?? []),
+            ...ownedManagedRoots,
         ]);
 
         const rollbackRoots = [
@@ -417,13 +418,13 @@ export class StudioArtifactBuildService {
             // Studio reaches its own project-registration loop.  Releasing
             // that record is a separate operation from removing the root: a
             // deleted bundle must never remain advertised as reusable.
-            // Reused managed Outcomes are excluded from ownedRoots above.
-            if (!reusesManagedOutcome && (result.managedProjectRoots ?? []).includes(projectRoot)) {
+            const ownership = managedOwnership.find((entry) => entry.rootPath === projectRoot && entry.disposition === "owned");
+            if (ownership !== undefined) {
                 const registry = this.registry as ArtifactBuilderRegistry & {
                     releaseManagedOutcomeProject?: (sourceRootPath: string, rootPath: string) => Promise<void>;
                 };
-                if (plan.source?.canonicalLocation !== undefined && registry.releaseManagedOutcomeProject !== undefined) {
-                    await registry.releaseManagedOutcomeProject(plan.source.canonicalLocation, projectRoot).catch(() => undefined);
+                if (registry.releaseManagedOutcomeProject !== undefined) {
+                    await registry.releaseManagedOutcomeProject(ownership.sourceRootPath, projectRoot).catch(() => undefined);
                 }
             }
             if (projectRoot === result.outputPath && outputDestinationExisted) {
@@ -438,6 +439,28 @@ export class StudioArtifactBuildService {
             }
             await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
         }
+    }
+
+    private durableManagedRoots(result: import("pokie").ArtifactBuildResult, plan: ArtifactConversionPlan): readonly string[] {
+        const ownership = this.managedOutcomeOwnership(result, plan);
+        const transient = new Set(ownership.filter((entry) => entry.disposition === "transient").map((entry) => entry.rootPath));
+        return Array.from(new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])]))
+            .filter((root) => !transient.has(root));
+    }
+
+    private managedOutcomeOwnership(
+        result: import("pokie").ArtifactBuildResult,
+        plan: ArtifactConversionPlan,
+    ): readonly import("pokie").ManagedOutcomeProjectOwnership[] {
+        if (result.managedOutcomeProjectOwnership !== undefined) return result.managedOutcomeProjectOwnership;
+        // Kept only for injected compatibility registries used by extensions.
+        const borrowed = plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary");
+        const sourceRootPath = plan.source?.canonicalLocation ?? "";
+        return Array.from(new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])])).map((rootPath) => ({
+            rootPath,
+            sourceRootPath,
+            disposition: borrowed ? "borrowed" : "owned",
+        }));
     }
 
     private async parImportRegistrationProvenance(conversionEvidencePath: string | undefined): Promise<{readonly sourceWorkbookPath?: string; readonly conversionEvidencePath?: string} | undefined> {

@@ -5907,6 +5907,37 @@ describe("StudioServer", () => {
             expect(fs.existsSync(path.join(view.outputPath!, "index.json"))).toBe(true);
         });
 
+        it("keeps every registered PAR-to-Stake root durable after the real Studio build job", async () => {
+            const workbookPath = path.join(artifactWorkDir, "source.par.xlsx");
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+            const projectRegistry = new InMemoryStudioProjectRegistry();
+            const registrationService = new StudioProjectRegistrationService(projectRegistry);
+            const homeService = new StudioHomeService("1.3.0");
+            artifactServer = new StudioServer({
+                pokieVersion: "1.3.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: artifactStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.3.0", artifactStudioRoot, homeService),
+                projectRegistrationService: registrationService,
+                initialContext: {mode: "project", projectRoot: workbookPath},
+            });
+            const address = await artifactServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "stakeAdapter"});
+            expect(started.status).toBe(202);
+            const job = (started.body as {job: {id: string}}).job;
+            const completed = await waitForArtifactBuildJob(projectBaseUrl, job.id);
+            expect(completed.status).toBe("completed");
+            const entries = await registrationService.list();
+
+            expect(entries.length).toBeGreaterThanOrEqual(3);
+            expect(entries.filter((entry) => entry.status !== "ok" || !fs.existsSync(entry.location))).toEqual([]);
+            expect(entries.some((entry) => entry.location.includes(".pokie-par-import-"))).toBe(false);
+        });
+
         it("cancels an active Blueprint Outcome publish through the HTTP job route without publishing a managed project", async () => {
             const blueprintPath = writeBlueprintFile({
                 manifest: {id: "cancellable-outcome-slot", name: "Cancellable Outcome Slot", version: "1.0.0"},

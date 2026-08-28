@@ -303,6 +303,64 @@ describe("StudioArtifactBuildService", () => {
             expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
         });
 
+        it("keeps PAR-to-Stake managed and Studio roots durable after successful registration", async () => {
+            const workbookPath = path.join(workDir, "source.xlsx");
+            const stakePath = path.join(workDir, "par-stake");
+            const registeredProjects: string[] = [];
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+            service = new StudioArtifactBuildService("1.3.0", undefined, undefined, (projectRoot) => {
+                registeredProjects.push(projectRoot);
+                return Promise.resolve();
+            });
+
+            const result = await service.build(workbookPath, "stakeAdapter", stakePath);
+
+            expect(result).toMatchObject({status: "ok", importedBlueprintPath: expect.any(String)});
+            expect(registeredProjects).toEqual(expect.arrayContaining([stakePath, result.status === "ok" ? result.importedBlueprintPath : ""]));
+            expect(registeredProjects.every((projectRoot) => fs.existsSync(projectRoot))).toBe(true);
+            const managedRegistryPath = path.join(stakePath, ".pokie", "par-import", ".pokie", "managed-outcome-projects.json");
+            expect(fs.existsSync(managedRegistryPath)).toBe(true);
+            const managedRegistry = JSON.parse(fs.readFileSync(managedRegistryPath, "utf8")) as {projects: readonly {rootPath: string}[]};
+            expect(managedRegistry.projects).toHaveLength(1);
+            expect(fs.existsSync(managedRegistry.projects[0].rootPath)).toBe(true);
+        });
+
+        it("releases only a republished reused Outcome when Studio registration fails", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const originalOutcomePath = path.join(workDir, "original-outcome");
+            const republishedOutcomePath = path.join(workDir, "republished-outcome");
+            await expect(service.build(blueprintPath, "outcomeLibrary", originalOutcomePath)).resolves.toMatchObject({status: "ok"});
+            fs.mkdirSync(republishedOutcomePath);
+            const failingService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => Promise.reject(new Error("Studio registry unavailable")));
+
+            await expect(failingService.build(blueprintPath, "outcomeLibrary", republishedOutcomePath)).resolves.toMatchObject({status: "error"});
+
+            expect(fs.existsSync(originalOutcomePath)).toBe(true);
+            expect(fs.readdirSync(republishedOutcomePath)).toEqual([]);
+            const managedRegistry = JSON.parse(fs.readFileSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"), "utf8")) as {projects: readonly {rootPath: string}[]};
+            expect(managedRegistry.projects.map((project) => project.rootPath)).toEqual([originalOutcomePath]);
+        });
+
+        it("releases only a republished reused Outcome when Studio registration is cancelled", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const originalOutcomePath = path.join(workDir, "original-outcome");
+            const republishedOutcomePath = path.join(workDir, "republished-outcome");
+            const controller = new AbortController();
+            await expect(service.build(blueprintPath, "outcomeLibrary", originalOutcomePath)).resolves.toMatchObject({status: "ok"});
+            fs.mkdirSync(republishedOutcomePath);
+            const cancellingService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => {
+                controller.abort();
+                return Promise.resolve();
+            });
+
+            await expect(cancellingService.build(blueprintPath, "outcomeLibrary", republishedOutcomePath, {signal: controller.signal})).resolves.toMatchObject({status: "cancelled"});
+
+            expect(fs.existsSync(originalOutcomePath)).toBe(true);
+            expect(fs.readdirSync(republishedOutcomePath)).toEqual([]);
+            const managedRegistry = JSON.parse(fs.readFileSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"), "utf8")) as {projects: readonly {rootPath: string}[]};
+            expect(managedRegistry.projects.map((project) => project.rootPath)).toEqual([originalOutcomePath]);
+        });
+
         it("builds Blueprint -> Stake through the shared registry and registers the generated Outcome Project", async () => {
             const blueprintPath = writeBlueprintFile();
             const registeredProjects: string[] = [];
