@@ -217,6 +217,19 @@ export class ArtifactBuilderRegistry {
         let plannedSource = source;
         let managedOutcome = options.managedOutcome;
         let planningOptions: ArtifactConversionPlanningOptions = options;
+        // A caller can supply a project DTO without going through
+        // ProjectTargetResolver (for example, an embedded CLI or API caller).
+        // Bind PAR bytes here, at the registry's plan boundary, so execution's
+        // drift guard always compares against a hash prepared for this plan.
+        if (source.type === "parWorkbook") {
+            plannedSource = {
+                ...source,
+                configurationProvenance: {
+                    ...source.configurationProvenance,
+                    configurationHash: computeArtifactInputBindingHash([source.rootPath]),
+                },
+            };
+        }
         if ((source.type === "blueprint" || source.type === "tsPackage") && (target === "outcomeLibrary" || target === "stakeAdapter")) {
             const prepared = await this.blueprintStakeWorkflow.prepare(source, {outcomeLibraryGeneration: options.outcomeLibraryGeneration});
             const generation = prepared.generation.sampled;
