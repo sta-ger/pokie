@@ -5,6 +5,7 @@ import {registerCliCommands} from "../../cli/registerCliCommands.js";
 type InventoryItem = {
     id: string;
     type?: string;
+    shape?: string;
     created_by?: string[];
     recognized_by?: string[];
     imports_from?: string[];
