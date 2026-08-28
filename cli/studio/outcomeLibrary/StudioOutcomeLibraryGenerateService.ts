@@ -173,6 +173,7 @@ export class StudioOutcomeLibraryGenerateService {
     // this class's own doc comment); only "request.mode ?? 'base'" is (re)computed.
     public async generate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest): Promise<StudioOutcomeLibraryGenerateResultView> {
         const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
+        const modeName = request.mode ?? "base";
         const requestedGeneration = request.bounded === undefined
             ? {generationSemantics: "exact" as const}
             : {generationSemantics: "boundedSample" as const, sampleCount: request.bounded.sampleSize, sampleSeed: request.bounded.seed};
@@ -196,10 +197,14 @@ export class StudioOutcomeLibraryGenerateService {
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
         }
+        const reused = await this.reusePlannedOutcomeLibrary(plan, projectRoot, outDirRelative, resolvedOutDir.resolvedPath, modeName);
+        if (reused !== undefined) {
+            return reused;
+        }
         if (!plan.steps.some((step) => step.kind === "generateOutcomeLibrary")) {
             return {
                 status: "load-error",
-                error: "The prepared conversion reuses an existing Outcome Library, but this action requested regeneration. Refresh the preview with the requested generation action.",
+                error: "The prepared conversion has no executable Outcome Library generation or reuse step. Refresh the preview and retry.",
                 plan,
             };
         }
@@ -211,7 +216,6 @@ export class StudioOutcomeLibraryGenerateService {
         }
 
         const manifest = game.getManifest();
-        const modeName = request.mode ?? "base";
         const libraryId = request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`;
 
         let generated: GenerateExactWeightedOutcomeLibraryResult;
@@ -393,6 +397,92 @@ export class StudioOutcomeLibraryGenerateService {
                 hash: entry.libraryHash,
                 ...(entry.generator !== undefined ? {strategy: entry.generator.strategy, generatedAt: entry.generator.generatedAt} : {}),
             })),
+        };
+    }
+
+    /**
+     * Materializes precisely the managed bundle selected by a reuse plan.  A
+     * generate request is also the public publication action for its chosen
+     * output directory, so reuse must copy the verified bundle through the
+     * canonical writer instead of turning into a misleading regeneration
+     * error (or silently returning the candidate at a different location).
+     */
+    private async reusePlannedOutcomeLibrary(
+        plan: import("pokie").ArtifactConversionPlan,
+        projectRoot: string,
+        outDirRelative: string,
+        resolvedOutDir: string,
+        modeName: string,
+    ): Promise<StudioOutcomeLibraryGenerateResultView | undefined> {
+        const reuse = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
+        if (reuse === undefined) return undefined;
+        const sourceDir = reuse.output.canonicalLocation;
+        if (sourceDir === undefined) {
+            return {status: "load-error", error: "The prepared reusable Outcome Library has no canonical location. Refresh the preview and retry.", plan};
+        }
+
+        let sourceManifest: OutcomeLibraryBundleManifest;
+        let modes: OutcomeLibraryBundleModeInput<string>[];
+        try {
+            sourceManifest = await this.bundleReader.readManifest(sourceDir);
+            modes = [];
+            for (const entry of sourceManifest.modes) {
+                const library = await this.bundleReader.readLibrary(sourceDir, entry.modeName);
+                modes.push({
+                    modeName: entry.modeName,
+                    libraryId: library.libraryId,
+                    schemaVersion: library.schemaVersion,
+                    outcomes: library.outcomes,
+                    ...(entry.generator === undefined ? {} : {generator: entry.generator}),
+                });
+            }
+        } catch (error) {
+            return {
+                status: "load-error",
+                error: `Could not reopen the prepared reusable Outcome Library at "${sourceDir}": ${error instanceof Error ? error.message : String(error)}`,
+                plan,
+            };
+        }
+
+        const sourceMode = sourceManifest.modes.find((entry) => entry.modeName === modeName);
+        if (sourceMode?.generator === undefined) {
+            return {
+                status: "load-error",
+                error: `The prepared reusable Outcome Library does not contain generated provenance for mode "${modeName}". Regenerate that mode before reusing it.`,
+                plan,
+            };
+        }
+
+        const writeResult = await this.writer.writeToDirectory(modes, resolvedOutDir);
+        const errors = writeResult.issues.filter((issue) => issue.severity === "error");
+        if (errors.length > 0 || writeResult.manifest === undefined) {
+            return {status: "invalid", errors, warnings: writeResult.issues.filter((issue) => issue.severity !== "error"), plan};
+        }
+        const modeEntry = writeResult.manifest.modes.find((entry) => entry.modeName === modeName);
+        if (modeEntry === undefined) {
+            return {status: "load-error", error: `The reusable bundle write to "${outDirRelative}" did not report mode "${modeName}".`, plan};
+        }
+
+        this.recordDiscoveredBundleDir(projectRoot, outDirRelative);
+        const generator = sourceMode.generator;
+        const coverage = generator.strategy === "exact" ? 1 : toNumberApprox(generator.sampledRawCount) / toNumberApprox(generator.totalOutcomeSpaceSize);
+        return {
+            status: "ok",
+            bundleDir: outDirRelative,
+            files: writeResult.files,
+            warnings: writeResult.issues,
+            mode: {
+                modeName,
+                libraryId: modeEntry.libraryId,
+                hash: modeEntry.libraryHash,
+                outcomeCount: modeEntry.outcomeCount,
+                totalWeight: modeEntry.totalWeight,
+                rtp: modeEntry.analysis.rtp,
+            },
+            generator,
+            coverage,
+            selector: {kind: "bundle", bundleDir: outDirRelative, modeName},
+            plan,
         };
     }
 

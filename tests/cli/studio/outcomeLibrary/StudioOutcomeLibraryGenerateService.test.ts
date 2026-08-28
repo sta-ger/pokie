@@ -170,6 +170,61 @@ describe("StudioOutcomeLibraryGenerateService", () => {
     });
 
     describe("generate", () => {
+        it("materializes the exact managed bundle selected by a reuse plan without regenerating it", async () => {
+            const managed = await service().generate(projectRoot, {outDir: "managed-outcomes"});
+            expect(managed.status).toBe("ok");
+
+            const destination = path.join(projectRoot, "reused-outcomes");
+            const reusePlan: ArtifactConversionPlan = {
+                ...plannedOutcomeLibrary,
+                target: {
+                    ...plannedOutcomeLibrary.target,
+                    canonicalLocation: destination,
+                },
+                steps: [
+                    {
+                        kind: "reuseManagedOutcomeLibrary",
+                        choice: "reuse",
+                        estimatedWork: "none",
+                        input: plannedOutcomeLibrary.source,
+                        output: {kind: "outcomeLibrary", canonicalLocation: path.join(projectRoot, "managed-outcomes"), capabilities: ["outcome-library-read"]},
+                    },
+                    {
+                        kind: "publish",
+                        choice: "publish",
+                        estimatedWork: "publish",
+                        input: {kind: "outcomeLibrary", canonicalLocation: path.join(projectRoot, "managed-outcomes"), capabilities: ["outcome-library-read"]},
+                        output: {...plannedOutcomeLibrary.target, canonicalLocation: destination},
+                    },
+                ],
+                managedOutcome: {disposition: "reused"},
+            };
+            const regenerate = () => Promise.reject(new Error("reuse must not regenerate"));
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(buildFixtureGame()),
+                undefined,
+                regenerate,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {prepare: () => Promise.resolve(reusePlan)},
+            );
+
+            await expect(svc.generate(projectRoot, {outDir: "reused-outcomes"})).resolves.toMatchObject({
+                status: "ok",
+                bundleDir: "reused-outcomes",
+                plan: reusePlan,
+                generator: {strategy: "exact"},
+            });
+            await expect(new OutcomeLibraryBundleReader().readManifest(destination)).resolves.toMatchObject({modes: [{modeName: "base"}]});
+        });
+
         it("writes the default bundle directory and reports path/files/provenance/hash/generator/count/weight/RTP/coverage", async () => {
             const result = await service().generate(projectRoot, {});
             if (result.status !== "ok") {
