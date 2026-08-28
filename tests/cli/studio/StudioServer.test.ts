@@ -5196,7 +5196,7 @@ describe("StudioServer", () => {
             expect((body as {plan: {status: string}}).plan.status).toBe("unavailable");
         });
 
-        it("returns 400 when a mode's library file doesn't exist", async () => {
+        it("returns the authoritative unavailable plan when a raw selector names a missing file", async () => {
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
@@ -5205,11 +5205,10 @@ describe("StudioServer", () => {
             });
 
             expect(status).toBe(200);
-            expect((body as {error: string}).error).toContain('mode "base"');
-            expect((body as {plan: {status: string}}).plan.status).toBe("unavailable");
+            expect(body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
         });
 
-        it("returns 400 when a mode's library path escapes the project root", async () => {
+        it("returns the authoritative unavailable plan when a raw selector escapes the project root", async () => {
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
@@ -5218,11 +5217,10 @@ describe("StudioServer", () => {
             });
 
             expect(status).toBe(200);
-            expect((body as {error: string}).error).toContain("resolves outside the project root");
-            expect((body as {plan: {status: string}}).plan.status).toBe("unavailable");
+            expect(body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
         });
 
-        it("returns 400 when a mode's library file is not valid JSON", async () => {
+        it("returns the authoritative unavailable plan before parsing a raw selector", async () => {
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
             fs.writeFileSync(path.join(deploymentProjectRoot, "base.json"), "{ not json");
 
@@ -5232,11 +5230,10 @@ describe("StudioServer", () => {
             });
 
             expect(status).toBe(200);
-            expect((body as {error: string}).error).toContain("is not valid JSON");
-            expect((body as {plan: {status: string}}).plan.status).toBe("unavailable");
+            expect(body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
         });
 
-        it("previews a valid deployment (publish: false) without writing any files, and shows generated artifact content", async () => {
+        it("does not preview a raw selector: the unavailable plan reaches the terminal API result", async () => {
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
             writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
 
@@ -5247,27 +5244,11 @@ describe("StudioServer", () => {
             });
 
             expect(status).toBe(200);
-            const view = body as {
-                publish: boolean;
-                descriptorIssues: unknown[];
-                compatibilityIssues: unknown[];
-                artifactIssues: unknown[];
-                generation?: {artifacts: {relativePath: string; content: string}[]};
-                delivery?: unknown;
-                diagnostic?: {ok: boolean};
-            };
-            expect(view.publish).toBe(false);
-            expect(view.descriptorIssues).toEqual([]);
-            expect(view.compatibilityIssues).toEqual([]);
-            expect(view.artifactIssues).toEqual([]);
-            expect(view.generation?.artifacts.length).toBeGreaterThan(0);
-            expect(view.generation?.artifacts.some((artifact) => artifact.content.includes(`"lib-0"`))).toBe(true);
-            expect(view.diagnostic?.ok).toBe(true);
-            expect(view.delivery).toBeUndefined();
+            expect(body).toMatchObject({status: "unavailable", publish: false, plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
             expect(fs.existsSync(path.join(deploymentProjectRoot, "deployment"))).toBe(false);
         });
 
-        it("deploys a valid deployment (publish: true), delivers it, and writes the generated files to disk", async () => {
+        it("does not deploy a raw selector: the unavailable plan suppresses delivery", async () => {
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
             writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
 
@@ -5278,17 +5259,11 @@ describe("StudioServer", () => {
             });
 
             expect(status).toBe(200);
-            const view = body as {publish: boolean; delivery?: {delivered: boolean}};
-            expect(view.publish).toBe(true);
-            expect(view.delivery?.delivered).toBe(true);
-
-            const outDir = path.join(deploymentProjectRoot, "deployment", "local-json-example");
-            expect(fs.existsSync(path.join(outDir, "index.json"))).toBe(true);
-            const index = JSON.parse(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")) as {modes: {modeName: string}[]};
-            expect(index.modes).toEqual([expect.objectContaining({modeName: "base"})]);
+            expect(body).toMatchObject({status: "unavailable", publish: true, plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
+            expect(fs.existsSync(path.join(deploymentProjectRoot, "deployment"))).toBe(false);
         });
 
-        it("reports a genuinely incompatible library via compatibilityIssues (200, structured), without generating or writing anything", async () => {
+        it("does not apply compatibility inference to raw JSON selectors", async () => {
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
             fs.writeFileSync(path.join(deploymentProjectRoot, "base.json"), JSON.stringify({schemaVersion: 1, libraryId: "", outcomes: []}));
 
@@ -5299,14 +5274,11 @@ describe("StudioServer", () => {
             });
 
             expect(status).toBe(200);
-            const view = body as {compatibilityIssues: {code: string}[]; generation?: unknown; delivery?: unknown};
-            expect(view.compatibilityIssues.length).toBeGreaterThan(0);
-            expect(view.generation).toBeUndefined();
-            expect(view.delivery).toBeUndefined();
+            expect(body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
             expect(fs.existsSync(path.join(deploymentProjectRoot, "deployment"))).toBe(false);
         });
 
-        it("surfaces a structurally malformed generation result as an artifactValidation ERROR stage with full diagnostics, never hidden as skipped", async () => {
+        it("does not generate an artifact for a raw selector after planner rejection", async () => {
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot, malformedGeneratorDeploymentService());
             writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
 
@@ -5317,24 +5289,7 @@ describe("StudioServer", () => {
             });
 
             expect(status).toBe(200);
-            const view = body as {
-                generation?: unknown;
-                delivery?: unknown;
-                stages: {key: string; status: string; issues: {code: string}[]}[];
-            };
-
-            const generationStage = view.stages.find((stage) => stage.key === "generation");
-            expect(generationStage?.status).toBe("ok"); // the generator itself ran fine — see the fix's own reasoning
-
-            const artifactValidationStage = view.stages.find((stage) => stage.key === "artifactValidation");
-            expect(artifactValidationStage?.status).toBe("error");
-            expect(artifactValidationStage?.issues.length).toBeGreaterThan(0);
-            expect(artifactValidationStage?.issues.map((issue) => issue.code)).toContain("external-artifact-content-type-invalid");
-
-            expect(view.stages.find((stage) => stage.key === "diagnostic")?.status).toBe("skipped");
-            expect(view.stages.find((stage) => stage.key === "delivery")?.status).toBe("skipped");
-            expect(view.generation).toBeUndefined();
-            expect(view.delivery).toBeUndefined();
+            expect(body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
             expect(fs.existsSync(path.join(deploymentProjectRoot, "deployment"))).toBe(false);
         });
     });
@@ -5672,7 +5627,7 @@ describe("StudioServer", () => {
             expect((missingOutDir.body as {error: string}).error).toMatch(/outDir/);
         });
 
-        it("validates a real library deeply, then exports it and returns its manifest/files", async () => {
+        it("returns an unavailable plan for raw JSON before Stake validation or export", async () => {
             writeLibrary("base.json", {libraryId: "base-lib", betMode: "base", stake: 1});
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);
 
@@ -5680,23 +5635,18 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
             });
             expect(validateResponse.status).toBe(200);
-            const validateView = validateResponse.body as {status: string; errors: unknown[]; modes: {modeName: string}[]};
-            expect(validateView.status).toBe("ok");
-            expect(validateView.errors).toEqual([]);
-            expect(validateView.modes.map((mode) => mode.modeName)).toEqual(["base"]);
+            expect(validateResponse.body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
 
             const exportResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
-            expect(exportResponse.status).toBe(201);
-            const exportView = exportResponse.body as {status: string; manifest?: {modes: {name: string}[]}; files?: string[]};
-            expect(exportView.status).toBe("ok");
-            expect(exportView.manifest?.modes.map((mode) => mode.name)).toEqual(["base"]);
-            expect(fs.existsSync(path.join(stakeProjectRoot, "stakeengine", "index.json"))).toBe(true);
+            expect(exportResponse.status).toBe(200);
+            expect(exportResponse.body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
+            expect(fs.existsSync(path.join(stakeProjectRoot, "stakeengine", "index.json"))).toBe(false);
         });
 
-        it("returns a conflict (409) for a pre-existing non-empty outDir belonging to something else, and never writes to it", async () => {
+        it("does not let an occupied destination bypass a raw selector's unavailable boundary", async () => {
             writeLibrary("base.json", {libraryId: "base-lib", betMode: "base", stake: 1});
             fs.mkdirSync(path.join(stakeProjectRoot, "stakeengine"));
             fs.writeFileSync(path.join(stakeProjectRoot, "stakeengine", "unrelated.txt"), "pre-existing");
@@ -5706,17 +5656,12 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
-            expect(conflictResponse.status).toBe(409);
-            const conflictView = conflictResponse.body as {status: string; overwritable?: boolean; error?: string};
-            expect(conflictView.status).toBe("conflict");
-            // Never offers an overwrite path for a directory unrelated to any prior export -- see the next
-            // test for confirmation that overwrite:true genuinely can't succeed here either.
-            expect(conflictView.overwritable).toBe(false);
-            expect(conflictView.error).not.toContain("overwrite");
+            expect(conflictResponse.status).toBe(200);
+            expect(conflictResponse.body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
             expect(fs.readFileSync(path.join(stakeProjectRoot, "stakeengine", "unrelated.txt"), "utf-8")).toBe("pre-existing");
         });
 
-        it("still refuses (as load-error, never writing) an unrelated directory even when overwrite:true is explicitly requested", async () => {
+        it("retains the unavailable planner boundary when raw export asks to overwrite", async () => {
             writeLibrary("base.json", {libraryId: "base-lib", betMode: "base", stake: 1});
             fs.mkdirSync(path.join(stakeProjectRoot, "stakeengine"));
             fs.writeFileSync(path.join(stakeProjectRoot, "stakeengine", "unrelated.txt"), "pre-existing");
@@ -5729,14 +5674,14 @@ describe("StudioServer", () => {
             });
 
             expect(status).toBe(200);
-            expect((body as {status: string}).status).toBe("load-error");
+            expect(body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
             expect(fs.readFileSync(path.join(stakeProjectRoot, "stakeengine", "unrelated.txt"), "utf-8")).toBe("pre-existing");
         });
 
         // "overwrite: true" only ever unlocks replacing a directory a *prior* "pokie stakeengine export"
         // run itself produced (recognized via that run's own pokie-manifest.json) -- never an arbitrary
         // unrelated directory, which the previous test confirms stays refused regardless of `overwrite`.
-        it("resubmitting with overwrite:true replaces a directory recognized as a prior export's own output", async () => {
+        it("does not make raw selector overwrite retry executable", async () => {
             writeLibrary("base.json", {libraryId: "base-lib", betMode: "base", stake: 1});
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);
 
@@ -5744,29 +5689,27 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
-            expect(firstExport.status).toBe(201);
+            expect(firstExport.status).toBe(200);
+            expect(firstExport.body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
 
             writeLibrary("bonus.json", {libraryId: "bonus-lib", betMode: "bonus", stake: 1});
             const conflictResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
                 modes: [{modeName: "bonus", librarySelector: {kind: "json", path: "bonus.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
-            expect(conflictResponse.status).toBe(409);
-            const conflictView = conflictResponse.body as {status: string; overwritable?: boolean};
-            expect(conflictView.overwritable).toBe(true);
+            expect(conflictResponse.status).toBe(200);
+            expect(conflictResponse.body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
 
             const overwriteResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
                 modes: [{modeName: "bonus", librarySelector: {kind: "json", path: "bonus.json"}, cost: 1}],
                 outDir: "stakeengine",
                 overwrite: true,
             });
-            expect(overwriteResponse.status).toBe(201);
-            const overwriteView = overwriteResponse.body as {status: string; manifest?: {modes: {name: string}[]}};
-            expect(overwriteView.status).toBe("ok");
-            expect(overwriteView.manifest?.modes.map((mode) => mode.name)).toEqual(["bonus"]);
+            expect(overwriteResponse.status).toBe(200);
+            expect(overwriteResponse.body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
         });
 
-        it("returns an invalid view (never a 500) for an unsupported cost/outcome combination", async () => {
+        it("does not infer Stake compatibility from a raw selector", async () => {
             writeLibrary("base.json", {libraryId: "base-lib", betMode: "base", stake: 1});
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);
 
@@ -5776,12 +5719,10 @@ describe("StudioServer", () => {
             });
 
             expect(status).toBe(200);
-            const view = body as {status: string; errors: unknown[]};
-            expect(view.status).toBe("invalid");
-            expect(view.errors.length).toBeGreaterThan(0);
+            expect(body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
         });
 
-        it("returns a load-error view (never a 400) for a libraryPath that resolves outside the project root", async () => {
+        it("returns an unavailable plan for a raw selector outside the project root", async () => {
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/stakeengine/validate`, {
@@ -5789,9 +5730,7 @@ describe("StudioServer", () => {
             });
 
             expect(status).toBe(200);
-            const view = body as {status: string; error?: string};
-            expect(view.status).toBe("load-error");
-            expect(view.error).toContain("outside the project root");
+            expect(body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
         });
     });
 

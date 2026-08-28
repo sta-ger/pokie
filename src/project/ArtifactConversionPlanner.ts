@@ -92,6 +92,12 @@ export type ArtifactConversionPlan = {
 export function describeArtifactConversionPlanDiagnostic(plan: ArtifactConversionPlan): string | undefined {
     const diagnostic = plan.diagnostic;
     if (diagnostic === undefined) return undefined;
+    // A selector which did not resolve to a POKIE artifact has no trustworthy
+    // source-type compatibility story to translate.  Returning the generic
+    // matrix wording here used to describe a raw JSON selector as an Outcome
+    // Library and obscured the actual recovery boundary supplied by the
+    // planner.  Preserve that structured boundary verbatim for every adapter.
+    if (diagnostic.code === "unrecognized-source") return diagnostic.message;
     const sourceNames: Readonly<Record<ProjectType, string>> = {
         blueprint: "Game Blueprint", tsPackage: "POKIE game package", outcomeLibrary: "Outcome Library",
         stakeAdapter: "Stake Engine export", parWorkbook: "PAR workbook", wasm: "POKIE WASM component",

@@ -1,4 +1,4 @@
-import {ArtifactConversionPlanner, type PokieProject} from "../../src/index.js";
+import {ArtifactConversionPlanner, describeArtifactConversionPlanDiagnostic, type PokieProject} from "../../src/index.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 
 function project(type: PokieProject["type"]): PokieProject {
@@ -149,5 +149,6 @@ describe("ArtifactConversionPlanner", () => {
             diagnostic: {code: "unrecognized-source", failedEdge: {from: "outcomeLibrary", to: "stakeAdapter"}},
         });
         expect(plan.diagnostic?.recovery).toContain("recognized POKIE Outcome Library bundle");
+        expect(describeArtifactConversionPlanDiagnostic(plan)).toBe(plan.diagnostic?.message);
     });
 });
