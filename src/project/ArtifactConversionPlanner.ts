@@ -349,7 +349,17 @@ export class ArtifactConversionPlanner {
         );
         if (outcomePlan.status !== "planned") return outcomePlan;
         const prerequisiteOutput = outcomePlan.steps[outcomePlan.steps.length - 1]?.output ?? outcome;
-        return this.planned(source, target, preflight, [...outcomePlan.steps, {kind: "publish", input: prerequisiteOutput, output: target, choice: "publish", estimatedWork: "publish"}]);
+        // The Stake plan is an extension of the selected Outcome prerequisite,
+        // not a fresh decision.  Preserve its reuse/ineligible provenance so
+        // every adapter can explain why this exact plan will reuse a managed
+        // library (or regenerate it) without re-looking it up during publish.
+        return this.planned(
+            source,
+            target,
+            preflight,
+            [...outcomePlan.steps, {kind: "publish", input: prerequisiteOutput, output: target, choice: "publish", estimatedWork: "publish"}],
+            outcomePlan.managedOutcome,
+        );
     }
 
     private planned(

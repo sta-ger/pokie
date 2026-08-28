@@ -62,6 +62,7 @@ describe("ArtifactConversionPlanner", () => {
 
         expect(plan).toMatchObject({
             status: "planned",
+            managedOutcome: {disposition: "reused"},
             steps: [{kind: "reuseManagedOutcomeLibrary"}, {kind: "publish"}],
             preflight: {estimatedWork: "publish"},
         });
