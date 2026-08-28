@@ -5120,7 +5120,7 @@ describe("StudioServer", () => {
             expect((emptyModes.body as {error: string}).error).toMatch(/modes/);
         });
 
-        it("returns a planner conflict for an unknown targetId, without ever reading a library file", async () => {
+        it("returns an unavailable planner terminal for an unknown targetId, without ever reading a library file", async () => {
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
@@ -5129,7 +5129,11 @@ describe("StudioServer", () => {
             });
 
             expect(status).toBe(200);
-            expect(body).toMatchObject({status: "conflict", error: 'Unknown deployment target "does-not-exist".', plan: {status: "unavailable"}});
+            expect(body).toMatchObject({
+                status: "unavailable",
+                error: 'Unknown deployment target "does-not-exist".',
+                plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}},
+            });
         });
 
         it("returns 400, in domain language, when a mode isn't part of the active project's own current build — even for a request that never went through the Configure UI", async () => {

@@ -1767,7 +1767,7 @@ export class StudioServer implements StudioServerHandling {
         error: string,
         plan: ArtifactConversionPlan | undefined,
         request: {targetId: string; publish: boolean},
-    ): StudioDeploymentRunView & {status: "unavailable" | "conflict"; error: string} {
+    ): StudioDeploymentRunView & {status: "unavailable"; error: string} {
         const fallbackPlan: ArtifactConversionPlan = {
             status: "unavailable" as const,
             source: {kind: "outcomeLibrary" as const, capabilities: []},
@@ -1792,7 +1792,11 @@ export class StudioServer implements StudioServerHandling {
                 ...plan,
                 status: "unavailable",
                 diagnostic: {
-                    code: resultStatus === "target-not-found" ? "destination-conflict" : "missing-data",
+                    // A target id names a deployment endpoint, never an artifact
+                    // destination.  In particular an unknown id must not be
+                    // rendered as an occupied-output conflict: no conversion
+                    // destination was selected or inspected at this point.
+                    code: "missing-data",
                     failedEdge: {from: plan.source.kind, to: plan.target.kind},
                     message: error,
                     recovery: "Correct the deployment request or selected library, then try again.",
@@ -1800,7 +1804,10 @@ export class StudioServer implements StudioServerHandling {
             }
             : plan ?? fallbackPlan;
         return {
-            status: resultStatus === "load-error" ? "unavailable" : "conflict",
+            // Every rejected deployment request is unavailable to execute. A
+            // `conflict` terminal state is reserved for planner-owned output
+            // destination policy, which deployment does not exercise.
+            status: "unavailable",
             error,
             plan: terminalPlan,
             targetId: request.targetId,
