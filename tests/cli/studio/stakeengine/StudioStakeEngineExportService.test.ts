@@ -1,4 +1,4 @@
-import {computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleWriter, WeightedOutcomeLibrary} from "pokie";
+import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleWriter, WeightedOutcomeLibrary} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -6,6 +6,14 @@ import {StudioStakeEngineExportService} from "../../../../cli/studio/stakeengine
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
 
 const TEST_POKIE_VERSION = "1.3.0";
+
+const plannedStakeExport: ArtifactConversionPlan = {
+    status: "planned",
+    source: {kind: "outcomeLibrary", capabilities: ["stake-adapter-export"]},
+    target: {kind: "stakeAdapter", capabilities: ["stake-adapter-export"]},
+    steps: [{kind: "publish", choice: "publish", estimatedWork: "publish", input: {kind: "outcomeLibrary", capabilities: []}, output: {kind: "stakeAdapter", capabilities: []}}],
+    preflight: {destinationKind: "directory", estimatedWork: "publish", losses: [], oneWay: true},
+};
 
 function writeLibraryFile(projectRoot: string, relativePath: string, library: WeightedOutcomeLibrary<string>): void {
     fs.writeFileSync(path.join(projectRoot, relativePath), JSON.stringify(library));
@@ -23,6 +31,32 @@ describe("StudioStakeEngineExportService", () => {
     });
 
     describe("validate", () => {
+        it("serializes the same planner decision during validate and export", async () => {
+            const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
+            writeLibraryFile(tmpRoot, "base.json", library);
+            const planning = {prepare: jest.fn(() => Promise.resolve(plannedStakeExport))};
+            const service = new StudioStakeEngineExportService(
+                TEST_POKIE_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                planning,
+            );
+            const modes = [{modeName: "base", librarySelector: {kind: "json" as const, path: "base.json"}, cost: 1}];
+
+            const validation = await service.validate(tmpRoot, modes);
+            const exported = await service.export(tmpRoot, modes, "stakeengine", false);
+
+            expect(validation).toMatchObject({status: "ok", plan: plannedStakeExport});
+            expect(exported).toMatchObject({status: "ok", plan: plannedStakeExport});
+            expect(planning.prepare).toHaveBeenNthCalledWith(1, tmpRoot, "stakeAdapter");
+            expect(planning.prepare).toHaveBeenNthCalledWith(2, tmpRoot, "stakeAdapter", path.resolve(tmpRoot, "stakeengine"));
+        });
+
         it("returns a clean diagnostics view with per-mode provenance for a real library", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
             writeLibraryFile(tmpRoot, "base.json", library);

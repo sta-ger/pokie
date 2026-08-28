@@ -1,4 +1,4 @@
-import type {StakeEngineManifest, ValidationIssue} from "pokie";
+import type {ArtifactConversionPlan, StakeEngineManifest, ValidationIssue} from "pokie";
 
 // POST /api/project/stakeengine/export's own DTO — mirrors StakeEngineExporter's own "no partial export"
 // contract exactly: `manifest` is present iff `status` is "ok", every field on it comes straight off the
@@ -18,7 +18,9 @@ export type StudioStakeEngineExportView =
           readonly files: readonly string[];
           readonly manifest: StakeEngineManifest;
           readonly warnings: readonly ValidationIssue[];
+          readonly plan?: ArtifactConversionPlan;
       }
-    | {readonly status: "conflict"; readonly outDir: string; readonly overwritable: boolean; readonly error: string}
-    | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]}
-    | {readonly status: "load-error"; readonly error: string};
+    | {readonly status: "conflict"; readonly outDir: string; readonly overwritable: boolean; readonly error: string; readonly plan?: ArtifactConversionPlan}
+    | {readonly status: "unavailable"; readonly error: string; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]; readonly plan?: ArtifactConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan?: ArtifactConversionPlan};

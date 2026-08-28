@@ -12,12 +12,14 @@ import {
     OutcomeSpaceEstimate,
     PokieGame,
     WeightedOutcomeLibraryGenerationError,
+    describeArtifactConversionPlanDiagnostic,
     estimateExactOutcomeSpaceSize,
     generateExactWeightedOutcomeLibrary,
 } from "pokie";
 import fs from "fs";
 import path from "path";
 import {resolveProjectDirectory} from "./resolveProjectDirectory.js";
+import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
 import type {StudioOutcomeLibraryGenerateEstimateView} from "./StudioOutcomeLibraryGenerateEstimateView.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "./StudioOutcomeLibraryGenerateResultView.js";
 import type {StudioOutcomeLibraryRegistryView} from "./StudioOutcomeLibraryRegistryView.js";
@@ -77,6 +79,7 @@ export class StudioOutcomeLibraryGenerateService {
     private readonly readTextFile: (filePath: string) => string;
     private readonly writeTextFile: (filePath: string, contents: string) => void;
     private readonly ensureDirectory: (dirPath: string) => void;
+    private readonly planning: StudioArtifactConversionPlanning;
 
     constructor(
         pokieVersion: string,
@@ -97,6 +100,7 @@ export class StudioOutcomeLibraryGenerateService {
         readTextFile: (filePath: string) => string = (filePath) => fs.readFileSync(filePath, "utf-8"),
         writeTextFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
         ensureDirectory: (dirPath: string) => void = (dirPath) => fs.mkdirSync(dirPath, {recursive: true}),
+        planning: StudioArtifactConversionPlanning = new StudioArtifactConversionPlanningService(pokieVersion),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadGame = loadGame;
@@ -110,6 +114,7 @@ export class StudioOutcomeLibraryGenerateService {
         this.readTextFile = readTextFile;
         this.writeTextFile = writeTextFile;
         this.ensureDirectory = ensureDirectory;
+        this.planning = planning;
     }
 
     // The cheap, non-enumerating dry run over estimateExactOutcomeSpaceSize -- exactly the probe "pokie
@@ -117,11 +122,12 @@ export class StudioOutcomeLibraryGenerateService {
     // Generate step's own "estimate/cost" panel never disagrees with what the CLI would report for the
     // same package/options.
     public async estimate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateEstimateRequest): Promise<StudioOutcomeLibraryGenerateEstimateView> {
+        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary");
         let game: PokieGame;
         try {
             game = await this.loadGame(projectRoot);
         } catch (error) {
-            return {status: "load-error", error: error instanceof Error ? error.message : String(error)};
+            return {status: "load-error", error: error instanceof Error ? error.message : String(error), ...(plan === undefined ? {} : {plan})};
         }
 
         let estimate: OutcomeSpaceEstimate;
@@ -129,7 +135,7 @@ export class StudioOutcomeLibraryGenerateService {
             estimate = this.estimateSpace(game);
         } catch (error) {
             if (error instanceof WeightedOutcomeLibraryGenerationError) {
-                return {status: "unsupported", error: error.message};
+                return {status: "unsupported", error: error.message, ...(plan === undefined ? {} : {plan})};
             }
             throw error;
         }
@@ -147,6 +153,7 @@ export class StudioOutcomeLibraryGenerateService {
             maxOutcomeSpaceSize: formatBigIntSafely(maxOutcomeSpaceSize),
             strategy,
             requiresBounded: strategy === "bounded-coverage",
+            ...(plan === undefined ? {} : {plan}),
         };
     }
 
@@ -156,21 +163,30 @@ export class StudioOutcomeLibraryGenerateService {
     // writer "pokie outcomelibrary build" uses. Every other mode already in that bundle is preserved (see
     // this class's own doc comment); only "request.mode ?? 'base'" is (re)computed.
     public async generate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest): Promise<StudioOutcomeLibraryGenerateResultView> {
+        const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
+        // A Studio generation updates one mode in the canonical bundle and deliberately
+        // preserves its other modes.  It is therefore not the planner's one-shot
+        // publication destination (which correctly rejects an occupied directory).
+        // Ask the planner for the source/prerequisite decision, while this writer
+        // retains its established atomic in-bundle update contract.
+        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary");
+        if (plan?.status === "unavailable") {
+            return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
+        }
         let game: PokieGame;
         try {
             game = await this.loadGame(projectRoot);
         } catch (error) {
-            return {status: "load-error", error: error instanceof Error ? error.message : String(error)};
+            return {status: "load-error", error: error instanceof Error ? error.message : String(error), ...(plan === undefined ? {} : {plan})};
         }
 
         const manifest = game.getManifest();
         const modeName = request.mode ?? "base";
         const libraryId = request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`;
-        const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
 
         const resolvedOutDir = resolveProjectDirectory(projectRoot, outDirRelative, this.realpath);
         if (resolvedOutDir.status === "error") {
-            return {status: "load-error", error: resolvedOutDir.message};
+            return {status: "load-error", error: resolvedOutDir.message, ...(plan === undefined ? {} : {plan})};
         }
 
         let generated: GenerateExactWeightedOutcomeLibraryResult;
@@ -193,16 +209,16 @@ export class StudioOutcomeLibraryGenerateService {
         } catch (error) {
             if (error instanceof WeightedOutcomeLibraryGenerationError) {
                 if (error.getCode() === "weighted-outcome-library-generation-unsupported") {
-                    return {status: "unsupported", error: error.message};
+                    return {status: "unsupported", error: error.message, ...(plan === undefined ? {} : {plan})};
                 }
-                return {status: "generation-error", code: error.getCode(), error: error.message};
+                return {status: "generation-error", code: error.getCode(), error: error.message, ...(plan === undefined ? {} : {plan})};
             }
             throw error;
         }
 
         const otherModes = await this.readOtherModes(resolvedOutDir.resolvedPath, modeName);
         if (otherModes.status === "error") {
-            return {status: "load-error", error: otherModes.message};
+            return {status: "load-error", error: otherModes.message, ...(plan === undefined ? {} : {plan})};
         }
 
         const modes: OutcomeLibraryBundleModeInput<string>[] = [
@@ -213,14 +229,14 @@ export class StudioOutcomeLibraryGenerateService {
         const writeResult = await this.writer.writeToDirectory(modes, resolvedOutDir.resolvedPath);
         const errors = writeResult.issues.filter((issue) => issue.severity === "error");
         if (errors.length > 0 || writeResult.manifest === undefined) {
-            return {status: "invalid", errors, warnings: writeResult.issues.filter((issue) => issue.severity !== "error")};
+            return {status: "invalid", errors, warnings: writeResult.issues.filter((issue) => issue.severity !== "error"), ...(plan === undefined ? {} : {plan})};
         }
 
         const modeEntry = writeResult.manifest.modes.find((entry) => entry.modeName === modeName);
         if (modeEntry === undefined) {
             // Guaranteed present by the writer whenever it returns a manifest at all (one entry per input
             // mode that didn't itself error) -- reachable only if the writer's own contract changes.
-            return {status: "load-error", error: `The bundle write to "${outDirRelative}" did not report mode "${modeName}".`};
+            return {status: "load-error", error: `The bundle write to "${outDirRelative}" did not report mode "${modeName}".`, ...(plan === undefined ? {} : {plan})};
         }
 
         const coverage = generated.diagnostics.strategy === "exact" ? 1 : toNumberApprox(generated.diagnostics.sampledRawCount) / toNumberApprox(generated.diagnostics.totalOutcomeSpaceSize);
@@ -247,6 +263,7 @@ export class StudioOutcomeLibraryGenerateService {
             generator: generated.diagnostics,
             coverage,
             selector: {kind: "bundle", bundleDir: outDirRelative, modeName},
+            ...(plan === undefined ? {} : {plan}),
         };
     }
 

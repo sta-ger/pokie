@@ -99,7 +99,7 @@ type OutcomeLibraryRunView =
     | {status: "idle"}
     | {status: "running"}
     | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>}
-    | {status: "error"; message: string};
+    | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
 type StaticExportRunView =
     | {status: "idle"}
@@ -110,7 +110,7 @@ type StaticExportRunView =
     // while the conflict is on screen can never make Overwrite silently write a different library than
     // what the conflict itself was reported against.
     | {status: "conflict"; result: Extract<StudioStakeEngineExportView, {status: "conflict"}>; source: Extract<OutcomeLibrarySelector, {kind: "bundle"}>}
-    | {status: "error"; message: string};
+    | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
 function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>): string {
     if (view.status === "load-error") {
@@ -126,11 +126,20 @@ function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateR
 // Never called for a "conflict" result -- that status renders its own recovery UI (Overwrite when
 // `overwritable`, otherwise its own already-actionable `error` message) directly in TargetCard below.
 function describeStakeEngineResultError(view: Exclude<StudioStakeEngineExportView, {status: "ok"} | {status: "conflict"}>): string {
-    if (view.status === "load-error") {
+    if (view.status === "load-error" || view.status === "unavailable") {
         return describePathActionError("The Stake Engine export's outcome library", view.error);
     }
     const [firstError] = view.errors;
     return firstError?.message ?? "The Stake Engine export failed validation.";
+}
+
+function PlannerSummary({plan, label = "Server plan"}: {plan: StudioArtifactConversionPlan | undefined; label?: string}) {
+    if (plan === undefined) return null;
+    return (
+        <Text size="sm" c="dimmed" mt={4}>
+            {label}: {plan.status === "planned" ? plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No publication required" : plan.diagnostic?.message ?? "Unavailable"}
+        </Text>
+    );
 }
 
 // One entry per "buildArtifact" card, keyed by its own artifactTarget -- each target runs (and reports)
@@ -327,20 +336,28 @@ function TargetCard({
                     {outcomeLibraryRun.status === "running" && (
                         <LoadingState label="Generating outcome library from this project's current build…" />
                     )}
-                    {outcomeLibraryRun.status === "error" && <ErrorState message={outcomeLibraryRun.message} />}
+                    {outcomeLibraryRun.status === "error" && (
+                        <>
+                            <ErrorState message={outcomeLibraryRun.message} />
+                            <PlannerSummary plan={outcomeLibraryRun.plan} />
+                        </>
+                    )}
                     {outcomeLibraryRun.status === "ok" && (
-                        <Text size="sm" mt={4}>
-                            Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
-                            {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
-                            {outcomeLibraryRun.result.generator.strategy === "bounded-coverage"
-                                ? ` (${(outcomeLibraryRun.result.coverage * 100).toFixed(4)}% of the raw space)`
-                                : ""}
-                            {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
-                            {outcomeLibraryRun.result.bundleDir}.{" "}
-                            <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.bundleDir)}>
-                                Open output folder
-                            </Button>
-                        </Text>
+                        <>
+                            <Text size="sm" mt={4}>
+                                Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
+                                {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
+                                {outcomeLibraryRun.result.generator.strategy === "bounded-coverage"
+                                    ? ` (${(outcomeLibraryRun.result.coverage * 100).toFixed(4)}% of the raw space)`
+                                    : ""}
+                                {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
+                                {outcomeLibraryRun.result.bundleDir}.{" "}
+                                <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.bundleDir)}>
+                                    Open output folder
+                                </Button>
+                            </Text>
+                            <PlannerSummary plan={outcomeLibraryRun.result.plan} />
+                        </>
                     )}
                 </>
             )}
@@ -353,7 +370,12 @@ function TargetCard({
                     {!canRunStaticExport && staticExportRun.status !== "ok" && staticExportRun.status !== "conflict" && (
                         <EmptyState message="Generate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports." />
                     )}
-                    {staticExportRun.status === "error" && <ErrorState message={staticExportRun.message} />}
+                    {staticExportRun.status === "error" && (
+                        <>
+                            <ErrorState message={staticExportRun.message} />
+                            <PlannerSummary plan={staticExportRun.plan} />
+                        </>
+                    )}
                     {staticExportRun.status === "conflict" &&
                         (staticExportRun.result.overwritable ? (
                             <RecoveryNotice
@@ -364,15 +386,21 @@ function TargetCard({
                                 onAction={onOverwriteStaticExport}
                             />
                         ) : (
-                            <ErrorState message={staticExportRun.result.error} />
+                            <>
+                                <ErrorState message={staticExportRun.result.error} />
+                                <PlannerSummary plan={staticExportRun.result.plan} />
+                            </>
                         ))}
                     {staticExportRun.status === "ok" && (
-                        <Text size="sm" mt={4}>
-                            Exported {staticExportRun.result.files.length} file(s) to {staticExportRun.result.outDir}.{" "}
-                            <Button size="xs" variant="default" onClick={() => onOpenFolder(staticExportRun.result.outDir)}>
-                                Open output folder
-                            </Button>
-                        </Text>
+                        <>
+                            <Text size="sm" mt={4}>
+                                Exported {staticExportRun.result.files.length} file(s) to {staticExportRun.result.outDir}.{" "}
+                                <Button size="xs" variant="default" onClick={() => onOpenFolder(staticExportRun.result.outDir)}>
+                                    Open output folder
+                                </Button>
+                            </Text>
+                            <PlannerSummary plan={staticExportRun.result.plan} />
+                        </>
                     )}
                 </>
             )}
@@ -550,11 +578,14 @@ function TargetCard({
                     {isActiveTarget && deployment.runError && <ErrorState message={describeProjectActionError("The remote deployment", deployment.runError)} />}
                     {isActiveTarget && deployment.runResult && !deployment.runLoading && (
                         deployment.runResult.ok ? (
-                            <Text size="sm" mt={4}>
-                                {deployment.runResult.publish
-                                    ? `Published${deployment.runResult.delivered ? "." : " -- delivery could not be confirmed."}`
-                                    : "Compatible -- ready to publish."}
-                            </Text>
+                            <>
+                                <Text size="sm" mt={4}>
+                                    {deployment.runResult.publish
+                                        ? `Published${deployment.runResult.delivered ? "." : " -- delivery could not be confirmed."}`
+                                        : "Compatible -- ready to publish."}
+                                </Text>
+                                <PlannerSummary plan={deployment.runResult.plan} label="Deployment prerequisite plan" />
+                            </>
                         ) : (
                             <IssueList title="Build issues" issues={deployment.runResult.stages.flatMap((stage) => stage.issues)} />
                         )
@@ -817,7 +848,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                     deployment.setModeLibrarySelector(0, {kind: "bundle", bundleDir: view.bundleDir, modeName: view.mode.modeName});
                     deployment.refreshProjectModesAndRegistry();
                 } else {
-                    setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(view)});
+                    setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(view), plan: view.plan});
                 }
             })
             .catch((error: unknown) => {
@@ -869,7 +900,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                 } else if (view.status === "conflict") {
                     setStaticExportRun({status: "conflict", result: view, source});
                 } else {
-                    setStaticExportRun({status: "error", message: describeStakeEngineResultError(view)});
+                    setStaticExportRun({status: "error", message: describeStakeEngineResultError(view), plan: view.plan});
                 }
             })
             .catch((error: unknown) => {

@@ -943,6 +943,7 @@ export type StudioDeploymentStageSummary = {
 // own doc comment. `stages` is the authoritative per-stage status; the fields below it are the raw
 // ExternalDeploymentResult mirror `stages` was itself computed from.
 export type StudioDeploymentRunView = {
+    plan?: StudioArtifactConversionPlan;
     targetId: string;
     publish: boolean;
     stages: StudioDeploymentStageSummary[];
@@ -998,9 +999,11 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           maxOutcomeSpaceSize: number | string;
           strategy: OutcomeLibraryGenerationStrategy;
           requiresBounded: boolean;
+          plan?: StudioArtifactConversionPlan;
       }
-    | {status: "unsupported"; error: string}
-    | {status: "load-error"; error: string};
+    | {status: "unsupported"; error: string; plan?: StudioArtifactConversionPlan}
+    | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "load-error"; error: string; plan?: StudioArtifactConversionPlan};
 
 // OutcomeLibraryGeneratorDiagnostics, embedded verbatim -- see its own doc comment
 // (src/weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.ts).
@@ -1029,11 +1032,13 @@ export type StudioOutcomeLibraryGenerateResultView =
           generator: OutcomeLibraryGeneratorDiagnostics;
           coverage: number;
           selector: OutcomeLibrarySelector;
+          plan?: StudioArtifactConversionPlan;
       }
-    | {status: "unsupported"; error: string}
-    | {status: "generation-error"; code: string; error: string}
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {status: "load-error"; error: string};
+    | {status: "unsupported"; error: string; plan?: StudioArtifactConversionPlan}
+    | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "generation-error"; code: string; error: string; plan?: StudioArtifactConversionPlan}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan?: StudioArtifactConversionPlan}
+    | {status: "load-error"; error: string; plan?: StudioArtifactConversionPlan};
 
 export type StudioOutcomeLibraryRegistryModeEntry = {
     modeName: string;
@@ -1191,8 +1196,8 @@ export type StudioStakeEngineExportModeSummary = {
 // POST /api/project/stakeengine/validate's own DTO — see
 // cli/studio/stakeengine/StudioStakeEngineExportValidateView.ts's own doc comment.
 export type StudioStakeEngineExportValidateView =
-    | {status: "ok"; modes: StudioStakeEngineExportModeSummary[]; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {status: "load-error"; error: string};
+    | {status: "ok"; modes: StudioStakeEngineExportModeSummary[]; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan?: StudioArtifactConversionPlan}
+    | {status: "load-error"; error: string; plan?: StudioArtifactConversionPlan};
 
 // Mirrors pokie's own StakeEngineManifest/StakeEngineManifestModeEntry
 // (src/stakeengine/StakeEngineManifest.ts) — every hash/metric here is read verbatim off the export
@@ -1227,10 +1232,11 @@ export type StakeEngineManifest = {
 // `true` when `outDir` is recognized as a prior Stake Engine export's own output — resubmitting with
 // `overwrite: true` can never succeed otherwise, so the UI must never offer that action when it's `false`.
 export type StudioStakeEngineExportView =
-    | {status: "ok"; outDir: string; files: string[]; manifest: StakeEngineManifest; warnings: ValidationIssue[]}
-    | {status: "conflict"; outDir: string; overwritable: boolean; error: string}
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {status: "load-error"; error: string};
+    | {status: "ok"; outDir: string; files: string[]; manifest: StakeEngineManifest; warnings: ValidationIssue[]; plan?: StudioArtifactConversionPlan}
+    | {status: "conflict"; outDir: string; overwritable: boolean; error: string; plan?: StudioArtifactConversionPlan}
+    | {status: "unavailable"; error: string; plan: StudioArtifactConversionPlan}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan?: StudioArtifactConversionPlan}
+    | {status: "load-error"; error: string; plan?: StudioArtifactConversionPlan};
 
 // Mirrors the "pokie" package's own ArtifactTargetType -- the closed vocabulary ArtifactBuilderRegistry
 // (and "pokie build <project> --target <target>") builds toward. Studio-client never imports the pokie

@@ -1,4 +1,4 @@
-import {OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, PokieGame} from "pokie";
+import {ArtifactConversionPlan, OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, PokieGame} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -6,6 +6,14 @@ import {StudioOutcomeLibraryGenerateService} from "../../../../cli/studio/outcom
 import {buildAlternateFixtureGame, buildFixtureGame, buildUnsupportedFixtureGame} from "../../../weightedoutcome/generate/GenerateTestFixtures.js";
 
 const POKIE_VERSION = "9.9.9";
+
+const plannedOutcomeLibrary: ArtifactConversionPlan = {
+    status: "planned",
+    source: {kind: "tsPackage", capabilities: ["outcome-library-generate"]},
+    target: {kind: "outcomeLibrary", capabilities: ["outcome-library-read"]},
+    steps: [{kind: "generateOutcomeLibrary", choice: "materialize", estimatedWork: "generate", input: {kind: "tsPackage", capabilities: []}, output: {kind: "outcomeLibrary", capabilities: []}}],
+    preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false},
+};
 
 // Real generateExactWeightedOutcomeLibrary/estimateExactOutcomeSpaceSize/OutcomeLibraryBundleWriter/Reader
 // against a real temp directory -- same discipline as OutcomeLibraryGenerateWorkflow.integration.test.ts,
@@ -29,6 +37,33 @@ describe("StudioOutcomeLibraryGenerateService", () => {
     }
 
     describe("estimate", () => {
+        it("carries the server planner decision through estimate and generation", async () => {
+            const planning = {prepare: jest.fn(() => Promise.resolve(plannedOutcomeLibrary))};
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(buildFixtureGame()),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                planning,
+            );
+
+            const estimate = await svc.estimate(projectRoot, {});
+            const generated = await svc.generate(projectRoot, {});
+
+            expect(estimate).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
+            expect(generated).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
+            expect(planning.prepare).toHaveBeenNthCalledWith(1, projectRoot, "outcomeLibrary");
+            expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary");
+        });
+
         it("reports the exact strategy for a small fixture game", async () => {
             const result = await service().estimate(projectRoot, {});
             expect(result).toMatchObject({status: "ok", strategy: "exact", requiresBounded: false, totalOutcomeSpaceSize: 6});

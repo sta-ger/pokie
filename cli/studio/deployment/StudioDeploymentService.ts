@@ -20,6 +20,7 @@ import type {StudioDeploymentRunView} from "./StudioDeploymentRunView.js";
 import type {StudioDeploymentTargetSummary} from "./StudioDeploymentTargetSummary.js";
 import {toStudioDeploymentRunView} from "./toStudioDeploymentRunView.js";
 import type {ValidatedDeploymentRunRequest} from "./validateDeploymentRunRequest.js";
+import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
 
 const DEPLOYMENT_OUTPUT_DIRNAME = "deployment";
 
@@ -87,6 +88,7 @@ export class StudioDeploymentService {
     private readonly readFile: (resolvedPath: string) => string;
     private readonly realpath: (resolvedPath: string) => string;
     private readonly resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined>;
+    private readonly planning: StudioArtifactConversionPlanning;
 
     constructor(
         externalDeploymentService: ExternalDeploymentServicing = new ExternalDeploymentService(),
@@ -96,6 +98,7 @@ export class StudioDeploymentService {
         bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
         stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
         resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined> = resolveCurrentBuildModeIds,
+        planning: StudioArtifactConversionPlanning = new StudioArtifactConversionPlanningService("unknown"),
     ) {
         this.externalDeploymentService = externalDeploymentService;
         this.createLocalTarget = createLocalTarget;
@@ -104,6 +107,7 @@ export class StudioDeploymentService {
         this.bundleReader = bundleReader;
         this.stakeEngineImporter = stakeEngineImporter;
         this.resolveBuildModeIds = resolveBuildModeIds;
+        this.planning = planning;
     }
 
     public listTargets(projectRoot: string): StudioDeploymentTargetSummary[] {
@@ -136,6 +140,10 @@ export class StudioDeploymentService {
     // that fails to load stops the whole request before ExternalDeploymentService is ever called, since
     // there's no well-formed input to give it yet), then runs the one real pipeline call.
     public async run(projectRoot: string, request: ValidatedDeploymentRunRequest): Promise<StudioDeploymentRunResult> {
+        // Deployment owns SDK-specific delivery, but the library it deploys is a
+        // planner-governed prerequisite.  Carry that exact server plan forward so
+        // the browser never has to infer whether it can create/reuse one.
+        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary");
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
         if (target === undefined) {
@@ -183,7 +191,13 @@ export class StudioDeploymentService {
         // a "preview" variant — a brand-new, unfrozen object, never a mutation of the registered one.
         const runnableTarget = request.publish ? target : {...target, runtimeAdapter: undefined};
         const result = await this.externalDeploymentService.deploy(runnableTarget, modes);
-        return {status: "ok", view: toStudioDeploymentRunView(result, target.id, request.publish)};
+        return {
+            status: "ok",
+            view: {
+                ...toStudioDeploymentRunView(result, target.id, request.publish),
+                ...(plan === undefined ? {} : {plan}),
+            },
+        };
     }
 
     private buildRegistry(projectRoot: string): ExternalDeploymentTargetRegistry {

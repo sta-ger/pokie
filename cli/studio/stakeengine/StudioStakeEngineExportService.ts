@@ -10,12 +10,15 @@ import {
     StakeEngineExportValidator,
     StakeEngineImporter,
     StakeEngineImporting,
+    describeArtifactConversionPlanDiagnostic,
 } from "pokie";
 import fs from "fs";
+import path from "path";
 import {loadOutcomeLibraryFromSelector} from "../outcomeLibrary/loadOutcomeLibraryFromSelector.js";
 import type {OutcomeLibrarySelector} from "../outcomeLibrary/OutcomeLibrarySelector.js";
 import {resolveProjectDirectory} from "../outcomeLibrary/resolveProjectDirectory.js";
 import {canonicalizeOutcomeIdsForStakeEngine} from "./canonicalizeOutcomeIdsForStakeEngine.js";
+import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
 import type {StudioStakeEngineExportModeInput} from "./StudioStakeEngineExportModeInput.js";
 import type {StudioStakeEngineExportValidateView} from "./StudioStakeEngineExportValidateView.js";
 import type {StudioStakeEngineExportView} from "./StudioStakeEngineExportView.js";
@@ -59,6 +62,7 @@ export class StudioStakeEngineExportService {
     // narrow hash resolver lets this service reject a stale canonical bundle without learning how a
     // Blueprint Project is materialized or how a game is loaded.
     private readonly resolveCurrentConfigHash: (projectRoot: string) => Promise<string | undefined>;
+    private readonly planning: StudioArtifactConversionPlanning;
 
     constructor(
         pokieVersion: string,
@@ -69,6 +73,7 @@ export class StudioStakeEngineExportService {
         bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
         stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
         resolveCurrentConfigHash: (projectRoot: string) => Promise<string | undefined> = () => Promise.resolve(undefined),
+        planning: StudioArtifactConversionPlanning = new StudioArtifactConversionPlanningService(pokieVersion),
     ) {
         this.exporter = exporter;
         this.validator = validator;
@@ -77,6 +82,7 @@ export class StudioStakeEngineExportService {
         this.bundleReader = bundleReader;
         this.stakeEngineImporter = stakeEngineImporter;
         this.resolveCurrentConfigHash = resolveCurrentConfigHash;
+        this.planning = planning;
     }
 
     // The exact preflight StakeEngineExporter itself runs (and aborts the whole export on) before writing
@@ -85,9 +91,10 @@ export class StudioStakeEngineExportService {
     // count, libraryId/hash) read straight off each loaded library, never Stake-specific and never
     // recomputed beyond what computeWeightedOutcomeLibraryHash already does for every other tab.
     public async validate(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): Promise<StudioStakeEngineExportValidateView> {
+        const plan = await this.planning.prepare(projectRoot, "stakeAdapter");
         const loaded = await this.loadModes(projectRoot, modes);
         if (loaded.status === "load-error") {
-            return loaded;
+            return {...loaded, ...(plan === undefined ? {} : {plan})};
         }
 
         const issues = this.validator.validate(loaded.loaded);
@@ -102,6 +109,7 @@ export class StudioStakeEngineExportService {
             })),
             errors: issues.filter((issue) => issue.severity === "error"),
             warnings: issues.filter((issue) => issue.severity !== "error"),
+            ...(plan === undefined ? {} : {plan}),
         };
     }
 
@@ -123,14 +131,18 @@ export class StudioStakeEngineExportService {
         outDir: string,
         overwrite: boolean,
     ): Promise<StudioStakeEngineExportView> {
+        const plan = await this.planning.prepare(projectRoot, "stakeAdapter", path.resolve(projectRoot, outDir));
+        if (plan?.status === "unavailable") {
+            return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
+        }
         const resolvedOutDir = resolveProjectDirectory(projectRoot, outDir, this.realpath);
         if (resolvedOutDir.status === "error") {
-            return {status: "load-error", error: resolvedOutDir.message};
+            return {status: "load-error", error: resolvedOutDir.message, ...(plan === undefined ? {} : {plan})};
         }
 
         const loaded = await this.loadModes(projectRoot, modes);
         if (loaded.status === "load-error") {
-            return loaded;
+            return {...loaded, ...(plan === undefined ? {} : {plan})};
         }
 
         if (fs.existsSync(resolvedOutDir.resolvedPath) && fs.readdirSync(resolvedOutDir.resolvedPath).length > 0 && !overwrite) {
@@ -142,6 +154,7 @@ export class StudioStakeEngineExportService {
                 error: overwritable
                     ? `"${outDir}" already exists and is not empty. Resubmit with "overwrite": true to replace it.`
                     : `"${outDir}" already exists and is not empty, and wasn't produced by a previous Stake Engine export. Choose a different output directory or empty it first.`,
+                ...(plan === undefined ? {} : {plan}),
             };
         }
 
@@ -149,14 +162,14 @@ export class StudioStakeEngineExportService {
         try {
             result = await this.exporter.exportToDirectory(loaded.loaded, resolvedOutDir.resolvedPath);
         } catch (error) {
-            return {status: "load-error", error: `Could not export to "${outDir}": ${error instanceof Error ? error.message : String(error)}`};
+            return {status: "load-error", error: `Could not export to "${outDir}": ${error instanceof Error ? error.message : String(error)}`, ...(plan === undefined ? {} : {plan})};
         }
 
         const errors = result.issues.filter((issue) => issue.severity === "error");
         if (result.manifest === undefined || errors.length > 0) {
-            return {status: "invalid", errors, warnings: result.issues.filter((issue) => issue.severity !== "error")};
+            return {status: "invalid", errors, warnings: result.issues.filter((issue) => issue.severity !== "error"), ...(plan === undefined ? {} : {plan})};
         }
-        return {status: "ok", outDir: result.outDir, files: result.files, manifest: result.manifest, warnings: result.issues};
+        return {status: "ok", outDir: result.outDir, files: result.files, manifest: result.manifest, warnings: result.issues, ...(plan === undefined ? {} : {plan})};
     }
 
     // Rejects a bundle/Stake Engine selector whose own modeName names a different mode than its own
