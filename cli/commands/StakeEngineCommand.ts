@@ -2,6 +2,7 @@ import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
+    ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
     ArtifactImportOutputPlan,
     loadWeightedOutcomeLibraryFromBundle,
@@ -463,10 +464,29 @@ export class StakeEngineCommand implements CliCommandHandling {
         options: ImportOptions,
         prepared?: {readonly source: PokieProject; readonly plan: ArtifactImportOutputPlan},
     ): Promise<number> {
-        if (prepared !== undefined) {
-            this.planner.assertImportOutputPlanCurrent(prepared.plan, prepared.source, options.outDir);
+        if (prepared === undefined) {
+            const result = await this.importer.importFromDirectory(options.stakeDir);
+            return this.reportImport(options, result);
         }
-        const result = await this.importer.importFromDirectory(options.stakeDir);
+        const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, options.outDir, {
+            read: () => this.importer.importFromDirectory(options.stakeDir),
+            canPublish: (result) => result.issues.every((issue) => issue.severity !== "error"),
+            beforePublish: () => {
+                const destination = new ArtifactBuilderRegistry().checkDestination("outcomeLibrary", options.outDir, prepared.source.rootPath);
+                if (!destination.available) throw new Error(destination.message ?? `The import destination "${options.outDir}" is unavailable.`);
+            },
+            publish: (result) => this.importWriter.writeToDirectory(result, options.outDir),
+        });
+        return this.reportImport(options, execution.read, execution.published, execution.publication);
+    }
+
+    /** Adapters present an import operation's result; the prepared plan owns its durable publication boundary. */
+    private async reportImport(
+        options: ImportOptions,
+        result: Awaited<ReturnType<StakeEngineImporting["importFromDirectory"]>>,
+        published?: boolean,
+        written?: Awaited<ReturnType<StakeEngineImportWriting["writeToDirectory"]>>,
+    ): Promise<number> {
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const infos = result.issues.filter((issue) => issue.severity !== "error");
 
@@ -476,12 +496,12 @@ export class StakeEngineCommand implements CliCommandHandling {
             return 1;
         }
 
-        if (prepared !== undefined) {
-            // Source recognition/provenance and the durable directory are both
-            // rechecked immediately before atomic publication.
-            this.planner.assertImportOutputPlanCurrent(prepared.plan, prepared.source, options.outDir);
+        if (published === undefined) {
+            written = await this.importWriter.writeToDirectory(result, options.outDir);
         }
-        const written = await this.importWriter.writeToDirectory(result, options.outDir);
+        if (written === undefined) {
+            throw new Error("The prepared import did not publish its Outcome Library output.");
+        }
         const writeErrors = written.issues.filter((issue) => issue.severity === "error");
         if (writeErrors.length > 0) {
             console.error(`Could not write imported Outcome Library to "${options.outDir}" (${writeErrors.length} error(s)):`);

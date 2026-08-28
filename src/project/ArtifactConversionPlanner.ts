@@ -111,6 +111,25 @@ export type ArtifactImportOutputPlan = {
     };
 };
 
+/**
+ * The format reader and atomic writer are intentionally supplied by the
+ * import boundary, while the prepared operation owns their ordering.  This
+ * keeps an exchange import one-way without making PAR or Stake command code
+ * responsible for deciding when a durable output is safe to publish.
+ */
+export type ArtifactImportOutputExecution<ReadResult, PublishedResult> = {
+    readonly read: () => Promise<ReadResult> | ReadResult;
+    readonly canPublish: (result: ReadResult) => boolean;
+    readonly beforePublish: () => void;
+    readonly publish: (result: ReadResult) => Promise<PublishedResult> | PublishedResult;
+};
+
+export type ArtifactImportOutputExecutionResult<ReadResult, PublishedResult> = {
+    readonly read: ReadResult;
+    readonly published: boolean;
+    readonly publication?: PublishedResult;
+};
+
 // Presentation-only compatibility wording for callers that historically showed the product matrix.  It is
 // derived from a planner result (rather than used to choose an edge), so execution and preflight always retain
 // the richer failed-edge diagnostic even while long-lived CLI/Studio text remains recognizable.
@@ -315,6 +334,31 @@ export class ArtifactConversionPlanner {
         if (path.resolve(destinationPath) !== plan.output.canonicalLocation) {
             throw new Error("The import destination changed after this operation was prepared; prepare a new import before executing it.");
         }
+    }
+
+    /**
+     * Executes one already-prepared exchange import.  Readers may report
+     * validation errors without creating an output; once their result is
+     * publishable, this operation rebinds provenance and destination before
+     * handing control to the format's atomic publisher.  In particular an
+     * adapter cannot accidentally write after source/destination drift merely
+     * because it performed its read before the final write.
+     */
+    public async executeImportOutputPlan<ReadResult, PublishedResult>(
+        plan: ArtifactImportOutputPlan,
+        source: PokieProject,
+        destinationPath: string,
+        execution: ArtifactImportOutputExecution<ReadResult, PublishedResult>,
+    ): Promise<ArtifactImportOutputExecutionResult<ReadResult, PublishedResult>> {
+        this.assertImportOutputPlanCurrent(plan, source, destinationPath);
+        const read = await execution.read();
+        if (!execution.canPublish(read)) return {read, published: false};
+        // The destination policy belongs at the durable-publication boundary,
+        // after format diagnostics but before any writer allocates output.
+        this.assertImportOutputPlanCurrent(plan, source, destinationPath);
+        execution.beforePublish();
+        this.assertImportOutputPlanCurrent(plan, source, destinationPath);
+        return {read, published: true, publication: await execution.publish(read)};
     }
 
     public planIdentity(source: ArtifactIdentity, targetKind: ArtifactTargetType, options: ArtifactConversionPlanningOptions = {}): ArtifactConversionPlan {

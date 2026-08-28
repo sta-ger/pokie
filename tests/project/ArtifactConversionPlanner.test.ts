@@ -217,4 +217,42 @@ describe("ArtifactConversionPlanner", () => {
         expect(() => planner.assertImportOutputPlanCurrent(plan, {...source, rootPath: "/moved/source.par.xlsx"}, "/imports/slot.blueprint.json"))
             .toThrow(/source changed/i);
     });
+
+    it("owns the durable import publication boundary after a successful reader result", async () => {
+        const source = project("parWorkbook");
+        const plan = planner.planImportOutput(source, "blueprint", "/imports/slot.blueprint.json");
+        const events: string[] = [];
+
+        const result = await planner.executeImportOutputPlan(plan, source, "/imports/slot.blueprint.json", {
+            read: () => {
+                events.push("read");
+                return {valid: true};
+            },
+            canPublish: (read) => read.valid,
+            beforePublish: () => events.push("destination"),
+            publish: () => {
+                events.push("publish");
+                return "published";
+            },
+        });
+
+        expect(events).toEqual(["read", "destination", "publish"]);
+        expect(result).toEqual({read: {valid: true}, published: true, publication: "published"});
+    });
+
+    it("suppresses import publication when the exchange reader reports a blocking result", async () => {
+        const source = project("stakeAdapter");
+        const plan = planner.planImportOutput(source, "outcomeLibrary", "/imports/outcomes");
+        const publish = jest.fn();
+
+        const result = await planner.executeImportOutputPlan(plan, source, "/imports/outcomes", {
+            read: () => ({valid: false}),
+            canPublish: (read) => read.valid,
+            beforePublish: jest.fn(),
+            publish,
+        });
+
+        expect(result).toEqual({read: {valid: false}, published: false});
+        expect(publish).not.toHaveBeenCalled();
+    });
 });

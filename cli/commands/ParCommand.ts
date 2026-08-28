@@ -233,10 +233,27 @@ export class ParCommand implements CliCommandHandling {
     ): Promise<number> {
         if (prepared === undefined) {
             await this.checkImportTarget(inputPath);
-        } else {
-            this.planner.assertImportOutputPlanCurrent(prepared.plan, prepared.source, outPath);
+            const result = await this.importer.importFromFile(inputPath);
+            return this.reportAndPublishImport(inputPath, outPath, format, result);
         }
-        const result = await this.importer.importFromFile(inputPath);
+        const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, outPath, {
+            read: () => this.importer.importFromFile(inputPath),
+            canPublish: (result) => result.issues.every((issue) => issue.severity !== "error"),
+            beforePublish: () => this.assertDestinationIsAvailable(inputPath, outPath),
+            publish: (result) => this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`),
+        });
+        return this.reportAndPublishImport(inputPath, outPath, format, execution.read, execution.published, execution.publication);
+    }
+
+    /** Presents the terminal result only; prepared imports have already run their reader/publisher lifecycle. */
+    private reportAndPublishImport(
+        inputPath: string,
+        outPath: string,
+        format: ImportFormat,
+        result: Awaited<ReturnType<ParSheetImporting["importFromFile"]>>,
+        published?: boolean,
+        writeResult?: void | BlueprintFileWriteResult,
+    ): number {
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
 
@@ -253,13 +270,10 @@ export class ParCommand implements CliCommandHandling {
         // Import diagnostics take precedence over output conflicts: a malformed workbook must still
         // explain what to repair, and it has not attempted any output write at this point. Once the
         // workbook is valid, enforce the exact source-alias/no-overwrite policy artifact builds use.
-        this.assertDestinationIsAvailable(inputPath, outPath);
-        if (prepared !== undefined) {
-            // Keep recognition/provenance and destination binding live through
-            // the reader phase immediately before durable publication.
-            this.planner.assertImportOutputPlanCurrent(prepared.plan, prepared.source, outPath);
+        if (published === undefined) {
+            this.assertDestinationIsAvailable(inputPath, outPath);
+            writeResult = this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`);
         }
-        const writeResult = this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`);
         if (writeResult?.status === "conflict") {
             // writeBlueprintFileAtomically closes the small race after the preflight check. Re-read
             // the shared policy for the same actionable diagnostic a non-racing conflict receives.
