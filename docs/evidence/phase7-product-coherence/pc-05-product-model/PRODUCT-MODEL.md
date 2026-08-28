@@ -48,6 +48,16 @@ mode, seed and round.  A Stake export remains analyzable but read-only until
 converted back to a native library.  PAR is editable exchange input, not a
 runnable project.  WASM is metadata inspection only.
 
+The registry also separates durable artifacts from helper values that once
+appeared as artifact-like relationship labels. A Stake import is an operation,
+not a third output beside its reconstructed Outcome Library and its
+`config.json`/optional `source-provenance.json` companions. A Studio replay
+download is a delivery envelope for the canonical replay descriptor, and WASM
+packaging preflight is advisory in-memory analysis, not a WASM build. A
+multi-mode simulation is a distinct per-mode report set and never a blended
+result. These classifications keep the inventory closed without inventing
+formats POKIE does not persist.
+
 ## Loss, provenance, stale and compatibility rules
 
 | Situation | Required product meaning | Required diagnostic / recovery |

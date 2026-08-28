@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "schema_version": 2,
+  "schema_version": 3,
   "purpose": "Canonical product-model inventory. This records product contracts, not proof that a particular user run produced every artifact.",
   "source_revision": "71f8bfa9",
   "reference_fields": ["imports_from", "exports_to", "prerequisite_for"],
@@ -139,6 +139,22 @@
       "support_status": "supported"
     },
     {
+      "id": "simulationReportSet",
+      "label": "Per-mode simulation report set",
+      "shape": "JSON object containing one SimulationReport per declared bet mode",
+      "created_by": ["cli:sim --mode all"],
+      "recognized_by": ["cli:report", "cli:diff"],
+      "imports_from": ["tsPackage", "outcomeLibrary"],
+      "exports_to": ["renderedReport"],
+      "validates_by": ["simulation report-set parser in cli:report/diff"],
+      "reports_by": ["cli:report", "cli:diff"],
+      "replays_by": [],
+      "prerequisite_for": ["renderedReport"],
+      "provenance": "Carries one independently generated SimulationReport for each declared mode; it deliberately has no blended aggregate because POKIE does not know real mode-selection weights.",
+      "compatibility": "A report set is analysis output only. Consumers must preserve its per-mode identity rather than treating it as one replayable result or a playable project.",
+      "support_status": "supported"
+    },
+    {
       "id": "renderedReport",
       "label": "Rendered simulation report",
       "shape": "Markdown or HTML report",
@@ -272,6 +288,10 @@
     {"id": "certificationConfig", "type": "non-artifact-prerequisite", "purpose": "per-mode certification sample-source configuration", "persisted_by_pokie": false},
     {"id": "externalDeploymentTarget", "type": "non-artifact-prerequisite", "purpose": "registered adapter descriptor/capabilities", "persisted_by_pokie": false},
     {"id": "managedOutcomeProject", "type": "non-artifact-prerequisite", "purpose": "registry-owned compatible Outcome Library lifecycle location", "persisted_by_pokie": true},
-    {"id": "studioProjectDashboard", "type": "non-artifact-prerequisite", "purpose": "Studio UI destination enabled by a local project registry entry", "persisted_by_pokie": false}
+    {"id": "studioProjectDashboard", "type": "non-artifact-prerequisite", "purpose": "Studio UI destination enabled by a local project registry entry", "persisted_by_pokie": false},
+    {"id": "stakeAdapterImport", "type": "non-artifact-prerequisite", "purpose": "the Stake-import operation, not a separate file: it consumes a Stake export and writes the separately inventoried Outcome Library plus config.json and optional source-provenance.json companions", "persisted_by_pokie": false},
+    {"id": "simulationReplayDescriptor", "type": "non-artifact-prerequisite", "purpose": "legacy relationship label only; simulation replay uses the separately inventoried runtimeReplayDescriptor and, for native sources, its embedded exact outcome-source provenance rather than a second simulation-specific file", "persisted_by_pokie": false},
+    {"id": "studioReplayDownload", "type": "non-artifact-prerequisite", "purpose": "Studio HTTP download envelope (content type, filename and JSON body) around the separately inventoried runtimeReplayDescriptor; it does not create another replay artifact", "persisted_by_pokie": false},
+    {"id": "wasmPackagingPreflight", "type": "non-artifact-prerequisite", "purpose": "advisory in-memory assessment of a tsPackage's Node API/dependency portability; it neither produces a WASM artifact nor grants a runtime/build capability", "persisted_by_pokie": false}
   ]
 }

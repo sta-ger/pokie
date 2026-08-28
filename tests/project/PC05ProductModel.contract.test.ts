@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import {registerCliCommands} from "../../cli/registerCliCommands.js";
 
 type InventoryItem = {
     id: string;
@@ -61,6 +62,7 @@ describe("PC-05 product-model contract", () => {
                 "roundArtifact",
                 "runtimeSession",
                 "simulationReport",
+                "simulationReportSet",
                 "renderedReport",
                 "runtimeReplayDescriptor",
                 "certificationEvidenceBundle",
@@ -76,6 +78,9 @@ describe("PC-05 product-model contract", () => {
         expect(roundArtifact?.exports_to).toEqual(expect.arrayContaining(["runtimeReplayDescriptor", "certificationEvidenceBundle"]));
         const stakeImportConfig = registry.artifact_kinds.find((item) => item.id === "stakeImportReExportConfig");
         expect(stakeImportConfig?.imports_from).toEqual(expect.arrayContaining(["stakeAdapter", "outcomeLibrary"]));
+        for (const nonArtifactId of ["stakeAdapterImport", "simulationReplayDescriptor", "studioReplayDownload", "wasmPackagingPreflight"]) {
+            expect(registry.non_artifact_prerequisites).toContainEqual(expect.objectContaining({id: nonArtifactId, type: "non-artifact-prerequisite"}));
+        }
     });
 
     it("covers every registered public route and records its legacy aliases without advertising them", () => {
@@ -83,37 +88,56 @@ describe("PC-05 product-model contract", () => {
         const routeInventory = matrix.slice(matrix.indexOf("## Public route inventory and aliases"), matrix.indexOf("## Closure ledger"));
 
         expect(routeInventory).toContain("The public CLI inventory is the command tree registered by `registerCliCommands()`.");
-        for (const route of [
+        const registeredRoutes = registerCliCommands({
+            version: "test-version",
+            pokiePackageRoot: "/fake/pokie/root",
+            clientRoot: "/fake/pokie/root/dist/cli/client",
+            studioRoot: "/fake/pokie/root/dist/cli/studio-client",
+        }).map((command) => command.getName());
+        const publicRoutes = registeredRoutes.filter((route) => route !== "__studio");
+        expect(registeredRoutes).toEqual(expect.arrayContaining(["__studio"]));
+        expect(publicRoutes.sort()).toEqual([
             "build",
-            "certification build",
-            "certification verify",
+            "certification",
             "client",
             "create",
             "dev",
             "diff",
             "edit",
             "export",
-            "fairness seed-commit",
-            "fairness commit",
-            "fairness reveal",
-            "fairness verify",
+            "fairness",
             "generate",
             "import",
             "init",
             "inspect",
-            "par export",
-            "par import",
-            "reel generate",
+            "par",
+            "reel",
             "replay",
             "report",
             "sample",
             "serve",
             "sim",
             "validate",
-        ]) {
+        ].sort());
+        for (const route of publicRoutes) {
             expect(routeInventory).toContain(`\`${route}\``);
         }
-        for (const legacyAlias of ["outcomelibrary generate|build", "outcomesource inspect|sample", "outcomesource diff", "stakeengine import", "stakeengine analyze|diff"]) {
+        for (const route of ["certification build", "certification verify", "fairness seed-commit", "fairness commit", "fairness reveal", "fairness verify", "par export", "par import", "reel generate"]) {
+            expect(routeInventory).toContain(`\`${route}\``);
+        }
+        for (const legacyAlias of [
+            "outcomelibrary build",
+            "outcomelibrary generate",
+            "outcomelibrary validate",
+            "outcomesource inspect",
+            "outcomesource sample",
+            "outcomesource diff",
+            "stakeengine export",
+            "stakeengine import",
+            "stakeengine analyze",
+            "stakeengine diff",
+            "`__studio`",
+        ]) {
             expect(routeInventory).toContain(legacyAlias);
         }
         expect(routeInventory).toContain("Studio domain route");
@@ -138,6 +162,10 @@ describe("PC-05 product-model contract", () => {
         for (const [id, owner] of Object.entries(expectedOwners)) {
             expect(closureRow(matrix, id)).toContain(owner);
         }
+        expect(Object.keys(expectedOwners)).toHaveLength(11);
+        expect(closureRow(matrix, "PC-05-STUDIO-01")).not.toContain("PC-07");
+        expect(closureRow(matrix, "PC-05-STUDIO-02")).not.toContain("PC-08");
+        expect(closureRow(matrix, "PC-05-DUP-01")).not.toContain("PC-08");
         const remediatedImportGrammar = closureRow(matrix, "PC-05-CLI-04");
         expect(remediatedImportGrammar).toContain("Frozen observation (immutable)");
         expect(remediatedImportGrammar).toContain("previously remediated");

@@ -10,17 +10,17 @@ some other route.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Create an editable game design | `create` (`--blank`, `--random`, wizard) | Home Design / create | `getting-started.md` | `GameBlueprint`; default output derives from id | valid blueprint required before dependent builds | file conflict: no overwrite; invalid fields are actionable | PC-09 docs/surface sweep |
 | Scaffold a ready-to-run project | `init <directory>` | Design / Build project creation flow | `getting-started.md`, `game-packages.md` | starter Blueprint materialized as a local TypeScript package with the running POKIE version | chosen empty/safe directory; local dependency installation | unsafe/existing destination is refused before scaffold replacement; installed version is stated | PC-16 consolidation sweep |
-| Edit a design | `edit` | Design editor | `getting-started.md` | canonical Blueprint JSON | load then validate before save/build | edited source invalidates results | PC-07 Studio-source recovery |
+| Edit a design | `edit` | Design editor | `getting-started.md` | canonical Blueprint JSON | load then validate before save/build | edited source invalidates results | PC-10 Studio recovery sweep |
 | Recognize/open a project | `inspect`, path-taking commands | Projects / register/open | `docs/README.md`, `game-packages.md` | `ProjectTargetResolver`, `ProjectType` | resolver classifies Blueprint/package/library/Stake/PAR/WASM | name the recognized type and next action; do not leak parser internals | PC-06 diagnostic sweep |
 | Exchange a PAR workbook | `par export`, `par import`; `export --to workbook` | PAR import/export panel | `stake-engine-import.md` is not authoritative; PAR docs/examples are | `ParSheetExporter`/`ParSheetImporter`; XLSX | Blueprint → workbook → Blueprint | workbook is exchange-only; say import-before-run | PC-09 docs/surface sweep |
 | Build a runnable package | `build --target tsPackage` | Build/Export artifact target | `game-packages.md` | `ArtifactBuilderRegistry`, `BUILD_PRODUCT_MATRIX`; default sibling `tsPackage` | Blueprint; `GameBlueprintValidator`, materialization | unsupported source uses shared matrix diagnostic | PC-06 contract sweep |
 | Generate or build an Outcome Library | `generate` (canonical), `build --target outcomeLibrary`, `export --to outcomes` (duplicate conversion aliases); legacy/internal `outcomelibrary generate/build` | Outcome Libraries / Generate and Build-Export | `outcome-library-bundle.md` | registry-managed prerequisite workflow; native bundle manifest/index/JSONL | Blueprint/package must support exact enumeration; library deep-validation | unsupported generation gives domain reason and alternative; no silent approximate fallback | PC-16 consolidation sweep |
 | Inspect, sample or analyze precomputed outcomes | `inspect`, `sample`, `report`, `diff`; legacy/internal `outcomesource inspect/sample/diff` | Outcome source overview / Inspect, Sample, report comparison | `outcome-library-bundle.md`, `stake-engine-standalone.md` | `OUTCOME_SOURCE_*` capabilities | native library can sample; native library and Stake export can analyze/diff | clearly distinguish read-only Stake source from drawable native library | PC-06 diagnostic sweep |
-| Export Stake files | `build --target stakeAdapter`, `export --to adapter` | Build/Export and Stake Export | `stake-engine-export.md` | registry plus `StakeEngineExporter` | library, or Blueprint/package via managed compatible library | show prerequisite generation and output conflict, not a second incompatible workflow | PC-08 duplication sweep |
+| Export Stake files | `build --target stakeAdapter`, `export --to adapter`; legacy/internal `stakeengine export` | Build/Export and Stake Export | `stake-engine-export.md` | registry plus `StakeEngineExporter` | library, or Blueprint/package via managed compatible library | show prerequisite generation and output conflict, not a second incompatible workflow | PC-16 command/conversion consolidation sweep |
 | Import Stake files | `import` (public); legacy/internal `stakeengine import` | Project registration/open only; no equivalent conversion action | `stake-engine-import.md` | `StakeEngineImporter` reconstructs an Outcome Library plus re-export-config and optional source-provenance companions | POKIE-produced export needs `pokie-manifest.json`; generic Stake is analysis-only | incompatible library input must name its type, supported imports and recovery | PC-06 diagnostic sweep; PC-16 consolidation sweep |
 | Validate artifacts | `validate`; legacy/internal `outcomelibrary validate`; `certification verify` | Blueprint check, Outcome/Stake export validate, certification source validate | artifact-specific docs | resolver plus validators; `--deep` applies to libraries | target-specific validation only | state what was checked and what is not checked (notably WASM/runtime) | PC-11 Studio validation sweep; PC-06 CLI contract sweep |
 | Run/play a game | `serve`, `client`, `dev` | Play | `game-packages.md`, `pregenerated-runtime.md` | `RUNTIME_EXECUTE_CAPABILITY` or native outcome-source sampling | runnable package or native Outcome Library, mode when required | package execution versus pre-generated draw must remain explicit | PC-08 Studio parity |
-| Simulate | `sim --out` | Simulation | `getting-started.md`, `pregenerated-runtime.md` | package runtime or `OUTCOME_SOURCE_SAMPLE_CAPABILITY`; report JSON | package or native library; seeded native simulation is replayable | reject missing native-library seed/mode when exact replay is promised | PC-06 contract sweep |
+| Simulate | `sim --out`; `sim --mode all` produces a per-mode SimulationReportSet | Simulation | `getting-started.md`, `pregenerated-runtime.md` | package runtime or `OUTCOME_SOURCE_SAMPLE_CAPABILITY`; report JSON/report-set | package or native library; seeded native simulation is replayable | reject missing native-library seed/mode when exact replay is promised; never invent a blended multi-mode RTP | PC-06 contract sweep |
 | Render/compare reports | `report`, `diff` | Simulation results only | `getting-started.md`, `stake-engine-standalone.md` | simulation-report parser / outcome-source analyzer | report JSON or analyzable native/Stake source | presentation output is analysis, never a project artifact | PC-08 Studio parity |
 | Replay a result | `replay --out` | Replay (seed, artifact, session spin, simulation sources) | `pregenerated-runtime.md`, `round-artifacts.md` | exact native descriptor versus best-effort package replay | library id/hash/mode/seed/round must match for exact result | mismatch must identify stale/incompatible provenance; package replay says best effort | PC-06 provenance sweep |
 | Certify an Outcome Library | `certification build`, `certification verify` | Certification build/inspect/export | `certification-evidence-bundle.md` | `CertificationEvidenceBundle*` | native library and config; verify also requires live source | build/source validation differs from independent post-build verification | PC-11 Studio validation/certification sweep |
@@ -33,24 +33,33 @@ some other route.
 
 The public CLI inventory is the command tree registered by `registerCliCommands()`.
 The implementation-only names below are recorded only to make duplicate delegation
-auditable: they are deliberately not supported public commands.  A row in the
-main matrix names the destination semantics for every route.
+auditable: they are deliberately not supported public commands. The registered
+`__studio` adapter is likewise internal; its concrete `studio` launcher is not a
+public CLI alias. A row in the main matrix names the destination semantics for
+every public route.
 
 | Public CLI route | Alias / duplicate route treatment | Matrix operation |
 | --- | --- | --- |
 | `build` | `build --target outcomeLibrary/stakeAdapter/parWorkbook` overlaps `generate`, `export`, `par`; PC-16 owns consolidation | Build a runnable package / Generate or build an Outcome Library / Exchange a PAR workbook / Export Stake files |
-| `certification build`, `certification verify` | distinct build and independent verification routes | Certify an Outcome Library |
+| `certification` → `certification build`, `certification verify` | distinct build and independent verification routes | Certify an Outcome Library |
 | `client`, `dev`, `serve` | `dev` composes the two local browser/runtime routes | Run/play a game |
 | `create`, `edit`, `init` | design source, edit, and ready-to-run scaffold routes remain distinct goals | Create an editable game design / Edit a design / Scaffold a ready-to-run project |
 | `diff`, `report` | analyze both reports and eligible outcome sources; legacy `outcomesource diff` / `stakeengine analyze|diff` delegate to this goal | Inspect, sample or analyze precomputed outcomes / Render/compare reports |
 | `export` | `--to outcomes`, `--to adapter`, `--to workbook` are product aliases for generated artifacts | Generate or build an Outcome Library / Export Stake files / Exchange a PAR workbook |
-| `fairness seed-commit`, `fairness commit`, `fairness reveal`, `fairness verify` | commit/reveal lifecycle, not conversion aliases | Prove fairness |
+| `fairness` → `fairness seed-commit`, `fairness commit`, `fairness reveal`, `fairness verify` | commit/reveal lifecycle, not conversion aliases | Prove fairness |
 | `generate` | canonical public Outcome Library generation; legacy `outcomelibrary generate|build` is not public | Generate or build an Outcome Library |
-| `import`, `par import`, `par export` | `import` dispatches by recognized source; legacy `stakeengine import` is not public | Import Stake files / Exchange a PAR workbook |
+| `import`; `par` → `par import`, `par export` | `import` dispatches by recognized source; legacy `stakeengine import` is not public | Import Stake files / Exchange a PAR workbook |
 | `inspect`, `sample` | legacy `outcomesource inspect|sample` is not public; Stake remains analyze-only | Recognize/open a project / Inspect, sample or analyze precomputed outcomes |
-| `reel generate` | specialised Blueprint materialization route | Generate/inspect reel strips |
+| `reel` → `reel generate` | specialised Blueprint materialization route | Generate/inspect reel strips |
 | `replay`, `sim` | source-specific runtime versus pre-generated semantics are not aliases | Replay a result / Simulate |
 | `validate` | legacy `outcomelibrary validate` is not public; WASM remains metadata-only | Validate artifacts |
+
+| Internal-only route | Why it is not public | Matrix operation reached through the public route |
+| --- | --- | --- |
+| `outcomelibrary build`, `outcomelibrary generate`, `outcomelibrary validate` | delegated implementation namespace; public `generate`/`build`/`export`/`validate` own its user contract | Generate/build Outcome Library / Validate artifacts |
+| `outcomesource inspect`, `outcomesource sample`, `outcomesource diff` | delegated implementation namespace; public `inspect`/`sample`/`diff` own its user contract | Recognize/open / Inspect, sample or analyze outcomes |
+| `stakeengine export`, `stakeengine import`, `stakeengine analyze`, `stakeengine diff` | delegated implementation namespace; public `export`/`import`/`report`/`diff` own its user contract | Export/import Stake / Inspect, sample or analyze outcomes |
+| `name`, `studio`, `__studio` | utility and Studio-launcher implementation paths; neither is advertised in the public command tree | no public domain route |
 
 | Studio domain route | Alias / duplicate route treatment | Matrix operation |
 | --- | --- | --- |
