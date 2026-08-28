@@ -276,7 +276,7 @@ describe("StudioArtifactBuildService", () => {
                     if (options.signal?.aborted) throw new ArtifactBuildCancelledError();
                     return {outputPath: path.join(workDir, "out")};
                 },
-                executePlan: (_plan: unknown, target: ArtifactTargetType, source: PokieProject, destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => registry.build(target, source, destination, options),
+                executePlan: (plan: {target: {kind: ArtifactTargetType}}, source: PokieProject, destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => registry.build(plan.target.kind, source, destination, options),
             } as unknown as ArtifactBuilderRegistry;
             service = new StudioArtifactBuildService("1.3.0", registry, resolver);
 
@@ -354,7 +354,7 @@ describe("StudioArtifactBuildService", () => {
                     if (result.manifest === undefined) throw new Error("Expected the real Outcome writer to publish a valid bundle.");
                     return {outputPath: destination, managedProjectRoots: [destination]};
                 },
-                executePlan: (_plan: unknown, target: ArtifactTargetType, source: PokieProject, destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => registry.build(target, source, destination, options),
+                executePlan: (plan: {target: {kind: ArtifactTargetType}}, source: PokieProject, destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => registry.build(plan.target.kind, source, destination, options),
             } as unknown as ArtifactBuilderRegistry;
             service = new StudioArtifactBuildService("1.3.0", registry, resolver, (projectRoot) => {
                 managedProjects.push(projectRoot);
