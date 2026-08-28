@@ -178,6 +178,7 @@ describe("PC-05 product-model contract", () => {
                 "fairnessServerSeedCommitment",
                 "fairnessCommitment",
                 "fairnessProof",
+                "studioOutcomeLibrarySelector",
                 "externalDeploymentArtifact",
                 "managedOutcomeProjectsRegistry",
                 "studioOutcomeLibraryRegistryIndex",
@@ -411,6 +412,72 @@ describe("PC-05 product-model contract", () => {
         expect(productModel).toContain("`outcomeLibraryBundleDescriptor`");
         expect(productModel).toContain("`stakeEngineExportDescriptor`");
         expect(productModel).toContain("`stakeImportReExportConfig`");
+    });
+
+    it("reverse-audits the shared Studio outcome-library selector, its CLI-descriptor divergence, and target-owned external delivery", () => {
+        const registry = readRegistry();
+        const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
+        const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
+        const selectorType = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "outcomeLibrary", "OutcomeLibrarySelector.ts"), "utf-8");
+        const selectorLoader = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "outcomeLibrary", "loadOutcomeLibraryFromSelector.ts"), "utf-8");
+        const stakeService = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "stakeengine", "StudioStakeEngineExportService.ts"), "utf-8");
+        const deploymentService = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "deployment", "StudioDeploymentService.ts"), "utf-8");
+        const deploymentRequest = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "studio", "deployment", "validateDeploymentRunRequest.ts"), "utf-8");
+        const externalService = fs.readFileSync(path.join(__dirname, "..", "..", "src", "externaladapter", "ExternalDeploymentService.ts"), "utf-8");
+        const atomicWriter = fs.readFileSync(path.join(__dirname, "..", "..", "src", "externaladapter", "atomicallyWriteExternalDeploymentArtifactsToDirectory.ts"), "utf-8");
+        const cliDocs = fs.readFileSync(path.join(__dirname, "..", "..", "docs", "cli.md"), "utf-8");
+
+        for (const form of ['kind: "json"', 'kind: "bundle"', 'kind: "stakeengine"']) expect(selectorType).toContain(form);
+        expect(selectorLoader).toContain("loadWeightedOutcomeLibraryFromProjectFile(projectRoot, selector.path");
+        expect(selectorLoader).toContain("resolveProjectDirectory(projectRoot, selector.bundleDir");
+        expect(selectorLoader).toContain("resolveProjectDirectory(projectRoot, selector.stakeDir");
+        expect(selectorLoader).toContain("stakeEngineImporter.importFromDirectory");
+        for (const consumer of [stakeService, deploymentService]) {
+            expect(consumer).toContain("loadOutcomeLibraryFromSelector(");
+            expect(consumer).toContain("selectorModeName");
+            expect(consumer).toContain("describeSelectorModeMismatch");
+        }
+        expect(stakeService).toContain("validateBundleConfiguration");
+        expect(stakeService).toContain("Regenerate the library before exporting to Stake.");
+        expect(deploymentService).toContain("resolveBuildModeIds");
+        expect(deploymentService).toContain("describeBuildModesUnavailableForDeployment");
+        expect(deploymentService).toContain("request.publish ? target : {...target, runtimeAdapter: undefined}");
+        expect(deploymentRequest).toContain("validateOutcomeLibrarySelector");
+        expect(externalService).toContain("target.runtimeAdapter !== undefined ? await target.runtimeAdapter.deliver(generation) : undefined");
+        expect(atomicWriter).toContain("writeExternalDeploymentArtifactsToDirectory(artifacts, tempDir, writeFile)");
+        expect(atomicWriter).toContain("renameDirectory(stalePath, outDir)");
+        expect(atomicWriter).toContain("external-deployment-stale-output-cleanup-failed");
+
+        const selector = registry.artifact_kinds.find((item) => item.id === "studioOutcomeLibrarySelector");
+        expect(selector).toEqual(expect.objectContaining({
+            label: "Studio OutcomeLibrarySelector",
+            "imports_from": ["weightedOutcomeLibraryJson", "outcomeLibrary", "stakeAdapter"],
+            "exports_to": ["stakeAdapter", "externalDeploymentArtifact"],
+            "prerequisite_for": ["stakeAdapter", "externalDeploymentArtifact"],
+            containment: expect.stringContaining("realpath-aware containment"),
+            compatibility: expect.stringContaining("exactly the same mode"),
+            stale: expect.stringContaining("configHash"),
+            diagnostics: expect.stringContaining("mode-prefixed load errors"),
+            recovery: expect.stringContaining("regenerate a stale canonical bundle"),
+            "support_status": "supported-shared-studio-prerequisite-contract",
+        }));
+        const externalArtifact = registry.artifact_kinds.find((item) => item.id === "externalDeploymentArtifact");
+        expect(externalArtifact).toEqual(expect.objectContaining({
+            "imports_from": expect.arrayContaining(["studioOutcomeLibrarySelector", "weightedOutcomeLibraryJson", "outcomeLibrary", "stakeAdapter"]),
+            provenance: expect.stringContaining("publish:false"),
+            compatibility: expect.stringContaining("current build"),
+            containment: expect.stringContaining("recognized target output"),
+            diagnostics: expect.stringContaining("stage-specific"),
+            recovery: expect.stringContaining("rolls it back"),
+        }));
+        expect(matrix).toContain("Studio instead uses the shared transient `studioOutcomeLibrarySelector`");
+        expect(matrix).toContain("`docs/cli.md` Studio API currently (incorrectly) documents `libraryPath`");
+        expect(matrix).toContain("PC-05-STUDIO-03");
+        expect(productModel).toContain("`OutcomeLibrarySelector`");
+        expect(productModel).toContain("This is deliberately not a universal create-only rule");
+        expect(productModel).toContain("`docs/cli.md` still documents each");
+        expect(cliDocs).toContain('"libraryPath"');
+        expect(cliDocs).not.toContain('"librarySelector"');
     });
 
     it("source-backs the opt-in durable FileSessionRepository contract without treating server state as a project or replay artifact", () => {
@@ -891,6 +958,7 @@ describe("PC-05 product-model contract", () => {
             "PC-05-HANDOFF-01": "PC-09 Outcome Library sweep",
             "PC-05-DUP-01A": "PC-09 Outcome Library sweep",
             "PC-05-DUP-01B": "PC-10 Stake export sweep",
+            "PC-05-STUDIO-03": "PC-10 Stake export sweep; PC-16 Studio deployment/docs-surface sweep",
             "PC-05-DUP-01C": "PC-11 PAR conversion sweep",
             "PC-05-DUP-01D": "PC-15 public CLI/help/docs sweep",
             "PC-05-DUP-01E": "PC-16 Studio conversion sweep",
@@ -904,7 +972,7 @@ describe("PC-05 product-model contract", () => {
         for (const [id, owner] of Object.entries(expectedOwners)) {
             expect(closureOwner(matrix, id)).toBe(owner);
         }
-        expect(Object.keys(expectedOwners)).toHaveLength(16);
+        expect(Object.keys(expectedOwners)).toHaveLength(17);
         expect(matrix).not.toContain("| PC-05-DUP-01 |");
         expect(closureRow(matrix, "PC-05-STUDIO-01")).not.toContain("PC-07");
         expect(closureRow(matrix, "PC-05-STUDIO-01")).not.toContain("PC-10");
@@ -914,14 +982,18 @@ describe("PC-05 product-model contract", () => {
         expect(closureRow(matrix, "PC-05-DOC-01A")).not.toContain("PC-06");
         expect(closureRow(matrix, "PC-05-DUP-01D")).not.toContain("PC-16");
         expect(closureRow(matrix, "PC-05-DUP-01E")).not.toContain("PC-15");
+        expect(closureRow(matrix, "PC-05-STUDIO-03")).toContain("libraryPath");
+        expect(closureRow(matrix, "PC-05-STUDIO-03")).toContain("librarySelector");
         expect(acceptanceOwnershipRow(productModel, "PC-09")).toContain("DUP-01A");
         expect(acceptanceOwnershipRow(productModel, "PC-09")).toContain("HANDOFF-01");
         expect(acceptanceOwnershipRow(productModel, "PC-10")).toContain("DUP-01B");
+        expect(acceptanceOwnershipRow(productModel, "PC-10")).toContain("STUDIO-03");
         expect(acceptanceOwnershipRow(productModel, "PC-11")).toContain("DUP-01C");
         expect(acceptanceOwnershipRow(productModel, "PC-15")).toContain("CLI-03");
         expect(acceptanceOwnershipRow(productModel, "PC-15")).toContain("DOC-01A");
         expect(acceptanceOwnershipRow(productModel, "PC-16")).toContain("STUDIO-01");
         expect(acceptanceOwnershipRow(productModel, "PC-16")).toContain("DUP-01E");
+        expect(acceptanceOwnershipRow(productModel, "PC-16")).toContain("STUDIO-03");
         const remediatedImportGrammar = closureRow(matrix, "PC-05-CLI-04");
         expect(remediatedImportGrammar).toContain("Frozen observation (immutable)");
         expect(remediatedImportGrammar).toContain("previously remediated");
@@ -936,7 +1008,7 @@ describe("PC-05 product-model contract", () => {
         expect(operationOwner(matrix, "Edit a design")).toContain("No open mismatch");
         expect(operationOwner(matrix, "Build a runnable package")).toContain("PC-07 package build sweep");
         expect(operationOwner(matrix, "Simulate")).toBe("PC-08 runtime/source semantics sweep");
-        expect(operationOwner(matrix, "Deploy an external format")).toContain("No open mismatch");
+        expect(operationOwner(matrix, "Deploy an external format")).toContain("PC-16 Studio deployment/docs-surface sweep");
         expect(operationOwner(matrix, "Generate/inspect reel strips")).toContain("No open mismatch");
         for (const operation of [
             "Create an editable game design",

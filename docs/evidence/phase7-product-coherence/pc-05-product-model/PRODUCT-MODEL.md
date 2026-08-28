@@ -259,6 +259,55 @@ mode, seed and round.  A Stake export remains analyzable but read-only until
 converted back to a native library.  PAR is editable exchange input, not a
 runnable project.  WASM is metadata inspection only.
 
+Studio has one additional, transient prerequisite contract that is not a CLI
+descriptor: `OutcomeLibrarySelector`. `loadOutcomeLibraryFromSelector()` is
+the one resolver shared by `StudioStakeEngineExportService` and
+`StudioDeploymentService`. Its `json` form selects a project-contained raw
+`WeightedOutcomeLibrary` file; `bundle` selects a named mode in a canonical
+Outcome Library directory and preserves its manifest provenance; and
+`stakeengine` selects a named mode imported from a Stake export and preserves
+its available manifest provenance. All three forms are realpath-aware confined
+to the active project. A lexical or symlink escape, unreadable/corrupt source,
+import error, or absent named mode is a source-specific load error, never a
+fallback to another source.
+
+This selector must not be conflated with either durable CLI contract. The CLI
+`outcomeLibraryBundleDescriptor` has `libraryPath`/`outcomesPath` materializer
+semantics, and the CLI `stakeEngineExportDescriptor` has `libraryPath`/
+`bundleDir` plus costs. Studio Stake Export instead takes one selector per
+export row, requires bundle/Stake selector `modeName` to equal that row, and
+rejects a canonical bundle whose manifest config hash is stale against the
+current project before it exports. Studio Deployment takes the same selector
+per deployment row, also enforces named-selector equality, and first requires
+every requested row to be present in the current build. Repair or restore the
+contained source, choose the matching mode, regenerate a stale bundle, or
+rebuild the project; neither surface silently retargets the request. The
+shared selector/CLI-descriptor divergence is a PC-10 Stake contract concern,
+with Studio consolidation owned by PC-16.
+
+Studio external deployment is a target-owned publication boundary. It first
+performs the current-build and selector preflight above, then sends resolved
+libraries through `ExternalDeploymentService`'s descriptor, compatibility,
+projection, generation, artifact-validation, target-diagnostic and optional
+delivery stages. `publish:false` is a side-effect-free preview: it runs that
+same pipeline with the target's `runtimeAdapter` removed. `publish:true` keeps
+the adapter and lets the registered target publish its own output. Unknown
+targets, bad/stale build modes, selector mismatch and selector load errors are
+explicit before the SDK; later failures remain stage-specific in the run view.
+The shipped local JSON target publishes only under its project-contained
+deployment directory and atomically replaces a prior *recognized* target
+output: it writes a sibling temporary directory, swaps only after success,
+rolls the old directory back if publish fails, reports an intact stale sibling
+if rollback itself fails, and turns stale-backup cleanup failure into a
+post-success warning. This is deliberately not a universal create-only rule
+or permission to replace arbitrary destinations.
+
+The current Studio API section in `docs/cli.md` still documents each
+deployment mode as `{modeName, libraryPath}` although the live request shape
+is `{modeName, librarySelector}` with all three forms. This is recorded as
+open PC-05-STUDIO-03 documentation/surface drift for the PC-16 Studio sweep;
+PC-05 neither changes the API nor rewrites public documentation.
+
 The registry also separates durable artifacts from helper values that once
 appeared as artifact-like relationship labels. A Stake import is an operation,
 not a third output beside its reconstructed Outcome Library and its
@@ -350,7 +399,7 @@ evade the ledger merely by exposing no `--out` flag.
 | A conversion loses game-model information | Stake import reconstructs outcomes, not the original Blueprint; adapter output never promises model recovery. | State the loss before/after conversion and preserve source hash/provenance where available. |
 | A result’s source changed | Derived package/library/report/replay/certification result is stale, not silently current. | Mark stale or clear it before a dependent action; offer revalidate/rebuild/replay with the current source. |
 | Exact replay/proof/certification has incompatible provenance | Hash, mode, source and relevant commitment identity are contracts. | Fail closed; state which identity disagrees and require the matching source/descriptor. |
-| A destination exists or is unsafe | No output may replace an unrelated artifact. | Refuse atomically and say whether a different `--out` or empty destination is needed. |
+| A destination exists or is unsafe | No output may replace an unrelated artifact; target-defined delivery may replace only its own recognized output under its own safety contract. | Refuse unsafe/unrecognized destinations atomically and say whether a different `--out`, empty destination, or target-owned recovery is needed; local external deployment preserves/rolls back its recognized directory. |
 | A capability is absent by design | WASM has no POKIE producer/runtime; generic Stake has no native draw contract. | State the boundary and the supported alternative, never imply a hidden command. |
 
 ## Systemic defect taxonomy
@@ -362,12 +411,13 @@ evade the ledger merely by exposing no `--out` flag.
 | Artifact-kind diagnostic failure | Failure names an implementation shape instead of the user artifact and recovery. | PC-05-CLI-02. | PC-06 |
 | Destructive/replacement recovery failure | An import/open action destroys or replaces editable context without an explained recovery. | PC-05-STUDIO-01. | PC-16 |
 | Cross-surface capability asymmetry | One client offers a lifecycle subset without an explicit handoff/boundary. | PC-05-STUDIO-02: certification verify; deployment CLI absence. | PC-11 |
+| Shared selector / Studio surface drift | A reusable Studio prerequisite diverges from a similarly named CLI descriptor, or published API text describes an obsolete request shape. | PC-05-STUDIO-03: shared `OutcomeLibrarySelector` versus CLI Stake descriptor; `docs/cli.md` deployment `libraryPath` versus live `librarySelector`. | PC-10 / PC-16 |
 | Public pipeline handoff | A public operation writes a durable intermediate whose next canonical materialization stage is hidden or misnamed. | PC-05-HANDOFF-01: raw `generate` JSON/checkpoint versus bundle build; Studio combines the stages. | PC-09 |
 | Descriptor-prerequisite omission | A durable user-authored descriptor is confused with one producer-specific generated companion, so valid source forms and recovery disappear from the product contract. | PC-05 inventory correction: Outcome Library bundle descriptor and generic Stake Engine export descriptor; Stake-import `config.json` remains a distinct bundleDir-only companion. No open product mismatch. | Closed by PC-05 model inventory |
 | Duplicate conversion ownership | Product-domain, public CLI and Studio entry points must not independently define one conversion contract. | PC-05-DUP-01A Outcome Library; PC-05-DUP-01B Stake; PC-05-DUP-01C PAR; PC-05-DUP-01D public CLI aliases; PC-05-DUP-01E Studio controls. | PC-09 / PC-10 / PC-11 / PC-15 / PC-16 |
 | Runtime-source semantic duplication | The same verb means runtime execution for one source and pre-generated selection for another. | PC-05-DUP-02: simulation/replay/serve. | PC-06 |
 | Validation surface asymmetry | Clients expose different portions of a target-specific validation lifecycle. | PC-05-DUP-03A/B: Blueprint/library/Stake/certification validation. | PC-06 / PC-11 |
-| Documentation/contract drift | Docs, defaults, presentation and shared resolver are maintained separately. | PC-05-DOC-01A: public CLI/help/generated-action prerequisite claims; PC-05-DOC-01B: WASM boundary. | PC-15 / PC-13 |
+| Documentation/contract drift | Docs, defaults, presentation and shared resolver are maintained separately. | PC-05-DOC-01A: public CLI/help/generated-action prerequisite claims; PC-05-DOC-01B: WASM boundary; PC-05-STUDIO-03: live Studio deployment selector shape. | PC-15 / PC-13 / PC-16 |
 | Persisted companion lifecycle omission | A user-visible file or durable metadata beside a source document is omitted because its reference is stored elsewhere or it is treated as process-local state. | PC-05 inventory correction: Studio Symbol Artwork PNG is staged/materialized beside Blueprint; managed Outcome compatibility registry and Studio Outcome Library discovery index retain only verified/discovery metadata with explicit corruption, containment and recovery rules. No open product mismatch. | Closed by PC-05 model inventory |
 
 ## Acceptance ownership
@@ -380,11 +430,11 @@ must close an owned row rather than merely create a new observation:
 | --- | --- | --- |
 | PC-06 CLI capability, validation and provenance sweep | CLI-01, CLI-02, DUP-02 and DUP-03A; CLI-04 is already remediated in PC-04 | focused CLI contracts exercise accepted/default/rejected forms and source kind recovery |
 | PC-09 Outcome Library sweep | raw-generation/bundle handoff (HANDOFF-01) and Outcome Library conversion contract (DUP-01A) | raw generation/checkpoint/resume, descriptor materialization, bundle validation and conversion diagnostics agree |
-| PC-10 Stake export sweep | Stake conversion contract (DUP-01B) | export prerequisites, provenance and output safety agree |
+| PC-10 Stake export sweep | Stake conversion contract (DUP-01B) and its shared Studio selector prerequisite (STUDIO-03) | CLI descriptor and Studio selector provenance/stale/output contracts remain explicitly distinct and agree at the Stake boundary |
 | PC-11 PAR and Studio validation/certification sweep | PAR conversion contract (DUP-01C); Studio certification verification handoff and validation controls (STUDIO-02, DUP-03B) | PAR exchange preserves its explicit boundary; controls, disabled states and explicit CLI handoffs match the matrix |
 | PC-15 public CLI/help/docs sweep | generated-command recovery (CLI-03), public CLI conversion aliases (DUP-01D) and public-documentation alignment (DOC-01A) | parser, help, generated actions and public docs agree on canonical routes, prerequisites and recovery |
 | PC-13 WASM boundary sweep | DOC-01B WASM docs, resolver and Studio boundary | all surfaces agree on inspection-only support and exclusions |
-| PC-16 Studio sweep | saved-design replacement/recovery (STUDIO-01) and Studio conversion controls (DUP-01E) | selection retains recoverable context; Studio exposes one discoverable control per goal or explicit delegation with matching states |
+| PC-16 Studio sweep | saved-design replacement/recovery (STUDIO-01), Studio conversion controls (DUP-01E), and deployment API/docs-surface drift (STUDIO-03) | selection retains recoverable context; Studio exposes one discoverable control per goal or explicit delegation with matching states, and its API documentation matches the shipped selector request |
 
 No row is closed by a screenshot alone.  It closes only when the affected
 goal, persisted observable result, failure/disabled path and provenance rule
