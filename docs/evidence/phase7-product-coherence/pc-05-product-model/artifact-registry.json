@@ -231,12 +231,12 @@
       "label": "FairnessServerSeedCommitment",
       "shape": "JSON server-seed commitment",
       "created_by": ["cli:fairness seed-commit", "studio:fairness-configure"],
-      "recognized_by": ["cli:fairness commit"],
+      "recognized_by": ["computeFairnessCommitment", "cli:fairness commit", "studio:fairness-configure"],
       "imports_from": ["serverSeedFile"],
       "exports_to": ["fairnessCommitment"],
       "validates_by": ["FairnessServerSeedCommitmentValidator"],
       "prerequisite_for": ["fairnessCommitment"],
-      "provenance": "The first publishable artifact records only the hash of the still-private server seed and issuance time, before client seed, nonce or outcome-source selection are known. Studio's configure response creates this value together with its later round commitment; durable publication timing still requires an external log or timestamping authority.",
+      "provenance": "The first publishable artifact records only the hash of the still-private server seed and issuance time, before client seed, nonce or outcome-source selection are known. The CLI can persist it with `--out`; Studio's configure response previews the same value together with its later round commitment, but does not durably publish it. Durable publication timing still requires an external log or timestamping authority.",
       "compatibility": "`fairness commit` accepts only a structurally valid server-seed commitment. It is a prerequisite for a round commitment, never a substitute for one, and it never contains the raw server seed.",
       "support_status": "supported"
     },
@@ -256,7 +256,7 @@
     },
     {
       "id": "fairnessProof",
-      "label": "Provably Fair round proof",
+      "label": "FairnessRoundProof",
       "shape": "JSON proof",
       "created_by": ["cli:fairness reveal", "studio:fairness-generate"],
       "recognized_by": ["cli:fairness verify", "studio:fairness-verify"],

@@ -35,6 +35,13 @@ function closureRow(matrix: string, id: string): string {
     return row;
 }
 
+function closureOwner(matrix: string, id: string): string {
+    const cells = closureRow(matrix, id).split("|");
+    const owner = cells[5]?.trim();
+    if (owner === undefined || owner.length === 0) throw new Error(`Missing PC-05 closure owner for ${id}.`);
+    return owner;
+}
+
 function acceptanceOwnershipRow(productModel: string, step: string): string {
     const row = productModel.split("\n").find((line) => line.startsWith(`| ${step} `));
     if (row === undefined) throw new Error(`Missing PC-05 acceptance ownership row for ${step}.`);
@@ -94,8 +101,9 @@ describe("PC-05 product-model contract", () => {
         const fairnessProof = registry.artifact_kinds.find((item) => item.id === "fairnessProof");
         expect(serverSeedCommitment).toEqual(
             expect.objectContaining({
+                "label": "FairnessServerSeedCommitment",
                 "created_by": expect.arrayContaining(["cli:fairness seed-commit", "studio:fairness-configure"]),
-                "recognized_by": expect.arrayContaining(["cli:fairness commit"]),
+                "recognized_by": expect.arrayContaining(["computeFairnessCommitment", "cli:fairness commit", "studio:fairness-configure"]),
                 "imports_from": ["serverSeedFile"],
                 "exports_to": ["fairnessCommitment"],
                 "validates_by": expect.arrayContaining(["FairnessServerSeedCommitmentValidator"]),
@@ -104,6 +112,7 @@ describe("PC-05 product-model contract", () => {
         );
         expect(fairnessCommitment).toEqual(
             expect.objectContaining({
+                "label": "FairnessCommitment",
                 "created_by": expect.arrayContaining(["cli:fairness commit", "studio:fairness-configure"]),
                 "recognized_by": expect.arrayContaining(["cli:fairness reveal", "cli:fairness verify", "studio:fairness-generate", "studio:fairness-verify"]),
                 "imports_from": ["fairnessServerSeedCommitment", "outcomeLibrary"],
@@ -112,6 +121,7 @@ describe("PC-05 product-model contract", () => {
                 "prerequisite_for": ["fairnessProof"],
             }),
         );
+        expect(fairnessProof).toEqual(expect.objectContaining({"label": "FairnessRoundProof"}));
         expect(fairnessProof?.imports_from).toEqual(expect.arrayContaining(["fairnessCommitment", "serverSeedFile", "outcomeLibrary"]));
         for (const nonArtifactId of ["stakeAdapterImport", "simulationReplayDescriptor", "studioReplayDownload", "wasmPackagingPreflight"]) {
             expect(registry.non_artifact_prerequisites).toContainEqual(expect.objectContaining({id: nonArtifactId, type: "non-artifact-prerequisite"}));
@@ -182,27 +192,28 @@ describe("PC-05 product-model contract", () => {
         const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
         const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
         const expectedOwners: Record<string, string> = {
-            "PC-05-CLI-01": "PC-06",
-            "PC-05-CLI-02": "PC-06",
-            "PC-05-CLI-03": "PC-15",
-            "PC-05-STUDIO-01": "PC-16",
-            "PC-05-STUDIO-02": "PC-11",
-            "PC-05-DUP-01A": "PC-09",
-            "PC-05-DUP-01B": "PC-10",
-            "PC-05-DUP-01C": "PC-11",
-            "PC-05-DUP-01D": "PC-15",
-            "PC-05-DUP-01E": "PC-16",
-            "PC-05-DUP-02": "PC-06",
-            "PC-05-DUP-03A": "PC-06",
-            "PC-05-DUP-03B": "PC-11",
-            "PC-05-DOC-01A": "PC-15",
-            "PC-05-DOC-01B": "PC-13",
+            "PC-05-CLI-01": "PC-06 diagnostic sweep",
+            "PC-05-CLI-02": "PC-06 diagnostic sweep",
+            "PC-05-CLI-03": "PC-15 public CLI/help/docs sweep",
+            "PC-05-STUDIO-01": "PC-16 Studio recovery sweep",
+            "PC-05-STUDIO-02": "PC-11 Studio validation/certification sweep",
+            "PC-05-DUP-01A": "PC-09 Outcome Library sweep",
+            "PC-05-DUP-01B": "PC-10 Stake export sweep",
+            "PC-05-DUP-01C": "PC-11 PAR conversion sweep",
+            "PC-05-DUP-01D": "PC-15 public CLI/help/docs sweep",
+            "PC-05-DUP-01E": "PC-16 Studio conversion sweep",
+            "PC-05-DUP-02": "PC-06 provenance sweep",
+            "PC-05-DUP-03A": "PC-06 CLI validation sweep",
+            "PC-05-DUP-03B": "PC-11 Studio validation sweep",
+            "PC-05-DOC-01A": "PC-15 public CLI/help/docs sweep",
+            "PC-05-DOC-01B": "PC-13 WASM boundary sweep",
         };
 
         for (const [id, owner] of Object.entries(expectedOwners)) {
-            expect(closureRow(matrix, id)).toContain(owner);
+            expect(closureOwner(matrix, id)).toBe(owner);
         }
         expect(Object.keys(expectedOwners)).toHaveLength(15);
+        expect(matrix).not.toContain("| PC-05-DUP-01 |");
         expect(closureRow(matrix, "PC-05-STUDIO-01")).not.toContain("PC-07");
         expect(closureRow(matrix, "PC-05-STUDIO-01")).not.toContain("PC-10");
         expect(closureRow(matrix, "PC-05-STUDIO-02")).not.toContain("PC-08");
