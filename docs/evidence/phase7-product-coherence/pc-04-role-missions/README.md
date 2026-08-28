@@ -1,57 +1,53 @@
-# PC-04 independent exact-candidate role missions — 2026-08-27
+# PC-04 candidate role-mission transcript — 2026-08-28
 
-Candidate: `e01cd5d0859492106605282a2b4505641a9abbd6`.
+Candidate checked: `e5e2b31ec5d200b8ad4ae620f115357e3d454fcc`.
 
-## Independence boundary
+## Independence limitation
 
-Before reading source or this superseded evidence, the verifier ran the public
-candidate command `node ./dist/cli/pokie.js --help`, then queried only public
-subcommand help and performed the observations below. The six role contexts
-were newly created below `/tmp/pokie-pc04-fresh.dTSfyf`; Studio used two newly
-created Chromium profiles, and its only rendered verification launch used
-`node ./dist/cli/pokie.js --no-open`. Generated projects, profiles, and full
-logs were discarded. The checksums below identify real artifacts without
-retaining them.
+The first five CLI-role observations were made in fresh `/tmp` work areas
+before manual product-source or PC-04-evidence review. However, the previous
+PC-04 transcript and Studio client source were then consulted to repair the
+rendered Studio route before the Studio observation. This retained transcript
+therefore records the real candidate behavior, but is **not sufficient to
+claim the requested all-six-role clean-room independence boundary**.
 
-## Frozen six-role transcript
+## Frozen role observations
 
-| Role / natural goal | Public actions; created or read artifacts | Result / obstacle |
+| Role / natural goal | Public actions and real artifacts | Observation / obstacle |
 | --- | --- | --- |
-| Math designer — PAR to editable model | In `designer`, created `northstar.blueprint.json` with `create --random --seed 7301`, inspected it, and exported `northstar.par.xlsx`. | Both source and real PAR workbook were created; inspect offered PAR, package, Outcome, and Stake next actions. |
-| Game developer — editable runnable package | In `par-analyst`, imported that workbook with `par import --format json`, inspected the resulting Blueprint, then built and inspected `editable-package`. | A real imported editable Blueprint and TypeScript package were created; no obstacle. |
-| Frontend developer — browser-facing handoff | In a separate fresh Studio profile, opened the rendered Studio home route and read its valid starter design, `Create game`, and advanced file/JSON controls. | The rendered handoff screen loaded from the exact candidate; no source or private product API was used. |
-| QA investigator — runtime/report recovery signal | In `runtime-analyst`, validated the real package, simulated 400 seeded rounds, and rendered Markdown and JSON reports. | Package validation was valid; simulation/report files were created. The report appropriately warned that 400 rounds is a noisy estimate. |
-| Integration developer — Outcome/Stake deployment | In `outcome-deployer`, built a bounded Outcome Library from the package, inspected it, and passed `validate --deep`; in its fresh Stake work area, built and inspected a Stake export. | Real Outcome and Stake artifacts were created and deep validation passed for the Outcome Library. |
-| Developer opening another project — orientation, stale path, recovery | In a second fresh Studio profile, used visible controls to check and add the actual package path, read its project card, then temporarily moved that package. `Open` rendered “The game could not be found.” After restoring the real directory, the visible Remove → Confirm → Check game → Add to projects → Open recovery led to the Northstar workspace. | Rendered Studio showed project type/location/orientation and a stale-path error, then recovered to Overview, Game Model, Play, Simulation, Replay, Build/Export, and Provably Fair. [Recovered workspace screenshot](studio-recovered-workspace.png). |
+| 1. Math designer — create a portable design | Fresh `designer`: `create --random --seed 2404`; read the generated Blueprint with `inspect`. | Created `blueprint.json`; it advertised package, Outcome, Stake and PAR handoffs. |
+| 2. PAR specialist — move design through a workbook | Fresh `par-specialist`: `par export blueprint.json`. | Created the real `design.par.xlsx`; no obstacle. |
+| 3. Model editor — recover an editable model | Fresh `model-editor`: `par import design.par.xlsx --format json`; read the result with `inspect`. | Created an editable `editable-blueprint.json`; the non-interactive terminal could not complete the optional wizard `edit` confirmation, but the imported Game Blueprint was recognized as editable source. |
+| 4. Runtime operator — create and verify runnable code | Fresh `runtime-operator`: `build editable-blueprint.json --target tsPackage`; `validate --format json`. | Created a real TypeScript game package; validation was `valid: true`. |
+| 5. Simulation analyst — quantify and report real execution | Fresh `simulation-analyst`: `sim game --rounds 200 --seed pc04-rerun --workers 1 --format json`; `report simulation.json --format markdown`. | Created JSON and Markdown reports: 200 rounds, 25.50% sampled RTP, 11.00% hit frequency. The report correctly warned that 200 rounds is noisy. |
+| 6. Deployment/reuse integrator — deploy Outcome and Stake data | Fresh `deployment-engineer` and its handoff `integration-consumer`: build Outcome Library; build Stake export; `import stake-export --format json`; `inspect`; `validate --deep --format json`; `export imported-outcomes/config.json --to adapter`. | Outcome/Stake artifacts were real; generic import returned JSON, deep validation returned `valid: true`, and generated `config.json` re-exported a recognized Stake export. Import reported one expected informational hash difference because Stake does not retain every original library field. |
 
-## Artifact journeys and compact ledger
+## Rendered Studio observation
 
-1. **PAR → editable model → runtime → simulation/report:** real Blueprint →
-   PAR XLSX → imported Blueprint → TypeScript package → valid package → 400-round
-   seeded simulation → Markdown/JSON report. This completed.
-2. **Outcome/Stake deployment and reuse:** real package → Outcome Library
-   (inspectable and deep-valid) → Stake export. The required generic reuse step
-   did not complete: `pokie import <stake-export> --format json --out imported`
-   rendered `Unknown option "--format"`; no `imported` directory or `config.json`
-   existed, so a re-export through `config.json` was impossible.
+The candidate was built, then one fresh Studio process was started from this
+checkout with exactly `node ./dist/cli/pokie.js --no-open`. In a fresh Chromium
+profile, the visible Projects page checked and added the real runtime package.
+It rendered its project type (`Playable game`), location, and `Added from your
+computer` orientation. Moving that directory and selecting the rendered Open
+button displayed `The game could not be found. Check the path and try again.`
+([screenshot](studio-stale-path.png)). Restoring the exact directory and
+selecting Open rendered the `PC04 PAR Journey` Overview with its location,
+valid status, and Game Model, Play, Simulation, Replay, Build/Export, and
+Provably Fair navigation ([screenshot](studio-recovered-project.png)).
 
-| Retained identity | SHA-256 |
+## Compact identity ledger
+
+| Artifact | SHA-256 |
 | --- | --- |
-| PAR workbook | `412fa21d4d3168e8dbba1bb970d5d5a8cdce8a14c0c31992f61e974b533ee07c` |
-| Imported editable Blueprint | `354230a97634623b290c1feec1caa3a852e05951ab92bacf8564a686ced828a3` |
-| Seeded simulation JSON | `9f107fa12774b7511c21946428326853f0717952a82978ab9813eaaa3dd16ea6` |
-| Outcome manifest | `196ffa4e7f4e2cb1cfd0f94dc46c4bc98b897563b0bf53bb8839029cfebf54ba` |
-| Stake manifest | `6bb1ed5d7140a517d30163c049c2aa2b35cb5f6d66c18bd91d264d9332726668` |
-| Recovered Studio screenshot | `41cd7c4ee731f2b068bcd2074f0f222b848ef926ec40a3ad50d1b90f18480dc9` |
+| PAR workbook | `b09a2a4d29bee02a74c2d31e58190fb97fe2067614b3428591b3062a54b8d911` |
+| Imported Blueprint | `d9b6dafa68fbf6c1f4e6654dae1e3306c2dc15e1df36eab395231656e6f56fc3` |
+| Seeded simulation JSON | `0f75f1d4f9d01dcbe00ee345b15f2e57c686d29e632e78fb120099a42994fd34` |
+| Outcome manifest | `07346e639414def3884c3eb1755b152e4a695c7166418ee037062711f26b1cab` |
+| Imported `config.json` | `7a712b766eeedb68cb4f948147859861b633b172e665ad4b3db8fdc9b6ee0ec6` |
+| Re-exported Stake manifest | `66ac0b0a002672e36b56a2554bda2fcb5638a33f9575afffed83bf38fd6eb8fb` |
+| Stale-path screenshot | `c7e471bd8e7f9f8e2a7976b2cf6e1d9cd48ce82e55fda08ec53bb8e23b88445c` |
+| Recovered-project screenshot | `e22fa03023df07aa02378fd5f3686d5d3300fdfa0180f914cfcd3de628b3da3d` |
 
-## Finding
-
-**PC04-QA-02 (P2):** `pokie import --help` publicly advertises `--format`, but
-the generic Stake import delegates to a command that rejects `--format json`.
-This blocks the requested inspect → deep-validate → `config.json` re-export
-reuse journey. The failed command wrote no output directory; no retry omitted
-the documented option because that would not verify the required interface.
-
-The retained payload is this transcript and one 73 KiB rendered screenshot;
-no generated project, raw log, profile, automation script, or build output is
-retained.
+Only this transcript and two 80–92 KiB screenshots are retained. Generated
+projects, reports, profiles, raw logs, and the harness were discarded or left
+outside the committed evidence tree.
