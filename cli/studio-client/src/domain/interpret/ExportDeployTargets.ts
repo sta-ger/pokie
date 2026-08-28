@@ -1,4 +1,4 @@
-import type {StudioArtifactConversionPlan, StudioArtifactTargetType, StudioArtifactTargetView, StudioDeploymentTargetSummary, StudioProjectCapability} from "../../api/types";
+import type {StudioArtifactConversionPlan, StudioArtifactTargetType, StudioArtifactTargetView, StudioDeploymentTargetSummary} from "../../api/types";
 import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
 
 // Pure view-model for the shared Build/Export shell (see ExportDeployTab) -- the sole Studio surface a
@@ -263,10 +263,41 @@ const REMOTE_DEPLOYMENT_PLACEHOLDER_CARD: ExportDeployTargetCard = {
 // the server's artifact plans, never reconstructed from browser capabilities.
 export function describeExportDeployTargetCards(
     deploymentTargets: readonly StudioDeploymentTargetSummary[],
-    _capabilities: readonly StudioProjectCapability[],
+    artifactTargets: readonly StudioArtifactTargetView[],
 ): ExportDeployTargetCard[] {
-    const cards: ExportDeployTargetCard[] = [OUTCOME_LIBRARY_CARD, STAKE_ENGINE_EXPORT_CARD];
+    const cards: ExportDeployTargetCard[] = [
+        plannerBackedCard(OUTCOME_LIBRARY_CARD, "outcomeLibrary", artifactTargets),
+        plannerBackedCard(STAKE_ENGINE_EXPORT_CARD, "stakeAdapter", artifactTargets),
+    ];
     const adapterCards = deploymentTargets.filter((target) => target.id !== LOCAL_JSON_EXAMPLE_TARGET_ID).map(describeExternalAdapterTargetCard);
     cards.push(...adapterCards, ...(adapterCards.length > 0 ? [] : [REMOTE_DEPLOYMENT_PLACEHOLDER_CARD]));
     return cards;
+}
+
+// Outcome generation and Stake export keep their distinct Studio writers, but
+// whether they are reachable is a server decision.  In particular, this must
+// not be reconstructed from a stale browser capability snapshot: the plan
+// carries managed-outcome reuse, regeneration, losses, and recovery guidance.
+function plannerBackedCard(
+    card: ExportDeployTargetCard,
+    target: StudioArtifactTargetType,
+    artifactTargets: readonly StudioArtifactTargetView[],
+): ExportDeployTargetCard {
+    const entry = artifactTargets.find((candidate) => candidate.target === target);
+    const plan = entry?.plan;
+    // Older Studio servers did not serialize plans for this independent
+    // writer. Keep their established card usable during a rolling upgrade;
+    // current servers always send a plan and take the branch below.
+    if (entry === undefined || plan === undefined) {
+        return card;
+    }
+    return {
+        ...card,
+        supported: plan?.status === "planned",
+        prerequisites: plan?.status === "planned"
+            ? plan.steps.map((step) => `${step.choice} ${step.kind}`)
+            : [],
+        unavailableReasons: unavailableReasonsForArtifactTarget(entry, "The server could not plan this action."),
+        ...(plan === undefined ? {} : {artifactPlan: plan}),
+    };
 }

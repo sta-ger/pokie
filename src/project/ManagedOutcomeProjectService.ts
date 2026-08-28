@@ -102,7 +102,14 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
     // before a planner advertises reuse; execution still uses the exact plan
     // and never re-runs this lookup to make a different choice.
     public async inspect(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): Promise<ManagedOutcomeInspection> {
-        const document = await this.readRegistry(sourceRootPath);
+        let document: RegistryDocument;
+        try {
+            document = await this.readRegistry(sourceRootPath);
+        } catch (error) {
+            return {
+                staleReason: `the managed Outcome registry at "${this.registryPath(sourceRootPath)}" is malformed or unreadable (${describeRegistryError(error)})`,
+            };
+        }
         if (document.projects.length === 0) return {};
         const matching = document.projects.find((entry) => sameCompatibility(entry, compatibility));
         // Historical entries are explicitly ineligible for this request. The
@@ -110,11 +117,11 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
         // regeneration route; it must never silently reuse them or let their
         // presence suppress generation.
         if (matching === undefined) {
-            return {staleReason: "the registered managed Outcome Library has different game, configuration, POKIE version, or generation provenance"};
+            return {staleReason: `the managed Outcome registry at "${this.registryPath(sourceRootPath)}" has different game, configuration, POKIE version, or generation provenance`};
         }
         const project = await this.openIfCompatible(matching.rootPath, compatibility);
         return project === undefined
-            ? {staleReason: "the registered managed Outcome Library was moved, malformed, or no longer matches its manifest"}
+            ? {staleReason: `the managed Outcome Library at "${matching.rootPath}" was moved, corrupt, or no longer matches its manifest`}
             : {project};
     }
 
@@ -207,7 +214,10 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
     private async readRegistry(sourceRootPath: string): Promise<RegistryDocument> {
         try {
             const parsed = JSON.parse(await this.files.readFile(this.registryPath(sourceRootPath), "utf-8")) as RegistryDocument;
-            return Array.isArray(parsed.projects) ? parsed : {projects: []};
+            if (!Array.isArray(parsed.projects) || !parsed.projects.every(isRegisteredOutcomeProject)) {
+                throw new Error("registry does not contain a valid projects array");
+            }
+            return parsed;
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === "ENOENT") return {projects: []};
             throw error;
@@ -235,4 +245,17 @@ function sameCompatibility(left: OutcomeProjectCompatibility, right: OutcomeProj
         left.pokieVersion === right.pokieVersion &&
         (left.generation ?? "exact") === (right.generation ?? "exact")
     );
+}
+
+function isRegisteredOutcomeProject(value: unknown): value is RegisteredOutcomeProject {
+    if (typeof value !== "object" || value === null) return false;
+    const entry = value as Partial<RegisteredOutcomeProject>;
+    return typeof entry.rootPath === "string" && typeof entry.gameId === "string" &&
+        typeof entry.gameVersion === "string" && typeof entry.configHash === "string" &&
+        typeof entry.pokieVersion === "string" &&
+        (entry.generation === undefined || typeof entry.generation === "string");
+}
+
+function describeRegistryError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }

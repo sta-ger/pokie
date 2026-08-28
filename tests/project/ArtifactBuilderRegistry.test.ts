@@ -126,6 +126,15 @@ describe("ArtifactBuilderRegistry", () => {
             expect(builder.calls).toBe(0);
         });
 
+        it("rejects validation against a different target than the prepared plan", async () => {
+            const builder = fakeBuilder("tsPackage");
+            const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
+            const source = projectOf("blueprint");
+            const plan = await withBuilder.preparePlan(source, "tsPackage");
+
+            await expect(withBuilder.validate("outcomeLibrary", source, plan)).rejects.toThrow(/requested target does not match/);
+        });
+
         it("rejects with the matrix diagnostic before invoking any builder", async () => {
             const builder = fakeBuilder("tsPackage");
             const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));

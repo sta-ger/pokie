@@ -650,7 +650,7 @@ function TargetCard({
 // auto-publish outside this machine. (The SDK's own
 // local-json-example demo target -- the one case that could ever run straight to publish:true without a
 // preview step -- is never described as a card at all here; see ExportDeployTargets.ts's own doc comment.)
-export function ExportDeployTab({capabilities, deployment}: {capabilities: readonly StudioProjectCapability[]; deployment: DeploymentManager}) {
+export function ExportDeployTab({capabilities: _capabilities, deployment}: {capabilities: readonly StudioProjectCapability[]; deployment: DeploymentManager}) {
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
     const deploymentTargets = deployment.targetsView.status === "loaded" ? deployment.targetsView.targets : [];
@@ -691,7 +691,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
         };
     }, [fetchImpl]);
     const artifactCards = describeArtifactBuildTargetCards(artifactTargets);
-    const cards = [...describeExportDeployTargetCards(deploymentTargets, capabilities), ...artifactCards];
+    const cards = [...describeExportDeployTargetCards(deploymentTargets, artifactTargets), ...artifactCards];
 
     // One registry-backed preview per supported artifactTarget (keyed by StudioArtifactTargetType), fetched
     // automatically as soon as artifactTargets reports it supported -- see ArtifactPreviewRunView's own doc

@@ -72,6 +72,20 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
     ],
 };
 
+function sameConfigurationProvenance(
+    left: ArtifactConfigurationProvenance | undefined,
+    right: ArtifactConfigurationProvenance | undefined,
+): boolean {
+    return left?.configurationHash === right?.configurationHash &&
+        left?.pokieVersion === right?.pokieVersion &&
+        left?.generationSemantics === right?.generationSemantics &&
+        left?.gameId === right?.gameId &&
+        left?.gameVersion === right?.gameVersion &&
+        left?.manifestIdentity === right?.manifestIdentity &&
+        left?.sampleCount === right?.sampleCount &&
+        left?.sampleSeed === right?.sampleSeed;
+}
+
 function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
     const operation = TARGET_OPERATION[target];
     const requiredSourceCapability = OPERATION_REQUIRED_CAPABILITY[operation];
@@ -264,7 +278,8 @@ export class ArtifactBuilderRegistry {
     public async validate(target: ArtifactTargetType, source: PokieProject, plan?: ArtifactConversionPlan): Promise<void> {
         const preparedPlan = plan ?? await this.preparePlan(source, target);
         this.assertExecutablePlan(preparedPlan);
-        this.assertPlanSourceMatches(preparedPlan, source);
+        this.assertPlanTargetMatches(preparedPlan, target);
+        await this.assertPlanSourceMatches(preparedPlan, source);
         this.assertTargetAvailable(target);
 
         if (source.type === "blueprint" && target !== "parWorkbook") {
@@ -305,7 +320,7 @@ export class ArtifactBuilderRegistry {
         this.assertExecutablePlan(plan);
         this.assertTargetAvailable(plan.target.kind as ArtifactTargetType);
         const target = plan.target.kind as ArtifactTargetType;
-        this.assertPlanSourceMatches(plan, source);
+        await this.assertPlanSourceMatches(plan, source);
         this.assertPlanDestinationMatches(plan, destinationPath);
         const reuseStep = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
         const managed = reuseStep === undefined ? undefined : await this.reopenPlannedManagedOutcome(source, plan.source, reuseStep.output);
@@ -486,12 +501,34 @@ export class ArtifactBuilderRegistry {
         return left.configHash === right.configHash && left.gameId === right.gameId && left.gameVersion === right.gameVersion && left.pokieVersion === right.pokieVersion && (left.generation ?? "exact") === (right.generation ?? "exact");
     }
 
-    private assertPlanSourceMatches(plan: ArtifactConversionPlan, source: PokieProject): void {
+    private async assertPlanSourceMatches(plan: ArtifactConversionPlan, source: PokieProject): Promise<void> {
         const current = resolveArtifactIdentity(source);
         if (current.kind !== plan.source.kind || current.canonicalLocation !== plan.source.canonicalLocation ||
             current.recognitionProvenance !== plan.source.recognitionProvenance ||
             current.capabilities.join("\u0000") !== plan.source.capabilities.join("\u0000")) {
             throw new Error("The source identity changed after this conversion was prepared; prepare a new plan before executing it.");
+        }
+        // Resolved Blueprint/package provenance is computed from the runnable
+        // source, rather than copied from the project wrapper. Re-prepare it
+        // at the execution boundary so a config or generation change cannot
+        // reuse a previously selected managed candidate.
+        if (plan.source.configurationProvenance !== undefined) {
+            const provenance = plan.source.configurationProvenance;
+            const refreshed = await this.preparePlan(source, plan.target.kind as ArtifactTargetType, {
+                destinationPath: plan.target.canonicalLocation,
+                generationSemantics: provenance.generationSemantics,
+                ...(provenance.sampleCount === undefined ? {} : {sampleCount: provenance.sampleCount}),
+                ...(provenance.sampleSeed === undefined ? {} : {sampleSeed: provenance.sampleSeed}),
+            });
+            if (!sameConfigurationProvenance(plan.source.configurationProvenance, refreshed.source.configurationProvenance)) {
+                throw new Error("The source configuration or generation provenance changed after this conversion was prepared; prepare a new plan before executing it.");
+            }
+        }
+    }
+
+    private assertPlanTargetMatches(plan: ArtifactConversionPlan, target: ArtifactTargetType): void {
+        if (plan.target.kind !== target) {
+            throw new Error("The requested target does not match this prepared conversion plan; prepare a new plan before validating it.");
         }
     }
 
