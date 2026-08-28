@@ -1,35 +1,36 @@
 # PC-04 independent exact-candidate role-mission rerun
 
-Candidate: `44262bae4fd557c33ab64631714b929b3e3ff313`.
+Candidate: `44262bae4fd557c33ab64631714b929b3e3ff313`. This checkout has no
+product-file diff from that candidate (its HEAD is an evidence-only descendant).
 
-Fresh isolated Studio registry/profile contexts were opened at `/home/projects`
-for analyst, modeler, runtime operator, simulator, outcome owner, and Stake
-deployer before source or retained evidence was read.  Each rendered `Start a
-game · POKIE Studio` title.  A second fresh Studio launch used the candidate
-entrypoint `node ./dist/cli/pokie.js --no-open`; after activating the visible
-Chromium window, the focused `Start a game` action changed the rendered title
-to `Starter Slot · Overview · POKIE Studio`, confirming acceptance and useful
-recovery state.
+Before reading source or retained evidence, a fresh registry and six fresh
+Chromium profiles rendered Studio for analyst, modeler, runtime operator,
+simulator, outcome owner, and Stake deployer. Every context rendered `Start a
+game · POKIE Studio`.
 
-The physical `examples/parsheets/starter.par.xlsx` imported to a Game Blueprint,
-was inspected, built to a TypeScript runtime package, simulated for 100 seeded
-rounds, and rendered as a Markdown report.  The same blueprint built to an
-Outcome Library, then a Stake export.  A generic Stake import with `--format
-json` passed `inspect` and `validate --deep`; its generated `config.json`
-re-exported successfully as a Stake adapter.
+In a separate fresh Studio launch from this checkout, exactly
+`node ./dist/cli/pokie.js --no-open`, the visible `/home/projects` navigation
+rendered the Projects orientation and its empty-project guidance. Entering the
+nonexistent `/definitely-not-a-pokie-project` and choosing **Check game**
+rendered the concrete missing-path error. Replacing it with the real generated
+runtime package and choosing **Check game** replaced that stale error with
+`Found a Playable game` and **Add to projects**.
 
-The retained run could not establish the requested *stale-state* scenario or
-its specific recovery path: the generic host driver had no installed browser
-automation client and the visible keyboard traversal exposed only the confirmed
-start action.  This is a driver limitation, not a rendered product error.
+The public CLI created a real blueprint, exported/imported its PAR workbook to
+an editable model, built a TypeScript runtime package, and completed a
+100-round seeded simulation plus JSON report. The editable model built an exact
+91,125-outcome library, passed `validate --deep`, and built a Stake export. A
+generic `import <stake> --format json` passed `inspect` and `validate --deep`;
+its generated `config.json` re-exported to a valid Stake adapter. No rendered
+or CLI product error was observed.
 
-## Ephemeral artifact checksums
-
-Artifacts stayed in the verifier harness and are not retained in this commit.
+Artifacts remain in the verifier harness; only representative checksums are
+retained here.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| imported blueprint | `b9cd4d21138deb08a42ef907eaf5b0ca89c0598277200774a988391b59b1e6f2` |
-| simulation JSON | `e79191edc903fde07c437ee893c828103c95bf1a1b543c93be7d0d8b32561fc1` |
-| generic import `config.json` | `7a712b766eeedb68cb4f948147859861b633b172e665ad4b3db8fdc9b6ee0ec6` |
-| config re-export manifest | `34f8c16b0a8afa887d4533bcc9cb2d0eda50acad19a703e6c71071df1e90b9f3` |
+| PAR-imported editable blueprint | `4e7658c0b5ae845f82d9d35f5f7522ac904484a9a4507261b28d0379f8743386` |
+| seeded simulation/report JSON | `920b6cb14929d68c6b8c87435b4ddf33dae77801d90f62419e5dc3b712e87c75` |
+| exact Outcome Library manifest | `18f2003d36b192eb557932067ec7726ebc9220e079b184f0f411e3bf16ec42e6` |
+| generic-import `config.json` | `7a712b766eeedb68cb4f948147859861b633b172e665ad4b3db8fdc9b6ee0ec6` |
+| `config.json` Stake re-export manifest | `f5d7c6d254cbd8c534e26d92f3e00f279f4680c7bfdc9299ea3972e6b5759944` |
