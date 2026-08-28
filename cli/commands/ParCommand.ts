@@ -3,6 +3,7 @@ import path from "path";
 import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
+    ArtifactImportOutputPlan,
     ArtifactDestinationCheck,
     describeUnsupportedProjectOperation,
     GameBlueprint,
@@ -14,6 +15,7 @@ import {
     ParSheetImporting,
     prepareBlueprintForParSheetExport,
     ProjectResolving,
+    PokieProject,
     ProjectTargetResolver,
     ValidationIssue,
     describeArtifactConversionPlanDiagnostic,
@@ -141,6 +143,18 @@ export class ParCommand implements CliCommandHandling {
             });
     }
 
+    /** Executes the exact generic-import operation prepared by ImportCommand. */
+    public runPreparedImport(
+        source: PokieProject,
+        plan: ArtifactImportOutputPlan,
+        inputPath: string,
+        outPath: string,
+        format: ImportFormat = "summary",
+    ): Promise<number> {
+        this.planner.assertImportOutputPlanCurrent(plan, source, outPath);
+        return this.executeImport(inputPath, outPath, format, {source, plan});
+    }
+
     // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
     // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
     // two can never drift apart. `exitCodeRef` is written by whichever verb's action actually runs;
@@ -211,8 +225,17 @@ export class ParCommand implements CliCommandHandling {
         }
     }
 
-    private async executeImport(inputPath: string, outPath: string, format: ImportFormat): Promise<number> {
-        await this.checkImportTarget(inputPath);
+    private async executeImport(
+        inputPath: string,
+        outPath: string,
+        format: ImportFormat,
+        prepared?: {readonly source: PokieProject; readonly plan: ArtifactImportOutputPlan},
+    ): Promise<number> {
+        if (prepared === undefined) {
+            await this.checkImportTarget(inputPath);
+        } else {
+            this.planner.assertImportOutputPlanCurrent(prepared.plan, prepared.source, outPath);
+        }
         const result = await this.importer.importFromFile(inputPath);
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
@@ -231,6 +254,11 @@ export class ParCommand implements CliCommandHandling {
         // explain what to repair, and it has not attempted any output write at this point. Once the
         // workbook is valid, enforce the exact source-alias/no-overwrite policy artifact builds use.
         this.assertDestinationIsAvailable(inputPath, outPath);
+        if (prepared !== undefined) {
+            // Keep recognition/provenance and destination binding live through
+            // the reader phase immediately before durable publication.
+            this.planner.assertImportOutputPlanCurrent(prepared.plan, prepared.source, outPath);
+        }
         const writeResult = this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`);
         if (writeResult?.status === "conflict") {
             // writeBlueprintFileAtomically closes the small race after the preflight check. Re-read

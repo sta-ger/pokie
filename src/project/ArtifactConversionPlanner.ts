@@ -86,6 +86,31 @@ export type ArtifactConversionPlan = {
     readonly diagnostic?: ArtifactConversionDiagnostic;
 };
 
+/**
+ * Import is deliberately modelled separately from the build graph.  A PAR
+ * workbook and a Stake export are exchange inputs: reading either one creates
+ * a new durable POKIE artifact, but does not make a reverse/lossless build
+ * edge available to the source artifact.
+ */
+export type ArtifactImportOutputKind = "blueprint" | "outcomeLibrary";
+
+export type ArtifactImportOutputPlan = {
+    readonly status: "planned" | "unavailable";
+    readonly operation: "importParWorkbook" | "importStakeAdapter";
+    readonly source: ArtifactIdentity;
+    readonly output: ArtifactIdentity & {readonly kind: ArtifactImportOutputKind};
+    readonly preflight: {
+        readonly destinationKind: "file" | "directory";
+        readonly oneWay: true;
+        readonly losses: readonly string[];
+    };
+    readonly diagnostic?: {
+        readonly code: "unsupported-boundary" | "missing-capability";
+        readonly message: string;
+        readonly recovery: string;
+    };
+};
+
 // Presentation-only compatibility wording for callers that historically showed the product matrix.  It is
 // derived from a planner result (rather than used to choose an edge), so execution and preflight always retain
 // the richer failed-edge diagnostic even while long-lived CLI/Studio text remains recognizable.
@@ -218,6 +243,78 @@ export class ArtifactConversionPlanner {
 
     public planType(source: ProjectType, target: ArtifactTargetType): ArtifactConversionPlan {
         return this.planIdentity({kind: source, capabilities: PROJECT_TYPE_CAPABILITIES[source]}, target);
+    }
+
+    /**
+     * Prepares the durable output of an exchange import.  This is not exposed
+     * through listTargets()/plan() because it must not imply a conversion from
+     * Blueprint or Outcome Library back to its exchange source.
+     */
+    public planImportOutput(source: PokieProject, outputKind: ArtifactImportOutputKind, destinationPath: string): ArtifactImportOutputPlan {
+        return this.planImportOutputIdentity(resolveArtifactIdentity(source), outputKind, destinationPath);
+    }
+
+    public planImportOutputIdentity(source: ArtifactIdentity, outputKind: ArtifactImportOutputKind, destinationPath: string): ArtifactImportOutputPlan {
+        const destinationKind = outputKind === "blueprint" ? "file" : "directory";
+        const expectedSource = outputKind === "blueprint" ? "parWorkbook" : "stakeAdapter";
+        const requiredCapability = outputKind === "blueprint" ? PAR_WORKBOOK_EXCHANGE_CAPABILITY : STAKE_ADAPTER_EXPORT_CAPABILITY;
+        const losses = outputKind === "blueprint"
+            ? ["PAR is an exchange snapshot. Import creates a Blueprint and does not establish a reverse or lossless conversion edge."]
+            : ["Stake Engine import reconstructs a POKIE Outcome Library from its manifest and does not recover a game model or a lossless reverse edge."];
+        const output: ArtifactIdentity & {readonly kind: ArtifactImportOutputKind} = {
+            kind: outputKind,
+            canonicalLocation: path.resolve(destinationPath),
+            capabilities: PROJECT_TYPE_CAPABILITIES[outputKind],
+        };
+        const unavailable = (code: "unsupported-boundary" | "missing-capability", message: string, recovery: string): ArtifactImportOutputPlan => ({
+            status: "unavailable",
+            operation: outputKind === "blueprint" ? "importParWorkbook" : "importStakeAdapter",
+            source,
+            output,
+            preflight: {destinationKind, oneWay: true, losses},
+            diagnostic: {code, message, recovery},
+        });
+        if (source.kind !== expectedSource) {
+            return unavailable(
+                "unsupported-boundary",
+                `A ${outputKind} import requires a recognized ${expectedSource} exchange source, not ${source.kind}.`,
+                outputKind === "blueprint" ? "Choose a PAR workbook produced for POKIE import." : "Choose a POKIE-produced Stake Engine export with pokie-manifest.json.",
+            );
+        }
+        if (!source.capabilities.includes(requiredCapability)) {
+            return unavailable(
+                "missing-capability",
+                `This ${source.kind} was recognized without the required "${requiredCapability}" import capability.`,
+                "Resolve the original artifact again and retry the import.",
+            );
+        }
+        return {
+            status: "planned",
+            operation: outputKind === "blueprint" ? "importParWorkbook" : "importStakeAdapter",
+            source,
+            output,
+            preflight: {destinationKind, oneWay: true, losses},
+        };
+    }
+
+    /**
+     * The shared execution boundary for import adapters.  Readers and writers
+     * remain format-specific, but they may run only after this exact prepared
+     * operation still names the same source and durable destination.
+     */
+    public assertImportOutputPlanCurrent(plan: ArtifactImportOutputPlan, source: PokieProject, destinationPath: string): void {
+        if (plan.status !== "planned") {
+            throw new Error(`${plan.diagnostic?.message ?? "This import cannot be planned."} Next: ${plan.diagnostic?.recovery ?? "resolve a supported exchange source and retry."}`);
+        }
+        const current = resolveArtifactIdentity(source);
+        if (current.kind !== plan.source.kind || current.canonicalLocation !== plan.source.canonicalLocation ||
+            current.recognitionProvenance !== plan.source.recognitionProvenance ||
+            current.capabilities.join("\u0000") !== plan.source.capabilities.join("\u0000")) {
+            throw new Error("The import source changed after this operation was prepared; prepare a new import before executing it.");
+        }
+        if (path.resolve(destinationPath) !== plan.output.canonicalLocation) {
+            throw new Error("The import destination changed after this operation was prepared; prepare a new import before executing it.");
+        }
     }
 
     public planIdentity(source: ArtifactIdentity, targetKind: ArtifactTargetType, options: ArtifactConversionPlanningOptions = {}): ArtifactConversionPlan {

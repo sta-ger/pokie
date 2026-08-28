@@ -2,6 +2,8 @@ import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
+    ArtifactConversionPlanner,
+    ArtifactImportOutputPlan,
     loadWeightedOutcomeLibraryFromBundle,
     StakeEngineBundleStreamingExporter,
     StakeEngineBundleStreamingExporting,
@@ -23,6 +25,7 @@ import {
     StakeEngineStandaloneAnalysisMetricDiff,
     StakeEngineStandaloneAnalyzer,
     StakeEngineStandaloneExactDecimal,
+    PokieProject,
     ValidationIssue,
     WeightedOutcomeLibrary,
 } from "pokie";
@@ -130,6 +133,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly standaloneAnalysisDiffer: StakeEngineStandaloneAnalysisDiffing;
     private readonly writeAnalyzeFile: (file: string, contents: string) => void;
     private readonly writeNewDiffFile: (file: string, contents: string) => void;
+    private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
         pokieVersion: string,
@@ -177,6 +181,18 @@ export class StakeEngineCommand implements CliCommandHandling {
 
     public getCommanderCommand(): Command {
         return this.buildCommand();
+    }
+
+    /** Executes the exact generic-import operation prepared by ImportCommand. */
+    public runPreparedImport(
+        source: PokieProject,
+        plan: ArtifactImportOutputPlan,
+        stakeDir: string,
+        outDir: string,
+        format: ImportFormat = "summary",
+    ): Promise<number> {
+        this.planner.assertImportOutputPlanCurrent(plan, source, outDir);
+        return this.runImport({stakeDir, outDir, format}, {source, plan});
     }
 
     // The target-oriented export alias must be able to prove an adapter source is usable without
@@ -443,7 +459,13 @@ export class StakeEngineCommand implements CliCommandHandling {
     // which publishes the whole --out directory atomically (temp-dir-then-swap, the same discipline
     // StakeEngineExporter uses) — a failure never leaves partial files, never alters an existing --out, and a
     // mode no longer present in this import never leaves its old library file behind.
-    private async runImport(options: ImportOptions): Promise<number> {
+    private async runImport(
+        options: ImportOptions,
+        prepared?: {readonly source: PokieProject; readonly plan: ArtifactImportOutputPlan},
+    ): Promise<number> {
+        if (prepared !== undefined) {
+            this.planner.assertImportOutputPlanCurrent(prepared.plan, prepared.source, options.outDir);
+        }
         const result = await this.importer.importFromDirectory(options.stakeDir);
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const infos = result.issues.filter((issue) => issue.severity !== "error");
@@ -454,6 +476,11 @@ export class StakeEngineCommand implements CliCommandHandling {
             return 1;
         }
 
+        if (prepared !== undefined) {
+            // Source recognition/provenance and the durable directory are both
+            // rechecked immediately before atomic publication.
+            this.planner.assertImportOutputPlanCurrent(prepared.plan, prepared.source, options.outDir);
+        }
         const written = await this.importWriter.writeToDirectory(result, options.outDir);
         const writeErrors = written.issues.filter((issue) => issue.severity === "error");
         if (writeErrors.length > 0) {

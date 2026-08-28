@@ -1,5 +1,6 @@
 import {Command} from "commander";
-import {ArtifactConversionPlanner, ProjectResolving, ProjectTargetResolver, describeArtifactConversionPlanDiagnostic} from "pokie";
+import path from "path";
+import {ArtifactBuilderRegistry, ArtifactConversionPlanner, ProjectResolving, ProjectTargetResolver} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {ParCommand} from "./ParCommand.js";
 import {StakeEngineCommand} from "./StakeEngineCommand.js";
@@ -20,6 +21,7 @@ export class ImportCommand implements CliCommandHandling {
     private readonly stake: StakeEngineCommand;
     private readonly resolveProject: ProjectResolving;
     private readonly planner: ArtifactConversionPlanner;
+    private readonly registry: ArtifactBuilderRegistry;
 
     constructor(
         pokieVersion: string,
@@ -30,6 +32,7 @@ export class ImportCommand implements CliCommandHandling {
         this.stake = new StakeEngineCommand(pokieVersion);
         this.resolveProject = resolveProject;
         this.planner = planner;
+        this.registry = new ArtifactBuilderRegistry(pokieVersion);
     }
 
     public getName(): string {
@@ -62,23 +65,38 @@ export class ImportCommand implements CliCommandHandling {
         if (source === undefined || (source.type !== "parWorkbook" && source.type !== "stakeAdapter")) {
             throw new Error(`"${options.input}" is not a recognized PAR workbook or POKIE-produced Stake Engine export. ${USAGE}`);
         }
-        // Import has intentionally different durable outputs (Blueprint for PAR,
-        // canonical Outcome Library for Stake), so it does not pretend that it is
-        // a reverse build edge.  It still obtains recognition, provenance and its
-        // true readable-source boundary from the shared planner before choosing the
-        // format-specific reader.
-        const target = source.type === "parWorkbook" ? "parWorkbook" : "stakeAdapter";
-        const plan = this.planner.plan(source, target);
+        // Import owns an explicit planner operation rather than reusing a
+        // same-kind build plan as a guard.  PAR creates a Blueprint and Stake
+        // creates an Outcome Library; neither operation advertises a reverse
+        // or lossless conversion edge.
+        const outputKind = source.type === "parWorkbook" ? "blueprint" : "outcomeLibrary";
+        const destination = options.out ?? this.defaultDestination(options.input, outputKind);
+        const plan = this.planner.planImportOutput(source, outputKind, destination);
         if (plan.status !== "planned") {
-            throw new Error(describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "This import source is unavailable.");
+            throw new Error(`${plan.diagnostic?.message ?? "This import source is unavailable."} Next: ${plan.diagnostic?.recovery ?? "resolve a supported exchange source and retry."}`);
         }
-        const delegate = source.type === "parWorkbook" ? this.par : this.stake;
-        // `import` owns its public options before dispatching to a format-specific command. Rebuild
-        // the delegated argv from the parsed public contract so every delegate receives exactly
-        // the public options it supports, rather than the original, unvalidated token sequence.
-        const delegatedArgs = ["import", options.input, ...(options.out === undefined ? [] : ["--out", options.out])];
-        if (options.format !== undefined) delegatedArgs.push("--format", options.format);
-        return delegate.run(delegatedArgs);
+        // Import output operations use the same alias/no-overwrite policy as
+        // artifact publication.  This is deliberately checked from the
+        // prepared source and output rather than left to a format writer.
+        const destinationCheck = this.registry.checkDestination(
+            outputKind === "blueprint" ? "parWorkbook" : "outcomeLibrary",
+            destination,
+            source.rootPath,
+        );
+        if (!destinationCheck.available) {
+            throw new Error(destinationCheck.message ?? `The import destination "${destination}" is unavailable.`);
+        }
+        if (source.type === "parWorkbook") {
+            return this.par.runPreparedImport(source, plan, options.input, destination, options.format === "json" ? "json" : "summary");
+        }
+        return this.stake.runPreparedImport(source, plan, options.input, destination, options.format === "json" ? "json" : "summary");
+    }
+
+    private defaultDestination(input: string, outputKind: "blueprint" | "outcomeLibrary"): string {
+        if (outputKind === "outcomeLibrary") {
+            return path.join(path.dirname(input), `${path.basename(input)}-imported`);
+        }
+        return path.join(path.dirname(input), `${path.basename(input, path.extname(input))}.blueprint.json`);
     }
 
     private command(): Command {

@@ -185,4 +185,36 @@ describe("ArtifactConversionPlanner", () => {
             diagnostic: {code: "unrecognized-source", failedEdge: {from: "tsPackage", to: "outcomeLibrary"}},
         });
     });
+
+    it("prepares durable PAR and Stake import outputs without adding reverse conversion edges", () => {
+        const parImport = planner.planImportOutput(project("parWorkbook"), "blueprint", "/imports/slot.blueprint.json");
+        const stakeImport = planner.planImportOutput(project("stakeAdapter"), "outcomeLibrary", "/imports/outcomes");
+
+        expect(parImport).toMatchObject({
+            status: "planned",
+            operation: "importParWorkbook",
+            output: {kind: "blueprint", canonicalLocation: "/imports/slot.blueprint.json"},
+            preflight: {destinationKind: "file", oneWay: true},
+        });
+        expect(parImport.preflight.losses.join(" ")).toContain("does not establish a reverse or lossless conversion edge");
+        expect(stakeImport).toMatchObject({
+            status: "planned",
+            operation: "importStakeAdapter",
+            output: {kind: "outcomeLibrary", canonicalLocation: "/imports/outcomes"},
+            preflight: {destinationKind: "directory", oneWay: true},
+        });
+        expect(stakeImport.preflight.losses.join(" ")).toContain("does not recover a game model");
+        expect(planner.plan(project("parWorkbook"), "outcomeLibrary").status).toBe("unavailable");
+        expect(planner.plan(project("stakeAdapter"), "outcomeLibrary").status).toBe("unavailable");
+    });
+
+    it("rejects a changed source or destination at import execution", () => {
+        const source = project("parWorkbook");
+        const plan = planner.planImportOutput(source, "blueprint", "/imports/slot.blueprint.json");
+
+        expect(() => planner.assertImportOutputPlanCurrent(plan, source, "/imports/other.blueprint.json"))
+            .toThrow(/destination changed/i);
+        expect(() => planner.assertImportOutputPlanCurrent(plan, {...source, rootPath: "/moved/source.par.xlsx"}, "/imports/slot.blueprint.json"))
+            .toThrow(/source changed/i);
+    });
 });
