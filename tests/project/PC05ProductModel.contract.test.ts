@@ -803,9 +803,9 @@ describe("PC-05 product-model contract", () => {
         expect(productModel).toContain("PC-05-HANDOFF-01");
         const generateFacade = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "GenerateCommand.ts"), "utf-8");
         const outcomeLibraryCommand = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "OutcomeLibraryCommand.ts"), "utf-8");
-        expect(generateFacade).toContain('this.outcomeLibrary.run(["generate", ...args])');
-        expect(outcomeLibraryCommand).toContain('this.writeFile(options.out, JSON.stringify(result.library, null, 4))');
-        expect(outcomeLibraryCommand).toContain('this.writeFile(options.resume, JSON.stringify(this.serializeCheckpoint(error.checkpoint), null, 4))');
+        expect(generateFacade).toContain("this.outcomeLibrary.runGenerate(args)");
+        expect(outcomeLibraryCommand).toContain("this.planner.executeConversionPlan(prepared.plan, prepared.execution)");
+        expect(outcomeLibraryCommand).toContain("onTerminalFailure: (error: unknown)");
         expect(outcomeLibraryCommand).toContain("private async executeBuild(configPath: string, outDir: string)");
         const contracts = registry.persisted_public_output_contracts;
         expect(new Set(contracts.map((contract) => contract.id)).size).toBe(contracts.length);

@@ -200,6 +200,16 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         return this.buildCommand();
     }
 
+    /** The public `generate` facade reuses this grammar without delegating a command invocation. */
+    public getGenerateCommanderCommand(): Command {
+        return this.buildCommand().commands.find((candidate) => candidate.name() === "generate")!;
+    }
+
+    /** Executes the generate grammar as an explicit prepared-operation surface. */
+    public runGenerate(args: string[]): Promise<number> {
+        return this.run(["generate", ...args]);
+    }
+
     // ExportCommand uses this read-only counterpart to `build`: it resolves the exact same descriptor
     // and source files, then applies the structural checks that can run without staging an artifact.
     // Keeping it here prevents the target-oriented alias from inventing a second config format.
@@ -480,18 +490,9 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         // filesystem" discipline every other command's own parseArgs() already follows.
         const sampling = this.buildSampledOptions(options);
 
-        const game = await this.loadGame(packageRoot);
-
         if (options.estimate || options.dryRun) {
+            const game = await this.loadGame(packageRoot);
             return this.executeEstimate(game, options);
-        }
-
-        const manifest = game.getManifest();
-        const libraryId = options.libraryId ?? `${manifest.id}${options.mode !== undefined ? `-${options.mode}` : ""}`;
-
-        let resumeFrom: ExactEnumerationCheckpoint | undefined;
-        if (options.resume !== undefined && this.fileExists(options.resume)) {
-            resumeFrom = this.readCheckpoint(options.resume);
         }
 
         const controller = new AbortController();
@@ -499,31 +500,9 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         this.process.once("SIGINT", onCancel);
 
         try {
-            const generateOptions: GenerateExactWeightedOutcomeLibraryOptions = {
-                libraryId,
-                game,
-                pokieVersion: this.pokieVersion,
-                ...(options.configHash !== undefined ? {configHash: options.configHash} : {}),
-                ...(options.mode !== undefined ? {betMode: options.mode} : {}),
-                ...(options.stake !== undefined ? {stake: options.stake} : {}),
-                ...(options.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: options.maxOutcomeSpaceSize} : {}),
-                ...(options.exact ? {exact: true} : {}),
-                ...sampling,
-                ...(resumeFrom !== undefined ? {resumeFrom} : {}),
-                signal: controller.signal,
-                ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
-            };
-
-            const result = await this.generate(generateOptions);
-
-            // The sweep completed to a real, un-cancelled library -- a checkpoint left over from an
-            // earlier cancelled attempt at this same --resume path is now stale, never silently reused
-            // by a later, unrelated run of the same command.
-            if (options.resume !== undefined && this.fileExists(options.resume)) {
-                this.removeFile(options.resume);
-            }
-
-            this.printGenerateResult(result, options);
+            const prepared = this.prepareRawGenerationOperation(packageRoot, options, sampling, controller.signal);
+            const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution);
+            this.printGenerateResult(execution.read, options);
             return 0;
         } catch (error) {
             if (error instanceof WeightedOutcomeLibraryGenerationCancelledError) {
@@ -549,6 +528,95 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         } finally {
             this.process.off("SIGINT", onCancel);
         }
+    }
+
+    /**
+     * Raw generation is a conversion operation too.  The CLI only supplies a
+     * runtime reader and an optional raw-JSON publisher; the planner rebinds
+     * the package/checkpoint input before and after enumeration and owns the
+     * cancellation rollback/cleanup ordering.  This intentionally does not
+     * advertise raw JSON as a native Outcome Library bundle conversion route.
+     */
+    private prepareRawGenerationOperation(
+        packageRoot: string,
+        options: GenerateCliOptions,
+        sampling: {sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}},
+        signal: AbortSignal,
+    ) {
+        const sourcePaths = [packageRoot, ...(options.resume === undefined ? [] : [options.resume])];
+        const currentSource = () => ({
+            kind: "tsPackage" as const,
+            canonicalLocation: path.resolve(packageRoot),
+            recognitionProvenance: "CLI runnable POKIE package input",
+            capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage,
+            configurationProvenance: {
+                configurationHash: computeArtifactInputBindingHash(sourcePaths),
+                pokieVersion: this.pokieVersion,
+                generationSemantics: sampling.sampled === undefined && sampling.bounded === undefined ? "exact" as const : "boundedSample" as const,
+                ...(sampling.sampled === undefined && sampling.bounded === undefined ? {} : {
+                    sampleCount: String((sampling.sampled ?? sampling.bounded)!.sampleSize),
+                    sampleSeed: (sampling.sampled ?? sampling.bounded)!.seed,
+                }),
+            },
+        });
+        const rawOutput = options.out === undefined ? undefined : path.resolve(options.out);
+        let publishedOutput = false;
+        return {
+            plan: this.planner.planIdentity(currentSource(), "outcomeLibrary", {
+                generationSemantics: currentSource().configurationProvenance.generationSemantics,
+                ...(rawOutput === undefined ? {} : {destinationPath: rawOutput}),
+            }),
+            execution: {
+                currentSource,
+                read: async () => {
+                    const game = await this.loadGame(packageRoot);
+                    const manifest = game.getManifest();
+                    const resumeFrom = options.resume !== undefined && this.fileExists(options.resume) ? this.readCheckpoint(options.resume) : undefined;
+                    return this.generate({
+                        libraryId: options.libraryId ?? `${manifest.id}${options.mode !== undefined ? `-${options.mode}` : ""}`,
+                        game,
+                        pokieVersion: this.pokieVersion,
+                        ...(options.configHash === undefined ? {} : {configHash: options.configHash}),
+                        ...(options.mode === undefined ? {} : {betMode: options.mode}),
+                        ...(options.stake === undefined ? {} : {stake: options.stake}),
+                        ...(options.maxOutcomeSpaceSize === undefined ? {} : {maxOutcomeSpaceSize: options.maxOutcomeSpaceSize}),
+                        ...(options.exact ? {exact: true} : {}),
+                        ...sampling,
+                        ...(resumeFrom === undefined ? {} : {resumeFrom}),
+                        signal,
+                        ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
+                    });
+                },
+                canPublish: () => rawOutput !== undefined,
+                assertDestinationAvailable: () => {
+                    if (rawOutput === undefined) return;
+                    const relative = path.relative(path.resolve(packageRoot), rawOutput);
+                    if (relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))) {
+                        throw new Error(`"${rawOutput}" is the generation source or lies inside it; choose an output outside the runnable package.`);
+                    }
+                    if (this.fileExists(rawOutput)) throw new Error(`"${rawOutput}" already exists; choose a fresh --out path.`);
+                },
+                publish: (result: GenerateExactWeightedOutcomeLibraryResult) => {
+                    // The operation has already established a fresh destination.
+                    // Keep the legacy injectable writer so test and embedding
+                    // callers retain their narrow file-system boundary.
+                    this.writeFile(rawOutput!, JSON.stringify(result.library, null, 4));
+                    publishedOutput = true;
+                },
+                rollback: () => {
+                    if (publishedOutput && rawOutput !== undefined) this.removeFile(rawOutput);
+                },
+                cleanup: ({error}: {readonly error?: unknown}) => {
+                    if (error === undefined && options.resume !== undefined && this.fileExists(options.resume)) this.removeFile(options.resume);
+                },
+                onTerminalFailure: (error: unknown) => {
+                    if (error instanceof WeightedOutcomeLibraryGenerationCancelledError && options.resume !== undefined) {
+                        this.writeFile(options.resume, JSON.stringify(this.serializeCheckpoint(error.checkpoint), null, 4));
+                    }
+                },
+                signal,
+            },
+        };
     }
 
     // --estimate/--dry-run: the cheap, non-enumerating dry run over estimateExactOutcomeSpaceSize --
@@ -626,10 +694,6 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     }
 
     private printGenerateResult(result: GenerateExactWeightedOutcomeLibraryResult, options: GenerateCliOptions): void {
-        if (options.out !== undefined) {
-            this.writeFile(options.out, JSON.stringify(result.library, null, 4));
-        }
-
         if (options.format === "json") {
             console.log(JSON.stringify(result, null, 4));
         } else {
