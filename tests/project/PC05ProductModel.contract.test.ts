@@ -14,6 +14,8 @@ type InventoryItem = {
     provenance?: string;
     stale?: string;
     compatibility?: string;
+    containment?: string;
+    diagnostics?: string;
     recovery?: string;
     support_status?: string;
 };
@@ -105,7 +107,7 @@ function operationOwner(matrix: string, operation: string): string {
 }
 
 describe("PC-05 product-model contract", () => {
-    it("closes the artifact graph and inventories raw generation, portable rounds, Stake-import companions and the three fairness artifacts", () => {
+    it("closes the artifact graph and inventories raw generation, descriptor prerequisites, portable rounds, Stake-import companions and the three fairness artifacts", () => {
         const registry = readRegistry();
         const items = [...registry.artifact_kinds, ...registry.non_artifact_prerequisites];
         const ids = items.map((item) => item.id);
@@ -131,8 +133,10 @@ describe("PC-05 product-model contract", () => {
                 "tsPackage",
                 "parWorkbook",
                 "weightedOutcomeLibraryJson",
+                "outcomeLibraryBundleDescriptor",
                 "outcomeLibraryGenerationCheckpoint",
                 "outcomeLibrary",
+                "stakeEngineExportDescriptor",
                 "stakeAdapter",
                 "wasmComponent",
                 "roundArtifact",
@@ -163,6 +167,38 @@ describe("PC-05 product-model contract", () => {
         expect(roundArtifact?.exports_to).toEqual(expect.arrayContaining(["runtimeReplayDescriptor", "certificationEvidenceBundle"]));
         const stakeImportConfig = registry.artifact_kinds.find((item) => item.id === "stakeImportReExportConfig");
         expect(stakeImportConfig?.imports_from).toEqual(expect.arrayContaining(["stakeAdapter", "outcomeLibrary"]));
+        const outcomeLibraryDescriptor = registry.artifact_kinds.find((item) => item.id === "outcomeLibraryBundleDescriptor");
+        const stakeExportDescriptor = registry.artifact_kinds.find((item) => item.id === "stakeEngineExportDescriptor");
+        for (const descriptor of [outcomeLibraryDescriptor, stakeExportDescriptor]) {
+            expect(descriptor).toEqual(expect.objectContaining({
+                provenance: expect.any(String),
+                stale: expect.any(String),
+                compatibility: expect.any(String),
+                containment: expect.any(String),
+                diagnostics: expect.any(String),
+                recovery: expect.any(String),
+                "support_status": "supported-user-supplied-prerequisite-contract",
+            }));
+        }
+        expect(outcomeLibraryDescriptor).toEqual(expect.objectContaining({
+            label: "Outcome Library bundle descriptor",
+            "created_by": ["user-authored Outcome Library bundle config (POKIE does not create this descriptor)"],
+            "imports_from": ["weightedOutcomeLibraryJson"],
+            "exports_to": ["outcomeLibrary"],
+        }));
+        expect(outcomeLibraryDescriptor?.compatibility).toContain("outcomesPath");
+        expect(stakeExportDescriptor).toEqual(expect.objectContaining({
+            label: "Stake Engine export descriptor",
+            "created_by": ["user-authored Stake Engine export config (POKIE does not create the generic descriptor)"],
+            "imports_from": expect.arrayContaining(["weightedOutcomeLibraryJson", "outcomeLibrary"]),
+            "exports_to": ["stakeAdapter"],
+        }));
+        expect(stakeExportDescriptor?.compatibility).toContain("bundleModeName");
+        expect(stakeImportConfig).toEqual(expect.objectContaining({
+            label: "Stake-import re-export configuration",
+            compatibility: expect.stringContaining("specialization of the generic Stake Engine export descriptor"),
+            provenance: expect.stringContaining("unlike the user-authored generic stakeEngineExportDescriptor"),
+        }));
         const rawLibrary = registry.artifact_kinds.find((item) => item.id === "weightedOutcomeLibraryJson");
         const generationCheckpoint = registry.artifact_kinds.find((item) => item.id === "outcomeLibraryGenerationCheckpoint");
         const outcomeLibrary = registry.artifact_kinds.find((item) => item.id === "outcomeLibrary");
@@ -303,6 +339,41 @@ describe("PC-05 product-model contract", () => {
         );
     });
 
+    it("source-backs both descriptor prerequisites and their public export delegation", () => {
+        const registry = readRegistry();
+        const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
+        const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
+        const outcomeLibraryCommand = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "OutcomeLibraryCommand.ts"), "utf-8");
+        const stakeEngineCommand = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "StakeEngineCommand.ts"), "utf-8");
+        const exportCommand = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "ExportCommand.ts"), "utf-8");
+
+        expect(outcomeLibraryCommand).toContain("private loadDescriptor(configPath: string): BuildDescriptor");
+        expect(outcomeLibraryCommand).toContain('must specify exactly one of "libraryPath" or "outcomesPath"');
+        expect(outcomeLibraryCommand).toContain('uses "outcomesPath" and so requires a string "libraryId"');
+        expect(stakeEngineCommand).toContain("private loadDescriptor(configPath: string): ExportDescriptor");
+        expect(stakeEngineCommand).toContain('must specify exactly one of "libraryPath" or "bundleDir"');
+        expect(stakeEngineCommand).toContain('must have a string "modeName" and a number "cost"');
+        expect(exportCommand).toContain('this.outcomeLibrary.run(["build", ...forwarded])');
+        expect(exportCommand).toContain('this.stake.run(["export", ...forwarded])');
+
+        const outcomeDescriptor = registry.artifact_kinds.find((item) => item.id === "outcomeLibraryBundleDescriptor");
+        const stakeDescriptor = registry.artifact_kinds.find((item) => item.id === "stakeEngineExportDescriptor");
+        expect(outcomeDescriptor?.recognized_by).toEqual(expect.arrayContaining([
+            "OutcomeLibraryCommand:loadDescriptor",
+            "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
+        ]));
+        expect(stakeDescriptor?.recognized_by).toEqual(expect.arrayContaining([
+            "StakeEngineCommand:loadDescriptor",
+            "ExportCommand --to adapter delegation to StakeEngineCommand.export",
+        ]));
+        expect(matrix).toContain("canonical `outcomeLibraryBundleDescriptor`");
+        expect(matrix).toContain("canonical `stakeEngineExportDescriptor`");
+        expect(matrix).toContain("POKIE-created `stakeImportReExportConfig`");
+        expect(productModel).toContain("`outcomeLibraryBundleDescriptor`");
+        expect(productModel).toContain("`stakeEngineExportDescriptor`");
+        expect(productModel).toContain("`stakeImportReExportConfig`");
+    });
+
     it("covers every registered public route and records its legacy aliases without advertising them", () => {
         const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
         const routeInventory = matrix.slice(matrix.indexOf("## Public route inventory and aliases"), matrix.indexOf("## Closure ledger"));
@@ -371,7 +442,7 @@ describe("PC-05 product-model contract", () => {
         expect(matrix).toContain("| Generate raw weighted outcomes | `generate --out <file>`");
         expect(matrix).toContain("one `WeightedOutcomeLibrary` JSON value");
         expect(matrix).toContain("`--resume` persists an `ExactEnumerationCheckpoint` only on cancellation");
-        expect(matrix).toContain("| Materialize a canonical Outcome Library bundle | `build --target outcomeLibrary` from a recognized compatible project, `export <config.json> --to outcomes` from a descriptor");
+        expect(matrix).toContain("| Materialize a canonical Outcome Library bundle | `build --target outcomeLibrary` from a recognized compatible project, `export <config.json> --to outcomes` from an Outcome Library bundle descriptor");
         expect(matrix).toContain("`generate` as already having built a directory bundle");
         expect(matrix).toContain("`validate --out <file>` writes a `ValidateReport`");
         expect(matrix).toContain("`report --out <file>`");

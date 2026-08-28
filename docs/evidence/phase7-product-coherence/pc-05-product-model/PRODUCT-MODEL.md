@@ -102,14 +102,52 @@ Studio; repair or rebuild an indexed corrupt bundle before it can be usable.
 single `WeightedOutcomeLibrary` JSON file, and a cancelled run can persist an
 `ExactEnumerationCheckpoint` only when `--resume` was supplied.  Neither file
 is a native Outcome Library bundle. `pokie outcomelibrary build` consumes
-descriptor-named raw-library JSON to materialize the canonical directory
-bundle. Its supported public entry point is
+the canonical user-authored `outcomeLibraryBundleDescriptor` to materialize the
+canonical directory bundle. Each descriptor mode names exactly one
+`libraryPath` (a raw `WeightedOutcomeLibrary` JSON value) or `outcomesPath`
+(canonical JSONL, with `libraryId` and optional `schemaVersion`). Its supported
+public entry point is
 `pokie export <config.json> --to outcomes --out <dir>`; public
 `build --target outcomeLibrary` is separately a recognized-project-source
 materialization route, not a way to pass a raw JSON file without a descriptor.
 Studio Generate currently combines the raw generation and bundle write in one
 request, which is a Studio convenience, not evidence that the CLI raw file is
 already a bundle.
+
+These source descriptors are durable prerequisite contracts, not incidental
+CLI argument files. `ExportCommand` resolves a recognized project first, then
+delegates an unrecognized `--to outcomes` source to
+`OutcomeLibraryCommand.loadDescriptor()` and `--to adapter` to
+`StakeEngineCommand.loadDescriptor()`. Both resolve relative source paths from
+the descriptor directory with `path.resolve`; they do not claim that a
+user-authored descriptor is contained inside a project root, and they only read
+those inputs. Safe, create-only output publication is a separate writer and
+destination contract. A malformed Outcome Library descriptor reports its path
+and mode/source violation (including the exclusive `libraryPath`/`outcomesPath`
+rule); stale, moved, corrupt, or cross-mode-incompatible sources must be
+repaired or regenerated before materialization. The target-oriented export
+surface then says that the outcomes source is incompatible and tells the author
+to provide valid mode sources rather than leaking parser internals.
+
+The parallel `stakeEngineExportDescriptor` is a distinct durable
+user-authored prerequisite: every mode has a string name, numeric cost, and
+exactly one `libraryPath` raw JSON source or `bundleDir` native Outcome Library
+source; `bundleModeName` optionally selects a different bundle mode and
+otherwise defaults to the descriptor mode name. It supports more than the
+Stake-import convenience config: raw libraries and native bundles are both
+valid source forms. `StakeEngineCommand.loadDescriptor()` reports unreadable or
+malformed configs and invalid exclusive source selections with its Stake export
+config hint; resolved modes then pass `StakeEngineExportValidator`. Rebuild or
+restore stale named libraries/bundles, repair name/cost/source entries, and use
+a new safe output directory when needed. The POKIE-created
+`stakeImportReExportConfig` (`config.json` beside a reconstructed imported
+Outcome Library) is deliberately separate: it is a bundleDir-only specialization
+written by `StakeEngineImportWriter` to preserve imported mode/cost selectors
+for convenient re-export. It is not the canonical generic descriptor and does
+not erase user-authored `libraryPath` descriptors. If that companion is moved,
+stale, malformed, or incompatible, normal Stake descriptor diagnostics apply;
+repair a generic config or re-import the valid POKIE Stake directory to recreate
+it.
 
 The two branches have different guarantees.  A TypeScript package executes
 game logic; native Outcome Library operations select pre-generated outcomes.
@@ -174,6 +212,7 @@ evade the ledger merely by exposing no `--out` flag.
 | Destructive/replacement recovery failure | An import/open action destroys or replaces editable context without an explained recovery. | PC-05-STUDIO-01. | PC-16 |
 | Cross-surface capability asymmetry | One client offers a lifecycle subset without an explicit handoff/boundary. | PC-05-STUDIO-02: certification verify; deployment CLI absence. | PC-11 |
 | Public pipeline handoff | A public operation writes a durable intermediate whose next canonical materialization stage is hidden or misnamed. | PC-05-HANDOFF-01: raw `generate` JSON/checkpoint versus bundle build; Studio combines the stages. | PC-09 |
+| Descriptor-prerequisite omission | A durable user-authored descriptor is confused with one producer-specific generated companion, so valid source forms and recovery disappear from the product contract. | PC-05 inventory correction: Outcome Library bundle descriptor and generic Stake Engine export descriptor; Stake-import `config.json` remains a distinct bundleDir-only companion. No open product mismatch. | Closed by PC-05 model inventory |
 | Duplicate conversion ownership | Product-domain, public CLI and Studio entry points must not independently define one conversion contract. | PC-05-DUP-01A Outcome Library; PC-05-DUP-01B Stake; PC-05-DUP-01C PAR; PC-05-DUP-01D public CLI aliases; PC-05-DUP-01E Studio controls. | PC-09 / PC-10 / PC-11 / PC-15 / PC-16 |
 | Runtime-source semantic duplication | The same verb means runtime execution for one source and pre-generated selection for another. | PC-05-DUP-02: simulation/replay/serve. | PC-06 |
 | Validation surface asymmetry | Clients expose different portions of a target-specific validation lifecycle. | PC-05-DUP-03A/B: Blueprint/library/Stake/certification validation. | PC-06 / PC-11 |
