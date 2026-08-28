@@ -33,6 +33,12 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
         const state = captureArtifactDestinationState(destinationPath, this.destinationKind);
         const evidencePath = `${destinationPath}.conversion-evidence.json`;
+        // Evidence is part of the Blueprint publication contract, not a
+        // disposable log.  Do the same occupied-output check for it before
+        // allocating either publication so an existing sidecar can never be
+        // overwritten (or removed by the rollback below).
+        assertArtifactDestinationAvailable(evidencePath, this.destinationKind);
+        const evidenceState = captureArtifactDestinationState(evidencePath, this.destinationKind);
         try {
             reportArtifactBuildProgress(options, {status: "running", message: "Importing PAR workbook into Blueprint"});
             assertArtifactBuildNotCancelled(options);
@@ -53,12 +59,14 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
                 issues: imported.issues,
                 facts: imported.conversionEvidence?.facts ?? imported.issues.map((issue) => ({kind: "diagnostic", code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})})),
                 losslessEligible: imported.conversionEvidence?.losslessEligible ?? false,
+                importedBlueprintHash: imported.conversionEvidence?.importedBlueprintHash,
+                provenanceHashMatches: imported.conversionEvidence?.provenanceHashMatches ?? false,
             }, null, 4)}\n`, "utf8");
             reportArtifactBuildProgress(options, {status: "completed"});
             return {outputPath: destinationPath, conversionEvidencePath: evidencePath};
         } catch (error) {
             await cleanupIncompleteArtifactOutput(destinationPath, state);
-            await fs.promises.rm(evidencePath, {force: true}).catch(() => undefined);
+            await cleanupIncompleteArtifactOutput(evidencePath, evidenceState);
             throw error;
         }
     }

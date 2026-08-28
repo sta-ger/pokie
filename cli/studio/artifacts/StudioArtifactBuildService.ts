@@ -83,7 +83,7 @@ export class StudioArtifactBuildService {
         pokieVersion: string,
         registry?: ArtifactBuilderRegistry,
         resolveProject?: ProjectResolving,
-        private readonly registerManagedProject: (projectRoot: string) => Promise<void> = () => Promise.resolve(),
+        private readonly registerManagedProject: (projectRoot: string, provenance?: {readonly sourceWorkbookPath?: string; readonly conversionEvidencePath?: string}) => Promise<void> = () => Promise.resolve(),
         managedOutcomeProjects?: ManagedOutcomeProjectServicing,
         pokiePackageRoot?: string,
     ) {
@@ -182,7 +182,11 @@ export class StudioArtifactBuildService {
                 // not merely a transient prerequisite like an Outcome bundle.
                 ...(target === "blueprint" ? [result.outputPath] : []),
             ]);
-            await Promise.all(Array.from(managedProjectRoots, (projectRoot) => this.registerManagedProject(projectRoot)));
+            const provenance = await this.parImportRegistrationProvenance(result.conversionEvidencePath);
+            await Promise.all(Array.from(managedProjectRoots, (projectRoot) => this.registerManagedProject(
+                projectRoot,
+                projectRoot === result.outputPath ? provenance : undefined,
+            )));
             return {
                 status: "ok",
                 target,
@@ -207,6 +211,8 @@ export class StudioArtifactBuildService {
                         reusedCompatibleProject: true,
                     }
                     : {}),
+                ...(result.importedBlueprintPath !== undefined ? {importedBlueprintPath: result.importedBlueprintPath} : {}),
+                ...(result.conversionEvidencePath !== undefined ? {conversionEvidencePath: result.conversionEvidencePath} : {}),
             };
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
@@ -341,6 +347,22 @@ export class StudioArtifactBuildService {
     private targetPlannerFields(plan: ArtifactConversionPlan): {readonly diagnostic?: string; readonly plan: ArtifactConversionPlan} {
         if (plan.status === "unavailable") return {diagnostic: this.describePlanDiagnostic(plan), plan};
         return {plan};
+    }
+
+    private async parImportRegistrationProvenance(conversionEvidencePath: string | undefined): Promise<{readonly sourceWorkbookPath?: string; readonly conversionEvidencePath?: string} | undefined> {
+        if (conversionEvidencePath === undefined) return undefined;
+        try {
+            const fs = await import("fs");
+            const evidence = JSON.parse(await fs.promises.readFile(conversionEvidencePath, "utf8")) as {sourceWorkbook?: unknown};
+            return {
+                conversionEvidencePath,
+                ...(typeof evidence.sourceWorkbook === "string" ? {sourceWorkbookPath: evidence.sourceWorkbook} : {}),
+            };
+        } catch {
+            // The artifact result remains authoritative; registration simply
+            // cannot claim provenance it could not inspect.
+            return {conversionEvidencePath};
+        }
     }
 }
 

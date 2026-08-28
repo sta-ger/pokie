@@ -483,6 +483,8 @@ function TargetCard({
                         <>
                             <Text size="sm" mt={4}>
                                 Built to {artifactBuildRun.result.outputPath}.
+                                {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported Blueprint: ${artifactBuildRun.result.importedBlueprintPath}.`}
+                                {artifactBuildRun.result.conversionEvidencePath !== undefined && ` Conversion evidence: ${artifactBuildRun.result.conversionEvidencePath}.`}
                             </Text>
                             {artifactBuildRun.result.plan !== undefined && (
                                 <Text size="sm" c="dimmed" mt={4}>

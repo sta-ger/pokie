@@ -1289,6 +1289,8 @@ export type StudioArtifactBuildView =
           sourceType: StudioProjectType;
           plan: StudioArtifactConversionPlan;
           preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
+          importedBlueprintPath?: string;
+          conversionEvidencePath?: string;
       }
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
     | {status: "conflict"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}

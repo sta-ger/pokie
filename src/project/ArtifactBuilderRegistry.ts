@@ -349,11 +349,16 @@ export class ArtifactBuilderRegistry {
         await Promise.resolve();
         this.assertExecutablePlan(plan);
         this.assertTargetAvailable(plan.target.kind as ArtifactTargetType);
-        const target = plan.target.kind as ArtifactTargetType;
         await this.assertPlanSourceMatches(plan, source);
         this.assertPlanDestinationMatches(plan, destinationPath);
         await this.assertPlanGraphIsCurrent(plan, source, destinationPath);
         if (source.type === "parWorkbook") return this.executeParDerivedPlan(plan, source, destinationPath, options);
+        return this.executeSelectedPlan(plan, source, destinationPath, options);
+    }
+
+    /** Executes already-selected stages without asking the planner to choose them again. */
+    private async executeSelectedPlan(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        const target = plan.target.kind as ArtifactTargetType;
         const reuseStep = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
         const managed = reuseStep === undefined ? undefined : await this.reopenPlannedManagedOutcome(source, plan.source, reuseStep.output);
         // Every selected plan is subjected to the same destination policy at
@@ -421,7 +426,12 @@ export class ArtifactBuilderRegistry {
                 provenance: `imported from PAR workbook ${source.rootPath}`,
                 capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
             };
-            const result = await this.build(target, imported, destinationPath, options);
+            // The PAR plan chose every downstream stage before import began.
+            // Hydrate its imported-Blueprint identity with the materialized
+            // runtime provenance, then execute those selected stages directly;
+            // calling build() here would silently prepare a second plan.
+            const selectedPlan = await this.hydrateParDerivedPlan(plan, imported, options);
+            const result = await this.executeSelectedPlan(selectedPlan, imported, destinationPath, options);
             // The temporary Blueprint is only an execution allocation.  Once
             // the selected terminal writer succeeds, retain an inspectable
             // copy and its evidence under the final artifact instead of
@@ -447,6 +457,29 @@ export class ArtifactBuilderRegistry {
             // terminal publication into an intermediate-cleanup failure.
             await fs.promises.rm(intermediateDirectory, {recursive: true, force: true, maxRetries: 8, retryDelay: 25});
         }
+    }
+
+    private async hydrateParDerivedPlan(plan: ArtifactConversionPlan, imported: PokieProject, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
+        const importStep = plan.steps.find((step) => step.kind === "importParWorkbook");
+        if (importStep === undefined) throw new Error("The prepared PAR conversion plan has no import stage.");
+        let source: ArtifactIdentity = {...resolveArtifactIdentity(imported), recognitionProvenance: importStep.output.recognitionProvenance};
+        if (plan.target.kind === "outcomeLibrary" || plan.target.kind === "stakeAdapter") {
+            const prepared = await this.blueprintStakeWorkflow.prepare(imported, {outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
+            const sampled = prepared.generation.sampled;
+            source = {
+                ...source,
+                configurationProvenance: {
+                    configurationHash: prepared.configHash,
+                    pokieVersion: prepared.compatibility.pokieVersion,
+                    gameId: prepared.compatibility.gameId,
+                    gameVersion: prepared.compatibility.gameVersion,
+                    manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
+                    generationSemantics: sampled === undefined ? "exact" : "boundedSample",
+                    ...(sampled === undefined ? {} : {sampleCount: sampled.sampleSize.toString(), sampleSeed: sampled.seed}),
+                },
+            };
+        }
+        return {...plan, source, steps: plan.steps.filter((step) => step !== importStep)};
     }
 
     private async buildStakeFromPlannedOutcome(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options: ArtifactBuildOptions | undefined, reused?: PokieProject): Promise<ArtifactBuildResult> {

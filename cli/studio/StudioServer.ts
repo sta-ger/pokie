@@ -365,8 +365,8 @@ export class StudioServer implements StudioServerHandling {
                 this.pokieVersion,
                 undefined,
                 undefined,
-                async (projectRoot) => {
-                    const registered = await this.projectRegistrationService.registerManaged(projectRoot, path.basename(projectRoot));
+                async (projectRoot, provenance) => {
+                    const registered = await this.projectRegistrationService.registerManaged(projectRoot, path.basename(projectRoot), provenance?.sourceWorkbookPath, provenance?.conversionEvidencePath);
                     if (registered.status !== "ok") {
                         throw new Error(`Generated artifact at "${projectRoot}" could not be registered as a Studio Project.`);
                     }

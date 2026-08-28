@@ -24,5 +24,8 @@ export type ParSheetImportResult = {
         readonly metaSheet: readonly (readonly unknown[])[] | undefined;
         readonly facts: readonly {readonly kind: "ignored" | "formulaMaterialized" | "inferredOrDefaulted" | "diagnostic"; readonly code: string; readonly message: string; readonly details?: unknown}[];
         readonly losslessEligible: boolean;
+        /** The imported canonical model hash used to verify Meta's claim. */
+        readonly importedBlueprintHash: string;
+        readonly provenanceHashMatches: boolean;
     };
 };

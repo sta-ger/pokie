@@ -334,6 +334,8 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  artifact root    ${result.outputPath}`);
         console.log(`  target           ${target}`);
         console.log(`  source           ${project.rootPath}`);
+        if (result.importedBlueprintPath !== undefined) console.log(`  imported Blueprint ${result.importedBlueprintPath}`);
+        if (result.conversionEvidencePath !== undefined) console.log(`  conversion evidence ${result.conversionEvidencePath}`);
 
         if (result.reusedCompatibleProject) {
             console.log(`  requested root   ${result.requestedDestinationPath}`);

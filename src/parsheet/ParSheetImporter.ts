@@ -180,10 +180,13 @@ export class ParSheetImporter implements ParSheetImporting {
             }
         }
         let provenance: ParSheetProvenance | undefined;
-        let metaSheet: SheetGrid | undefined;
+        // Keep Meta independently from the mapper grid: mapper input
+        // materializes formula results, whereas durable evidence must retain
+        // the user's original Meta cells verbatim for later inspection.
+        let metaSheet: readonly (readonly unknown[])[] | undefined;
         if (sheetsByName.has("Meta")) {
-            metaSheet = gridFor("Meta").map((row) => [...row]);
-            provenance = this.provenanceMapper.fromRows(metaSheet).value;
+            metaSheet = rawSheetToGrid(sheetsByName.get("Meta")!);
+            provenance = this.provenanceMapper.fromRows(gridFor("Meta")).value;
             issues.push(...this.verifyProvenance(provenance, blueprint));
         } else {
             issues.push({
@@ -196,7 +199,7 @@ export class ParSheetImporter implements ParSheetImporting {
         issues.push(...this.validator.validate(blueprint));
 
         const facts = issues.map((issue) => ({
-            kind: conversionFactKind(issue.code, issue.message),
+            kind: conversionFactKind(issue.code),
             code: issue.code,
             message: issue.message,
             ...(issue.details === undefined ? {} : {details: issue.details}),
@@ -204,8 +207,10 @@ export class ParSheetImporter implements ParSheetImporting {
         // A canonical export has matching Meta provenance and no importer
         // transformation warning/error.  Informational provenance-present is
         // intentionally not a loss boundary.
-        const losslessEligible = issues.every((issue) => issue.severity === "info" && issue.code === "parsheet-provenance-present");
-        return {blueprint, provenance, issues, conversionEvidence: {metaSheet, facts, losslessEligible}};
+        const importedBlueprintHash = computeBlueprintHash(blueprint);
+        const provenanceHashMatches = provenance?.blueprintHash === importedBlueprintHash;
+        const losslessEligible = provenanceHashMatches && issues.every((issue) => issue.severity === "info" && issue.code === "parsheet-provenance-present");
+        return {blueprint, provenance, issues, conversionEvidence: {metaSheet, facts, losslessEligible, importedBlueprintHash, provenanceHashMatches}};
     }
 
     // Wraps whatever readWorkbook throws (ExcelJS's own raw errors -- e.g. "Can't find end of central
@@ -357,9 +362,30 @@ function cellValueToPrimitive(value: ExcelJS.CellValue): unknown {
     return undefined;
 }
 
-function conversionFactKind(code: string, message: string): "ignored" | "formulaMaterialized" | "inferredOrDefaulted" | "diagnostic" {
+function conversionFactKind(code: string): "ignored" | "formulaMaterialized" | "inferredOrDefaulted" | "diagnostic" {
     if (code === "parsheet-formula-cell") return "formulaMaterialized";
-    if ((/default|infer|missing/i).test(`${code} ${message}`)) return "inferredOrDefaulted";
-    if ((/ignored|unknown/i).test(`${code} ${message}`)) return "ignored";
+    if (code === "parsheet-unknown-sheet" || code === "parsheet-unknown-column") return "ignored";
+    // Mapper diagnostics use stable PAR codes; classify those exact facts,
+    // never the human wording, so a translated/error-message change cannot
+    // silently alter durable conversion evidence.
+    if (new Set([
+        "parsheet-missing-sheet", "parsheet-missing-column", "parsheet-missing-value",
+        "parsheet-defaulted-value", "parsheet-inferred-value",
+    ]).has(code)) return "inferredOrDefaulted";
     return "diagnostic";
+}
+
+function rawSheetToGrid(worksheet: ExcelJS.Worksheet): readonly (readonly unknown[])[] {
+    const grid: unknown[][] = [];
+    worksheet.eachRow({includeEmpty: true}, (row) => {
+        const cells: unknown[] = [];
+        row.eachCell({includeEmpty: true}, (cell) => {
+            const value = cell.value;
+            // ExcelJS values are plain data, but clone them so callers cannot
+            // observe a later workbook mutation through this import result.
+            cells.push(value !== null && typeof value === "object" ? JSON.parse(JSON.stringify(value)) : value);
+        });
+        grid.push(cells);
+    });
+    return grid;
 }

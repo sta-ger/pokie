@@ -88,6 +88,8 @@ export class ExportCommand implements CliCommandHandling {
         try {
             const result = await this.registry.executePlan(plan, project, destination);
             console.log(`Artifact "${args.target}" exported to "${result.outputPath}".`);
+            if (result.importedBlueprintPath !== undefined) console.log(`Imported Blueprint: ${result.importedBlueprintPath}.`);
+            if (result.conversionEvidencePath !== undefined) console.log(`Conversion evidence: ${result.conversionEvidencePath}.`);
             return 0;
         } catch (error) {
             if (error instanceof Error && (/already exists|source itself|destination/i).test(error.message)) {

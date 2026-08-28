@@ -28,10 +28,10 @@ import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDispla
 import {BlueprintFileWriteResult, writeBlueprintFileAtomically} from "./internal/writeBlueprintFileAtomically.js";
 
 const USAGE =
-    "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]\n" +
-    "   or: pokie par export <config.json> [--out <output.xlsx>]";
-const IMPORT_USAGE = "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]";
-const EXPORT_USAGE = "Usage: pokie par export <config.json> [--out <output.xlsx>]";
+    "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json] [--dry-run]\n" +
+    "   or: pokie par export <config.json> [--out <output.xlsx>] [--dry-run]";
+const IMPORT_USAGE = "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json] [--dry-run]";
+const EXPORT_USAGE = "Usage: pokie par export <config.json> [--out <output.xlsx>] [--dry-run]";
 
 type ImportFormat = "summary" | "json";
 type BlueprintFileWriting = (filePath: string, contents: string) => void | BlueprintFileWriteResult;
@@ -219,11 +219,19 @@ export class ParCommand implements CliCommandHandling {
             .argument("<config.json>", "an existing GameBlueprint JSON config")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--out <output.xlsx>", "output path (default: <config.json> with a .par.xlsx extension)")
-            .action(async (blueprintPath: string, excess: string[], options: {out?: string}) => {
+            .option("--dry-run", "preview the prepared export without writing anything")
+            .action(async (blueprintPath: string, excess: string[], options: {out?: string; dryRun?: boolean}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${EXPORT_USAGE}`);
                 }
                 const outPath = options.out ?? defaultParSheetPath(blueprintPath);
+                if (options.dryRun) {
+                    const prepared = this.prepareDescriptorExportOperation(blueprintPath, outPath);
+                    await prepared.validate();
+                    console.log(`Dry run -- would export PAR workbook "${blueprintPath}" to "${outPath}" (file destination). No files written.`);
+                    console.log(`Conversion plan: ${prepared.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}.`);
+                    return;
+                }
                 exitCodeRef.value = await this.executeExport(blueprintPath, outPath);
             });
 
@@ -245,7 +253,34 @@ export class ParCommand implements CliCommandHandling {
             if (this.usesDefaultRegistryLifecycle()) {
                 const plan = await this.registry.preparePlan(source, "blueprint", {destinationPath: outPath});
                 const result = await this.registry.executePlan(plan, source, outPath);
-                const evidence = JSON.parse(await fs.promises.readFile(result.conversionEvidencePath!, "utf8")) as {issues?: ValidationIssue[]};
+                const evidence = JSON.parse(await fs.promises.readFile(result.conversionEvidencePath!, "utf8")) as {
+                    provenance?: unknown;
+                    metaSheet?: unknown;
+                    issues?: ValidationIssue[];
+                    facts?: unknown;
+                    losslessEligible?: boolean;
+                    importedBlueprintHash?: string;
+                    provenanceHashMatches?: boolean;
+                };
+                if (format === "json") {
+                    // Keep the documented importer JSON shape even though the
+                    // shared registry owns durable publication.  Read only
+                    // the just-published operation-owned records; do not
+                    // re-import the workbook after the prepared plan ran.
+                    console.log(JSON.stringify({
+                        blueprint: JSON.parse(await fs.promises.readFile(result.outputPath, "utf8")),
+                        provenance: evidence.provenance,
+                        issues: evidence.issues ?? [],
+                        conversionEvidence: {
+                            metaSheet: evidence.metaSheet,
+                            facts: evidence.facts ?? [],
+                            losslessEligible: evidence.losslessEligible ?? false,
+                            importedBlueprintHash: evidence.importedBlueprintHash,
+                            provenanceHashMatches: evidence.provenanceHashMatches ?? false,
+                        },
+                    }, null, 4));
+                    return 0;
+                }
                 for (const issue of evidence.issues ?? []) {
                     console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
                 }
