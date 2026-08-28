@@ -263,6 +263,46 @@ describe("ArtifactBuilderRegistry", () => {
             }
         });
 
+        it("validates and executes an unchanged bounded-sample prepared plan", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-bounded-plan-registry-test-"));
+            const blueprintPath = path.join(workDir, "game.blueprint.json");
+            const outcomeDir = path.join(workDir, "outcome");
+            fs.writeFileSync(
+                blueprintPath,
+                JSON.stringify({
+                    manifest: {id: "bounded-plan-slot", name: "Bounded Plan Slot", version: "1.0.0"},
+                    reels: 3,
+                    rows: 1,
+                    symbols: ["A", "B"],
+                    paytable: {A: {2: 1, 3: 2}},
+                    reelStrips: [["A", "B"], ["A", "B"], ["A", "B"]],
+                    availableBets: [1],
+                }),
+            );
+            const blueprintProject: PokieProject = {
+                type: "blueprint",
+                rootPath: blueprintPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                provenance: "test fixture",
+            } as PokieProject;
+            const outcomeLibraryGeneration = {sampled: {sampleSize: BigInt(4), seed: "bounded-plan-seed"}};
+
+            try {
+                const plan = await registry.preparePlan(blueprintProject, "outcomeLibrary", {destinationPath: outcomeDir, outcomeLibraryGeneration});
+
+                expect(plan.source.configurationProvenance).toMatchObject({
+                    generationSemantics: "boundedSample",
+                    sampleCount: "4",
+                    sampleSeed: "bounded-plan-seed",
+                });
+                await expect(registry.validate("outcomeLibrary", blueprintProject, plan)).resolves.toBeUndefined();
+                await expect(registry.executePlan(plan, blueprintProject, outcomeDir)).resolves.toMatchObject({outputPath: outcomeDir});
+                expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(true);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
         it("materializes a real tsPackage through the registry for Outcome and Stake, preserving all runtime modes", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-tspackage-outcome-registry-test-"));
             const blueprintPath = path.join(workDir, "game.blueprint.json");

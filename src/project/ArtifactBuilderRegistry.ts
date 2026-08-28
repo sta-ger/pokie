@@ -513,12 +513,13 @@ export class ArtifactBuilderRegistry {
         // at the execution boundary so a config or generation change cannot
         // reuse a previously selected managed candidate.
         if (plan.source.configurationProvenance !== undefined) {
-            const provenance = plan.source.configurationProvenance;
             const refreshed = await this.preparePlan(source, plan.target.kind as ArtifactTargetType, {
                 destinationPath: plan.target.canonicalLocation,
-                generationSemantics: provenance.generationSemantics,
-                ...(provenance.sampleCount === undefined ? {} : {sampleCount: provenance.sampleCount}),
-                ...(provenance.sampleSeed === undefined ? {} : {sampleSeed: provenance.sampleSeed}),
+                // Refresh with the exact generation request that created the
+                // prepared plan.  Planning options' presentation fields are
+                // not consumed by BlueprintStakeOutcomeLibraryWorkflow;
+                // outcomeLibraryGeneration is the executable input.
+                outcomeLibraryGeneration: this.optionsForPlan(undefined, plan.source)?.outcomeLibraryGeneration,
             });
             if (!sameConfigurationProvenance(plan.source.configurationProvenance, refreshed.source.configurationProvenance)) {
                 throw new Error("The source configuration or generation provenance changed after this conversion was prepared; prepare a new plan before executing it.");
