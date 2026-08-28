@@ -1,4 +1,7 @@
 import {EventEmitter} from "events";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import {
     GenerateExactWeightedOutcomeLibraryOptions,
     GenerateExactWeightedOutcomeLibraryResult,
@@ -407,6 +410,35 @@ describe("OutcomeLibraryCommand", () => {
             const printed = logSpy.mock.calls.flat().join("\n");
             expect(printed).toContain("Generated outcome library");
             expect(printed).toContain('Library written to "/project/base.json"');
+        });
+
+        it("treats raw --out as a fresh file publication and rejects package aliases", async () => {
+            const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-raw-generation-source-"));
+            const aliasRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-raw-generation-alias-"));
+            const linkedPackage = path.join(aliasRoot, "package-link");
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const writeFile = jest.fn();
+            const command = createGenerateCommand({generate, writeFile});
+
+            try {
+                fs.symlinkSync(packageRoot, linkedPackage, "dir");
+                for (const destination of [
+                    packageRoot,
+                    path.join(packageRoot, "nested", "generated.json"),
+                    path.join(linkedPackage, "through-symlink.json"),
+                ]) {
+                    await expect(command.run(["generate", packageRoot, "--out", destination])).rejects.toThrow(/source itself or lies inside source/i);
+                }
+
+                const occupied = path.join(aliasRoot, "occupied.json");
+                fs.writeFileSync(occupied, "sentinel");
+                await expect(command.run(["generate", packageRoot, "--out", occupied])).rejects.toThrow(/already exists/i);
+                expect(fs.readFileSync(occupied, "utf-8")).toBe("sentinel");
+                expect(writeFile).not.toHaveBeenCalled();
+            } finally {
+                fs.rmSync(aliasRoot, {recursive: true, force: true});
+                fs.rmSync(packageRoot, {recursive: true, force: true});
+            }
         });
 
         it("--estimate reports the outcome space without invoking generation", async () => {

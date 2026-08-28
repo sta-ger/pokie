@@ -155,11 +155,10 @@ describe("useDeploymentManager - stale targets response after project switch", (
         expect(result.current.targetsView).toEqual({status: "loading"});
 
         // Project A's targets finally arrive -- must never repopulate project B's own targets list.
-        act(() => {
+        await act(async () => {
             resolveTargets?.({ok: true, status: 200, json: () => Promise.resolve([TARGET])});
-        });
-        await new Promise((resolve) => {
-            setTimeout(resolve, 0);
+            await Promise.resolve();
+            await Promise.resolve();
         });
 
         expect(result.current.targetsView).toEqual({status: "loading"});
@@ -199,11 +198,10 @@ describe("useDeploymentManager - two out-of-order Refresh calls", () => {
 
         // ...then the first (older) Refresh's response finally arrives -- it must be discarded, not
         // overwrite the newer, already-rendered list.
-        act(() => {
+        await act(async () => {
             resolvers[0]({ok: true, status: 200, json: () => Promise.resolve([firstTarget])});
-        });
-        await new Promise((resolve) => {
-            setTimeout(resolve, 0);
+            await Promise.resolve();
+            await Promise.resolve();
         });
 
         expect(result.current.targetsView).toEqual({status: "loaded", targets: [secondTarget]});

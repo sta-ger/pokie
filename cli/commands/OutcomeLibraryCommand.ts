@@ -4,6 +4,7 @@ import path from "path";
 import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
+    assertPreparedArtifactDestinationAvailable,
     computeArtifactInputBindingHash,
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     ExactEnumerationCheckpoint,
@@ -244,8 +245,12 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         }
         issues.push(...new OutcomeLibraryBundleWriteValidator().validate(modes));
         issues.push(...this.validateCrossModeProvenance(provenances));
-        if (issues.some((issue) => issue.severity === "error")) {
-            throw new Error("The outcome-library source does not satisfy the export contract.");
+        const errors = issues.filter((issue) => issue.severity === "error");
+        if (errors.length > 0) {
+            throw new Error(
+                `The outcome-library source does not satisfy the export contract: ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")} ` +
+                "Next: fix the listed source errors, then prepare the export again.",
+            );
         }
     }
 
@@ -532,10 +537,11 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
     /**
      * Raw generation is a conversion operation too.  The CLI only supplies a
-     * runtime reader and an optional raw-JSON publisher; the planner rebinds
-     * the package/checkpoint input before and after enumeration and owns the
-     * cancellation rollback/cleanup ordering.  This intentionally does not
-     * advertise raw JSON as a native Outcome Library bundle conversion route.
+     * runtime reader and an optional raw-JSON file publisher; the planner
+     * rebinds the package/checkpoint input before and after enumeration and
+     * owns the cancellation rollback/cleanup ordering.  The explicit file
+     * publication plan intentionally does not advertise raw JSON as a native
+     * Outcome Library bundle conversion route.
      */
     private prepareRawGenerationOperation(
         packageRoot: string,
@@ -562,12 +568,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         const rawOutput = options.out === undefined ? undefined : path.resolve(options.out);
         let publishedOutput = false;
         return {
-            plan: this.planner.planIdentity(currentSource(), "outcomeLibrary", {
-                generationSemantics: currentSource().configurationProvenance.generationSemantics,
-                ...(rawOutput === undefined ? {} : {destinationPath: rawOutput}),
-            }),
+            plan: this.planner.planRawOutcomeLibraryJsonPublication(currentSource(), rawOutput),
             execution: {
                 currentSource,
+                currentDestination: () => rawOutput,
                 read: async () => {
                     const game = await this.loadGame(packageRoot);
                     const manifest = game.getManifest();
@@ -590,11 +594,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 canPublish: () => rawOutput !== undefined,
                 assertDestinationAvailable: () => {
                     if (rawOutput === undefined) return;
-                    const relative = path.relative(path.resolve(packageRoot), rawOutput);
-                    if (relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))) {
-                        throw new Error(`"${rawOutput}" is the generation source or lies inside it; choose an output outside the runnable package.`);
-                    }
-                    if (this.fileExists(rawOutput)) throw new Error(`"${rawOutput}" already exists; choose a fresh --out path.`);
+                    assertPreparedArtifactDestinationAvailable(packageRoot, rawOutput, "file");
                 },
                 publish: (result: GenerateExactWeightedOutcomeLibraryResult) => {
                     // The operation has already established a fresh destination.

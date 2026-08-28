@@ -28,6 +28,16 @@ export type ArtifactTargetIdentity = ArtifactIdentity & {
     readonly kind: ArtifactTargetType;
 };
 
+/**
+ * A durable file emitted beside a conversion without claiming to be a native
+ * POKIE artifact bundle.  Raw generated Outcome JSON deliberately uses this
+ * identity: it is useful output for a caller, but it has neither an Outcome
+ * Library manifest nor the recognition/provenance contract of one.
+ */
+export type ArtifactFilePublicationIdentity = Omit<ArtifactIdentity, "kind"> & {
+    readonly kind: "rawOutcomeLibraryJson";
+};
+
 /** Configuration facts that make generated artifacts safe to reuse. */
 export type ArtifactConfigurationProvenance = {
     readonly configurationHash?: string;
@@ -108,6 +118,11 @@ export type ArtifactConversionStep = {
     readonly losses?: readonly string[];
 };
 
+export type ArtifactFilePublicationStep = Omit<ArtifactConversionStep, "input" | "output"> & {
+    readonly input: ArtifactIdentity;
+    readonly output: ArtifactFilePublicationIdentity;
+};
+
 export type ArtifactConversionDiagnostic = {
     readonly code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict" | "unrecognized-source";
     readonly failedEdge: {readonly from: ProjectType; readonly to: ArtifactTargetType};
@@ -136,6 +151,21 @@ export type ArtifactConversionPlan = {
      */
     readonly managedOutcome?: {readonly disposition: "reused" | "ineligible"; readonly reason?: string};
     readonly diagnostic?: ArtifactConversionDiagnostic;
+};
+
+/**
+ * A prepared publication for a non-bundle file.  Keeping it separate from
+ * ArtifactConversionPlan prevents raw JSON from accidentally acquiring a
+ * canonical Outcome Library conversion edge just because both contain
+ * weighted outcomes.
+ */
+export type ArtifactFilePublicationPlan = {
+    readonly status: "planned";
+    readonly source: ArtifactIdentity;
+    readonly target: ArtifactFilePublicationIdentity;
+    readonly steps: readonly ArtifactFilePublicationStep[];
+    readonly preflight: ArtifactConversionPreflight;
+    readonly diagnostic?: undefined;
 };
 
 /**
@@ -398,7 +428,7 @@ export class ArtifactConversionPlanner {
      * exchange descriptor.
      */
     public async executeConversionPlan<ReadResult, PublishedResult>(
-        plan: ArtifactConversionPlan,
+        plan: ArtifactConversionPlan | ArtifactFilePublicationPlan,
         execution: ArtifactConversionExecution<ReadResult, PublishedResult>,
     ): Promise<ArtifactConversionExecutionResult<ReadResult, PublishedResult>> {
         if (plan.status !== "planned") {
@@ -648,6 +678,35 @@ export class ArtifactConversionPlanner {
             return this.planned(source, target, preflight, [{kind: "publish", input: source, output: target, choice: "publish", estimatedWork: "publish", ...(preflight.losses.length === 0 ? {} : {losses: preflight.losses})}]);
         }
         return unavailable("missing-data", `No conversion edge from ${sourceKind} to ${targetKind} preserves the data this target requires.`, "Use a recognized source that retains the required game-model, runtime, or exchange data.");
+    }
+
+    /**
+     * Plans raw generated JSON as a file publication, never as an Outcome
+     * Library bundle.  This shares immutable source/destination rebinding and
+     * execution sequencing with conversions while keeping the non-native
+     * boundary visible to all preflight consumers.
+     */
+    public planRawOutcomeLibraryJsonPublication(source: ArtifactIdentity, destinationPath?: string): ArtifactFilePublicationPlan {
+        const target: ArtifactFilePublicationIdentity = {
+            kind: "rawOutcomeLibraryJson",
+            ...(destinationPath === undefined ? {} : {canonicalLocation: path.resolve(destinationPath)}),
+            capabilities: [],
+            recognitionProvenance: "raw generated Outcome Library JSON file (not a native bundle)",
+        };
+        return {
+            status: "planned",
+            source,
+            target,
+            steps: destinationPath === undefined
+                ? []
+                : [{kind: "publish", input: source, output: target, choice: "publish", estimatedWork: "publish", losses: ["Raw JSON is a file publication, not a canonical Outcome Library bundle."]}],
+            preflight: {
+                destinationKind: "file",
+                estimatedWork: destinationPath === undefined ? "none" : "publish",
+                losses: ["Raw JSON is a file publication, not a canonical Outcome Library bundle."],
+                oneWay: true,
+            },
+        };
     }
 
     private planOutcomeFromRuntime(

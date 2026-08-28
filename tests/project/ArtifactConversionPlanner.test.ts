@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ArtifactConversionPlanner, computeArtifactInputBindingHash, describeArtifactConversionPlanDiagnostic, type PokieProject} from "../../src/index.js";
+import {ArtifactConversionPlanner, computeArtifactInputBindingHash, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type PokieProject} from "../../src/index.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 
 function project(type: PokieProject["type"]): PokieProject {
@@ -27,6 +27,26 @@ describe("ArtifactConversionPlanner", () => {
         } finally {
             fs.rmSync(directory, {recursive: true, force: true});
         }
+    });
+
+    it("models raw generated JSON as a non-bundle file publication", () => {
+        const source = resolveArtifactIdentity(project("tsPackage"));
+        const plan = planner.planRawOutcomeLibraryJsonPublication(source, "/exports/generated-outcomes.json");
+
+        expect(plan).toMatchObject({
+            status: "planned",
+            target: {
+                kind: "rawOutcomeLibraryJson",
+                canonicalLocation: "/exports/generated-outcomes.json",
+                recognitionProvenance: expect.stringMatching(/not a native bundle/i),
+            },
+            preflight: {
+                destinationKind: "file",
+                estimatedWork: "publish",
+                losses: [expect.stringMatching(/not a canonical Outcome Library bundle/i)],
+            },
+            steps: [{kind: "publish", output: {kind: "rawOutcomeLibraryJson"}}],
+        });
     });
 
     it("plans the non-circular Blueprint to Stake path through a canonical Outcome Library", () => {

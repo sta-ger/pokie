@@ -231,8 +231,12 @@ export class StakeEngineCommand implements CliCommandHandling {
                         : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
             })),
         );
-        if (new StakeEngineExportValidator().validate(modes).some((issue) => issue.severity === "error")) {
-            throw new Error("The Stake Engine source does not satisfy the export contract.");
+        const errors = new StakeEngineExportValidator().validate(modes).filter((issue) => issue.severity === "error");
+        if (errors.length > 0) {
+            throw new Error(
+                `The Stake Engine source does not satisfy the export contract: ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")} ` +
+                "Next: fix the listed source errors, then prepare the export again.",
+            );
         }
     }
 

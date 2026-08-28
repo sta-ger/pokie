@@ -195,10 +195,11 @@ export class ExportCommand implements CliCommandHandling {
             if (error instanceof Error && (/already exists|source itself|destination|occupied/i).test(error.message)) {
                 throw new Error(this.describeDestinationConflict(args.target, error.message));
             }
-            // Descriptor parsers have detailed format diagnostics internally;
-            // the public target alias deliberately keeps its established,
-            // target-aware recovery wording.
-            throw new Error(this.describeSourceFailure(args));
+            // A prepared operation has already bound the exact descriptor and
+            // its reader inputs.  Preserve a drift or reader diagnostic here:
+            // reducing it to the old target-matrix wording loses the failed
+            // edge and actionable recovery the prepared operation established.
+            throw error;
         } finally {
             process.off("SIGINT", onCancel);
         }
@@ -224,22 +225,6 @@ export class ExportCommand implements CliCommandHandling {
             publish: () => Promise.resolve(undefined),
             rollback: () => Promise.resolve(undefined),
         });
-    }
-
-    private describeSourceFailure(args: ExportArgs): string {
-        let recovery: string;
-        switch (args.target) {
-            case "outcomes":
-                recovery = "provide an outcome-library config with valid mode sources";
-                break;
-            case "adapter":
-                recovery = "provide a Stake Engine export config with valid mode libraries and costs";
-                break;
-            case "workbook":
-                recovery = "provide a valid GameBlueprint JSON source";
-                break;
-        }
-        return `Cannot export target "${args.target}" because source "${args.source}" is not compatible. Next: ${recovery}, then retry.`;
     }
 
 }

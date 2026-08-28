@@ -211,7 +211,7 @@ describe("ExportCommand", () => {
 
         try {
             await expect(command.run([path.join(workDir, "missing.json"), "--to", target, "--out", destination, "--dry-run"])).rejects.toThrow(
-                new RegExp(`Cannot export target "${target}" because source[\\s\\S]*Next:`),
+                /ENOENT|Could not read/i,
             );
             expect(fs.existsSync(destination)).toBe(false);
         } finally {
@@ -242,10 +242,8 @@ describe("ExportCommand", () => {
             for (const source of invalidSources) {
                 const error = await command.run([source, "--to", target, "--out", destination, "--dry-run"]).catch((failure: unknown) => failure);
                 expect(error).toBeInstanceOf(Error);
-                expect((error as Error).message).toMatch(
-                    new RegExp(`Cannot export target "${target}" because source[\\s\\S]*Next:`),
-                );
-                expect((error as Error).message).not.toMatch(/ENOENT|registry|filesystem/i);
+                expect((error as Error).message).not.toMatch(new RegExp(`Cannot export target "${target}" because source[\\s\\S]*not compatible`, "i"));
+                expect((error as Error).message).not.toMatch(/\n\s*at /i);
                 if (target === "workbook") {
                     expect(fs.readFileSync(destination, "utf-8")).toBe("sentinel");
                 } else {
@@ -253,6 +251,42 @@ describe("ExportCommand", () => {
                 }
             }
         } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("preserves a prepared descriptor drift diagnostic instead of replacing it with source compatibility text", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-export-command-drift-test-"));
+        const sourcePath = path.join(workDir, "outcomes.json");
+        const libraryPath = path.join(workDir, "library.json");
+        const destination = path.join(workDir, "outcomes");
+        const command = new ExportCommand("1.3.0");
+        const original = OutcomeLibraryCommand.prototype.prepareDescriptorBuildOperation;
+        const prepareSpy = jest.spyOn(OutcomeLibraryCommand.prototype, "prepareDescriptorBuildOperation").mockImplementation(function (this: OutcomeLibraryCommand, configPath, outDir, signal) {
+            const prepared = Reflect.apply(original, this, [configPath, outDir, signal]);
+            return {
+                ...prepared,
+                execution: {
+                    ...prepared.execution,
+                    read: () => {
+                        const read = prepared.execution.read();
+                        fs.writeFileSync(configPath, `${fs.readFileSync(configPath, "utf-8")}\n`);
+                        return read;
+                    },
+                },
+            };
+        });
+
+        try {
+            fs.writeFileSync(libraryPath, JSON.stringify(validOutcomeLibrary()));
+            fs.writeFileSync(sourcePath, JSON.stringify({modes: [{modeName: "base", libraryPath: "./library.json"}]}));
+
+            await expect(command.run([sourcePath, "--to", "outcomes", "--out", destination])).rejects.toThrow(
+                /conversion source changed after this operation was prepared/i,
+            );
+            expect(fs.existsSync(destination)).toBe(false);
+        } finally {
+            prepareSpy.mockRestore();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
@@ -286,10 +320,8 @@ describe("ExportCommand", () => {
             const dryRunError = await exportCommand.run([sourcePath, "--to", "outcomes", "--out", dryRunDestination, "--dry-run"])
                 .catch((failure: unknown) => failure);
             expect(dryRunError).toBeInstanceOf(Error);
-            expect((dryRunError as Error).message).toMatch(
-                /Cannot export target "outcomes" because source[\s\S]*Next: provide an outcome-library config with valid mode sources, then retry\./,
-            );
-            expect((dryRunError as Error).message).not.toMatch(/OutcomeLibraryBundleWriter|registry|ENOENT|\n\s*at /i);
+            expect((dryRunError as Error).message).toMatch(/The outcome-library source does not satisfy the export contract: [\s\S]+Next: fix the listed source errors/i);
+            expect((dryRunError as Error).message).not.toMatch(/Cannot export target "outcomes" because source[\s\S]*not compatible|OutcomeLibraryBundleWriter|registry|ENOENT|\n\s*at /i);
             expect(fs.existsSync(dryRunDestination)).toBe(false);
             expect(fs.readdirSync(workDir)).not.toEqual(expect.arrayContaining([expect.stringMatching(/outcomes-dry-run\.staging-/)]));
 

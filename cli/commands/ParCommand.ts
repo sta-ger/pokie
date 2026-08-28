@@ -103,7 +103,10 @@ export class ParCommand implements CliCommandHandling {
         const blueprint = this.loadBlueprint(blueprintPath);
         const errors = prepareBlueprintForParSheetExport(blueprint).issues.filter((issue) => issue.severity === "error");
         if (errors.length > 0) {
-            throw new Error("The GameBlueprint source does not satisfy the PAR workbook export contract.");
+            throw new Error(
+                `The GameBlueprint source does not satisfy the PAR workbook export contract: ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")} ` +
+                "Next: fix the listed Blueprint errors, then prepare the export again.",
+            );
         }
     }
 
