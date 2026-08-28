@@ -944,6 +944,8 @@ export type StudioDeploymentStageSummary = {
 // ExternalDeploymentResult mirror `stages` was itself computed from.
 export type StudioDeploymentRunView = {
     plan?: StudioArtifactConversionPlan;
+    status?: "ok" | "unavailable" | "conflict";
+    error?: string;
     targetId: string;
     publish: boolean;
     stages: StudioDeploymentStageSummary[];

@@ -100,7 +100,7 @@ export class StudioDeploymentService {
         stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
         resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined> = resolveCurrentBuildModeIds,
         planning: StudioArtifactConversionPlanning | undefined = undefined,
-        pokieVersion = "unknown",
+        pokieVersion = "0.0.0",
     ) {
         this.externalDeploymentService = externalDeploymentService;
         this.createLocalTarget = createLocalTarget;
@@ -160,7 +160,7 @@ export class StudioDeploymentService {
         // Deployment owns SDK-specific delivery, but the library it deploys is a
         // planner-governed prerequisite.  Carry that exact server plan forward so
         // the browser never has to infer whether it can create/reuse one.
-        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary");
+        const plan = await this.prepareForSelectedBundles(projectRoot, request.modes);
         // Deployment may consume a pre-existing library selector, but it must
         // never claim that the current project can recover or regenerate one
         // when the canonical planner rejects that prerequisite.  Keep the
@@ -230,5 +230,17 @@ export class StudioDeploymentService {
         const registry = new ExternalDeploymentTargetRegistry();
         registry.register(this.createLocalTarget(path.join(projectRoot, DEPLOYMENT_OUTPUT_DIRNAME, "local-json-example")));
         return registry;
+    }
+
+    /** See StudioStakeEngineExportService's counterpart: a canonical selector is
+     * a durable planner source, so deployment cannot preview a project-root plan
+     * and then consume an unrelated selected bundle. */
+    private prepareForSelectedBundles(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): Promise<import("pokie").ArtifactConversionPlan | undefined> {
+        const bundleDirs = modes.map((mode) => mode.librarySelector).filter((selector): selector is Extract<typeof selector, {kind: "bundle"}> => selector.kind === "bundle");
+        const uniqueBundleDirs = Array.from(new Set(bundleDirs.map((selector) => path.resolve(projectRoot, selector.bundleDir))));
+        if (bundleDirs.length === modes.length && uniqueBundleDirs.length === 1) {
+            return this.planning.prepare(uniqueBundleDirs[0], "outcomeLibrary");
+        }
+        return this.planning.prepare(projectRoot, "outcomeLibrary");
     }
 }

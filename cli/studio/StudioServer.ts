@@ -1,4 +1,5 @@
 import {
+    ArtifactConversionPlan,
     GamePackageInspecting,
     GamePackageInspectionReport,
     GamePackageInspector,
@@ -51,6 +52,7 @@ import {
     CertificationSourceValidateRequestInput,
 } from "./certification/validateCertificationSourceValidateRequest.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
+import type {StudioDeploymentRunView} from "./deployment/StudioDeploymentRunView.js";
 import {validateDeploymentRunRequest, DeploymentRunRequestInput} from "./deployment/validateDeploymentRunRequest.js";
 import {createMaterializingRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
@@ -1720,15 +1722,48 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const result = await this.deploymentService.run(this.currentContext.projectRoot, validated);
-        if (result.status === "target-not-found") {
-            this.sendJson(res, 404, {status: result.status, error: `Unknown deployment target "${validated.targetId}".`, ...(result.plan === undefined ? {} : {plan: result.plan})});
+        // A validated request's planner outcome is part of the action lifecycle,
+        // including unavailable/conflict recovery.  Keep it in the normal DTO so
+        // apiClient does not discard it while translating a non-2xx response.
+        if (result.status === "ok") {
+            this.sendJson(res, 200, result.view);
             return;
         }
-        if (result.status === "invalid-modes" || result.status === "load-error") {
-            this.sendJson(res, 400, result);
-            return;
-        }
-        this.sendJson(res, 200, result.view);
+        const terminalError = result.status === "target-not-found" ? `Unknown deployment target "${validated.targetId}".` : result.error;
+        this.sendJson(res, 200, this.deploymentPlannerTerminalView(result.status, terminalError, result.plan, validated));
+    }
+
+    private deploymentPlannerTerminalView(
+        resultStatus: "target-not-found" | "invalid-modes" | "load-error",
+        error: string,
+        plan: ArtifactConversionPlan | undefined,
+        request: {targetId: string; publish: boolean},
+    ): StudioDeploymentRunView & {status: "unavailable" | "conflict"; error: string} {
+        const terminalPlan = plan ?? {
+            status: "unavailable" as const,
+            source: {kind: "outcomeLibrary" as const, capabilities: []},
+            target: {kind: "outcomeLibrary" as const, capabilities: []},
+            steps: [],
+            preflight: {destinationKind: "directory" as const, estimatedWork: "none" as const, losses: [], oneWay: false},
+            diagnostic: {
+                code: "missing-data" as const,
+                failedEdge: {from: "outcomeLibrary" as const, to: "outcomeLibrary" as const},
+                message: error,
+                recovery: "Open a recognized POKIE project and retry.",
+            },
+        };
+        return {
+            status: resultStatus === "load-error" ? "unavailable" : "conflict",
+            error,
+            plan: terminalPlan,
+            targetId: request.targetId,
+            publish: request.publish,
+            stages: [],
+            descriptorIssues: [],
+            compatibilityIssues: [],
+            projectionIssues: [],
+            artifactIssues: [],
+        };
     }
 
     private async handleEstimateOutcomeLibraryGeneration(req: IncomingMessage, res: ServerResponse): Promise<void> {

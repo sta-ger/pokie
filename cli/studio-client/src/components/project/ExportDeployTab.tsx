@@ -587,7 +587,11 @@ function TargetCard({
                                 <PlannerSummary plan={deployment.runResult.plan} label="Deployment prerequisite plan" />
                             </>
                         ) : (
-                            <IssueList title="Build issues" issues={deployment.runResult.stages.flatMap((stage) => stage.issues)} />
+                            <>
+                                {deployment.runResult.error !== undefined && <ErrorState message={deployment.runResult.error} />}
+                                <PlannerSummary plan={deployment.runResult.plan} label="Deployment prerequisite plan" />
+                                <IssueList title="Build issues" issues={deployment.runResult.stages.flatMap((stage) => stage.issues)} />
+                            </>
                         )
                     )}
                 </>

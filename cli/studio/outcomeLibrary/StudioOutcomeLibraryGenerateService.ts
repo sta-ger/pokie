@@ -174,12 +174,15 @@ export class StudioOutcomeLibraryGenerateService {
         const requestedGeneration = request.bounded === undefined
             ? {generationSemantics: "exact" as const}
             : {generationSemantics: "boundedSample" as const, sampleCount: request.bounded.sampleSize, sampleSeed: request.bounded.seed};
-        // A Studio generation updates one mode in the canonical bundle and deliberately
-        // preserves its other modes.  It is therefore not the planner's one-shot
-        // publication destination (which correctly rejects an occupied directory).
-        // Ask the planner for the source/prerequisite decision, while this writer
-        // retains its established atomic in-bundle update contract.
-        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", undefined, requestedGeneration);
+        // The requested bundle directory is part of the prepared decision, not a
+        // writer-local default.  In particular this keeps an occupied or aliased
+        // destination from being silently treated as a mode-update after a preview
+        // described a different publication.
+        const resolvedOutDir = resolveProjectDirectory(projectRoot, outDirRelative, this.realpath);
+        if (resolvedOutDir.status === "error") {
+            return {status: "load-error", error: resolvedOutDir.message};
+        }
+        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration);
         if (plan?.status === "conflict") {
             return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
         }
@@ -196,11 +199,6 @@ export class StudioOutcomeLibraryGenerateService {
         const manifest = game.getManifest();
         const modeName = request.mode ?? "base";
         const libraryId = request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`;
-
-        const resolvedOutDir = resolveProjectDirectory(projectRoot, outDirRelative, this.realpath);
-        if (resolvedOutDir.status === "error") {
-            return {status: "load-error", error: resolvedOutDir.message, ...(plan === undefined ? {} : {plan})};
-        }
 
         let generated: GenerateExactWeightedOutcomeLibraryResult;
         try {

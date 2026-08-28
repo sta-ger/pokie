@@ -5120,7 +5120,7 @@ describe("StudioServer", () => {
             expect((emptyModes.body as {error: string}).error).toMatch(/modes/);
         });
 
-        it("returns 404 for an unknown targetId, without ever reading a library file", async () => {
+        it("returns a planner conflict for an unknown targetId, without ever reading a library file", async () => {
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
@@ -5128,8 +5128,8 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "does-not-exist-either.json"}}],
             });
 
-            expect(status).toBe(404);
-            expect(body).toEqual({status: "target-not-found", error: 'Unknown deployment target "does-not-exist".'});
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "conflict", error: 'Unknown deployment target "does-not-exist".', plan: {status: "unavailable"}});
         });
 
         it("returns 400, in domain language, when a mode isn't part of the active project's own current build — even for a request that never went through the Configure UI", async () => {
@@ -5141,8 +5141,9 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
             });
 
-            expect(status).toBe(400);
+            expect(status).toBe(200);
             expect((body as {error: string}).error).toBe('mode "base" isn\'t part of this project\'s current build -- rebuild the project, then pick from: bonus.');
+            expect((body as {plan: {status: string}}).plan.status).toBe("unavailable");
         });
 
         it("deploys a mode that is part of the active project's own current build", async () => {
@@ -5172,10 +5173,11 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
             });
 
-            expect(status).toBe(400);
+            expect(status).toBe(200);
             expect((body as {error: string}).error).toBe(
                 'This project has no current build to deploy against -- run "pokie build" (or the Certification tab\'s own build step), then try again.',
             );
+            expect((body as {plan: {status: string}}).plan.status).toBe("unavailable");
             expect(readFile).not.toHaveBeenCalled();
         });
 
@@ -5187,10 +5189,11 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "bonus"}}],
             });
 
-            expect(status).toBe(400);
+            expect(status).toBe(200);
             expect((body as {error: string}).error).toBe(
                 'mode "base"\'s library selector names mode "bonus" -- a bundle/Stake Engine selector must name the exact same mode as its own deployment row.',
             );
+            expect((body as {plan: {status: string}}).plan.status).toBe("unavailable");
         });
 
         it("returns 400 when a mode's library file doesn't exist", async () => {
@@ -5201,8 +5204,9 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "missing.json"}}],
             });
 
-            expect(status).toBe(400);
+            expect(status).toBe(200);
             expect((body as {error: string}).error).toContain('mode "base"');
+            expect((body as {plan: {status: string}}).plan.status).toBe("unavailable");
         });
 
         it("returns 400 when a mode's library path escapes the project root", async () => {
@@ -5213,8 +5217,9 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "../outside.json"}}],
             });
 
-            expect(status).toBe(400);
+            expect(status).toBe(200);
             expect((body as {error: string}).error).toContain("resolves outside the project root");
+            expect((body as {plan: {status: string}}).plan.status).toBe("unavailable");
         });
 
         it("returns 400 when a mode's library file is not valid JSON", async () => {
@@ -5226,8 +5231,9 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
             });
 
-            expect(status).toBe(400);
+            expect(status).toBe(200);
             expect((body as {error: string}).error).toContain("is not valid JSON");
+            expect((body as {plan: {status: string}}).plan.status).toBe("unavailable");
         });
 
         it("previews a valid deployment (publish: false) without writing any files, and shows generated artifact content", async () => {

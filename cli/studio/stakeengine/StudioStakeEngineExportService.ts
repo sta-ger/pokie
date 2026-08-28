@@ -91,7 +91,7 @@ export class StudioStakeEngineExportService {
     // count, libraryId/hash) read straight off each loaded library, never Stake-specific and never
     // recomputed beyond what computeWeightedOutcomeLibraryHash already does for every other tab.
     public async validate(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): Promise<StudioStakeEngineExportValidateView> {
-        const plan = await this.planning.prepare(projectRoot, "stakeAdapter");
+        const plan = await this.prepareForSelectedBundles(projectRoot, modes, undefined);
         // A validation result is part of the same planner-governed lifecycle
         // as export.  Do not keep resolving selector-specific inputs after a
         // prepared plan has already established that this project cannot
@@ -141,7 +141,7 @@ export class StudioStakeEngineExportService {
         outDir: string,
         overwrite: boolean,
     ): Promise<StudioStakeEngineExportView> {
-        const plan = await this.planning.prepare(projectRoot, "stakeAdapter", path.resolve(projectRoot, outDir));
+        const plan = await this.prepareForSelectedBundles(projectRoot, modes, path.resolve(projectRoot, outDir));
         // The exported plan owns destination safety as well as reachability.
         // In particular, an explicit Studio output path must not bypass the
         // registry's alias/source/occupied-destination checks through this
@@ -237,6 +237,30 @@ export class StudioStakeEngineExportService {
             loaded.push({modeName: mode.modeName, cost: mode.cost, library: canonicalized.library});
         }
         return {status: "ok", loaded};
+    }
+
+    /**
+     * A canonical bundle selector is itself a recognized planner source.  Plan
+     * from that selected directory, rather than from the open project, whenever
+     * every requested mode names the same bundle.  Mixed/non-bundle selectors
+     * retain their existing reader contract because they have no single durable
+     * POKIE artifact identity for the planner to bind.
+     */
+    private prepareForSelectedBundles(
+        projectRoot: string,
+        modes: readonly StudioStakeEngineExportModeInput[],
+        destinationPath: string | undefined,
+    ) {
+        const bundleDirs = modes.map((mode) => mode.librarySelector).filter((selector): selector is Extract<OutcomeLibrarySelector, {kind: "bundle"}> => selector.kind === "bundle");
+        const uniqueBundleDirs = Array.from(new Set(bundleDirs.map((selector) => path.resolve(projectRoot, selector.bundleDir))));
+        if (bundleDirs.length === modes.length && uniqueBundleDirs.length === 1) {
+            return destinationPath === undefined
+                ? this.planning.prepare(uniqueBundleDirs[0], "stakeAdapter")
+                : this.planning.prepare(uniqueBundleDirs[0], "stakeAdapter", destinationPath);
+        }
+        return destinationPath === undefined
+            ? this.planning.prepare(projectRoot, "stakeAdapter")
+            : this.planning.prepare(projectRoot, "stakeAdapter", destinationPath);
     }
 
     // A bundle is the only selector format that records its producing Project configuration. JSON
