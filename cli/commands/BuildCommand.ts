@@ -192,7 +192,7 @@ export class BuildCommand implements CliCommandHandling {
             // Every other supported cell must validate its own registry source/artifact contract before
             // the generic dry-run branch can claim success.
             if (!(options.target === "tsPackage" && project.type === "blueprint")) {
-                await this.registry.validate(options.target, project);
+                await this.registry.validate(options.target, project, conversionPlan);
             }
         }
 

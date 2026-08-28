@@ -115,6 +115,17 @@ describe("ArtifactBuilderRegistry", () => {
             expect(builder.calls).toBe(1);
         });
 
+        it("rejects a prepared plan when its source or destination identity drifts", async () => {
+            const builder = fakeBuilder("tsPackage");
+            const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
+            const source = projectOf("blueprint");
+            const plan = await withBuilder.preparePlan(source, "tsPackage", {destinationPath: "/out/prepared-game"});
+
+            await expect(withBuilder.executePlan(plan, {...source, rootPath: "/projects/moved-blueprint"}, "/out/prepared-game")).rejects.toThrow(/source identity changed/);
+            await expect(withBuilder.executePlan(plan, source, "/out/other-game")).rejects.toThrow(/destination changed/);
+            expect(builder.calls).toBe(0);
+        });
+
         it("rejects with the matrix diagnostic before invoking any builder", async () => {
             const builder = fakeBuilder("tsPackage");
             const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));

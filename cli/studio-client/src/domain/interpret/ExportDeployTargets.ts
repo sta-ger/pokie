@@ -1,6 +1,5 @@
 import type {StudioArtifactConversionPlan, StudioArtifactTargetType, StudioArtifactTargetView, StudioDeploymentTargetSummary, StudioProjectCapability} from "../../api/types";
 import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
-import {BLUEPRINT_BUILD_CAPABILITY, OUTCOME_LIBRARY_READ_CAPABILITY, RUNTIME_EXECUTE_CAPABILITY} from "./ProjectDashboard";
 
 // Pure view-model for the shared Build/Export shell (see ExportDeployTab) -- the sole Studio surface a
 // project's outputs are built/published from. It classifies, but never merges, the four backend pipelines
@@ -259,47 +258,14 @@ const REMOTE_DEPLOYMENT_PLACEHOLDER_CARD: ExportDeployTargetCard = {
     compatibility: "Once registered, goes through the same ExternalDeploymentCompatibilityValidator contract every other target already does.",
 };
 
-// Whether this project can generate a brand-new canonical outcome library from its own current build --
-// what the outcome-library generator card itself requires. A "blueprint" project never carries
-// RUNTIME_EXECUTE_CAPABILITY itself, but Studio always materializes it into a runnable tsPackage before
-// ever loading it (see RUNTIME_EXECUTE_CAPABILITY's own doc comment), so BLUEPRINT_BUILD_CAPABILITY is an
-// equally sufficient signal here -- mirrors ProjectDashboardPage's own RUNTIME_CAPABLE_CAPABILITIES gate
-// for the tab as a whole.
-function canGenerateOutcomeLibrary(capabilities: readonly StudioProjectCapability[]): boolean {
-    return capabilities.includes(BLUEPRINT_BUILD_CAPABILITY) || capabilities.includes(RUNTIME_EXECUTE_CAPABILITY);
-}
-
-// Whether this project can reach *some* canonical outcome library -- either by generating a fresh one
-// (see canGenerateOutcomeLibrary above) or because it already *is* one (OUTCOME_LIBRARY_READ_CAPABILITY,
-// granted only to a resolved "outcomeLibrary" project -- see PROJECT_TYPE_CAPABILITIES). Static export and
-// every adapter card only ever *read* an existing canonical library (see their own "prerequisites"), so
-// unlike the generator card above, they don't themselves need this project to be buildable/runnable --
-// an already-read-only outcome-library project can still export/deploy the library it already is, even
-// though it can never generate a fresh one itself.
-function canReachCanonicalOutcomeLibrary(capabilities: readonly StudioProjectCapability[]): boolean {
-    return canGenerateOutcomeLibrary(capabilities) || capabilities.includes(OUTCOME_LIBRARY_READ_CAPABILITY);
-}
-
-// Builds the shell's own card list from the live registered-target list (StudioDeploymentTargetSummary[],
-// exactly what useDeploymentManager.targetsView already carries) and the resolved project's own
-// capabilities -- each group is only ever included once this project's own capabilities actually grant
-// what that group needs (see canGenerateOutcomeLibrary/canReachCanonicalOutcomeLibrary above), never as an
-// all-or-nothing bundle. The SDK's own local-json-example demo target is filtered out before any adapter
-// card is built, on every project, regardless of capabilities -- every genuinely registered target left
-// classifies as "remoteDeployment", and the placeholder above fills that group only while it would
-// otherwise be empty.
+// Builds the shell's own card list from live server data.  These cards describe
+// independent services; their concrete planner availability is rendered from
+// the server's artifact plans, never reconstructed from browser capabilities.
 export function describeExportDeployTargetCards(
     deploymentTargets: readonly StudioDeploymentTargetSummary[],
-    capabilities: readonly StudioProjectCapability[],
+    _capabilities: readonly StudioProjectCapability[],
 ): ExportDeployTargetCard[] {
-    const cards: ExportDeployTargetCard[] = [];
-    if (canGenerateOutcomeLibrary(capabilities)) {
-        cards.push(OUTCOME_LIBRARY_CARD);
-    }
-    if (!canReachCanonicalOutcomeLibrary(capabilities)) {
-        return cards;
-    }
-    cards.push(STAKE_ENGINE_EXPORT_CARD);
+    const cards: ExportDeployTargetCard[] = [OUTCOME_LIBRARY_CARD, STAKE_ENGINE_EXPORT_CARD];
     const adapterCards = deploymentTargets.filter((target) => target.id !== LOCAL_JSON_EXAMPLE_TARGET_ID).map(describeExternalAdapterTargetCard);
     cards.push(...adapterCards, ...(adapterCards.length > 0 ? [] : [REMOTE_DEPLOYMENT_PLACEHOLDER_CARD]));
     return cards;

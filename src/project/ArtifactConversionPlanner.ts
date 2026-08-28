@@ -71,6 +71,13 @@ export type ArtifactConversionPlan = {
     readonly target: ArtifactIdentity;
     readonly steps: readonly ArtifactConversionStep[];
     readonly preflight: ArtifactConversionPreflight;
+    /**
+     * The managed candidate was considered while preparing this plan.  An
+     * ineligible candidate is deliberately informational: it records why a
+     * preview will regenerate, rather than turning an otherwise executable
+     * conversion into a dead end.
+     */
+    readonly managedOutcome?: {readonly disposition: "reused" | "ineligible"; readonly reason?: string};
     readonly diagnostic?: ArtifactConversionDiagnostic;
 };
 
@@ -240,13 +247,13 @@ export class ArtifactConversionPlanner {
             return unavailable("missing-data", "A POKIE package is not a Game Blueprint and cannot be converted into this target.", "Use the original Game Blueprint.");
         }
         if (sourceKind === "blueprint" && targetKind === "stakeAdapter") {
-            return this.planStakeFromRuntime(source, target, preflight, options, unavailable);
+            return this.planStakeFromRuntime(source, target, preflight, options);
         }
         if (sourceKind === "tsPackage" && targetKind === "stakeAdapter") {
-            return this.planStakeFromRuntime(source, target, preflight, options, unavailable);
+            return this.planStakeFromRuntime(source, target, preflight, options);
         }
         if ((sourceKind === "blueprint" || sourceKind === "tsPackage") && targetKind === "outcomeLibrary") {
-            return this.planOutcomeFromRuntime(source, target, preflight, options, unavailable);
+            return this.planOutcomeFromRuntime(source, target, preflight, options);
         }
         if ((sourceKind === "blueprint" && (targetKind === "tsPackage" || targetKind === "parWorkbook")) ||
             (sourceKind === "outcomeLibrary" && (targetKind === "outcomeLibrary" || targetKind === "stakeAdapter")) ||
@@ -262,14 +269,10 @@ export class ArtifactConversionPlanner {
         target: ArtifactIdentity,
         preflight: ArtifactConversionPreflight,
         options: ArtifactConversionPlanningOptions,
-        unavailable: (code: ArtifactConversionDiagnostic["code"], message: string, recovery: string) => ArtifactConversionPlan,
     ): ArtifactConversionPlan {
         const candidate = options.managedOutcome === undefined
             ? undefined
             : verifyManagedOutcomeCandidate(source, options.managedOutcome, options);
-        if (candidate !== undefined && !candidate.verified) {
-            return unavailable("stale-provenance", `The managed Outcome Library cannot be reused: ${candidate.staleReason ?? "its provenance was not verified"}.`, "Regenerate the Outcome Library from the recognized source.");
-        }
         if (candidate?.verified && options.managedOutcome !== undefined) {
             const reuse: ArtifactConversionStep = {
                 kind: "reuseManagedOutcomeLibrary",
@@ -290,13 +293,14 @@ export class ArtifactConversionPlanner {
                 options.destinationPath === undefined
                     ? [reuse]
                     : [reuse, {kind: "publish", input: options.managedOutcome.identity, output: target, choice: "publish", estimatedWork: "publish"}],
+                {disposition: "reused"},
             );
         }
         const runtime: ArtifactIdentity = {kind: "tsPackage", capabilities: TARGET_CAPABILITIES.tsPackage};
         return this.planned(source, target, preflight, [
             {kind: "materializeRuntime", input: source, output: runtime, choice: "materialize", estimatedWork: "materialize"},
             {kind: "generateOutcomeLibrary", input: runtime, output: target, choice: "materialize", estimatedWork: "generate"},
-        ]);
+        ], candidate === undefined ? undefined : {disposition: "ineligible", reason: candidate.staleReason});
     }
 
     private planStakeFromRuntime(
@@ -304,7 +308,6 @@ export class ArtifactConversionPlanner {
         target: ArtifactIdentity,
         preflight: ArtifactConversionPreflight,
         options: ArtifactConversionPlanningOptions,
-        unavailable: (code: ArtifactConversionDiagnostic["code"], message: string, recovery: string) => ArtifactConversionPlan,
     ): ArtifactConversionPlan {
         const outcome = this.targetIdentity("outcomeLibrary", undefined, options.generationSemantics);
         // The requested destination belongs to the final Stake publication.
@@ -315,15 +318,20 @@ export class ArtifactConversionPlanner {
             outcome,
             this.preflight("outcomeLibrary", source.kind as ProjectType, options.generationSemantics),
             {...options, destinationPath: undefined},
-            unavailable,
         );
         if (outcomePlan.status !== "planned") return outcomePlan;
         const prerequisiteOutput = outcomePlan.steps[outcomePlan.steps.length - 1]?.output ?? outcome;
         return this.planned(source, target, preflight, [...outcomePlan.steps, {kind: "publish", input: prerequisiteOutput, output: target, choice: "publish", estimatedWork: "publish"}]);
     }
 
-    private planned(source: ArtifactIdentity, target: ArtifactIdentity, preflight: ArtifactConversionPreflight, steps: readonly ArtifactConversionStep[]): ArtifactConversionPlan {
-        return {status: "planned", source, target, steps, preflight};
+    private planned(
+        source: ArtifactIdentity,
+        target: ArtifactIdentity,
+        preflight: ArtifactConversionPreflight,
+        steps: readonly ArtifactConversionStep[],
+        managedOutcome?: ArtifactConversionPlan["managedOutcome"],
+    ): ArtifactConversionPlan {
+        return {status: "planned", source, target, steps, preflight, ...(managedOutcome === undefined ? {} : {managedOutcome})};
     }
 
     private targetIdentity(kind: ArtifactTargetType, destinationPath?: string, generationSemantics?: "exact" | "boundedSample"): ArtifactIdentity {

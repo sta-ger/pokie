@@ -109,7 +109,7 @@ export class ExportCommand implements CliCommandHandling {
             throw new Error(this.describeDestinationConflict(args.target, plan.diagnostic!.message));
         }
         if (args.dryRun) {
-            await this.registry.validate(target, project);
+            await this.registry.validate(target, project, plan);
             console.log(`Dry run -- would export target "${args.target}" from "${project.rootPath}" to "${destination}". No files written.`);
             console.log(`Conversion plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}.`);
             console.log(`Preflight: ${plan.preflight.estimatedWork} work; ${plan.preflight.destinationKind} destination.`);

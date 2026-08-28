@@ -1,5 +1,6 @@
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import fs from "fs";
+import path from "path";
 import {ArtifactBuildConflictError} from "./ArtifactBuildConflictError.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import type {ArtifactBuildTargetDescriptor} from "./ArtifactBuildTargetDescriptor.js";
@@ -155,21 +156,13 @@ export class ArtifactBuilderRegistry {
 
     // The public conversion contract used by all adapters. The registry adds its filesystem-backed
     // destination policy to the pure planner result so previews and execution reject the same path.
-    public plan(source: PokieProject, target: ArtifactTargetType, options: ArtifactConversionPlanningOptions = {}): ArtifactConversionPlan {
-        const plan = this.planner.plan(source, target, options);
-        if (plan.status !== "planned" || options.destinationPath === undefined) return plan;
-        const destination = this.checkDestination(target, options.destinationPath, source.rootPath);
-        if (destination.available) return plan;
-        return {
-            ...plan,
-            status: "conflict",
-            diagnostic: {
-                code: "destination-conflict",
-                failedEdge: {from: source.type, to: target},
-                message: destination.message ?? "The destination is unavailable.",
-                recovery: "Choose an empty destination that is not the source or one of its descendants.",
-            },
-        };
+    public async plan(
+        source: PokieProject,
+        target: ArtifactTargetType,
+        options: ArtifactConversionPlanningOptions & Pick<ArtifactBuildOptions, "outcomeLibraryGeneration"> = {},
+    ): Promise<ArtifactConversionPlan> {
+        const preparedPlan = await this.preparePlan(source, target, options);
+        return preparedPlan;
     }
 
     /**
@@ -221,7 +214,7 @@ export class ArtifactBuilderRegistry {
                 ...(generation === undefined ? {} : {sampleCount: generation.sampleSize, sampleSeed: generation.seed}),
             };
         }
-        return this.plan(plannedSource, target, planningOptions);
+        return this.applyDestinationPolicy(plannedSource, target, planningOptions, this.planner.plan(plannedSource, target, planningOptions));
     }
 
     public describe(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
@@ -268,8 +261,10 @@ export class ArtifactBuilderRegistry {
     // Validates the same source/artifact contract a real build consumes, without allocating a destination
     // or invoking any writer. This is intentionally separate from checkDestination(): a usable output also
     // requires readable source data, so callers must not report dry-run success after checking only a path.
-    public async validate(target: ArtifactTargetType, source: PokieProject): Promise<void> {
-        this.assertExecutablePlan(await this.preparePlan(source, target));
+    public async validate(target: ArtifactTargetType, source: PokieProject, plan?: ArtifactConversionPlan): Promise<void> {
+        const preparedPlan = plan ?? await this.preparePlan(source, target);
+        this.assertExecutablePlan(preparedPlan);
+        this.assertPlanSourceMatches(preparedPlan, source);
         this.assertTargetAvailable(target);
 
         if (source.type === "blueprint" && target !== "parWorkbook") {
@@ -310,6 +305,8 @@ export class ArtifactBuilderRegistry {
         this.assertExecutablePlan(plan);
         this.assertTargetAvailable(plan.target.kind as ArtifactTargetType);
         const target = plan.target.kind as ArtifactTargetType;
+        this.assertPlanSourceMatches(plan, source);
+        this.assertPlanDestinationMatches(plan, destinationPath);
         const reuseStep = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
         const managed = reuseStep === undefined ? undefined : await this.reopenPlannedManagedOutcome(source, plan.source, reuseStep.output);
         // Every selected plan is subjected to the same destination policy at
@@ -341,19 +338,18 @@ export class ArtifactBuilderRegistry {
             };
         }
         if (plan.steps.some((step) => step.kind === "generateOutcomeLibrary") && target === "outcomeLibrary") {
-            return this.buildManagedOutcomeFromRuntime(source, destinationPath, options);
+            return this.buildManagedOutcomeFromRuntime(plan, source, destinationPath, options);
         }
         if (target === "stakeAdapter" && (managed !== undefined || plan.steps.some((step) => step.kind === "generateOutcomeLibrary"))) {
-            return this.buildStakeFromPlannedOutcome(source, destinationPath, options, managed);
+            return this.buildStakeFromPlannedOutcome(plan, source, destinationPath, options, managed);
         }
         const builder = this.builders.get(target);
         if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
         return builder.build(source, destinationPath, options);
     }
 
-    private async buildStakeFromPlannedOutcome(source: PokieProject, destinationPath: string, options: ArtifactBuildOptions | undefined, reused?: PokieProject): Promise<ArtifactBuildResult> {
-        const outcomeLibrary = reused ?? (await this.blueprintStakeWorkflow
-            .resolveOrGenerate(source, (compatibility) => this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility), options, false)).project;
+    private async buildStakeFromPlannedOutcome(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options: ArtifactBuildOptions | undefined, reused?: PokieProject): Promise<ArtifactBuildResult> {
+        const outcomeLibrary = reused ?? (await this.generatePlannedManagedOutcome(plan, source, options)).project;
         const builder = this.builders.get("stakeAdapter");
         if (builder === undefined) throw new Error(this.unavailableTargetMessage("stakeAdapter"));
         const result = await builder.build(outcomeLibrary, destinationPath, options);
@@ -418,6 +414,7 @@ export class ArtifactBuilderRegistry {
     }
 
     private async buildManagedOutcomeFromRuntime(
+        plan: ArtifactConversionPlan,
         source: PokieProject,
         destinationPath: string,
         options?: ArtifactBuildOptions,
@@ -428,12 +425,7 @@ export class ArtifactBuilderRegistry {
         // no-overwrite policy every other artifact target enforces).
         assertArtifactDestinationAvailable(destinationPath, "directory");
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
-        const outcomeLibrary = await this.blueprintStakeWorkflow.resolveOrGenerate(
-            source,
-            destinationPath,
-            options,
-            false,
-        );
+        const outcomeLibrary = await this.generatePlannedManagedOutcome(plan, source, options, destinationPath);
         return {
             outputPath: outcomeLibrary.project.rootPath,
             ...(outcomeLibrary.reused
@@ -443,6 +435,72 @@ export class ArtifactBuilderRegistry {
         };
     }
 
+    private async generatePlannedManagedOutcome(
+        plan: ArtifactConversionPlan,
+        source: PokieProject,
+        options?: ArtifactBuildOptions,
+        destinationPath?: string,
+    ): Promise<{readonly project: PokieProject; readonly reused: false}> {
+        const expected = this.compatibilityFromPlan(plan.source);
+        const lifecycleOptions = this.optionsForPlan(options, plan.source);
+        // Refresh the actual source before materialization and reject drift
+        // rather than generating from a different configuration under an old
+        // preview's identity.
+        const prepared = await this.blueprintStakeWorkflow.prepare(source, lifecycleOptions);
+        if (!this.sameCompatibility(prepared.compatibility, expected)) {
+            throw new Error("The recognized source changed after this conversion was prepared; prepare a new plan before executing it.");
+        }
+        const root = destinationPath ?? this.managedOutcomeProjects.allocateRoot(source.rootPath, expected);
+        return this.blueprintStakeWorkflow.generatePrepared(source, prepared, root, lifecycleOptions);
+    }
+
+    private optionsForPlan(options: ArtifactBuildOptions | undefined, source: ArtifactIdentity): ArtifactBuildOptions | undefined {
+        const provenance = source.configurationProvenance;
+        if (provenance?.generationSemantics === undefined) return options;
+        const outcomeLibraryGeneration = provenance.generationSemantics === "exact"
+            ? {exact: true as const}
+            : {
+                sampled: {
+                    sampleSize: BigInt(provenance.sampleCount ?? "0"),
+                    seed: provenance.sampleSeed ?? "",
+                },
+            };
+        return {...options, outcomeLibraryGeneration};
+    }
+
+    private compatibilityFromPlan(source: ArtifactIdentity): import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility {
+        const provenance = source.configurationProvenance;
+        if (provenance?.configurationHash === undefined || provenance.gameId === undefined || provenance.gameVersion === undefined || provenance.pokieVersion === undefined) {
+            throw new Error("The selected conversion plan has no complete source provenance; prepare a new plan before executing it.");
+        }
+        return {
+            configHash: provenance.configurationHash,
+            gameId: provenance.gameId,
+            gameVersion: provenance.gameVersion,
+            pokieVersion: provenance.pokieVersion,
+            generation: provenance.generationSemantics === "boundedSample" ? `sample:${provenance.sampleCount ?? ""}:${provenance.sampleSeed ?? ""}` : "exact",
+        };
+    }
+
+    private sameCompatibility(left: import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility, right: import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility): boolean {
+        return left.configHash === right.configHash && left.gameId === right.gameId && left.gameVersion === right.gameVersion && left.pokieVersion === right.pokieVersion && (left.generation ?? "exact") === (right.generation ?? "exact");
+    }
+
+    private assertPlanSourceMatches(plan: ArtifactConversionPlan, source: PokieProject): void {
+        const current = resolveArtifactIdentity(source);
+        if (current.kind !== plan.source.kind || current.canonicalLocation !== plan.source.canonicalLocation ||
+            current.recognitionProvenance !== plan.source.recognitionProvenance ||
+            current.capabilities.join("\u0000") !== plan.source.capabilities.join("\u0000")) {
+            throw new Error("The source identity changed after this conversion was prepared; prepare a new plan before executing it.");
+        }
+    }
+
+    private assertPlanDestinationMatches(plan: ArtifactConversionPlan, destinationPath: string): void {
+        if (plan.target.canonicalLocation === undefined || path.resolve(destinationPath) !== plan.target.canonicalLocation) {
+            throw new Error("The destination changed after this conversion was prepared; prepare a new plan before executing it.");
+        }
+    }
+
     private async inspectManagedOutcome(sourceRootPath: string, compatibility: import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility): Promise<{readonly project?: PokieProject; readonly staleReason?: string}> {
         const service = this.managedOutcomeProjects as ManagedOutcomeProjectServicing & {
             inspect?: (sourceRootPath: string, compatibility: import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility) => Promise<{readonly project?: PokieProject; readonly staleReason?: string}>;
@@ -450,6 +508,22 @@ export class ArtifactBuilderRegistry {
         if (service.inspect !== undefined) return service.inspect(sourceRootPath, compatibility);
         const project = await service.findCompatible(sourceRootPath, compatibility);
         return project === undefined ? {} : {project};
+    }
+
+    private applyDestinationPolicy(source: PokieProject, target: ArtifactTargetType, options: ArtifactConversionPlanningOptions, plan: ArtifactConversionPlan): ArtifactConversionPlan {
+        if (plan.status !== "planned" || options.destinationPath === undefined) return plan;
+        const destination = this.checkDestination(target, options.destinationPath, source.rootPath);
+        if (destination.available) return plan;
+        return {
+            ...plan,
+            status: "conflict",
+            diagnostic: {
+                code: "destination-conflict",
+                failedEdge: {from: source.type, to: target},
+                message: destination.message ?? "The destination is unavailable.",
+                recovery: "Choose an empty destination that is not the source or one of its descendants.",
+            },
+        };
     }
 
     private unavailableTargetMessage(target: ArtifactTargetType): string {

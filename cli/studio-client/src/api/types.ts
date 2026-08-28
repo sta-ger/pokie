@@ -1246,6 +1246,7 @@ export type StudioArtifactConversionPlan = {
     target: {kind: string; canonicalLocation?: string; capabilities: string[]; configurationProvenance?: {generationSemantics?: "exact" | "boundedSample"; sampleCount?: string; sampleSeed?: string}};
     steps: {kind: "publish" | "materializeRuntime" | "generateOutcomeLibrary" | "reuseManagedOutcomeLibrary"; choice: "materialize" | "reuse" | "publish"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses?: string[]}[];
     preflight: {destinationKind: "file" | "directory"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses: string[]; oneWay: boolean};
+    managedOutcome?: {disposition: "reused" | "ineligible"; reason?: string};
     diagnostic?: {code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict"; failedEdge: {from: StudioProjectType; to: StudioArtifactTargetType}; message: string; recovery: string};
 };
 

@@ -114,7 +114,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     ): Promise<{readonly project: PokieProject; readonly reused: boolean}> {
         assertArtifactBuildNotCancelled(options);
         const prepared = await this.prepare(source, options);
-        const {game, configHash, generation, compatibility} = prepared;
+        const {compatibility} = prepared;
         if (reuseCompatible) {
             const compatible = await this.managedOutcomeProjects.findCompatible(source.rootPath, compatibility);
             if (compatible !== undefined) {
@@ -124,6 +124,23 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         }
 
         const bundleDir = typeof destinationPath === "string" ? destinationPath : destinationPath(compatibility);
+        return this.generatePrepared(source, prepared, bundleDir, options);
+    }
+
+    /**
+     * Execute the generation route selected by a prepared conversion plan.
+     * This intentionally performs no compatible-project lookup: reuse versus
+     * regeneration is the planner's decision, not a race-dependent second
+     * decision during execution.
+     */
+    public async generatePrepared(
+        source: PokieProject,
+        prepared: Awaited<ReturnType<BlueprintStakeOutcomeLibraryWorkflow["prepare"]>>,
+        bundleDir: string,
+        options?: ArtifactBuildOptions,
+    ): Promise<{readonly project: PokieProject; readonly reused: false}> {
+        assertArtifactBuildNotCancelled(options);
+        const {game, configHash, generation, compatibility} = prepared;
         assertArtifactDestinationAvailable(bundleDir, "directory");
         assertArtifactDestinationIsSafe(source.rootPath, bundleDir);
         const preflight = outcomeGenerationPreflight(game, generation);

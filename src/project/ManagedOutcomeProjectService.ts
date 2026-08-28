@@ -105,6 +105,10 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
         const document = await this.readRegistry(sourceRootPath);
         if (document.projects.length === 0) return {};
         const matching = document.projects.find((entry) => sameCompatibility(entry, compatibility));
+        // Historical entries are explicitly ineligible for this request. The
+        // planner records that disposition while still selecting the reachable
+        // regeneration route; it must never silently reuse them or let their
+        // presence suppress generation.
         if (matching === undefined) {
             return {staleReason: "the registered managed Outcome Library has different game, configuration, POKIE version, or generation provenance"};
         }

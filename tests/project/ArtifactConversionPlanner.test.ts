@@ -18,7 +18,7 @@ describe("ArtifactConversionPlanner", () => {
         expect(plan.preflight.losses).toEqual(["Stake export does not retain a game model or runtime."]);
     });
 
-    it("keeps verified managed outcome reuse distinct from stale provenance", () => {
+    it("keeps verified managed outcome reuse distinct from an ineligible stale candidate", () => {
         const reused = planner.plan(project("tsPackage"), "outcomeLibrary", {
             managedOutcome: {verified: true, identity: {kind: "outcomeLibrary", capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary}},
         });
@@ -29,7 +29,11 @@ describe("ArtifactConversionPlanner", () => {
         expect(reused.status).toBe("planned");
         expect(reused.steps).toHaveLength(1);
         expect(reused.steps[0].kind).toBe("reuseManagedOutcomeLibrary");
-        expect(stale).toMatchObject({status: "unavailable", diagnostic: {code: "stale-provenance", message: expect.stringContaining("configuration hash changed")}});
+        expect(stale).toMatchObject({
+            status: "planned",
+            managedOutcome: {disposition: "ineligible", reason: "configuration hash changed"},
+            steps: [{kind: "materializeRuntime"}, {kind: "generateOutcomeLibrary"}],
+        });
     });
 
     it("publishes a selected managed reuse to the requested Outcome destination", () => {
@@ -80,7 +84,11 @@ describe("ArtifactConversionPlanner", () => {
             },
         });
 
-        expect(plan).toMatchObject({status: "unavailable", diagnostic: {code: "stale-provenance", message: expect.stringContaining("sample seed")}});
+        expect(plan).toMatchObject({
+            status: "planned",
+            managedOutcome: {disposition: "ineligible", reason: expect.stringContaining("sample seed")},
+            steps: [{kind: "materializeRuntime"}, {kind: "generateOutcomeLibrary"}],
+        });
     });
 
     it("reports the exact unsupported boundary rather than a generic source matrix", () => {
