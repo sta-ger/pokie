@@ -266,8 +266,8 @@ export class StudioStakeEngineExportService {
         const selectedSource = this.selectedBundleSource(projectRoot, modes);
         if (selectedSource !== undefined) {
             return destinationPath === undefined
-                ? this.planning.prepare(selectedSource, "stakeAdapter").then((plan) => plan ?? createExternalOutcomeLibraryPlan(selectedSource, "stakeAdapter"))
-                : this.planning.prepare(selectedSource, "stakeAdapter", destinationPath).then((plan) => plan ?? createExternalOutcomeLibraryPlan(selectedSource, "stakeAdapter", destinationPath));
+                ? this.planning.prepare(selectedSource, "stakeAdapter")
+                : this.planning.prepare(selectedSource, "stakeAdapter", destinationPath);
         }
         // External selectors must still yield an authoritative terminal planner
         // payload. A single JSON library retains its canonical location; a

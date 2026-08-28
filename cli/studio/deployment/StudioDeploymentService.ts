@@ -244,7 +244,7 @@ export class StudioDeploymentService {
     private prepareForSelectedBundles(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): Promise<import("pokie").ArtifactConversionPlan> {
         const selectedSource = this.selectedBundleSource(projectRoot, modes);
         if (selectedSource !== undefined) {
-            return this.planning.prepare(selectedSource, "outcomeLibrary").then((plan) => plan ?? createExternalOutcomeLibraryPlan(selectedSource, "outcomeLibrary"));
+            return this.planning.prepare(selectedSource, "outcomeLibrary");
         }
         // A terminal deployment result always owns a plan for the input it
         // actually reads. A single JSON selector has its canonical location;

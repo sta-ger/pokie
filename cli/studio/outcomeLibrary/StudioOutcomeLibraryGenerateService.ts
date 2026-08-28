@@ -124,7 +124,7 @@ export class StudioOutcomeLibraryGenerateService {
     // Generate step's own "estimate/cost" panel never disagrees with what the CLI would report for the
     // same package/options.
     public async estimate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateEstimateRequest): Promise<StudioOutcomeLibraryGenerateEstimateView> {
-        const plan = (await this.planning.prepare(projectRoot, "outcomeLibrary")) ?? createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
+        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary");
         // The estimate is a preview of this action, not a second source-capability
         // probe.  Once the shared planner says that the opened project cannot
         // reach an Outcome Library, do not load its runtime and accidentally
@@ -185,8 +185,7 @@ export class StudioOutcomeLibraryGenerateService {
         if (resolvedOutDir.status === "error") {
             return {status: "load-error", error: resolvedOutDir.message, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
-        const plan = (await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration)) ??
-            createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath);
+        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration);
         if (plan.status === "conflict") {
             return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
         }
