@@ -14,7 +14,6 @@ import {
     startArtifactBuild,
 } from "../../api/apiClient";
 import type {
-    OutcomeLibrarySelector,
     StudioArtifactBuildView,
     StudioArtifactBuildJobView,
     StudioArtifactConversionPlan,
@@ -189,7 +188,6 @@ function TargetCard({
     onGenerateOutcomeLibrary,
     outcomeLibraryGenerationOptions,
     onOutcomeLibraryGenerationOptionsChange,
-    staticExportSource,
     staticExportRun,
     onRunStaticExport,
     deployment,
@@ -213,7 +211,6 @@ function TargetCard({
     onGenerateOutcomeLibrary: () => void;
     outcomeLibraryGenerationOptions: OutcomeLibraryGenerationOptions;
     onOutcomeLibraryGenerationOptionsChange: (options: OutcomeLibraryGenerationOptions) => void;
-    staticExportSource: Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined;
     staticExportRun: StaticExportRunView;
     onRunStaticExport: () => void;
     deployment: DeploymentManager;
@@ -232,7 +229,7 @@ function TargetCard({
     onCopyPath: (path: string) => void;
 }) {
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
-    const staticExportModeName = staticExportSource?.modeName ?? defaultModeName;
+    const staticExportModeName = defaultModeName;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
 
@@ -664,10 +661,6 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     const defaultModeName = resolveDefaultModeName(deployment.projectModesView);
 
     const [outcomeLibraryRun, setOutcomeLibraryRun] = useState<OutcomeLibraryRunView>({status: "idle"});
-    // The source used by the next export is not inferred from browser state.
-    // It is the exact selector the server returned from a successful terminal
-    // generation lifecycle, and is cleared with the component on project switch.
-    const [generatedOutcomeSelector, setGeneratedOutcomeSelector] = useState<Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined>();
     const outcomeLibraryGuard = useDoubleSubmitGuard();
     const [outcomeLibraryGenerationOptions, setOutcomeLibraryGenerationOptions] = useState<OutcomeLibraryGenerationOptions>({
         maxOutcomeSpaceSize: DEFAULT_MAX_OUTCOME_SPACE_SIZE,
@@ -810,10 +803,6 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         if (!outcomeLibraryGuard.begin()) {
             return;
         }
-        // A new generation invalidates the previous terminal selector before
-        // its request leaves the browser.  Export therefore cannot consume a
-        // stale bundle while the server is preparing a replacement.
-        setGeneratedOutcomeSelector(undefined);
         setOutcomeLibraryRun({status: "running"});
         generateOutcomeLibrary(fetchImpl, {
             mode: defaultModeName,
@@ -826,11 +815,10 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                 outcomeLibraryGuard.end();
                 if (view.status === "ok") {
                     setOutcomeLibraryRun({status: "ok", result: view});
-                    setGeneratedOutcomeSelector(view.selector.kind === "bundle" ? view.selector : undefined);
-                    // Feeds the freshly generated bundle straight into the shared Deployment mode row --
-                    // see this file's own top-level doc comment.
-                    deployment.setModeName(0, view.mode.modeName);
-                    deployment.setModeLibrarySelector(0, {kind: "bundle", bundleDir: view.bundleDir, modeName: view.mode.modeName});
+                    // Refreshes server discovery for the separate deployment
+                    // lifecycle, but intentionally does not copy this selector
+                    // into browser state.  Any later action prepares its own
+                    // source and provenance on the server.
                     deployment.refreshProjectModesAndRegistry();
                 } else {
                     setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(view), plan: view.plan});
@@ -842,14 +830,13 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
             });
     }
 
-    // The browser submits the selected source only; destination safety and every terminal recovery
-    // remain server/planner-owned. In particular, it never turns a conflict into a local overwrite flow.
-    function runStaticExport(source: Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined): void {
+    // The browser never selects a prerequisite.  An empty request means the
+    // server resolves the verified managed Outcome Library and prepares the
+    // exact plan it will execute; unavailable/conflict outcomes remain
+    // terminal server DTOs rather than local inferred states.
+    function runStaticExport(): void {
         setStaticExportRun({status: "running"});
-        // Always submit the click.  With no selected library the server returns
-        // its planner-owned unavailable terminal result instead of leaving the
-        // user with a button that appears to do nothing.
-        exportStakeEngine(fetchImpl, source === undefined ? [] : [{modeName: source.modeName, librarySelector: source, cost: 1}], STAKE_ENGINE_DEFAULT_OUT_DIR, false)
+        exportStakeEngine(fetchImpl, [], STAKE_ENGINE_DEFAULT_OUT_DIR, false)
             .then((view) => {
                 staticExportGuard.end();
                 if (view.status === "ok") {
@@ -870,7 +857,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         if (!staticExportGuard.begin()) {
             return;
         }
-        runStaticExport(generatedOutcomeSelector);
+        runStaticExport();
     }
 
     // Runs a single "Build artifact" card's own target through ArtifactBuilderRegistry (via
@@ -1012,7 +999,6 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                                             onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
                                             outcomeLibraryGenerationOptions={outcomeLibraryGenerationOptions}
                                             onOutcomeLibraryGenerationOptionsChange={setOutcomeLibraryGenerationOptions}
-                                            staticExportSource={generatedOutcomeSelector}
                                             staticExportRun={staticExportRun}
                                             onRunStaticExport={handleRunStaticExport}
                                             deployment={deployment}

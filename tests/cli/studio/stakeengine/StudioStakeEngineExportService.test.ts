@@ -218,6 +218,34 @@ describe("StudioStakeEngineExportService", () => {
     });
 
     describe("export", () => {
+        it("resolves an empty dashboard request to the server-selected compatible bundle before preparing and publishing", async () => {
+            const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
+            const selectServerModes = jest.fn(() => Promise.resolve([
+                {modeName: "base", librarySelector: bundleSelector("base"), cost: 1},
+            ]));
+            const service = new StudioStakeEngineExportService(
+                TEST_POKIE_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                selectServerModes,
+            );
+
+            const view = await service.export(tmpRoot, [], "stakeengine", false);
+
+            expect(selectServerModes).toHaveBeenCalledWith(tmpRoot);
+            expect(view.status).toBe("ok");
+            if (view.status !== "ok") throw new Error("expected ok");
+            expect(view.plan.source.canonicalLocation).toBe(path.join(tmpRoot, "outcomelibrary"));
+            expect(fs.existsSync(path.join(tmpRoot, "stakeengine", "index.json"))).toBe(true);
+        });
+
         it("exports a real library and returns its manifest/files", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
             await writeLibraryBundle(tmpRoot, "outcomelibrary", library);

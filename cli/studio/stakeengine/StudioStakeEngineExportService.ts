@@ -28,6 +28,14 @@ type LoadModesResult =
     | {readonly status: "ok"; readonly loaded: readonly StakeEngineExportModeInput<string>[]}
     | {readonly status: "load-error"; readonly error: string};
 
+/**
+ * The dashboard's compact export action deliberately does not post a browser
+ * selected library.  When its mode list is empty, this resolver chooses the
+ * current project's verified managed bundle on the server.  Supplying modes
+ * remains the public API for explicit, advanced Studio callers.
+ */
+export type StudioServerStakeEngineModesResolving = (projectRoot: string) => Promise<readonly StudioStakeEngineExportModeInput[]>;
+
 // A bundle/Stake Engine selector carries its own "modeName" (which mode of the bundle/export to read --
 // see OutcomeLibrarySelector); a "json" selector has no such field. Mismatched against the export row's
 // own mode would silently export one mode's data under another mode's name, so this is checked -- and
@@ -64,6 +72,7 @@ export class StudioStakeEngineExportService {
     // Blueprint Project is materialized or how a game is loaded.
     private readonly resolveCurrentConfigHash: (projectRoot: string) => Promise<string | undefined>;
     private readonly planning: StudioArtifactConversionPlanning;
+    private readonly resolveServerSelectedModes: StudioServerStakeEngineModesResolving;
 
     constructor(
         pokieVersion: string,
@@ -75,6 +84,7 @@ export class StudioStakeEngineExportService {
         stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
         resolveCurrentConfigHash: (projectRoot: string) => Promise<string | undefined> = () => Promise.resolve(undefined),
         planning: StudioArtifactConversionPlanning = new StudioArtifactConversionPlanningService(pokieVersion),
+        resolveServerSelectedModes: StudioServerStakeEngineModesResolving = () => Promise.resolve([]),
     ) {
         this.exporter = exporter;
         this.validator = validator;
@@ -84,6 +94,7 @@ export class StudioStakeEngineExportService {
         this.stakeEngineImporter = stakeEngineImporter;
         this.resolveCurrentConfigHash = resolveCurrentConfigHash;
         this.planning = planning;
+        this.resolveServerSelectedModes = resolveServerSelectedModes;
     }
 
     // The exact preflight StakeEngineExporter itself runs (and aborts the whole export on) before writing
@@ -92,7 +103,8 @@ export class StudioStakeEngineExportService {
     // count, libraryId/hash) read straight off each loaded library, never Stake-specific and never
     // recomputed beyond what computeWeightedOutcomeLibraryHash already does for every other tab.
     public async validate(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): Promise<StudioStakeEngineExportValidateView> {
-        const plan = await this.prepareForSelectedBundles(projectRoot, modes, undefined);
+        const selectedModes = await this.selectModes(projectRoot, modes);
+        const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes, undefined);
         // A validation result is part of the same planner-governed lifecycle
         // as export.  Do not keep resolving selector-specific inputs after a
         // prepared plan has already established that this project cannot
@@ -103,12 +115,12 @@ export class StudioStakeEngineExportService {
         if (plan.status === "unavailable") {
             return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
         }
-        const selectedSource = this.selectedBundleSource(projectRoot, modes);
+        const selectedSource = this.selectedBundleSource(projectRoot, selectedModes);
         const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "stakeAdapter");
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
         }
-        const loaded = await this.loadModes(projectRoot, modes);
+        const loaded = await this.loadModes(projectRoot, selectedModes);
         if (loaded.status === "load-error") {
             return {...loaded, plan};
         }
@@ -142,7 +154,8 @@ export class StudioStakeEngineExportService {
         outDir: string,
         _overwrite: boolean,
     ): Promise<StudioStakeEngineExportView> {
-        const plan = await this.prepareForSelectedBundles(projectRoot, modes, path.resolve(projectRoot, outDir));
+        const selectedModes = await this.selectModes(projectRoot, modes);
+        const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes, path.resolve(projectRoot, outDir));
         // The exported plan owns destination safety as well as reachability.
         // In particular, an explicit Studio output path must not bypass the
         // registry's alias/source/occupied-destination checks through this
@@ -159,7 +172,7 @@ export class StudioStakeEngineExportService {
         if (plan.status === "unavailable") {
             return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan};
         }
-        const selectedSource = this.selectedBundleSource(projectRoot, modes);
+        const selectedSource = this.selectedBundleSource(projectRoot, selectedModes);
         const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "stakeAdapter", path.resolve(projectRoot, outDir));
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
@@ -169,7 +182,7 @@ export class StudioStakeEngineExportService {
             return {status: "load-error", error: resolvedOutDir.message, plan};
         }
 
-        const loaded = await this.loadModes(projectRoot, modes);
+        const loaded = await this.loadModes(projectRoot, selectedModes);
         if (loaded.status === "load-error") {
             return {...loaded, plan};
         }
@@ -186,6 +199,17 @@ export class StudioStakeEngineExportService {
             return {status: "invalid", errors, warnings: result.issues.filter((issue) => issue.severity !== "error"), plan};
         }
         return {status: "ok", outDir: result.outDir, files: result.files, manifest: result.manifest, warnings: result.issues, plan};
+    }
+
+    private selectModes(
+        projectRoot: string,
+        requested: readonly StudioStakeEngineExportModeInput[],
+    ): Promise<readonly StudioStakeEngineExportModeInput[]> {
+        // A non-empty request is an explicit API choice and is still bound to
+        // its selected source by prepareForSelectedBundles/drift checks.  The
+        // empty Build/Export-card request has no client-held prerequisite; it
+        // is resolved once here, before planning and loading.
+        return requested.length === 0 ? this.resolveServerSelectedModes(projectRoot) : Promise.resolve(requested);
     }
 
     // Rejects a bundle/Stake Engine selector whose own modeName names a different mode than its own

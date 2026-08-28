@@ -620,6 +620,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
     it("runs the outcome-library generation right here (no hand-off to the Outcome Libraries tab) when its own card is chosen", async () => {
         const user = userEvent.setup();
         let generated = false;
+        let stakeRequest: unknown;
         const routes = {
             ...BASE_ROUTES,
             "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
@@ -649,6 +650,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             if (path === "/api/project/outcome-libraries/generate") {
                 generated = true;
             }
+            if (path === "/api/project/stakeengine/export") {
+                stakeRequest = JSON.parse(String(init?.body));
+            }
             return fetchImplFrom(routes)(url, init);
         };
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -668,6 +672,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(stakeExport).toBeEnabled();
         await user.click(stakeExport);
         expect(await screen.findByText("Exported 1 file(s) to stakeengine.")).toBeInTheDocument();
+        expect(stakeRequest).toEqual({modes: [], outDir: "stakeengine", overwrite: false});
     });
 
     it("keeps visible progress on the Outcome library card while generation is still running", async () => {

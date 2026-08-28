@@ -313,10 +313,37 @@ export class StudioServer implements StudioServerHandling {
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
         this.fairnessService = options.fairnessService ?? new StudioFairnessService();
         this.stakeEngineExportService =
-            options.stakeEngineExportService ?? new StudioStakeEngineExportService(this.pokieVersion, undefined, undefined, undefined, undefined, undefined, undefined, async (projectRoot) => {
-                const game = await loadCurrentProjectGame(projectRoot);
-                return game.getConfigHash?.();
-            });
+            options.stakeEngineExportService ?? new StudioStakeEngineExportService(
+                this.pokieVersion,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                async (projectRoot) => {
+                    const game = await loadCurrentProjectGame(projectRoot);
+                    return game.getConfigHash?.();
+                },
+                undefined,
+                async (projectRoot) => {
+                    // The Build/Export card posts no prerequisite selector.  Pick
+                    // only a registry entry independently verified against this
+                    // project's current build, so a stale/moved bundle cannot be
+                    // revived from browser state between preflight and export.
+                    const registry = await this.outcomeLibraryGenerateService.registry(projectRoot);
+                    if (registry.status !== "ok" || registry.buildStatus !== "compatible") {
+                        return [];
+                    }
+                    return registry.modes
+                        .filter((mode) => mode.buildStatus === "compatible")
+                        .map((mode) => ({
+                            modeName: mode.modeName,
+                            librarySelector: {kind: "bundle" as const, bundleDir: mode.bundleDir, modeName: mode.modeName},
+                            cost: 1,
+                        }));
+                },
+            );
         this.projectRegistrationService = options.projectRegistrationService ?? createDefaultStudioProjectRegistrationService();
         this.artifactBuildService =
             options.artifactBuildService ??
