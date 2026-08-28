@@ -392,7 +392,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(screen.getByRole("button", {name: "Check compatibility"}));
 
         expect(await screen.findByText("Compatible -- ready to publish.")).toBeInTheDocument();
-        expect(capturedRunBody?.modes).toEqual([{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}}]);
+        // The browser presents the resulting terminal DTO, but the server now
+        // selects the compatible registered bundle as its planner source.
+        expect(capturedRunBody?.modes).toBeUndefined();
     });
 
     it("runs the Stake Engine Export right here (no hand-off to the Stake Engine Export tab) once a canonical outcome library is available", async () => {

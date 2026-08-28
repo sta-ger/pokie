@@ -308,8 +308,22 @@ export class StudioServer implements StudioServerHandling {
         this.playService =
             options.playService ??
             new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion, undefined, undefined, undefined, this.roundRecorder);
-        this.deploymentService = options.deploymentService ?? StudioDeploymentService.withPokieVersion(this.pokieVersion);
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, loadCurrentProjectGame);
+        this.deploymentService = options.deploymentService ?? StudioDeploymentService.withPokieVersion(
+            this.pokieVersion,
+            async (projectRoot) => {
+                const registry = await this.outcomeLibraryGenerateService.registry(projectRoot);
+                if (registry.status !== "ok" || registry.buildStatus !== "compatible") {
+                    return [];
+                }
+                return registry.modes
+                    .filter((mode) => mode.buildStatus === "compatible")
+                    .map((mode) => ({
+                        modeName: mode.modeName,
+                        librarySelector: {kind: "bundle" as const, bundleDir: mode.bundleDir, modeName: mode.modeName},
+                    }));
+            },
+        );
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
         this.fairnessService = options.fairnessService ?? new StudioFairnessService();
         this.stakeEngineExportService =

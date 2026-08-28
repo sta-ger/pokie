@@ -21,17 +21,27 @@ import type {StudioDeploymentRunView} from "./StudioDeploymentRunView.js";
 import type {StudioDeploymentTargetSummary} from "./StudioDeploymentTargetSummary.js";
 import {toStudioDeploymentRunView} from "./toStudioDeploymentRunView.js";
 import type {ValidatedDeploymentRunRequest} from "./validateDeploymentRunRequest.js";
+import type {StudioDeploymentModeInput} from "./StudioDeploymentModeInput.js";
 import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
 import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
 import {createExternalOutcomeLibraryPlan} from "../artifacts/createExternalArtifactConversionPlan.js";
 
 const DEPLOYMENT_OUTPUT_DIRNAME = "deployment";
+// Direct embedding remains supported, but it must plan with the running POKIE
+// package version rather than the old synthetic 0.0.0 provenance. StudioServer
+// always supplies its configured version through withPokieVersion(); npm sets
+// this value for direct package consumers during normal installation/testing.
+const DEFAULT_DIRECT_POKIE_VERSION = process.env.npm_package_version ?? "1.3.0";
+const NO_SERVER_SELECTED_MODES: StudioDeploymentModeResolving = () => Promise.resolve([]);
 
 export type StudioDeploymentRunResult =
     | {readonly status: "ok"; readonly view: StudioDeploymentRunView}
     | {readonly status: "target-not-found"; readonly plan: import("pokie").ArtifactConversionPlan}
     | {readonly status: "invalid-modes"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan}
     | {readonly status: "load-error"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan};
+
+/** Resolves the current project's verified deployment inputs on the server. */
+export type StudioDeploymentModeResolving = (projectRoot: string) => Promise<readonly StudioDeploymentModeInput[]>;
 
 // Domain-language remediation for a request naming a mode absent/stale from the current build (see
 // resolveCurrentBuildModeIds's own doc comment) -- never the raw "modeName" schema path, always which
@@ -92,6 +102,7 @@ export class StudioDeploymentService {
     private readonly realpath: (resolvedPath: string) => string;
     private readonly resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined>;
     private readonly planning: StudioArtifactConversionPlanning;
+    private readonly resolveServerSelectedModes: StudioDeploymentModeResolving;
 
     constructor(
         externalDeploymentService: ExternalDeploymentServicing = new ExternalDeploymentService(),
@@ -102,7 +113,8 @@ export class StudioDeploymentService {
         stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
         resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined> = resolveCurrentBuildModeIds,
         planning: StudioArtifactConversionPlanning | undefined = undefined,
-        pokieVersion = "0.0.0",
+        pokieVersion = DEFAULT_DIRECT_POKIE_VERSION,
+        resolveServerSelectedModes: StudioDeploymentModeResolving = NO_SERVER_SELECTED_MODES,
     ) {
         this.externalDeploymentService = externalDeploymentService;
         this.createLocalTarget = createLocalTarget;
@@ -112,10 +124,14 @@ export class StudioDeploymentService {
         this.stakeEngineImporter = stakeEngineImporter;
         this.resolveBuildModeIds = resolveBuildModeIds;
         this.planning = planning ?? new StudioArtifactConversionPlanningService(pokieVersion);
+        this.resolveServerSelectedModes = resolveServerSelectedModes;
     }
 
     /** Creates the production service with Studio's configured package version. */
-    public static withPokieVersion(pokieVersion: string): StudioDeploymentService {
+    public static withPokieVersion(
+        pokieVersion: string,
+        resolveServerSelectedModes: StudioDeploymentModeResolving = NO_SERVER_SELECTED_MODES,
+    ): StudioDeploymentService {
         return new StudioDeploymentService(
             undefined,
             undefined,
@@ -126,6 +142,7 @@ export class StudioDeploymentService {
             undefined,
             undefined,
             pokieVersion,
+            resolveServerSelectedModes,
         );
     }
 
@@ -162,7 +179,12 @@ export class StudioDeploymentService {
         // Deployment owns SDK-specific delivery, but the library it deploys is a
         // planner-governed prerequisite.  Carry that exact server plan forward so
         // the browser never has to infer whether it can create/reuse one.
-        const plan = await this.prepareForSelectedBundles(projectRoot, request.modes);
+        // A selector-less request intentionally means "use the server's current
+        // verified compatible library".  Resolve it exactly once before both
+        // planning and reading, so a browser cannot choose a stale/moved bundle
+        // between those two phases.
+        const selectedModes = request.modes.length === 0 ? await this.resolveServerSelectedModes(projectRoot) : request.modes;
+        const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes);
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
         if (target === undefined) {
@@ -173,12 +195,12 @@ export class StudioDeploymentService {
         if (buildModeIds === undefined) {
             return {status: "invalid-modes", error: describeBuildModesUnavailableForDeployment(), plan};
         }
-        const staleModeNames = request.modes.map((mode) => mode.modeName).filter((modeName) => !buildModeIds.includes(modeName));
+        const staleModeNames = selectedModes.map((mode) => mode.modeName).filter((modeName) => !buildModeIds.includes(modeName));
         if (staleModeNames.length > 0) {
             return {status: "invalid-modes", error: describeInvalidDeploymentModes(staleModeNames, buildModeIds), plan};
         }
 
-        const mismatchedSelectorMode = request.modes.find((mode) => {
+        const mismatchedSelectorMode = selectedModes.find((mode) => {
             const named = selectorModeName(mode.librarySelector);
             return named !== undefined && named !== mode.modeName;
         });
@@ -197,14 +219,14 @@ export class StudioDeploymentService {
         if (plan.status !== "planned") {
             return {status: "load-error", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library deployment is unavailable.", plan};
         }
-        const selectedSource = this.selectedBundleSource(projectRoot, request.modes);
+        const selectedSource = this.selectedBundleSource(projectRoot, selectedModes);
         const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "outcomeLibrary");
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
         }
 
         const modes: ExternalDeploymentModeInput[] = [];
-        for (const mode of request.modes) {
+        for (const mode of selectedModes) {
             const loaded = await loadOutcomeLibraryFromSelector(
                 projectRoot,
                 mode.librarySelector,

@@ -128,6 +128,32 @@ describe("StudioDeploymentService", () => {
         expect(result).toMatchObject({status: "target-not-found", plan: {status: "unavailable", source: {canonicalLocation: "/project/base.json"}, diagnostic: {code: "unrecognized-source"}}});
     });
 
+    it("resolves selector-less Build/Export runs on the server before preparing their planner input", async () => {
+        const resolveServerSelectedModes = jest.fn(() => Promise.resolve([
+            {modeName: "base", librarySelector: {kind: "bundle" as const, bundleDir: "outcomelibrary", modeName: "base"}},
+        ]));
+        const service = new StudioDeploymentService(
+            undefined,
+            () => stubTarget(),
+            undefined,
+            identityRealpath,
+            undefined,
+            undefined,
+            buildModeIdsIncludingBase,
+            undefined,
+            "1.3.0",
+            resolveServerSelectedModes,
+        );
+
+        const result = await service.run("/project", {targetId: "does-not-exist", modes: [], publish: false});
+
+        expect(resolveServerSelectedModes).toHaveBeenCalledWith("/project");
+        expect(result).toMatchObject({
+            status: "target-not-found",
+            plan: {source: {canonicalLocation: "/project/outcomelibrary"}},
+        });
+    });
+
     it("rejects a mode absent from the active project's own current build, without ever reading its library", async () => {
         const readFile = jest.fn(() => {
             throw new Error("library file should not be read for a rejected mode");

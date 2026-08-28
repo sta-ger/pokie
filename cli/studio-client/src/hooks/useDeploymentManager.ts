@@ -361,7 +361,10 @@ export function useDeploymentManager() {
             setRunResult(undefined);
             setRunLoading(true);
 
-            runDeployment(fetchImpl, target.id, modes, publish)
+            // The server selects and verifies the deployment prerequisite. The
+            // configuration UI may still show its last registry state, but it
+            // is never an authority or a selector submitted with this action.
+            runDeployment(fetchImpl, target.id, undefined, publish)
                 .then((view) => {
                     trackerRef.current.endRun();
                     setRunLoading(trackerRef.current.isRunInFlight());
@@ -382,7 +385,7 @@ export function useDeploymentManager() {
                     setRunError(errorMessage(error));
                 });
         },
-        [fetchImpl, selectedTarget, modes],
+        [fetchImpl, selectedTarget],
     );
 
     return {
