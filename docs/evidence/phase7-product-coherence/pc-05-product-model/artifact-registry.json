@@ -227,17 +227,31 @@
       "support_status": "supported-with-studio-gap"
     },
     {
+      "id": "fairnessServerSeedCommitment",
+      "label": "FairnessServerSeedCommitment",
+      "shape": "JSON server-seed commitment",
+      "created_by": ["cli:fairness seed-commit", "studio:fairness-configure"],
+      "recognized_by": ["cli:fairness commit"],
+      "imports_from": ["serverSeedFile"],
+      "exports_to": ["fairnessCommitment"],
+      "validates_by": ["FairnessServerSeedCommitmentValidator"],
+      "prerequisite_for": ["fairnessCommitment"],
+      "provenance": "The first publishable artifact records only the hash of the still-private server seed and issuance time, before client seed, nonce or outcome-source selection are known. Studio's configure response creates this value together with its later round commitment; durable publication timing still requires an external log or timestamping authority.",
+      "compatibility": "`fairness commit` accepts only a structurally valid server-seed commitment. It is a prerequisite for a round commitment, never a substitute for one, and it never contains the raw server seed.",
+      "support_status": "supported"
+    },
+    {
       "id": "fairnessCommitment",
-      "label": "Provably Fair server/round commitment",
-      "shape": "JSON commitment",
-      "created_by": ["cli:fairness seed-commit", "cli:fairness commit", "studio:fairness-configure"],
+      "label": "FairnessCommitment",
+      "shape": "JSON round commitment",
+      "created_by": ["cli:fairness commit", "studio:fairness-configure"],
       "recognized_by": ["cli:fairness reveal", "cli:fairness verify", "studio:fairness-generate", "studio:fairness-verify"],
-      "imports_from": ["serverSeedFile", "outcomeLibrary"],
+      "imports_from": ["fairnessServerSeedCommitment", "outcomeLibrary"],
       "exports_to": ["fairnessProof"],
       "validates_by": ["FairnessCommitmentValidator"],
       "prerequisite_for": ["fairnessProof"],
-      "provenance": "Pins client seed, nonce, library and mode before selection; server seed itself is private input, not an export artifact.",
-      "compatibility": "Reveal/verify require the matching commitment and live bundle; mismatch is a verification failure, never a fallback draw.",
+      "provenance": "The later, round-specific artifact carries forward the earlier server-seed hash and pins client seed, nonce, library identity/hash and mode before selection. It does not itself prove that the earlier server-seed commitment was externally published in time.",
+      "compatibility": "Reveal/verify require the matching round commitment and live bundle; mismatch is a verification failure, never a fallback draw.",
       "support_status": "supported"
     },
     {

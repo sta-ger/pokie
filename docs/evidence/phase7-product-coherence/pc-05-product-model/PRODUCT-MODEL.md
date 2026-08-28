@@ -74,14 +74,14 @@ formats POKIE does not persist.
 | Taxon | Definition | Current instances | Acceptance owner |
 | --- | --- | --- | --- |
 | Capability contradiction | Two public surfaces assert incompatible prerequisites/availability. | PC-05-CLI-01; package vs Outcome Library run semantics. | PC-06 |
-| Grammar/output divergence | Rendered help or generated follow-up command differs from parser/shell reality. | PC-05-CLI-03; PC-05-CLI-04 remains as immutable historical evidence but was remediated in PC-04 (`afb072d4523b65d04166b4ac53e1ff34f3dfd3bf`). | PC-06 |
+| Grammar/output divergence | Rendered help or generated follow-up command differs from parser/shell reality. | PC-05-CLI-03; PC-05-CLI-04 remains as immutable historical evidence but was remediated in PC-04 (`afb072d4523b65d04166b4ac53e1ff34f3dfd3bf`). | PC-15 |
 | Artifact-kind diagnostic failure | Failure names an implementation shape instead of the user artifact and recovery. | PC-05-CLI-02. | PC-06 |
-| Destructive/replacement recovery failure | An import/open action destroys or replaces editable context without an explained recovery. | PC-05-STUDIO-01. | PC-10 |
+| Destructive/replacement recovery failure | An import/open action destroys or replaces editable context without an explained recovery. | PC-05-STUDIO-01. | PC-16 |
 | Cross-surface capability asymmetry | One client offers a lifecycle subset without an explicit handoff/boundary. | PC-05-STUDIO-02: certification verify; deployment CLI absence. | PC-11 |
-| Duplicate conversion ownership | Several entry points own the same conversion semantics. | PC-05-DUP-01: build/generate/export/specialised artifact commands. | PC-16 |
+| Duplicate conversion ownership | Product-domain, public CLI and Studio entry points must not independently define one conversion contract. | PC-05-DUP-01A Outcome Library; PC-05-DUP-01B Stake; PC-05-DUP-01C PAR; PC-05-DUP-01D public CLI aliases; PC-05-DUP-01E Studio controls. | PC-09 / PC-10 / PC-11 / PC-15 / PC-16 |
 | Runtime-source semantic duplication | The same verb means runtime execution for one source and pre-generated selection for another. | PC-05-DUP-02: simulation/replay/serve. | PC-06 |
 | Validation surface asymmetry | Clients expose different portions of a target-specific validation lifecycle. | PC-05-DUP-03A/B: Blueprint/library/Stake/certification validation. | PC-06 / PC-11 |
-| Documentation/contract drift | Docs, defaults, presentation and shared resolver are maintained separately. | PC-05-DOC-01A: prerequisite claims; PC-05-DOC-01B: WASM boundary. | PC-09 / PC-13 |
+| Documentation/contract drift | Docs, defaults, presentation and shared resolver are maintained separately. | PC-05-DOC-01A: public CLI/help/generated-action prerequisite claims; PC-05-DOC-01B: WASM boundary. | PC-15 / PC-13 |
 
 ## Acceptance ownership
 
@@ -91,12 +91,13 @@ must close an owned row rather than merely create a new observation:
 
 | Step | Owns | Required proof |
 | --- | --- | --- |
-| PC-06 CLI capability, validation and provenance sweep | CLI-01 through CLI-03, DUP-02 and DUP-03A; CLI-04 is already remediated in PC-04 | focused CLI contracts exercise accepted/default/rejected forms and source kind recovery |
-| PC-09 public-docs sweep | DOC-01A documentation, defaults and generated action language | documentation claims, help and shared contracts agree on supported sources and prerequisites |
-| PC-10 Studio recovery sweep | Studio saved-design replacement/recovery (STUDIO-01) | a real selection path shows retained prior design or a valid imported design plus recovery explanation |
-| PC-11 Studio validation/certification sweep | Studio certification verification handoff and validation controls (STUDIO-02, DUP-03B) | controls, disabled states and explicit CLI handoffs match the matrix |
+| PC-06 CLI capability, validation and provenance sweep | CLI-01, CLI-02, DUP-02 and DUP-03A; CLI-04 is already remediated in PC-04 | focused CLI contracts exercise accepted/default/rejected forms and source kind recovery |
+| PC-09 Outcome Library sweep | Outcome Library conversion contract (DUP-01A) | exact-enumeration prerequisites, bundle validation and conversion diagnostics agree |
+| PC-10 Stake export sweep | Stake conversion contract (DUP-01B) | export prerequisites, provenance and output safety agree |
+| PC-11 PAR and Studio validation/certification sweep | PAR conversion contract (DUP-01C); Studio certification verification handoff and validation controls (STUDIO-02, DUP-03B) | PAR exchange preserves its explicit boundary; controls, disabled states and explicit CLI handoffs match the matrix |
+| PC-15 public CLI/help/docs sweep | generated-command recovery (CLI-03), public CLI conversion aliases (DUP-01D) and public-documentation alignment (DOC-01A) | parser, help, generated actions and public docs agree on canonical routes, prerequisites and recovery |
 | PC-13 WASM boundary sweep | DOC-01B WASM docs, resolver and Studio boundary | all surfaces agree on inspection-only support and exclusions |
-| PC-16 command/conversion consolidation sweep | conversion entry points and aliases (DUP-01), including init/create/build/export/generate/PAR/Stake routes | one canonical route per goal; aliases retain identical defaults, validation and diagnostics |
+| PC-16 Studio sweep | saved-design replacement/recovery (STUDIO-01) and Studio conversion controls (DUP-01E) | selection retains recoverable context; Studio exposes one discoverable control per goal or explicit delegation with matching states |
 
 No row is closed by a screenshot alone.  It closes only when the affected
 goal, persisted observable result, failure/disabled path and provenance rule

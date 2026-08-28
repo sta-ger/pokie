@@ -5,8 +5,11 @@ import {registerCliCommands} from "../../cli/registerCliCommands.js";
 type InventoryItem = {
     id: string;
     type?: string;
+    created_by?: string[];
+    recognized_by?: string[];
     imports_from?: string[];
     exports_to?: string[];
+    validates_by?: string[];
     prerequisite_for?: string[];
 };
 
@@ -20,6 +23,7 @@ type ProductModelRegistry = {
 const PRODUCT_MODEL_DIR = path.join(__dirname, "..", "..", "docs", "evidence", "phase7-product-coherence", "pc-05-product-model");
 const REGISTRY_PATH = path.join(PRODUCT_MODEL_DIR, "artifact-registry.json");
 const MATRIX_PATH = path.join(PRODUCT_MODEL_DIR, "CAPABILITY-MATRIX.md");
+const PRODUCT_MODEL_PATH = path.join(PRODUCT_MODEL_DIR, "PRODUCT-MODEL.md");
 
 function readRegistry(): ProductModelRegistry {
     return JSON.parse(fs.readFileSync(REGISTRY_PATH, "utf-8")) as ProductModelRegistry;
@@ -31,8 +35,14 @@ function closureRow(matrix: string, id: string): string {
     return row;
 }
 
+function acceptanceOwnershipRow(productModel: string, step: string): string {
+    const row = productModel.split("\n").find((line) => line.startsWith(`| ${step} `));
+    if (row === undefined) throw new Error(`Missing PC-05 acceptance ownership row for ${step}.`);
+    return row;
+}
+
 describe("PC-05 product-model contract", () => {
-    it("closes the artifact graph and inventories portable rounds plus Stake-import companions", () => {
+    it("closes the artifact graph and inventories portable rounds, Stake-import companions and the three fairness artifacts", () => {
         const registry = readRegistry();
         const items = [...registry.artifact_kinds, ...registry.non_artifact_prerequisites];
         const ids = items.map((item) => item.id);
@@ -66,6 +76,7 @@ describe("PC-05 product-model contract", () => {
                 "renderedReport",
                 "runtimeReplayDescriptor",
                 "certificationEvidenceBundle",
+                "fairnessServerSeedCommitment",
                 "fairnessCommitment",
                 "fairnessProof",
                 "externalDeploymentArtifact",
@@ -78,6 +89,30 @@ describe("PC-05 product-model contract", () => {
         expect(roundArtifact?.exports_to).toEqual(expect.arrayContaining(["runtimeReplayDescriptor", "certificationEvidenceBundle"]));
         const stakeImportConfig = registry.artifact_kinds.find((item) => item.id === "stakeImportReExportConfig");
         expect(stakeImportConfig?.imports_from).toEqual(expect.arrayContaining(["stakeAdapter", "outcomeLibrary"]));
+        const serverSeedCommitment = registry.artifact_kinds.find((item) => item.id === "fairnessServerSeedCommitment");
+        const fairnessCommitment = registry.artifact_kinds.find((item) => item.id === "fairnessCommitment");
+        const fairnessProof = registry.artifact_kinds.find((item) => item.id === "fairnessProof");
+        expect(serverSeedCommitment).toEqual(
+            expect.objectContaining({
+                "created_by": expect.arrayContaining(["cli:fairness seed-commit", "studio:fairness-configure"]),
+                "recognized_by": expect.arrayContaining(["cli:fairness commit"]),
+                "imports_from": ["serverSeedFile"],
+                "exports_to": ["fairnessCommitment"],
+                "validates_by": expect.arrayContaining(["FairnessServerSeedCommitmentValidator"]),
+                "prerequisite_for": ["fairnessCommitment"],
+            }),
+        );
+        expect(fairnessCommitment).toEqual(
+            expect.objectContaining({
+                "created_by": expect.arrayContaining(["cli:fairness commit", "studio:fairness-configure"]),
+                "recognized_by": expect.arrayContaining(["cli:fairness reveal", "cli:fairness verify", "studio:fairness-generate", "studio:fairness-verify"]),
+                "imports_from": ["fairnessServerSeedCommitment", "outcomeLibrary"],
+                "exports_to": ["fairnessProof"],
+                "validates_by": expect.arrayContaining(["FairnessCommitmentValidator"]),
+                "prerequisite_for": ["fairnessProof"],
+            }),
+        );
+        expect(fairnessProof?.imports_from).toEqual(expect.arrayContaining(["fairnessCommitment", "serverSeedFile", "outcomeLibrary"]));
         for (const nonArtifactId of ["stakeAdapterImport", "simulationReplayDescriptor", "studioReplayDownload", "wasmPackagingPreflight"]) {
             expect(registry.non_artifact_prerequisites).toContainEqual(expect.objectContaining({id: nonArtifactId, type: "non-artifact-prerequisite"}));
         }
@@ -143,29 +178,46 @@ describe("PC-05 product-model contract", () => {
         expect(routeInventory).toContain("Studio domain route");
     });
 
-    it("keeps frozen findings while assigning only roadmap-valid current owners", () => {
+    it("keeps frozen findings while assigning every closure surface to its roadmap-valid owner", () => {
         const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
+        const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
         const expectedOwners: Record<string, string> = {
             "PC-05-CLI-01": "PC-06",
             "PC-05-CLI-02": "PC-06",
-            "PC-05-CLI-03": "PC-06",
-            "PC-05-STUDIO-01": "PC-10",
+            "PC-05-CLI-03": "PC-15",
+            "PC-05-STUDIO-01": "PC-16",
             "PC-05-STUDIO-02": "PC-11",
-            "PC-05-DUP-01": "PC-16",
+            "PC-05-DUP-01A": "PC-09",
+            "PC-05-DUP-01B": "PC-10",
+            "PC-05-DUP-01C": "PC-11",
+            "PC-05-DUP-01D": "PC-15",
+            "PC-05-DUP-01E": "PC-16",
             "PC-05-DUP-02": "PC-06",
             "PC-05-DUP-03A": "PC-06",
             "PC-05-DUP-03B": "PC-11",
-            "PC-05-DOC-01A": "PC-09",
+            "PC-05-DOC-01A": "PC-15",
             "PC-05-DOC-01B": "PC-13",
         };
 
         for (const [id, owner] of Object.entries(expectedOwners)) {
             expect(closureRow(matrix, id)).toContain(owner);
         }
-        expect(Object.keys(expectedOwners)).toHaveLength(11);
+        expect(Object.keys(expectedOwners)).toHaveLength(15);
         expect(closureRow(matrix, "PC-05-STUDIO-01")).not.toContain("PC-07");
+        expect(closureRow(matrix, "PC-05-STUDIO-01")).not.toContain("PC-10");
         expect(closureRow(matrix, "PC-05-STUDIO-02")).not.toContain("PC-08");
-        expect(closureRow(matrix, "PC-05-DUP-01")).not.toContain("PC-08");
+        expect(closureRow(matrix, "PC-05-CLI-03")).not.toContain("PC-06");
+        expect(closureRow(matrix, "PC-05-DOC-01A")).not.toContain("PC-09");
+        expect(closureRow(matrix, "PC-05-DOC-01A")).not.toContain("PC-06");
+        expect(closureRow(matrix, "PC-05-DUP-01D")).not.toContain("PC-16");
+        expect(closureRow(matrix, "PC-05-DUP-01E")).not.toContain("PC-15");
+        expect(acceptanceOwnershipRow(productModel, "PC-09")).toContain("DUP-01A");
+        expect(acceptanceOwnershipRow(productModel, "PC-10")).toContain("DUP-01B");
+        expect(acceptanceOwnershipRow(productModel, "PC-11")).toContain("DUP-01C");
+        expect(acceptanceOwnershipRow(productModel, "PC-15")).toContain("CLI-03");
+        expect(acceptanceOwnershipRow(productModel, "PC-15")).toContain("DOC-01A");
+        expect(acceptanceOwnershipRow(productModel, "PC-16")).toContain("STUDIO-01");
+        expect(acceptanceOwnershipRow(productModel, "PC-16")).toContain("DUP-01E");
         const remediatedImportGrammar = closureRow(matrix, "PC-05-CLI-04");
         expect(remediatedImportGrammar).toContain("Frozen observation (immutable)");
         expect(remediatedImportGrammar).toContain("previously remediated");
