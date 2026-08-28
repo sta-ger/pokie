@@ -1703,9 +1703,11 @@ export class StudioServer implements StudioServerHandling {
     }
 
     // A well-formed request that fails at the domain level (unknown targetId, an unreadable/malformed
-    // library file) still gets its own precise status (404 / 400) here, same as everywhere else in this
-    // class — only the pipeline's own findings (incompatible content, a failed projector, ...) are
-    // ever carried in the 200 response's own DTO, via StudioDeploymentService.run()'s "ok" branch.
+    // library file) is still returned in the action DTO.  Its prerequisite plan
+    // is terminalized below as well: a plan may describe a reusable Outcome
+    // Library before a request is checked, but it must not tell the browser that
+    // this particular deployment can proceed after a later request preflight
+    // has rejected it.
     private async handleRunDeployment(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
@@ -1739,7 +1741,7 @@ export class StudioServer implements StudioServerHandling {
         plan: ArtifactConversionPlan | undefined,
         request: {targetId: string; publish: boolean},
     ): StudioDeploymentRunView & {status: "unavailable" | "conflict"; error: string} {
-        const terminalPlan = plan ?? {
+        const fallbackPlan: ArtifactConversionPlan = {
             status: "unavailable" as const,
             source: {kind: "outcomeLibrary" as const, capabilities: []},
             target: {kind: "outcomeLibrary" as const, capabilities: []},
@@ -1752,6 +1754,24 @@ export class StudioServer implements StudioServerHandling {
                 recovery: "Open a recognized POKIE project and retry.",
             },
         };
+        // `StudioDeploymentService` prepares the selected library's conversion
+        // plan before it can discover request-specific blockers such as an
+        // unknown deployment target, stale mode, or unreadable selected file.
+        // Preserve that plan's source, target, and prospective steps, but make
+        // the response's executable state and diagnostic describe the blocker
+        // that actually terminated this request.
+        const terminalPlan: ArtifactConversionPlan = plan?.status === "planned"
+            ? {
+                ...plan,
+                status: "unavailable",
+                diagnostic: {
+                    code: resultStatus === "target-not-found" ? "destination-conflict" : "missing-data",
+                    failedEdge: {from: plan.source.kind, to: plan.target.kind},
+                    message: error,
+                    recovery: "Correct the deployment request or selected library, then try again.",
+                },
+            }
+            : plan ?? fallbackPlan;
         return {
             status: resultStatus === "load-error" ? "unavailable" : "conflict",
             error,
