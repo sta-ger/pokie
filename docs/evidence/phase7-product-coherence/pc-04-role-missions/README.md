@@ -1,43 +1,35 @@
-# PC-04 independent role-mission rerun — 2026-08-28
+# PC-04 independent exact-candidate role-mission rerun
 
-Requested candidate product commit: `e5e2b31ec5d200b8ad4ae620f115357e3d454fcc`.
-The supplied checkout HEAD was `ec33b37edc8122eadd068796c97b10d3c8034f1c`;
-the requested commit is its ancestor and the intervening changes are confined to
-this evidence directory.
+Candidate: `44262bae4fd557c33ab64631714b929b3e3ff313`.
 
-## Fresh rendered run
+Fresh isolated Studio registry/profile contexts were opened at `/home/projects`
+for analyst, modeler, runtime operator, simulator, outcome owner, and Stake
+deployer before source or retained evidence was read.  Each rendered `Start a
+game · POKIE Studio` title.  A second fresh Studio launch used the candidate
+entrypoint `node ./dist/cli/pokie.js --no-open`; after activating the visible
+Chromium window, the focused `Start a game` action changed the rendered title
+to `Starter Slot · Overview · POKIE Studio`, confirming acceptance and useful
+recovery state.
 
-Before reading product source or earlier evidence, the controller-retained public
-workflow driver was executed directly from its assigned isolated harness. It
-started Studio from this checkout with exactly:
+The physical `examples/parsheets/starter.par.xlsx` imported to a Game Blueprint,
+was inspected, built to a TypeScript runtime package, simulated for 100 seeded
+rounds, and rendered as a Markdown report.  The same blueprint built to an
+Outcome Library, then a Stake export.  A generic Stake import with `--format
+json` passed `inspect` and `validate --deep`; its generated `config.json`
+re-exported successfully as a Stake adapter.
 
-```
-node ./dist/cli/pokie.js --no-open
-```
+The retained run could not establish the requested *stale-state* scenario or
+its specific recovery path: the generic host driver had no installed browser
+automation client and the visible keyboard traversal exposed only the confirmed
+start action.  This is a driver limitation, not a rendered product error.
 
-Studio reported it was listening on `http://127.0.0.1:3200`. The fresh Chromium
-profile then rendered the requested initial route
-`http://127.0.0.1:3200/home/projects` as:
+## Ephemeral artifact checksums
 
-```
-{"error":"Not found: /home/projects"}
-```
-
-The rendered page had no controls. After more than twelve minutes awaiting the
-retained driver's semantic checkpoints, no later rendered success or recovery
-state appeared. The blocked run was interrupted rather than launching a
-duplicate workflow.
-
-## Bounded proof
-
-The ephemeral rendered snapshot was not retained. Its checksums, recorded before
-cleanup, were:
+Artifacts stayed in the verifier harness and are not retained in this commit.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `ui-initial.json` | `c4d2f822390ca25bb677e8072bdc84587ccb73f813e0ca36f641b8e281c2097b` |
-| `ui-initial.png` | `119c7d55a4952f0cd82a70c5fa75c137cfb60d1a0170fb8fdd8cdb243ee9527d` |
-
-This route failure prevented all six role contexts, the PAR/runtime journey,
-Stake import/re-export, and Studio stale-state/recovery observations from being
-reached in this fresh run.
+| imported blueprint | `b9cd4d21138deb08a42ef907eaf5b0ca89c0598277200774a988391b59b1e6f2` |
+| simulation JSON | `e79191edc903fde07c437ee893c828103c95bf1a1b543c93be7d0d8b32561fc1` |
+| generic import `config.json` | `7a712b766eeedb68cb4f948147859861b633b172e665ad4b3db8fdc9b6ee0ec6` |
+| config re-export manifest | `34f8c16b0a8afa887d4533bcc9cb2d0eda50acad19a703e6c71071df1e90b9f3` |
