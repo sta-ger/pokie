@@ -168,6 +168,11 @@ export function BlueprintEditorPage({
     // (see StudioProjectRegistryEntry's own doc comment).
     const [importedFromParSheetPath, setImportedFromParSheetPath] = useState<string | undefined>(undefined);
     const [parConversionEvidence, setParConversionEvidence] = useState<ParSheetConversionEvidence | undefined>(undefined);
+    // `losslessEligible` belongs to the exact imported document.  Keep the
+    // import revision separately so ordinary editor mutations cannot keep a
+    // green lossless claim in local draft persistence while the save request
+    // is waiting for the server's hash check.
+    const importedParBlueprintRevisionRef = useRef<number | undefined>(undefined);
     const loadGuard = useDoubleSubmitGuard();
     const saveGuard = useDoubleSubmitGuard();
     const validateGuard = useDoubleSubmitGuard();
@@ -595,6 +600,12 @@ export function BlueprintEditorPage({
         importedFromParSheetPath,
     });
 
+    useEffect(() => {
+        if (importedParBlueprintRevisionRef.current !== undefined && editor.state.revision !== importedParBlueprintRevisionRef.current) {
+            setParConversionEvidence((evidence) => evidence?.losslessEligible === true ? {...evidence, losslessEligible: false} : evidence);
+        }
+    }, [editor.state.revision]);
+
     // New -> Blank: the New flow's minimal option (see NewBlueprintDialog's own doc comment) -- same
     // wholesale-replace bookkeeping New always did, now reached through the dialog's dirty-confirm gate
     // instead of directly from the "New Blueprint" button. `setValidationView` here is set explicitly
@@ -726,6 +737,7 @@ export function BlueprintEditorPage({
         if (!persistedDraft) {
             return;
         }
+        importedParBlueprintRevisionRef.current = editor.state.revision + 1;
         editor.loadFrom(persistedDraft.blueprint);
         setImportedFromParSheetPath(persistedDraft.importedFromParSheetPath);
         setParConversionEvidence(persistedDraft.conversionEvidence as ParSheetConversionEvidence | undefined);
@@ -761,6 +773,7 @@ export function BlueprintEditorPage({
         // it survives through to the guided flow's first Save (handleGuidedSave) and beyond.
         setImportedFromParSheetPath(sourcePath);
         setParConversionEvidence(conversionEvidence);
+        importedParBlueprintRevisionRef.current = editor.state.revision + 1;
     };
 
     // "Restore built blueprint"/"Discard unbuilt changes" (BlueprintBuildPanel's own confirm already
@@ -867,7 +880,10 @@ export function BlueprintEditorPage({
                 true,
                 sourceVersionRef.current?.path === blueprintPath ? sourceVersionRef.current.hash : undefined,
             ).then((raw) => ({raw, view: describeSaveResult(raw)}))
-            : saveManagedBlueprint(fetchImpl, savedBlueprint, importedFromParSheetPath, parConversionEvidence).then((raw) => ({
+            // PAR evidence is retained by the server's prepared import, keyed
+            // to its workbook.  Do not let a browser-retained draft payload
+            // become the authority for a durable conversion sidecar.
+            : saveManagedBlueprint(fetchImpl, savedBlueprint, importedFromParSheetPath).then((raw) => ({
                 raw,
                 view: describeSaveManagedResult(raw),
             }));

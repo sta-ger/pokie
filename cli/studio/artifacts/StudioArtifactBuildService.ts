@@ -168,6 +168,11 @@ export class StudioArtifactBuildService {
             return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`, plan};
         }
         const {project, destination} = resolved;
+        // Directory targets deliberately accept a caller-created empty
+        // destination.  It is not owned by this operation, even though its
+        // contents will be, so a later Studio registration failure must leave
+        // that directory in place.
+        const outputDestinationExisted = fs.existsSync(destination);
 
         const plan = await this.plan(project, target, destination, options);
         if (plan.status === "unavailable") {
@@ -185,7 +190,7 @@ export class StudioArtifactBuildService {
                 ...(result.managedProjectRoots ?? []),
                 // A PAR import's Blueprint is itself a durable Studio project,
                 // not merely a transient prerequisite like an Outcome bundle.
-                ...(target === "blueprint" ? [result.outputPath] : []),
+                ...(target === "blueprint" || project.type === "parWorkbook" ? [result.outputPath] : []),
                 // Every PAR-derived terminal artifact owns a durable imported
                 // Blueprint.  Register that model as well as the terminal so
                 // a restart can reopen its workbook/evidence provenance.
@@ -209,7 +214,7 @@ export class StudioArtifactBuildService {
                 // registered by its generator before Studio reaches this loop,
                 // so rollback is based on the selected plan's ownership, not
                 // only the subset of callbacks that happened to return first.
-                await this.rollbackRegistrationFailure(result, plan, registeredRoots);
+                await this.rollbackRegistrationFailure(result, plan, registeredRoots, outputDestinationExisted);
                 throw error;
             }
             return {
@@ -378,6 +383,7 @@ export class StudioArtifactBuildService {
         result: import("pokie").ArtifactBuildResult,
         plan: ArtifactConversionPlan,
         registeredRoots: readonly string[],
+        outputDestinationExisted: boolean,
     ): Promise<void> {
         const reusesManagedOutcome = plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary");
         // The terminal is always newly allocated after the registry's
@@ -399,7 +405,16 @@ export class StudioArtifactBuildService {
         ].map(async (projectRoot) => {
             if (!ownedRoots.has(projectRoot)) return;
             await this.unregisterManagedProject(projectRoot).catch(() => undefined);
-            await fs.promises.rm(projectRoot, {recursive: true, force: true}).catch(() => undefined);
+            if (projectRoot === result.outputPath && outputDestinationExisted) {
+                // The destination was a caller-owned empty directory at
+                // preflight.  Remove only this operation's publication and
+                // preserve the destination itself for its owner.
+                await fs.promises.readdir(projectRoot)
+                    .then((entries) => Promise.all(entries.map((entry) => fs.promises.rm(path.join(projectRoot, entry), {recursive: true, force: true}))))
+                    .catch(() => undefined);
+            } else {
+                await fs.promises.rm(projectRoot, {recursive: true, force: true}).catch(() => undefined);
+            }
             await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
         }));
     }

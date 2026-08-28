@@ -192,6 +192,11 @@ export class StudioBlueprintService {
     private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly pathResolver: PokiePathResolver;
     private readonly stagedArtwork = new Map<string, string>();
+    // A PAR Apply is a two-step UI interaction, but the evidence must remain
+    // server-authored between those steps.  The client may echo it for draft
+    // recovery compatibility; once Studio has imported this workbook the
+    // saved sidecar always uses this prepared observation instead.
+    private readonly preparedParImports = new Map<string, StudioParSheetConversionEvidence>();
     // A managed save chooses a fresh Blueprint path.  Retain the exact files
     // it copied until registration settles, so a failed registration removes
     // only this operation's artwork rather than a pre-existing assets folder.
@@ -462,17 +467,25 @@ export class StudioBlueprintService {
             artworkPaths.push(...this.materializeSymbolArtwork(destination.targetPath, blueprint));
             writeBlueprintAtomically(destination.targetPath, blueprint);
             const conversionEvidencePath = `${destination.targetPath}.conversion-evidence.json`;
-            if (sourceWorkbookPath !== undefined && conversionEvidence !== undefined) {
+            const preparedEvidence = sourceWorkbookPath === undefined ? undefined : this.preparedParImports.get(path.resolve(sourceWorkbookPath));
+            const trustedConversionEvidence = preparedEvidence ?? conversionEvidence;
+            if (sourceWorkbookPath !== undefined && trustedConversionEvidence !== undefined) {
                 try {
+                    const savedBlueprintHash = computeGameBlueprintHash(blueprint);
+                    // The workbook evidence describes the exact imported
+                    // Blueprint, never a later editor revision.  Do this at
+                    // the server-owned publication boundary rather than
+                    // trusting the browser's retained `losslessEligible`.
+                    const stillMatchesImportedBlueprint = trustedConversionEvidence.importedBlueprintHash === savedBlueprintHash;
                     writeJsonAtomically(conversionEvidencePath, {
                         schemaVersion: 1,
                         sourceWorkbook: path.resolve(sourceWorkbookPath),
-                        provenance: conversionEvidence.provenance,
-                        metaSheet: conversionEvidence.metaSheet,
-                        facts: conversionEvidence.facts,
-                        losslessEligible: conversionEvidence.losslessEligible,
-                        importedBlueprintHash: conversionEvidence.importedBlueprintHash,
-                        provenanceHashMatches: conversionEvidence.provenanceHashMatches,
+                        provenance: trustedConversionEvidence.provenance,
+                        metaSheet: trustedConversionEvidence.metaSheet,
+                        facts: trustedConversionEvidence.facts,
+                        losslessEligible: trustedConversionEvidence.losslessEligible && stillMatchesImportedBlueprint,
+                        importedBlueprintHash: trustedConversionEvidence.importedBlueprintHash,
+                        provenanceHashMatches: trustedConversionEvidence.provenanceHashMatches,
                     });
                 } catch (error) {
                     // This pair is one user-visible publication.  The managed
@@ -489,7 +502,7 @@ export class StudioBlueprintService {
                 name: destination.name,
                 blueprintHash: computeGameBlueprintHash(blueprint),
                 sourceWorkbookPath,
-                ...(sourceWorkbookPath !== undefined && conversionEvidence !== undefined ? {conversionEvidencePath} : {}),
+                ...(sourceWorkbookPath !== undefined && trustedConversionEvidence !== undefined ? {conversionEvidencePath} : {}),
             };
         } catch (error) {
             this.cleanupManagedSaveArtifacts(destination.targetPath, artworkPaths, directoryCreated);
@@ -601,18 +614,20 @@ export class StudioBlueprintService {
             const result = await this.parSheetImporter.importFromFile(resolved);
             const errors = result.issues.filter((issue) => issue.severity === "error");
             const warnings = result.issues.filter((issue) => issue.severity !== "error");
+            const conversionEvidence: StudioParSheetConversionEvidence = {...(result.conversionEvidence ?? {
+                metaSheet: undefined,
+                facts: result.issues.map((issue) => ({kind: "diagnostic" as const, code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})})),
+                losslessEligible: false,
+                importedBlueprintHash: computeGameBlueprintHash(result.blueprint),
+                provenanceHashMatches: false,
+            }), ...(result.provenance === undefined ? {} : {provenance: result.provenance})};
+            this.preparedParImports.set(resolved, conversionEvidence);
             return {
                 status: "ok",
                 path: resolved,
                 blueprint: result.blueprint,
                 provenance: result.provenance,
-                conversionEvidence: {...(result.conversionEvidence ?? {
-                    metaSheet: undefined,
-                    facts: result.issues.map((issue) => ({kind: "diagnostic" as const, code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})})),
-                    losslessEligible: false,
-                    importedBlueprintHash: computeGameBlueprintHash(result.blueprint),
-                    provenanceHashMatches: false,
-                }), ...(result.provenance === undefined ? {} : {provenance: result.provenance})},
+                conversionEvidence,
                 errors,
                 warnings,
             };
@@ -915,8 +930,6 @@ export class StudioBlueprintService {
             }
             if (directoryCreated) {
                 fs.rmSync(path.dirname(targetPath), {recursive: true, force: true});
-            } else {
-                fs.rmdirSync(path.dirname(targetPath));
             }
         } catch {
             // Rollback is best effort. The caller still reports registration

@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
-import type {ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
+import {computeArtifactInputBindingHash, type ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
 import {ManagedOutcomeProjectService} from "../../src/project/ManagedOutcomeProjectService.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import {
@@ -125,6 +125,28 @@ describe("ArtifactBuilderRegistry", () => {
             await expect(withBuilder.executePlan(plan, {...source, rootPath: "/projects/moved-blueprint"}, "/out/prepared-game")).rejects.toThrow(/source identity changed/);
             await expect(withBuilder.executePlan(plan, source, "/out/other-game")).rejects.toThrow(/destination changed/);
             expect(builder.calls).toBe(0);
+        });
+
+        it("rebinds PAR workbook bytes before executing a prepared downstream plan", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-drift-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            fs.writeFileSync(workbookPath, "prepared workbook bytes");
+            const builder = fakeBuilder("tsPackage");
+            const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+                configurationProvenance: {configurationHash: computeArtifactInputBindingHash([workbookPath])},
+            } as PokieProject;
+            const plan = await withBuilder.preparePlan(source, "tsPackage", {destinationPath: path.join(directory, "package")});
+            fs.writeFileSync(workbookPath, "changed workbook bytes");
+
+            await expect(withBuilder.executePlan(plan, source, path.join(directory, "package"))).rejects.toThrow(/PAR workbook changed after this conversion was prepared/);
+            expect(builder.calls).toBe(0);
+            expect(fs.existsSync(path.join(directory, "package"))).toBe(false);
+            fs.rmSync(directory, {recursive: true, force: true});
         });
 
         it("rejects a fabricated graph even when its source and destination identities match", async () => {

@@ -1149,6 +1149,24 @@ describe("StudioBlueprintService", () => {
             expect(fs.existsSync(result.conversionEvidencePath)).toBe(false);
         });
 
+        it("invalidates a lossless PAR claim when the saved Blueprint differs from the imported hash", () => {
+            const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
+            const service = createServiceWithManagedDirectory(managedDir);
+            const imported = buildBlueprint();
+            const edited = buildBlueprint({manifest: {id: "sample-slot", name: "Edited Sample Slot", version: "0.1.0"}});
+            const result = service.saveManaged(edited, "/games/in.par.xlsx", {
+                metaSheet: [],
+                facts: [],
+                losslessEligible: true,
+                importedBlueprintHash: computeGameBlueprintHash(imported),
+                provenanceHashMatches: true,
+            });
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok" || result.conversionEvidencePath === undefined) throw new Error("expected PAR evidence publication");
+            expect(JSON.parse(fs.readFileSync(result.conversionEvidencePath, "utf8"))).toMatchObject({losslessEligible: false});
+        });
+
         it("retains parsed PAR provenance and rolls back only artwork allocated by a failed managed registration", () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
             const service = createServiceWithManagedDirectory(managedDir);

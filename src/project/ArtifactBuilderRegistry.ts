@@ -33,7 +33,7 @@ import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {assertArtifactBuildNotCancelled, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
-import {ArtifactConversionPlanner, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type ArtifactConfigurationProvenance, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions, type ArtifactIdentity} from "./ArtifactConversionPlanner.js";
+import {ArtifactConversionPlanner, computeArtifactInputBindingHash, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type ArtifactConfigurationProvenance, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions, type ArtifactIdentity} from "./ArtifactConversionPlanner.js";
 import {
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
@@ -673,6 +673,18 @@ export class ArtifactBuilderRegistry {
             current.recognitionProvenance !== plan.source.recognitionProvenance ||
             current.capabilities.join("\u0000") !== plan.source.capabilities.join("\u0000")) {
             throw new Error("The source identity changed after this conversion was prepared; prepare a new plan before executing it.");
+        }
+        // PAR projects are resolved from a workbook byte binding.  `source` is
+        // intentionally a small immutable-looking DTO, so its binding hash is
+        // the value observed by the resolver at preflight time and cannot be
+        // trusted after a user replaces the workbook.  Re-read it here before
+        // any import or dependent writer gets a chance to publish.
+        if (source.type === "parWorkbook") {
+            const preparedHash = plan.source.configurationProvenance?.configurationHash;
+            const currentHash = computeArtifactInputBindingHash([source.rootPath]);
+            if (preparedHash === undefined || preparedHash !== currentHash) {
+                throw new Error("The PAR workbook changed after this conversion was prepared; prepare a new plan before executing it.");
+            }
         }
         // Resolved Blueprint/package provenance is computed from the runnable
         // source, rather than copied from the project wrapper. Re-prepare it
