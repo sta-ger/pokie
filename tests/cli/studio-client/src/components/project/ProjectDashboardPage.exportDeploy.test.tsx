@@ -1086,6 +1086,109 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await waitFor(() => expect(capturedOpenProjectRoot).toBe("/games/republished-sheet.xlsx"));
         });
 
+        it("renders the PAR-to-Blueprint file target, its import/evidence preflight, and durable evidence result", async () => {
+            const user = userEvent.setup();
+            let requestedTarget: string | undefined;
+            const routes = {
+                ...BASE_ROUTES,
+                "/api/project/context": () => ({
+                    ok: true,
+                    status: 200,
+                    body: {
+                        status: "artifact",
+                        projectRoot: "/games/source.xlsx",
+                        project: {type: "parWorkbook", rootPath: "/games/source.xlsx", capabilities: ["parWorkbook.exchange"], provenance: "test workbook"},
+                    },
+                }),
+                "/api/project/artifacts/targets": () => ({
+                    ok: true,
+                    status: 200,
+                    body: [
+                        {target: "blueprint", supported: true, state: "supported", unsupportedNotes: []},
+                        {target: "tsPackage", supported: false, state: "diagnostic-required", diagnostic: "A TypeScript package requires a Blueprint.", unsupportedNotes: []},
+                        {target: "outcomeLibrary", supported: false, state: "diagnostic-required", diagnostic: "An Outcome library requires a runtime source.", unsupportedNotes: []},
+                        {target: "stakeAdapter", supported: false, state: "diagnostic-required", diagnostic: "A Stake export requires an Outcome library.", unsupportedNotes: []},
+                        {target: "parWorkbook", supported: false, state: "diagnostic-required", diagnostic: "A PAR workbook is already the source.", unsupportedNotes: []},
+                    ],
+                }),
+            };
+            const fetchImpl: FetchLike = (url, init) => {
+                const [requestPath] = url.split("?");
+                if (requestPath === "/api/project/artifacts/preview") {
+                    const request = JSON.parse(String(init?.body)) as {target: string; outDir?: string};
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: () => Promise.resolve({
+                            status: "ok",
+                            target: request.target,
+                            destination: request.outDir || "/games/blueprint.json",
+                            destinationKind: "file",
+                            plannedOutputs: ["Game Blueprint JSON file with PAR conversion evidence"],
+                            sourceType: "parWorkbook",
+                            plan: {
+                                status: "planned",
+                                source: {kind: "parWorkbook", canonicalLocation: "/games/source.xlsx", capabilities: []},
+                                target: {kind: "blueprint", canonicalLocation: request.outDir || "/games/blueprint.json", capabilities: []},
+                                steps: [{kind: "importParWorkbook", choice: "materialize", estimatedWork: "materialize", output: {kind: "blueprint", canonicalLocation: request.outDir || "/games/blueprint.json", capabilities: []}}],
+                                preflight: {destinationKind: "file", estimatedWork: "materialize", losses: [], oneWay: false},
+                            },
+                        }),
+                    });
+                }
+                if (requestPath === "/api/project/artifacts/build" && init?.method === "POST") {
+                    requestedTarget = (JSON.parse(String(init.body)) as {target: string}).target;
+                    return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({status: "created", job: {id: "job-blueprint", target: "blueprint", status: "queued", cancellationRequested: false}})});
+                }
+                if (requestPath === "/api/project/artifacts/build/job-blueprint") {
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: () => Promise.resolve({
+                            id: "job-blueprint",
+                            target: "blueprint",
+                            status: "completed",
+                            cancellationRequested: false,
+                            result: {
+                                status: "ok",
+                                target: "blueprint",
+                                outputPath: "/games/imported-blueprint.json",
+                                outputKind: "file",
+                                sourceType: "parWorkbook",
+                                importedBlueprintPath: "/games/imported-blueprint.json",
+                                conversionEvidencePath: "/games/imported-blueprint.json.conversion-evidence.json",
+                                plan: {
+                                    status: "planned",
+                                    source: {kind: "parWorkbook", canonicalLocation: "/games/source.xlsx", capabilities: []},
+                                    target: {kind: "blueprint", canonicalLocation: "/games/imported-blueprint.json", capabilities: []},
+                                    steps: [{kind: "importParWorkbook", choice: "materialize", estimatedWork: "materialize", output: {kind: "blueprint", canonicalLocation: "/games/imported-blueprint.json", capabilities: []}}],
+                                    preflight: {destinationKind: "file", estimatedWork: "materialize", losses: [], oneWay: false},
+                                },
+                            },
+                        }),
+                    });
+                }
+                return fetchImplFrom(routes)(url, init);
+            };
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "PAR spreadsheet"});
+            await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+            const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+            expect(await within(buildArtifactSection).findByText("Game Blueprint")).toBeInTheDocument();
+            expect(within(buildArtifactSection).getByLabelText("Output file (optional)")).toBeInTheDocument();
+            expect(await within(buildArtifactSection).findByText("Resolved absolute path: /games/blueprint.json")).toBeInTheDocument();
+            expect(within(buildArtifactSection).getByText(/Plan: materialize importParWorkbook/)).toBeInTheDocument();
+            expect(within(buildArtifactSection).getByText(/PAR evidence eligibility is verified/)).toBeInTheDocument();
+
+            await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
+
+            expect(requestedTarget).toBe("blueprint");
+            expect(await within(buildArtifactSection).findByText(/Built to \/games\/imported-blueprint\.json/)).toBeInTheDocument();
+            expect(within(buildArtifactSection).getByText(/Conversion evidence: \/games\/imported-blueprint\.json\.conversion-evidence\.json/)).toBeInTheDocument();
+        });
+
         it("reports a conflict from the shared registry inline, never as a silent no-op", async () => {
             const user = userEvent.setup();
             const fetchImpl: FetchLike = (url, init) => {

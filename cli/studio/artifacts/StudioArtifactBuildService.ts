@@ -404,14 +404,28 @@ export class StudioArtifactBuildService {
             ...(reusesManagedOutcome ? [] : result.managedProjectRoots ?? []),
         ]);
 
-        await Promise.all([
+        const rollbackRoots = [
             // Do not limit this to `registeredRoots`: ManagedOutcomeProjectService
             // can register generated roots while materializing them, before the
             // Studio-level registration loop starts.
             ...new Set([...registeredRoots, ...ownedRoots]).values(),
-        ].map(async (projectRoot) => {
-            if (!ownedRoots.has(projectRoot)) return;
+        ].sort((left, right) => right.length - left.length);
+        for (const projectRoot of rollbackRoots) {
+            if (!ownedRoots.has(projectRoot)) continue;
             await this.unregisterManagedProject(projectRoot).catch(() => undefined);
+            // The registry may have registered a generated Outcome before
+            // Studio reaches its own project-registration loop.  Releasing
+            // that record is a separate operation from removing the root: a
+            // deleted bundle must never remain advertised as reusable.
+            // Reused managed Outcomes are excluded from ownedRoots above.
+            if (!reusesManagedOutcome && (result.managedProjectRoots ?? []).includes(projectRoot)) {
+                const registry = this.registry as ArtifactBuilderRegistry & {
+                    releaseManagedOutcomeProject?: (sourceRootPath: string, rootPath: string) => Promise<void>;
+                };
+                if (plan.source?.canonicalLocation !== undefined && registry.releaseManagedOutcomeProject !== undefined) {
+                    await registry.releaseManagedOutcomeProject(plan.source.canonicalLocation, projectRoot).catch(() => undefined);
+                }
+            }
             if (projectRoot === result.outputPath && outputDestinationExisted) {
                 // The destination was a caller-owned empty directory at
                 // preflight.  Remove only this operation's publication and
@@ -423,7 +437,7 @@ export class StudioArtifactBuildService {
                 await fs.promises.rm(projectRoot, {recursive: true, force: true}).catch(() => undefined);
             }
             await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
-        }));
+        }
     }
 
     private async parImportRegistrationProvenance(conversionEvidencePath: string | undefined): Promise<{readonly sourceWorkbookPath?: string; readonly conversionEvidencePath?: string} | undefined> {

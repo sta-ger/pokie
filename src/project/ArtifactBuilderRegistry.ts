@@ -192,6 +192,17 @@ export class ArtifactBuilderRegistry {
         return ADVERTISED_ARTIFACT_BUILD_TARGETS.filter((target) => this.descriptors.has(target) && this.builders.has(target));
     }
 
+    /**
+     * Releases a managed Outcome record that was registered while executing a
+     * plan which later failed at an outer publication boundary.  The caller
+     * deliberately owns removing the corresponding files: this registry
+     * method only reverses the managed-project publication and therefore
+     * cannot delete a reused Outcome bundle.
+     */
+    public releaseManagedOutcomeProject(sourceRootPath: string, rootPath: string): Promise<void> {
+        return this.managedOutcomeProjects.release(sourceRootPath, rootPath);
+    }
+
     // The public conversion contract used by all adapters. The registry adds its filesystem-backed
     // destination policy to the pure planner result so previews and execution reject the same path.
     public async plan(

@@ -222,6 +222,87 @@ describe("StudioArtifactBuildService", () => {
             expect(unregistered).toEqual(expect.arrayContaining([outputPath, importedBlueprintPath, prerequisitePath]));
         });
 
+        it("releases a generated Blueprint Outcome record when Studio registration fails after the registry has published it", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const outcomePath = path.join(workDir, "failed-outcomes");
+            const unregistered: string[] = [];
+            fs.mkdirSync(outcomePath);
+            service = new StudioArtifactBuildService(
+                "1.3.0",
+                undefined,
+                undefined,
+                () => Promise.reject(new Error("Studio registry unavailable")),
+                undefined,
+                undefined,
+                (projectRoot) => {
+                    unregistered.push(projectRoot);
+                    return Promise.resolve();
+                },
+            );
+
+            await expect(service.build(blueprintPath, "outcomeLibrary", outcomePath)).resolves.toMatchObject({
+                status: "error",
+                message: "Studio registry unavailable",
+            });
+
+            expect(fs.existsSync(outcomePath)).toBe(true);
+            expect(fs.readdirSync(outcomePath)).toEqual([]);
+            expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+            expect(unregistered).toEqual([outcomePath]);
+        });
+
+        it("releases a generated Blueprint Stake prerequisite when cancellation arrives during Studio registration", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const stakePath = path.join(workDir, "cancelled-stake");
+            const controller = new AbortController();
+            const unregistered: string[] = [];
+            service = new StudioArtifactBuildService(
+                "1.3.0",
+                undefined,
+                undefined,
+                () => {
+                    controller.abort();
+                    return Promise.resolve();
+                },
+                undefined,
+                undefined,
+                (projectRoot) => {
+                    unregistered.push(projectRoot);
+                    return Promise.resolve();
+                },
+            );
+
+            await expect(service.build(blueprintPath, "stakeAdapter", stakePath, {signal: controller.signal})).resolves.toMatchObject({status: "cancelled"});
+
+            expect(fs.existsSync(stakePath)).toBe(false);
+            expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+            expect(unregistered).toEqual(expect.arrayContaining([stakePath]));
+        });
+
+        it("cancels a real PAR-to-Stake registration without leaving its terminal, evidence, or managed prerequisite behind", async () => {
+            const workbookPath = path.join(workDir, "source.xlsx");
+            const stakePath = path.join(workDir, "cancelled-par-stake");
+            const controller = new AbortController();
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+            fs.mkdirSync(stakePath);
+            service = new StudioArtifactBuildService(
+                "1.3.0",
+                undefined,
+                undefined,
+                () => {
+                    controller.abort();
+                    return Promise.resolve();
+                },
+            );
+
+            await expect(service.build(workbookPath, "stakeAdapter", stakePath, {signal: controller.signal})).resolves.toMatchObject({status: "cancelled"});
+
+            expect(fs.existsSync(workbookPath)).toBe(true);
+            expect(fs.readdirSync(stakePath)).toEqual([]);
+            expect(fs.existsSync(path.join(stakePath, ".pokie", "par-import", "conversion-evidence.json"))).toBe(false);
+            expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+        });
+
         it("builds Blueprint -> Stake through the shared registry and registers the generated Outcome Project", async () => {
             const blueprintPath = writeBlueprintFile();
             const registeredProjects: string[] = [];
