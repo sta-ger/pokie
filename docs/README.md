@@ -78,7 +78,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `pokie init <directory>`, design an editable Blueprint with `pokie create <name>`, or discover each workflow
     through `pokie <command> --help`; `pokie --version` prints the installed public version. `pokie build <project>
     --target <artifact> --out <path>`, POKIE's universal build pipeline:
-    the matrix supports `GameBlueprint` -> `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `tsPackage` ->
+    the matrix supports `GameBlueprint` -> `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `PAR workbook` -> `blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `tsPackage` ->
     `outcomeLibrary`/`stakeAdapter`, `outcomeLibrary` -> `outcomeLibrary`/`stakeAdapter`, and same-type republish
     for `stakeAdapter`/`parWorkbook`. A Blueprint -> PAR Workbook build/export freezes generated, weighted, or default
     reel sources as a deterministic literal workbook snapshot; the authored Blueprint remains unchanged. An

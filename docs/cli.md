@@ -376,7 +376,7 @@ POKIE's universal build pipeline: resolves `<project>` to a POKIE project and bu
 it, writing the result to `--out <path>` (default: a `<target>`-named sibling of `<project>`, e.g. building
 `tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults to `./blueprints/tsPackage`).
 
-The build command supports targets: `tsPackage`, `outcomeLibrary`, `stakeAdapter`, and `parWorkbook`.
+The build command supports targets: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, and `parWorkbook`.
 It supports source types: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and `wasm`.
 
 ## `pokie generate <packageRoot>`
@@ -412,7 +412,7 @@ Options:
 - `<project>` — a path the CLI resolves to a POKIE project: a `GameBlueprint` JSON file (a `blueprint` project), or an
   already-built `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook` artifact directory/file. Missing or
   unrecognized throws, naming the project types the CLI understands.
-- `--target <artifact>` — **required**; one of `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`.
+- `--target <artifact>` — **required**; one of `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`.
   Never an output directory (that's `--out`, below) — omitting it, or passing an unrecognized value, throws listing
   the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building a
   unsupported source/target pair, for instance, throws naming which source types that target actually
@@ -423,16 +423,18 @@ Options:
 - `--sample <n> --seed <string>` — only for `--target outcomeLibrary`; explicitly chooses `n` deterministic
   bounded-coverage draws and records that choice in the library manifest.
 - `--out <path>` — where the built artifact is written; optional, defaulting to a `<target>`-named sibling of
-  `<project>` (a `.xlsx` file for `parWorkbook`, a bare directory for every other target). An explicit `--out`
+  `<project>` (a `.xlsx` file for `parWorkbook`, a `.json` file for `blueprint`, a bare directory for every other target). An explicit `--out`
   always overrides the default and never changes what `--target` means. Must not already exist, or must be an
   empty directory (a file target like `parWorkbook` must simply not exist yet) — see [Conflict
   handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
 
-The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 10 supported cells are
+The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 14 supported cells are
 `blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
 `outcomeLibrary` → `outcomeLibrary`/`stakeAdapter`, `stakeAdapter` → `stakeAdapter`, and `parWorkbook` →
-`parWorkbook`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM remains
+`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM remains
+inspection-only. PAR-derived targets first import a durable Blueprint intermediate; dry-run prints that stage and
+any generated/reused Outcome intermediate without writing it.
 resolvable for inspection, but is intentionally not a build target: it is an inspection-only compatibility boundary,
 not a POKIE artifact workflow.
 

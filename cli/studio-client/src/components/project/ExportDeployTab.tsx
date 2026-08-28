@@ -65,6 +65,18 @@ const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: strin
     },
 };
 
+function artifactFileFilters(target: StudioArtifactTargetType) {
+    if (target === "parWorkbook") return [{name: "Excel workbooks", extensions: ["xlsx"]}];
+    if (target === "blueprint") return [{name: "Blueprint JSON", extensions: ["json"]}];
+    return undefined;
+}
+
+function artifactDestinationTitle(target: StudioArtifactTargetType): string {
+    if (target === "parWorkbook") return "Choose a PAR workbook destination";
+    if (target === "blueprint") return "Choose an imported Blueprint destination";
+    return "Choose an artifact output directory";
+}
+
 const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["outcomeLibrary", "staticExport", "buildArtifact", "remoteDeployment"];
 
 // Every "Configure"/etc-free run below runs against this single project-wide mode name -- the project's
@@ -384,12 +396,12 @@ function TargetCard({
             {card.kind === "buildArtifact" && card.artifactTarget && card.supported && (
                 <>
                     <PathInput
-                        label={card.artifactTarget === "parWorkbook" ? "Output file (optional)" : "Output directory (optional)"}
+                        label={card.artifactTarget === "parWorkbook" || card.artifactTarget === "blueprint" ? "Output file (optional)" : "Output directory (optional)"}
                         description="Choose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default."
-                        kind={card.artifactTarget === "parWorkbook" ? "file" : "directory"}
-                        filePickerMode={card.artifactTarget === "parWorkbook" ? "save" : "open"}
-                        fileFilters={card.artifactTarget === "parWorkbook" ? [{name: "Excel workbooks", extensions: ["xlsx"]}] : undefined}
-                        browseTitle={card.artifactTarget === "parWorkbook" ? "Choose a PAR workbook destination" : "Choose an artifact output directory"}
+                        kind={card.artifactTarget === "parWorkbook" || card.artifactTarget === "blueprint" ? "file" : "directory"}
+                        filePickerMode={card.artifactTarget === "parWorkbook" || card.artifactTarget === "blueprint" ? "save" : "open"}
+                        fileFilters={artifactFileFilters(card.artifactTarget)}
+                        browseTitle={artifactDestinationTitle(card.artifactTarget)}
                         browseId={`artifact-${card.artifactTarget}-destination`}
                         value={artifactDestination}
                         onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}

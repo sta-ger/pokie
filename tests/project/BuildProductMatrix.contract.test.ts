@@ -9,12 +9,12 @@ import {
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
 
 describe("BuildProductMatrix", () => {
-    it("covers all six resolved sources and four build targets with the ten supported cells", () => {
+    it("covers all six resolved sources and five build targets with the PAR-derived routes", () => {
         const cells = BUILD_PRODUCT_MATRIX_SOURCE_TYPES.flatMap((source) =>
             BUILD_PRODUCT_MATRIX_TARGETS.map((target) => BUILD_PRODUCT_MATRIX[source][target]),
         );
 
-        expect(cells).toHaveLength(24);
+        expect(cells).toHaveLength(30);
         expect(cells.filter((cell) => cell.state === "supported").map((cell) => `${cell.source}:${cell.target}`)).toEqual([
             "blueprint:tsPackage",
             "blueprint:outcomeLibrary",
@@ -25,16 +25,20 @@ describe("BuildProductMatrix", () => {
             "outcomeLibrary:outcomeLibrary",
             "outcomeLibrary:stakeAdapter",
             "stakeAdapter:stakeAdapter",
+            "parWorkbook:blueprint",
+            "parWorkbook:tsPackage",
+            "parWorkbook:outcomeLibrary",
+            "parWorkbook:stakeAdapter",
             "parWorkbook:parWorkbook",
         ]);
         expect(cells.filter((cell) => cell.state === "hidden/unadvertised")).toHaveLength(0);
-        expect(cells.filter((cell) => cell.state === "diagnostic-required")).toHaveLength(14);
+        expect(cells.filter((cell) => cell.state === "diagnostic-required")).toHaveLength(16);
     });
 
     it("makes WASM inspection-only and derives public registry selection from the same matrix", () => {
         const registry = new ArtifactBuilderRegistry();
 
-        expect(ADVERTISED_ARTIFACT_BUILD_TARGETS).toEqual(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]);
+        expect(ADVERTISED_ARTIFACT_BUILD_TARGETS).toEqual(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]);
         expect(registry.listTargets()).toEqual(ADVERTISED_ARTIFACT_BUILD_TARGETS);
         expect(BUILD_PRODUCT_MATRIX_TARGETS).not.toContain("wasm");
         expect(() => registry.describe("wasm" as never)).toThrow(/Build target "wasm" is unavailable.*Next: choose a target shown by `pokie build --help`/);

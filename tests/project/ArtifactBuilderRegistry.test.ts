@@ -18,28 +18,28 @@ describe("ArtifactBuilderRegistry", () => {
     const registry = new ArtifactBuilderRegistry();
 
     it("lists only matrix-advertised build targets", () => {
-        expect(new Set(registry.listTargets())).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
+        expect(new Set(registry.listTargets())).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
     });
 
     it("reports the true required source capability and supported sources for a package build", () => {
         const descriptor = registry.describe("tsPackage");
 
         expect(descriptor.requiredSourceCapability).toBe(BLUEPRINT_BUILD_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["blueprint"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "parWorkbook"]);
     });
 
     it("reports the true required source capability and supported sources for an outcome-library build", () => {
         const descriptor = registry.describe("outcomeLibrary");
 
         expect(descriptor.requiredSourceCapability).toBe(OUTCOME_LIBRARY_GENERATE_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "outcomeLibrary"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "outcomeLibrary", "parWorkbook"]);
     });
 
     it("reports the true required source capability and supported sources for a Stake artifact export", () => {
         const descriptor = registry.describe("stakeAdapter");
 
         expect(descriptor.requiredSourceCapability).toBe(STAKE_ADAPTER_EXPORT_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]);
     });
 
     it("describes Blueprint/package Outcome and Stake conversions without denying them in target notes", () => {

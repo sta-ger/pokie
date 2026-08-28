@@ -25,7 +25,7 @@ import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPla
 const PAR_WORKBOOK_DEFAULT_EXTENSION = ".xlsx";
 
 function destinationKindFor(target: ArtifactTargetType): "file" | "directory" {
-    return target === "parWorkbook" ? "file" : "directory";
+    return target === "parWorkbook" || target === "blueprint" ? "file" : "directory";
 }
 
 // This is intentionally a compact, target-level plan rather than a guessed inventory of generated
@@ -33,6 +33,8 @@ function destinationKindFor(target: ArtifactTargetType): "file" | "directory" {
 // stable artifact(s) a user is choosing to create, without lying about incidental implementation files.
 function plannedOutputsFor(target: ArtifactTargetType): readonly string[] {
     switch (target) {
+        case "blueprint":
+            return ["Game Blueprint JSON file with PAR conversion evidence"];
         case "tsPackage":
             return ["Runnable TypeScript game package directory"];
         case "outcomeLibrary":
@@ -51,7 +53,9 @@ function plannedOutputsFor(target: ArtifactTargetType): readonly string[] {
 // a bare `pokie build <project> --target <target>` (no --out). Keeping this identical means Studio's own
 // zero-configuration "Build" click and the CLI's own default land in the same place for the same project.
 function resolveDefaultDestination(rootPath: string, target: ArtifactTargetType): string {
-    const siblingName = target === "parWorkbook" ? `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}` : target;
+    let siblingName: string = target;
+    if (target === "parWorkbook") siblingName = `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}`;
+    if (target === "blueprint") siblingName = "blueprint.json";
     return path.join(path.dirname(rootPath), siblingName);
 }
 

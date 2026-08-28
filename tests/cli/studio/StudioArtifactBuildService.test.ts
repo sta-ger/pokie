@@ -41,7 +41,7 @@ describe("StudioArtifactBuildService", () => {
 
             const targets = await service.listTargets(blueprintPath);
 
-            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
+            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
             const byTarget = new Map(targets.map((entry) => [entry.target, entry]));
             expect(byTarget.get("tsPackage")?.supported).toBe(true);
             expect(byTarget.get("outcomeLibrary")?.supported).toBe(true);

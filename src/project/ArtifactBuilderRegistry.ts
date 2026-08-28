@@ -10,16 +10,19 @@ import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDesti
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import {OutcomeLibraryArtifactBuilder} from "./OutcomeLibraryArtifactBuilder.js";
 import {ParWorkbookArtifactBuilder} from "./ParWorkbookArtifactBuilder.js";
+import {BlueprintArtifactBuilder} from "./BlueprintArtifactBuilder.js";
 import type {PokieProject} from "./PokieProject.js";
 import {
     BUILD_OPERATION,
     OPERATION_REQUIRED_CAPABILITY,
     OUTCOME_LIBRARY_BUILD_OPERATION,
     PAR_EXPORT_OPERATION,
+    PAR_IMPORT_OPERATION,
     STAKE_ENGINE_EXPORT_OPERATION,
     type PokieOperation,
 } from "./PokieOperation.js";
 import type {ProjectType} from "./ProjectType.js";
+import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import {StakeAdapterArtifactBuilder} from "./StakeAdapterArtifactBuilder.js";
 import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
 import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibraryWorkflow.js";
@@ -60,6 +63,7 @@ export function assertPreparedArtifactDestinationAvailable(
 // artifact type, so has no entry here -- this map is deliberately only the "build direction" subset of
 // PokieOperation.
 const TARGET_OPERATION: Readonly<Record<ArtifactTargetType, PokieOperation>> = {
+    blueprint: PAR_IMPORT_OPERATION,
     tsPackage: BUILD_OPERATION,
     outcomeLibrary: OUTCOME_LIBRARY_BUILD_OPERATION,
     stakeAdapter: STAKE_ENGINE_EXPORT_OPERATION,
@@ -70,6 +74,9 @@ const TARGET_OPERATION: Readonly<Record<ArtifactTargetType, PokieOperation>> = {
 // ArtifactBuildTargetDescriptor's own "unsupportedNotes" field doc comment for why this exists as prose rather
 // than being left for a reader to infer from an empty/narrow "supportedSources" array alone.
 const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>> = {
+    blueprint: [
+        "Imports a PAR workbook into a durable Game Blueprint with inspectable conversion evidence; it never recovers a game model from package, outcome, Stake, or WASM artifacts.",
+    ],
     tsPackage: [
         "Builds a runnable package from a GameBlueprint source only -- never compiles or targets WASM.",
     ],
@@ -126,6 +133,7 @@ function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescrip
 // inspection-only resolved project kind until POKIE ships a complete WASM producer and consumer workflow.
 function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetType, ArtifactBuilder> {
     return new Map<ArtifactTargetType, ArtifactBuilder>([
+        ["blueprint", new BlueprintArtifactBuilder()],
         ["tsPackage", new TsPackageArtifactBuilder(pokieVersion)],
         ["outcomeLibrary", new OutcomeLibraryArtifactBuilder(pokieVersion)],
         ["stakeAdapter", new StakeAdapterArtifactBuilder(pokieVersion)],
@@ -297,6 +305,13 @@ export class ArtifactBuilderRegistry {
         await this.assertPlanSourceMatches(preparedPlan, source);
         this.assertTargetAvailable(target);
 
+        if (source.type === "parWorkbook") {
+            const blueprintBuilder = this.builders.get("blueprint");
+            if (blueprintBuilder === undefined) throw new Error(this.unavailableTargetMessage("blueprint"));
+            await blueprintBuilder.validate?.(source);
+            return;
+        }
+
         if (source.type === "blueprint" && target !== "parWorkbook") {
             const blueprint = loadGameBlueprint(source.rootPath);
             const errors = new GameBlueprintValidator().validate(blueprint).filter((issue) => issue.severity === "error");
@@ -338,6 +353,7 @@ export class ArtifactBuilderRegistry {
         await this.assertPlanSourceMatches(plan, source);
         this.assertPlanDestinationMatches(plan, destinationPath);
         await this.assertPlanGraphIsCurrent(plan, source, destinationPath);
+        if (source.type === "parWorkbook") return this.executeParDerivedPlan(plan, source, destinationPath, options);
         const reuseStep = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
         const managed = reuseStep === undefined ? undefined : await this.reopenPlannedManagedOutcome(source, plan.source, reuseStep.output);
         // Every selected plan is subjected to the same destination policy at
@@ -377,6 +393,41 @@ export class ArtifactBuilderRegistry {
         const builder = this.builders.get(target);
         if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
         return builder.build(source, destinationPath, options);
+    }
+
+    /**
+     * PAR is the one exchange source that can canonically import a game model.
+     * Materialize that model once into a plan-owned intermediate, then hand the
+     * selected downstream stages to the existing Blueprint lifecycle.
+     */
+    private async executeParDerivedPlan(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        const target = plan.target.kind as ArtifactTargetType;
+        const destination = this.checkDestination(target, destinationPath, source.rootPath);
+        if (!destination.available) throw new ArtifactBuildConflictError(destination.message ?? "The destination is unavailable.");
+        if (target === "blueprint" || target === "parWorkbook") {
+            const builder = this.builders.get(target);
+            if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
+            return builder.build(source, destinationPath, options);
+        }
+        const intermediateDirectory = await fs.promises.mkdtemp(path.join(path.dirname(destinationPath), ".pokie-par-import-"));
+        const intermediatePath = path.join(intermediateDirectory, "imported.blueprint.json");
+        try {
+            const blueprintBuilder = this.builders.get("blueprint");
+            if (blueprintBuilder === undefined) throw new Error(this.unavailableTargetMessage("blueprint"));
+            await blueprintBuilder.build(source, intermediatePath, options);
+            const imported: PokieProject = {
+                type: "blueprint",
+                rootPath: intermediatePath,
+                provenance: `imported from PAR workbook ${source.rootPath}`,
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+            };
+            return this.build(target, imported, destinationPath, options);
+        } finally {
+            // Outcome streaming can finish its final writer callback while the
+            // caller unwinds. Retry ENOTEMPTY rather than turning a completed
+            // terminal publication into an intermediate-cleanup failure.
+            await fs.promises.rm(intermediateDirectory, {recursive: true, force: true, maxRetries: 8, retryDelay: 25});
+        }
     }
 
     private async buildStakeFromPlannedOutcome(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options: ArtifactBuildOptions | undefined, reused?: PokieProject): Promise<ArtifactBuildResult> {

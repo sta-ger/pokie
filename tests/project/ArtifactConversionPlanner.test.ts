@@ -187,7 +187,7 @@ describe("ArtifactConversionPlanner", () => {
         expect(outcomeToPackage).toMatchObject({status: "unavailable", diagnostic: {code: "missing-data", failedEdge: {from: "outcomeLibrary", to: "tsPackage"}}});
         expect(outcomeToPackage.diagnostic?.message).toContain("does not preserve the game model");
         expect(wasm.diagnostic?.message).toContain("metadata-only");
-        expect(par.diagnostic?.message).toContain("exchange snapshot");
+        expect(par).toMatchObject({status: "planned", steps: [{kind: "importParWorkbook"}, {kind: "materializeRuntime"}, {kind: "generateOutcomeLibrary"}, {kind: "publish"}]});
     });
 
     it("rejects an external Studio selector without fabricating Outcome Library capabilities", () => {
@@ -245,7 +245,10 @@ describe("ArtifactConversionPlanner", () => {
             preflight: {destinationKind: "directory", oneWay: true},
         });
         expect(stakeImport.preflight.losses.join(" ")).toContain("does not recover a game model");
-        expect(planner.plan(project("parWorkbook"), "outcomeLibrary").status).toBe("unavailable");
+        expect(planner.plan(project("parWorkbook"), "outcomeLibrary")).toMatchObject({
+            status: "planned",
+            steps: [{kind: "importParWorkbook"}, {kind: "materializeRuntime"}, {kind: "generateOutcomeLibrary"}],
+        });
         expect(planner.plan(project("stakeAdapter"), "outcomeLibrary").status).toBe("unavailable");
     });
 

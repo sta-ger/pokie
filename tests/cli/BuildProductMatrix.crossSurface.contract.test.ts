@@ -43,7 +43,10 @@ const BLUEPRINT: GameBlueprint = {
 };
 
 function defaultDestination(sourcePath: string, target: ArtifactTargetType): string {
-    return path.join(path.dirname(sourcePath), target === "parWorkbook" ? "parWorkbook.xlsx" : target);
+    let name: string = target;
+    if (target === "parWorkbook") name = "parWorkbook.xlsx";
+    if (target === "blueprint") name = "blueprint.json";
+    return path.join(path.dirname(sourcePath), name);
 }
 
 async function resolveRequired(resolver: ProjectTargetResolver, projectRoot: string): Promise<PokieProject> {
@@ -123,6 +126,10 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             "outcomeLibrary:outcomeLibrary",
             "outcomeLibrary:stakeAdapter",
             "stakeAdapter:stakeAdapter",
+            "parWorkbook:blueprint",
+            "parWorkbook:tsPackage",
+            "parWorkbook:outcomeLibrary",
+            "parWorkbook:stakeAdapter",
             "parWorkbook:parWorkbook",
         ]);
     });

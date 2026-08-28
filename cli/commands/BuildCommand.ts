@@ -210,7 +210,9 @@ export class BuildCommand implements CliCommandHandling {
     // project's own basename, so the existing conflict protections (assertArtifactDestinationAvailable) are
     // the only thing standing between this default and an existing, unrelated file/directory of the same name.
     private resolveDestination(rootPath: string, target: ArtifactTargetType): string {
-        const siblingName = target === "parWorkbook" ? `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}` : target;
+        let siblingName: string = target;
+        if (target === "parWorkbook") siblingName = `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}`;
+        if (target === "blueprint") siblingName = "blueprint.json";
         return path.join(path.dirname(rootPath), siblingName);
     }
 
