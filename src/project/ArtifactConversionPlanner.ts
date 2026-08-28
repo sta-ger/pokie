@@ -57,7 +57,7 @@ export type ArtifactConversionStep = {
 };
 
 export type ArtifactConversionDiagnostic = {
-    readonly code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict";
+    readonly code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict" | "unrecognized-source";
     readonly failedEdge: {readonly from: ProjectType; readonly to: ArtifactTargetType};
     readonly message: string;
     readonly recovery: string;
@@ -226,6 +226,19 @@ export class ArtifactConversionPlanner {
             preflight,
             diagnostic: {code, failedEdge: {from: sourceKind, to: targetKind}, message, recovery},
         });
+
+        // Studio selectors are not artifact recognition.  In particular, a raw
+        // JSON library may be readable by a legacy consumer, but it lacks the
+        // bundle identity and provenance required to advertise a conversion
+        // edge.  Keep that boundary explicit instead of reporting a misleading
+        // missing capability on an otherwise-recognized Outcome Library.
+        if (source.recognitionProvenance === "external Studio selector" || source.recognitionProvenance === "mixed external Studio selectors") {
+            return unavailable(
+                "unrecognized-source",
+                "This Studio selector is not an independently recognized POKIE artifact and cannot be used for conversion planning.",
+                "Open or generate a recognized POKIE Outcome Library bundle, then retry the action.",
+            );
+        }
 
         const requiredCapability = EDGE_CAPABILITIES[sourceKind]?.[targetKind];
         if (requiredCapability !== undefined && !source.capabilities.includes(requiredCapability)) {

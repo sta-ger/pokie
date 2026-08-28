@@ -132,4 +132,22 @@ describe("ArtifactConversionPlanner", () => {
         expect(wasm.diagnostic?.message).toContain("metadata-only");
         expect(par.diagnostic?.message).toContain("exchange snapshot");
     });
+
+    it("rejects an external Studio selector without fabricating Outcome Library capabilities", () => {
+        const plan = planner.planIdentity(
+            {
+                kind: "outcomeLibrary",
+                canonicalLocation: "/projects/base.json",
+                recognitionProvenance: "external Studio selector",
+                capabilities: [],
+            },
+            "stakeAdapter",
+        );
+
+        expect(plan).toMatchObject({
+            status: "unavailable",
+            diagnostic: {code: "unrecognized-source", failedEdge: {from: "outcomeLibrary", to: "stakeAdapter"}},
+        });
+        expect(plan.diagnostic?.recovery).toContain("recognized POKIE Outcome Library bundle");
+    });
 });

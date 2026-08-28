@@ -163,19 +163,6 @@ export class StudioDeploymentService {
         // planner-governed prerequisite.  Carry that exact server plan forward so
         // the browser never has to infer whether it can create/reuse one.
         const plan = await this.prepareForSelectedBundles(projectRoot, request.modes);
-        // Deployment may consume a pre-existing library selector, but it must
-        // never claim that the current project can recover or regenerate one
-        // when the canonical planner rejects that prerequisite.  Keep the
-        // selected plan attached to the terminal action result instead of
-        // letting selector-specific checks replace its recovery diagnostic.
-        if (plan.status !== "planned") {
-            return {status: "load-error", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library deployment is unavailable.", plan};
-        }
-        const selectedSource = this.selectedBundleSource(projectRoot, request.modes);
-        const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "outcomeLibrary");
-        if (planDrift !== undefined) {
-            return {status: "load-error", error: planDrift, plan};
-        }
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
         if (target === undefined) {
@@ -201,6 +188,19 @@ export class StudioDeploymentService {
                 error: describeSelectorModeMismatch(mismatchedSelectorMode.modeName, selectorModeName(mismatchedSelectorMode.librarySelector) as string),
                 plan,
             };
+        }
+
+        // Request-level blockers have precedence over an unreadable selector:
+        // they neither consume the selector nor erase its authoritative plan.
+        // Once the request itself is valid, an unavailable selector plan is a
+        // hard boundary and must not fall through to the legacy JSON reader.
+        if (plan.status !== "planned") {
+            return {status: "load-error", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library deployment is unavailable.", plan};
+        }
+        const selectedSource = this.selectedBundleSource(projectRoot, request.modes);
+        const planDrift = selectedSource === undefined ? undefined : describePreparedArtifactPlanDrift(plan, selectedSource, "outcomeLibrary");
+        if (planDrift !== undefined) {
+            return {status: "load-error", error: planDrift, plan};
         }
 
         const modes: ExternalDeploymentModeInput[] = [];
