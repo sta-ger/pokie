@@ -30,6 +30,15 @@ function okRunResponse() {
     };
 }
 
+async function completeRun(run: () => void): Promise<void> {
+    await act(async () => {
+        run();
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 0);
+        });
+    });
+}
+
 // A genuinely different project must never
 // show a trace of the previous one's target selection, modes, or run result, and a run still in flight
 // from before the switch must be silently discarded once it resolves (there is nothing to cancel over
@@ -65,9 +74,7 @@ describe("useDeploymentManager - resetForProjectSwitch", () => {
         });
         expect(result.current.selectedTarget).toEqual(TARGET);
 
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         expect(result.current.runLoading).toBe(true);
 
         act(() => {
@@ -83,8 +90,11 @@ describe("useDeploymentManager - resetForProjectSwitch", () => {
         // The stale run response from the previous project finally lands -- must never repopulate what
         // the reset just cleared, and must release the in-flight slot so a fresh run in the new project
         // isn't blocked by it.
-        act(() => {
+        await act(async () => {
             resolveRun?.(okRunResponse());
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
         });
         await waitFor(() => expect(result.current.runLoading).toBe(false));
 
@@ -226,9 +236,7 @@ describe("useDeploymentManager - rebinding the selected target after Refresh", (
         act(() => {
             result.current.selectTarget(v1);
         });
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         await waitFor(() => expect(result.current.runResult).toBeDefined());
 
         targetsResponse = [v1Fresh];
@@ -266,9 +274,7 @@ describe("useDeploymentManager - rebinding the selected target after Refresh", (
         act(() => {
             result.current.selectTarget(v1);
         });
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         await waitFor(() => expect(result.current.runResult).toBeDefined());
 
         targetsResponse = [v2];
@@ -303,9 +309,7 @@ describe("useDeploymentManager - rebinding the selected target after Refresh", (
         act(() => {
             result.current.selectTarget(TARGET);
         });
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         await waitFor(() => expect(result.current.runResult).toBeDefined());
 
         targetsResponse = [];
@@ -345,16 +349,12 @@ describe("useDeploymentManager - runError clears on the next attempt/success", (
             result.current.selectTarget(TARGET);
         });
 
-        act(() => {
-            result.current.run(true);
-        });
+        await completeRun(() => result.current.run(true));
         await waitFor(() => expect(result.current.runError).toBeDefined());
         expect(result.current.runResult).toBeUndefined();
 
         shouldFail = false;
-        act(() => {
-            result.current.run(true); // retry
-        });
+        await completeRun(() => result.current.run(true)); // retry
         // Cleared as soon as the retry starts, not only once it resolves.
         expect(result.current.runError).toBeUndefined();
 
@@ -390,9 +390,7 @@ describe("useDeploymentManager - project switch immediately followed by refresh,
         act(() => {
             result.current.selectTarget(oldProjectTarget);
         });
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         await waitFor(() => expect(result.current.runResult).toBeDefined());
 
         targetsResponse = [newProjectTarget];
@@ -456,20 +454,19 @@ describe("useDeploymentManager - run() clears the previous result immediately", 
             result.current.selectTarget(TARGET);
         });
 
-        act(() => {
-            result.current.run(false);
-        });
-        act(() => {
+        await completeRun(() => result.current.run(false));
+        await act(async () => {
             resolveFirstRun?.(okRunResponse());
+            await new Promise<void>((resolve) => {
+                setTimeout(resolve, 0);
+            });
         });
         await waitFor(() => expect(result.current.runResult).toBeDefined());
         const firstResult = result.current.runResult;
 
         // Start a second run (e.g. after editing a mode and going back to Configure) -- before its
         // response ever arrives, the first run's result must already be gone.
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
 
         expect(result.current.runResult).toBeUndefined();
         expect(result.current.runResult).not.toBe(firstResult);
@@ -522,9 +519,7 @@ describe("useDeploymentManager - preflightOutdated", () => {
         });
         await waitFor(() => expect(result.current.selectedTarget).toEqual(TARGET));
 
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         await waitFor(() => expect(result.current.runResult).toBeDefined());
         expect(result.current.preflightOutdated).toBe(false);
 
@@ -536,9 +531,7 @@ describe("useDeploymentManager - preflightOutdated", () => {
 
         // Firing a fresh run is itself what un-stales things -- cleared the instant it starts, not only
         // once its response lands.
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         expect(result.current.preflightOutdated).toBe(false);
     });
 
@@ -559,9 +552,7 @@ describe("useDeploymentManager - preflightOutdated", () => {
             result.current.refreshTargets();
         });
         await waitFor(() => expect(result.current.selectedTarget).toEqual(TARGET));
-        act(() => {
-            result.current.run(false);
-        });
+        await completeRun(() => result.current.run(false));
         await waitFor(() => expect(result.current.runResult).toBeDefined());
 
         act(() => {

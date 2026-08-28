@@ -12,6 +12,7 @@ import {
     OutcomeSpaceEstimate,
     PokieGame,
     WeightedOutcomeLibraryGenerationError,
+    ArtifactConversionPlanner,
     describeArtifactConversionPlanDiagnostic,
     estimateExactOutcomeSpaceSize,
     generateExactWeightedOutcomeLibrary,
@@ -82,6 +83,7 @@ export class StudioOutcomeLibraryGenerateService {
     private readonly writeTextFile: (filePath: string, contents: string) => void;
     private readonly ensureDirectory: (dirPath: string) => void;
     private readonly planning: StudioArtifactConversionPlanning;
+    private readonly planner = new ArtifactConversionPlanner();
 
     constructor(
         pokieVersion: string,
@@ -204,103 +206,129 @@ export class StudioOutcomeLibraryGenerateService {
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
         }
-        const reused = await this.reusePlannedOutcomeLibrary(plan, projectRoot, outDirRelative, resolvedOutDir.resolvedPath, modeName);
-        if (reused !== undefined) {
-            return reused;
-        }
-        if (!plan.steps.some((step) => step.kind === "generateOutcomeLibrary")) {
+        type PreparedGenerationRead =
+            | {readonly status: "terminal"; readonly view: StudioOutcomeLibraryGenerateResultView}
+            | {
+                readonly status: "ready";
+                readonly modes: readonly OutcomeLibraryBundleModeInput<string>[];
+                readonly libraryId: string;
+                readonly generator: GenerateExactWeightedOutcomeLibraryResult["diagnostics"];
+            };
+        try {
+            const execution = await this.planner.executeConversionPlan(plan, {
+                // Resolve again at both prepared-operation binding points. This
+                // binds the actual runtime source rather than treating the
+                // preview plan as a one-time guard.
+                currentSource: async () => (await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration)).source,
+                read: async (): Promise<PreparedGenerationRead> => {
+                    const reuse = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
+                    if (reuse !== undefined) {
+                        const sourceDir = reuse.output.canonicalLocation;
+                        if (sourceDir === undefined) return {status: "terminal", view: {status: "load-error", error: "The prepared reusable Outcome Library has no canonical location. Refresh the preview and retry.", plan}};
+                        try {
+                            const sourceManifest = await this.bundleReader.readManifest(sourceDir);
+                            const sourceMode = sourceManifest.modes.find((entry) => entry.modeName === modeName);
+                            if (sourceMode?.generator === undefined) return {status: "terminal", view: {status: "load-error", error: `The prepared reusable Outcome Library does not contain generated provenance for mode "${modeName}". Regenerate that mode before reusing it.`, plan}};
+                            const modes: OutcomeLibraryBundleModeInput<string>[] = [];
+                            for (const entry of sourceManifest.modes) {
+                                const library = await this.bundleReader.readLibrary(sourceDir, entry.modeName);
+                                modes.push({modeName: entry.modeName, libraryId: library.libraryId, schemaVersion: library.schemaVersion, outcomes: library.outcomes, ...(entry.generator === undefined ? {} : {generator: entry.generator})});
+                            }
+                            return {status: "ready", modes, libraryId: sourceMode.libraryId, generator: sourceMode.generator};
+                        } catch (error) {
+                            return {status: "terminal", view: {status: "load-error", error: `Could not reopen the prepared reusable Outcome Library at "${sourceDir}": ${error instanceof Error ? error.message : String(error)}`, plan}};
+                        }
+                    }
+                    if (!plan.steps.some((step) => step.kind === "generateOutcomeLibrary")) {
+                        return {status: "terminal", view: {status: "load-error", error: "The prepared conversion has no executable Outcome Library generation or reuse step. Refresh the preview and retry.", plan}};
+                    }
+                    let game: PokieGame;
+                    try {
+                        game = await this.loadGame(projectRoot);
+                    } catch (error) {
+                        return {status: "terminal", view: {status: "load-error", error: error instanceof Error ? error.message : String(error), plan}};
+                    }
+                    const manifest = game.getManifest();
+                    const libraryId = request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`;
+                    let generated: GenerateExactWeightedOutcomeLibraryResult;
+                    try {
+                        generated = await this.generateLibrary({
+                            libraryId, game, pokieVersion: this.pokieVersion,
+                            ...(game.getConfigHash?.() !== undefined ? {configHash: game.getConfigHash()} : {}),
+                            ...(request.mode !== undefined ? {betMode: request.mode} : {}),
+                            ...(request.stake !== undefined ? {stake: request.stake} : {}),
+                            ...(request.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: request.maxOutcomeSpaceSize} : {}),
+                            ...(request.bounded !== undefined ? {bounded: request.bounded} : {}),
+                        });
+                    } catch (error) {
+                        if (error instanceof WeightedOutcomeLibraryGenerationError) {
+                            return {status: "terminal", view: error.getCode() === "weighted-outcome-library-generation-unsupported"
+                                ? {status: "unsupported", error: error.message, plan}
+                                : {status: "generation-error", code: error.getCode(), error: error.message, plan}};
+                        }
+                        throw error;
+                    }
+                    const otherModes = await this.readOtherModes(resolvedOutDir.resolvedPath, modeName);
+                    if (otherModes.status === "error") return {status: "terminal", view: {status: "load-error", error: otherModes.message, plan}};
+                    return {
+                        status: "ready",
+                        modes: [...otherModes.modes, {modeName, libraryId, schemaVersion: generated.library.schemaVersion, outcomes: generated.library.outcomes, generator: generated.diagnostics}],
+                        libraryId,
+                        generator: generated.diagnostics,
+                    };
+                },
+                canPublish: (read) => read.status === "ready",
+                assertDestinationAvailable: async () => {
+                    const current = await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration);
+                    if (current.status !== "planned") throw new Error(current.diagnostic?.message ?? "The Outcome Library destination is unavailable.");
+                },
+                publish: (read) => {
+                    if (read.status !== "ready") throw new Error("The prepared Outcome Library generation was not publishable.");
+                    return this.writer.writeToDirectory(read.modes, resolvedOutDir.resolvedPath);
+                },
+                register: (writeResult) => {
+                    if (writeResult.manifest !== undefined && !writeResult.issues.some((issue) => issue.severity === "error")) this.recordDiscoveredBundleDir(projectRoot, outDirRelative);
+                },
+            });
+            if (!execution.published) return execution.read.status === "terminal" ? execution.read.view : {status: "load-error", error: "The prepared Outcome Library generation was not publishable.", plan};
+            const writeResult = execution.publication!;
+            const errors = writeResult.issues.filter((issue) => issue.severity === "error");
+            if (errors.length > 0 || writeResult.manifest === undefined) {
+                return {status: "invalid", errors, warnings: writeResult.issues.filter((issue) => issue.severity !== "error"), plan};
+            }
+
+            const modeEntry = writeResult.manifest.modes.find((entry) => entry.modeName === modeName);
+            if (modeEntry === undefined) {
+            // Guaranteed present by the writer whenever it returns a manifest at all (one entry per input
+            // mode that didn't itself error) -- reachable only if the writer's own contract changes.
+                return {status: "load-error", error: `The bundle write to "${outDirRelative}" did not report mode "${modeName}".`, plan};
+            }
+
+            const read = execution.read;
+            if (read.status !== "ready") return {status: "load-error", error: "The prepared Outcome Library generation lost its publishable source.", plan};
+            const coverage = read.generator.strategy === "exact" ? 1 : toNumberApprox(read.generator.sampledRawCount) / toNumberApprox(read.generator.totalOutcomeSpaceSize);
+
             return {
-                status: "load-error",
-                error: "The prepared conversion has no executable Outcome Library generation or reuse step. Refresh the preview and retry.",
+                status: "ok",
+                bundleDir: outDirRelative,
+                files: writeResult.files,
+                warnings: writeResult.issues,
+                mode: {
+                    modeName,
+                    libraryId: modeEntry.libraryId,
+                    hash: modeEntry.libraryHash,
+                    outcomeCount: modeEntry.outcomeCount,
+                    totalWeight: modeEntry.totalWeight,
+                    rtp: modeEntry.analysis.rtp,
+                },
+                generator: read.generator,
+                coverage,
+                selector: {kind: "bundle", bundleDir: outDirRelative, modeName},
                 plan,
             };
-        }
-        let game: PokieGame;
-        try {
-            game = await this.loadGame(projectRoot);
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan};
         }
-
-        const manifest = game.getManifest();
-        const libraryId = request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`;
-
-        let generated: GenerateExactWeightedOutcomeLibraryResult;
-        try {
-            const generateOptions: GenerateExactWeightedOutcomeLibraryOptions = {
-                libraryId,
-                game,
-                pokieVersion: this.pokieVersion,
-                // A generated runtime is the authority for its configuration provenance. In
-                // particular, a Blueprint's materialized game can normalize generated reels, so a
-                // caller-provided hash is not a safe substitute for the hash that actually produced
-                // these outcomes.
-                ...(game.getConfigHash?.() !== undefined ? {configHash: game.getConfigHash()} : {}),
-                ...(request.mode !== undefined ? {betMode: request.mode} : {}),
-                ...(request.stake !== undefined ? {stake: request.stake} : {}),
-                ...(request.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: request.maxOutcomeSpaceSize} : {}),
-                ...(request.bounded !== undefined ? {bounded: request.bounded} : {}),
-            };
-            generated = await this.generateLibrary(generateOptions);
-        } catch (error) {
-            if (error instanceof WeightedOutcomeLibraryGenerationError) {
-                if (error.getCode() === "weighted-outcome-library-generation-unsupported") {
-                    return {status: "unsupported", error: error.message, plan};
-                }
-                return {status: "generation-error", code: error.getCode(), error: error.message, plan};
-            }
-            throw error;
-        }
-
-        const otherModes = await this.readOtherModes(resolvedOutDir.resolvedPath, modeName);
-        if (otherModes.status === "error") {
-            return {status: "load-error", error: otherModes.message, plan};
-        }
-
-        const modes: OutcomeLibraryBundleModeInput<string>[] = [
-            ...otherModes.modes,
-            {modeName, libraryId, schemaVersion: generated.library.schemaVersion, outcomes: generated.library.outcomes, generator: generated.diagnostics},
-        ];
-
-        const writeResult = await this.writer.writeToDirectory(modes, resolvedOutDir.resolvedPath);
-        const errors = writeResult.issues.filter((issue) => issue.severity === "error");
-        if (errors.length > 0 || writeResult.manifest === undefined) {
-            return {status: "invalid", errors, warnings: writeResult.issues.filter((issue) => issue.severity !== "error"), plan};
-        }
-
-        const modeEntry = writeResult.manifest.modes.find((entry) => entry.modeName === modeName);
-        if (modeEntry === undefined) {
-            // Guaranteed present by the writer whenever it returns a manifest at all (one entry per input
-            // mode that didn't itself error) -- reachable only if the writer's own contract changes.
-            return {status: "load-error", error: `The bundle write to "${outDirRelative}" did not report mode "${modeName}".`, plan};
-        }
-
-        const coverage = generated.diagnostics.strategy === "exact" ? 1 : toNumberApprox(generated.diagnostics.sampledRawCount) / toNumberApprox(generated.diagnostics.totalOutcomeSpaceSize);
-
-        // Makes this write discoverable by registry() regardless of whether it landed in the conventional
-        // DEFAULT_BUNDLE_DIR or a caller-chosen outDir, and regardless of which Studio server process (or
-        // restart of the same one) later calls registry() -- see recordDiscoveredBundleDir's own doc
-        // comment.
-        this.recordDiscoveredBundleDir(projectRoot, outDirRelative);
-
-        return {
-            status: "ok",
-            bundleDir: outDirRelative,
-            files: writeResult.files,
-            warnings: writeResult.issues,
-            mode: {
-                modeName,
-                libraryId: modeEntry.libraryId,
-                hash: modeEntry.libraryHash,
-                outcomeCount: modeEntry.outcomeCount,
-                totalWeight: modeEntry.totalWeight,
-                rtp: modeEntry.analysis.rtp,
-            },
-            generator: generated.diagnostics,
-            coverage,
-            selector: {kind: "bundle", bundleDir: outDirRelative, modeName},
-            plan,
-        };
     }
 
     // The Registry's own "does a compatible library already exist for this build?" check -- see
@@ -404,92 +432,6 @@ export class StudioOutcomeLibraryGenerateService {
                 hash: entry.libraryHash,
                 ...(entry.generator !== undefined ? {strategy: entry.generator.strategy, generatedAt: entry.generator.generatedAt} : {}),
             })),
-        };
-    }
-
-    /**
-     * Materializes precisely the managed bundle selected by a reuse plan.  A
-     * generate request is also the public publication action for its chosen
-     * output directory, so reuse must copy the verified bundle through the
-     * canonical writer instead of turning into a misleading regeneration
-     * error (or silently returning the candidate at a different location).
-     */
-    private async reusePlannedOutcomeLibrary(
-        plan: import("pokie").ArtifactConversionPlan,
-        projectRoot: string,
-        outDirRelative: string,
-        resolvedOutDir: string,
-        modeName: string,
-    ): Promise<StudioOutcomeLibraryGenerateResultView | undefined> {
-        const reuse = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
-        if (reuse === undefined) return undefined;
-        const sourceDir = reuse.output.canonicalLocation;
-        if (sourceDir === undefined) {
-            return {status: "load-error", error: "The prepared reusable Outcome Library has no canonical location. Refresh the preview and retry.", plan};
-        }
-
-        let sourceManifest: OutcomeLibraryBundleManifest;
-        let modes: OutcomeLibraryBundleModeInput<string>[];
-        try {
-            sourceManifest = await this.bundleReader.readManifest(sourceDir);
-            modes = [];
-            for (const entry of sourceManifest.modes) {
-                const library = await this.bundleReader.readLibrary(sourceDir, entry.modeName);
-                modes.push({
-                    modeName: entry.modeName,
-                    libraryId: library.libraryId,
-                    schemaVersion: library.schemaVersion,
-                    outcomes: library.outcomes,
-                    ...(entry.generator === undefined ? {} : {generator: entry.generator}),
-                });
-            }
-        } catch (error) {
-            return {
-                status: "load-error",
-                error: `Could not reopen the prepared reusable Outcome Library at "${sourceDir}": ${error instanceof Error ? error.message : String(error)}`,
-                plan,
-            };
-        }
-
-        const sourceMode = sourceManifest.modes.find((entry) => entry.modeName === modeName);
-        if (sourceMode?.generator === undefined) {
-            return {
-                status: "load-error",
-                error: `The prepared reusable Outcome Library does not contain generated provenance for mode "${modeName}". Regenerate that mode before reusing it.`,
-                plan,
-            };
-        }
-
-        const writeResult = await this.writer.writeToDirectory(modes, resolvedOutDir);
-        const errors = writeResult.issues.filter((issue) => issue.severity === "error");
-        if (errors.length > 0 || writeResult.manifest === undefined) {
-            return {status: "invalid", errors, warnings: writeResult.issues.filter((issue) => issue.severity !== "error"), plan};
-        }
-        const modeEntry = writeResult.manifest.modes.find((entry) => entry.modeName === modeName);
-        if (modeEntry === undefined) {
-            return {status: "load-error", error: `The reusable bundle write to "${outDirRelative}" did not report mode "${modeName}".`, plan};
-        }
-
-        this.recordDiscoveredBundleDir(projectRoot, outDirRelative);
-        const generator = sourceMode.generator;
-        const coverage = generator.strategy === "exact" ? 1 : toNumberApprox(generator.sampledRawCount) / toNumberApprox(generator.totalOutcomeSpaceSize);
-        return {
-            status: "ok",
-            bundleDir: outDirRelative,
-            files: writeResult.files,
-            warnings: writeResult.issues,
-            mode: {
-                modeName,
-                libraryId: modeEntry.libraryId,
-                hash: modeEntry.libraryHash,
-                outcomeCount: modeEntry.outcomeCount,
-                totalWeight: modeEntry.totalWeight,
-                rtp: modeEntry.analysis.rtp,
-            },
-            generator,
-            coverage,
-            selector: {kind: "bundle", bundleDir: outDirRelative, modeName},
-            plan,
         };
     }
 

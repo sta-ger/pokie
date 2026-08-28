@@ -1,4 +1,5 @@
 import {
+    ArtifactConversionPlanner,
     createLocalJsonExternalDeploymentTarget,
     ExternalDeploymentModeInput,
     ExternalDeploymentService,
@@ -104,6 +105,7 @@ export class StudioDeploymentService {
     private readonly realpath: (resolvedPath: string) => string;
     private readonly resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined>;
     private readonly planning: StudioArtifactConversionPlanning;
+    private readonly planner = new ArtifactConversionPlanner();
     private readonly resolveServerSelectedModes: StudioDeploymentModeResolving;
     private readonly hasServerSelectedModes: boolean;
 
@@ -259,33 +261,61 @@ export class StudioDeploymentService {
             return {status: "load-error", error: planDrift, plan};
         }
 
-        const modes: ExternalDeploymentModeInput[] = [];
-        for (const mode of selectedModes) {
-            const loaded = await loadOutcomeLibraryFromSelector(
-                projectRoot,
-                mode.librarySelector,
-                this.bundleReader,
-                this.stakeEngineImporter,
-                this.readFile,
-                this.realpath,
-            );
-            if (loaded.status === "load-error") {
-                return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.error}`, plan};
+        type DeploymentRead =
+            | {readonly status: "ok"; readonly modes: readonly ExternalDeploymentModeInput[]}
+            | {readonly status: "load-error"; readonly error: string};
+        try {
+            // Loading selectors and calling the SDK are deliberately callbacks of
+            // the prepared operation.  The adapter has finished validating the
+            // request above; from this point the operation owns the final source
+            // rebind, read, terminal cleanup, and deployment publication order.
+            const execution = await this.planner.executeConversionPlan(plan, {
+                currentSource: async () => (await this.prepareForSelectedBundles(projectRoot, selectedModes)).source,
+                read: async (): Promise<DeploymentRead> => {
+                    const modes: ExternalDeploymentModeInput[] = [];
+                    for (const mode of selectedModes) {
+                        const loaded = await loadOutcomeLibraryFromSelector(
+                            projectRoot,
+                            mode.librarySelector,
+                            this.bundleReader,
+                            this.stakeEngineImporter,
+                            this.readFile,
+                            this.realpath,
+                        );
+                        if (loaded.status === "load-error") {
+                            return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.error}`};
+                        }
+                        modes.push({modeName: mode.modeName, library: loaded.library});
+                    }
+                    return {status: "ok", modes};
+                },
+                canPublish: (read) => read.status === "ok",
+                publish: (read) => {
+                    // A frozen target's own fields can't be reassigned (see
+                    // ExternalDeploymentTargetRegistry), but spreading it into
+                    // a fresh object literal is the SDK's documented preview
+                    // variant and never mutates the registered target.
+                    const runnableTarget = request.publish ? target : {...target, runtimeAdapter: undefined};
+                    if (read.status !== "ok") throw new Error(read.error);
+                    return this.externalDeploymentService.deploy(runnableTarget, read.modes);
+                },
+            });
+            if (!execution.published) {
+                return {
+                    status: "load-error",
+                    error: execution.read.status === "load-error" ? execution.read.error : "The prepared deployment did not produce readable mode inputs.",
+                    plan,
+                };
             }
-            modes.push({modeName: mode.modeName, library: loaded.library});
+            return {
+                status: "ok",
+                view: {
+                    ...toStudioDeploymentRunView(execution.publication!, target.id, request.publish, plan),
+                },
+            };
+        } catch (error) {
+            return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan};
         }
-
-        // A frozen target's own fields can't be reassigned (see ExternalDeploymentTargetRegistry), but
-        // spreading it into a fresh object literal is exactly how the SDK's own docs describe building
-        // a "preview" variant — a brand-new, unfrozen object, never a mutation of the registered one.
-        const runnableTarget = request.publish ? target : {...target, runtimeAdapter: undefined};
-        const result = await this.externalDeploymentService.deploy(runnableTarget, modes);
-        return {
-            status: "ok",
-            view: {
-                ...toStudioDeploymentRunView(result, target.id, request.publish, plan),
-            },
-        };
     }
 
     private buildRegistry(projectRoot: string): ExternalDeploymentTargetRegistry {
