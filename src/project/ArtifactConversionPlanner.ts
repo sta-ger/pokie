@@ -21,6 +21,11 @@ export type ArtifactIdentity = {
     readonly configurationProvenance?: ArtifactConfigurationProvenance;
 };
 
+/** The requested output of a conversion always belongs to the build-target vocabulary. */
+export type ArtifactTargetIdentity = ArtifactIdentity & {
+    readonly kind: ArtifactTargetType;
+};
+
 /** Configuration facts that make generated artifacts safe to reuse. */
 export type ArtifactConfigurationProvenance = {
     readonly configurationHash?: string;
@@ -68,7 +73,7 @@ export type ArtifactConversionPreflight = {
 export type ArtifactConversionPlan = {
     readonly status: "planned" | "unavailable" | "conflict";
     readonly source: ArtifactIdentity;
-    readonly target: ArtifactIdentity;
+    readonly target: ArtifactTargetIdentity;
     readonly steps: readonly ArtifactConversionStep[];
     readonly preflight: ArtifactConversionPreflight;
     /**
@@ -266,7 +271,7 @@ export class ArtifactConversionPlanner {
 
     private planOutcomeFromRuntime(
         source: ArtifactIdentity,
-        target: ArtifactIdentity,
+        target: ArtifactTargetIdentity,
         preflight: ArtifactConversionPreflight,
         options: ArtifactConversionPlanningOptions,
     ): ArtifactConversionPlan {
@@ -305,7 +310,7 @@ export class ArtifactConversionPlanner {
 
     private planStakeFromRuntime(
         source: ArtifactIdentity,
-        target: ArtifactIdentity,
+        target: ArtifactTargetIdentity,
         preflight: ArtifactConversionPreflight,
         options: ArtifactConversionPlanningOptions,
     ): ArtifactConversionPlan {
@@ -326,7 +331,7 @@ export class ArtifactConversionPlanner {
 
     private planned(
         source: ArtifactIdentity,
-        target: ArtifactIdentity,
+        target: ArtifactTargetIdentity,
         preflight: ArtifactConversionPreflight,
         steps: readonly ArtifactConversionStep[],
         managedOutcome?: ArtifactConversionPlan["managedOutcome"],
@@ -364,7 +369,7 @@ export class ArtifactConversionPlanner {
         return rank[left] >= rank[right] ? left : right;
     }
 
-    private targetIdentity(kind: ArtifactTargetType, destinationPath?: string, generationSemantics?: "exact" | "boundedSample"): ArtifactIdentity {
+    private targetIdentity(kind: ArtifactTargetType, destinationPath?: string, generationSemantics?: "exact" | "boundedSample"): ArtifactTargetIdentity {
         return {kind, ...(destinationPath === undefined ? {} : {canonicalLocation: path.resolve(destinationPath)}), capabilities: TARGET_CAPABILITIES[kind], ...(generationSemantics === undefined ? {} : {configurationProvenance: {generationSemantics}})};
     }
 
