@@ -81,6 +81,13 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     // false. ArtifactBuilderRegistry sets it true for canonical Project -> Outcome/Stake conversion.
     readonly selectBetMode?: boolean;
     readonly stake?: number;
+    /**
+     * Canonical publication identity for callers which also publish this
+     * result.  The generator remains side-effect free, but keeping this on
+     * the legacy compatibility shape prevents a domain request from losing
+     * its resolved destination while it crosses the old implementation.
+     */
+    readonly outputDestination?: string;
     readonly maxOutcomeSpaceSize?: bigint;
     // Records an explicit caller choice of the default exact strategy. It is mutually exclusive with
     // sampled choices at public command boundaries; exact generation otherwise remains the default.
@@ -141,6 +148,7 @@ export function generateWeightedOutcomeLibrary(
         ...(prepared.mode === undefined ? {} : {betMode: prepared.mode}),
         ...(prepared.selectBetMode === undefined ? {} : {selectBetMode: prepared.selectBetMode}),
         ...(prepared.stake === undefined ? {} : {stake: prepared.stake}),
+        ...(prepared.outputDestination === undefined ? {} : {outputDestination: prepared.outputDestination}),
         maxOutcomeSpaceSize: prepared.maxExactOutcomeSpaceSize,
         ...(prepared.generation === "exact" ? {exact: true} : {}),
         ...(prepared.generation === "sampled" ? {sampled: prepared.sample!} : {}),
