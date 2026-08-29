@@ -31,6 +31,7 @@ import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibra
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
 import {generateWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
 import {
+    DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY,
     prepareOutcomeLibraryGeneration,
     type OutcomeLibraryGenerationDestinationSafety,
@@ -377,8 +378,20 @@ function resolveManagedOutcomeGeneration(
     configHash: string,
     requested: ArtifactBuildOptions["outcomeLibraryGeneration"],
 ): ManagedOutcomeGeneration {
-    if (requested?.sampled !== undefined) return {generation: "sampled", sampled: requested.sampled, ...(requested.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: requested.maxExactOutcomeSpaceSize}), ...(requested.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: requested.compatibilityPolicyVersion})};
-    if (requested?.exact) return {generation: "exact", ...(requested.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: requested.maxExactOutcomeSpaceSize}), ...(requested.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: requested.compatibilityPolicyVersion})};
+    // Explicit requests still need to retain the resolved cap in their
+    // managed compatibility key.  Omitting it previously made a reconstructed
+    // plan unable to distinguish the public default from a historical policy.
+    if (requested?.sampled !== undefined) return {
+        generation: "sampled",
+        sampled: requested.sampled,
+        maxExactOutcomeSpaceSize: requested.maxExactOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
+        ...(requested.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: requested.compatibilityPolicyVersion}),
+    };
+    if (requested?.exact) return {
+        generation: "exact",
+        maxExactOutcomeSpaceSize: requested.maxExactOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
+        ...(requested.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: requested.compatibilityPolicyVersion}),
+    };
 
     const estimate = estimateExactOutcomeSpaceSize(game);
     if (estimate.totalOutcomeSpaceSize <= MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize) {

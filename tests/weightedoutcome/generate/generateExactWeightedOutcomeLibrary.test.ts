@@ -57,6 +57,15 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         });
     });
 
+    it("rejects an invalid public preflight cap through the same domain invariant as execution", () => {
+        const estimate = estimateExactOutcomeSpaceSize(buildFixtureGame());
+
+        for (const maxExactOutcomeSpaceSize of [BigInt(0), BigInt(-1)] as const) {
+            expect(() => preflightOutcomeLibraryGenerationFromEstimate(estimate, {maxExactOutcomeSpaceSize}))
+                .toThrow("maxExactOutcomeSpaceSize must be a positive integer");
+        }
+    });
+
     it("executes the canonical domain request identically to the legacy sampled adapter", async () => {
         const game = buildFixtureGame();
         const request = {

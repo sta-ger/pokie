@@ -344,6 +344,17 @@ export function prepareOutcomeLibraryGenerationFromEstimate(
 
 /** Lets adapters which already loaded an estimate render the canonical decision without reimplementing it. */
 export function preflightOutcomeLibraryGenerationFromEstimate(estimate: OutcomeSpaceEstimate, request: Pick<OutcomeLibraryGenerationRequest, "generation" | "maxExactOutcomeSpaceSize" | "sample">): OutcomeLibraryGenerationPreflight {
+    // This public helper is also used by adapters which already performed the
+    // inexpensive estimate.  Keep its cap invariant identical to request
+    // preparation so a preflight can never advertise an execution that the
+    // domain request will subsequently reject.
+    if (request.maxExactOutcomeSpaceSize !== undefined &&
+        (typeof request.maxExactOutcomeSpaceSize !== "bigint" || request.maxExactOutcomeSpaceSize <= BigInt(0))) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-invalid-request",
+            "maxExactOutcomeSpaceSize must be a positive integer when present.",
+        );
+    }
     validateGeneration(request.generation, request.sample);
     const maxExactOutcomeSpaceSize = request.maxExactOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE;
     const generation = request.generation ?? "default";
