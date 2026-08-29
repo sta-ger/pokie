@@ -65,6 +65,18 @@ const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: strin
     },
 };
 
+function artifactFileFilters(target: StudioArtifactTargetType) {
+    if (target === "parWorkbook") return [{name: "Excel workbooks", extensions: ["xlsx"]}];
+    if (target === "blueprint") return [{name: "Blueprint JSON", extensions: ["json"]}];
+    return undefined;
+}
+
+function artifactDestinationTitle(target: StudioArtifactTargetType): string {
+    if (target === "parWorkbook") return "Choose a PAR workbook destination";
+    if (target === "blueprint") return "Choose an imported Blueprint destination";
+    return "Choose an artifact output directory";
+}
+
 const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["outcomeLibrary", "staticExport", "buildArtifact", "remoteDeployment"];
 
 // Every "Configure"/etc-free run below runs against this single project-wide mode name -- the project's
@@ -384,12 +396,12 @@ function TargetCard({
             {card.kind === "buildArtifact" && card.artifactTarget && card.supported && (
                 <>
                     <PathInput
-                        label={card.artifactTarget === "parWorkbook" ? "Output file (optional)" : "Output directory (optional)"}
+                        label={card.artifactTarget === "parWorkbook" || card.artifactTarget === "blueprint" ? "Output file (optional)" : "Output directory (optional)"}
                         description="Choose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default."
-                        kind={card.artifactTarget === "parWorkbook" ? "file" : "directory"}
-                        filePickerMode={card.artifactTarget === "parWorkbook" ? "save" : "open"}
-                        fileFilters={card.artifactTarget === "parWorkbook" ? [{name: "Excel workbooks", extensions: ["xlsx"]}] : undefined}
-                        browseTitle={card.artifactTarget === "parWorkbook" ? "Choose a PAR workbook destination" : "Choose an artifact output directory"}
+                        kind={card.artifactTarget === "parWorkbook" || card.artifactTarget === "blueprint" ? "file" : "directory"}
+                        filePickerMode={card.artifactTarget === "parWorkbook" || card.artifactTarget === "blueprint" ? "save" : "open"}
+                        fileFilters={artifactFileFilters(card.artifactTarget)}
+                        browseTitle={artifactDestinationTitle(card.artifactTarget)}
                         browseId={`artifact-${card.artifactTarget}-destination`}
                         value={artifactDestination}
                         onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}
@@ -408,10 +420,22 @@ function TargetCard({
                             <Text size="sm">Target: {card.label}</Text>
                             <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>
                             <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
+                            <Text size="sm">Destination kind: {artifactPreview.result.destinationKind}</Text>
                             <Text size="sm">Status: {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}</Text>
                             {artifactPreview.result.plan !== undefined && (
                                 <>
                                     <Text size="sm">Plan: {artifactPreview.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}</Text>
+                                    {artifactPreview.result.plan.steps.map((step, index) => (
+                                        <Text key={`${step.kind}-${index}`} size="sm" c="dimmed">
+                                            {step.choice === "reuse" ? "Reused" : "Durable/generated"} {step.output.kind}{step.output.canonicalLocation ? `: ${step.output.canonicalLocation}` : ""}
+                                        </Text>
+                                    ))}
+                                    {artifactPreview.result.plan.steps.some((step) => step.kind === "importParWorkbook") && (
+                                        <Text size="sm" c="dimmed">PAR evidence eligibility is verified from explicit import facts and Meta/hash provenance.</Text>
+                                    )}
+                                    {artifactPreview.result.plan.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []).map((loss) => (
+                                        <Text key={loss} size="sm" c="dimmed">PAR import boundary: {loss}</Text>
+                                    ))}
                                     {artifactPreview.result.plan.preflight.losses.length > 0 && (
                                         <Text size="sm" c="dimmed">Data boundary: {artifactPreview.result.plan.preflight.losses.join(" ")}</Text>
                                     )}
@@ -471,6 +495,8 @@ function TargetCard({
                         <>
                             <Text size="sm" mt={4}>
                                 Built to {artifactBuildRun.result.outputPath}.
+                                {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported Blueprint: ${artifactBuildRun.result.importedBlueprintPath}.`}
+                                {artifactBuildRun.result.conversionEvidencePath !== undefined && ` Conversion evidence: ${artifactBuildRun.result.conversionEvidencePath}.`}
                             </Text>
                             {artifactBuildRun.result.plan !== undefined && (
                                 <Text size="sm" c="dimmed" mt={4}>

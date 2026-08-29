@@ -69,16 +69,23 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
     private readonly reader = new OutcomeLibraryBundleReader();
     private readonly resolveProject: ProjectResolving;
     private readonly onRegistered: (project: PokieProject) => Promise<void>;
+    // Managed Outcome registration can cause a second, caller-owned registry
+    // (Studio in production) to advertise the project.  Keep its inverse at
+    // the same lifecycle boundary so a later planner rollback never leaves a
+    // row pointing at a root it is about to remove.
+    private readonly onReleased: (rootPath: string) => Promise<void>;
     private readonly files: ManagedOutcomeProjectFileOperations;
 
     constructor(
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
         onRegistered: (project: PokieProject) => Promise<void> = () => Promise.resolve(),
         files: ManagedOutcomeProjectFileOperations = DEFAULT_FILE_OPERATIONS,
+        onReleased: (rootPath: string) => Promise<void> = () => Promise.resolve(),
     ) {
         this.resolveProject = resolveProject;
         this.onRegistered = onRegistered;
         this.files = files;
+        this.onReleased = onReleased;
     }
 
     public async findCompatible(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject | undefined> {
@@ -98,6 +105,7 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
         try {
             await this.onRegistered(legacyProject);
         } catch (error) {
+            await this.onReleased(legacyRoot).catch(() => undefined);
             await rollback().catch(() => undefined);
             throw error;
         }
@@ -153,6 +161,7 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
             // Publishing the registry record is not the end of registration: an injected Studio/CLI
             // registration hook can still reject. Restore the exact prior document so a failed open never
             // leaves a discoverable but incomplete managed Project behind.
+            await this.onReleased(rootPath).catch(() => undefined);
             await rollback().catch(() => undefined);
             throw error;
         }
@@ -171,6 +180,12 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
         const canonicalRoot = path.resolve(rootPath);
         const projects = document.projects.filter((entry) => path.resolve(entry.rootPath) !== canonicalRoot);
         if (projects.length === document.projects.length) return;
+        // Remove the external registration before the caller deletes the
+        // root.  This is intentionally paired with the managed-record
+        // release, rather than relying on an outer Studio build result: PAR
+        // promotion can fail after this service's registration callback but
+        // before an outer result exists to roll back.
+        await this.onReleased(canonicalRoot);
         const registryPath = this.registryPath(sourceRootPath);
         if (projects.length === 0) {
             await this.files.remove(registryPath, {force: true});

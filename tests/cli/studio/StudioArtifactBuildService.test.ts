@@ -2,8 +2,10 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
-import {ArtifactBuildCancelledError, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactBuilderRegistry, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
+import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
+import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 
 function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
@@ -41,7 +43,7 @@ describe("StudioArtifactBuildService", () => {
 
             const targets = await service.listTargets(blueprintPath);
 
-            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
+            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
             const byTarget = new Map(targets.map((entry) => [entry.target, entry]));
             expect(byTarget.get("tsPackage")?.supported).toBe(true);
             expect(byTarget.get("outcomeLibrary")?.supported).toBe(true);
@@ -168,6 +170,247 @@ describe("StudioArtifactBuildService", () => {
                 throw new Error("expected ok");
             }
             expect(result.outputPath).toBe(explicitOut);
+        });
+
+        it("builds PAR Blueprints into an explicit nested destination whose parent is absent", async () => {
+            const workbookPath = path.join(workDir, "source.xlsx");
+            const destination = path.join(workDir, "missing", "blueprints", "imported.blueprint.json");
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+
+            const result = await service.build(workbookPath, "blueprint", destination);
+
+            expect(result).toMatchObject({status: "ok", outputPath: destination});
+            expect(fs.existsSync(destination)).toBe(true);
+            expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(true);
+        });
+
+        it("rolls back PAR terminal, durable evidence, generated prerequisite, and registrations when Studio registration fails", async () => {
+            const outputPath = path.join(workDir, "package");
+            const importedBlueprintPath = path.join(outputPath, ".pokie", "par-import", "imported.blueprint.json");
+            const prerequisitePath = path.join(workDir, "generated-outcome");
+            const project: PokieProject = {
+                type: "parWorkbook",
+                rootPath: path.join(workDir, "source.xlsx"),
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            fs.writeFileSync(project.rootPath, "source");
+            const resolver: ProjectResolving = {resolve: () => Promise.resolve(project)};
+            const registry = {
+                preparePlan: (_source: PokieProject, target: string) => Promise.resolve({status: "planned", target: {kind: target}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "publish", losses: [], oneWay: false}}),
+                executePlan: () => {
+                    fs.mkdirSync(outputPath);
+                    fs.mkdirSync(path.dirname(importedBlueprintPath), {recursive: true});
+                    fs.writeFileSync(path.join(outputPath, "package.json"), "terminal artifact");
+                    fs.writeFileSync(importedBlueprintPath, "imported blueprint");
+                    fs.writeFileSync(`${importedBlueprintPath}.conversion-evidence.json`, "evidence");
+                    fs.mkdirSync(prerequisitePath);
+                    return Promise.resolve({
+                        outputPath,
+                        importedBlueprintPath,
+                        conversionEvidencePath: path.join(path.dirname(importedBlueprintPath), "conversion-evidence.json"),
+                        prerequisiteProjectRoots: [prerequisitePath],
+                        managedProjectRoots: [prerequisitePath],
+                    });
+                },
+            } as unknown as ArtifactBuilderRegistry;
+            const unregistered: string[] = [];
+            service = new StudioArtifactBuildService(
+                "1.3.0",
+                registry,
+                resolver,
+                () => Promise.reject(new Error("registry unavailable")),
+                undefined,
+                undefined,
+                (root) => {
+                    unregistered.push(root);
+                    return Promise.resolve();
+                },
+            );
+
+            await expect(service.build(project.rootPath, "tsPackage", outputPath)).resolves.toMatchObject({status: "error"});
+
+            expect(fs.existsSync(outputPath)).toBe(false);
+            expect(fs.existsSync(importedBlueprintPath)).toBe(false);
+            expect(fs.existsSync(prerequisitePath)).toBe(false);
+            expect(unregistered).toEqual(expect.arrayContaining([outputPath, importedBlueprintPath, prerequisitePath]));
+        });
+
+        it("releases a generated Blueprint Outcome record when Studio registration fails after the registry has published it", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const outcomePath = path.join(workDir, "failed-outcomes");
+            const unregistered: string[] = [];
+            fs.mkdirSync(outcomePath);
+            service = new StudioArtifactBuildService(
+                "1.3.0",
+                undefined,
+                undefined,
+                () => Promise.reject(new Error("Studio registry unavailable")),
+                undefined,
+                undefined,
+                (projectRoot) => {
+                    unregistered.push(projectRoot);
+                    return Promise.resolve();
+                },
+            );
+
+            await expect(service.build(blueprintPath, "outcomeLibrary", outcomePath)).resolves.toMatchObject({
+                status: "error",
+                message: "Studio registry unavailable",
+            });
+
+            expect(fs.existsSync(outcomePath)).toBe(true);
+            expect(fs.readdirSync(outcomePath)).toEqual([]);
+            expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+            expect(unregistered).toEqual([outcomePath]);
+        });
+
+        it("releases a generated Blueprint Stake prerequisite when cancellation arrives during Studio registration", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const stakePath = path.join(workDir, "cancelled-stake");
+            const controller = new AbortController();
+            const unregistered: string[] = [];
+            service = new StudioArtifactBuildService(
+                "1.3.0",
+                undefined,
+                undefined,
+                () => {
+                    controller.abort();
+                    return Promise.resolve();
+                },
+                undefined,
+                undefined,
+                (projectRoot) => {
+                    unregistered.push(projectRoot);
+                    return Promise.resolve();
+                },
+            );
+
+            await expect(service.build(blueprintPath, "stakeAdapter", stakePath, {signal: controller.signal})).resolves.toMatchObject({status: "cancelled"});
+
+            expect(fs.existsSync(stakePath)).toBe(false);
+            expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+            expect(unregistered).toEqual(expect.arrayContaining([stakePath]));
+        });
+
+        it("cancels a real PAR-to-Stake registration without leaving its terminal, evidence, or managed prerequisite behind", async () => {
+            const workbookPath = path.join(workDir, "source.xlsx");
+            const stakePath = path.join(workDir, "cancelled-par-stake");
+            const controller = new AbortController();
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+            fs.mkdirSync(stakePath);
+            service = new StudioArtifactBuildService(
+                "1.3.0",
+                undefined,
+                undefined,
+                () => {
+                    controller.abort();
+                    return Promise.resolve();
+                },
+            );
+
+            await expect(service.build(workbookPath, "stakeAdapter", stakePath, {signal: controller.signal})).resolves.toMatchObject({status: "cancelled"});
+
+            expect(fs.existsSync(workbookPath)).toBe(true);
+            expect(fs.readdirSync(stakePath)).toEqual([]);
+            expect(fs.existsSync(path.join(stakePath, ".pokie", "par-import", "conversion-evidence.json"))).toBe(false);
+            expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+        });
+
+        it.each(["outcomeLibrary", "stakeAdapter"] as const)("removes the Studio Outcome registration when PAR-to-%s is cancelled during promotion", async (target) => {
+            const workbookPath = path.join(workDir, "source.xlsx");
+            const destination = path.join(workDir, target === "outcomeLibrary" ? "cancelled-outcome" : "cancelled-stake");
+            const controller = new AbortController();
+            const projectRegistration = new StudioProjectRegistrationService(new InMemoryStudioProjectRegistry());
+            const managedOutcomes = new ManagedOutcomeProjectService(
+                undefined,
+                async (project) => {
+                    const registered = await projectRegistration.registerManaged(project.rootPath, path.basename(project.rootPath));
+                    if (registered.status !== "ok") throw new Error("Studio registry unavailable");
+                },
+                undefined,
+                (projectRoot) => projectRegistration.remove(projectRoot),
+            );
+            let registrations = 0;
+            const cancellationAfterPromotion = {
+                findCompatible: (...args: Parameters<ManagedOutcomeProjectService["findCompatible"]>) => managedOutcomes.findCompatible(...args),
+                allocateRoot: (...args: Parameters<ManagedOutcomeProjectService["allocateRoot"]>) => managedOutcomes.allocateRoot(...args),
+                release: (...args: Parameters<ManagedOutcomeProjectService["release"]>) => managedOutcomes.release(...args),
+                registerAndOpen: async (...args: Parameters<ManagedOutcomeProjectService["registerAndOpen"]>) => {
+                    registrations++;
+                    const project = await managedOutcomes.registerAndOpen(...args);
+                    if (registrations === 2) controller.abort();
+                    return project;
+                },
+            };
+            const registry = new ArtifactBuilderRegistry("1.3.0", undefined, cancellationAfterPromotion);
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+            fs.mkdirSync(destination);
+            service = new StudioArtifactBuildService("1.3.0", registry);
+
+            await expect(service.build(workbookPath, target, destination, {signal: controller.signal})).resolves.toMatchObject({status: "cancelled"});
+
+            expect(fs.readdirSync(destination)).toEqual([]);
+            expect(await projectRegistration.list()).toEqual([]);
+            expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+        });
+
+        it("keeps PAR-to-Stake managed and Studio roots durable after successful registration", async () => {
+            const workbookPath = path.join(workDir, "source.xlsx");
+            const stakePath = path.join(workDir, "par-stake");
+            const registeredProjects: string[] = [];
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+            service = new StudioArtifactBuildService("1.3.0", undefined, undefined, (projectRoot) => {
+                registeredProjects.push(projectRoot);
+                return Promise.resolve();
+            });
+
+            const result = await service.build(workbookPath, "stakeAdapter", stakePath);
+
+            expect(result).toMatchObject({status: "ok", importedBlueprintPath: expect.any(String)});
+            expect(registeredProjects).toEqual(expect.arrayContaining([stakePath, result.status === "ok" ? result.importedBlueprintPath : ""]));
+            expect(registeredProjects.every((projectRoot) => fs.existsSync(projectRoot))).toBe(true);
+            const managedRegistryPath = path.join(stakePath, ".pokie", "par-import", ".pokie", "managed-outcome-projects.json");
+            expect(fs.existsSync(managedRegistryPath)).toBe(true);
+            const managedRegistry = JSON.parse(fs.readFileSync(managedRegistryPath, "utf8")) as {projects: readonly {rootPath: string}[]};
+            expect(managedRegistry.projects).toHaveLength(1);
+            expect(fs.existsSync(managedRegistry.projects[0].rootPath)).toBe(true);
+        });
+
+        it("releases only a republished reused Outcome when Studio registration fails", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const originalOutcomePath = path.join(workDir, "original-outcome");
+            const republishedOutcomePath = path.join(workDir, "republished-outcome");
+            await expect(service.build(blueprintPath, "outcomeLibrary", originalOutcomePath)).resolves.toMatchObject({status: "ok"});
+            fs.mkdirSync(republishedOutcomePath);
+            const failingService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => Promise.reject(new Error("Studio registry unavailable")));
+
+            await expect(failingService.build(blueprintPath, "outcomeLibrary", republishedOutcomePath)).resolves.toMatchObject({status: "error"});
+
+            expect(fs.existsSync(originalOutcomePath)).toBe(true);
+            expect(fs.readdirSync(republishedOutcomePath)).toEqual([]);
+            const managedRegistry = JSON.parse(fs.readFileSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"), "utf8")) as {projects: readonly {rootPath: string}[]};
+            expect(managedRegistry.projects.map((project) => project.rootPath)).toEqual([originalOutcomePath]);
+        });
+
+        it("releases only a republished reused Outcome when Studio registration is cancelled", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const originalOutcomePath = path.join(workDir, "original-outcome");
+            const republishedOutcomePath = path.join(workDir, "republished-outcome");
+            const controller = new AbortController();
+            await expect(service.build(blueprintPath, "outcomeLibrary", originalOutcomePath)).resolves.toMatchObject({status: "ok"});
+            fs.mkdirSync(republishedOutcomePath);
+            const cancellingService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => {
+                controller.abort();
+                return Promise.resolve();
+            });
+
+            await expect(cancellingService.build(blueprintPath, "outcomeLibrary", republishedOutcomePath, {signal: controller.signal})).resolves.toMatchObject({status: "cancelled"});
+
+            expect(fs.existsSync(originalOutcomePath)).toBe(true);
+            expect(fs.readdirSync(republishedOutcomePath)).toEqual([]);
+            const managedRegistry = JSON.parse(fs.readFileSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"), "utf8")) as {projects: readonly {rootPath: string}[]};
+            expect(managedRegistry.projects.map((project) => project.rootPath)).toEqual([originalOutcomePath]);
         });
 
         it("builds Blueprint -> Stake through the shared registry and registers the generated Outcome Project", async () => {

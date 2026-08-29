@@ -3,7 +3,8 @@ import os from "os";
 import path from "path";
 import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
-import type {ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
+import {BlueprintArtifactBuilder} from "../../src/project/BlueprintArtifactBuilder.js";
+import {computeArtifactInputBindingHash, type ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
 import {ManagedOutcomeProjectService} from "../../src/project/ManagedOutcomeProjectService.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import {
@@ -18,28 +19,28 @@ describe("ArtifactBuilderRegistry", () => {
     const registry = new ArtifactBuilderRegistry();
 
     it("lists only matrix-advertised build targets", () => {
-        expect(new Set(registry.listTargets())).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
+        expect(new Set(registry.listTargets())).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
     });
 
     it("reports the true required source capability and supported sources for a package build", () => {
         const descriptor = registry.describe("tsPackage");
 
         expect(descriptor.requiredSourceCapability).toBe(BLUEPRINT_BUILD_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["blueprint"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "parWorkbook"]);
     });
 
     it("reports the true required source capability and supported sources for an outcome-library build", () => {
         const descriptor = registry.describe("outcomeLibrary");
 
         expect(descriptor.requiredSourceCapability).toBe(OUTCOME_LIBRARY_GENERATE_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "outcomeLibrary"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "outcomeLibrary", "parWorkbook"]);
     });
 
     it("reports the true required source capability and supported sources for a Stake artifact export", () => {
         const descriptor = registry.describe("stakeAdapter");
 
         expect(descriptor.requiredSourceCapability).toBe(STAKE_ADAPTER_EXPORT_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]);
     });
 
     it("describes Blueprint/package Outcome and Stake conversions without denying them in target notes", () => {
@@ -125,6 +126,124 @@ describe("ArtifactBuilderRegistry", () => {
             await expect(withBuilder.executePlan(plan, {...source, rootPath: "/projects/moved-blueprint"}, "/out/prepared-game")).rejects.toThrow(/source identity changed/);
             await expect(withBuilder.executePlan(plan, source, "/out/other-game")).rejects.toThrow(/destination changed/);
             expect(builder.calls).toBe(0);
+        });
+
+        it("rebinds PAR workbook bytes before executing a prepared downstream plan", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-drift-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            fs.writeFileSync(workbookPath, "prepared workbook bytes");
+            const builder = fakeBuilder("tsPackage");
+            const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+                configurationProvenance: {configurationHash: computeArtifactInputBindingHash([workbookPath])},
+            } as PokieProject;
+            const plan = await withBuilder.preparePlan(source, "tsPackage", {destinationPath: path.join(directory, "package")});
+            fs.writeFileSync(workbookPath, "changed workbook bytes");
+
+            await expect(withBuilder.executePlan(plan, source, path.join(directory, "package"))).rejects.toThrow(/PAR workbook changed after this conversion was prepared/);
+            expect(builder.calls).toBe(0);
+            expect(fs.existsSync(path.join(directory, "package"))).toBe(false);
+            fs.rmSync(directory, {recursive: true, force: true});
+        });
+
+        it("creates a missing explicit parent before publishing PAR Blueprints and staging downstream plans", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-parent-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const blueprintDestination = path.join(directory, "nested", "blueprints", "imported.blueprint.json");
+            const packageDestination = path.join(directory, "nested", "packages", "game");
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            const packageBuilder: ArtifactBuilder = {
+                target: "tsPackage",
+                destinationKind: "directory",
+                async build(_source, destinationPath) {
+                    await fs.promises.mkdir(destinationPath, {recursive: true});
+                    await fs.promises.writeFile(path.join(destinationPath, "package.json"), "{}", "utf8");
+                    return {outputPath: destinationPath};
+                },
+            };
+            const downstreamRegistry = new ArtifactBuilderRegistry("1.3.0", new Map([
+                ["blueprint", new BlueprintArtifactBuilder()],
+                ["tsPackage", packageBuilder],
+            ]));
+
+            try {
+                fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+
+                const blueprint = await registry.build("blueprint", source, blueprintDestination);
+                expect(blueprint.outputPath).toBe(blueprintDestination);
+                expect(fs.existsSync(blueprintDestination)).toBe(true);
+                expect(fs.existsSync(`${blueprintDestination}.conversion-evidence.json`)).toBe(true);
+
+                const packageResult = await downstreamRegistry.build("tsPackage", source, packageDestination);
+                expect(packageResult.outputPath).toBe(packageDestination);
+                expect(fs.existsSync(path.join(packageDestination, "package.json"))).toBe(true);
+                expect(fs.existsSync(path.join(packageDestination, ".pokie", "par-import", "conversion-evidence.json"))).toBe(true);
+                expect(fs.readdirSync(path.dirname(packageDestination))).not.toEqual(expect.arrayContaining([expect.stringMatching(/^\.pokie-par-import-/)]));
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it.each(["outcomeLibrary", "stakeAdapter"] as const)("removes the managed and Studio registrations when PAR-to-%s promotion is cancelled", async (target) => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-promotion-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const destination = path.join(directory, target === "outcomeLibrary" ? "outcomes" : "stake");
+            const studioRoots = new Set<string>();
+            const managedOutcomes = new ManagedOutcomeProjectService(
+                undefined,
+                (project) => {
+                    studioRoots.add(project.rootPath);
+                    return Promise.resolve();
+                },
+                undefined,
+                (rootPath) => {
+                    studioRoots.delete(rootPath);
+                    return Promise.resolve();
+                },
+            );
+            const controller = new AbortController();
+            let registrations = 0;
+            const failingPromotionService = {
+                findCompatible: (...args: Parameters<ManagedOutcomeProjectService["findCompatible"]>) => managedOutcomes.findCompatible(...args),
+                allocateRoot: (...args: Parameters<ManagedOutcomeProjectService["allocateRoot"]>) => managedOutcomes.allocateRoot(...args),
+                release: (...args: Parameters<ManagedOutcomeProjectService["release"]>) => managedOutcomes.release(...args),
+                registerAndOpen: async (...args: Parameters<ManagedOutcomeProjectService["registerAndOpen"]>) => {
+                    registrations++;
+                    const project = await managedOutcomes.registerAndOpen(...args);
+                    if (registrations === 2) controller.abort();
+                    return project;
+                },
+            };
+            const withPromotionFailure = new ArtifactBuilderRegistry("1.3.0", undefined as never, failingPromotionService);
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+            fs.mkdirSync(destination);
+
+            try {
+                await expect(withPromotionFailure.build(target, source, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
+                expect(fs.existsSync(workbookPath)).toBe(true);
+                expect(fs.existsSync(destination)).toBe(true);
+                expect(fs.readdirSync(destination)).toEqual([]);
+                expect(fs.existsSync(path.join(destination, ".pokie", "par-import", "conversion-evidence.json"))).toBe(false);
+                expect(fs.existsSync(path.join(directory, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+                expect(studioRoots).toEqual(new Set());
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
         });
 
         it("rejects a fabricated graph even when its source and destination identities match", async () => {
@@ -290,7 +409,11 @@ describe("ArtifactBuilderRegistry", () => {
 
             try {
                 const outcome = await registry.build("outcomeLibrary", blueprintProject, outcomeDir);
-                expect(outcome).toEqual({outputPath: outcomeDir, managedProjectRoots: [outcomeDir]});
+                expect(outcome).toMatchObject({
+                    outputPath: outcomeDir,
+                    managedProjectRoots: [outcomeDir],
+                    managedOutcomeProjectOwnership: [{rootPath: outcomeDir, sourceRootPath: blueprintPath, disposition: "owned"}],
+                });
                 expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(true);
 
                 const managedRegistry = JSON.parse(fs.readFileSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"), "utf-8")) as {
@@ -487,9 +610,10 @@ describe("ArtifactBuilderRegistry", () => {
                 expect(fs.existsSync(outcomeDir)).toBe(false);
 
                 writeBlueprint(3);
-                await expect(registry.build("outcomeLibrary", project, outcomeDir)).resolves.toEqual({
+                await expect(registry.build("outcomeLibrary", project, outcomeDir)).resolves.toMatchObject({
                     outputPath: outcomeDir,
                     managedProjectRoots: [outcomeDir],
+                    managedOutcomeProjectOwnership: [{rootPath: outcomeDir, sourceRootPath: blueprintPath, disposition: "owned"}],
                 });
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});

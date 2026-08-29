@@ -63,6 +63,13 @@ export type ExportDeployTargetCard = {
 const ARTIFACT_TARGET_CARD_INFO: Readonly<
     Record<StudioArtifactTargetType, {label: string; purpose: string; destination: string; technicalDestination: string; unavailableReason: string}>
 > = {
+    blueprint: {
+        label: "Game Blueprint",
+        purpose: "Import this PAR workbook into an editable Game Blueprint.",
+        destination: "Choose where to save the imported Blueprint, or use the default destination.",
+        technicalDestination: "A new Blueprint JSON file with adjacent conversion evidence.",
+        unavailableReason: "This project cannot supply a game model. Open a PAR workbook to import a Blueprint.",
+    },
     tsPackage: {
         label: "TypeScript Game Package",
         purpose: "Create a runnable game package from this project.",

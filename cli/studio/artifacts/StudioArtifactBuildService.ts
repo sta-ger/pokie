@@ -12,8 +12,10 @@ import {
     PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
+    assertArtifactBuildNotCancelled,
 } from "pokie";
 import path from "path";
+import fs from "fs";
 import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
 import type {StudioArtifactBuildJobView, StudioArtifactBuildProgressView} from "./StudioArtifactBuildJobView.js";
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
@@ -25,7 +27,7 @@ import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPla
 const PAR_WORKBOOK_DEFAULT_EXTENSION = ".xlsx";
 
 function destinationKindFor(target: ArtifactTargetType): "file" | "directory" {
-    return target === "parWorkbook" ? "file" : "directory";
+    return target === "parWorkbook" || target === "blueprint" ? "file" : "directory";
 }
 
 // This is intentionally a compact, target-level plan rather than a guessed inventory of generated
@@ -33,6 +35,8 @@ function destinationKindFor(target: ArtifactTargetType): "file" | "directory" {
 // stable artifact(s) a user is choosing to create, without lying about incidental implementation files.
 function plannedOutputsFor(target: ArtifactTargetType): readonly string[] {
     switch (target) {
+        case "blueprint":
+            return ["Game Blueprint JSON file with PAR conversion evidence"];
         case "tsPackage":
             return ["Runnable TypeScript game package directory"];
         case "outcomeLibrary":
@@ -51,7 +55,9 @@ function plannedOutputsFor(target: ArtifactTargetType): readonly string[] {
 // a bare `pokie build <project> --target <target>` (no --out). Keeping this identical means Studio's own
 // zero-configuration "Build" click and the CLI's own default land in the same place for the same project.
 function resolveDefaultDestination(rootPath: string, target: ArtifactTargetType): string {
-    const siblingName = target === "parWorkbook" ? `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}` : target;
+    let siblingName: string = target;
+    if (target === "parWorkbook") siblingName = `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}`;
+    if (target === "blueprint") siblingName = "blueprint.json";
     return path.join(path.dirname(rootPath), siblingName);
 }
 
@@ -79,9 +85,13 @@ export class StudioArtifactBuildService {
         pokieVersion: string,
         registry?: ArtifactBuilderRegistry,
         resolveProject?: ProjectResolving,
-        private readonly registerManagedProject: (projectRoot: string) => Promise<void> = () => Promise.resolve(),
+        private readonly registerManagedProject: (projectRoot: string, provenance?: {readonly sourceWorkbookPath?: string; readonly conversionEvidencePath?: string}) => Promise<void> = () => Promise.resolve(),
         managedOutcomeProjects?: ManagedOutcomeProjectServicing,
         pokiePackageRoot?: string,
+        // Registration is part of publication from Studio's point of view.
+        // Keep the inverse beside the writer so a later registration failure
+        // cannot leave an earlier parallel registration behind.
+        private readonly unregisterManagedProject: (projectRoot: string) => Promise<void> = () => Promise.resolve(),
     ) {
         this.resolveProject = resolveProject ?? new ProjectTargetResolver();
         this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
@@ -159,6 +169,11 @@ export class StudioArtifactBuildService {
             return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`, plan};
         }
         const {project, destination} = resolved;
+        // Directory targets deliberately accept a caller-created empty
+        // destination.  It is not owned by this operation, even though its
+        // contents will be, so a later Studio registration failure must leave
+        // that directory in place.
+        const outputDestinationExisted = fs.existsSync(destination);
 
         const plan = await this.plan(project, target, destination, options);
         if (plan.status === "unavailable") {
@@ -168,14 +183,46 @@ export class StudioArtifactBuildService {
 
         try {
             const result = await this.registry.executePlan(plan, project, destination, options);
+            // executePlan's terminal writer has returned, but Studio has one
+            // more publication boundary: project registration.  Honour the
+            // same signal before exposing any registry entry or success DTO.
+            assertArtifactBuildNotCancelled(options);
             // Blueprint -> Outcome and Blueprint -> Stake both return the exact managed Outcome Project
             // the registry generated or reopened. Register it with Studio before reporting success; no
             // Studio-only outcome-path index is maintained here.
             const managedProjectRoots = new Set([
-                ...(result.prerequisiteProjectRoots ?? []),
-                ...(result.managedProjectRoots ?? []),
+                ...this.durableManagedRoots(result, plan),
+                // A PAR import's Blueprint is itself a durable Studio project,
+                // not merely a transient prerequisite like an Outcome bundle.
+                ...(target === "blueprint" || project.type === "parWorkbook" ? [result.outputPath] : []),
+                // Every PAR-derived terminal artifact owns a durable imported
+                // Blueprint.  Register that model as well as the terminal so
+                // a restart can reopen its workbook/evidence provenance.
+                ...(result.importedBlueprintPath === undefined ? [] : [result.importedBlueprintPath]),
             ]);
-            await Promise.all(Array.from(managedProjectRoots, (projectRoot) => this.registerManagedProject(projectRoot)));
+            const registeredRoots: string[] = [];
+            try {
+                const provenance = await this.parImportRegistrationProvenance(result.conversionEvidencePath);
+                for (const projectRoot of managedProjectRoots) {
+                    assertArtifactBuildNotCancelled(options);
+                    await this.registerManagedProject(
+                        projectRoot,
+                        // The terminal and the durable imported Blueprint both
+                        // retain the same workbook/evidence provenance.
+                        projectRoot === result.outputPath || projectRoot === result.importedBlueprintPath ? provenance : undefined,
+                    );
+                    registeredRoots.push(projectRoot);
+                    assertArtifactBuildNotCancelled(options);
+                }
+            } catch (error) {
+                // A Studio build is not successful until every operation-owned
+                // publication is registered.  A managed Outcome may have been
+                // registered by its generator before Studio reaches this loop,
+                // so rollback is based on the selected plan's ownership, not
+                // only the subset of callbacks that happened to return first.
+                await this.rollbackRegistrationFailure(result, plan, registeredRoots, outputDestinationExisted);
+                throw error;
+            }
             return {
                 status: "ok",
                 target,
@@ -200,6 +247,8 @@ export class StudioArtifactBuildService {
                         reusedCompatibleProject: true,
                     }
                     : {}),
+                ...(result.importedBlueprintPath !== undefined ? {importedBlueprintPath: result.importedBlueprintPath} : {}),
+                ...(result.conversionEvidencePath !== undefined ? {conversionEvidencePath: result.conversionEvidencePath} : {}),
             };
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
@@ -334,6 +383,100 @@ export class StudioArtifactBuildService {
     private targetPlannerFields(plan: ArtifactConversionPlan): {readonly diagnostic?: string; readonly plan: ArtifactConversionPlan} {
         if (plan.status === "unavailable") return {diagnostic: this.describePlanDiagnostic(plan), plan};
         return {plan};
+    }
+
+    private async rollbackRegistrationFailure(
+        result: import("pokie").ArtifactBuildResult,
+        plan: ArtifactConversionPlan,
+        registeredRoots: readonly string[],
+        outputDestinationExisted: boolean,
+    ): Promise<void> {
+        const managedOwnership = this.managedOutcomeOwnership(result, plan);
+        const ownedManagedRoots = managedOwnership
+            .filter((entry) => entry.disposition === "owned")
+            .map((entry) => entry.rootPath);
+        // The terminal is always newly allocated after the registry's
+        // destination check.  The imported Blueprint is likewise a fresh
+        // durable PAR intermediate. Generated prerequisite roots are owned by
+        // this operation; reused managed outcomes are deliberately excluded.
+        const ownedRoots = new Set<string>([
+            result.outputPath,
+            ...(result.importedBlueprintPath === undefined ? [] : [result.importedBlueprintPath]),
+            ...ownedManagedRoots,
+        ]);
+
+        const rollbackRoots = [
+            // Do not limit this to `registeredRoots`: ManagedOutcomeProjectService
+            // can register generated roots while materializing them, before the
+            // Studio-level registration loop starts.
+            ...new Set([...registeredRoots, ...ownedRoots]).values(),
+        ].sort((left, right) => right.length - left.length);
+        for (const projectRoot of rollbackRoots) {
+            if (!ownedRoots.has(projectRoot)) continue;
+            await this.unregisterManagedProject(projectRoot).catch(() => undefined);
+            // The registry may have registered a generated Outcome before
+            // Studio reaches its own project-registration loop.  Releasing
+            // that record is a separate operation from removing the root: a
+            // deleted bundle must never remain advertised as reusable.
+            const ownership = managedOwnership.find((entry) => entry.rootPath === projectRoot && entry.disposition === "owned");
+            if (ownership !== undefined) {
+                const registry = this.registry as ArtifactBuilderRegistry & {
+                    releaseManagedOutcomeProject?: (sourceRootPath: string, rootPath: string) => Promise<void>;
+                };
+                if (registry.releaseManagedOutcomeProject !== undefined) {
+                    await registry.releaseManagedOutcomeProject(ownership.sourceRootPath, projectRoot).catch(() => undefined);
+                }
+            }
+            if (projectRoot === result.outputPath && outputDestinationExisted) {
+                // The destination was a caller-owned empty directory at
+                // preflight.  Remove only this operation's publication and
+                // preserve the destination itself for its owner.
+                await fs.promises.readdir(projectRoot)
+                    .then((entries) => Promise.all(entries.map((entry) => fs.promises.rm(path.join(projectRoot, entry), {recursive: true, force: true}))))
+                    .catch(() => undefined);
+            } else {
+                await fs.promises.rm(projectRoot, {recursive: true, force: true}).catch(() => undefined);
+            }
+            await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
+        }
+    }
+
+    private durableManagedRoots(result: import("pokie").ArtifactBuildResult, plan: ArtifactConversionPlan): readonly string[] {
+        const ownership = this.managedOutcomeOwnership(result, plan);
+        const transient = new Set(ownership.filter((entry) => entry.disposition === "transient").map((entry) => entry.rootPath));
+        return Array.from(new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])]))
+            .filter((root) => !transient.has(root));
+    }
+
+    private managedOutcomeOwnership(
+        result: import("pokie").ArtifactBuildResult,
+        plan: ArtifactConversionPlan,
+    ): readonly import("pokie").ManagedOutcomeProjectOwnership[] {
+        if (result.managedOutcomeProjectOwnership !== undefined) return result.managedOutcomeProjectOwnership;
+        // Kept only for injected compatibility registries used by extensions.
+        const borrowed = plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary");
+        const sourceRootPath = plan.source?.canonicalLocation ?? "";
+        return Array.from(new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])])).map((rootPath) => ({
+            rootPath,
+            sourceRootPath,
+            disposition: borrowed ? "borrowed" : "owned",
+        }));
+    }
+
+    private async parImportRegistrationProvenance(conversionEvidencePath: string | undefined): Promise<{readonly sourceWorkbookPath?: string; readonly conversionEvidencePath?: string} | undefined> {
+        if (conversionEvidencePath === undefined) return undefined;
+        try {
+            const fs = await import("fs");
+            const evidence = JSON.parse(await fs.promises.readFile(conversionEvidencePath, "utf8")) as {sourceWorkbook?: unknown};
+            return {
+                conversionEvidencePath,
+                ...(typeof evidence.sourceWorkbook === "string" ? {sourceWorkbookPath: evidence.sourceWorkbook} : {}),
+            };
+        } catch {
+            // The artifact result remains authoritative; registration simply
+            // cannot claim provenance it could not inspect.
+            return {conversionEvidencePath};
+        }
     }
 }
 

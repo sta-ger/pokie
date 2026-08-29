@@ -18,6 +18,9 @@ export type StudioArtifactBuildView =
           readonly plan: ArtifactConversionPlan;
           readonly requestedDestinationPath?: string;
           readonly reusedCompatibleProject?: boolean;
+          /** Durable PAR import records, when this artifact was derived from a workbook. */
+          readonly importedBlueprintPath?: string;
+          readonly conversionEvidencePath?: string;
           readonly preflight?: {readonly estimatedItemCount?: string; readonly estimatedBytes?: string; readonly complexityWarning?: string};
       }
     | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}

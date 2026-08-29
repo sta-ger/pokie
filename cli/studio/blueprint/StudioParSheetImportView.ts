@@ -1,4 +1,11 @@
-import type {ParSheetProvenance, ValidationIssue} from "pokie";
+import type {ParSheetImportResult, ParSheetProvenance, ValidationIssue} from "pokie";
+
+// The importer keeps parsed Meta provenance beside its structured facts.  Keep
+// the same parsed value in the draft evidence so Apply -> managed save cannot
+// silently turn a workbook-backed import into provenance-free evidence.
+export type StudioParSheetConversionEvidence = NonNullable<ParSheetImportResult["conversionEvidence"]> & {
+    readonly provenance?: ParSheetProvenance;
+};
 
 // POST /api/home/blueprints/par-import's own DTO -- see StudioBlueprintService.importParSheet()'s own
 // doc comment. "load-error" covers a path that doesn't exist, can't be read as an .xlsx workbook, or
@@ -17,6 +24,10 @@ export type StudioParSheetImportView =
           path: string;
           blueprint: unknown;
           provenance?: ParSheetProvenance;
+          // Applied imports carry this exact structured observation forward
+          // to the managed save, where it becomes the durable sibling
+          // evidence file rather than transient panel-only diagnostics.
+          conversionEvidence: StudioParSheetConversionEvidence;
           errors: ValidationIssue[];
           warnings: ValidationIssue[];
       }

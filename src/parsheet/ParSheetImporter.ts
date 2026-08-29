@@ -28,6 +28,7 @@ import type {WinModelSheetMapping} from "./mapping/WinModelSheetMapping.js";
 import type {ParSheetImporting} from "./ParSheetImporting.js";
 import type {ParSheetImportResult} from "./ParSheetImportResult.js";
 import type {SheetGrid} from "./SheetGrid.js";
+import {cellToText} from "./mapping/sheetCellParsing.js";
 
 // "Manifest"/"Symbols"/"Paytable" are the minimum needed to describe a playable blueprint at all
 // (mirrors GameBlueprint's own required fields); the rest are optional, matching reelStrips/
@@ -40,6 +41,7 @@ export const REQUIRED_SHEETS = ["Manifest", "Symbols", "Paytable"];
 const OPTIONAL_SHEETS = ["ReelStrips", "Paylines", "AvailableBets", "WinModel", "Mechanics", "BetModes", "Meta"];
 const KNOWN_SHEETS = [...REQUIRED_SHEETS, ...OPTIONAL_SHEETS];
 const BLUEPRINT_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
+type ConversionFact = NonNullable<ParSheetImportResult["conversionEvidence"]>["facts"][number];
 
 export class ParSheetImporter implements ParSheetImporting {
     private readonly manifestMapper: ManifestSheetMapping;
@@ -92,10 +94,12 @@ export class ParSheetImporter implements ParSheetImporting {
     public async importFromFile(filePath: string): Promise<ParSheetImportResult> {
         const workbook = await this.readWorkbookOrThrow(filePath);
         const issues: ValidationIssue[] = [];
+        const facts: ConversionFact[] = [];
 
         const sheetsByName = new Map(workbook.worksheets.map((worksheet): [string, ExcelJS.Worksheet] => [worksheet.name, worksheet]));
         for (const name of sheetsByName.keys()) {
             if (!KNOWN_SHEETS.includes(name)) {
+                facts.push({kind: "ignored", code: "parsheet-unknown-sheet", message: `Sheet "${name}" is not a recognized PAR sheet and is ignored.`, details: {sheet: name}});
                 issues.push({
                     code: "parsheet-unknown-sheet",
                     severity: "warning",
@@ -106,6 +110,7 @@ export class ParSheetImporter implements ParSheetImporting {
         }
         for (const name of REQUIRED_SHEETS) {
             if (!sheetsByName.has(name)) {
+                facts.push({kind: "inferredOrDefaulted", code: "parsheet-missing-sheet", message: `Required sheet "${name}" is missing.`, details: {sheet: name}});
                 issues.push({
                     code: "parsheet-missing-sheet",
                     severity: "error",
@@ -117,10 +122,12 @@ export class ParSheetImporter implements ParSheetImporting {
 
         const gridFor = (name: string): SheetGrid => {
             const worksheet = sheetsByName.get(name);
-            return worksheet ? sheetToGrid(worksheet, name, issues) : [];
+            return worksheet ? sheetToGrid(worksheet, name, issues, facts) : [];
         };
 
-        const manifestResult = this.manifestMapper.fromRows(gridFor("Manifest"));
+        const manifestRows = gridFor("Manifest");
+        const manifestResult = this.manifestMapper.fromRows(manifestRows);
+        recordManifestDefaults(manifestRows, facts);
         const symbolsResult = this.symbolsMapper.fromRows(gridFor("Symbols"));
         const paytableResult = this.paytableMapper.fromRows(gridFor("Paytable"));
         issues.push(...manifestResult.issues, ...symbolsResult.issues, ...paytableResult.issues);
@@ -180,7 +187,12 @@ export class ParSheetImporter implements ParSheetImporting {
             }
         }
         let provenance: ParSheetProvenance | undefined;
+        // Keep Meta independently from the mapper grid: mapper input
+        // materializes formula results, whereas durable evidence must retain
+        // the user's original Meta cells verbatim for later inspection.
+        let metaSheet: readonly (readonly unknown[])[] | undefined;
         if (sheetsByName.has("Meta")) {
+            metaSheet = rawSheetToGrid(sheetsByName.get("Meta")!);
             provenance = this.provenanceMapper.fromRows(gridFor("Meta")).value;
             issues.push(...this.verifyProvenance(provenance, blueprint));
         } else {
@@ -193,7 +205,28 @@ export class ParSheetImporter implements ParSheetImporting {
 
         issues.push(...this.validator.validate(blueprint));
 
-        return {blueprint, provenance, issues};
+        // Mapper diagnostics are the only place some parsers report that an
+        // input was discarded (for example an unknown Key/column or a
+        // duplicate row). Promote those observations into explicit evidence;
+        // leaving them as generic diagnostics would let a matching Meta hash
+        // incorrectly advertise an edited workbook as lossless.
+        for (const issue of issues) {
+            if (!facts.some((fact) => fact.code === issue.code && fact.message === issue.message)) {
+                facts.push({kind: conversionFactKindForIssue(issue), code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})});
+            }
+        }
+        // A canonical export has matching Meta provenance and no importer
+        // transformation.  Validation warnings can describe the playable
+        // model (for example a payout recommendation) without changing any
+        // PAR-representable field; ignored/formula/default facts are the
+        // actual loss boundary. Errors remain ineligible even if a malformed
+        // workbook happens to carry a matching hash.
+        const importedBlueprintHash = computeBlueprintHash(blueprint);
+        const provenanceHashMatches = provenance?.blueprintHash === importedBlueprintHash;
+        const losslessEligible = provenanceHashMatches &&
+            !issues.some((issue) => issue.severity === "error") &&
+            !facts.some((fact) => fact.kind === "ignored" || fact.kind === "formulaMaterialized" || fact.kind === "inferredOrDefaulted");
+        return {blueprint, provenance, issues, conversionEvidence: {metaSheet, facts, losslessEligible, importedBlueprintHash, provenanceHashMatches}};
     }
 
     // Wraps whatever readWorkbook throws (ExcelJS's own raw errors -- e.g. "Can't find end of central
@@ -282,6 +315,50 @@ export class ParSheetImporter implements ParSheetImporting {
     }
 }
 
+/**
+ * Mapper contracts intentionally use ValidationIssue for both validation and
+ * conversion reporting. Every PAR mapper observation is conversion evidence:
+ * an invalid, missing, duplicate, or unsupported cell either changes what
+ * reaches the model or prevents it from being recovered. Ordinary Blueprint
+ * validation and Meta provenance verification remain diagnostics because
+ * they do not themselves transform workbook input.
+ */
+function conversionFactKindForIssue(issue: ValidationIssue): ConversionFact["kind"] {
+    return issue.code.startsWith("parsheet-") && !issue.code.startsWith("parsheet-provenance-")
+        ? "ignored"
+        : "diagnostic";
+}
+
+// ManifestSheetMapper intentionally supplies a structurally usable model even
+// for a hand-edited workbook with missing cells (the validator then describes
+// why that model is invalid).  Preserve each such materialization as an
+// explicit conversion fact: users must never have to infer a default from a
+// later generic validation error.
+function recordManifestDefaults(rows: SheetGrid, facts: ConversionFact[]): void {
+    const [header, ...dataRows] = rows;
+    const keyIndex = (header ?? []).findIndex((cell) => cellToText(cell)?.toLowerCase() === "key");
+    const valueIndex = (header ?? []).findIndex((cell) => cellToText(cell)?.toLowerCase() === "value");
+    const values = new Map<string, unknown>();
+    if (keyIndex >= 0 && valueIndex >= 0) {
+        for (const row of dataRows) {
+            const key = cellToText(row[keyIndex]);
+            if (key !== undefined) values.set(key.toLowerCase(), row[valueIndex]);
+        }
+    }
+    for (const [key, value] of [["Id", ""], ["Name", ""], ["Version", ""], ["Reels", 0], ["Rows", 0]] as const) {
+        const raw = values.get(key.toLowerCase());
+        const missing = raw === undefined || cellToText(raw) === undefined || (key === "Reels" || key === "Rows") && Number.isNaN(Number(cellToText(raw)));
+        if (missing) {
+            facts.push({
+                kind: "inferredOrDefaulted",
+                code: "parsheet-manifest-defaulted-value",
+                message: `Sheet "Manifest" has no usable "${key}" value; imported Blueprint uses ${JSON.stringify(value)}.`,
+                details: {sheet: "Manifest", key, value},
+            });
+        }
+    }
+}
+
 // Converts one worksheet to a plain SheetGrid, same as before, but also reports a "parsheet-formula-cell"
 // warning (once per sheet, counting every affected cell) whenever cellValueToPrimitive silently downgraded
 // a formula cell to its last computed result -- see that function's own doc comment for why the formula
@@ -289,7 +366,7 @@ export class ParSheetImporter implements ParSheetImporting {
 // spreadsheet template can easily have dozens of formula cells (e.g. a "Total" column), and a separate
 // issue per cell would drown out every other diagnostic without adding information a reader couldn't
 // already get by opening the workbook itself.
-function sheetToGrid(worksheet: ExcelJS.Worksheet, sheetName: string, issues: ValidationIssue[]): SheetGrid {
+function sheetToGrid(worksheet: ExcelJS.Worksheet, sheetName: string, issues: ValidationIssue[], facts: ConversionFact[]): SheetGrid {
     const grid: SheetGrid = [];
     let formulaCellCount = 0;
     worksheet.eachRow({includeEmpty: true}, (row) => {
@@ -303,6 +380,12 @@ function sheetToGrid(worksheet: ExcelJS.Worksheet, sheetName: string, issues: Va
         grid.push(cells);
     });
     if (formulaCellCount > 0) {
+        facts.push({
+            kind: "formulaMaterialized",
+            code: "parsheet-formula-cell",
+            message: `Sheet "${sheetName}" has ${formulaCellCount} cell(s) containing a formula; its last computed result was imported as a plain value.`,
+            details: {sheet: sheetName, count: formulaCellCount},
+        });
         issues.push({
             code: "parsheet-formula-cell",
             severity: "warning",
@@ -343,4 +426,19 @@ function cellValueToPrimitive(value: ExcelJS.CellValue): unknown {
         return value.text;
     }
     return undefined;
+}
+
+function rawSheetToGrid(worksheet: ExcelJS.Worksheet): readonly (readonly unknown[])[] {
+    const grid: unknown[][] = [];
+    worksheet.eachRow({includeEmpty: true}, (row) => {
+        const cells: unknown[] = [];
+        row.eachCell({includeEmpty: true}, (cell) => {
+            const value = cell.value;
+            // ExcelJS values are plain data, but clone them so callers cannot
+            // observe a later workbook mutation through this import result.
+            cells.push(value !== null && typeof value === "object" ? JSON.parse(JSON.stringify(value)) : value);
+        });
+        grid.push(cells);
+    });
+    return grid;
 }

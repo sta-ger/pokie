@@ -104,6 +104,7 @@ export function computeArtifactInputBindingHash(inputPaths: readonly string[]): 
 }
 
 export type ArtifactConversionStepKind =
+    | "importParWorkbook"
     | "publish"
     | "materializeRuntime"
     | "generateOutcomeLibrary"
@@ -302,9 +303,10 @@ export function describeArtifactConversionPlanDiagnostic(plan: ArtifactConversio
         stakeAdapter: "Stake Engine export", parWorkbook: "PAR workbook", wasm: "POKIE WASM component",
     };
     const targetNames: Readonly<Record<ArtifactTargetType, string>> = {
-        tsPackage: "POKIE game package", outcomeLibrary: "Outcome Library", stakeAdapter: "Stake Engine export", parWorkbook: "PAR workbook",
+        blueprint: "Game Blueprint", tsPackage: "POKIE game package", outcomeLibrary: "Outcome Library", stakeAdapter: "Stake Engine export", parWorkbook: "PAR workbook",
     };
     const prerequisites: Readonly<Record<ArtifactTargetType, {missing: string; next: string}>> = {
+        blueprint: {missing: "a PAR workbook source", next: "Open a PAR workbook, then run `pokie build <path> --target blueprint`."},
         tsPackage: {missing: "a Game Blueprint source", next: "Open a Game Blueprint, then run `pokie build <path> --target tsPackage`."},
         outcomeLibrary: {missing: "a Game Blueprint, POKIE game package, or Outcome Library", next: "Open one of those sources, then run `pokie build <path> --target outcomeLibrary`."},
         stakeAdapter: {missing: "a Game Blueprint, POKIE game package, Outcome Library, or Stake Engine export", next: "Open one of those sources, then run `pokie build <path> --target stakeAdapter`."},
@@ -365,6 +367,7 @@ export function verifyManagedOutcomeCandidate(
 }
 
 const TARGET_CAPABILITIES: Readonly<Record<ArtifactTargetType, readonly ProjectCapability[]>> = {
+    blueprint: PROJECT_TYPE_CAPABILITIES.blueprint,
     tsPackage: PROJECT_TYPE_CAPABILITIES.tsPackage,
     outcomeLibrary: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
     stakeAdapter: PROJECT_TYPE_CAPABILITIES.stakeAdapter,
@@ -372,13 +375,14 @@ const TARGET_CAPABILITIES: Readonly<Record<ArtifactTargetType, readonly ProjectC
 };
 
 const DESTINATION_KIND: Readonly<Record<ArtifactTargetType, "file" | "directory">> = {
+    blueprint: "file",
     tsPackage: "directory",
     outcomeLibrary: "directory",
     stakeAdapter: "directory",
     parWorkbook: "file",
 };
 
-const TARGETS: readonly ArtifactTargetType[] = ["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"];
+const TARGETS: readonly ArtifactTargetType[] = ["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"];
 
 // A target capability alone is insufficient: a Blueprint can publish a PAR workbook because it retains
 // the game model, while an already-published workbook can only republish itself.  These are the actual
@@ -388,7 +392,7 @@ const EDGE_CAPABILITIES: Readonly<Partial<Record<ProjectType, Readonly<Partial<R
     tsPackage: {outcomeLibrary: OUTCOME_LIBRARY_GENERATE_CAPABILITY, stakeAdapter: STAKE_ADAPTER_EXPORT_CAPABILITY},
     outcomeLibrary: {outcomeLibrary: OUTCOME_LIBRARY_READ_CAPABILITY, stakeAdapter: STAKE_ADAPTER_EXPORT_CAPABILITY},
     stakeAdapter: {stakeAdapter: STAKE_ADAPTER_EXPORT_CAPABILITY},
-    parWorkbook: {parWorkbook: PAR_WORKBOOK_EXCHANGE_CAPABILITY},
+    parWorkbook: {blueprint: PAR_WORKBOOK_EXCHANGE_CAPABILITY, parWorkbook: PAR_WORKBOOK_EXCHANGE_CAPABILITY},
 };
 
 export function resolveArtifactIdentity(project: PokieProject): ArtifactIdentity {
@@ -650,16 +654,16 @@ export class ArtifactConversionPlanner {
         if (sourceKind === "wasm") {
             return unavailable("missing-capability", "WASM components are metadata-only and cannot be converted into a POKIE artifact.", "Inspect the component manifest or use the original recognized source.");
         }
-        if (sourceKind === "parWorkbook" && targetKind !== "parWorkbook") {
-            return unavailable("unsupported-boundary", "A PAR workbook is an exchange snapshot, not a native bundle or game model.", "Import the workbook into its supported authoring workflow before building another artifact.");
+        if (sourceKind === "parWorkbook") {
+            return this.planParWorkbookSource(source, target, preflight, options);
         }
         if (sourceKind === "stakeAdapter" && targetKind !== "stakeAdapter") {
             return unavailable("unsupported-boundary", "A Stake Engine export is read-only until imported and cannot supply runtime or game-model data.", "Import it into a supported source workflow before requesting this target.");
         }
-        if (sourceKind === "outcomeLibrary" && (targetKind === "tsPackage" || targetKind === "parWorkbook")) {
+        if (sourceKind === "outcomeLibrary" && (targetKind === "blueprint" || targetKind === "tsPackage" || targetKind === "parWorkbook")) {
             return unavailable("missing-data", "An Outcome Library does not preserve the game model required for this target.", "Use the original Game Blueprint or POKIE package.");
         }
-        if (sourceKind === "tsPackage" && (targetKind === "tsPackage" || targetKind === "parWorkbook")) {
+        if (sourceKind === "tsPackage" && (targetKind === "blueprint" || targetKind === "tsPackage" || targetKind === "parWorkbook")) {
             return unavailable("missing-data", "A POKIE package is not a Game Blueprint and cannot be converted into this target.", "Use the original Game Blueprint.");
         }
         if (sourceKind === "blueprint" && targetKind === "stakeAdapter") {
@@ -673,11 +677,59 @@ export class ArtifactConversionPlanner {
         }
         if ((sourceKind === "blueprint" && (targetKind === "tsPackage" || targetKind === "parWorkbook")) ||
             (sourceKind === "outcomeLibrary" && (targetKind === "outcomeLibrary" || targetKind === "stakeAdapter")) ||
-            (sourceKind === "stakeAdapter" && targetKind === "stakeAdapter") ||
-            (sourceKind === "parWorkbook" && targetKind === "parWorkbook")) {
+            (sourceKind === "stakeAdapter" && targetKind === "stakeAdapter")) {
             return this.planned(source, target, preflight, [{kind: "publish", input: source, output: target, choice: "publish", estimatedWork: "publish", ...(preflight.losses.length === 0 ? {} : {losses: preflight.losses})}]);
         }
         return unavailable("missing-data", `No conversion edge from ${sourceKind} to ${targetKind} preserves the data this target requires.`, "Use a recognized source that retains the required game-model, runtime, or exchange data.");
+    }
+
+    /** PAR is the only exchange source that canonically reconstructs a game model. */
+    private planParWorkbookSource(
+        source: ArtifactIdentity,
+        target: ArtifactTargetIdentity,
+        preflight: ArtifactConversionPreflight,
+        options: ArtifactConversionPlanningOptions,
+    ): ArtifactConversionPlan {
+        if (target.kind === "parWorkbook") {
+            return this.planned(source, target, preflight, [{kind: "publish", input: source, output: target, choice: "publish", estimatedWork: "publish"}]);
+        }
+        const importedBlueprint: ArtifactIdentity = {
+            kind: "blueprint",
+            capabilities: TARGET_CAPABILITIES.blueprint,
+            recognitionProvenance: "PAR workbook import intermediate",
+            configurationProvenance: source.configurationProvenance,
+            // This is not an implementation-private temporary path.  A PAR
+            // conversion keeps its imported model and evidence under the
+            // terminal artifact, so preview clients can name the exact
+            // durable intermediate before publication begins.
+            ...(target.canonicalLocation === undefined
+                ? {}
+                : {canonicalLocation: path.join(target.canonicalLocation, ".pokie", "par-import", "imported.blueprint.json")}),
+        };
+        const importStep: ArtifactConversionStep = {
+            kind: "importParWorkbook", input: source, output: target.kind === "blueprint" ? target : importedBlueprint,
+            choice: "materialize", estimatedWork: "read",
+            losses: ["PAR import retains source provenance and diagnostics; inferred, defaulted, ignored, or formula-derived values remain inspectable conversion evidence."],
+        };
+        if (target.kind === "blueprint") return this.planned(source, target, preflight, [importStep]);
+        if (target.kind === "tsPackage") {
+            return this.planned(source, target, preflight, [importStep, {kind: "publish", input: importedBlueprint, output: target, choice: "publish", estimatedWork: "publish"}]);
+        }
+        const outcomeTarget = target.kind === "outcomeLibrary"
+            ? target
+            : this.targetIdentity(
+                "outcomeLibrary",
+                target.canonicalLocation === undefined
+                    ? undefined
+                    : path.join(target.canonicalLocation, ".pokie", "par-import", "outcome-library"),
+                options.generationSemantics,
+                options.sampleCount,
+                options.sampleSeed,
+            );
+        const outcomePlan = this.planOutcomeFromRuntime(importedBlueprint, outcomeTarget, this.preflight("outcomeLibrary", "blueprint", options.generationSemantics), options);
+        if (target.kind === "outcomeLibrary") return this.planned(source, target, preflight, [importStep, ...outcomePlan.steps], outcomePlan.managedOutcome);
+        const prerequisite = outcomePlan.steps[outcomePlan.steps.length - 1]?.output ?? outcomeTarget;
+        return this.planned(source, target, preflight, [importStep, ...outcomePlan.steps, {kind: "publish", input: prerequisite, output: target, choice: "publish", estimatedWork: "publish"}], outcomePlan.managedOutcome);
     }
 
     /**
@@ -686,6 +738,7 @@ export class ArtifactConversionPlanner {
      * execution sequencing with conversions while keeping the non-native
      * boundary visible to all preflight consumers.
      */
+    // eslint-disable-next-line @typescript-eslint/member-ordering -- this public compatibility API stays beside its planner helpers
     public planRawOutcomeLibraryJsonPublication(source: ArtifactIdentity, destinationPath?: string): ArtifactFilePublicationPlan {
         const target: ArtifactFilePublicationIdentity = {
             kind: "rawOutcomeLibraryJson",

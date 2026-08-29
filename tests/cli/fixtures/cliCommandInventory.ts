@@ -94,7 +94,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         name: "build",
         description:
             'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- the ' +
-            "supported source-to-target matrix includes GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter/parWorkbook, " +
+            "supported source-to-target matrix includes PAR workbook -> Blueprint/tsPackage/outcomeLibrary/stakeAdapter/parWorkbook; GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter/parWorkbook, " +
             "tsPackage -> outcomeLibrary/stakeAdapter, outcomeLibrary -> outcomeLibrary/stakeAdapter, and same-type " +
             'republish for stakeAdapter/parWorkbook (for a first random game instead, see "pokie ' +
             'create --random"). --dry-run validates and previews without writing anything.',
@@ -395,7 +395,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         verbs: [
             {
                 verb: undefined,
-                usage: "Usage: pokie import <source> [--out <path>] [--format json]",
+                usage: "Usage: pokie import <source> [--out <path>] [--format json] [--dry-run]",
                 positionals: ["source"],
                 options: [],
             },
@@ -504,7 +504,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         verbs: [
             {
                 verb: "import",
-                usage: "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]",
+                usage: "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json] [--dry-run]",
                 positionals: ["input.xlsx"],
                 options: [
                     // defaultValue "input.blueprint.json": defaultBlueprintPath("input.xlsx") resolves there, observed
@@ -513,15 +513,19 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     // --format has no dependency seam (json vs printImportSummary; writeFile runs either way and the
                     // "Wrote blueprint" line is guarded by `format !== "json"`) -- observed via stdout shape.
                     {flag: "--format", required: false, kind: "validated", defaultValue: "summary", acceptedValue: "json"},
+                    {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
             },
             {
                 verb: "export",
-                usage: "Usage: pokie par export <config.json> [--out <output.xlsx>]",
+                usage: "Usage: pokie par export <config.json> [--out <output.xlsx>] [--dry-run]",
                 positionals: ["config.json"],
                 // defaultValue "config.par.xlsx": defaultParSheetPath("config.json") resolves there, observed at
                 // exporter.exportToFile's own outPath argument.
-                options: [{flag: "--out", required: false, kind: "unvalidated", defaultValue: "config.par.xlsx", acceptedValue: "custom-output.xlsx"}],
+                options: [
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "config.par.xlsx", acceptedValue: "custom-output.xlsx"},
+                    {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
+                ],
             },
         ],
     },
@@ -786,9 +790,10 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]\n" +
             "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
-            "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, " +
-            "outcomeLibrary, stakeAdapter, or parWorkbook; tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> " +
-            "outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; parWorkbook -> parWorkbook.",
+            "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, outcomeLibrary, " +
+            "stakeAdapter, or PAR workbook; PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or PAR workbook; " +
+            "tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; " +
+            "parWorkbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or parWorkbook.",
     },
     {
         // --target is checked (and throws) before "config.json" is ever resolved -- see
@@ -800,7 +805,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["config.json"],
         expectedExitCode: 1,
         expectedError:
-            "--target is required. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.\n\n" +
+            "--target is required. --target must be one of: blueprint, tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.\n\n" +
             "Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]",
     },
     {
@@ -809,7 +814,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--target rejects an unknown value",
         args: ["config.json", "--target", "bogus"],
         expectedExitCode: 1,
-        expectedError: 'Unknown --target "bogus". --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.',
+        expectedError: 'Unknown --target "bogus". --target must be one of: blueprint, tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.',
     },
     {
         // Placed before every other valid case so it wins the accepted-value lookup for --target ("tsPackage")
@@ -1517,7 +1522,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "missing <source>",
         args: [],
         expectedExitCode: 1,
-        expectedError: "Usage: pokie import <source> [--out <path>] [--format json]",
+        expectedError: "Usage: pokie import <source> [--out <path>] [--format json] [--dry-run]",
     },
     {
         command: "import",
@@ -2018,8 +2023,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: [],
         expectedExitCode: 1,
         expectedError:
-            "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]\n" +
-            "   or: pokie par export <config.json> [--out <output.xlsx>]",
+            "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json] [--dry-run]\n" +
+            "   or: pokie par export <config.json> [--out <output.xlsx>] [--dry-run]",
     },
     {
         command: "par",
@@ -2027,7 +2032,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "import missing <input.xlsx>",
         args: ["import"],
         expectedExitCode: 1,
-        expectedError: "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]",
+        expectedError: "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json] [--dry-run]",
     },
     {
         command: "par",
@@ -2036,7 +2041,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["import", "input.xlsx", "--format", "xml"],
         expectedExitCode: 1,
         expectedError:
-            '--format only supports "json". Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]',
+            '--format only supports "json". Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json] [--dry-run]',
     },
     {
         command: "par",
@@ -2056,11 +2061,19 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "par",
+        kind: "valid",
+        label: "import <input.xlsx> --dry-run (accepted non-writing preview)",
+        args: ["import", "input.xlsx", "--dry-run"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "par",
         kind: "invalid",
         label: "export missing <config.json>",
         args: ["export"],
         expectedExitCode: 1,
-        expectedError: "Usage: pokie par export <config.json> [--out <output.xlsx>]",
+        expectedError: "Usage: pokie par export <config.json> [--out <output.xlsx>] [--dry-run]",
     },
     {
         command: "par",
@@ -2075,6 +2088,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "export <config.json> --out <file> (accepted --out value)",
         args: ["export", "config.json", "--out", "custom-output.xlsx"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "par",
+        kind: "valid",
+        label: "export <config.json> --dry-run (accepted non-writing preview)",
+        args: ["export", "config.json", "--dry-run"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -2613,7 +2634,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--target given with no value",
         args: ["config.json", "--target"],
         expectedExitCode: 1,
-        expectedError: "--target requires a value. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.",
+        expectedError: "--target requires a value. --target must be one of: blueprint, tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.",
     },
     {
         command: "build",
@@ -2927,7 +2948,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "import --out given with no value",
         args: ["import", "input.xlsx", "--format", "json", "--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a file path. Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]",
+        expectedError: "--out requires a file path. Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json] [--dry-run]",
     },
     {
         command: "par",
@@ -2935,7 +2956,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "import --format given with no value",
         args: ["import", "input.xlsx", "--format"],
         expectedExitCode: 1,
-        expectedError: "--format only supports \"json\". Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]",
+        expectedError: "--format only supports \"json\". Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json] [--dry-run]",
     },
     {
         command: "par",
@@ -2943,7 +2964,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "export --out given with no value",
         args: ["export", "config.json", "--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a file path. Usage: pokie par export <config.json> [--out <output.xlsx>]",
+        expectedError: "--out requires a file path. Usage: pokie par export <config.json> [--out <output.xlsx>] [--dry-run]",
     },
 
     // --- reel: missing-value cases ---

@@ -1,4 +1,4 @@
-export type SaveManagedBlueprintRequestInput = {blueprint?: unknown; sourceWorkbookPath?: unknown};
+export type SaveManagedBlueprintRequestInput = {blueprint?: unknown; sourceWorkbookPath?: unknown; conversionEvidence?: unknown};
 
 export type ValidatedSaveManagedBlueprintRequest = {blueprint: unknown; sourceWorkbookPath?: string};
 
@@ -14,5 +14,9 @@ export function validateSaveManagedBlueprintRequest(input: SaveManagedBlueprintR
     if (input.sourceWorkbookPath !== undefined && typeof input.sourceWorkbookPath !== "string") {
         throw new Error('"sourceWorkbookPath" must be a string when given.');
     }
+    // Conversion evidence is server-authored at PAR Apply time and looked up
+    // by StudioBlueprintService from its durable prepared record.  Accepting
+    // this legacy client field would let a crafted request forge provenance.
+    // Ignore it for wire compatibility; it is never trusted or persisted.
     return {blueprint: input.blueprint, sourceWorkbookPath: input.sourceWorkbookPath};
 }

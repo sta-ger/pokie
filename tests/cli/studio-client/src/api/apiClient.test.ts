@@ -393,8 +393,23 @@ describe("studio-client apiClient", () => {
     });
 
     describe("saveManagedBlueprint", () => {
-        it("POSTs only the blueprint (no path) and returns the save-managed result", async () => {
-            const body = {status: "ok", path: "/POKIE Projects/a/blueprint.json", name: "a"};
+        it("POSTs only browser-owned Blueprint provenance and preserves the server-authored evidence path", async () => {
+            const body = {
+                status: "ok",
+                path: "/POKIE Projects/a/blueprint.json",
+                name: "a",
+                conversionEvidencePath: "/POKIE Projects/a/blueprint.json.conversion-evidence.json",
+                registeredProject: {
+                    location: "/POKIE Projects/a/blueprint.json",
+                    name: "a",
+                    type: "blueprint",
+                    capabilities: [],
+                    origin: "managed",
+                    lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                    status: "ok",
+                    conversionEvidencePath: "/POKIE Projects/a/blueprint.json.conversion-evidence.json",
+                },
+            };
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
 
             const result = await saveManagedBlueprint(fetchImpl, {manifest: {id: "a"}});
@@ -426,7 +441,20 @@ describe("studio-client apiClient", () => {
 
     describe("importParSheet", () => {
         it("POSTs the path and returns the import result", async () => {
-            const body = {status: "ok", path: "/a/in.par.xlsx", blueprint: {manifest: {id: "a"}}, errors: [], warnings: []};
+            const body = {
+                status: "ok",
+                path: "/a/in.par.xlsx",
+                blueprint: {manifest: {id: "a"}},
+                conversionEvidence: {
+                    metaSheet: [["Key", "Value"], ["Blueprint Hash", "sha256:abc"]],
+                    facts: [],
+                    losslessEligible: true,
+                    importedBlueprintHash: "sha256:abc",
+                    provenanceHashMatches: true,
+                },
+                errors: [],
+                warnings: [],
+            };
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
 
             const result = await importParSheet(fetchImpl, "./in.par.xlsx");

@@ -28,10 +28,10 @@ import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDispla
 import {BlueprintFileWriteResult, writeBlueprintFileAtomically} from "./internal/writeBlueprintFileAtomically.js";
 
 const USAGE =
-    "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]\n" +
-    "   or: pokie par export <config.json> [--out <output.xlsx>]";
-const IMPORT_USAGE = "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]";
-const EXPORT_USAGE = "Usage: pokie par export <config.json> [--out <output.xlsx>]";
+    "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json] [--dry-run]\n" +
+    "   or: pokie par export <config.json> [--out <output.xlsx>] [--dry-run]";
+const IMPORT_USAGE = "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json] [--dry-run]";
+const EXPORT_USAGE = "Usage: pokie par export <config.json> [--out <output.xlsx>] [--dry-run]";
 
 type ImportFormat = "summary" | "json";
 type BlueprintFileWriting = (filePath: string, contents: string) => void | BlueprintFileWriteResult;
@@ -58,6 +58,7 @@ export class ParCommand implements CliCommandHandling {
     private readonly checkDestination: ParSheetDestinationChecking;
     private readonly registerImport: ParImportRegistering | undefined;
     private readonly planner = new ArtifactConversionPlanner();
+    private readonly registry: ArtifactBuilderRegistry;
 
     constructor(
         pokieVersion: string,
@@ -75,6 +76,7 @@ export class ParCommand implements CliCommandHandling {
         checkDestination: ParSheetDestinationChecking = (sourcePath, destinationPath) =>
             new ArtifactBuilderRegistry(pokieVersion).checkDestination("parWorkbook", destinationPath, sourcePath),
         registerImport: ParImportRegistering | undefined = undefined,
+        registry: ArtifactBuilderRegistry = new ArtifactBuilderRegistry(pokieVersion),
     ) {
         this.importer = importer;
         this.exporter = exporter;
@@ -83,6 +85,7 @@ export class ParCommand implements CliCommandHandling {
         this.resolveProject = resolveProject;
         this.checkDestination = checkDestination;
         this.registerImport = registerImport;
+        this.registry = registry;
     }
 
     public getName(): string {
@@ -191,11 +194,22 @@ export class ParCommand implements CliCommandHandling {
                 }
                 return "json";
             }, "summary" as ImportFormat)
-            .action(async (inputPath: string, excess: string[], options: {out?: string; format: ImportFormat}) => {
+            .option("--dry-run", "preview the prepared import without writing anything")
+            .action(async (inputPath: string, excess: string[], options: {out?: string; format: ImportFormat; dryRun?: boolean}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${IMPORT_USAGE}`);
                 }
                 const outPath = options.out ?? defaultBlueprintPath(inputPath);
+                if (options.dryRun && this.usesDefaultRegistryLifecycle()) {
+                    const source = await this.prepareImportSource(inputPath);
+                    const plan = await this.registry.preparePlan(source, "blueprint", {destinationPath: outPath});
+                    await this.registry.validate("blueprint", source, plan);
+                    console.log(`Dry run -- would import PAR workbook "${source.rootPath}" to "${outPath}" (file destination). No files written.`);
+                    this.printPreparedPlan(plan);
+                    console.log(`Evidence: generated beside the imported Blueprint at "${outPath}.conversion-evidence.json"; lossless eligibility is determined from the workbook's Meta/hash and explicit import facts.`);
+                    exitCodeRef.value = 0;
+                    return;
+                }
                 exitCodeRef.value = await this.executeImport(inputPath, outPath, options.format);
             });
 
@@ -205,11 +219,23 @@ export class ParCommand implements CliCommandHandling {
             .argument("<config.json>", "an existing GameBlueprint JSON config")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--out <output.xlsx>", "output path (default: <config.json> with a .par.xlsx extension)")
-            .action(async (blueprintPath: string, excess: string[], options: {out?: string}) => {
+            .option("--dry-run", "preview the prepared export without writing anything")
+            .action(async (blueprintPath: string, excess: string[], options: {out?: string; dryRun?: boolean}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${EXPORT_USAGE}`);
                 }
                 const outPath = options.out ?? defaultParSheetPath(blueprintPath);
+                if (options.dryRun) {
+                    const prepared = this.prepareDescriptorExportOperation(blueprintPath, outPath);
+                    await prepared.validate();
+                    const materialization = prepareBlueprintForParSheetExport(this.loadBlueprint(blueprintPath));
+                    console.log(`Dry run -- would export PAR workbook "${blueprintPath}" to "${outPath}" (file destination). No files written.`);
+                    this.printPreparedPlan(prepared.plan);
+                    for (const issue of materialization.issues.filter((issue) => issue.severity !== "error")) {
+                        console.log(`Materialization boundary: ${issue.code}: ${issue.message}`);
+                    }
+                    return;
+                }
                 exitCodeRef.value = await this.executeExport(blueprintPath, outPath);
             });
 
@@ -228,6 +254,49 @@ export class ParCommand implements CliCommandHandling {
             // `pokie import`: bind the reader and atomic writer to one prepared
             // exchange-import operation before either can run.
             const source = await this.prepareImportSource(inputPath);
+            if (this.usesDefaultRegistryLifecycle()) {
+                const plan = await this.registry.preparePlan(source, "blueprint", {destinationPath: outPath});
+                const cancellation = createCliImportCancellation();
+                let result;
+                try {
+                    result = await this.registry.executePlan(plan, source, outPath, {signal: cancellation.signal});
+                } finally {
+                    cancellation.cleanup();
+                }
+                const evidence = JSON.parse(await fs.promises.readFile(result.conversionEvidencePath!, "utf8")) as {
+                    provenance?: unknown;
+                    metaSheet?: unknown;
+                    issues?: ValidationIssue[];
+                    facts?: unknown;
+                    losslessEligible?: boolean;
+                    importedBlueprintHash?: string;
+                    provenanceHashMatches?: boolean;
+                };
+                if (format === "json") {
+                    // Keep the documented importer JSON shape even though the
+                    // shared registry owns durable publication.  Read only
+                    // the just-published operation-owned records; do not
+                    // re-import the workbook after the prepared plan ran.
+                    console.log(JSON.stringify({
+                        blueprint: JSON.parse(await fs.promises.readFile(result.outputPath, "utf8")),
+                        provenance: evidence.provenance,
+                        issues: evidence.issues ?? [],
+                        conversionEvidence: {
+                            metaSheet: evidence.metaSheet,
+                            facts: evidence.facts ?? [],
+                            losslessEligible: evidence.losslessEligible ?? false,
+                            importedBlueprintHash: evidence.importedBlueprintHash,
+                            provenanceHashMatches: evidence.provenanceHashMatches ?? false,
+                        },
+                    }, null, 4));
+                    return 0;
+                }
+                for (const issue of evidence.issues ?? []) {
+                    console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
+                }
+                console.log(`Imported "${source.rootPath}" to "${result.outputPath}" with conversion evidence "${result.conversionEvidencePath}".`);
+                return 0;
+            }
             const plan = this.planner.planImportOutput(source, "blueprint", outPath);
             return this.executeImport(inputPath, outPath, format, {source, plan});
         }
@@ -249,6 +318,21 @@ export class ParCommand implements CliCommandHandling {
             cleanup: () => cancellation.cleanup(),
         });
         return this.reportAndPublishImport(inputPath, outPath, format, execution.read, execution.published, undefined);
+    }
+
+    private usesDefaultRegistryLifecycle(): boolean {
+        return this.importer instanceof ParSheetImporter && this.writeFile === writeBlueprintFileAtomically;
+    }
+
+    private printPreparedPlan(plan: import("pokie").ArtifactConversionPlan): void {
+        console.log(`Conversion plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}.`);
+        console.log(`Final destination: ${plan.target.canonicalLocation ?? "selected destination"} (${plan.preflight.destinationKind}).`);
+        for (const step of plan.steps) {
+            console.log(`Intermediate: ${step.choice} ${step.output.kind}${step.output.canonicalLocation === undefined ? "" : ` at ${step.output.canonicalLocation}`}.`);
+        }
+        const parImportLosses = plan.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []);
+        if (parImportLosses.length > 0) console.log(`PAR import boundary: ${parImportLosses.join(" ")}`);
+        if (plan.preflight.losses.length > 0) console.log(`Data boundary: ${plan.preflight.losses.join(" ")}`);
     }
 
     private async prepareImportSource(inputPath: string): Promise<PokieProject> {

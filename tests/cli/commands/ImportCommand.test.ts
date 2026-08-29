@@ -87,6 +87,25 @@ describe("ImportCommand", () => {
         }
     });
 
+    it("previews a Stake import without publishing its destination", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-import-command-stake-dry-run-test-"));
+        const stakeDir = path.join(workDir, "stake");
+        const importedDir = path.join(workDir, "imported");
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const library = buildStakeEngineTestLibrary({libraryId: "generic-import-dry-run", betMode: "base", stake: 1});
+            await new StakeEngineExporter("1.3.0").exportToDirectory([{modeName: "base", cost: 1, library}], stakeDir);
+
+            await expect(new ImportCommand("1.3.0").run([stakeDir, "--out", importedDir, "--dry-run"])).resolves.toBe(0);
+
+            expect(fs.existsSync(importedDir)).toBe(false);
+            expect(logSpy.mock.calls.map(([line]) => String(line)).join("\n")).toContain("No files written");
+        } finally {
+            logSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("rejects an unsupported public import format before creating a Stake destination", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-import-command-format-test-"));
         const stakeDir = path.join(workDir, "stake");

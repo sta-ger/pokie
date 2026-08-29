@@ -33,6 +33,14 @@ const IMPORTED_BLUEPRINT_B = {
     paytable: {C: {2: 7}},
 };
 
+const CONVERSION_EVIDENCE = {
+    metaSheet: [["Key", "Value"], ["Blueprint Hash", "sha256:abc"]],
+    facts: [],
+    losslessEligible: true,
+    importedBlueprintHash: "sha256:abc",
+    provenanceHashMatches: true,
+};
+
 async function goToImportStep(): Promise<void> {
     await screen.findByText("PAR Sheet Import / Export");
 }
@@ -47,6 +55,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
                     path: "/games/in.par.xlsx",
                     blueprint: IMPORTED_BLUEPRINT,
                     provenance: {pokieVersion: "1.2.0", exportedAt: "2026-01-01", source: "blueprint.json"},
+                    conversionEvidence: CONVERSION_EVIDENCE,
                     errors: [],
                     warnings: [],
                 });
@@ -99,6 +108,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
                     status: "ok",
                     path: "/games/in.par.xlsx",
                     blueprint: IMPORTED_BLUEPRINT,
+                    conversionEvidence: {...CONVERSION_EVIDENCE, losslessEligible: false},
                     errors: [],
                     warnings: [{code: "parsheet-provenance-missing", severity: "warning", message: 'This file has no "Meta" sheet.'}],
                 });
@@ -151,6 +161,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
                     status: "ok",
                     path: "/games/in.par.xlsx",
                     blueprint: IMPORTED_BLUEPRINT,
+                    conversionEvidence: CONVERSION_EVIDENCE,
                     errors: [{code: "parsheet-missing-sheet", severity: "error", message: 'Required sheet "Paytable" is missing.'}],
                     warnings: [],
                 });
@@ -200,7 +211,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => {
             if (url === IMPORT_URL) {
-                return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
+                return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, conversionEvidence: CONVERSION_EVIDENCE, errors: [], warnings: []});
             }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
         };
@@ -226,7 +237,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => {
             if (url === IMPORT_URL) {
-                return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
+                return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, conversionEvidence: CONVERSION_EVIDENCE, errors: [], warnings: []});
             }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
         };
@@ -323,7 +334,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => {
             if (url === IMPORT_URL) {
-                return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
+                return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, conversionEvidence: CONVERSION_EVIDENCE, errors: [], warnings: []});
             }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
         };
@@ -347,7 +358,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => {
             if (url === IMPORT_URL) {
-                return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
+                return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, conversionEvidence: CONVERSION_EVIDENCE, errors: [], warnings: []});
             }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
         };

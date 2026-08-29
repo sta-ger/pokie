@@ -80,12 +80,29 @@ export class ExportCommand implements CliCommandHandling {
             console.log(`Dry run -- would export target "${args.target}" from "${project.rootPath}" to "${destination}". No files written.`);
             console.log(`Conversion plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}.`);
             console.log(`Preflight: ${plan.preflight.estimatedWork} work; ${plan.preflight.destinationKind} destination.`);
+            console.log(`Final destination: ${plan.target.canonicalLocation ?? destination}.`);
+            for (const step of plan.steps) console.log(`Intermediate: ${step.choice} ${step.output.kind}${step.output.canonicalLocation ? ` at ${step.output.canonicalLocation}` : ""}.`);
+            if (plan.steps.some((step) => step.kind === "importParWorkbook")) {
+                console.log("Evidence eligibility: determined by durable PAR conversion facts and Meta/hash provenance.");
+            }
+            const parImportLosses = plan.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []);
+            if (parImportLosses.length > 0) console.log(`PAR import boundary: ${parImportLosses.join(" ")}`);
             if (plan.preflight.losses.length > 0) console.log(`Data boundary: ${plan.preflight.losses.join(" ")}`);
             return 0;
         }
         try {
-            const result = await this.registry.executePlan(plan, project, destination);
+            const controller = new AbortController();
+            const onCancel = () => controller.abort();
+            process.once("SIGINT", onCancel);
+            let result;
+            try {
+                result = await this.registry.executePlan(plan, project, destination, {signal: controller.signal});
+            } finally {
+                process.off("SIGINT", onCancel);
+            }
             console.log(`Artifact "${args.target}" exported to "${result.outputPath}".`);
+            if (result.importedBlueprintPath !== undefined) console.log(`Imported Blueprint: ${result.importedBlueprintPath}.`);
+            if (result.conversionEvidencePath !== undefined) console.log(`Conversion evidence: ${result.conversionEvidencePath}.`);
             return 0;
         } catch (error) {
             if (error instanceof Error && (/already exists|source itself|destination/i).test(error.message)) {

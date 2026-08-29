@@ -16,7 +16,7 @@ import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
 import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
-import type {ArtifactConfigurationProvenance} from "./ArtifactConversionPlanner.js";
+import {computeArtifactInputBindingHash, type ArtifactConfigurationProvenance} from "./ArtifactConversionPlanner.js";
 
 // The one file extension resolve() explicitly rejects rather than silently reporting undefined for — see its
 // ProjectTargetUnsupportedError usage below.
@@ -179,6 +179,7 @@ export class ProjectTargetResolver implements ProjectResolving {
                     manifestIdentity: `${manifest.id}@${manifest.version}`,
                 };
             }
+            if (type === "parWorkbook") return {configurationHash: computeArtifactInputBindingHash([rootPath])};
         } catch {
             // The type adapter has already supplied the authoritative recognition outcome. Missing or
             // malformed optional provenance must fail closed for reuse, not turn into invented metadata.

@@ -1,11 +1,13 @@
 import {
     ArtifactConversionPlanner,
+    ArtifactBuilderRegistry,
     ArtifactBuildConflictError,
     assertPreparedArtifactDestinationAvailable,
     BLUEPRINT_BUILD_CAPABILITY,
     buildGameBuildInfo,
     buildGameModelProjection,
     computeGameBlueprintHash,
+    computeArtifactInputBindingHash,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
@@ -20,6 +22,7 @@ import {
     RandomGameBlueprintGenerating,
     RandomGameBlueprintGenerator,
     RandomGameBlueprintVariantStrategy,
+    PROJECT_TYPE_CAPABILITIES,
     ReelStrip,
     ReelStripAnalyzer,
     ReelStripGenerationSummary,
@@ -43,7 +46,7 @@ import type {StudioBlueprintSaveManagedView} from "./StudioBlueprintSaveManagedV
 import type {StudioBlueprintSaveView} from "./StudioBlueprintSaveView.js";
 import type {StudioBlueprintValidationView} from "./StudioBlueprintValidationView.js";
 import type {StudioParSheetExportView} from "./StudioParSheetExportView.js";
-import type {StudioParSheetImportView} from "./StudioParSheetImportView.js";
+import type {StudioParSheetConversionEvidence, StudioParSheetImportView} from "./StudioParSheetImportView.js";
 import type {StudioReelStripGenerationReelView, StudioReelStripGenerationView} from "./StudioReelStripGenerationView.js";
 
 const outsideStudioRootMessage = (rawPath: string): string =>
@@ -151,6 +154,24 @@ function writeBlueprintAtomically(targetPath: string, blueprint: unknown): void 
     }
 }
 
+function writeJsonAtomically(targetPath: string, value: unknown): void {
+    const temporaryPath = path.join(
+        path.dirname(targetPath),
+        `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
+    );
+    try {
+        fs.writeFileSync(temporaryPath, `${JSON.stringify(value, null, 4)}\n`, {encoding: "utf8", flag: "wx"});
+        fs.renameSync(temporaryPath, targetPath);
+    } catch (error) {
+        try {
+            fs.unlinkSync(temporaryPath);
+        } catch {
+            // Keep the publication failure as the useful error.
+        }
+        throw error;
+    }
+}
+
 // Drives GameBlueprintValidating/GamePackageGenerating/loadGameBlueprint/buildGameBuildInfo/
 // ParSheetImporting/ParSheetExporting — the exact same services `pokie build`/`pokie par import`/
 // `pokie par export` themselves use — directly, for the Blueprint Editor's /api/home/blueprints/*
@@ -174,7 +195,16 @@ export class StudioBlueprintService {
     private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly pathResolver: PokiePathResolver;
     private readonly stagedArtwork = new Map<string, string>();
+    // A PAR Apply is a two-step UI interaction.  This in-memory index is only
+    // a cache of the durable server record below; it is never an authority and
+    // a restarted Studio process can reload the same record.
+    private readonly preparedParImports = new Map<string, StudioParSheetConversionEvidence>();
+    // A managed save chooses a fresh Blueprint path.  Retain the exact files
+    // it copied until registration settles, so a failed registration removes
+    // only this operation's artwork rather than a pre-existing assets folder.
+    private readonly managedSaveArtifacts = new Map<string, {readonly artworkPaths: readonly string[]; readonly directoryCreated: boolean}>();
     private readonly planner = new ArtifactConversionPlanner();
+    private readonly artifactRegistry: ArtifactBuilderRegistry;
 
     constructor(
         pokieVersion: string,
@@ -219,6 +249,7 @@ export class StudioBlueprintService {
         this.randomBlueprintGenerator = randomBlueprintGenerator;
         this.variantRandomBlueprintGenerator = variantRandomBlueprintGenerator;
         this.pathResolver = pathResolver;
+        this.artifactRegistry = new ArtifactBuilderRegistry(pokieVersion);
     }
 
     // Drives the Blueprint Editor's "Generate random" New-flow option via the exact same
@@ -423,7 +454,21 @@ export class StudioBlueprintService {
     // (see StudioServer's own handleBlueprintSaveManaged, which forwards it to
     // StudioProjectRegistrationService.registerManaged). Omitted entirely for an ordinary "first Save" with
     // no PAR import behind it.
-    public saveManaged(blueprint: unknown, sourceWorkbookPath?: string): StudioBlueprintSaveManagedView {
+    public saveManaged(blueprint: unknown): StudioBlueprintSaveManagedView;
+    public saveManaged(blueprint: unknown, sourceWorkbookPath: string, _conversionEvidence?: StudioParSheetConversionEvidence): Promise<StudioBlueprintSaveManagedView>;
+    public saveManaged(blueprint: unknown, sourceWorkbookPath?: string, _conversionEvidence?: StudioParSheetConversionEvidence): StudioBlueprintSaveManagedView | Promise<StudioBlueprintSaveManagedView>;
+    public saveManaged(blueprint: unknown, sourceWorkbookPath?: string, _conversionEvidence?: StudioParSheetConversionEvidence): StudioBlueprintSaveManagedView | Promise<StudioBlueprintSaveManagedView> {
+        // PAR-backed first saves are a real artifact publication, not an
+        // editor-local JSON write with copied diagnostics.  The async branch
+        // below prepares and executes the same byte/destination-bound
+        // Blueprint plan that the CLI uses.  Ordinary draft saves retain the
+        // synchronous editor contract.
+        if (sourceWorkbookPath !== undefined) return this.saveManagedParImport(blueprint, sourceWorkbookPath);
+        return this.saveManagedDraft(blueprint);
+    }
+
+    /** @internal Split out so ordinary editor saves keep their synchronous contract. */
+    public saveManagedDraft(blueprint: unknown): StudioBlueprintSaveManagedView {
         const baseName = deriveManagedBlueprintName(blueprint);
         const destination = resolveAvailableManagedDestination(this.pathResolver, baseName);
         if (destination.status === "invalid-name") {
@@ -433,18 +478,92 @@ export class StudioBlueprintService {
             return {status: "unavailable", error: destination.message};
         }
 
+        const directoryCreated = !fs.existsSync(destination.directory);
+        const artworkPaths: string[] = [];
         try {
             fs.mkdirSync(destination.directory, {recursive: true});
-            this.materializeSymbolArtwork(destination.targetPath, blueprint);
+            artworkPaths.push(...this.materializeSymbolArtwork(destination.targetPath, blueprint));
             writeBlueprintAtomically(destination.targetPath, blueprint);
+            this.managedSaveArtifacts.set(destination.targetPath, {artworkPaths, directoryCreated});
+            return {
+                status: "ok",
+                path: destination.targetPath,
+                name: destination.name,
+                blueprintHash: computeGameBlueprintHash(blueprint),
+            };
+        } catch (error) {
+            this.cleanupManagedSaveArtifacts(destination.targetPath, artworkPaths, directoryCreated);
+            return {status: "error", error: error instanceof Error ? error.message : String(error)};
+        }
+    }
+
+    /**
+     * Publish a PAR Apply through the registry at the final managed path.
+     * The persisted Apply record authorizes the workbook only after its byte
+     * binding still matches; executePlan then independently binds that same
+     * workbook and this newly allocated destination before either file is
+     * published.  Browser evidence is intentionally not an input here.
+     */
+    /** @internal Shared registry publication used by the managed PAR save route. */
+    public async saveManagedParImport(blueprint: unknown, sourceWorkbookPath: string): Promise<StudioBlueprintSaveManagedView> {
+        const trusted = this.loadPreparedParImport(sourceWorkbookPath);
+        if (trusted === undefined) {
+            return {status: "error", error: "The PAR import preparation is unavailable or the workbook changed. Import the workbook again before saving."};
+        }
+        const baseName = deriveManagedBlueprintName(blueprint);
+        const destination = resolveAvailableManagedDestination(this.pathResolver, baseName);
+        if (destination.status === "invalid-name") return {status: "invalid-name", error: destination.message};
+        if (destination.status !== "valid") return {status: "unavailable", error: destination.message};
+
+        const directoryCreated = !fs.existsSync(destination.directory);
+        const artworkPaths: string[] = [];
+        const source = {
+            type: "parWorkbook" as const,
+            rootPath: path.resolve(sourceWorkbookPath),
+            capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+            provenance: "Studio PAR Apply workbook",
+        };
+        try {
+            await fs.promises.mkdir(destination.directory, {recursive: true});
+            const plan = await this.artifactRegistry.preparePlan(source, "blueprint", {destinationPath: destination.targetPath});
+            if (plan.status !== "planned") throw new Error(plan.diagnostic?.message ?? "PAR import could not be prepared.");
+            const publication = await this.artifactRegistry.executePlan(plan, source, destination.targetPath);
+            const importedBlueprint = JSON.parse(await fs.promises.readFile(publication.outputPath, "utf8"));
+            const publishedEvidence = JSON.parse(await fs.promises.readFile(publication.conversionEvidencePath!, "utf8")) as {
+                provenance?: StudioParSheetConversionEvidence["provenance"];
+                metaSheet?: StudioParSheetConversionEvidence["metaSheet"];
+                facts?: StudioParSheetConversionEvidence["facts"];
+                losslessEligible?: boolean;
+                importedBlueprintHash?: string;
+                provenanceHashMatches?: boolean;
+            };
+            // The editor may have made legitimate changes after Apply.  Keep
+            // the server-authored PAR provenance, but never retain its
+            // lossless claim once the exact imported model differs.
+            artworkPaths.push(...this.materializeSymbolArtwork(destination.targetPath, blueprint));
+            writeBlueprintAtomically(destination.targetPath, blueprint);
+            writeJsonAtomically(publication.conversionEvidencePath!, {
+                schemaVersion: 1,
+                sourceWorkbook: source.rootPath,
+                provenance: publishedEvidence.provenance ?? trusted.provenance,
+                metaSheet: publishedEvidence.metaSheet ?? trusted.metaSheet,
+                facts: publishedEvidence.facts ?? trusted.facts,
+                losslessEligible: (publishedEvidence.losslessEligible ?? trusted.losslessEligible) &&
+                    computeGameBlueprintHash(importedBlueprint) === computeGameBlueprintHash(blueprint),
+                importedBlueprintHash: publishedEvidence.importedBlueprintHash ?? trusted.importedBlueprintHash,
+                provenanceHashMatches: publishedEvidence.provenanceHashMatches ?? trusted.provenanceHashMatches,
+            });
+            this.managedSaveArtifacts.set(destination.targetPath, {artworkPaths, directoryCreated});
             return {
                 status: "ok",
                 path: destination.targetPath,
                 name: destination.name,
                 blueprintHash: computeGameBlueprintHash(blueprint),
                 sourceWorkbookPath,
+                conversionEvidencePath: publication.conversionEvidencePath,
             };
         } catch (error) {
+            this.cleanupManagedSaveArtifacts(destination.targetPath, artworkPaths, directoryCreated);
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }
     }
@@ -453,13 +572,9 @@ export class StudioBlueprintService {
     // deliberately narrower than a general delete API: the path came from this saveManaged() call, so
     // rolling it back cannot remove a user-selected or pre-existing Blueprint.
     public discardManagedSave(targetPath: string): void {
-        try {
-            fs.unlinkSync(targetPath);
-            fs.rmdirSync(path.dirname(targetPath));
-        } catch {
-            // Rollback is best effort.  The route still reports registration failure rather than a
-            // misleading success, and any empty directory is harmless.
-        }
+        const allocated = this.managedSaveArtifacts.get(targetPath);
+        this.managedSaveArtifacts.delete(targetPath);
+        this.cleanupManagedSaveArtifacts(targetPath, allocated?.artworkPaths ?? [], allocated?.directoryCreated ?? false);
     }
 
     // Imports are deliberately staged outside the Blueprint: the document records only this stable,
@@ -517,7 +632,8 @@ export class StudioBlueprintService {
         return loaded.status === "ok" ? symbolArtwork(loaded.blueprint) : {};
     }
 
-    public materializeSymbolArtwork(blueprintPath: string, blueprint: unknown): void {
+    public materializeSymbolArtwork(blueprintPath: string, blueprint: unknown): string[] {
+        const materialized: string[] = [];
         for (const reference of symbolArtworkReferences(blueprint)) {
             if (!isSafeSymbolArtworkReference(reference)) {
                 continue;
@@ -533,7 +649,9 @@ export class StudioBlueprintService {
             fs.mkdirSync(path.dirname(destination), {recursive: true});
             fs.copyFileSync(staged, destination);
             this.stagedArtwork.delete(reference);
+            materialized.push(destination);
         }
+        return materialized;
     }
 
     // Reads and maps a PAR sheet .xlsx workbook via ParSheetImporting (the exact same service "pokie par
@@ -551,10 +669,34 @@ export class StudioBlueprintService {
         }
 
         try {
-            const result = await this.parSheetImporter.importFromFile(resolved);
+            // The diagnostic preview retains the importer result (including a
+            // malformed workbook's actionable mapping facts). A valid Apply
+            // is then published through the same registry-owned Blueprint
+            // contract as CLI, rather than treating Studio as a parallel
+            // importer/writer authority.
+            let result = await this.parSheetImporter.importFromFile(resolved);
             const errors = result.issues.filter((issue) => issue.severity === "error");
             const warnings = result.issues.filter((issue) => issue.severity !== "error");
-            return {status: "ok", path: resolved, blueprint: result.blueprint, provenance: result.provenance, errors, warnings};
+            if (errors.length === 0 && this.parSheetImporter instanceof ParSheetImporter) {
+                result = await this.prepareParApplyThroughRegistry(resolved);
+            }
+            const conversionEvidence: StudioParSheetConversionEvidence = {...(result.conversionEvidence ?? {
+                metaSheet: undefined,
+                facts: result.issues.map((issue) => ({kind: "diagnostic" as const, code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})})),
+                losslessEligible: false,
+                importedBlueprintHash: computeGameBlueprintHash(result.blueprint),
+                provenanceHashMatches: false,
+            }), ...(result.provenance === undefined ? {} : {provenance: result.provenance})};
+            this.storePreparedParImport(resolved, conversionEvidence);
+            return {
+                status: "ok",
+                path: resolved,
+                blueprint: result.blueprint,
+                provenance: result.provenance,
+                conversionEvidence,
+                errors,
+                warnings,
+            };
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error)};
         }
@@ -842,5 +984,126 @@ export class StudioBlueprintService {
             capabilities: [BLUEPRINT_BUILD_CAPABILITY],
             configurationProvenance: {configurationHash: computeGameBlueprintHash(blueprint)},
         };
+    }
+
+    private async prepareParApplyThroughRegistry(sourceWorkbookPath: string): Promise<Awaited<ReturnType<ParSheetImporting["importFromFile"]>>> {
+        const temporaryDirectory = path.join(this.studioRoot, "prepared-par-imports");
+        const temporaryBlueprint = path.join(temporaryDirectory, `.apply-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.blueprint.json`);
+        const source = {
+            type: "parWorkbook" as const,
+            rootPath: sourceWorkbookPath,
+            capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+            provenance: "Studio PAR Apply workbook",
+        };
+        fs.mkdirSync(temporaryDirectory, {recursive: true});
+        const plan = await this.artifactRegistry.preparePlan(source, "blueprint", {destinationPath: temporaryBlueprint});
+        if (plan.status !== "planned") throw new Error(plan.diagnostic?.message ?? "PAR import could not be prepared.");
+        let result;
+        try {
+            result = await this.artifactRegistry.executePlan(plan, source, temporaryBlueprint);
+            const evidence = JSON.parse(await fs.promises.readFile(result.conversionEvidencePath!, "utf8")) as {
+                provenance?: StudioParSheetConversionEvidence["provenance"];
+                metaSheet?: StudioParSheetConversionEvidence["metaSheet"];
+                facts?: StudioParSheetConversionEvidence["facts"];
+                losslessEligible?: boolean;
+                importedBlueprintHash?: string;
+                provenanceHashMatches?: boolean;
+                issues?: Awaited<ReturnType<ParSheetImporting["importFromFile"]>>["issues"];
+            };
+            return {
+                blueprint: JSON.parse(await fs.promises.readFile(result.outputPath, "utf8")),
+                provenance: evidence.provenance,
+                issues: evidence.issues ?? [],
+                conversionEvidence: {
+                    metaSheet: evidence.metaSheet,
+                    facts: evidence.facts ?? [],
+                    losslessEligible: evidence.losslessEligible ?? false,
+                    importedBlueprintHash: evidence.importedBlueprintHash ?? "",
+                    provenanceHashMatches: evidence.provenanceHashMatches ?? false,
+                },
+            };
+        } finally {
+            await Promise.all([
+                fs.promises.rm(temporaryBlueprint, {force: true}),
+                fs.promises.rm(`${temporaryBlueprint}.conversion-evidence.json`, {force: true}),
+            ]);
+        }
+    }
+
+    private preparedParImportPath(sourceWorkbookPath: string): string {
+        // Do not use the workbook's basename as an identifier: two distinct
+        // workbooks with the same name must never share trust state.
+        const binding = computeArtifactInputBindingHash([path.resolve(sourceWorkbookPath)]).replace(/^sha256:/, "");
+        return path.join(this.studioRoot, "prepared-par-imports", `${binding}.json`);
+    }
+
+    private storePreparedParImport(sourceWorkbookPath: string, evidence: StudioParSheetConversionEvidence): void {
+        const resolved = path.resolve(sourceWorkbookPath);
+        const recordPath = this.preparedParImportPath(resolved);
+        fs.mkdirSync(path.dirname(recordPath), {recursive: true});
+        writeJsonAtomically(recordPath, {
+            schemaVersion: 1,
+            sourceWorkbookPath: resolved,
+            sourceBindingHash: computeArtifactInputBindingHash([resolved]),
+            conversionEvidence: evidence,
+        });
+        this.preparedParImports.set(resolved, evidence);
+    }
+
+    private loadPreparedParImport(sourceWorkbookPath: string): StudioParSheetConversionEvidence | undefined {
+        const resolved = path.resolve(sourceWorkbookPath);
+        const cached = this.preparedParImports.get(resolved);
+        const binding = computeArtifactInputBindingHash([resolved]);
+        if (cached !== undefined) {
+            // The durable file below is still read on a restart, but keeping a
+            // cache avoids parsing it for the normal Apply -> Save path.
+            try {
+                const record = JSON.parse(fs.readFileSync(this.preparedParImportPath(resolved), "utf8")) as {sourceBindingHash?: unknown};
+                if (record.sourceBindingHash === binding) return cached;
+            } catch {
+                return undefined;
+            }
+        }
+        try {
+            const record = JSON.parse(fs.readFileSync(this.preparedParImportPath(resolved), "utf8")) as {
+                sourceWorkbookPath?: unknown;
+                sourceBindingHash?: unknown;
+                conversionEvidence?: StudioParSheetConversionEvidence;
+            };
+            if (record.sourceWorkbookPath !== resolved || record.sourceBindingHash !== binding || record.conversionEvidence === undefined) return undefined;
+            this.preparedParImports.set(resolved, record.conversionEvidence);
+            return record.conversionEvidence;
+        } catch {
+            return undefined;
+        }
+    }
+
+    private cleanupManagedSaveArtifacts(targetPath: string, artworkPaths: readonly string[], directoryCreated: boolean): void {
+        try {
+            fs.rmSync(targetPath, {force: true});
+            fs.rmSync(`${targetPath}.conversion-evidence.json`, {force: true});
+            for (const artworkPath of artworkPaths) {
+                fs.rmSync(artworkPath, {force: true});
+                this.removeEmptyArtworkParents(path.dirname(artworkPath), path.dirname(targetPath));
+            }
+            if (directoryCreated) {
+                fs.rmSync(path.dirname(targetPath), {recursive: true, force: true});
+            }
+        } catch {
+            // Rollback is best effort. The caller still reports registration
+            // failure rather than presenting an orphan as a saved project.
+        }
+    }
+
+    private removeEmptyArtworkParents(candidate: string, stopAt: string): void {
+        let current = candidate;
+        while (isPathWithin(stopAt, current) && current !== stopAt) {
+            try {
+                fs.rmdirSync(current);
+                current = path.dirname(current);
+            } catch {
+                return;
+            }
+        }
     }
 }

@@ -32,6 +32,35 @@ function LocationProbe() {
 }
 
 describe("ProjectsPanel: Import Project", () => {
+    it("renders conversion evidence retained by a registry reload", async () => {
+        const evidencePath = "/POKIE Projects/imported/blueprint.json.conversion-evidence.json";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [{
+                    location: "/POKIE Projects/imported/blueprint.json",
+                    name: "Imported game",
+                    type: "blueprint",
+                    capabilities: [],
+                    origin: "managed",
+                    lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                    status: "ok",
+                    importedFromParSheetPath: "/games/imported.par.xlsx",
+                    conversionEvidencePath: evidencePath,
+                }],
+            }),
+        });
+
+        const firstRender = renderWithProviders(<ProjectsPanel />, {fetchImpl});
+        expect(await screen.findByText(`Conversion evidence: ${evidencePath}`)).toBeInTheDocument();
+
+        firstRender.unmount();
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+        expect(await screen.findByText(`Conversion evidence: ${evidencePath}`)).toBeInTheDocument();
+        expect(calls.filter((call) => call.url.startsWith("/api/home/projects/registry?"))).toHaveLength(2);
+    });
+
     it("shows project-list recovery for an HTTP failure and reloads the list when retried", async () => {
         const user = userEvent.setup();
         let attempts = 0;

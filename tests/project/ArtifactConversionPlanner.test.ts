@@ -187,7 +187,7 @@ describe("ArtifactConversionPlanner", () => {
         expect(outcomeToPackage).toMatchObject({status: "unavailable", diagnostic: {code: "missing-data", failedEdge: {from: "outcomeLibrary", to: "tsPackage"}}});
         expect(outcomeToPackage.diagnostic?.message).toContain("does not preserve the game model");
         expect(wasm.diagnostic?.message).toContain("metadata-only");
-        expect(par.diagnostic?.message).toContain("exchange snapshot");
+        expect(par).toMatchObject({status: "planned", steps: [{kind: "importParWorkbook"}, {kind: "materializeRuntime"}, {kind: "generateOutcomeLibrary"}, {kind: "publish"}]});
     });
 
     it("rejects an external Studio selector without fabricating Outcome Library capabilities", () => {
@@ -245,8 +245,37 @@ describe("ArtifactConversionPlanner", () => {
             preflight: {destinationKind: "directory", oneWay: true},
         });
         expect(stakeImport.preflight.losses.join(" ")).toContain("does not recover a game model");
-        expect(planner.plan(project("parWorkbook"), "outcomeLibrary").status).toBe("unavailable");
+        expect(planner.plan(project("parWorkbook"), "outcomeLibrary")).toMatchObject({
+            status: "planned",
+            steps: [{kind: "importParWorkbook"}, {kind: "materializeRuntime"}, {kind: "generateOutcomeLibrary"}],
+        });
         expect(planner.plan(project("stakeAdapter"), "outcomeLibrary").status).toBe("unavailable");
+    });
+
+    it("advertises Blueprint as the PAR workbook's model-preserving terminal target", () => {
+        const plan = planner.plan(project("parWorkbook"), "blueprint", {destinationPath: "/imports/slot.blueprint.json"});
+
+        expect(plan).toMatchObject({
+            status: "planned",
+            source: {kind: "parWorkbook"},
+            target: {kind: "blueprint", canonicalLocation: "/imports/slot.blueprint.json"},
+            steps: [{kind: "importParWorkbook", output: {kind: "blueprint", canonicalLocation: "/imports/slot.blueprint.json"}}],
+            preflight: {destinationKind: "file"},
+        });
+    });
+
+    it("names the durable generated PAR-to-Stake prerequisite in the prepared preview", () => {
+        const plan = planner.plan(project("parWorkbook"), "stakeAdapter", {destinationPath: "/exports/stake"});
+
+        expect(plan).toMatchObject({
+            status: "planned",
+            steps: [
+                {kind: "importParWorkbook", output: {canonicalLocation: "/exports/stake/.pokie/par-import/imported.blueprint.json"}},
+                {kind: "materializeRuntime"},
+                {kind: "generateOutcomeLibrary", output: {canonicalLocation: "/exports/stake/.pokie/par-import/outcome-library"}},
+                {kind: "publish"},
+            ],
+        });
     });
 
     it("rejects a changed source or destination at import execution", () => {

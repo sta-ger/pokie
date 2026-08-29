@@ -1843,10 +1843,20 @@ describe("StudioServer", () => {
             // managed project as its own provenance, never as the project's own `location`.
             it("records sourceWorkbookPath on the response and on the registered managed project's own entry when a PAR Apply is behind this first Save", async () => {
                 const expectedPath = path.join(managedWorkDir, "POKIE Projects", "sample-slot", "blueprint.json");
+                const workbookPath = path.join(managedWorkDir, "in.par.xlsx");
+                const workbook = new ExcelJS.Workbook();
+                workbook.addWorksheet("Manifest").addRows([["Key", "Value"], ["Id", "sample-slot"], ["Name", "Sample Slot"], ["Version", "0.1.0"], ["Reels", 2], ["Rows", 2]]);
+                workbook.addWorksheet("Symbols").addRows([["Symbol", "Wild", "Scatter"], ["A", false, false]]);
+                workbook.addWorksheet("Paytable").addRows([["Symbol", "Matches", "Multiplier"], ["A", 2, 5]]);
+                await workbook.xlsx.writeFile(workbookPath);
+                const applied = await post(`${managedBaseUrl}/api/home/blueprints/par-import`, {path: workbookPath});
+                expect(applied.status).toBe(200);
+                expect(applied.body).toMatchObject({status: "ok"});
+                const appliedBlueprint = (applied.body as {blueprint: unknown}).blueprint;
 
                 const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {
-                    blueprint: buildBlueprint(),
-                    sourceWorkbookPath: "/games/in.par.xlsx",
+                    blueprint: appliedBlueprint,
+                    sourceWorkbookPath: workbookPath,
                 });
 
                 expect(status).toBe(201);
@@ -1854,20 +1864,20 @@ describe("StudioServer", () => {
                     status: "ok",
                     path: expectedPath,
                     name: "sample-slot",
-                    blueprintHash: computeGameBlueprintHash(buildBlueprint()),
-                    sourceWorkbookPath: "/games/in.par.xlsx",
+                    blueprintHash: computeGameBlueprintHash(appliedBlueprint),
+                    sourceWorkbookPath: workbookPath,
                     registeredProject: expect.objectContaining({
                         location: expectedPath,
                         origin: "managed",
                         type: "blueprint",
                         status: "ok",
-                        importedFromParSheetPath: "/games/in.par.xlsx",
+                        importedFromParSheetPath: workbookPath,
                     }),
                 });
 
                 const entries = await managedRegistry.list();
                 expect(entries).toHaveLength(1);
-                expect(entries[0]).toMatchObject({location: expectedPath, origin: "managed", importedFromParSheetPath: "/games/in.par.xlsx"});
+                expect(entries[0]).toMatchObject({location: expectedPath, origin: "managed", importedFromParSheetPath: workbookPath});
             });
 
             it("rejects a non-string sourceWorkbookPath", async () => {
@@ -5855,7 +5865,7 @@ describe("StudioServer", () => {
 
             expect(status).toBe(200);
             const targets = body as {target: string; supported: boolean}[];
-            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
+            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
             const byTarget = new Map(targets.map((entry) => [entry.target, entry.supported]));
             expect(byTarget.get("tsPackage")).toBe(true);
             expect(byTarget.get("outcomeLibrary")).toBe(true);
@@ -5895,6 +5905,37 @@ describe("StudioServer", () => {
             expect(view.status).toBe("ok");
             expect(view.sourceType).toBe("blueprint");
             expect(fs.existsSync(path.join(view.outputPath!, "index.json"))).toBe(true);
+        });
+
+        it("keeps every registered PAR-to-Stake root durable after the real Studio build job", async () => {
+            const workbookPath = path.join(artifactWorkDir, "source.par.xlsx");
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+            const projectRegistry = new InMemoryStudioProjectRegistry();
+            const registrationService = new StudioProjectRegistrationService(projectRegistry);
+            const homeService = new StudioHomeService("1.3.0");
+            artifactServer = new StudioServer({
+                pokieVersion: "1.3.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: artifactStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.3.0", artifactStudioRoot, homeService),
+                projectRegistrationService: registrationService,
+                initialContext: {mode: "project", projectRoot: workbookPath},
+            });
+            const address = await artifactServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "stakeAdapter"});
+            expect(started.status).toBe(202);
+            const job = (started.body as {job: {id: string}}).job;
+            const completed = await waitForArtifactBuildJob(projectBaseUrl, job.id);
+            expect(completed.status).toBe("completed");
+            const entries = await registrationService.list();
+
+            expect(entries.length).toBeGreaterThanOrEqual(3);
+            expect(entries.filter((entry) => entry.status !== "ok" || !fs.existsSync(entry.location))).toEqual([]);
+            expect(entries.some((entry) => entry.location.includes(".pokie-par-import-"))).toBe(false);
         });
 
         it("cancels an active Blueprint Outcome publish through the HTTP job route without publishing a managed project", async () => {

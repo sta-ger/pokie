@@ -26,6 +26,7 @@ export const BUILD_PRODUCT_MATRIX_SOURCE_TYPES: readonly ProjectType[] = [
 ];
 
 export const BUILD_PRODUCT_MATRIX_TARGETS: readonly ArtifactTargetType[] = [
+    "blueprint",
     "tsPackage",
     "outcomeLibrary",
     "stakeAdapter",
@@ -49,6 +50,7 @@ const PUBLIC_PROJECT_TYPE_NAMES: Readonly<Record<ProjectType, string>> = {
 // Compatibility wording retained for callers of the former matrix API. The matrix state itself is now
 // derived from ArtifactConversionPlanner; new callers should use its path-aware diagnostic instead.
 const TARGET_PREREQUISITES: Readonly<Record<ArtifactTargetType, {missingPrerequisite: string; nextAction: string}>> = {
+    blueprint: {missingPrerequisite: "a PAR workbook source", nextAction: "Open a PAR workbook, then run `pokie build <path> --target blueprint`."},
     tsPackage: {missingPrerequisite: "a Game Blueprint source", nextAction: "Open a Game Blueprint, then run `pokie build <path> --target tsPackage`."},
     outcomeLibrary: {missingPrerequisite: "a Game Blueprint, POKIE game package, or Outcome Library", nextAction: "Open one of those sources, then run `pokie build <path> --target outcomeLibrary`."},
     stakeAdapter: {missingPrerequisite: "a Game Blueprint, POKIE game package, Outcome Library, or Stake Engine export", nextAction: "Open one of those sources, then run `pokie build <path> --target stakeAdapter`."},

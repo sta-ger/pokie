@@ -255,6 +255,9 @@ export type StudioProjectRegistryView = {
     // first-saved from -- see cli/studio/StudioProjectRegistryEntry.ts's own doc comment. Undefined for
     // every project that didn't come from that flow.
     importedFromParSheetPath?: string;
+    // Durable PAR conversion evidence is retained across Studio restart/open
+    // and is available to registry clients for inspection.
+    conversionEvidencePath?: string;
 };
 
 // POST /api/home/projects/registry/preview's own DTO — see
@@ -494,6 +497,7 @@ export type StudioBlueprintSaveManagedView =
           name: string;
           blueprintHash: string;
           sourceWorkbookPath?: string;
+          conversionEvidencePath?: string;
           // The server's just-persisted registry record.  Returning it with the save lets Home update
           // its already-mounted Projects panel immediately, while its normal refresh reconciles later.
           registeredProject?: StudioProjectRegistryView;
@@ -526,10 +530,23 @@ export type StudioParSheetImportView =
           path: string;
           blueprint: unknown;
           provenance?: ParSheetProvenance;
+          conversionEvidence: ParSheetConversionEvidence;
           errors: ValidationIssue[];
           warnings: ValidationIssue[];
       }
     | {status: "load-error"; error: string};
+
+export type ParSheetConversionEvidence = {
+    // Persisted with the evidence sidecar on an Apply -> managed save.  This
+    // duplicates the import view's convenience field intentionally: drafts
+    // retain the evidence object, not the transient import response.
+    provenance?: ParSheetProvenance;
+    metaSheet?: readonly (readonly unknown[])[];
+    facts: readonly {kind: "ignored" | "formulaMaterialized" | "inferredOrDefaulted" | "diagnostic"; code: string; message: string; details?: unknown}[];
+    losslessEligible: boolean;
+    importedBlueprintHash: string;
+    provenanceHashMatches: boolean;
+};
 
 // POST /api/home/blueprints/par-export's own DTO — see
 // cli/studio/blueprint/StudioParSheetExportView.ts's own doc comment. "conflict" mirrors
@@ -1250,7 +1267,7 @@ export type StudioStakeEngineExportView =
 // (and "pokie build <project> --target <target>") builds toward. Studio-client never imports the pokie
 // package directly (see ExportDeployTargets.ts's own top-level doc comment), so this is a plain literal
 // mirror, same convention as StudioProjectType above.
-export type StudioArtifactTargetType = "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "parWorkbook";
+export type StudioArtifactTargetType = "blueprint" | "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "parWorkbook";
 
 // JSON-safe mirror of the server planner.  Studio deliberately consumes this payload instead of maintaining
 // another source/target table in the browser.
@@ -1258,7 +1275,7 @@ export type StudioArtifactConversionPlan = {
     status: "planned" | "unavailable" | "conflict";
     source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; gameId?: string; gameVersion?: string; manifestIdentity?: string; sampleCount?: string; sampleSeed?: string}};
     target: {kind: string; canonicalLocation?: string; capabilities: string[]; configurationProvenance?: {generationSemantics?: "exact" | "boundedSample"; sampleCount?: string; sampleSeed?: string}};
-    steps: {kind: "publish" | "materializeRuntime" | "generateOutcomeLibrary" | "reuseManagedOutcomeLibrary"; choice: "materialize" | "reuse" | "publish"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses?: string[]}[];
+    steps: {kind: "importParWorkbook" | "publish" | "materializeRuntime" | "generateOutcomeLibrary" | "reuseManagedOutcomeLibrary"; choice: "materialize" | "reuse" | "publish"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; output: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]}; losses?: string[]}[];
     preflight: {destinationKind: "file" | "directory"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses: string[]; oneWay: boolean};
     managedOutcome?: {disposition: "reused" | "ineligible"; reason?: string};
     diagnostic?: {code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict" | "unrecognized-source"; failedEdge: {from: StudioProjectType; to: StudioArtifactTargetType}; message: string; recovery: string};
@@ -1289,6 +1306,8 @@ export type StudioArtifactBuildView =
           sourceType: StudioProjectType;
           plan: StudioArtifactConversionPlan;
           preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
+          importedBlueprintPath?: string;
+          conversionEvidencePath?: string;
       }
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
     | {status: "conflict"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}

@@ -31,4 +31,6 @@ export type StudioProjectRegistryEntry = {
     // is provenance only, carried here since the registry is already the one durable, "reopen"-surviving
     // record Studio keeps per project (see this type's own doc comment above).
     readonly importedFromParSheetPath?: string;
+    /** Durable sidecar written with an imported PAR Blueprint, if any. */
+    readonly conversionEvidencePath?: string;
 };

@@ -2,7 +2,7 @@ import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import fs from "fs";
 import path from "path";
 import {ArtifactBuildConflictError} from "./ArtifactBuildConflictError.js";
-import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
+import type {ArtifactBuildResult, ManagedOutcomeProjectOwnership} from "./ArtifactBuildResult.js";
 import type {ArtifactBuildTargetDescriptor} from "./ArtifactBuildTargetDescriptor.js";
 import type {ArtifactDestinationCheck} from "./ArtifactDestinationCheck.js";
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
@@ -10,16 +10,19 @@ import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDesti
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import {OutcomeLibraryArtifactBuilder} from "./OutcomeLibraryArtifactBuilder.js";
 import {ParWorkbookArtifactBuilder} from "./ParWorkbookArtifactBuilder.js";
+import {BlueprintArtifactBuilder} from "./BlueprintArtifactBuilder.js";
 import type {PokieProject} from "./PokieProject.js";
 import {
     BUILD_OPERATION,
     OPERATION_REQUIRED_CAPABILITY,
     OUTCOME_LIBRARY_BUILD_OPERATION,
     PAR_EXPORT_OPERATION,
+    PAR_IMPORT_OPERATION,
     STAKE_ENGINE_EXPORT_OPERATION,
     type PokieOperation,
 } from "./PokieOperation.js";
 import type {ProjectType} from "./ProjectType.js";
+import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import {StakeAdapterArtifactBuilder} from "./StakeAdapterArtifactBuilder.js";
 import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
 import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibraryWorkflow.js";
@@ -29,8 +32,8 @@ import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
-import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
-import {ArtifactConversionPlanner, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type ArtifactConfigurationProvenance, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions, type ArtifactIdentity} from "./ArtifactConversionPlanner.js";
+import {assertArtifactBuildNotCancelled, ensureArtifactDestinationParent, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import {ArtifactConversionPlanner, computeArtifactInputBindingHash, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type ArtifactConfigurationProvenance, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions, type ArtifactIdentity} from "./ArtifactConversionPlanner.js";
 import {
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
@@ -60,6 +63,7 @@ export function assertPreparedArtifactDestinationAvailable(
 // artifact type, so has no entry here -- this map is deliberately only the "build direction" subset of
 // PokieOperation.
 const TARGET_OPERATION: Readonly<Record<ArtifactTargetType, PokieOperation>> = {
+    blueprint: PAR_IMPORT_OPERATION,
     tsPackage: BUILD_OPERATION,
     outcomeLibrary: OUTCOME_LIBRARY_BUILD_OPERATION,
     stakeAdapter: STAKE_ENGINE_EXPORT_OPERATION,
@@ -70,6 +74,9 @@ const TARGET_OPERATION: Readonly<Record<ArtifactTargetType, PokieOperation>> = {
 // ArtifactBuildTargetDescriptor's own "unsupportedNotes" field doc comment for why this exists as prose rather
 // than being left for a reader to infer from an empty/narrow "supportedSources" array alone.
 const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>> = {
+    blueprint: [
+        "Imports a PAR workbook into a durable Game Blueprint with inspectable conversion evidence; it never recovers a game model from package, outcome, Stake, or WASM artifacts.",
+    ],
     tsPackage: [
         "Builds a runnable package from a GameBlueprint source only -- never compiles or targets WASM.",
     ],
@@ -126,6 +133,7 @@ function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescrip
 // inspection-only resolved project kind until POKIE ships a complete WASM producer and consumer workflow.
 function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetType, ArtifactBuilder> {
     return new Map<ArtifactTargetType, ArtifactBuilder>([
+        ["blueprint", new BlueprintArtifactBuilder()],
         ["tsPackage", new TsPackageArtifactBuilder(pokieVersion)],
         ["outcomeLibrary", new OutcomeLibraryArtifactBuilder(pokieVersion)],
         ["stakeAdapter", new StakeAdapterArtifactBuilder(pokieVersion)],
@@ -184,6 +192,17 @@ export class ArtifactBuilderRegistry {
         return ADVERTISED_ARTIFACT_BUILD_TARGETS.filter((target) => this.descriptors.has(target) && this.builders.has(target));
     }
 
+    /**
+     * Releases a managed Outcome record that was registered while executing a
+     * plan which later failed at an outer publication boundary.  The caller
+     * deliberately owns removing the corresponding files: this registry
+     * method only reverses the managed-project publication and therefore
+     * cannot delete a reused Outcome bundle.
+     */
+    public releaseManagedOutcomeProject(sourceRootPath: string, rootPath: string): Promise<void> {
+        return this.managedOutcomeProjects.release(sourceRootPath, rootPath);
+    }
+
     // The public conversion contract used by all adapters. The registry adds its filesystem-backed
     // destination policy to the pure planner result so previews and execution reject the same path.
     public async plan(
@@ -209,6 +228,19 @@ export class ArtifactBuilderRegistry {
         let plannedSource = source;
         let managedOutcome = options.managedOutcome;
         let planningOptions: ArtifactConversionPlanningOptions = options;
+        // A caller can supply a project DTO without going through
+        // ProjectTargetResolver (for example, an embedded CLI or API caller).
+        // Bind PAR bytes here, at the registry's plan boundary, so execution's
+        // drift guard always compares against a hash prepared for this plan.
+        if (source.type === "parWorkbook") {
+            plannedSource = {
+                ...source,
+                configurationProvenance: {
+                    ...source.configurationProvenance,
+                    configurationHash: computeArtifactInputBindingHash([source.rootPath]),
+                },
+            };
+        }
         if ((source.type === "blueprint" || source.type === "tsPackage") && (target === "outcomeLibrary" || target === "stakeAdapter")) {
             const prepared = await this.blueprintStakeWorkflow.prepare(source, {outcomeLibraryGeneration: options.outcomeLibraryGeneration});
             const generation = prepared.generation.sampled;
@@ -297,6 +329,13 @@ export class ArtifactBuilderRegistry {
         await this.assertPlanSourceMatches(preparedPlan, source);
         this.assertTargetAvailable(target);
 
+        if (source.type === "parWorkbook") {
+            const blueprintBuilder = this.builders.get("blueprint");
+            if (blueprintBuilder === undefined) throw new Error(this.unavailableTargetMessage("blueprint"));
+            await blueprintBuilder.validate?.(source);
+            return;
+        }
+
         if (source.type === "blueprint" && target !== "parWorkbook") {
             const blueprint = loadGameBlueprint(source.rootPath);
             const errors = new GameBlueprintValidator().validate(blueprint).filter((issue) => issue.severity === "error");
@@ -334,10 +373,16 @@ export class ArtifactBuilderRegistry {
         await Promise.resolve();
         this.assertExecutablePlan(plan);
         this.assertTargetAvailable(plan.target.kind as ArtifactTargetType);
-        const target = plan.target.kind as ArtifactTargetType;
         await this.assertPlanSourceMatches(plan, source);
         this.assertPlanDestinationMatches(plan, destinationPath);
         await this.assertPlanGraphIsCurrent(plan, source, destinationPath);
+        if (source.type === "parWorkbook") return this.executeParDerivedPlan(plan, source, destinationPath, options);
+        return this.executeSelectedPlan(plan, source, destinationPath, options);
+    }
+
+    /** Executes already-selected stages without asking the planner to choose them again. */
+    private async executeSelectedPlan(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        const target = plan.target.kind as ArtifactTargetType;
         const reuseStep = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
         const managed = reuseStep === undefined ? undefined : await this.reopenPlannedManagedOutcome(source, plan.source, reuseStep.output);
         // Every selected plan is subjected to the same destination policy at
@@ -366,6 +411,15 @@ export class ArtifactBuilderRegistry {
                 reusedCompatibleProject: true,
                 requestedDestinationPath: destinationPath,
                 managedProjectRoots: [published.rootPath],
+                // Republishing a reused library creates a *new* managed
+                // record at destinationPath.  The source library remains
+                // borrowed, but this publication must be released if a later
+                // Studio registration boundary fails.
+                managedOutcomeProjectOwnership: [{
+                    rootPath: published.rootPath,
+                    sourceRootPath: source.rootPath,
+                    disposition: "owned",
+                }],
             };
         }
         if (plan.steps.some((step) => step.kind === "generateOutcomeLibrary") && target === "outcomeLibrary") {
@@ -377,6 +431,210 @@ export class ArtifactBuilderRegistry {
         const builder = this.builders.get(target);
         if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
         return builder.build(source, destinationPath, options);
+    }
+
+    /**
+     * PAR is the one exchange source that can canonically import a game model.
+     * Materialize that model once into a plan-owned intermediate, then hand the
+     * selected downstream stages to the existing Blueprint lifecycle.
+     */
+    private async executeParDerivedPlan(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        const target = plan.target.kind as ArtifactTargetType;
+        const destination = this.checkDestination(target, destinationPath, source.rootPath);
+        if (!destination.available) throw new ArtifactBuildConflictError(destination.message ?? "The destination is unavailable.");
+        // PAR's imported Blueprint is staged alongside the requested output,
+        // before any downstream builder gets a chance to create a directory.
+        // Create the explicit output parent at this shared boundary so every
+        // registry-backed PAR entry point has identical nested-path behavior.
+        await ensureArtifactDestinationParent(destinationPath);
+        if (target === "blueprint" || target === "parWorkbook") {
+            const builder = this.builders.get(target);
+            if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
+            return builder.build(source, destinationPath, options);
+        }
+        const intermediateDirectory = await fs.promises.mkdtemp(path.join(path.dirname(destinationPath), ".pokie-par-import-"));
+        // An empty caller-supplied directory is an allowed destination.  It
+        // remains caller-owned if a later PAR publication phase fails: remove
+        // the files this operation created, but leave the directory itself.
+        const destinationExistedEmpty = await this.isExistingEmptyDirectory(destinationPath);
+        const intermediatePath = path.join(intermediateDirectory, "imported.blueprint.json");
+        let imported: PokieProject | undefined;
+        let selectedPlan: ArtifactConversionPlan | undefined;
+        let result: ArtifactBuildResult | undefined;
+        try {
+            assertArtifactBuildNotCancelled(options);
+            const blueprintBuilder = this.builders.get("blueprint");
+            if (blueprintBuilder === undefined) throw new Error(this.unavailableTargetMessage("blueprint"));
+            await blueprintBuilder.build(source, intermediatePath, options);
+            imported = {
+                type: "blueprint",
+                rootPath: intermediatePath,
+                provenance: `imported from PAR workbook ${source.rootPath}`,
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+            };
+            // The PAR plan chose every downstream stage before import began.
+            // Hydrate its imported-Blueprint identity with the materialized
+            // runtime provenance, then execute those selected stages directly;
+            // calling build() here would silently prepare a second plan.
+            selectedPlan = await this.hydrateParDerivedPlan(plan, imported, options);
+            result = await this.executeSelectedPlan(selectedPlan, imported, destinationPath, options);
+            // The temporary Blueprint is only an execution allocation.  Once
+            // the selected terminal writer succeeds, retain an inspectable
+            // copy and its evidence under the final artifact instead of
+            // leaking a private temp path into provenance.
+            const evidenceSource = `${intermediatePath}.conversion-evidence.json`;
+            const durableDirectory = path.join(result.outputPath, ".pokie", "par-import");
+            const durableBlueprint = path.join(durableDirectory, "imported.blueprint.json");
+            const durableEvidence = path.join(durableDirectory, "conversion-evidence.json");
+            try {
+                // Cancellation is a terminal lifecycle failure too: do not
+                // attach a half-copied provenance record after the caller has
+                // cancelled the operation.
+                assertArtifactBuildNotCancelled(options);
+                await fs.promises.mkdir(durableDirectory, {recursive: true});
+                await fs.promises.copyFile(intermediatePath, durableBlueprint);
+                assertArtifactBuildNotCancelled(options);
+                await fs.promises.copyFile(evidenceSource, durableEvidence);
+                assertArtifactBuildNotCancelled(options);
+                result = await this.promoteParManagedOutcomes(result, imported, durableBlueprint, selectedPlan, durableDirectory, options);
+            } catch (error) {
+                // Publication, generated managed prerequisites, and durable
+                // attachment are one operation.  Remove only roots selected
+                // for materialization by this plan; a reused managed Outcome
+                // belongs to an earlier operation and must survive.
+                await this.rollbackParDerivedPublication(result, imported, selectedPlan, destinationExistedEmpty);
+                throw error;
+            }
+            return {...result, conversionEvidencePath: durableEvidence, importedBlueprintPath: durableBlueprint};
+        } finally {
+            // Outcome streaming can finish its final writer callback while the
+            // caller unwinds. Retry ENOTEMPTY rather than turning a completed
+            // terminal publication into an intermediate-cleanup failure.
+            await fs.promises.rm(intermediateDirectory, {recursive: true, force: true, maxRetries: 8, retryDelay: 25});
+        }
+    }
+
+    private async rollbackParDerivedPublication(result: ArtifactBuildResult, imported: PokieProject, plan: ArtifactConversionPlan, preserveDestinationDirectory = false): Promise<void> {
+        const ownership = this.managedOutcomeOwnership(result, plan, imported.rootPath);
+        for (const entry of ownership) {
+            if (entry.disposition !== "owned") continue;
+            await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
+            if (entry.rootPath !== result.outputPath) await fs.promises.rm(entry.rootPath, {recursive: true, force: true}).catch(() => undefined);
+        }
+        await this.removeParOperationOutput(result.outputPath, preserveDestinationDirectory);
+    }
+
+    /**
+     * A PAR import starts in a private directory so an invalid workbook never
+     * becomes visible.  Once its terminal publication succeeds, promote any
+     * generated Outcome prerequisite to the durable imported-Blueprint tree.
+     * This keeps both managed and Studio registries away from the directory
+     * removed by executeParDerivedPlan's finally block.
+     */
+    private async promoteParManagedOutcomes(
+        result: ArtifactBuildResult,
+        imported: PokieProject,
+        durableBlueprintPath: string,
+        plan: ArtifactConversionPlan,
+        durableDirectory: string,
+        options?: ArtifactBuildOptions,
+    ): Promise<ArtifactBuildResult> {
+        const ownership = this.managedOutcomeOwnership(result, plan, imported.rootPath);
+        const owned = ownership.filter((entry) => entry.disposition === "owned");
+        if (owned.length === 0) return result;
+
+        const compatibility = this.compatibilityFromPlan(plan.source);
+        const promoted = new Map<string, string>();
+        const registered: {readonly rootPath: string; readonly sourceRootPath: string}[] = [];
+        try {
+            for (const entry of owned) {
+                assertArtifactBuildNotCancelled(options);
+                const durableRoot = entry.rootPath === result.outputPath
+                    ? entry.rootPath
+                    : path.join(durableDirectory, "outcome-library");
+                await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath);
+                if (durableRoot !== entry.rootPath) {
+                    await fs.promises.rm(durableRoot, {recursive: true, force: true});
+                    await fs.promises.rename(entry.rootPath, durableRoot);
+                }
+                assertArtifactBuildNotCancelled(options);
+                await this.managedOutcomeProjects.registerAndOpen(durableBlueprintPath, durableRoot, compatibility);
+                registered.push({rootPath: durableRoot, sourceRootPath: durableBlueprintPath});
+                promoted.set(entry.rootPath, durableRoot);
+                assertArtifactBuildNotCancelled(options);
+            }
+        } catch (error) {
+            // Promotion is publication, not a best-effort relocation.  Undo
+            // every record/root already moved before the outer lifecycle
+            // removes the terminal and durable evidence attachment.
+            for (const entry of registered.reverse()) {
+                await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
+            }
+            for (const entry of owned) {
+                const rootPath = promoted.get(entry.rootPath) ?? entry.rootPath;
+                await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
+                if (rootPath !== result.outputPath) await fs.promises.rm(rootPath, {recursive: true, force: true}).catch(() => undefined);
+            }
+            throw error;
+        }
+        const relocate = (root: string): string => promoted.get(root) ?? root;
+        return {
+            ...result,
+            ...(result.prerequisiteProjectRoots === undefined ? {} : {prerequisiteProjectRoots: result.prerequisiteProjectRoots.map(relocate)}),
+            ...(result.managedProjectRoots === undefined ? {} : {managedProjectRoots: result.managedProjectRoots.map(relocate)}),
+            managedOutcomeProjectOwnership: ownership.map((entry) => entry.disposition !== "owned" ? entry : {
+                ...entry,
+                rootPath: relocate(entry.rootPath),
+                sourceRootPath: durableBlueprintPath,
+            }),
+        };
+    }
+
+    private async isExistingEmptyDirectory(destinationPath: string): Promise<boolean> {
+        try {
+            return (await fs.promises.stat(destinationPath)).isDirectory() && (await fs.promises.readdir(destinationPath)).length === 0;
+        } catch {
+            return false;
+        }
+    }
+
+    private async removeParOperationOutput(outputPath: string, preserveDestinationDirectory: boolean): Promise<void> {
+        if (!preserveDestinationDirectory) {
+            await fs.promises.rm(outputPath, {recursive: true, force: true}).catch(() => undefined);
+            return;
+        }
+        // The directory was empty before this operation, so every entry now
+        // below it was allocated by this operation. Do not remove the root.
+        try {
+            for (const entry of await fs.promises.readdir(outputPath)) {
+                await fs.promises.rm(path.join(outputPath, entry), {recursive: true, force: true});
+            }
+        } catch {
+            // A failed writer may not have created the destination after all.
+        }
+    }
+
+    private async hydrateParDerivedPlan(plan: ArtifactConversionPlan, imported: PokieProject, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
+        const importStep = plan.steps.find((step) => step.kind === "importParWorkbook");
+        if (importStep === undefined) throw new Error("The prepared PAR conversion plan has no import stage.");
+        let source: ArtifactIdentity = {...resolveArtifactIdentity(imported), recognitionProvenance: importStep.output.recognitionProvenance};
+        if (plan.target.kind === "outcomeLibrary" || plan.target.kind === "stakeAdapter") {
+            const prepared = await this.blueprintStakeWorkflow.prepare(imported, {outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
+            const sampled = prepared.generation.sampled;
+            source = {
+                ...source,
+                configurationProvenance: {
+                    configurationHash: prepared.configHash,
+                    pokieVersion: prepared.compatibility.pokieVersion,
+                    gameId: prepared.compatibility.gameId,
+                    gameVersion: prepared.compatibility.gameVersion,
+                    manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
+                    generationSemantics: sampled === undefined ? "exact" : "boundedSample",
+                    ...(sampled === undefined ? {} : {sampleCount: sampled.sampleSize.toString(), sampleSeed: sampled.seed}),
+                },
+            };
+        }
+        return {...plan, source, steps: plan.steps.filter((step) => step !== importStep)};
     }
 
     private async buildStakeFromPlannedOutcome(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options: ArtifactBuildOptions | undefined, reused?: PokieProject): Promise<ArtifactBuildResult> {
@@ -393,6 +651,11 @@ export class ArtifactBuilderRegistry {
                 ...result,
                 prerequisiteProjectRoots: [outcomeLibrary.rootPath],
                 managedProjectRoots: [outcomeLibrary.rootPath],
+                managedOutcomeProjectOwnership: [{
+                    rootPath: outcomeLibrary.rootPath,
+                    sourceRootPath: source.rootPath,
+                    disposition: generated === undefined ? "borrowed" : "owned",
+                }],
             };
         } catch (error) {
             if (generated !== undefined) {
@@ -481,7 +744,28 @@ export class ArtifactBuilderRegistry {
                 ? {requestedDestinationPath: destinationPath, reusedCompatibleProject: true}
                 : {}),
             managedProjectRoots: [outcomeLibrary.project.rootPath],
+            managedOutcomeProjectOwnership: [{
+                rootPath: outcomeLibrary.project.rootPath,
+                sourceRootPath: source.rootPath,
+                disposition: "owned",
+            }],
         };
+    }
+
+    private managedOutcomeOwnership(
+        result: ArtifactBuildResult,
+        plan: ArtifactConversionPlan,
+        fallbackSourceRootPath: string,
+    ): readonly ManagedOutcomeProjectOwnership[] {
+        if (result.managedOutcomeProjectOwnership !== undefined) return result.managedOutcomeProjectOwnership;
+        // Compatibility for injected legacy registries in extension tests.
+        // Production results always carry per-root ownership.
+        const reuses = plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary");
+        return Array.from(new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])])).map((rootPath) => ({
+            rootPath,
+            sourceRootPath: fallbackSourceRootPath,
+            disposition: reuses ? "borrowed" : "owned",
+        }));
     }
 
     private async generatePlannedManagedOutcome(
@@ -547,6 +831,18 @@ export class ArtifactBuilderRegistry {
             current.recognitionProvenance !== plan.source.recognitionProvenance ||
             current.capabilities.join("\u0000") !== plan.source.capabilities.join("\u0000")) {
             throw new Error("The source identity changed after this conversion was prepared; prepare a new plan before executing it.");
+        }
+        // PAR projects are resolved from a workbook byte binding.  `source` is
+        // intentionally a small immutable-looking DTO, so its binding hash is
+        // the value observed by the resolver at preflight time and cannot be
+        // trusted after a user replaces the workbook.  Re-read it here before
+        // any import or dependent writer gets a chance to publish.
+        if (source.type === "parWorkbook") {
+            const preparedHash = plan.source.configurationProvenance?.configurationHash;
+            const currentHash = computeArtifactInputBindingHash([source.rootPath]);
+            if (preparedHash === undefined || preparedHash !== currentHash) {
+                throw new Error("The PAR workbook changed after this conversion was prepared; prepare a new plan before executing it.");
+            }
         }
         // Resolved Blueprint/package provenance is computed from the runnable
         // source, rather than copied from the project wrapper. Re-prepare it

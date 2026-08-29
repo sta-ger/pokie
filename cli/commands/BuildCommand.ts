@@ -32,9 +32,10 @@ const USAGE = "Usage: pokie build <project> --target <artifact> [--exact | --sam
 const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
 const PROJECT_HINT =
     "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
-    "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, " +
-    "outcomeLibrary, stakeAdapter, or parWorkbook; tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> " +
-    "outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; parWorkbook -> parWorkbook.";
+    "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, outcomeLibrary, " +
+    "stakeAdapter, or PAR workbook; PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or PAR workbook; " +
+    "tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; " +
+    "parWorkbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or parWorkbook.";
 // parWorkbook is the one target whose artifact is a single file rather than a directory (see
 // assertArtifactDestinationAvailable's own "file"/"directory" split) -- its default destination needs a real
 // file extension, every other target's default is just a bare directory name.
@@ -81,7 +82,7 @@ export class BuildCommand implements CliCommandHandling {
     public getDescription(): string {
         return (
             'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- ' +
-            "the supported source-to-target matrix includes GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter/parWorkbook, " +
+            "the supported source-to-target matrix includes PAR workbook -> Blueprint/tsPackage/outcomeLibrary/stakeAdapter/parWorkbook; GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter/parWorkbook, " +
             "tsPackage -> outcomeLibrary/stakeAdapter, outcomeLibrary -> outcomeLibrary/stakeAdapter, and same-type " +
             'republish for stakeAdapter/parWorkbook (for a first random game instead, see "pokie ' +
             'create --random"). --dry-run validates and previews without writing anything.'
@@ -210,7 +211,9 @@ export class BuildCommand implements CliCommandHandling {
     // project's own basename, so the existing conflict protections (assertArtifactDestinationAvailable) are
     // the only thing standing between this default and an existing, unrelated file/directory of the same name.
     private resolveDestination(rootPath: string, target: ArtifactTargetType): string {
-        const siblingName = target === "parWorkbook" ? `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}` : target;
+        let siblingName: string = target;
+        if (target === "parWorkbook") siblingName = `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}`;
+        if (target === "blueprint") siblingName = "blueprint.json";
         return path.join(path.dirname(rootPath), siblingName);
     }
 
@@ -332,6 +335,8 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  artifact root    ${result.outputPath}`);
         console.log(`  target           ${target}`);
         console.log(`  source           ${project.rootPath}`);
+        if (result.importedBlueprintPath !== undefined) console.log(`  imported Blueprint ${result.importedBlueprintPath}`);
+        if (result.conversionEvidencePath !== undefined) console.log(`  conversion evidence ${result.conversionEvidencePath}`);
 
         if (result.reusedCompatibleProject) {
             console.log(`  requested root   ${result.requestedDestinationPath}`);
@@ -441,6 +446,15 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  steps            ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}`);
         console.log(`  estimated work   ${plan.preflight.estimatedWork}`);
         console.log(`  destination kind ${plan.preflight.destinationKind}`);
+        console.log(`  final destination ${plan.target.canonicalLocation ?? "selected destination"}`);
+        for (const step of plan.steps) {
+            console.log(`  intermediate     ${step.choice} ${step.output.kind}${step.output.canonicalLocation ? ` at ${step.output.canonicalLocation}` : ""}`);
+        }
+        if (plan.steps.some((step) => step.kind === "importParWorkbook")) {
+            console.log("  evidence eligibility determined by durable PAR conversion facts and Meta/hash provenance");
+        }
+        const parImportLosses = plan.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []);
+        if (parImportLosses.length > 0) console.log(`  PAR import boundary ${parImportLosses.join(" ")}`);
         if (plan.preflight.losses.length > 0) console.log(`  data boundary    ${plan.preflight.losses.join(" ")}`);
     }
 }

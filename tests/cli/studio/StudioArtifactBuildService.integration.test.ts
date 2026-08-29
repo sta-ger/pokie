@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
+import {ParSheetExporter} from "../../../src/parsheet/ParSheetExporter.js";
 import {localPokieDependencyRunner, REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
 import {prepareExactCodeFirstPackage} from "../../testUtils/prepareExactCodeFirstPackage.js";
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
@@ -32,6 +33,55 @@ describe("StudioArtifactBuildService (integration)", () => {
 
     afterEach(() => {
         fs.rmSync(workDir, {recursive: true, force: true});
+    });
+
+    it("takes a real PAR workbook through each planner-owned target while retaining durable imported Blueprint evidence", async () => {
+        const workbookPath = path.join(workDir, "source.par.xlsx");
+        const blueprint = {
+            manifest: {id: "studio-par-route", name: "Studio PAR Route", version: "1.0.0"},
+            reels: 2,
+            rows: 1,
+            symbols: ["A", "B"],
+            paytable: {A: {2: 1}},
+            reelStrips: [["A", "B"], ["A", "B"]],
+            availableBets: [1],
+        };
+        await new ParSheetExporter("1.3.0").exportToFile(blueprint, workbookPath, workbookPath);
+
+        expect(await service.listTargets(workbookPath)).toEqual(expect.arrayContaining([
+            expect.objectContaining({target: "blueprint", supported: true}),
+            expect.objectContaining({target: "tsPackage", supported: true}),
+            expect.objectContaining({target: "outcomeLibrary", supported: true}),
+            expect.objectContaining({target: "stakeAdapter", supported: true}),
+        ]));
+
+        for (const target of ["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter"] as const) {
+            const destination = target === "blueprint"
+                ? path.join(workDir, target, "imported.blueprint.json")
+                : path.join(workDir, target);
+            const result = await service.build(workbookPath, target, destination);
+
+            expect(result).toMatchObject({
+                status: "ok",
+                target,
+                outputPath: destination,
+                sourceType: "parWorkbook",
+                conversionEvidencePath: expect.any(String),
+                ...(target === "blueprint" ? {} : {importedBlueprintPath: expect.any(String)}),
+            });
+            if (result.status !== "ok" || result.conversionEvidencePath === undefined) {
+                throw new Error("expected durable PAR conversion identities");
+            }
+            const importedBlueprintPath = result.importedBlueprintPath ?? result.outputPath;
+            expect(fs.existsSync(importedBlueprintPath)).toBe(true);
+            expect(fs.existsSync(result.conversionEvidencePath)).toBe(true);
+            expect(JSON.parse(fs.readFileSync(importedBlueprintPath, "utf-8"))).toMatchObject({manifest: blueprint.manifest});
+            expect(JSON.parse(fs.readFileSync(result.conversionEvidencePath, "utf-8"))).toMatchObject({
+                sourceWorkbook: workbookPath,
+                importedBlueprintHash: expect.stringMatching(/^sha256:/),
+            });
+            expect(fs.existsSync(destination)).toBe(true);
+        }
     });
 
     it("uses the same registry Outcome reuse and Stake flow for a real pokie init code-first package", async () => {

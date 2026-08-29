@@ -1534,6 +1534,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 (filePath) => {
                     observe(key, "--out", filePath);
+                    observe(key, "--dry-run", false);
                 },
             ),
         "par::import <input.xlsx> --out <file> (accepted --out value, default --format summary)": (key) =>
@@ -1544,6 +1545,18 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 (filePath) => {
                     observe(key, "--out", filePath);
+                    observe(key, "--dry-run", false);
+                },
+            ),
+        "par::import <input.xlsx> --dry-run (accepted non-writing preview)": (key) =>
+            new ParCommand(
+                TEST_VERSION,
+                {importFromFile: () => Promise.resolve({blueprint: createStarterGameBlueprint(), provenance: undefined, issues: []})},
+                undefined,
+                undefined,
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                    observe(key, "--dry-run", true);
                 },
             ),
         // par export observes --out at exporter.exportToFile(blueprint, outPath, blueprintPath)'s 2nd argument
@@ -1555,6 +1568,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 {
                     exportToFile: (blueprint, outPath) => {
                         observe(key, "--out", outPath);
+                        observe(key, "--dry-run", false);
                         return Promise.resolve([]);
                     },
                 },
@@ -1567,10 +1581,21 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 {
                     exportToFile: (blueprint, outPath) => {
                         observe(key, "--out", outPath);
+                        observe(key, "--dry-run", false);
                         return Promise.resolve([]);
                     },
                 },
                 () => createStarterGameBlueprint(),
+            ),
+        "par::export <config.json> --dry-run (accepted non-writing preview)": (key) =>
+            new ParCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                () => {
+                    observe(key, "--dry-run", true);
+                    return createStarterGameBlueprint();
+                },
             ),
 
         // Every "reel generate" case shares REEL_FIXTURE_BLUEPRINT/reelGenerationObserver (defined just above

@@ -365,14 +365,27 @@ export class StudioServer implements StudioServerHandling {
                 this.pokieVersion,
                 undefined,
                 undefined,
-                undefined,
+                async (projectRoot, provenance) => {
+                    const registered = await this.projectRegistrationService.registerManaged(projectRoot, path.basename(projectRoot), provenance?.sourceWorkbookPath, provenance?.conversionEvidencePath);
+                    if (registered.status !== "ok") {
+                        throw new Error(`Generated artifact at "${projectRoot}" could not be registered as a Studio Project.`);
+                    }
+                },
                 new ManagedOutcomeProjectService(undefined, async (project) => {
+                    // PAR materialization initially generates under a private
+                    // .pokie-par-import-* directory.  The registry promotes
+                    // that bundle beneath the durable imported Blueprint
+                    // before terminal success; registering this transient
+                    // callback would leave a Studio row for a directory its
+                    // cleanup finally removes.
+                    if (project.rootPath.split(path.sep).some((segment) => segment.startsWith(".pokie-par-import-"))) return;
                     const registered = await this.projectRegistrationService.registerManaged(project.rootPath, path.basename(project.rootPath));
                     if (registered.status !== "ok") {
                         throw new Error(`Generated Outcome Library at "${project.rootPath}" could not be registered as a Studio Project.`);
                     }
-                }),
+                }, undefined, (projectRoot) => this.projectRegistrationService.remove(projectRoot)),
                 options.pokiePackageRoot,
+                (projectRoot) => this.projectRegistrationService.remove(projectRoot),
             );
         this.describeProjectLocation = (location) => this.projectRegistrationService.describeLocation(location);
         this.toolHandlers = options.toolHandlers ?? [];
@@ -1355,11 +1368,14 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = this.blueprintService.saveManaged(validated.blueprint, validated.sourceWorkbookPath);
+        // A PAR-backed managed save executes the shared prepared artifact
+        // publication asynchronously; a normal draft save remains immediate.
+        // Awaiting both keeps registration behind the same terminal boundary.
+        const result = await Promise.resolve(this.blueprintService.saveManaged(validated.blueprint, validated.sourceWorkbookPath));
         if (result.status === "ok") {
             let registration;
             try {
-                registration = await this.registerManagedProject(result.path, result.name, result.sourceWorkbookPath);
+                registration = await this.registerManagedProject(result.path, result.name, result.sourceWorkbookPath, result.conversionEvidencePath);
             } catch {
                 // A managed save is not successful until its Blueprint Project is registered. Roll the
                 // freshly-created source back so users never receive a "saved" result for an orphan that
@@ -1384,11 +1400,11 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, result);
     }
 
-    private async registerManagedProject(location: string, name: string, sourceWorkbookPath: string | undefined) {
+    private async registerManagedProject(location: string, name: string, sourceWorkbookPath: string | undefined, conversionEvidencePath?: string) {
         let latestError: unknown;
         for (let attempt = 1; attempt <= MANAGED_PROJECT_REGISTRATION_ATTEMPTS; attempt++) {
             try {
-                return await this.projectRegistrationService.registerManaged(location, name, sourceWorkbookPath);
+                return await this.projectRegistrationService.registerManaged(location, name, sourceWorkbookPath, conversionEvidencePath);
             } catch (error) {
                 latestError = error;
             }

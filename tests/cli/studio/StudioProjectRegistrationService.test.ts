@@ -328,11 +328,16 @@ describe("StudioProjectRegistrationService", () => {
             const registry = new InMemoryStudioProjectRegistry();
             const resolver = fakeResolver({"/projects/sample-slot": tsPackageProject("/projects/sample-slot")});
             const service = new StudioProjectRegistrationService(registry, resolver);
-            await service.registerManaged("/projects/sample-slot", "Old name");
+            await service.registerManaged("/projects/sample-slot", "Old name", "/imports/sample.xlsx", "/imports/sample.evidence.json");
 
             await service.recordOpened("/projects/sample-slot", "Renamed game");
 
-            expect(await registry.list()).toEqual([expect.objectContaining({origin: "managed", name: "Renamed game"})]);
+            expect(await registry.list()).toEqual([expect.objectContaining({
+                origin: "managed",
+                name: "Renamed game",
+                importedFromParSheetPath: "/imports/sample.xlsx",
+                conversionEvidencePath: "/imports/sample.evidence.json",
+            })]);
         });
     });
 

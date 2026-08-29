@@ -114,6 +114,23 @@ describe("ExportCommand", () => {
         }
     });
 
+    it("publishes PAR-derived outcomes through a missing explicit parent", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-export-command-par-parent-test-"));
+        const workbookPath = path.join(workDir, "source.xlsx");
+        const outcomePath = path.join(workDir, "missing", "outcomes", "library");
+        const command = new ExportCommand("1.3.0");
+
+        try {
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+
+            await expect(command.run([workbookPath, "--to", "outcomes", "--out", outcomePath])).resolves.toBe(0);
+            expect(fs.existsSync(path.join(outcomePath, "manifest.json"))).toBe(true);
+            expect(fs.existsSync(path.join(outcomePath, ".pokie", "par-import", "conversion-evidence.json"))).toBe(true);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("keeps a large Blueprint export usable by recording deterministic bounded coverage before the Stake hand-off", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-export-command-large-blueprint-test-"));
         const blueprintPath = path.join(workDir, "large.blueprint.json");

@@ -117,6 +117,13 @@ describe("BuildCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
+    it("lists the supported GameBlueprint and PAR workflows in its project help", () => {
+        const help = new BuildCommand("1.3.0").getCommanderCommand().helpInformation().replace(/\s+/g, " ");
+
+        expect(help).toContain("GameBlueprint -> tsPackage, outcomeLibrary, stakeAdapter, or PAR workbook");
+        expect(help).toContain("PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or PAR workbook");
+    });
+
     it("describes --exact as an explicit request, with bounded coverage as the large managed-build default", () => {
         const help = new BuildCommand("1.3.0").getCommanderCommand().helpInformation();
 

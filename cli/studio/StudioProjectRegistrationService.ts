@@ -92,8 +92,8 @@ export class StudioProjectRegistrationService {
     // and first-saved from that .xlsx workbook (see StudioBlueprintService.saveManaged's own doc comment)
     // -- forwarded straight onto the registered entry (see StudioProjectRegistryEntry's own doc comment
     // for why this, not the blueprint file itself, is where that provenance lives).
-    public registerManaged(location: string, name: string, importedFromParSheetPath?: string): Promise<StudioProjectRegistrationResult> {
-        return this.register(location, "managed", name, importedFromParSheetPath);
+    public registerManaged(location: string, name: string, importedFromParSheetPath?: string, conversionEvidencePath?: string): Promise<StudioProjectRegistrationResult> {
+        return this.register(location, "managed", name, importedFromParSheetPath, conversionEvidencePath);
     }
 
     // Registers an already-existing package/library/WASM target by its own path — resolves it (never
@@ -124,6 +124,7 @@ export class StudioProjectRegistrationService {
             origin: existing?.origin ?? "external",
             lastOpenedAt: new Date().toISOString(),
             importedFromParSheetPath: existing?.importedFromParSheetPath,
+            conversionEvidencePath: existing?.conversionEvidencePath,
         };
         await this.replace(entry, matchingEntries);
         return {status: "ok", entry: {...entry, status: "ok"}};
@@ -250,6 +251,7 @@ export class StudioProjectRegistrationService {
         origin: StudioProjectOrigin,
         name?: string,
         importedFromParSheetPath?: string,
+        conversionEvidencePath?: string,
     ): Promise<StudioProjectRegistrationResult> {
         const resolved = await this.resolveRecognizedProject(location);
         if (resolved === undefined) {
@@ -265,6 +267,7 @@ export class StudioProjectRegistrationService {
             origin,
             lastOpenedAt: new Date().toISOString(),
             importedFromParSheetPath,
+            conversionEvidencePath,
         };
         await this.replace(entry, await this.entriesAt(resolved.location));
         return {status: "ok", entry: {...entry, status: "ok"}};

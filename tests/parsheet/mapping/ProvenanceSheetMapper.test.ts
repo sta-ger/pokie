@@ -1,4 +1,5 @@
 import {GameBlueprint} from "../../../src/generated/GameBlueprint.js";
+import {computeBlueprintHash} from "../../../src/parsheet/computeBlueprintHash.js";
 import {ProvenanceSheetMapper} from "../../../src/parsheet/mapping/ProvenanceSheetMapper.js";
 
 describe("ProvenanceSheetMapper", () => {
@@ -41,6 +42,12 @@ describe("ProvenanceSheetMapper", () => {
         expect(value.source).toBe("config.json");
         expect(value.blueprintHash).toMatch(/^sha256:[0-9a-f]{64}$/);
         expect(issues).toEqual([]);
+    });
+
+    it("keeps the Blueprint hash claim exact when PAR provenance becomes durable conversion evidence", () => {
+        const {value} = mapper.fromRows(mapper.toRows(blueprint, "1.3.0", new Date("2026-01-01T00:00:00.000Z"), "source.blueprint.json"));
+
+        expect(value.blueprintHash).toBe(computeBlueprintHash(blueprint));
     });
 
     it("returns no value and no issues for an empty sheet", () => {

@@ -376,7 +376,7 @@ POKIE's universal build pipeline: resolves `<project>` to a POKIE project and bu
 it, writing the result to `--out <path>` (default: a `<target>`-named sibling of `<project>`, e.g. building
 `tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults to `./blueprints/tsPackage`).
 
-The build command supports targets: `tsPackage`, `outcomeLibrary`, `stakeAdapter`, and `parWorkbook`.
+The build command supports targets: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, and `parWorkbook`.
 It supports source types: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and `wasm`.
 
 ## `pokie generate <packageRoot>`
@@ -412,7 +412,7 @@ Options:
 - `<project>` — a path the CLI resolves to a POKIE project: a `GameBlueprint` JSON file (a `blueprint` project), or an
   already-built `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook` artifact directory/file. Missing or
   unrecognized throws, naming the project types the CLI understands.
-- `--target <artifact>` — **required**; one of `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`.
+- `--target <artifact>` — **required**; one of `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`.
   Never an output directory (that's `--out`, below) — omitting it, or passing an unrecognized value, throws listing
   the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building a
   unsupported source/target pair, for instance, throws naming which source types that target actually
@@ -423,16 +423,18 @@ Options:
 - `--sample <n> --seed <string>` — only for `--target outcomeLibrary`; explicitly chooses `n` deterministic
   bounded-coverage draws and records that choice in the library manifest.
 - `--out <path>` — where the built artifact is written; optional, defaulting to a `<target>`-named sibling of
-  `<project>` (a `.xlsx` file for `parWorkbook`, a bare directory for every other target). An explicit `--out`
+  `<project>` (a `.xlsx` file for `parWorkbook`, a `.json` file for `blueprint`, a bare directory for every other target). An explicit `--out`
   always overrides the default and never changes what `--target` means. Must not already exist, or must be an
   empty directory (a file target like `parWorkbook` must simply not exist yet) — see [Conflict
   handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
 
-The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 10 supported cells are
+The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 14 supported cells are
 `blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
 `outcomeLibrary` → `outcomeLibrary`/`stakeAdapter`, `stakeAdapter` → `stakeAdapter`, and `parWorkbook` →
-`parWorkbook`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM remains
+`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM remains
+inspection-only. PAR-derived targets first import a durable Blueprint intermediate; dry-run prints that stage and
+any generated/reused Outcome intermediate without writing it.
 resolvable for inspection, but is intentionally not a build target: it is an inspection-only compatibility boundary,
 not a POKIE artifact workflow.
 
@@ -883,8 +885,13 @@ writes the resulting `GameBlueprint` JSON to `--out <file>` (default: `<input>` 
 Options:
 
 - `--out <file>` — where to write the imported `GameBlueprint` JSON.
-- `--format json` — print the full `{blueprint, provenance, issues}` result as JSON instead of a human-readable
-  summary.
+- `--format json` — print the full `{blueprint, provenance, issues, conversionEvidence}` importer result as JSON instead of a human-readable
+  summary. `conversionEvidence` retains the original Meta cells, diagnostics and explicit import facts.
+- `--dry-run` — validate and show the prepared file destination and evidence sidecar without writing either file.
+
+Successful imports also write `<blueprint>.conversion-evidence.json`. The sidecar records the source workbook,
+verbatim Meta cells, parsed provenance, diagnostics, formula/ignored/default facts, and whether the imported
+Blueprint hash proves lossless eligibility. It is part of the publication: an existing sidecar is never overwritten.
 
 Exit code is non-zero (and nothing is written) if there are any error-level diagnostics.
 
@@ -898,6 +905,7 @@ the atomicity guarantee above.
 Options:
 
 - `--out <file>` — where to write the exported workbook.
+- `--dry-run` — validate and show the prepared file destination without writing a workbook.
 
 ### Diagnostics
 
@@ -1083,7 +1091,11 @@ touching it. Choose a different unused `--out` path (or remove the destination y
 retry. A failed export never leaves a partial artifact — see [Rebuild safety](stake-engine-export.md#rebuild-safety--the-programmatic-writer-replaces-the-whole-directory-atomically)
 for the writer's publish discipline.
 
-## `pokie import <stakeDir>`
+## `pokie import <source>`
+
+`pokie import <workbook.xlsx> --out <blueprint.json> [--format json] [--dry-run]` is the target-oriented PAR
+import alias. It uses the same prepared Blueprint/evidence publication as `pokie par import`; dry-run validates
+without writing. A Stake Engine export directory continues to import as an Outcome Library.
 
 Imports a Stake Engine export directory (`index.json`, per-mode lookup CSV/books, and its own sibling
 `pokie-manifest.json`) back into one `WeightedOutcomeLibrary` per mode — see

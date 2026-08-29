@@ -14,6 +14,13 @@ describe("computeBlueprintHash", () => {
         expect(computeBlueprintHash(base)).toBe(computeBlueprintHash({...base}));
     });
 
+    it("retains the canonical imported Blueprint identity used by PAR evidence", () => {
+        const imported = JSON.parse(JSON.stringify(base)) as GameBlueprint;
+
+        expect(computeBlueprintHash(imported)).toBe(computeBlueprintHash(base));
+        expect(computeBlueprintHash({...imported, manifest: {...imported.manifest, version: "0.1.1"}})).not.toBe(computeBlueprintHash(base));
+    });
+
     it("is independent of the source object's own key order", () => {
         const reordered: GameBlueprint = {
             paytable: base.paytable,
