@@ -77,6 +77,72 @@ describe("FileStudioProjectRegistry", () => {
         expect(await registry.list()).toEqual([expect.objectContaining({location: "/existing", name: "Existing"})]);
     });
 
+    it("serializes a sibling registration behind an in-flight guarded Home replace", async () => {
+        const registry = new FileStudioProjectRegistry(registryFile);
+        await registry.upsert(entry("/existing", {name: "Existing"}));
+
+        const originalWriteFile = fs.promises.writeFile.bind(fs.promises);
+        let releaseFirstWrite: (() => void) | undefined;
+        let notifyFirstWrite: (() => void) | undefined;
+        const firstWriteStarted = new Promise<void>((resolve) => {
+            notifyFirstWrite = resolve;
+        });
+        let writeCount = 0;
+        const writeSpy = jest.spyOn(fs.promises, "writeFile").mockImplementation(async (...arguments_) => {
+            writeCount++;
+            if (writeCount === 1) {
+                notifyFirstWrite?.();
+                await new Promise<void>((resolve) => {
+                    releaseFirstWrite = resolve;
+                });
+            }
+            return originalWriteFile(...arguments_);
+        });
+
+        const registering = registry.upsert(entry("/registered", {name: "Registered"}));
+        await firstWriteStarted;
+        const opening = registry.replace(entry("/opening", {name: "Opening"}), ["/existing"]);
+
+        // The Home replace must not begin its own stale read-modify-write while registration owns the
+        // transaction. Without the shared queue it reaches a second write here and can overwrite the
+        // sibling record after its delayed first write completes.
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(writeCount).toBe(1);
+
+        releaseFirstWrite?.();
+        await expect(Promise.all([registering, opening])).resolves.toEqual([undefined, true]);
+        writeSpy.mockRestore();
+
+        expect((await registry.list()).map((candidate) => candidate.location)).toEqual(["/opening", "/registered"]);
+    });
+
+    it("rolls a superseded Home replace back without removing a queued sibling mutation", async () => {
+        const registry = new FileStudioProjectRegistry(registryFile);
+        await registry.upsert(entry("/existing", {name: "Existing"}));
+        let current = true;
+        const originalWriteFile = fs.promises.writeFile.bind(fs.promises);
+        let homeWriteCompleted = false;
+        const writeSpy = jest.spyOn(fs.promises, "writeFile").mockImplementation(async (...arguments_) => {
+            const result = await originalWriteFile(...arguments_);
+            if (!homeWriteCompleted) {
+                homeWriteCompleted = true;
+                current = false;
+            }
+            return result;
+        });
+
+        const opening = registry.replace(entry("/opening", {name: "Opening"}), ["/existing"], {isCurrent: () => current});
+        const registering = registry.upsert(entry("/registered", {name: "Registered"}));
+
+        await expect(opening).resolves.toBe(false);
+        await registering;
+        writeSpy.mockRestore();
+
+        expect((await registry.list()).map((candidate) => candidate.location)).toEqual(["/registered", "/existing"]);
+    });
+
     it("removes an entry by location and persists the removal", async () => {
         const registry = new FileStudioProjectRegistry(registryFile);
         await registry.upsert(entry("/a"));

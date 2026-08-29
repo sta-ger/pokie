@@ -49,6 +49,7 @@ import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {StudioNativePickerService} from "../../../cli/studio/home/StudioNativePickerService.js";
 import {isLoopbackRequest} from "../../../cli/studio/isLoopbackRequest.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
+import {FileStudioProjectRegistry} from "../../../cli/studio/FileStudioProjectRegistry.js";
 import {InMemoryStudioReplayRepository} from "../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
 import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
 import {StudioPlayService} from "../../../cli/studio/runtime/StudioPlayService.js";
@@ -497,6 +498,76 @@ describe("StudioServer", () => {
         expect(await get(`${baseUrl}/api/home/recent-projects`)).toMatchObject({
             body: [expect.objectContaining({projectRoot: path.resolve("./second"), name: "Second"})],
         });
+    });
+
+    it("keeps a registry registration made during a Home commit through the real file-backed server path", async () => {
+        const registryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-registry-overlap-"));
+        const registry = new FileStudioProjectRegistry(path.join(registryDirectory, "projects.json"));
+        const registrationService = new StudioProjectRegistrationService(registry, {
+            resolve: (projectRoot) => Promise.resolve({
+                type: "tsPackage",
+                rootPath: path.resolve(projectRoot),
+                capabilities: ["runtime.execute"],
+                provenance: '"package.json" declares a "pokie.entry" field',
+            }),
+        });
+        const manifest: PokieGameManifest = {id: "opening", name: "Opening", version: "1.0.0"};
+        loadGame.mockResolvedValue(createFakeGame(manifest));
+        const overlapHomeService = new StudioHomeService("1.0.0", undefined, loadGame);
+        const overlapServer = new StudioServer({
+            pokieVersion: "1.0.0",
+            host: "127.0.0.1",
+            port: 0,
+            studioRoot,
+            homeService: overlapHomeService,
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, overlapHomeService),
+            loadGame,
+            resolveRuntimePackageRoot: (projectRoot) => Promise.resolve({runtimePath: projectRoot, ownsRuntimePath: false, release: () => Promise.resolve()}),
+            gamePackageInspector: {inspect},
+            gamePackageValidator: {validate},
+            projectRegistrationService: registrationService,
+        });
+
+        const originalWriteFile = fs.promises.writeFile.bind(fs.promises);
+        let releaseHomeWrite: (() => void) | undefined;
+        let notifyHomeWrite: (() => void) | undefined;
+        const homeWriteStarted = new Promise<void>((resolve) => {
+            notifyHomeWrite = resolve;
+        });
+        let writeCount = 0;
+        const writeSpy = jest.spyOn(fs.promises, "writeFile").mockImplementation(async (...arguments_) => {
+            writeCount++;
+            if (writeCount === 1) {
+                notifyHomeWrite?.();
+                await new Promise<void>((resolve) => {
+                    releaseHomeWrite = resolve;
+                });
+            }
+            return originalWriteFile(...arguments_);
+        });
+
+        try {
+            const address = await overlapServer.start();
+            const overlapBaseUrl = `http://${address.host}:${address.port}`;
+            const opening = post(`${overlapBaseUrl}/api/home/projects/open`, {projectRoot: "./opening"});
+            await homeWriteStarted;
+            const registering = post(`${overlapBaseUrl}/api/home/projects/registry/register`, {location: "./registered", name: "Registered"});
+
+            await flushMacrotask();
+            expect(writeCount).toBe(1);
+            releaseHomeWrite?.();
+
+            expect((await opening).status).toBe(200);
+            expect((await registering).status).toBe(201);
+            expect((await registry.list()).map((candidate) => candidate.location)).toEqual(expect.arrayContaining([
+                path.resolve("./opening"),
+                path.resolve("./registered"),
+            ]));
+        } finally {
+            writeSpy.mockRestore();
+            await overlapServer.stop();
+            fs.rmSync(registryDirectory, {recursive: true, force: true});
+        }
     });
 
     it("lets a Home open supersede a pending direct-entry dashboard load", async () => {
