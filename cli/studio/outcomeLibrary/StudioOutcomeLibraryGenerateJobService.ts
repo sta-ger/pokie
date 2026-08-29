@@ -218,9 +218,11 @@ export class StudioOutcomeLibraryGenerateJobService {
         });
         if (result.status === "cancelled") {
             const cancelledResult: StudioOutcomeLibraryGenerateJobResultView = {
-                ...result,
+                status: "cancelled",
                 processedRawIndex: result.processedRawIndex.toString(),
                 progressTotal: result.progressTotal.toString(),
+                recovery: result.recovery,
+                plan: result.plan,
                 ...(result.checkpoint === undefined ? {} : {
                     checkpoint: this.persistCheckpoint(record.projectRoot, record.id, record.request, result.checkpoint),
                 }),
