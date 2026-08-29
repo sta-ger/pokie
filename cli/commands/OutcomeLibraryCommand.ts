@@ -448,7 +448,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 }
                 return parsed;
             })
-            .option("--config-hash <hash>", "recorded verbatim into the generated library's own diagnostics")
+            .option("--config-hash <hash>", "verify the loaded package configuration identity before generation")
             .option("--library-id <id>", "id for the generated library (default: derived from the game manifest/mode)")
             .option(
                 "--max-outcome-space-size <n>",

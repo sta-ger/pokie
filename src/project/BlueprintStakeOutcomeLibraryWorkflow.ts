@@ -60,6 +60,12 @@ export type ManagedOutcomeGeneration = {
     // and Studio; it never changes the generator's global default cap.
     readonly generation: "exact" | "sampled";
     readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
+    /**
+     * The exact-space boundary used by the policy which resolved this request.
+     * It is carried into the domain preflight and generator request rather than
+     * being a workflow-only decision which cannot be reconstructed later.
+     */
+    readonly maxExactOutcomeSpaceSize?: bigint;
     /** Present only when the managed automatic compatibility policy chose this request. */
     readonly compatibilityPolicyVersion?: string;
 };
@@ -245,6 +251,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                     ...(declaredModes && declaredModes.length > 0 ? {mode: mode.id} : {}),
                     selectBetMode: hasRuntimeBetModes,
                     generation: generation.generation,
+                    ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
                     ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
                     ...(generation.sampled !== undefined ? {sample: generation.sampled} : {}),
                     signal: options?.signal,
@@ -328,7 +335,11 @@ function resolveManagedOutcomeGeneration(
 
     const estimate = estimateExactOutcomeSpaceSize(game);
     if (estimate.totalOutcomeSpaceSize <= MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize) {
-        return {generation: "exact", compatibilityPolicyVersion: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.version};
+        return {
+            generation: "exact",
+            maxExactOutcomeSpaceSize: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize,
+            compatibilityPolicyVersion: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.version,
+        };
     }
     return {
         generation: "sampled",
@@ -338,6 +349,7 @@ function resolveManagedOutcomeGeneration(
             // coverage library is reproducible without machine-local state.
             seed: `${MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.seedPrefix}${configHash}`,
         },
+        maxExactOutcomeSpaceSize: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize,
         compatibilityPolicyVersion: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.version,
     };
 }
@@ -346,6 +358,7 @@ function outcomeGenerationPreflight(game: PokieGame, generation: ManagedOutcomeG
     const estimate = estimateExactOutcomeSpaceSize(game);
     const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, {
         generation: generation.generation,
+        ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
         ...(generation.sampled === undefined ? {} : {sample: generation.sampled}),
     });
     const estimatedItemCount = preflight.expectedRawWork;
