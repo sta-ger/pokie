@@ -869,7 +869,7 @@ describe("StudioServer", () => {
 
         await server.stop();
         const unsupportedEntry = path.join(unsupportedRoot, "dist", "index.js");
-        fs.writeFileSync(unsupportedEntry, fs.readFileSync(unsupportedEntry, "utf8").replaceAll("createExactEnumerationSession", "createUnsupportedEnumerationSession"));
+        fs.writeFileSync(unsupportedEntry, fs.readFileSync(unsupportedEntry, "utf8").replace(/createExactEnumerationSession/g, "createUnsupportedEnumerationSession"));
         Reflect.deleteProperty(require.cache, unsupportedEntry);
         const unsupportedCliError = jest.spyOn(console, "error").mockImplementation(() => undefined);
         try {
