@@ -30,7 +30,7 @@ import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/w
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
 import {generateWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
-import {MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY, prepareOutcomeLibraryGeneration, preflightOutcomeLibraryGenerationFromEstimate} from "../weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
+import {MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY, prepareOutcomeLibraryGeneration, type OutcomeLibraryGenerationPreflight} from "../weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
 import {estimateExactOutcomeSpaceSize} from "../weightedoutcome/generate/estimateExactOutcomeSpaceSize.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
@@ -163,11 +163,27 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         // plan's destination policy.  Direct workflow callers retain the
         // normal no-source/no-descendant boundary.
         if (!allowPlannedSourceSidecar) assertArtifactDestinationIsSafe(source.rootPath, bundleDir);
-        const preflight = outcomeGenerationPreflight(game, generation);
+        // Preparation owns the loaded configuration assertion, selected
+        // strategy, and exact publication identity.  The managed planner only
+        // adapts that resolved preflight to its generic artifact view.
+        const preparedRequest = prepareOutcomeLibraryGeneration({
+            libraryId: game.getManifest().id,
+            game,
+            pokieVersion: this.pokieVersion,
+            configHash,
+            generation: generation.generation,
+            ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
+            ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
+            ...(generation.sampled === undefined ? {} : {sample: generation.sampled}),
+            outputDestination: bundleDir,
+        });
+        const boundDestination = preparedRequest.preflight.destination?.path;
+        if (boundDestination === undefined) throw new Error("Managed Outcome Library generation requires a bound output destination.");
+        const preflight = outcomeGenerationPreflight(preparedRequest.preflight);
         reportArtifactBuildProgress(options, {status: "preflight", preflight});
         assertArtifactBuildNotCancelled(options);
         try {
-            await this.generateBundle(source.rootPath, game, configHash, bundleDir, options, preflight, generation);
+            await this.generateBundle(source.rootPath, game, configHash, boundDestination, options, preflight, generation);
             assertArtifactBuildNotCancelled(options);
             const project = await this.managedOutcomeProjects.registerAndOpen(source.rootPath, bundleDir, compatibility);
             reportArtifactBuildProgress(options, {
@@ -231,21 +247,10 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         preflight: ArtifactBuildPreflight,
         generation: ManagedOutcomeGeneration,
     ): Promise<void> {
-        // Resolve the single publication identity once. Each mode's request
-        // carries this same domain-bound destination and the writer consumes
-        // it, rather than retaining an independent managed destination.
-        const boundDestination = prepareOutcomeLibraryGeneration({
-            libraryId: game.getManifest().id,
-            game,
-            pokieVersion: this.pokieVersion,
-            configHash,
-            generation: generation.generation,
-            ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
-            ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
-            ...(generation.sampled === undefined ? {} : {sample: generation.sampled}),
-            outputDestination: destinationPath,
-        }).preflight.destination?.path;
-        if (boundDestination === undefined) throw new Error("Managed Outcome Library generation requires a bound output destination.");
+        // destinationPath is already the immutable publication identity bound
+        // by generatePrepared's domain request. Every per-mode execution below
+        // receives that same identity rather than resolving its own spelling.
+        const boundDestination = destinationPath;
         const declaredModes = game.getBetModes?.();
         // getBetModes() deliberately exposes both the legacy declarative shape and the explicit runtime
         // contract.  Only the latter wraps createExactEnumerationSession() in
@@ -374,23 +379,17 @@ function resolveManagedOutcomeGeneration(
     };
 }
 
-function outcomeGenerationPreflight(game: PokieGame, generation: ManagedOutcomeGeneration): ArtifactBuildPreflight {
-    const estimate = estimateExactOutcomeSpaceSize(game);
-    const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, {
-        generation: generation.generation,
-        ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
-        ...(generation.sampled === undefined ? {} : {sample: generation.sampled}),
-    });
+function outcomeGenerationPreflight(preflight: OutcomeLibraryGenerationPreflight): ArtifactBuildPreflight {
     const estimatedItemCount = preflight.expectedRawWork;
     return {
         estimatedItemCount,
         // A generated outcome record contains a round artifact, so this intentionally conservative estimate is
         // a planning signal only; the precise output size is unknown until grids have been deduplicated.
         estimatedBytes: estimatedItemCount * BigInt(1024),
-        ...(estimatedItemCount > BigInt(10_000) || generation.sampled !== undefined
-            ? {complexityWarning: generation.sampled === undefined
+        ...(estimatedItemCount > BigInt(10_000) || preflight.strategy === "bounded-coverage"
+            ? {complexityWarning: preflight.strategy === "exact"
                 ? `Exact generation will enumerate ${estimatedItemCount} reel-stop combinations.`
-                : `Large source (${estimate.totalOutcomeSpaceSize} reel-stop combinations): using ${estimatedItemCount} deterministic bounded-coverage draws. Use an explicit exact build only when the full artifact library fits your memory and storage budget.`}
+                : `Large source (${preflight.estimate.totalOutcomeSpaceSize} reel-stop combinations): using ${estimatedItemCount} deterministic bounded-coverage draws. Use an explicit exact build only when the full artifact library fits your memory and storage budget.`}
             : {}),
     };
 }

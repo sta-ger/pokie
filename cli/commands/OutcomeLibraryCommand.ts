@@ -9,6 +9,7 @@ import {
     ExactEnumerationCheckpoint,
     GenerateExactWeightedOutcomeLibraryResult,
     OutcomeLibraryGenerationRequest,
+    ResolvedOutcomeLibraryGenerationRequest,
     OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleValidating,
     OutcomeLibraryBundleValidator,
@@ -28,7 +29,7 @@ import {
     generateWeightedOutcomeLibrary,
     loadPokieGame,
     preflightOutcomeLibraryGenerationFromEstimate,
-    resolveOutcomeLibraryGenerationIdentity,
+    prepareOutcomeLibraryGenerationFromEstimate,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -508,27 +509,16 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         try {
             const game = await this.loadGame(packageRoot);
             const request = this.createGenerationRequest(game, options, sampling, controller.signal);
-            // The raw-publication planner needs the same resolved strategy as
-            // execution, but must not execute the generator's runtime-only
-            // unsupported check before its own read boundary. This is the
-            // shared preflight decision used by the request itself.
-            // Keep raw publication's cheap preflight free of execution-only
-            // runtime probing, while still resolving the domain-owned source
-            // identity and destination before either the planner or generator
-            // observes it.
-            const resolvedRequest = resolveOutcomeLibraryGenerationIdentity(request);
-            const preflight = preflightOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game), {
-                generation: resolvedRequest.generation,
-                ...(resolvedRequest.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: resolvedRequest.maxExactOutcomeSpaceSize}),
-                ...(resolvedRequest.sample === undefined ? {} : {sample: resolvedRequest.sample}),
-            });
+            // The public request preparation is the one authority for source
+            // provenance, destination identity, and conditional-bounded
+            // strategy. Raw JSON publication consumes this resolved request;
+            // it must not reconstruct a subtly different preflight.
+            const resolvedRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game), request);
             const prepared = this.prepareRawGenerationOperation(
                 packageRoot,
                 options,
                 sampling,
                 controller.signal,
-                preflight.strategy,
-                resolvedRequest.outputDestination,
                 resolvedRequest,
             );
             const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution);
@@ -573,9 +563,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         options: GenerateCliOptions,
         sampling: {sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}},
         signal: AbortSignal,
-        resolvedStrategy: "exact" | "bounded-coverage",
-        outputDestination: string | undefined,
-        resolvedRequest: OutcomeLibraryGenerationRequest,
+        resolvedRequest: ResolvedOutcomeLibraryGenerationRequest,
     ) {
         const sourcePaths = [packageRoot, ...(options.resume === undefined ? [] : [options.resume])];
         const currentSource = () => ({
@@ -586,14 +574,14 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             configurationProvenance: {
                 configurationHash: computeArtifactInputBindingHash(sourcePaths),
                 pokieVersion: this.pokieVersion,
-                generationSemantics: resolvedStrategy === "exact" ? "exact" as const : "boundedSample" as const,
-                ...(resolvedStrategy === "exact" ? {} : {
-                    sampleCount: String((sampling.sampled ?? sampling.bounded)!.sampleSize),
-                    sampleSeed: (sampling.sampled ?? sampling.bounded)!.seed,
+                generationSemantics: resolvedRequest.preflight.strategy === "exact" ? "exact" as const : "boundedSample" as const,
+                ...(resolvedRequest.preflight.strategy === "exact" ? {} : {
+                    sampleCount: String(resolvedRequest.preflight.sample!.sampleSize),
+                    sampleSeed: resolvedRequest.preflight.sample!.seed,
                 }),
             },
         });
-        const rawOutput = outputDestination;
+        const rawOutput = resolvedRequest.preflight.destination?.path;
         let publishedOutput = false;
         return {
             plan: this.planner.planRawOutcomeLibraryJsonPublication(currentSource(), rawOutput),
@@ -607,10 +595,17 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     // a config change after planning cannot inherit the old
                     // request's provenance merely because its destination is
                     // still the same bound publication identity.
-                    const reboundRequest = resolveOutcomeLibraryGenerationIdentity(
+                    const reboundRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game),
                         this.createGenerationRequest(game, options, sampling, signal, resumeFrom),
                     );
-                    if (reboundRequest.configHash !== resolvedRequest.configHash || reboundRequest.outputDestination !== rawOutput) {
+                    if (
+                        reboundRequest.configHash !== resolvedRequest.configHash ||
+                        reboundRequest.preflight.destination?.path !== rawOutput ||
+                        reboundRequest.preflight.strategy !== resolvedRequest.preflight.strategy ||
+                        reboundRequest.preflight.maxExactOutcomeSpaceSize !== resolvedRequest.preflight.maxExactOutcomeSpaceSize ||
+                        reboundRequest.preflight.sample?.sampleSize !== resolvedRequest.preflight.sample?.sampleSize ||
+                        reboundRequest.preflight.sample?.seed !== resolvedRequest.preflight.sample?.seed
+                    ) {
                         throw new WeightedOutcomeLibraryGenerationError(
                             "weighted-outcome-library-generation-configuration-conflict",
                             "The loaded package configuration or output destination changed after preflight. Re-run generation from a fresh preflight.",
@@ -742,7 +737,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         if (options.exact) generation = "exact";
         else if (sampling.sampled !== undefined) generation = "sampled";
         else if (sampling.bounded !== undefined) generation = "bounded";
-        return resolveOutcomeLibraryGenerationIdentity({
+        return {
             libraryId: options.libraryId ?? `${game.getManifest().id}${options.mode !== undefined ? `-${options.mode}` : ""}`,
             game,
             pokieVersion: this.pokieVersion,
@@ -758,7 +753,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             ...(resumeFrom === undefined ? {} : {resumeFrom}),
             ...(signal === undefined ? {} : {signal}),
             ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
-        });
+        };
     }
 
     private printGenerateResult(result: GenerateExactWeightedOutcomeLibraryResult, options: GenerateCliOptions): void {

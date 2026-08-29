@@ -168,7 +168,20 @@ export function prepareOutcomeLibraryGeneration(request: OutcomeLibraryGeneratio
     if (typeof identifiedRequest.game.createExactEnumerationSession !== "function") {
         throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported", `"${request.game.getManifest().id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`);
     }
-    const estimate = estimateExactOutcomeSpaceSize(identifiedRequest.game);
+    return prepareOutcomeLibraryGenerationFromEstimate(estimateExactOutcomeSpaceSize(identifiedRequest.game), identifiedRequest);
+}
+
+/**
+ * Resolves the same immutable identity and publication binding when a caller
+ * already owns the cheap estimate probe.  This deliberately does not test the
+ * executable enumeration capability: CLI preflight and injected producers can
+ * report their supplied estimate before crossing the execution boundary.
+ */
+export function prepareOutcomeLibraryGenerationFromEstimate(
+    estimate: OutcomeSpaceEstimate,
+    request: OutcomeLibraryGenerationRequest,
+): ResolvedOutcomeLibraryGenerationRequest {
+    const identifiedRequest = resolveOutcomeLibraryGenerationIdentity(request);
     const destination = resolveOutputDestination(identifiedRequest.outputDestination);
     const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, identifiedRequest);
     return {

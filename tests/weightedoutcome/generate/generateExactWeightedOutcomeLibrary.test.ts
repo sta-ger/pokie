@@ -11,6 +11,7 @@ import {
     OutcomeLibraryBundleWriter,
     PokieGame,
     prepareOutcomeLibraryGeneration,
+    prepareOutcomeLibraryGenerationFromEstimate,
     preflightOutcomeLibraryGenerationFromEstimate,
     streamExactWeightedOutcomes,
     WeightedOutcomeLibraryGenerationCancelledError,
@@ -129,6 +130,31 @@ describe("generateExactWeightedOutcomeLibrary", () => {
 
         expect(prepared.outputDestination).toBe("/tmp/outcome-library");
         expect(prepared.preflight.destination).toEqual({path: "/tmp/outcome-library"});
+    });
+
+    it("binds CLI-style supplied estimates through the same loaded configuration and destination preparation", () => {
+        const game: PokieGame = {...buildFixtureGame(), getConfigHash: () => "sha256:loaded-config"};
+        const prepared = prepareOutcomeLibraryGenerationFromEstimate({
+            reelsNumber: 2,
+            reelsSymbolsNumber: 1,
+            reelSizes: [3, 2],
+            totalOutcomeSpaceSize: BigInt(6),
+        }, {
+            libraryId: "cli-preflight",
+            game,
+            pokieVersion: "test",
+            configHash: "sha256:loaded-config",
+            outputDestination: " /tmp/cli-outcome-library ",
+        });
+
+        expect(prepared.configHash).toBe("sha256:loaded-config");
+        expect(prepared.preflight.destination).toEqual({path: "/tmp/cli-outcome-library"});
+        expect(() => prepareOutcomeLibraryGenerationFromEstimate(prepared.preflight.estimate, {
+            libraryId: "cli-preflight",
+            game,
+            pokieVersion: "test",
+            configHash: "sha256:wrong-assertion",
+        })).toThrow("The supplied configuration identity does not match the loaded game");
     });
 
     it("exactly enumerates, dedupes, and sums weights straight off the real calculation path", async () => {
