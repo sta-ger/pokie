@@ -505,9 +505,10 @@ describe("ProjectDashboardPage - Play", () => {
         await user.click(await screen.findByRole("button", {name: "New Play session"}));
         await user.click(await screen.findByRole("button", {name: "Find free games"}));
 
-        // The round returned by find-free-games renders through the exact same RoundArtifactInspector
-        // chain a plain Spin's RoundArtifact does -- its own real "freeGamesTriggered" feature event shows
-        // up as genuine rendered proof, never a client-computed/simulated indicator.
+        // Feature payloads are inspector data, deliberately separate from the player-facing game
+        // window. Opening the real round inspector proves the scenario's authoritative artifact -- not
+        // a client-computed/simulated indicator -- contains and renders its feature event.
+        await user.click(await screen.findByText("Inspect round artifact"));
         await waitFor(() => expect(screen.getAllByText("freeGamesTriggered").length).toBeGreaterThan(0));
         expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-1/find-free-games")).toBe(true);
     }, 30000);
@@ -641,7 +642,13 @@ describe("canonical player parity: Play renders the same fixture round Replay/Ou
         await goToPlayTab(user);
         await user.click(await screen.findByRole("button", {name: "New Play session"}));
         await user.click(await screen.findByRole("button", {name: "Spin"}));
-        await waitFor(() => expect(within(routed.container).getByText("12.50 (2.50x stake)")).toBeInTheDocument());
+        await waitFor(() => expect(within(routed.container).getByLabelText("Game player")).toBeInTheDocument());
+
+        // Play's polished surface is the canonical player: it renders the round total and multiplier
+        // as distinct player totals. The per-win "x stake" breakdown belongs to the separate inspector.
+        const playTotals = within(routed.container).getByLabelText("Round totals");
+        expect(within(playTotals).getByText("Total win").nextElementSibling).toHaveTextContent("12.50");
+        expect(within(playTotals).getByText("Payout multiplier").nextElementSibling).toHaveTextContent("2.50");
 
         // Each render mounts into the shared document.body, so every query below is scoped to its own
         // container -- otherwise a text query bound to either render's own result would ambiguously match
@@ -682,6 +689,10 @@ describe("canonical player parity: Play renders the same fixture round Replay/Ou
             expect(lemonCell.style.backgroundColor).toBe("rgb(153, 153, 153)");
             fireEvent.mouseLeave(winButton);
         }
+
+        // The player-facing surface stays compact; opening its real inspector reveals the same
+        // per-win position detail as a direct inspector render.
+        await user.click(within(routed.container).getByText("Inspect round artifact"));
 
         // Same win detail: real symbol, real position count, the same "x stake" unit.
         expect(within(routed.container).getByText("2")).toBeInTheDocument();
