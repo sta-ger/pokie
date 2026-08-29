@@ -483,6 +483,19 @@ describe("OutcomeLibraryCommand", () => {
             expect(printed.strategy).toBe("exact");
         });
 
+        it("runs --estimate through the same prepared request as execution", async () => {
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const command = createGenerateCommand({generate});
+
+            const exitCode = await command.run([
+                "generate", "/project/slot", "--estimate", "--config-hash", "sha256:other", "--out", "/project/library.json",
+            ]);
+
+            expect(exitCode).toBe(1);
+            expect(generate).not.toHaveBeenCalled();
+            expect(errorSpy.mock.calls.flat().join("\n")).toContain("configuration-conflict");
+        });
+
         it("flags the estimate as requiring --bounded once the space exceeds --max-outcome-space-size", async () => {
             const command = createGenerateCommand();
 

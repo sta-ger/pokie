@@ -469,7 +469,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     // the loaded game's own manifest.id alone (see OutcomeLibraryCommand's own comment) -- observed at
                     // the injected generate() call's own options.libraryId.
                     {flag: "--library-id", required: false, kind: "unvalidated", defaultValue: "fixture-slot", acceptedValue: "custom-lib"},
-                    {flag: "--max-outcome-space-size", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "1000000"},
+                    // The prepared domain request owns this default, so both execution and --estimate expose the same cap.
+                    {flag: "--max-outcome-space-size", required: false, kind: "validated", defaultValue: "20000000", acceptedValue: "1000000"},
                     {flag: "--exact", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                     {flag: "--sample", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "1000"},
                     {flag: "--bounded", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},

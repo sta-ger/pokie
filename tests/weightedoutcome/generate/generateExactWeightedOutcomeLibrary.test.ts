@@ -157,6 +157,19 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         })).toThrow("The supplied configuration identity does not match the loaded game");
     });
 
+    it("validates shared request identities and exact cap before either preflight or execution", () => {
+        const request = {libraryId: "fixture-lib", game: buildFixtureGame(), pokieVersion: "test"};
+
+        for (const invalid of [
+            {...request, libraryId: " "},
+            {...request, mode: " "},
+            {...request, stake: 0},
+            {...request, maxExactOutcomeSpaceSize: BigInt(0)},
+        ]) {
+            expect(() => prepareOutcomeLibraryGeneration(invalid)).toThrow(WeightedOutcomeLibraryGenerationError);
+        }
+    });
+
     it("exactly enumerates, dedupes, and sums weights straight off the real calculation path", async () => {
         const result = await generateExactWeightedOutcomeLibrary({
             libraryId: "fixture-lib",

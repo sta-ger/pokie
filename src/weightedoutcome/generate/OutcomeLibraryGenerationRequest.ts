@@ -107,8 +107,38 @@ export function parsePositiveOutcomeLibraryGenerationDecimal(value: unknown, fie
 }
 
 function validateRequest(request: OutcomeLibraryGenerationRequest): void {
+    if (typeof request.libraryId !== "string" || request.libraryId.trim().length === 0) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-invalid-request",
+            "libraryId must be a non-empty library identity.",
+        );
+    }
+    if (request.mode !== undefined && (typeof request.mode !== "string" || request.mode.trim().length === 0)) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-invalid-request",
+            "mode must be a non-empty mode identity when present.",
+        );
+    }
+    if (request.stake !== undefined && (!Number.isFinite(request.stake) || request.stake <= 0)) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-invalid-request",
+            "stake must be a positive finite number when present.",
+        );
+    }
+    if (request.configHash !== undefined && (typeof request.configHash !== "string" || request.configHash.trim().length === 0)) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-invalid-request",
+            "configHash must be a non-empty configuration identity when present.",
+        );
+    }
+    if (request.maxExactOutcomeSpaceSize !== undefined && (typeof request.maxExactOutcomeSpaceSize !== "bigint" || request.maxExactOutcomeSpaceSize <= BigInt(0))) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-invalid-request",
+            "maxExactOutcomeSpaceSize must be a positive integer when present.",
+        );
+    }
     validateGeneration(request.generation, request.sample);
-    if (request.outputDestination !== undefined && request.outputDestination.trim().length === 0) {
+    if (request.outputDestination !== undefined && (typeof request.outputDestination !== "string" || request.outputDestination.trim().length === 0)) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-destination-conflict",
             "outputDestination must be a non-empty destination identity when present.",
@@ -126,6 +156,12 @@ function resolveOutputDestination(outputDestination: string | undefined): Outcom
 }
 
 function validateGeneration(requestedGeneration: OutcomeLibraryGenerationMode | undefined, sample: OutcomeLibraryGenerationSample | undefined): void {
+    if (requestedGeneration !== undefined && requestedGeneration !== "default" && requestedGeneration !== "exact" && requestedGeneration !== "sampled" && requestedGeneration !== "bounded") {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-invalid-request",
+            "generation must be default, exact, sampled, or bounded when present.",
+        );
+    }
     const generation = requestedGeneration ?? "default";
     if ((generation === "sampled" || generation === "bounded") && sample === undefined) {
         throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-invalid-sample-size", `${generation} generation requires a positive sampleSize and deterministic seed.`);
@@ -133,7 +169,7 @@ function validateGeneration(requestedGeneration: OutcomeLibraryGenerationMode | 
     if ((generation === "default" || generation === "exact") && sample !== undefined) {
         throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-strategy-conflict", `${generation} generation cannot be combined with sampled generation.`);
     }
-    if (sample !== undefined && (sample.sampleSize <= BigInt(0) || sample.seed.length === 0)) {
+    if (sample !== undefined && (typeof sample.sampleSize !== "bigint" || sample.sampleSize <= BigInt(0) || typeof sample.seed !== "string" || sample.seed.trim().length === 0)) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-invalid-sample-size",
             "sampleSize must be a positive integer and seed must be non-empty; use `--sample <n> --seed <string>` with a positive n.",

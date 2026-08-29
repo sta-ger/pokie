@@ -6,11 +6,11 @@ import {
     computeFairnessServerSeedCommitment,
     FairnessRoundProof,
     GameBlueprint,
-    GenerateExactWeightedOutcomeLibraryOptions,
     GenerateExactWeightedOutcomeLibraryResult,
     HtmlSimulationReportRenderer,
     MarkdownSimulationReportRenderer,
     OutcomeLibraryBundleReading,
+    OutcomeLibraryGenerationRequest,
     OutcomeSpaceEstimate,
     ParallelSimulationRunner,
     PokieGame,
@@ -1327,17 +1327,17 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 () => Promise.resolve(stub<PokieGame>({getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"})})),
-                (options: GenerateExactWeightedOutcomeLibraryOptions) => {
-                    observe(key, "--mode", options.betMode);
+                (options: OutcomeLibraryGenerationRequest) => {
+                    observe(key, "--mode", options.mode);
                     observe(key, "--stake", options.stake);
                     observe(key, "--config-hash", options.configHash);
                     observe(key, "--library-id", options.libraryId);
-                    observe(key, "--max-outcome-space-size", options.maxOutcomeSpaceSize);
-                    observe(key, "--exact", options.exact ?? false);
-                    observe(key, "--sample", options.sampled?.sampleSize);
-                    observe(key, "--bounded", options.bounded !== undefined);
-                    observe(key, "--sample-size", options.bounded?.sampleSize);
-                    observe(key, "--seed", options.bounded?.seed);
+                    observe(key, "--max-outcome-space-size", options.maxExactOutcomeSpaceSize);
+                    observe(key, "--exact", options.generation === "exact");
+                    observe(key, "--sample", options.generation === "sampled" ? options.sample?.sampleSize : undefined);
+                    observe(key, "--bounded", options.generation === "bounded");
+                    observe(key, "--sample-size", options.generation === "bounded" ? options.sample?.sampleSize : undefined);
+                    observe(key, "--seed", options.sample?.seed);
                     observe(key, "--progress", options.onProgress !== undefined);
                     observe(key, "--estimate", false);
                     observe(key, "--dry-run", false);
@@ -1379,12 +1379,12 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     undefined,
                     undefined,
                     () => Promise.resolve(stub<PokieGame>({getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"})})),
-                    (options: GenerateExactWeightedOutcomeLibraryOptions) => {
-                        observe(key, "--mode", options.betMode);
+                    (options: OutcomeLibraryGenerationRequest) => {
+                        observe(key, "--mode", options.mode);
                         observe(key, "--stake", options.stake);
                         observe(key, "--config-hash", options.configHash);
                         observe(key, "--library-id", options.libraryId);
-                        observe(key, "--max-outcome-space-size", options.maxOutcomeSpaceSize);
+                        observe(key, "--max-outcome-space-size", options.maxExactOutcomeSpaceSize);
                         observe(key, "--progress", options.onProgress !== undefined);
                         return Promise.resolve(
                             stub<GenerateExactWeightedOutcomeLibraryResult>({
@@ -1402,7 +1402,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                         );
                     },
                     () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),
-                    (filePath) => observe(key, "--out", filePath),
+                    (filePath) => observe(key, "--out", path.basename(filePath)),
                     (filePath) => {
                         observe(key, "--resume", filePath);
                         return false;
@@ -1418,10 +1418,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 () => Promise.resolve(stub<PokieGame>({getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"})})),
-                (options: GenerateExactWeightedOutcomeLibraryOptions) => {
-                    observe(key, "--bounded", options.bounded !== undefined);
-                    observe(key, "--sample-size", options.bounded?.sampleSize);
-                    observe(key, "--seed", options.bounded?.seed);
+                (options: OutcomeLibraryGenerationRequest) => {
+                    observe(key, "--bounded", options.generation === "bounded");
+                    observe(key, "--sample-size", options.sample?.sampleSize);
+                    observe(key, "--seed", options.sample?.seed);
                     return Promise.resolve(
                         stub<GenerateExactWeightedOutcomeLibraryResult>({
                             library: {schemaVersion: 1, libraryId: options.libraryId, outcomes: [{id: "o1", weight: 6, artifact: {}}]},
@@ -1452,8 +1452,8 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 () => Promise.resolve(stub<PokieGame>({getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"})})),
-                (options: GenerateExactWeightedOutcomeLibraryOptions) => {
-                    observe(key, "--exact", options.exact ?? false);
+                (options: OutcomeLibraryGenerationRequest) => {
+                    observe(key, "--exact", options.generation === "exact");
                     return Promise.resolve(stub<GenerateExactWeightedOutcomeLibraryResult>({library: {schemaVersion: 1, libraryId: options.libraryId, outcomes: []}, diagnostics: {algorithm: "pokie-exact-reel-enumeration-v1", strategy: "exact", totalOutcomeSpaceSize: 6, sampledRawCount: 6, pokieVersion: TEST_VERSION, game: {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"}, generatedAt: "2026-01-01T00:00:00.000Z"}}));
                 },
                 () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),
@@ -1470,9 +1470,9 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 () => Promise.resolve(stub<PokieGame>({getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"})})),
-                (options: GenerateExactWeightedOutcomeLibraryOptions) => {
-                    observe(key, "--sample", options.sampled?.sampleSize);
-                    observe(key, "--seed", options.sampled?.seed);
+                (options: OutcomeLibraryGenerationRequest) => {
+                    observe(key, "--sample", options.generation === "sampled" ? options.sample?.sampleSize : undefined);
+                    observe(key, "--seed", options.sample?.seed);
                     return Promise.resolve(stub<GenerateExactWeightedOutcomeLibraryResult>({library: {schemaVersion: 1, libraryId: options.libraryId, outcomes: []}, diagnostics: {algorithm: "pokie-exact-reel-enumeration-v1", strategy: "bounded-coverage", totalOutcomeSpaceSize: 6, sampledRawCount: 1000, seed: "seed-1", pokieVersion: TEST_VERSION, game: {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"}, generatedAt: "2026-01-01T00:00:00.000Z"}}));
                 },
                 () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),

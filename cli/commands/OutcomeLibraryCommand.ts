@@ -28,7 +28,6 @@ import {
     estimateExactOutcomeSpaceSize,
     generateWeightedOutcomeLibrary,
     loadPokieGame,
-    preflightOutcomeLibraryGenerationFromEstimate,
     prepareOutcomeLibraryGenerationFromEstimate,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -499,7 +498,11 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
         if (options.estimate || options.dryRun) {
             const game = await this.loadGame(packageRoot);
-            return this.executeEstimate(game, options);
+            // Estimate is a real preflight, not a separate planning shortcut:
+            // construct exactly the request execution would receive so loaded
+            // configuration assertions and the resolved publication identity
+            // fail or bind consistently before either path reports success.
+            return this.executeEstimate(game, options, this.createGenerationRequest(game, options, sampling));
         }
 
         const controller = new AbortController();
@@ -645,10 +648,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     // reads reel-strip sizes only, never sweeps a single reel-stop tuple or plays a round. Reports
     // exactly which strategy a real "generate" run would resolve to given the same --max-outcome-space-size/
     // --bounded flags, so a caller can decide whether to opt into --bounded before committing to a full run.
-    private executeEstimate(game: PokieGame, options: GenerateCliOptions): number {
-        let estimate: OutcomeSpaceEstimate;
+    private executeEstimate(game: PokieGame, options: GenerateCliOptions, request: OutcomeLibraryGenerationRequest): number {
+        let resolvedRequest: ResolvedOutcomeLibraryGenerationRequest;
         try {
-            estimate = this.estimateSpace(game);
+            resolvedRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game), request);
         } catch (error) {
             if (error instanceof WeightedOutcomeLibraryGenerationError) {
                 console.error(`Cannot estimate "${game.getManifest().id}"'s exact outcome space (${error.getCode()}): ${error.message}`);
@@ -657,17 +660,9 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             throw error;
         }
 
-        const sampling = this.buildSampledOptions(options);
-        const sample = sampling.sampled ?? sampling.bounded;
-        let generation: "default" | "exact" | "sampled" | "bounded" = "default";
-        if (options.exact) generation = "exact";
-        if (sampling.bounded !== undefined) generation = "bounded";
-        if (sampling.sampled !== undefined) generation = "sampled";
-        const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, {
-            generation,
-            ...(options.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: options.maxOutcomeSpaceSize}),
-            ...(sample === undefined ? {} : {sample}),
-        });
+        const {preflight} = resolvedRequest;
+        const {estimate} = preflight;
+        const sample = preflight.sample;
         const report = {
             game: game.getManifest(),
             reelsNumber: estimate.reelsNumber,
