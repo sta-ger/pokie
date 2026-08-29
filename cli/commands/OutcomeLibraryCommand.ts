@@ -519,6 +519,18 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             // it must not reconstruct a subtly different preflight.
             const resolvedRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game), request);
             resolvedStrategy = resolvedRequest.preflight.strategy;
+            // A cap-exceeded default/exact request has no sampled settings to
+            // carry into the conversion planner.  Reject it at the same CLI
+            // diagnostic boundary as the generator instead of constructing a
+            // malformed bounded-plan provenance record below.
+            if (resolvedRequest.preflight.requiresSampledOptIn) {
+                throw new WeightedOutcomeLibraryGenerationError(
+                    "weighted-outcome-library-generation-space-exceeded",
+                    `"${game.getManifest().id}"'s exact outcome space (${resolvedRequest.preflight.estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
+                    `maxOutcomeSpaceSize (${resolvedRequest.preflight.maxExactOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
+                    "bounded-coverage strategy with --sample <n> --seed <string>.",
+                );
+            }
             const prepared = this.prepareRawGenerationOperation(
                 packageRoot,
                 options,
