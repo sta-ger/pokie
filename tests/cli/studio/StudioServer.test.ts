@@ -411,7 +411,13 @@ describe("StudioServer", () => {
                 totalOutcomeSpaceSize: 4, maxOutcomeSpaceSize: 20_000_000, strategy: "exact" as const, expectedRawWork: 4, warnings: [], requiresBounded: false,
                 defaults: {compatibilityVersion: "v1", maxExactOutcomeSpaceSize: 20_000_000, boundedSample: {sampleSize: 10_000, seed: "seed"}}, plan, preflightToken: `http-token-${++issuedToken}`,
             })),
-            getPreflightBinding: jest.fn(() => ({...binding, requestKey: JSON.stringify({generation: "exact"})})),
+            getPreflightBinding: jest.fn((token?: string) => ({
+                ...binding,
+                requestKey: JSON.stringify({generation: "exact"}),
+                // A token is server-owned, but it still has to enforce the
+                // same sampled-opt-in eligibility as the compatibility route.
+                ...(token === "bounded-token" ? {requiresBounded: true} : {}),
+            })),
             rebindCheckpointRequest: jest.fn((_root: string, request: object) => Promise.resolve({request: {...request, preflightToken: `resume-token-${++issuedToken}`}})),
             generate: jest.fn(async (root: string, request: {readonly mode?: string; readonly signal?: AbortSignal; readonly resumeFrom?: unknown}) => {
                 if (request.mode === "failure") return {status: "generation-error" as const, code: "weighted-outcome-library-generation-unsupported", error: "Enumeration is unsupported.", plan};
@@ -449,6 +455,13 @@ describe("StudioServer", () => {
         const estimate = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/estimate`, {generation: "exact", outDir: "outcomelibrary"});
         expect(estimate.status).toBe(200);
         expect(estimate.body).toMatchObject({status: "ok", preflightToken: "http-token-1", strategy: "exact"});
+
+        // A caller cannot turn a bounded-required preflight into an executable
+        // job simply by presenting its token.  This must match the no-token
+        // compatibility route's eligibility rule.
+        expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
+            generation: "exact", preflightToken: "bounded-token",
+        })).toMatchObject({status: 409, body: {error: expect.stringMatching(/explicit sampled or bounded coverage/i)}});
 
         // The legacy URL still creates the pollable job and obtains its server
         // binding itself, rather than performing an unbound synchronous run.

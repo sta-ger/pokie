@@ -107,6 +107,20 @@ describe("studio-client apiClient", () => {
             await expect(startOutcomeLibraryGeneration(fetchImpl, {preflightToken: "stale"})).rejects.toThrow("The prepared source changed after preflight.");
             await expect(resumeOutcomeLibraryGeneration(fetchImpl, "checkpoint")).rejects.toThrow("The prepared source changed after preflight.");
         });
+
+        it("preserves a start-time preflight classification instead of reducing it to a generic conflict", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 409,
+                body: {
+                    error: "This game cannot enumerate outcomes.",
+                    preflight: {status: "unsupported"},
+                },
+            }));
+
+            await expect(startOutcomeLibraryGeneration(fetchImpl, {generation: "exact", preflightToken: "unsupported"}))
+                .rejects.toMatchObject({outcomeStatus: "unsupported", message: "This game cannot enumerate outcomes."});
+        });
     });
 
     describe("runDeployment", () => {

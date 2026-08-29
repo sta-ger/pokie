@@ -1024,6 +1024,10 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
             .catch((error: unknown) => {
                 outcomeLibraryGuard.end();
                 setOutcomeLibraryRun({status: "error", message: error instanceof OutcomeLibraryGenerationStartError
+                    // The retained direct/job start routes can reject an
+                    // automatic preflight before a job exists.  Preserve the
+                    // server's classified preflight status here so this path
+                    // has the same recovery as a terminal lifecycle result.
                     ? describeOutcomeLibraryGenerationTerminalOutcome({status: error.outcomeStatus})
                     : describeProjectActionError("The outcome library generation", errorMessage(error))});
             });
