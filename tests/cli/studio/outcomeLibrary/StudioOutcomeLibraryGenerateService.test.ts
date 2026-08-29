@@ -333,6 +333,17 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(result).toMatchObject({status: "generation-error", code: "weighted-outcome-library-generation-space-exceeded"});
         });
 
+        it("uses the prepared domain destination contract for both estimate and execution", async () => {
+            await expect(service().estimate(projectRoot, {outDir: "../outside-project"})).resolves.toMatchObject({
+                status: "conflict",
+                error: expect.stringMatching(/outside its permitted publication root/i),
+            });
+            await expect(service().generate(projectRoot, {outDir: "../outside-project"})).resolves.toMatchObject({
+                status: "conflict",
+                error: expect.stringMatching(/outside its permitted publication root/i),
+            });
+        });
+
         it("returns a resumable cancellation result without publishing a partial bundle", async () => {
             const controller = new AbortController();
             controller.abort();

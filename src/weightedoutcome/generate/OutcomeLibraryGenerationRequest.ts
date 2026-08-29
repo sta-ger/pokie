@@ -56,6 +56,15 @@ export type OutcomeLibraryGenerationDestination = {
  * in the immutable request that is bound to preflight and execution.
  */
 export type OutcomeLibraryGenerationDestinationSafety = {
+    /**
+     * Optional root for a producer's relative destination syntax.  This is a
+     * publication invariant, rather than a Studio-only path helper: when it
+     * is supplied, preparation resolves `outputDestination` from this root
+     * and can require the resolved path to remain below it.
+     */
+    readonly basePath?: string;
+    /** Reject absolute, `..`, and symlink escapes from `basePath`. */
+    readonly requireWithinBase?: boolean;
     readonly sourcePath?: string;
     readonly kind?: "file" | "directory";
     readonly requireAvailable?: boolean;
@@ -185,19 +194,50 @@ function isSameOrDescendant(candidate: string, root: string): boolean {
     return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
 }
 
-/** Resolve and verify the one publication identity that execution is allowed to use. */
-function resolveOutputDestination(
+function resolveDestinationBase(basePath: string): string {
+    const resolvedBase = path.resolve(basePath);
+    // Studio projects may be represented by a single source file. Their
+    // sidecars belong beside that file, exactly as directory-backed projects'
+    // sidecars belong beneath their root. Keeping this here means the request,
+    // not an HTTP adapter, owns that distinction.
+    return fs.existsSync(resolvedBase) && fs.statSync(resolvedBase).isFile()
+        ? path.dirname(resolvedBase)
+        : resolvedBase;
+}
+
+/**
+ * Resolve and verify the one publication identity that execution is allowed
+ * to use. This is exported so a writer that receives an already-prepared
+ * request can assert the exact same safety vocabulary without recreating a
+ * CLI/Studio-specific resolver.
+ */
+export function resolveOutcomeLibraryGenerationDestination(
     outputDestination: string | undefined,
     safety: OutcomeLibraryGenerationDestinationSafety | undefined,
 ): OutcomeLibraryGenerationDestination | undefined {
     if (outputDestination === undefined) return undefined;
-    const resolvedPath = path.resolve(outputDestination.trim());
+    const basePath = safety?.basePath === undefined ? undefined : resolveDestinationBase(safety.basePath);
+    const resolvedPath = basePath === undefined
+        ? path.resolve(outputDestination.trim())
+        : path.resolve(basePath, outputDestination.trim());
     const resolvedSafety: OutcomeLibraryGenerationDestinationSafety = {
+        ...(basePath === undefined ? {} : {basePath}),
+        ...(safety?.requireWithinBase === undefined ? {} : {requireWithinBase: safety.requireWithinBase}),
         ...(safety?.sourcePath === undefined ? {} : {sourcePath: path.resolve(safety.sourcePath)}),
         ...(safety?.kind === undefined ? {} : {kind: safety.kind}),
         ...(safety?.requireAvailable === undefined ? {} : {requireAvailable: safety.requireAvailable}),
         ...(safety?.allowWithinSource === undefined ? {} : {allowWithinSource: safety.allowWithinSource}),
     };
+    if (basePath !== undefined && resolvedSafety.requireWithinBase) {
+        const resolvedBase = resolveThroughExistingAncestor(basePath);
+        const resolvedDestination = resolveThroughExistingAncestor(resolvedPath);
+        if (!isSameOrDescendant(resolvedDestination, resolvedBase)) {
+            throw new WeightedOutcomeLibraryGenerationError(
+                "weighted-outcome-library-generation-destination-conflict",
+                `Outcome Library destination "${resolvedPath}" resolves outside its permitted publication root "${basePath}". Choose a project-relative output path.`,
+            );
+        }
+    }
     if (resolvedSafety.sourcePath !== undefined && !resolvedSafety.allowWithinSource) {
         const source = resolveThroughExistingAncestor(resolvedSafety.sourcePath);
         const destination = resolveThroughExistingAncestor(resolvedPath);
@@ -288,7 +328,7 @@ export function prepareOutcomeLibraryGenerationFromEstimate(
     request: OutcomeLibraryGenerationRequest,
 ): ResolvedOutcomeLibraryGenerationRequest {
     const identifiedRequest = resolveOutcomeLibraryGenerationIdentity(request);
-    const destination = resolveOutputDestination(identifiedRequest.outputDestination, identifiedRequest.outputDestinationSafety);
+    const destination = resolveOutcomeLibraryGenerationDestination(identifiedRequest.outputDestination, identifiedRequest.outputDestinationSafety);
     const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, identifiedRequest);
     return {
         ...identifiedRequest,

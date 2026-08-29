@@ -165,6 +165,24 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         }
     });
 
+    it("owns project-relative destination resolution and escape safety in the prepared request", () => {
+        const project = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-generation-project-"));
+        try {
+            const request = {
+                libraryId: "project-destination",
+                game: buildFixtureGame(),
+                pokieVersion: "test",
+                outputDestinationSafety: {basePath: project, requireWithinBase: true, allowWithinSource: true},
+            };
+            expect(prepareOutcomeLibraryGeneration({...request, outputDestination: "generated/library"}).preflight.destination?.path)
+                .toBe(path.join(project, "generated/library"));
+            expect(() => prepareOutcomeLibraryGeneration({...request, outputDestination: "../outside"}))
+                .toThrow(/outside its permitted publication root/i);
+        } finally {
+            fs.rmSync(project, {recursive: true, force: true});
+        }
+    });
+
     it("binds CLI-style supplied estimates through the same loaded configuration and destination preparation", () => {
         const game: PokieGame = {...buildFixtureGame(), getConfigHash: () => "sha256:loaded-config"};
         const prepared = prepareOutcomeLibraryGenerationFromEstimate({

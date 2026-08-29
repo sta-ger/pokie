@@ -159,17 +159,18 @@ export class StudioOutcomeLibraryGenerateService {
         }
 
         const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
-        const resolvedOutDir = resolveProjectDirectory(projectRoot, outDirRelative, this.realpath);
-        if (resolvedOutDir.status === "error") return {status: "load-error", error: resolvedOutDir.message, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         let preparedRequest;
         try {
             // This is deliberately the same prepared request generation will
             // execute. It owns loaded configuration identity and the resolved
             // destination rather than leaving either as estimate-only DTO data.
-            preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(game, request, resolvedOutDir.resolvedPath, projectRoot));
+            preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(game, request, outDirRelative, projectRoot));
         } catch (error) {
             const unresolvedPlan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
             if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-configuration-conflict") {
+                return {status: "conflict", error: error.message, plan: unresolvedPlan};
+            }
+            if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-destination-conflict") {
                 return {status: "conflict", error: error.message, plan: unresolvedPlan};
             }
             if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-unsupported") {
@@ -263,40 +264,39 @@ export class StudioOutcomeLibraryGenerateService {
         // writer-local default.  In particular this keeps an occupied or aliased
         // destination from being silently treated as a mode-update after a preview
         // described a different publication.
-        const resolvedOutDir = resolveProjectDirectory(projectRoot, outDirRelative, this.realpath);
-        if (resolvedOutDir.status === "error") {
-            return {status: "load-error", error: resolvedOutDir.message, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
-        }
         // Prepare once before asking the artifact planner to select a writer.
         // In particular, legacy `bounded` means “sample only above the cap”, so
         // a small bounded request is an exact plan and must not acquire sampled
         // provenance just because it arrived through Studio.
         let game: PokieGame;
         let domainRequest: OutcomeLibraryGenerationRequest;
+        let preparedRequest;
         try {
             game = await this.loadGame(projectRoot);
-            const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
-            if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
-            const loadedConfigHash = game.getConfigHash?.();
-            if (snapshot !== undefined && (snapshot.requestKey !== generationRequestKey(request) || snapshot.destination !== resolvedOutDir.resolvedPath || snapshot.gameId !== game.getManifest().id || snapshot.gameVersion !== game.getManifest().version || snapshot.configHash !== loadedConfigHash)) {
-                return {status: "conflict", error: "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
-            }
-            domainRequest = this.createDomainRequest(game, request, resolvedOutDir.resolvedPath, projectRoot);
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
-        let preparedRequest;
         try {
+            domainRequest = this.createDomainRequest(game, request, outDirRelative, projectRoot);
             preparedRequest = prepareOutcomeLibraryGeneration(domainRequest);
         } catch (error) {
             const unresolvedPlan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
             if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-configuration-conflict") {
                 return {status: "conflict", error: error.message, plan: unresolvedPlan};
             }
+            if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-destination-conflict") {
+                return {status: "conflict", error: error.message, plan: unresolvedPlan};
+            }
             if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-unsupported") {
                 return {status: "unsupported", error: error.message, plan: unresolvedPlan};
             }
             return {status: "generation-error", code: error instanceof WeightedOutcomeLibraryGenerationError ? error.getCode() : "weighted-outcome-library-generation-invalid-request", error: error instanceof Error ? error.message : String(error), plan: unresolvedPlan};
+        }
+        const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
+        if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+        const loadedConfigHash = game.getConfigHash?.();
+        if (snapshot !== undefined && (snapshot.requestKey !== generationRequestKey(request) || snapshot.destination !== preparedRequest.preflight.destination?.path || snapshot.gameId !== game.getManifest().id || snapshot.gameVersion !== game.getManifest().version || snapshot.configHash !== loadedConfigHash)) {
+            return {status: "conflict", error: "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
         const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
         const boundDestination = preparedRequest.preflight.destination?.path;
@@ -664,7 +664,7 @@ export class StudioOutcomeLibraryGenerateService {
     private createDomainRequest(
         game: PokieGame,
         request: ValidatedOutcomeLibraryGenerateTransportRequest | ValidatedOutcomeLibraryGenerateRequest,
-        resolvedDestination: string,
+        destinationSyntax: string,
         projectRoot: string,
     ): OutcomeLibraryGenerationRequest {
         const manifest = game.getManifest();
@@ -679,13 +679,22 @@ export class StudioOutcomeLibraryGenerateService {
             generation: resolveGeneration(request),
             ...(request.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: request.maxOutcomeSpaceSize}),
             ...(sample === undefined ? {} : {sample}),
-            outputDestination: resolvedDestination,
+            outputDestination: destinationSyntax,
             // Studio's bundle is an explicit project sidecar and can preserve
             // sibling modes, so availability/reuse remains the planner's
             // domain.  The exceptional inside-project publication policy is
             // nevertheless bound by the same prepared domain request as CLI
             // and managed generation.
-            outputDestinationSafety: {sourcePath: projectRoot, kind: "directory", allowWithinSource: true},
+            outputDestinationSafety: {
+                // The domain request resolves Studio's project-relative
+                // syntax, including lexical and symlink containment. Studio
+                // no longer separately turns an outDir into a trusted path.
+                basePath: projectRoot,
+                requireWithinBase: true,
+                sourcePath: projectRoot,
+                kind: "directory",
+                allowWithinSource: true,
+            },
             ...("resumeFrom" in request && request.resumeFrom !== undefined ? {resumeFrom: request.resumeFrom} : {}),
             ...("signal" in request && request.signal !== undefined ? {signal: request.signal} : {}),
             ...("onProgress" in request && request.onProgress !== undefined ? {onProgress: request.onProgress} : {}),
