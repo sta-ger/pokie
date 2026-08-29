@@ -67,6 +67,7 @@ const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
 const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
 const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
 type PendingGameLoad = (game: PokieGame) => void;
+type PendingLoadStarted = () => void;
 
 function restoreEnv(name: string, value: string | undefined): void {
     if (value === undefined) {
@@ -462,21 +463,23 @@ describe("StudioServer", () => {
         const firstManifest: PokieGameManifest = {id: "first", name: "First", version: "1.0.0"};
         const secondManifest: PokieGameManifest = {id: "second", name: "Second", version: "1.0.0"};
         const completeLoads = new Map<string, PendingGameLoad>();
+        const loadStarted = new Map<string, PendingLoadStarted>();
+        const firstLoadStarted = new Promise<void>((resolve) => {
+            loadStarted.set("./first", resolve);
+        });
+        const secondLoadStarted = new Promise<void>((resolve) => {
+            loadStarted.set("./second", resolve);
+        });
         loadGame.mockImplementation((projectRoot: string) => new Promise<PokieGame>((resolve) => {
             completeLoads.set(projectRoot, resolve);
+            loadStarted.get(projectRoot)?.();
         }));
 
         const firstOpen = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./first"});
-        for (let attempt = 0; attempt < 20 && !completeLoads.has("./first"); attempt++) {
-            await flushMacrotask();
-        }
-        expect(completeLoads.has("./first")).toBe(true);
+        await firstLoadStarted;
 
         const secondOpen = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./second"});
-        for (let attempt = 0; attempt < 20 && !completeLoads.has("./second"); attempt++) {
-            await flushMacrotask();
-        }
-        expect(completeLoads.has("./second")).toBe(true);
+        await secondLoadStarted;
         completeLoads.get("./second")?.(createFakeGame(secondManifest));
 
         expect(await secondOpen).toEqual({

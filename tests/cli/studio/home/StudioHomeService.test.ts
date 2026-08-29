@@ -108,11 +108,14 @@ describe("StudioHomeService", () => {
         it("does not commit a recent project when superseded during delayed recent-project bookkeeping", async () => {
             const entries: RecentProjectEntry[] = [];
             let releaseWrite: (() => void) | undefined;
-            let addStarted = false;
+            let notifyAddStarted: (() => void) | undefined;
+            const addStarted = new Promise<void>((resolve) => {
+                notifyAddStarted = resolve;
+            });
             const repository: RecentProjectsRepository = {
                 list: () => Promise.resolve([...entries]),
                 add: async (entry, options = {}) => {
-                    addStarted = true;
+                    notifyAddStarted?.();
                     await new Promise<void>((resolve) => {
                         releaseWrite = () => {
                             resolve();
@@ -130,15 +133,7 @@ describe("StudioHomeService", () => {
             let current = true;
 
             const opening = service.openProject(tmpDir, {isCurrent: () => current});
-            for (let attempt = 0; attempt < 20; attempt++) {
-                if (addStarted) {
-                    break;
-                }
-                await new Promise<void>((resolve) => {
-                    setImmediate(resolve);
-                });
-            }
-            expect(addStarted).toBe(true);
+            await addStarted;
             current = false;
             releaseWrite?.();
 
