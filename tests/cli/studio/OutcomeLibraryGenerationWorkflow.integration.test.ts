@@ -32,14 +32,46 @@ function withoutGeneratedAt<T extends {readonly generatedAt?: string}>(provenanc
     return normalized;
 }
 
-function commandJsonReport(): Record<string, unknown> {
+function latestCommandJson(): Record<string, unknown> {
     const message = (console.log as jest.Mock).mock.calls
         .map(([value]) => value)
         .filter((value): value is string => typeof value === "string")
         .reverse()
-        .find((value) => value.startsWith("{") && value.includes('"diagnostics"'));
-    if (message === undefined) throw new Error("Expected CLI JSON generation report.");
+        .find((value) => value.startsWith("{"));
+    if (message === undefined) throw new Error("Expected CLI JSON report.");
     return JSON.parse(message) as Record<string, unknown>;
+}
+
+function commandJsonReport(): Record<string, unknown> {
+    const report = latestCommandJson();
+    if (report.diagnostics === undefined) throw new Error("Expected CLI JSON generation report.");
+    return report;
+}
+
+function expectEquivalentPreflight(
+    cli: Record<string, unknown>,
+    studio: {readonly totalOutcomeSpaceSize: bigint; readonly maxOutcomeSpaceSize: bigint; readonly strategy: string; readonly expectedRawWork: bigint; readonly requiresBounded: boolean; readonly sampleSize?: bigint; readonly seed?: string},
+): void {
+    // This deliberately compares the execution-relevant fields rather than a
+    // presentation string. The CLI report and Studio DTO use different bigint
+    // wire encodings, but they must bind the same strategy before publishing.
+    expect({
+        totalOutcomeSpaceSize: cli.totalOutcomeSpaceSize,
+        maxOutcomeSpaceSize: cli.maxOutcomeSpaceSize,
+        strategy: cli.strategy,
+        expectedRawWork: cli.expectedRawWork,
+        requiresBounded: cli.requiresBounded,
+        sampleSize: cli.sampleSize,
+        seed: cli.seed,
+    }).toEqual({
+        totalOutcomeSpaceSize: Number(studio.totalOutcomeSpaceSize),
+        maxOutcomeSpaceSize: Number(studio.maxOutcomeSpaceSize),
+        strategy: studio.strategy,
+        expectedRawWork: Number(studio.expectedRawWork),
+        requiresBounded: studio.requiresBounded,
+        sampleSize: studio.sampleSize === undefined ? undefined : Number(studio.sampleSize),
+        seed: studio.seed,
+    });
 }
 
 describe("Outcome Library CLI and Studio generation (integration)", () => {
@@ -66,6 +98,10 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
 
         const cliOutput = path.join(root, "cli.json");
         expect(await new OutcomeLibraryCommand("1.3.0").run([
+            "generate", packageRoot, "--library-id", "parity-lib", "--sample", "19", "--seed", "parity-seed", "--out", cliOutput, "--estimate", "--format", "json",
+        ])).toBe(0);
+        const cliPreflight = latestCommandJson();
+        expect(await new OutcomeLibraryCommand("1.3.0").run([
             "generate", packageRoot, "--library-id", "parity-lib", "--sample", "19", "--seed", "parity-seed", "--out", cliOutput, "--format", "json",
         ])).toBe(0);
 
@@ -76,6 +112,7 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         const studioRequest = {libraryId: "parity-lib", generation: "sampled" as const, sample: {sampleSize: BigInt(19), seed: "parity-seed"}, outDir: "studio-library"};
         const preview = await studio.estimate(packageRoot, studioRequest);
         if (preview.status !== "ok") throw new Error("Expected sampled Studio preflight.");
+        expectEquivalentPreflight(cliPreflight, preview);
         const generated = await studio.generate(packageRoot, {
             ...studioRequest, preflightToken: preview.preflightToken,
         });
@@ -102,6 +139,15 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
             status: "ok", buildStatus: "compatible",
             modes: [expect.objectContaining({modeName: "base", buildStatus: "compatible", hash: generatedResult.mode.hash})],
         });
+
+        // The same server-owned registry must classify sampled provenance
+        // transitions too; otherwise only the exact mode would be protected.
+        const manifestPath = path.join(packageRoot, "studio-library", "manifest.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {configHash?: string; game: {id: string}};
+        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, configHash: "stale-config"}));
+        expect(await studio.registry(packageRoot)).toMatchObject({status: "ok", buildStatus: "stale", modes: [expect.objectContaining({buildStatus: "stale"})]});
+        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, game: {...manifest.game, id: "wrong-game"}}));
+        expect(await studio.registry(packageRoot)).toMatchObject({status: "ok", buildStatus: "wrong", modes: [expect.objectContaining({buildStatus: "wrong"})]});
     });
 
     it("binds an exact real-package preflight and publishes the same canonical library as CLI", async () => {
@@ -115,6 +161,10 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
 
         const cliOutput = path.join(root, "exact-cli.json");
         expect(await new OutcomeLibraryCommand("1.3.0").run([
+            "generate", packageRoot, "--library-id", "exact-parity-lib", "--out", cliOutput, "--estimate", "--format", "json",
+        ])).toBe(0);
+        const cliPreflight = latestCommandJson();
+        expect(await new OutcomeLibraryCommand("1.3.0").run([
             "generate", packageRoot, "--library-id", "exact-parity-lib", "--out", cliOutput, "--format", "json",
         ])).toBe(0);
 
@@ -125,6 +175,7 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         const preflight = await studio.estimate(packageRoot, {libraryId: "exact-parity-lib", outDir: "studio-exact"});
         expect(preflight).toMatchObject({status: "ok", strategy: "exact", expectedRawWork: 6});
         if (preflight.status !== "ok") throw new Error("Expected exact Studio preflight.");
+        expectEquivalentPreflight(cliPreflight, preflight);
         const generated = await studio.generate(packageRoot, {
             libraryId: "exact-parity-lib", outDir: "studio-exact", preflightToken: preflight.preflightToken,
         });

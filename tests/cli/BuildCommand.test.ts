@@ -148,6 +148,21 @@ describe("BuildCommand", () => {
         expect(builder.lifecycle?.outcomeLibraryGeneration).toEqual({exact: true});
     });
 
+    it("routes an explicit seeded sample without replacing it with the managed automatic policy", async () => {
+        const project: PokieProject = {
+            type: "outcomeLibrary",
+            rootPath: "outcomes",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+            provenance: "test fixture",
+        } as PokieProject;
+        const builder = stubBuilder("outcomeLibrary", {outputPath: "/fake/outcomes"});
+        const command = new BuildCommand("1.3.0", undefined, undefined, stubProjectResolver(project), registryWithBuilders(builder));
+
+        await expect(command.run(["outcomes", "--target", "outcomeLibrary", "--sample", "17", "--seed", "explicit-seed", "--out", "new-outcomes"])).resolves.toBe(0);
+
+        expect(builder.lifecycle?.outcomeLibraryGeneration).toEqual({sampled: {sampleSize: BigInt(17), seed: "explicit-seed"}});
+    });
+
     it("reports the usage error for a missing/empty <project> positional", async () => {
         const command = new BuildCommand("1.3.0");
 

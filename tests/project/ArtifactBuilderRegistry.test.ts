@@ -485,6 +485,56 @@ describe("ArtifactBuilderRegistry", () => {
             }
         });
 
+        it("reconstructs automatic and explicit managed generation provenance, reuses only the compatible policy, and rejects a stale plan", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-managed-policy-registry-test-"));
+            const blueprintPath = path.join(workDir, "game.blueprint.json");
+            const automaticOut = path.join(workDir, "automatic-outcome");
+            const explicitOut = path.join(workDir, "explicit-outcome");
+            // 20^4 is above the managed 50,000 exact cap, while its 5,000
+            // deterministic sampled draws remain small enough for this real
+            // public registry test.
+            const strip = Array.from({length: 20}, () => "A");
+            const writeBlueprint = (version: string) => fs.writeFileSync(blueprintPath, JSON.stringify({
+                manifest: {id: "managed-policy-slot", name: "Managed Policy Slot", version}, reels: 4, rows: 1, symbols: ["A"],
+                paytable: {A: {3: 1, 4: 2}}, reelStrips: [strip, strip, strip, strip], availableBets: [1],
+            }));
+            writeBlueprint("1.0.0");
+            const source: PokieProject = {
+                type: "blueprint", rootPath: blueprintPath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test fixture",
+            } as PokieProject;
+
+            try {
+                const automaticPlan = await registry.preparePlan(source, "outcomeLibrary", {destinationPath: automaticOut});
+                expect(automaticPlan.source.configurationProvenance).toMatchObject({
+                    generationSemantics: "boundedSample", sampleCount: "5000", maxExactOutcomeSpaceSize: "50000", compatibilityPolicyVersion: "managed-v1",
+                });
+                await expect(registry.executePlan(automaticPlan, source, automaticOut)).resolves.toMatchObject({outputPath: automaticOut});
+
+                const reusedAutomaticPlan = await registry.preparePlan(source, "outcomeLibrary", {destinationPath: path.join(workDir, "automatic-republish")});
+                expect(reusedAutomaticPlan.steps.map((step) => step.kind)).toContain("reuseManagedOutcomeLibrary");
+                expect(reusedAutomaticPlan.source.configurationProvenance).toEqual(automaticPlan.source.configurationProvenance);
+
+                const explicitPlan = await registry.preparePlan(source, "outcomeLibrary", {
+                    destinationPath: explicitOut,
+                    outcomeLibraryGeneration: {
+                        sampled: {sampleSize: BigInt(7), seed: "explicit-policy-seed"},
+                        maxExactOutcomeSpaceSize: BigInt(321), compatibilityPolicyVersion: "explicit-v1",
+                    },
+                });
+                expect(explicitPlan.source.configurationProvenance).toMatchObject({
+                    generationSemantics: "boundedSample", sampleCount: "7", sampleSeed: "explicit-policy-seed",
+                    maxExactOutcomeSpaceSize: "321", compatibilityPolicyVersion: "explicit-v1",
+                });
+                expect(explicitPlan.steps.map((step) => step.kind)).not.toContain("reuseManagedOutcomeLibrary");
+
+                writeBlueprint("2.0.0");
+                await expect(registry.executePlan(explicitPlan, source, explicitOut)).rejects.toThrow(/source configuration or generation provenance changed/i);
+                expect(fs.existsSync(explicitOut)).toBe(false);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
         it("materializes a real tsPackage through the registry for Outcome and Stake, preserving all runtime modes", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-tspackage-outcome-registry-test-"));
             const blueprintPath = path.join(workDir, "game.blueprint.json");
