@@ -163,6 +163,36 @@ export class StudioArtifactBuildService {
         return {plan};
     }
 
+    /**
+     * Advanced Outcome Library inputs use the same prepared Stake lifecycle as
+     * a Blueprint/package goal.  `destinationPath` is already resolved by the
+     * calling Studio boundary, so selecting a library never changes the final
+     * destination that preflight inspected.
+     */
+    public async validateStakeProjectionSource(sourcePath: string, destinationPath: string): Promise<{readonly plan: ArtifactConversionPlan} | undefined> {
+        const source = await this.resolveProject.resolve(sourcePath);
+        if (source === undefined) return undefined;
+        const plan = await this.stakeProjection.prepare(source, destinationPath);
+        if (plan.status === "planned") await this.stakeProjection.validate(source, plan);
+        return {plan};
+    }
+
+    public async buildStakeProjectionSource(
+        sourcePath: string,
+        destinationPath: string,
+        options?: ArtifactBuildOptions,
+    ): Promise<StudioArtifactBuildView> {
+        const source = await this.resolveProject.resolve(sourcePath);
+        if (source === undefined) {
+            return {
+                status: "error",
+                message: `"${sourcePath}" was not recognized as a POKIE project.`,
+                plan: createUnresolvedRuntimePlan(sourcePath, "stakeAdapter", destinationPath),
+            };
+        }
+        return this.buildResolved(source, "stakeAdapter", destinationPath, options);
+    }
+
     // Executes a real build against the active project -- resolves `projectRoot` into a PokieProject
     // exactly like BuildCommand does, re-checks the same capability listTargets()/preview() already reported
     // (so a stale client-side target list or preview can never trigger a build the registry itself would
@@ -182,7 +212,15 @@ export class StudioArtifactBuildService {
             const plan = createUnresolvedRuntimePlan(projectRoot, target, outDir);
             return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`, plan};
         }
-        const {project, destination} = resolved;
+        return this.buildResolved(resolved.project, target, resolved.destination, options);
+    }
+
+    public async buildResolved(
+        project: PokieProject,
+        target: ArtifactTargetType,
+        destination: string,
+        options?: ArtifactBuildOptions,
+    ): Promise<StudioArtifactBuildView> {
         // Directory targets deliberately accept a caller-created empty
         // destination.  It is not owned by this operation, even though its
         // contents will be, so a later Studio registration failure must leave

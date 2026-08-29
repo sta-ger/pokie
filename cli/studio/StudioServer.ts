@@ -2364,7 +2364,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        this.sendJson(res, 200, await this.stakeEngineExportService.validate(this.currentContext.projectRoot, validated.modes));
+        this.sendJson(res, 200, await this.stakeEngineExportService.validate(this.currentContext.projectRoot, validated.modes, validated.outDir));
     }
 
     // A well-formed request that fails at the domain level (an unreadable/malformed library, a
@@ -2385,7 +2385,14 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.stakeEngineExportService.export(this.currentContext.projectRoot, validated.modes, validated.outDir, validated.overwrite);
+        // A direct Studio export is still a real artifact lifecycle.  Bind an
+        // aborted HTTP request to the registry-owned cancellation signal so a
+        // disconnected client cannot leave generation or publication running.
+        const controller = new AbortController();
+        const abort = () => controller.abort();
+        req.once("aborted", abort);
+        const result = await this.stakeEngineExportService.export(this.currentContext.projectRoot, validated.modes, validated.outDir, validated.overwrite, controller.signal);
+        req.removeListener("aborted", abort);
         this.sendJson(res, this.statusForStakeEngineExport(result.status), result);
     }
 

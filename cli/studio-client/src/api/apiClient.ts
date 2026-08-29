@@ -1177,11 +1177,12 @@ export async function verifyFairnessProof(
 export async function validateStakeEngineExport(
     fetchImpl: FetchLike,
     modes: StudioStakeEngineExportModeInput[],
+    outDir?: string,
 ): Promise<StudioStakeEngineExportValidateView> {
     const response = await fetchImpl("/api/project/stakeengine/validate", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({modes}),
+        body: JSON.stringify({modes, ...(outDir === undefined ? {} : {outDir})}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to validate the Stake Engine export"));

@@ -2,7 +2,7 @@ import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibrar
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {StudioStakeEngineExportService} from "../../../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
+import {StudioStakeEngineExportService, type StudioStakeProjectGoalExporting} from "../../../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
 
 const TEST_POKIE_VERSION = "1.3.0";
@@ -38,6 +38,29 @@ describe("StudioStakeEngineExportService", () => {
     });
 
     describe("validate", () => {
+        it("binds advanced bundle validation to the caller's final destination through the canonical projection lifecycle", async () => {
+            const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
+            const projectGoal: StudioStakeProjectGoalExporting = {
+                validateStakeProjection: jest.fn(),
+                validateStakeProjectionSource: jest.fn(() => Promise.resolve({plan: plannedStakeExport})),
+                build: jest.fn(),
+                buildStakeProjectionSource: jest.fn(),
+            };
+            const service = new StudioStakeEngineExportService(
+                TEST_POKIE_VERSION,
+                undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, projectGoal,
+            );
+
+            const view = await service.validate(tmpRoot, [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1}], "requested-stake");
+
+            expect(view).toMatchObject({status: "ok", plan: plannedStakeExport});
+            expect(projectGoal.validateStakeProjectionSource).toHaveBeenCalledWith(
+                path.join(tmpRoot, "outcomelibrary"),
+                path.join(tmpRoot, "requested-stake"),
+            );
+        });
+
         it("does not attach a project-root plan to an external JSON selector", async () => {
             const unavailable: ArtifactConversionPlan = {
                 ...plannedStakeExport,
