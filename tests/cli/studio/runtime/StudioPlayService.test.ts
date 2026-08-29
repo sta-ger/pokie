@@ -8,6 +8,7 @@ import {
     OutcomeLibraryBundleWriter,
     PokieGame,
     PokieGameManifest,
+    STUDIO_OPERATION,
     StakeEngineExportModeInput,
     StakeEngineExporter,
     SymbolsCombination,
@@ -16,10 +17,12 @@ import {
     VideoSlotWinCalculator,
     WinEvaluationResult,
 } from "pokie";
+import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioPlayService} from "../../../../cli/studio/runtime/StudioPlayService.js";
+import {createMaterializingRuntimePackageResolver} from "../../../../cli/materialize/materializeRuntimePackage.js";
 import {StudioRoundRecorder} from "../../../../cli/studio/runtime/StudioRoundRecorder.js";
 import {
     buildOutcomeLibraryBundleModeInput,
@@ -422,6 +425,30 @@ describe("StudioPlayService", () => {
 
         expect(result).toEqual({status: "failed", error: "dependencies phase failed"});
         expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("returns the shared PAR recognition/import diagnostic for corrupt and incomplete workbooks without creating a Play session", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-play-malformed-par-"));
+        const corrupt = path.join(workDir, "corrupt.xlsx");
+        const incomplete = path.join(workDir, "incomplete.xlsx");
+        fs.writeFileSync(corrupt, "not an XLSX");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(incomplete);
+        const loadGame = jest.fn(() => Promise.resolve(createFakeVideoSlotGame()));
+        const service = new StudioPlayService(loadGame, createMaterializingRuntimePackageResolver("1.3.0", STUDIO_OPERATION));
+
+        try {
+            for (const workbookPath of [corrupt, incomplete]) {
+                await expect(service.newSession(workbookPath)).resolves.toEqual({
+                    status: "failed",
+                    error: expect.stringMatching(/Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/),
+                });
+            }
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("replaces whatever session was active on every newSession() call, discarding the previous one", async () => {

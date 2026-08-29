@@ -13,6 +13,7 @@ import {
     ReplayRecorder,
     WinEvaluationResult,
 } from "pokie";
+import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -323,6 +324,43 @@ describe("StudioReplayExecutionService", () => {
         expect(job.descriptor?.totalBet).toBe(5);
         expect(job.descriptor?.screen).toEqual([[expect.stringContaining("round-5")]]);
         expect(job.descriptor?.credits).toBe(1005);
+    });
+
+    it("fails corrupt and incomplete PAR preparation without loading a game or publishing a replay descriptor", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-replay-malformed-par-"));
+        const corrupt = path.join(workDir, "corrupt.xlsx");
+        const incomplete = path.join(workDir, "incomplete.xlsx");
+        fs.writeFileSync(corrupt, "not an XLSX");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(incomplete);
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", REPLAY_OPERATION);
+        const loadGame = jest.fn((_runtimePath: string) => Promise.resolve(createSeedAwareFakeGame(manifest)));
+        const loadRuntimeGame = async (projectRoot: string, options?: {signal?: AbortSignal}) => {
+            const resolution = await resolveRuntimePackageRoot(projectRoot, options);
+            try {
+                return await loadGame(resolution.runtimePath);
+            } finally {
+                await resolution.release();
+            }
+        };
+        const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), loadGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, loadRuntimeGame);
+
+        try {
+            for (const workbookPath of [corrupt, incomplete]) {
+                const started = service.start(workbookPath, {round: 3, seed: "malformed-par"});
+                if (started.status !== "created") throw new Error("expected job to be created");
+                const job = await waitForTerminal(service, workbookPath, started.job.id);
+                expect(job).toMatchObject({
+                    status: "failed",
+                    error: expect.stringMatching(/Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/),
+                });
+                expect(job.descriptor).toBeUndefined();
+            }
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("produces the exact same descriptor for the same seed/round (reproducibility)", async () => {

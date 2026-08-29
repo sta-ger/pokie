@@ -11,6 +11,7 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     SIM_OPERATION,
 } from "pokie";
+import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -207,6 +208,37 @@ describe("StudioSimulationService", () => {
         expect(loadGame).toHaveBeenCalledWith(runtimePath);
         expect(loadGame).not.toHaveBeenCalledWith(blueprintPath);
         expect(release).toHaveBeenCalledTimes(1);
+    });
+
+    it("fails corrupt and incomplete PAR preparation without loading a game or publishing a simulation report", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-sim-malformed-par-"));
+        const corrupt = path.join(workDir, "corrupt.xlsx");
+        const incomplete = path.join(workDir, "incomplete.xlsx");
+        fs.writeFileSync(corrupt, "not an XLSX");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(incomplete);
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const service = new StudioSimulationService(
+            new InMemoryStudioSimulationRepository(), loadGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION),
+        );
+
+        try {
+            for (const workbookPath of [corrupt, incomplete]) {
+                const started = service.start(workbookPath, {rounds: 5});
+                if (started.status !== "created") throw new Error("expected job to be created");
+                const job = await waitForTerminal(service, started.job.id);
+                expect(job).toMatchObject({
+                    status: "failed",
+                    error: expect.stringMatching(/Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/),
+                });
+                expect(job.report).toBeUndefined();
+            }
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("cancels the real PAR resolver preparation without loading a game, publishing a report, or retaining either stage", async () => {

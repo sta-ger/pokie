@@ -15,14 +15,16 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
     ProjectTargetResolver,
+    SERVE_OPERATION,
     replayOutcomeSourceProject,
 } from "pokie";
+import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 import {ServeCommand} from "../../../cli/commands/ServeCommand.js";
-import {passthroughRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {createMaterializingRuntimePackageResolver, passthroughRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {buildOutcomeLibraryBundleModeInput, outcomeLibraryBundleTestProvenance} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
@@ -220,6 +222,30 @@ describe("ServeCommand (integration, real loadPokieGame + PokieDevServer + fixtu
 // runtime path that boundary hands back -- never the caller's own raw packageRoot.
 describe("ServeCommand runtime package materialization boundary", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+    it("keeps corrupt and incomplete PAR workbooks on the recognition/import diagnostic path without loading or listening", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-serve-malformed-par-"));
+        const corrupt = path.join(workDir, "corrupt.xlsx");
+        const incomplete = path.join(workDir, "incomplete.xlsx");
+        fs.writeFileSync(corrupt, "not an XLSX");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(incomplete);
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const server = createStubServer({host: "127.0.0.1", port: 0});
+        const command = new ServeCommand(loadGame, () => server, createMaterializingRuntimePackageResolver("1.3.0", SERVE_OPERATION));
+
+        try {
+            for (const workbookPath of [corrupt, incomplete]) {
+                await expect(command.run([workbookPath])).rejects.toThrow(new RegExp(`Cannot prepare a runnable runtime from ${JSON.stringify(path.resolve(workbookPath)).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+                await expect(command.run([workbookPath])).rejects.toThrow(/Attempted path: PAR workbook recognition -> PAR workbook import -> blueprint -> tsPackage;.*failed PAR recognition\/import stage: PAR workbook recognition.*Next:/);
+            }
+            expect(loadGame).not.toHaveBeenCalled();
+            expect(server.startCalls).toBe(0);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
 
     it("resolves the raw packageRoot once and loads the resolved runtime path instead", async () => {
         const rawPackageRoot = "/blueprints/raw-game.json";

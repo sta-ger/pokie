@@ -1,5 +1,6 @@
 import {ChildProcessWithoutNullStreams, execFileSync, spawn} from "child_process";
 import crypto from "crypto";
+import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -670,6 +671,33 @@ describe("CLI command coverage (offline end-to-end, through the built CLI execut
             expect(spun.status).toBe(200);
         } finally {
             await server.stop();
+        }
+    });
+
+    it("corrupt and incomplete PAR workbooks fail through every built CLI runtime adapter before a runtime, listener, report, or replay descriptor exists", async () => {
+        const corrupt = path.join(sourceDir, "corrupt.par.xlsx");
+        const incomplete = path.join(sourceDir, "incomplete.par.xlsx");
+        fs.writeFileSync(corrupt, "not an XLSX");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(incomplete);
+
+        for (const workbookPath of [corrupt, incomplete]) {
+            const simulationReport = `${workbookPath}.simulation.json`;
+            const replayDescriptor = `${workbookPath}.replay.json`;
+            for (const args of [
+                ["serve", workbookPath, "--port", "0"],
+                ["dev", workbookPath, "--port", "0", "--client-port", "0", "--no-open"],
+                ["sim", workbookPath, "--rounds", "1", "--workers", "1", "--out", simulationReport],
+                ["replay", workbookPath, "--round", "1", "--out", replayDescriptor],
+            ]) {
+                const result = await runPokieCliToCompletion(pokieJsPath, args);
+                expect(result.exitCode).not.toBe(0);
+                expect(`${result.stdout}\n${result.stderr}`).toMatch(/Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/);
+                expect(`${result.stdout}\n${result.stderr}`).not.toMatch(/listening on http:\/\//);
+            }
+            expect(fs.existsSync(simulationReport)).toBe(false);
+            expect(fs.existsSync(replayDescriptor)).toBe(false);
         }
     });
 

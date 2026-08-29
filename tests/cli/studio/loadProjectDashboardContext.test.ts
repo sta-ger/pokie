@@ -1,9 +1,10 @@
 import ExcelJS from "exceljs";
-import {PokieGame, PokieGameManifest} from "pokie";
+import {PokieGame, PokieGameManifest, STUDIO_OPERATION} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {loadProjectDashboardContext} from "../../../cli/studio/loadProjectDashboardContext.js";
+import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 
 function createFakeGame(manifest: PokieGameManifest): PokieGame {
     return {
@@ -113,6 +114,32 @@ describe("loadProjectDashboardContext", () => {
             expect(resolveRuntimePackageRoot).toHaveBeenCalledWith(workbookPath);
             expect(loadGame).toHaveBeenCalledWith("/cached/par-runtime");
             expect(release).toHaveBeenCalledTimes(1);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("returns the shared PAR recognition/import diagnostic for corrupt and incomplete workbooks without loading a dashboard runtime", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-malformed-par-dashboard-"));
+        const corrupt = path.join(workDir, "corrupt.xlsx");
+        const incomplete = path.join(workDir, "incomplete.xlsx");
+        fs.writeFileSync(corrupt, "not an XLSX");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(incomplete);
+        const loadGame = jest.fn();
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", STUDIO_OPERATION);
+
+        try {
+            for (const workbookPath of [corrupt, incomplete]) {
+                const dashboard = await loadProjectDashboardContext(workbookPath, loadGame, resolveRuntimePackageRoot);
+                expect(dashboard).toMatchObject({
+                    status: "error",
+                    projectRoot: path.resolve(workbookPath),
+                    error: expect.stringMatching(/Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/),
+                });
+            }
+            expect(loadGame).not.toHaveBeenCalled();
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }

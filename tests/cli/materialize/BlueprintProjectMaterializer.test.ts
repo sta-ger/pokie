@@ -1,4 +1,5 @@
 import {spawn, spawnSync} from "child_process";
+import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -155,6 +156,27 @@ describe("BlueprintProjectMaterializer", () => {
     afterEach(() => {
         fs.rmSync(cacheRoot, {recursive: true, force: true});
         fs.rmSync(sourceDir, {recursive: true, force: true});
+    });
+
+    it("does not materialize corrupt or required-sheet-incomplete PAR workbooks when the real resolver reports their recognition boundary", async () => {
+        const corrupt = path.join(sourceDir, "corrupt.xlsx");
+        const incomplete = path.join(sourceDir, "incomplete.xlsx");
+        fs.writeFileSync(corrupt, "not an XLSX");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(incomplete);
+        const materialize = jest.fn();
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {
+            materializer: {materialize},
+        });
+
+        for (const workbookPath of [corrupt, incomplete]) {
+            await expect(resolveRuntimePackageRoot(workbookPath)).rejects.toThrow(
+                /Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/,
+            );
+        }
+        expect(materialize).not.toHaveBeenCalled();
+        expect(fs.readdirSync(cacheRoot)).toEqual([]);
     });
 
     it("materializes a blueprint into a fresh cache directory, running generate -> npm install -> verify in order", async () => {

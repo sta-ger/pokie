@@ -491,6 +491,42 @@ describe("StudioServer", () => {
     // to a no-op passthrough resolver) specifically so a materializing resolver is on the request path
     // the HTTP route actually runs.
     describe("Home Open Project runtime package materialization boundary", () => {
+        it("returns the PAR recognition/import diagnostic for corrupt and incomplete workbooks without loading a dashboard runtime", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-malformed-par-"));
+            const corrupt = path.join(workDir, "corrupt.xlsx");
+            const incomplete = path.join(workDir, "incomplete.xlsx");
+            fs.writeFileSync(corrupt, "not an XLSX");
+            const workbook = new ExcelJS.Workbook();
+            workbook.addWorksheet("Manifest");
+            await workbook.xlsx.writeFile(incomplete);
+            const diagnosticLoadGame = jest.fn();
+            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION);
+            const diagnosticHomeService = new StudioHomeService("1.0.0", undefined, diagnosticLoadGame, undefined, resolveRuntimePackageRoot);
+            const diagnosticServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot,
+                homeService: diagnosticHomeService,
+                blueprintService: new StudioBlueprintService("1.0.0", studioRoot, diagnosticHomeService),
+                loadGame: diagnosticLoadGame,
+            });
+            const address = await diagnosticServer.start();
+            const diagnosticBaseUrl = `http://${address.host}:${address.port}`;
+
+            try {
+                for (const workbookPath of [corrupt, incomplete]) {
+                    const {status, body} = await post(`${diagnosticBaseUrl}/api/home/projects/open`, {projectRoot: workbookPath});
+                    expect(status).toBe(400);
+                    expect(body).toEqual({error: expect.stringMatching(/Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/)});
+                }
+                expect(diagnosticLoadGame).not.toHaveBeenCalled();
+            } finally {
+                await diagnosticServer.stop();
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
         it("loads the dashboard from the materialized runtime path instead of the raw blueprint path Home was given", async () => {
             const rawProjectRoot = "/blueprints/raw-game.json";
             const materializedRuntimePath = "/materialized/raw-game";
