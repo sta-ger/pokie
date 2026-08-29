@@ -1,5 +1,5 @@
 import {type OutcomeLibraryGenerationMode, type OutcomeLibraryGenerationSample, parsePositiveOutcomeLibraryGenerationDecimal} from "pokie";
-import {validateOutcomeLibraryGenerationSample, type OutcomeLibraryGenerateBoundedInput} from "./validateOutcomeLibraryGenerateRequest.js";
+import {adaptOutcomeLibraryGenerationTransport, type OutcomeLibraryGenerateBoundedInput} from "./validateOutcomeLibraryGenerateRequest.js";
 
 export type OutcomeLibraryGenerateEstimateRequestInput = {
     mode?: unknown;
@@ -27,21 +27,7 @@ export function validateOutcomeLibraryGenerateEstimateRequest(input: OutcomeLibr
     if (input.mode !== undefined && !isNonEmptyString(input.mode)) {
         throw new Error('"mode" must be a non-empty string when present.');
     }
-    const sample = validateOutcomeLibraryGenerationSample(input.sample, "sample");
-    const sampled = validateOutcomeLibraryGenerationSample(input.sampled, "sampled");
-    const bounded = validateOutcomeLibraryGenerationSample(input.bounded, "bounded");
-    if ([sample, sampled, bounded].filter((entry) => entry !== undefined).length > 1) throw new Error('"sample", "sampled", and "bounded" cannot be combined.');
-    let legacyGeneration: OutcomeLibraryGenerationMode | undefined;
-    if (sampled !== undefined) legacyGeneration = "sampled";
-    else if (bounded !== undefined) legacyGeneration = "bounded";
-    if (input.generation !== undefined && input.generation !== "default" && input.generation !== "exact" && input.generation !== "sampled" && input.generation !== "bounded") {
-        throw new Error('"generation" must be "default", "exact", "sampled", or "bounded" when present.');
-    }
-    const generation = (input.generation ?? legacyGeneration ?? "default") as OutcomeLibraryGenerationMode;
-    if (legacyGeneration !== undefined && input.generation !== undefined && input.generation !== legacyGeneration) throw new Error('"generation" cannot conflict with legacy sampled input.');
-    const canonicalSample = sample ?? sampled ?? bounded;
-    if ((generation === "sampled" || generation === "bounded") && canonicalSample === undefined) throw new Error(`"generation" ${generation} requires a "sample" with "sampleSize" and "seed".`);
-    if ((generation === "default" || generation === "exact") && canonicalSample !== undefined) throw new Error(`"generation" ${generation} cannot be combined with sampled coverage.`);
+    const {generation, sample: canonicalSample} = adaptOutcomeLibraryGenerationTransport(input);
     return {
         ...(input.mode !== undefined ? {mode: input.mode as string} : {}),
         ...(input.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: parsePositiveOutcomeLibraryGenerationDecimal(input.maxOutcomeSpaceSize, "maxOutcomeSpaceSize")} : {}),

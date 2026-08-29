@@ -100,6 +100,11 @@ const DEFAULT_BOUNDED_SEED = "studio-bounded-coverage";
 // options. In particular, enabling bounded coverage remains an explicit user decision: setting a
 // sample size alone can never silently turn an exact request into a sampled one.
 type OutcomeLibraryGenerationOptions = {
+    mode: string;
+    stake: string;
+    libraryId: string;
+    configHash: string;
+    outDir: string;
     maxOutcomeSpaceSize: string;
     bounded: boolean;
     sampleSize: string;
@@ -303,6 +308,52 @@ function TargetCard({
                 <>
                     <TextInput
                         mt="sm"
+                        label="Mode"
+                        description={`Leave blank to generate the current default mode (${defaultModeName}).`}
+                        value={outcomeLibraryGenerationOptions.mode}
+                        onChange={(event) =>
+                            onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, mode: event.currentTarget.value})
+                        }
+                    />
+                    <Group align="start" grow mt="sm">
+                        <TextInput
+                            label="Output destination"
+                            description="Project-relative bundle directory. Existing modes are preserved safely."
+                            value={outcomeLibraryGenerationOptions.outDir}
+                            onChange={(event) =>
+                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, outDir: event.currentTarget.value})
+                            }
+                        />
+                        <TextInput
+                            label="Library identity"
+                            description="Optional stable library ID; blank uses the game and mode."
+                            value={outcomeLibraryGenerationOptions.libraryId}
+                            onChange={(event) =>
+                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, libraryId: event.currentTarget.value})
+                            }
+                        />
+                    </Group>
+                    <Group align="start" grow mt="sm">
+                        <TextInput
+                            label="Stake"
+                            description="Optional positive stake recorded on generated outcomes."
+                            inputMode="decimal"
+                            value={outcomeLibraryGenerationOptions.stake}
+                            onChange={(event) =>
+                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, stake: event.currentTarget.value})
+                            }
+                        />
+                        <TextInput
+                            label="Configuration identity"
+                            description="Optional configuration hash for provenance; blank uses the loaded game."
+                            value={outcomeLibraryGenerationOptions.configHash}
+                            onChange={(event) =>
+                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, configHash: event.currentTarget.value})
+                            }
+                        />
+                    </Group>
+                    <TextInput
+                        mt="sm"
                         label="Max outcome space size"
                         description="Exact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store."
                         inputMode="numeric"
@@ -357,7 +408,7 @@ function TargetCard({
                         loading={outcomeLibraryRun.status === "running"}
                         disabled={outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && !outcomeLibraryGenerationOptions.bounded}
                     >
-                        Generate {outcomeLibraryGenerationOptions.bounded ? "bounded-coverage" : "exact"} outcome library ({defaultModeName})
+                        Generate {outcomeLibraryGenerationOptions.bounded ? "bounded-coverage" : "exact"} outcome library ({outcomeLibraryGenerationOptions.mode.trim() || defaultModeName})
                     </Button>
                     {outcomeLibraryRun.status === "running" && (
                         <LoadingState label="Generating outcome library from this project's current build…" />
@@ -715,6 +766,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     const [outcomeLibraryRun, setOutcomeLibraryRun] = useState<OutcomeLibraryRunView>({status: "idle"});
     const outcomeLibraryGuard = useDoubleSubmitGuard();
     const [outcomeLibraryGenerationOptions, setOutcomeLibraryGenerationOptions] = useState<OutcomeLibraryGenerationOptions>({
+        mode: "",
+        stake: "",
+        libraryId: "",
+        configHash: "",
+        outDir: "outcomelibrary",
         maxOutcomeSpaceSize: DEFAULT_MAX_OUTCOME_SPACE_SIZE,
         bounded: false,
         sampleSize: DEFAULT_BOUNDED_SAMPLE_SIZE,
@@ -725,7 +781,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         let cancelled = false;
         const generation = outcomeLibraryGenerationOptions.bounded ? "bounded" as const : "default" as const;
         estimateOutcomeLibraryGeneration(fetchImpl, {
-            mode: defaultModeName,
+            mode: outcomeLibraryGenerationOptions.mode.trim() || defaultModeName,
             generation,
             maxOutcomeSpaceSize: outcomeLibraryGenerationOptions.maxOutcomeSpaceSize,
             ...(outcomeLibraryGenerationOptions.bounded ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}} : {}),
@@ -880,9 +936,13 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         }
         setOutcomeLibraryRun({status: "running"});
         generateOutcomeLibrary(fetchImpl, {
-            mode: defaultModeName,
+            mode: outcomeLibraryGenerationOptions.mode.trim() || defaultModeName,
             generation: outcomeLibraryGenerationOptions.bounded ? "bounded" : "default",
             maxOutcomeSpaceSize: outcomeLibraryGenerationOptions.maxOutcomeSpaceSize,
+            ...(outcomeLibraryGenerationOptions.stake.trim() === "" ? {} : {stake: Number(outcomeLibraryGenerationOptions.stake)}),
+            ...(outcomeLibraryGenerationOptions.libraryId.trim() === "" ? {} : {libraryId: outcomeLibraryGenerationOptions.libraryId.trim()}),
+            ...(outcomeLibraryGenerationOptions.configHash.trim() === "" ? {} : {configHash: outcomeLibraryGenerationOptions.configHash.trim()}),
+            ...(outcomeLibraryGenerationOptions.outDir.trim() === "" || outcomeLibraryGenerationOptions.outDir.trim() === "outcomelibrary" ? {} : {outDir: outcomeLibraryGenerationOptions.outDir.trim()}),
             ...(outcomeLibraryGenerationOptions.bounded
                 ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}}
                 : {}),

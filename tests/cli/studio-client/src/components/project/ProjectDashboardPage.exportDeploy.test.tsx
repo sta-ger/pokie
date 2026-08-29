@@ -665,7 +665,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         expect(await screen.findByText(/Generated 500 outcomes for mode "base" using exact \(RTP 95\.00%\) into outcomelibrary\./)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Open output folder"})).toBeInTheDocument();
-        expect(screen.queryByLabelText("Mode")).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Mode")).toBeInTheDocument();
         expect(generated).toBe(true);
 
         // The successful session result itself (not a separately refreshed registry response) unlocks

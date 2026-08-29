@@ -11,10 +11,12 @@ import {
     OutcomeLibraryGenerationRequest,
     PokieGame,
     WeightedOutcomeLibraryGenerationError,
+    WeightedOutcomeLibraryGenerationCancelledError,
     ArtifactConversionPlanner,
     describeArtifactConversionPlanDiagnostic,
     estimateExactOutcomeSpaceSize,
     generateWeightedOutcomeLibrary,
+    prepareOutcomeLibraryGeneration,
     preflightOutcomeLibraryGenerationFromEstimate,
 } from "pokie";
 import fs from "fs";
@@ -69,11 +71,6 @@ type OtherModesResult = {readonly status: "ok"; readonly modes: readonly Outcome
 // comment -- so every mode not being regenerated is first read back in full and re-supplied alongside the
 // freshly generated one).
 //
-// Deliberately synchronous request/response, unlike StudioSimulationService's own queued background jobs:
-// exact enumeration already fails closed (via maxOutcomeSpaceSize/--bounded) well before a space too large
-// to sweep in a single HTTP request would be attempted, so there is no long-running-job lifecycle to model
-// here yet. A future large-scale Generate flow could revisit that, the same way Simulation's own job queue
-// did.
 export class StudioOutcomeLibraryGenerateService {
     public static readonly DEFAULT_BUNDLE_DIR = "outcomelibrary";
     // Project-scoped, persisted on disk -- deliberately NOT inside DEFAULT_BUNDLE_DIR or any
@@ -200,9 +197,6 @@ export class StudioOutcomeLibraryGenerateService {
         const modeName = request.mode ?? "base";
         const generation = resolveGeneration(request);
         const sample = resolveSample(request);
-        const requestedGeneration = generation === "sampled" || generation === "bounded"
-            ? {generationSemantics: "boundedSample" as const, sampleCount: sample!.sampleSize, sampleSeed: sample!.seed}
-            : {generationSemantics: "exact" as const};
         // The requested bundle directory is part of the prepared decision, not a
         // writer-local default.  In particular this keeps an occupied or aliased
         // destination from being silently treated as a mode-update after a preview
@@ -211,6 +205,48 @@ export class StudioOutcomeLibraryGenerateService {
         if (resolvedOutDir.status === "error") {
             return {status: "load-error", error: resolvedOutDir.message, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
+        // Prepare once before asking the artifact planner to select a writer.
+        // In particular, legacy `bounded` means “sample only above the cap”, so
+        // a small bounded request is an exact plan and must not acquire sampled
+        // provenance just because it arrived through Studio.
+        let game: PokieGame;
+        let domainRequest: OutcomeLibraryGenerationRequest;
+        try {
+            game = await this.loadGame(projectRoot);
+            const manifest = game.getManifest();
+            const configHash = request.configHash ?? game.getConfigHash?.();
+            const libraryId = request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`;
+            domainRequest = {
+                libraryId,
+                game,
+                pokieVersion: this.pokieVersion,
+                ...(configHash === undefined ? {} : {configHash}),
+                ...(request.mode === undefined ? {} : {mode: request.mode}),
+                ...(request.stake === undefined ? {} : {stake: request.stake}),
+                generation,
+                ...(request.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: request.maxOutcomeSpaceSize}),
+                ...(sample === undefined ? {} : {sample}),
+                outputDestination: outDirRelative,
+                ...(request.resumeFrom === undefined ? {} : {resumeFrom: request.resumeFrom}),
+                ...(request.signal === undefined ? {} : {signal: request.signal}),
+                ...(request.onProgress === undefined ? {} : {onProgress: request.onProgress}),
+            };
+        } catch (error) {
+            return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+        }
+        let preparedRequest;
+        try {
+            preparedRequest = prepareOutcomeLibraryGeneration(domainRequest);
+        } catch (error) {
+            const unresolvedPlan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
+            if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-unsupported") {
+                return {status: "unsupported", error: error.message, plan: unresolvedPlan};
+            }
+            return {status: "generation-error", code: error instanceof WeightedOutcomeLibraryGenerationError ? error.getCode() : "weighted-outcome-library-generation-invalid-request", error: error instanceof Error ? error.message : String(error), plan: unresolvedPlan};
+        }
+        const requestedGeneration = preparedRequest.preflight.strategy === "bounded-coverage" && preparedRequest.sample !== undefined
+            ? {generationSemantics: "boundedSample" as const, sampleCount: preparedRequest.sample!.sampleSize, sampleSeed: preparedRequest.sample!.seed}
+            : {generationSemantics: "exact" as const};
         const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration);
         if (plan.status === "conflict") {
             return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
@@ -266,27 +302,21 @@ export class StudioOutcomeLibraryGenerateService {
                     if (!plan.steps.some((step) => step.kind === "generateOutcomeLibrary")) {
                         return {status: "terminal", view: {status: "load-error", error: "The prepared conversion has no executable Outcome Library generation or reuse step. Refresh the preview and retry.", plan}};
                     }
-                    let game: PokieGame;
-                    try {
-                        game = await this.loadGame(projectRoot);
-                    } catch (error) {
-                        return {status: "terminal", view: {status: "load-error", error: error instanceof Error ? error.message : String(error), plan}};
-                    }
-                    const manifest = game.getManifest();
-                    const configHash = request.configHash ?? game.getConfigHash?.();
-                    const libraryId = request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`;
+                    const libraryId = domainRequest.libraryId;
                     let generated: GenerateExactWeightedOutcomeLibraryResult;
                     try {
-                        generated = await this.generateLibrary({
-                            libraryId, game, pokieVersion: this.pokieVersion,
-                            ...(configHash !== undefined ? {configHash} : {}),
-                            ...(request.mode !== undefined ? {mode: request.mode} : {}),
-                            ...(request.stake !== undefined ? {stake: request.stake} : {}),
-                            generation,
-                            ...(request.maxOutcomeSpaceSize !== undefined ? {maxExactOutcomeSpaceSize: request.maxOutcomeSpaceSize} : {}),
-                            ...(sample === undefined ? {} : {sample}),
-                        });
+                        generated = await this.generateLibrary(domainRequest);
                     } catch (error) {
+                        if (error instanceof WeightedOutcomeLibraryGenerationCancelledError) {
+                            return {status: "terminal", view: {
+                                status: "cancelled",
+                                processedRawIndex: error.processedRawIndex,
+                                progressTotal: error.progressTotal,
+                                checkpoint: error.checkpoint,
+                                recovery: "Generation was cancelled before publication. Retry with this exact checkpoint while the game configuration is unchanged.",
+                                plan,
+                            }};
+                        }
                         if (error instanceof WeightedOutcomeLibraryGenerationError) {
                             return {status: "terminal", view: error.getCode() === "weighted-outcome-library-generation-unsupported"
                                 ? {status: "unsupported", error: error.message, plan}

@@ -106,7 +106,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
         });
 
-        it("prepares bounded generation with its exact sample provenance", async () => {
+        it("keeps legacy bounded generation below the cap exact in the prepared plan", async () => {
             const planning = {prepare: jest.fn(() => Promise.resolve(plannedOutcomeLibrary))};
             const svc = new StudioOutcomeLibraryGenerateService(
                 POKIE_VERSION,
@@ -126,11 +126,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
 
             await svc.generate(projectRoot, {bounded: {sampleSize: BigInt(2), seed: "fixture-seed"}});
 
-            expect(planning.prepare).toHaveBeenCalledWith(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {
-                generationSemantics: "boundedSample",
-                sampleCount: BigInt(2),
-                sampleSeed: "fixture-seed",
-            });
+            expect(planning.prepare).toHaveBeenCalledWith(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
         });
 
         it("reports the exact strategy for a small fixture game", async () => {
@@ -292,6 +288,20 @@ describe("StudioOutcomeLibraryGenerateService", () => {
         it("reports generation-error when the space exceeds maxOutcomeSpaceSize without bounded options", async () => {
             const result = await service().generate(projectRoot, {maxOutcomeSpaceSize: BigInt(2)});
             expect(result).toMatchObject({status: "generation-error", code: "weighted-outcome-library-generation-space-exceeded"});
+        });
+
+        it("returns a resumable cancellation result without publishing a partial bundle", async () => {
+            const controller = new AbortController();
+            controller.abort();
+
+            const result = await service().generate(projectRoot, {signal: controller.signal});
+
+            expect(result).toMatchObject({status: "cancelled", processedRawIndex: BigInt(0), progressTotal: BigInt(6)});
+            expect(fs.existsSync(path.join(projectRoot, "outcomelibrary", "manifest.json"))).toBe(false);
+            if (result.status === "cancelled") {
+                const resumed = await service().generate(projectRoot, {resumeFrom: result.checkpoint});
+                expect(resumed).toMatchObject({status: "ok", generator: {strategy: "exact"}});
+            }
         });
     });
 

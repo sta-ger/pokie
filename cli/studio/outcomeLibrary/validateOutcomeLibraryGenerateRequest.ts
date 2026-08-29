@@ -1,4 +1,5 @@
 import {
+    type ExactEnumerationCheckpoint,
     type OutcomeLibraryGenerationMode,
     type OutcomeLibraryGenerationSample,
     parsePositiveOutcomeLibraryGenerationDecimal,
@@ -32,7 +33,43 @@ export type ValidatedOutcomeLibraryGenerateRequest = {
     readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
     readonly bounded?: {readonly sampleSize: bigint; readonly seed: string};
     readonly outDir?: string;
+    /** In-process lifecycle hooks. HTTP adapters deliberately do not deserialize these opaque values. */
+    readonly resumeFrom?: ExactEnumerationCheckpoint;
+    readonly signal?: AbortSignal;
+    readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
 };
+
+/**
+ * The one HTTP compatibility adapter for the generation portion of Studio
+ * requests.  Estimate and execute intentionally call this same function so a
+ * saved `bounded`/`sampled` payload cannot select a different policy merely
+ * because it crossed a different endpoint.
+ */
+export function adaptOutcomeLibraryGenerationTransport(input: Pick<OutcomeLibraryGenerateRequestInput, "generation" | "sample" | "sampled" | "bounded">): {
+    readonly generation: OutcomeLibraryGenerationMode;
+    readonly sample?: OutcomeLibraryGenerationSample;
+} {
+    const bounded = validateOutcomeLibraryGenerationSample(input.bounded, "bounded");
+    const sampled = validateOutcomeLibraryGenerationSample(input.sampled, "sampled");
+    const sample = validateOutcomeLibraryGenerationSample(input.sample, "sample");
+    if ([bounded, sampled, sample].filter((entry) => entry !== undefined).length > 1) throw new Error('"sample", "bounded", and "sampled" cannot be combined.');
+    const requestedGeneration = validateGeneration(input.generation);
+    let compatibilityGeneration: OutcomeLibraryGenerationMode | undefined;
+    if (sampled !== undefined) compatibilityGeneration = "sampled";
+    else if (bounded !== undefined) compatibilityGeneration = "bounded";
+    if (requestedGeneration !== undefined && compatibilityGeneration !== undefined && requestedGeneration !== compatibilityGeneration) {
+        throw new Error('"generation" cannot conflict with legacy "bounded" or "sampled" input.');
+    }
+    const generation = requestedGeneration ?? compatibilityGeneration ?? "default";
+    const canonicalSample = sample ?? sampled ?? bounded;
+    if ((generation === "sampled" || generation === "bounded") && canonicalSample === undefined) {
+        throw new Error(`"generation" ${generation} requires a "sample" with "sampleSize" and "seed".`);
+    }
+    if ((generation === "default" || generation === "exact") && canonicalSample !== undefined) {
+        throw new Error(`"generation" ${generation} cannot be combined with sampled coverage.`);
+    }
+    return {...(canonicalSample === undefined ? {} : {sample: canonicalSample}), generation};
+}
 
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0;
@@ -75,25 +112,7 @@ export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGener
         throw new Error('"outDir" must be a non-empty string when present.');
     }
 
-    const bounded = validateOutcomeLibraryGenerationSample(input.bounded, "bounded");
-    const sampled = validateOutcomeLibraryGenerationSample(input.sampled, "sampled");
-    const sample = validateOutcomeLibraryGenerationSample(input.sample, "sample");
-    if ([bounded, sampled, sample].filter((entry) => entry !== undefined).length > 1) throw new Error('"sample", "bounded", and "sampled" cannot be combined.');
-    const requestedGeneration = validateGeneration(input.generation);
-    let compatibilityGeneration: OutcomeLibraryGenerationMode | undefined;
-    if (sampled !== undefined) compatibilityGeneration = "sampled";
-    else if (bounded !== undefined) compatibilityGeneration = "bounded";
-    if (requestedGeneration !== undefined && compatibilityGeneration !== undefined && requestedGeneration !== compatibilityGeneration) {
-        throw new Error('"generation" cannot conflict with legacy "bounded" or "sampled" input.');
-    }
-    const generation = requestedGeneration ?? compatibilityGeneration ?? "default";
-    const canonicalSample = sample ?? sampled ?? bounded;
-    if ((generation === "sampled" || generation === "bounded") && canonicalSample === undefined) {
-        throw new Error(`"generation" ${generation} requires a "sample" with "sampleSize" and "seed".`);
-    }
-    if ((generation === "default" || generation === "exact") && canonicalSample !== undefined) {
-        throw new Error(`"generation" ${generation} cannot be combined with sampled coverage.`);
-    }
+    const {generation, sample: canonicalSample} = adaptOutcomeLibraryGenerationTransport(input);
 
     return {
         ...(input.mode !== undefined ? {mode: input.mode as string} : {}),
@@ -105,8 +124,6 @@ export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGener
         ...(canonicalSample !== undefined ? {sample: canonicalSample} : {}),
         // Keep these aliases in the validated view while callers migrate. The
         // service itself consumes only generation/sample below.
-        ...(bounded !== undefined ? {bounded} : {}),
-        ...(sampled !== undefined ? {sampled} : {}),
         ...(input.outDir !== undefined ? {outDir: input.outDir as string} : {}),
     };
 }
