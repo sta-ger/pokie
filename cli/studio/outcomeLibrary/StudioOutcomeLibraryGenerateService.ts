@@ -263,6 +263,40 @@ export class StudioOutcomeLibraryGenerateService {
         return token === undefined ? undefined : this.preflightSnapshots.get(token);
     }
 
+    /**
+     * Revalidates a supplied preflight at the HTTP launch boundary.  A job is
+     * deliberately not the first consumer of this check: otherwise a stale
+     * browser request is observable as a queued job before it is rejected by
+     * generate().  Re-estimating here also proves that the source identity and
+     * resolved publication destination still describe the immutable snapshot.
+     */
+    public async validatePreflightBinding(
+        projectRoot: string,
+        request: ValidatedOutcomeLibraryGenerateRequest,
+        binding: StudioOutcomeLibraryPreflightBinding,
+    ): Promise<string | undefined> {
+        if (generationRequestKey(request) !== binding.requestKey) {
+            return "The generation request no longer matches the immutable preflight. Refresh the displayed preflight before generating.";
+        }
+        const preflight = await this.estimate(projectRoot, request);
+        if (preflight.status !== "ok") {
+            return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+        }
+        const current = this.preflightSnapshots.get(preflight.preflightToken);
+        if (
+            current === undefined ||
+            current.requestKey !== binding.requestKey ||
+            current.gameId !== binding.gameId ||
+            current.gameVersion !== binding.gameVersion ||
+            current.configHash !== binding.configHash ||
+            current.destination !== binding.destination ||
+            current.requiresBounded !== binding.requiresBounded
+        ) {
+            return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+        }
+        return undefined;
+    }
+
     // Drives generateExactWeightedOutcomeLibrary -- the exact same "core, reusable public producer" (see
     // its own doc comment) "pokie outcomelibrary generate" calls -- then immediately persists the result
     // into the project's own conventional outcome-library bundle via OutcomeLibraryBundleWriter, the same
@@ -713,7 +747,7 @@ export class StudioOutcomeLibraryGenerateService {
     }
 }
 
-function generationRequestKey(request: {mode?: string; stake?: number; configHash?: string; libraryId?: string; outDir?: string; generation?: string; maxOutcomeSpaceSize?: bigint; sample?: {sampleSize: bigint; seed: string}}): string {
+export function generationRequestKey(request: {mode?: string; stake?: number; configHash?: string; libraryId?: string; outDir?: string; generation?: string; maxOutcomeSpaceSize?: bigint; sample?: {sampleSize: bigint; seed: string}}): string {
     return JSON.stringify({mode: request.mode, stake: request.stake, configHash: request.configHash, libraryId: request.libraryId, outDir: request.outDir, generation: request.generation, maxOutcomeSpaceSize: request.maxOutcomeSpaceSize?.toString(), sample: request.sample === undefined ? undefined : {sampleSize: request.sample.sampleSize.toString(), seed: request.sample.seed}});
 }
 

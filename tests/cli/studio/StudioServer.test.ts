@@ -424,13 +424,20 @@ describe("StudioServer", () => {
                 totalOutcomeSpaceSize: 4, maxOutcomeSpaceSize: 20_000_000, strategy: "exact" as const, expectedRawWork: 4, warnings: [], requiresBounded: false,
                 defaults: {compatibilityVersion: "v1", maxExactOutcomeSpaceSize: 20_000_000, boundedSample: {sampleSize: 10_000, seed: "seed"}}, plan, preflightToken: `http-token-${++issuedToken}`,
             })),
-            getPreflightBinding: jest.fn((token?: string) => ({
-                ...binding,
-                requestKey: JSON.stringify({generation: "exact"}),
-                // A token is server-owned, but it still has to enforce the
-                // same sampled-opt-in eligibility as the compatibility route.
-                ...(token === "bounded-token" ? {requiresBounded: true} : {}),
-            })),
+            getPreflightBinding: jest.fn((token?: string) => {
+                let requestKey = JSON.stringify({generation: "exact"});
+                if (token === "http-token-2") requestKey = JSON.stringify({outDir: "outcomelibrary", generation: "exact"});
+                if (token === "http-token-3") requestKey = JSON.stringify({mode: "failure", generation: "exact"});
+                if (token === "http-token-4") requestKey = JSON.stringify({mode: "cancel", generation: "exact"});
+                return {
+                    ...binding,
+                    requestKey,
+                    // A token is server-owned, but it still has to enforce the
+                    // same sampled-opt-in eligibility as the compatibility route.
+                    ...(token === "bounded-token" ? {requiresBounded: true} : {}),
+                };
+            }),
+            validatePreflightBinding: jest.fn((): Promise<string | undefined> => Promise.resolve(undefined)),
             rebindCheckpointRequest: jest.fn((_root: string, request: object) => Promise.resolve({request: {...request, preflightToken: `resume-token-${++issuedToken}`}})),
             generate: jest.fn(async (root: string, request: {readonly mode?: string; readonly signal?: AbortSignal; readonly resumeFrom?: unknown}) => {
                 if (request.mode === "failure") return {status: "generation-error" as const, code: "weighted-outcome-library-generation-unsupported", error: "Enumeration is unsupported.", plan};
@@ -481,6 +488,32 @@ describe("StudioServer", () => {
         expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
             generation: "exact", preflightToken: "bounded-token",
         })).toMatchObject({status: 409, body: {error: expect.stringMatching(/explicit sampled or bounded coverage/i)}});
+
+        // A supplied token binds the complete normalized request.  Each of
+        // these drift variants must be rejected at start, before the job
+        // service can expose a queued record or invoke generation.
+        for (const drift of [
+            {generation: "sampled", sample: {sampleSize: "2", seed: "drift"}},
+            {maxOutcomeSpaceSize: "9"},
+            {libraryId: "other-library"},
+            {outDir: "other-output"},
+        ]) {
+            const before = outcomeService.generate.mock.calls.length;
+            const response = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
+                generation: "exact", preflightToken: "http-token-1", ...drift,
+            });
+            expect(response).toMatchObject({status: 409, body: {error: expect.stringMatching(/immutable preflight/i)}});
+            expect(outcomeService.generate).toHaveBeenCalledTimes(before);
+        }
+
+        // Source/configuration drift is also classified before a job exists;
+        // this represents the real service's re-estimated source snapshot.
+        outcomeService.validatePreflightBinding.mockResolvedValueOnce("The source changed after preflight.");
+        const sourceDrift = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
+            generation: "exact", preflightToken: "http-token-1",
+        });
+        expect(sourceDrift).toMatchObject({status: 409, body: {error: expect.stringMatching(/source changed/i)}});
+        expect(outcomeService.generate).not.toHaveBeenCalled();
 
         // The legacy URL still creates the pollable job and obtains its server
         // binding itself, rather than performing an unbound synchronous run.

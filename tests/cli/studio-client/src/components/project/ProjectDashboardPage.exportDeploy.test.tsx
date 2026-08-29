@@ -238,6 +238,56 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.getByRole("button", {name: "Generate exact outcome library (base)"})).toBeDisabled();
     });
 
+    it("renders a classified start-time binding conflict, then recovers with a fresh preflight before creating a job", async () => {
+        const user = userEvent.setup();
+        const starts: unknown[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            const [requestPath] = url.split("?");
+            if (requestPath === "/api/project/outcome-libraries/generate/estimate") {
+                const request = JSON.parse(String(init?.body)) as {outDir?: string};
+                const base = BASE_ROUTES["/api/project/outcome-libraries/generate/estimate"]().body as {preflightToken: string};
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({...base, preflightToken: request.outDir === "fresh-output" ? "fresh-preflight" : "stale-preflight"})});
+            }
+            if (requestPath === "/api/project/outcome-libraries/generate/jobs" && init?.method === "POST") {
+                starts.push(JSON.parse(String(init.body)));
+                if (starts.length === 1) {
+                    return Promise.resolve({ok: false, status: 409, json: () => Promise.resolve({error: "The generation request no longer matches the immutable preflight."})});
+                }
+                return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({job: {id: "fresh-job", status: "queued", cancellationRequested: false}})});
+            }
+            if (requestPath === "/api/project/outcome-libraries/generate/jobs/fresh-job") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({
+                    id: "fresh-job", status: "completed", cancellationRequested: false,
+                    result: {
+                        status: "ok", bundleDir: "fresh-output", files: ["manifest.json"], warnings: [],
+                        mode: {modeName: "base", libraryId: "a-base", hash: "sha256:fresh", outcomeCount: 27, totalWeight: 27, rtp: 0.95},
+                        generator: {strategy: "exact", pokieVersion: "1.0.0"}, coverage: 1,
+                        selector: {kind: "bundle", bundleDir: "fresh-output", modeName: "base"},
+                    },
+                })});
+            }
+            return fetchImplFrom(BASE_ROUTES)(url, init);
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await screen.findByText(/Exact enumeration: 27 raw combinations/);
+        await user.click(screen.getByRole("button", {name: "Generate exact outcome library (base)"}));
+        expect(await screen.findByText(/project, configuration, destination, or bound preflight changed before publication/i)).toBeInTheDocument();
+
+        await user.clear(screen.getByLabelText("Output destination"));
+        await user.type(screen.getByLabelText("Output destination"), "fresh-output");
+        await screen.findByText(/Exact enumeration: 27 raw combinations/);
+        await user.click(screen.getByRole("button", {name: "Generate exact outcome library (base)"}));
+
+        expect(await screen.findByText(/Generated 27 outcomes for mode "base" using exact.*fresh-output/)).toBeInTheDocument();
+        expect(starts).toEqual([
+            expect.objectContaining({preflightToken: "stale-preflight"}),
+            expect.objectContaining({outDir: "fresh-output", preflightToken: "fresh-preflight"}),
+        ]);
+    });
+
     it("keeps an exchange-only PAR workbook on the Build/Export path and shows its native file preflight", async () => {
         const user = userEvent.setup();
         const routes = {

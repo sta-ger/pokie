@@ -63,7 +63,7 @@ import {StudioFsBrowseService} from "./home/StudioFsBrowseService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioNativePickerService} from "./home/StudioNativePickerService.js";
 import {validateNativeBrowseRequest, NativeBrowseRequestInput} from "./home/validateNativeBrowseRequest.js";
-import {StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
+import {generationRequestKey, StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import type {StudioOutcomeLibraryGenerateEstimateView} from "./outcomeLibrary/StudioOutcomeLibraryGenerateEstimateView.js";
 import {StudioOutcomeLibraryGenerateJobService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateJobService.js";
 import {
@@ -2017,6 +2017,20 @@ export class StudioServer implements StudioServerHandling {
         }
         if (binding?.requiresBounded) {
             this.sendJson(res, 409, {error: "This request needs explicit sampled or bounded coverage before it can execute."});
+            return;
+        }
+        // Reject drift before allocating a lifecycle record.  The token is a
+        // server-owned immutable snapshot, not a capability to run an
+        // arbitrarily edited request.  This covers every transport field in
+        // the shared key (strategy/sample/cap/identity/destination), while
+        // the service rechecks current source and resolved destination.
+        if (generationRequestKey(validated) !== binding.requestKey) {
+            this.sendJson(res, 409, {error: "The generation request no longer matches the immutable preflight. Refresh the displayed preflight before generating."});
+            return;
+        }
+        const bindingConflict = await this.outcomeLibraryGenerateService.validatePreflightBinding(this.currentContext.projectRoot, validated, binding);
+        if (bindingConflict !== undefined) {
+            this.sendJson(res, 409, {error: bindingConflict});
             return;
         }
         this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.currentContext.projectRoot, validated)});
