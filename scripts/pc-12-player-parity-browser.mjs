@@ -59,11 +59,14 @@ export function exactCandidateConsumerManifest(manifest, candidateArchive) {
 
 export function assertExactCandidatePlayerExport(resolvedExport, consumerRoot) {
     const installedPackage = `${resolve(consumerRoot, "node_modules", "pokie")}${sep}`;
+    // import.meta.resolve returns a file URL, whereas path.resolve expects a filesystem path.
+    // Keep accepting a path here for the focused contract test and for Node versions that return one.
+    const resolvedPath = resolvedExport.startsWith("file:") ? fileURLToPath(resolvedExport) : resolve(resolvedExport);
     assert.ok(
-        resolve(resolvedExport).startsWith(installedPackage),
+        resolvedPath.startsWith(installedPackage),
         `pokie/client/player must resolve from the isolated candidate install, received ${resolvedExport}`,
     );
-    assert.match(resolvedExport, /[\\/]dist[\\/]cli[\\/]client[\\/]player[\\/]index\.js$/, "pokie/client/player must resolve the public player export");
+    assert.match(resolvedPath, /[\\/]dist[\\/]cli[\\/]client[\\/]player[\\/]index\.js$/, "pokie/client/player must resolve the public player export");
 }
 
 function readPngRgba(bytes) {

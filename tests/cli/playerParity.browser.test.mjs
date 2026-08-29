@@ -61,6 +61,7 @@ test("PC-12 browser parity provisions an isolated exact candidate consumer befor
     assert.equal(manifest.dependencies.pokie, "file:/tmp/pokie-1.3.0.tgz");
     assert.equal(manifest.dependencies.vite, "4.3.9");
     assert.doesNotThrow(() => assertExactCandidatePlayerExport("/tmp/isolated/node_modules/pokie/dist/cli/client/player/index.js", "/tmp/isolated"));
+    assert.doesNotThrow(() => assertExactCandidatePlayerExport("file:///tmp/isolated/node_modules/pokie/dist/cli/client/player/index.js", "/tmp/isolated"));
     assert.throws(() => assertExactCandidatePlayerExport("/workspace/dist/cli/client/player/index.js", "/tmp/isolated"), /isolated candidate install/);
 });
 
