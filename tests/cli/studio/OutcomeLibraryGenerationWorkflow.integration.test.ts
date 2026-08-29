@@ -50,11 +50,11 @@ function commandJsonReport(): Record<string, unknown> {
 
 function expectEquivalentPreflight(
     cli: Record<string, unknown>,
-    studio: {readonly totalOutcomeSpaceSize: bigint; readonly maxOutcomeSpaceSize: bigint; readonly strategy: string; readonly expectedRawWork: bigint; readonly requiresBounded: boolean; readonly sampleSize?: bigint; readonly seed?: string},
+    studio: {readonly totalOutcomeSpaceSize: number | string; readonly maxOutcomeSpaceSize: number | string; readonly strategy: string; readonly expectedRawWork: number | string; readonly requiresBounded: boolean; readonly sampleSize?: number | string; readonly seed?: string},
 ): void {
     // This deliberately compares the execution-relevant fields rather than a
-    // presentation string. The CLI report and Studio DTO use different bigint
-    // wire encodings, but they must bind the same strategy before publishing.
+    // presentation string. Both adapters preserve bigint safety with the same
+    // number-or-decimal-string transport convention before publishing.
     expect({
         totalOutcomeSpaceSize: cli.totalOutcomeSpaceSize,
         maxOutcomeSpaceSize: cli.maxOutcomeSpaceSize,
@@ -64,12 +64,12 @@ function expectEquivalentPreflight(
         sampleSize: cli.sampleSize,
         seed: cli.seed,
     }).toEqual({
-        totalOutcomeSpaceSize: Number(studio.totalOutcomeSpaceSize),
-        maxOutcomeSpaceSize: Number(studio.maxOutcomeSpaceSize),
+        totalOutcomeSpaceSize: studio.totalOutcomeSpaceSize,
+        maxOutcomeSpaceSize: studio.maxOutcomeSpaceSize,
         strategy: studio.strategy,
-        expectedRawWork: Number(studio.expectedRawWork),
+        expectedRawWork: studio.expectedRawWork,
         requiresBounded: studio.requiresBounded,
-        sampleSize: studio.sampleSize === undefined ? undefined : Number(studio.sampleSize),
+        sampleSize: studio.sampleSize,
         seed: studio.seed,
     });
 }
