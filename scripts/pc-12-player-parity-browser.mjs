@@ -22,6 +22,13 @@ import WebSocket from "ws";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const canonicalPlayerSelector = '[data-pokie-player="canonical-v1"]';
 
+// Studio is launched through POKIE's public implicit-project form.  `studio` is an internal
+// dispatcher name, not a user-facing subcommand, so including it here makes an exact packed
+// candidate exit before its server can start.
+export function studioLaunchArguments(project, port) {
+    return ["dist/cli/pokie.js", project, "--no-open", "--host", "127.0.0.1", "--port", String(port)];
+}
+
 // Keep this list deliberately limited to the shared player.  Studio's page chrome and the examples'
 // Bootstrap shell are allowed to differ, but a change to any of these values is a visible player
 // regression (and not merely a different serialisation of the same round).
@@ -333,7 +340,7 @@ export async function runPlayerParityBrowser() {
         await mkdir(evidence, {recursive: true});
         exactConsumer = await prepareExactCandidateConsumer(examplesSourceRoot, profile);
         note(`EXACT CANDIDATE export=${exactConsumer.resolvedExport}; archive=${exactConsumer.candidateArchive}`);
-        studio = spawn(process.execPath, ["dist/cli/pokie.js", "studio", project, "--no-open", "--host", "127.0.0.1", "--port", String(studioPort)], {cwd: root, stdio: "pipe"});
+        studio = spawn(process.execPath, studioLaunchArguments(project, studioPort), {cwd: root, stdio: "pipe"});
         examples = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(examplesPort)], {cwd: exactConsumer.consumerRoot, stdio: "pipe"});
         await waitFor(async () => {
             try { return (await fetch(`${studioUrl}/api/context`)).ok; } catch { return false; }

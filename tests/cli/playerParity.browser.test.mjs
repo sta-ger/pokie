@@ -10,6 +10,7 @@ import {
     comparePlayerRegions,
     comparePlayerScreenshots,
     exactCandidateConsumerManifest,
+    studioLaunchArguments,
 } from "../../scripts/pc-12-player-parity-browser.mjs";
 
 const region = {
@@ -63,6 +64,14 @@ test("PC-12 browser parity provisions an isolated exact candidate consumer befor
     assert.doesNotThrow(() => assertExactCandidatePlayerExport("/tmp/isolated/node_modules/pokie/dist/cli/client/player/index.js", "/tmp/isolated"));
     assert.doesNotThrow(() => assertExactCandidatePlayerExport("file:///tmp/isolated/node_modules/pokie/dist/cli/client/player/index.js", "/tmp/isolated"));
     assert.throws(() => assertExactCandidatePlayerExport("/workspace/dist/cli/client/player/index.js", "/tmp/isolated"), /isolated candidate install/);
+});
+
+test("PC-12 browser parity launches Studio through the public implicit-project form", () => {
+    assert.deepEqual(
+        studioLaunchArguments("/fixtures/same-game", 32192),
+        ["dist/cli/pokie.js", "/fixtures/same-game", "--no-open", "--host", "127.0.0.1", "--port", "32192"],
+    );
+    assert.equal(studioLaunchArguments("/fixtures/same-game", 32192).includes("studio"), false);
 });
 
 test("PC-12 browser parity compares canonical screenshots as pixels, with an anti-aliasing tolerance", () => {
