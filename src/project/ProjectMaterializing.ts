@@ -11,5 +11,15 @@ import type {ProjectMaterializationResult} from "./ProjectMaterializationResult.
 // see ProjectMaterializationResult for what a future implementation must report back, in particular who
 // owns cleanup of what it produced.
 export interface ProjectMaterializing {
-    materialize(project: PokieProject): Promise<ProjectMaterializationResult>;
+    materialize(project: PokieProject, options?: ProjectMaterializationOptions): Promise<ProjectMaterializationResult>;
 }
+
+/**
+ * Lifetime facts for a runtime preparation.  Runtime callers deliberately
+ * pass these through instead of inventing their own cancellation/cache rules.
+ */
+export type ProjectMaterializationOptions = {
+    readonly signal?: AbortSignal;
+    /** Extra source facts consumed before the Blueprint stage (for example PAR bytes). */
+    readonly cacheIdentity?: string;
+};

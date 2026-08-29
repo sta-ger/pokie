@@ -307,7 +307,7 @@ export class StudioSimulationService {
 
         let runtime;
         try {
-            runtime = await this.resolveRuntimePackageRoot(record.projectRoot);
+            runtime = await this.resolveRuntimePackageRoot(record.projectRoot, {signal: record.abortController.signal});
         } catch (error) {
             this.fail(record, this.describeRuntimePreparationFailure(error));
             return;

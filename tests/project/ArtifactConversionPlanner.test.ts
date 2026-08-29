@@ -49,6 +49,30 @@ describe("ArtifactConversionPlanner", () => {
         });
     });
 
+    it("plans a destinationless runnable runtime for Blueprint and PAR without publishing a package", () => {
+        const blueprint = planner.planRuntime(project("blueprint"));
+        const par = planner.planRuntime(project("parWorkbook"));
+        const outcome = planner.planRuntime(project("outcomeLibrary"));
+
+        expect(blueprint).toMatchObject({
+            status: "planned",
+            target: {kind: "tsPackage"},
+            steps: [{kind: "materializeRuntime", choice: "materialize"}],
+        });
+        expect(par).toMatchObject({
+            status: "planned",
+            target: {kind: "tsPackage"},
+            steps: [{kind: "importParWorkbook"}, {kind: "materializeRuntime"}],
+        });
+        expect(outcome).toMatchObject({
+            status: "unavailable",
+            diagnostic: {
+                failedEdge: {from: "outcomeLibrary", to: "tsPackage"},
+                message: expect.stringMatching(/native sampling and exact replay/i),
+            },
+        });
+    });
+
     it("plans the non-circular Blueprint to Stake path through a canonical Outcome Library", () => {
         const plan = planner.plan(project("blueprint"), "stakeAdapter", {destinationPath: "/exports/stake"});
 

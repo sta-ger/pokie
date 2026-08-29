@@ -16,6 +16,7 @@ import {
     PokieProject,
     ProjectMaterializationResult,
     ProjectMaterializing,
+    type ProjectMaterializationOptions,
 } from "pokie";
 import {BlueprintMaterializationError} from "./BlueprintMaterializationError.js";
 import {extractNpmStderr, PackageCommandRunning, runPackageCommand} from "../prepare/PackageCommandRunner.js";
@@ -135,7 +136,8 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         this.runtimeIdentity = runtimeIdentity;
     }
 
-    public async materialize(project: PokieProject): Promise<ProjectMaterializationResult> {
+    public async materialize(project: PokieProject, options: ProjectMaterializationOptions = {}): Promise<ProjectMaterializationResult> {
+        this.assertNotCancelled(options.signal);
         if (project.type === "tsPackage") {
             // Already runtime-shaped -- nothing to build, nothing new allocated (see
             // ProjectMaterializationResult's own doc comment on "ownsRuntimePath: false").
@@ -149,14 +151,15 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         }
 
         const blueprint = this.loadAndValidate(project.rootPath);
-        const cacheKey = this.computeCacheKey(blueprint);
+        this.assertNotCancelled(options.signal);
+        const cacheKey = this.computeCacheKey(blueprint, options.cacheIdentity);
         const cacheDir = path.join(this.cacheRoot, cacheKey);
 
         if (await this.isReady(cacheDir, cacheKey)) {
             return this.borrowed(cacheDir);
         }
 
-        return this.materializeUnderLock(blueprint, project.rootPath, cacheDir, cacheKey);
+        return this.materializeUnderLock(blueprint, project.rootPath, cacheDir, cacheKey, options.signal);
     }
 
     // Owns every stale-cache eviction and fresh claim for `cacheKey`, but only for as long as this call
@@ -172,14 +175,16 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         blueprintPath: string,
         cacheDir: string,
         cacheKey: string,
+        signal?: AbortSignal,
     ): Promise<ProjectMaterializationResult> {
         // Must exist before acquireLock() below can even attempt `mkdir(lockDir)` -- otherwise a
         // never-yet-used cacheRoot would fail that `mkdir` with ENOENT (no such parent directory), not the
         // EEXIST acquireLock() actually knows how to retry on.
         fs.mkdirSync(this.cacheRoot, {recursive: true});
         const lockDir = `${cacheDir}.lock`;
-        const lockToken = await this.acquireLock(lockDir);
+        const lockToken = await this.acquireLock(lockDir, signal);
         try {
+            this.assertNotCancelled(signal);
             if (await this.isReady(cacheDir, cacheKey)) {
                 // Whoever held the lock immediately before us already published a ready, matching entry --
                 // borrow it; this call never evicts, renames, or otherwise touches cacheDir.
@@ -190,9 +195,13 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
 
             const stagingDir = path.join(this.cacheRoot, `${cacheKey}.staging-${crypto.randomBytes(8).toString("hex")}`);
             try {
+                this.assertNotCancelled(signal);
                 this.runGeneratePhase(blueprint, stagingDir);
+                this.assertNotCancelled(signal);
                 await this.runDependenciesPhase(stagingDir);
+                this.assertNotCancelled(signal);
                 await this.runVerifyPhase(stagingDir, blueprintPath);
+                this.assertNotCancelled(signal);
                 this.markReady(stagingDir, cacheKey);
                 // Safe as a plain rename (no occupied-directory handling needed): this call holds
                 // exclusive ownership of cacheKey, and evictStale() above already guaranteed cacheDir is
@@ -222,12 +231,13 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         return raw as GameBlueprint;
     }
 
-    private computeCacheKey(blueprint: GameBlueprint): string {
+    private computeCacheKey(blueprint: GameBlueprint, cacheIdentity?: string): string {
         const raw =
             `blueprintHash:${computeGameBlueprintHash(blueprint)}|` +
             `pokieVersion:${this.pokieVersion}|` +
             `buildContractVersion:${GAME_BLUEPRINT_SCHEMA_VERSION}|` +
-            `runtimeIdentity:${this.runtimeIdentity}`;
+            `runtimeIdentity:${this.runtimeIdentity}|` +
+            `sourceIdentity:${cacheIdentity ?? "blueprint"}`;
         return crypto.createHash("sha256").update(raw).digest("hex");
     }
 
@@ -304,8 +314,9 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     // key -- releaseLock() must be given this exact value back, never inferred, so it can tell its own lock
     // instance apart from a later holder's (see releaseLock()'s own doc comment on why that distinction is
     // "ownership-aware" rather than a blind path-based delete).
-    private async acquireLock(lockDir: string): Promise<string> {
+    private async acquireLock(lockDir: string, signal?: AbortSignal): Promise<string> {
         for (;;) {
+            this.assertNotCancelled(signal);
             const token = crypto.randomBytes(16).toString("hex");
             try {
                 await fs.promises.mkdir(lockDir);
@@ -501,6 +512,10 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
             return [];
         }
         return entries.filter((entry) => entry.startsWith(prefix)).map((entry) => path.join(path.dirname(lockDir), entry));
+    }
+
+    private assertNotCancelled(signal: AbortSignal | undefined): void {
+        if (signal?.aborted) throw new Error("Runtime materialization was cancelled.");
     }
 
     private delay(ms: number): Promise<void> {

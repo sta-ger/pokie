@@ -2,7 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {
-    BLUEPRINT_BUILD_CAPABILITY,
+    ArtifactConversionPlanner,
     describeUnsupportedProjectOperation,
     PokieOperation,
     PokieProject,
@@ -12,6 +12,7 @@ import {
 } from "pokie";
 import {withLinkedLocalPokieRuntime} from "../prepare/PackageCommandRunner.js";
 import {BlueprintProjectMaterializer} from "./BlueprintProjectMaterializer.js";
+import {RunnableArtifactMaterializer} from "./RunnableArtifactMaterializer.js";
 import {UnsupportedProjectOperationError} from "./UnsupportedProjectOperationError.js";
 
 // What every CLI runtime operation (sim/dev/serve/replay, Studio's Play runtime) gets back once it's
@@ -25,7 +26,9 @@ export type RuntimePackageResolution = {
     release(): Promise<void>;
 };
 
-export type RuntimePackageResolving = (packageRoot: string) => Promise<RuntimePackageResolution>;
+export type RuntimePackageResolutionOptions = {readonly signal?: AbortSignal};
+
+export type RuntimePackageResolving = (packageRoot: string, options?: RuntimePackageResolutionOptions) => Promise<RuntimePackageResolution>;
 
 const noRelease = (): Promise<void> => Promise.resolve();
 
@@ -143,7 +146,7 @@ export function createMaterializingRuntimePackageResolver(
     const resolveProject = dependencies.resolveProject ?? new ProjectTargetResolver();
     const materializer =
         dependencies.materializer ??
-        new BlueprintProjectMaterializer(
+        new RunnableArtifactMaterializer(new BlueprintProjectMaterializer(
             pokieVersion,
             undefined,
             undefined,
@@ -152,28 +155,45 @@ export function createMaterializingRuntimePackageResolver(
             undefined,
             undefined,
             pokiePackageRoot !== undefined ? createLocalRuntimeIdentity(pokiePackageRoot) : pokieVersion,
-        );
+        ));
 
-    return async (packageRoot: string): Promise<RuntimePackageResolution> => {
+    return async (packageRoot: string, options: RuntimePackageResolutionOptions = {}): Promise<RuntimePackageResolution> => {
+        if (options.signal?.aborted) throw new Error("Runtime preparation was cancelled before a runnable game was available.");
         const project: PokieProject | undefined = await resolveProject.resolve(packageRoot);
         if (project === undefined) {
             return {runtimePath: packageRoot, release: noRelease};
         }
 
-        // A Blueprint is runnable only after it exercises its build capability. This is intentionally
-        // capability-based rather than a second, local type switch: the resolver has already made the
-        // authoritative decision about what this project can do, and simulation must receive the
-        // resulting package runtime rather than the Blueprint JSON path.
-        if (project.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY)) {
-            const materialized = await materializer.materialize(project);
+        // Runtime preparation is planner-owned.  It may borrow a package,
+        // materialize a Blueprint cache, or import PAR into a private stage;
+        // none of those asks the user to publish a durable package first.
+        const runtimePlan = new ArtifactConversionPlanner().planRuntime(project);
+        if (project.type === "tsPackage") {
+            return {runtimePath: project.rootPath, release: noRelease};
+        }
+        if (runtimePlan.status === "planned") {
+            const materialized = await materializer.materialize(project, options);
             return {runtimePath: materialized.runtimePath, release: materialized.release};
         }
-
+        // Native Outcome Library routes are selected by their commands before
+        // this boundary. Everything else retains the planner's attempted path
+        // and failed conversion edge instead of being mislabeled as a bad
+        // package validation problem.
         const diagnostic = describeUnsupportedProjectOperation(project, operation);
-        if (diagnostic !== undefined) {
-            throw new UnsupportedProjectOperationError(diagnostic);
-        }
-
-        return {runtimePath: project.rootPath, release: noRelease};
+        const plannerDiagnostic = runtimePlan.diagnostic!;
+        const plannerMessage = `Cannot prepare a runnable runtime from ${JSON.stringify(project.rootPath)}. Attempted path: ${project.type} -> tsPackage; reusable steps: ${runtimePlan.steps.length === 0 ? "none" : runtimePlan.steps.map((step) => `${step.choice} ${step.kind}`).join(", ")}; blocker at ${plannerDiagnostic.failedEdge.from} -> ${plannerDiagnostic.failedEdge.to}: ${plannerDiagnostic.message} Next: ${plannerDiagnostic.recovery}`;
+        throw new UnsupportedProjectOperationError({
+            ...(diagnostic ?? {
+                operation,
+                detectedType: project.type,
+                missingCapability: "runtime.execute",
+                alternatives: [],
+            }),
+            // Outcome Library is intentionally kept on its native paths; its
+            // established open-Studio diagnostic remains the clearest recovery.
+            message: project.type === "outcomeLibrary" && diagnostic !== undefined
+                ? diagnostic.message
+                : `${diagnostic?.message === undefined ? "" : `${diagnostic.message} `}${plannerMessage}`,
+        });
     };
 }

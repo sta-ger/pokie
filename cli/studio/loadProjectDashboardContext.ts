@@ -34,15 +34,11 @@ const defaultResolveOutcomeSourceProject: OutcomeSourceProjectResolving = async 
     return {project, report};
 };
 
-// Resolves an already-built artifact that Studio can operate on without a game runtime. PAR workbooks
-// are intentionally kept separate from outcome-source projects: they have no canonical analysis to
-// report, only the `parWorkbook.exchange` capability Build/Export needs to republish the workbook.
+// Resolves artifacts which deliberately have no runtime path. PAR is omitted:
+// runnable-compatible workbooks go through the shared runtime planner below.
 export type ArtifactProjectResolving = (projectRoot: string) => Promise<PokieProject | undefined>;
 
-const defaultResolveArtifactProject: ArtifactProjectResolving = async (projectRoot) => {
-    const project = await new ProjectTargetResolver().resolve(projectRoot).catch(() => undefined);
-    return project?.type === "parWorkbook" ? project : undefined;
-};
+const defaultResolveArtifactProject: ArtifactProjectResolving = () => Promise.resolve(undefined);
 
 // Adapts loadPokieGame's throw-on-failure contract into ProjectDashboardContext's safe, typed
 // "loaded"/"error" result — the one place a failure to load `projectRoot` (missing build output, a
@@ -95,9 +91,7 @@ export async function loadProjectDashboardContext(
         };
     }
 
-    // A PAR workbook is a directly exchangeable artifact, not a runtime package. Do this before the
-    // materializing boundary below so opening it reaches Build/Export instead of failing with the
-    // unrelated `runtime.execute` diagnostic.
+    // Keep any truly non-runnable artifact visible without claiming it loaded.
     const artifact = await resolveArtifactProject(projectRoot).catch(() => undefined);
     if (artifact !== undefined) {
         const identity = await describeLocation(projectRoot).catch(() => undefined);

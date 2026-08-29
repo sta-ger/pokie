@@ -89,9 +89,11 @@ describe("loadProjectDashboardContext", () => {
         await expect(loadProjectDashboardContext("./broken-game", loadGame)).resolves.not.toThrow();
     });
 
-    it("opens a PAR workbook as an exchange-only artifact without materializing or loading a runtime", async () => {
-        const loadGame = jest.fn();
-        const resolveRuntimePackageRoot = jest.fn();
+    it("opens a runnable PAR workbook through the shared runtime materialization boundary", async () => {
+        const manifest: PokieGameManifest = {id: "par-slot", name: "PAR Slot", version: "1.0.0"};
+        const loadGame = jest.fn().mockResolvedValue(createFakeGame(manifest));
+        const release = jest.fn().mockResolvedValue(undefined);
+        const resolveRuntimePackageRoot = jest.fn().mockResolvedValue({runtimePath: "/cached/par-runtime", release});
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-par-dashboard-test-"));
         const workbookPath = path.join(workDir, "sheet.xlsx");
         const workbook = new ExcelJS.Workbook();
@@ -103,13 +105,14 @@ describe("loadProjectDashboardContext", () => {
             await workbook.xlsx.writeFile(workbookPath);
             const dashboard = await loadProjectDashboardContext(workbookPath, loadGame, resolveRuntimePackageRoot);
 
-            expect(dashboard).toMatchObject({
-                status: "artifact",
+            expect(dashboard).toEqual({
+                status: "loaded",
                 projectRoot: workbookPath,
-                project: {type: "parWorkbook", rootPath: workbookPath, capabilities: ["parWorkbook.exchange"]},
+                game: manifest,
             });
-            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
-            expect(loadGame).not.toHaveBeenCalled();
+            expect(resolveRuntimePackageRoot).toHaveBeenCalledWith(workbookPath);
+            expect(loadGame).toHaveBeenCalledWith("/cached/par-runtime");
+            expect(release).toHaveBeenCalledTimes(1);
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }

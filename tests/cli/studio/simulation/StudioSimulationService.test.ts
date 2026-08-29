@@ -192,7 +192,7 @@ describe("StudioSimulationService", () => {
 
         expect(job.status).toBe("completed");
         expect(resolveProject.resolve).toHaveBeenCalledWith(blueprintPath);
-        expect(materialize).toHaveBeenCalledWith(blueprintProject);
+        expect(materialize).toHaveBeenCalledWith(blueprintProject, expect.objectContaining({signal: expect.any(AbortSignal)}));
         expect(loadGame).toHaveBeenCalledWith(runtimePath);
         expect(loadGame).not.toHaveBeenCalledWith(blueprintPath);
         expect(release).toHaveBeenCalledTimes(1);
