@@ -34,6 +34,15 @@ const REGISTERED_PROJECT = {
     lastOpenedAt: "2026-01-01T00:00:00.000Z",
     status: "ok" as const,
     importedFromParSheetPath: "/games/in.par.xlsx",
+    conversionEvidencePath: "/POKIE Projects/imported-game/blueprint.json.conversion-evidence.json",
+};
+
+const CONVERSION_EVIDENCE = {
+    metaSheet: [["Key", "Value"], ["Blueprint Hash", "sha256:abc"]],
+    facts: [],
+    losslessEligible: true,
+    importedBlueprintHash: "sha256:abc",
+    provenanceHashMatches: true,
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -59,19 +68,19 @@ async function applyParImport(user: ReturnType<typeof userEvent.setup>): Promise
 describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", () => {
     it("saves the imported blueprint as a managed Blueprint Project, recording the workbook only as provenance, and shows an 'Imported from PAR' label", async () => {
         const user = userEvent.setup();
-        const saveManagedBodies: Array<{blueprint: unknown; sourceWorkbookPath?: string}> = [];
+        const saveManagedBodies: Array<{blueprint: unknown; sourceWorkbookPath?: string; conversionEvidence?: unknown}> = [];
         const savedProjects: unknown[] = [];
         const openedProjectLocations: string[] = [];
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
             if (path === IMPORT_URL) {
-                return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
+                return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, conversionEvidence: CONVERSION_EVIDENCE, errors: [], warnings: []});
             }
             if (path === VALIDATE_URL) {
                 return jsonResponse({status: "ok", warnings: []});
             }
             if (path === SAVE_MANAGED_URL) {
-                const body = JSON.parse((init?.body as string | undefined) ?? "{}") as {blueprint: unknown; sourceWorkbookPath?: string};
+                const body = JSON.parse((init?.body as string | undefined) ?? "{}") as {blueprint: unknown; sourceWorkbookPath?: string; conversionEvidence?: unknown};
                 saveManagedBodies.push(body);
                 return jsonResponse({
                     status: "ok",
@@ -79,6 +88,7 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
                     name: "imported-game",
                     blueprintHash: "sha256:abc",
                     sourceWorkbookPath: body.sourceWorkbookPath,
+                    conversionEvidencePath: REGISTERED_PROJECT.conversionEvidencePath,
                     registeredProject: REGISTERED_PROJECT,
                 });
             }
@@ -102,6 +112,9 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
 
         await waitFor(() => expect(saveManagedBodies).toHaveLength(1));
         expect(saveManagedBodies[0].sourceWorkbookPath).toBe("/games/in.par.xlsx");
+        // The browser identifies the workbook but never authors the durable evidence; the server restores
+        // its prepared record and returns the persisted registry/evidence identity.
+        expect(saveManagedBodies[0].conversionEvidence).toBeUndefined();
         // A successful managed save immediately opens its Workspace, which deliberately clears the
         // creator-only success message before navigation. The observable persistence boundary is the
         // exact project location supplied to the Workspace-open request.
@@ -111,6 +124,7 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
         expect(screen.getByText("Imported from PAR")).toBeInTheDocument();
         expect(screen.getByText(/Source:.*\/games\/in\.par\.xlsx/)).toBeInTheDocument();
         expect(savedProjects).toEqual([REGISTERED_PROJECT]);
+        expect(savedProjects[0]).toMatchObject({conversionEvidencePath: REGISTERED_PROJECT.conversionEvidencePath});
     });
 
     it("does not show the 'Imported from PAR' label, and never sends sourceWorkbookPath, for an ordinary first Save with no PAR import behind it", async () => {
