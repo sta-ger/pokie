@@ -37,6 +37,7 @@ import type {IncomingMessage} from "http";
 import os from "os";
 import path from "path";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
+import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
@@ -107,6 +108,18 @@ async function post(url: string, body?: unknown): Promise<{status: number; body:
 async function del(url: string): Promise<{status: number; body: unknown}> {
     const response = await fetch(url, {method: "DELETE"});
     return {status: response.status, body: await response.json()};
+}
+
+async function waitForOutcomeLibraryJob(baseUrl: string, id: string): Promise<Record<string, unknown>> {
+    for (let attempt = 0; attempt < 30; attempt++) {
+        const response = await get(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${id}`);
+        const job = response.body as Record<string, unknown>;
+        if (job.status !== "queued" && job.status !== "running") return job;
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 10);
+        });
+    }
+    throw new Error(`Outcome Library job ${id} did not finish.`);
 }
 
 // Same fakes as materializeRuntimePackage.ts's own boundary tests (see
@@ -516,6 +529,79 @@ describe("StudioServer", () => {
         expect(await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${cancelledId}`)).toMatchObject({status: 200, body: {status: "completed", result: {status: "ok"}}});
         expect(fs.existsSync(path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${cancelledId}.json`))).toBe(false);
         expect(outcomeService.rebindCheckpointRequest).toHaveBeenCalled();
+    });
+
+    it("runs both Outcome Library HTTP start routes against a real generated package and rejects a bound destination drift", async () => {
+        await server.stop();
+        const projectRoot = path.join(studioRoot, "real-outcome-library-package");
+        const sampledProjectRoot = path.join(studioRoot, "real-sampled-outcome-library-package");
+        const blueprintPath = path.join(studioRoot, "real-outcome-library.blueprint.json");
+        fs.writeFileSync(blueprintPath, JSON.stringify({
+            manifest: {id: "real-http-slot", name: "Real HTTP Slot", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
+            paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
+        }));
+        expect(await new BuildCommand("1.0.0").run([blueprintPath, "--target", "tsPackage", "--out", projectRoot])).toBe(0);
+        expect(await new BuildCommand("1.0.0").run([blueprintPath, "--target", "tsPackage", "--out", sampledProjectRoot])).toBe(0);
+
+        const replaceServer = (nextServer: StudioServer): void => {
+            server = nextServer;
+        };
+        replaceServer(new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            homeService: new StudioHomeService("1.0.0", undefined, loadPokieGame),
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadPokieGame)),
+            loadGame: loadPokieGame,
+            initialContext: {mode: "project", projectRoot},
+        }));
+        const address = await server.start();
+        let realBaseUrl = `http://${address.host}:${address.port}`;
+
+        // The retained direct URL deliberately supplies no token: it must still
+        // create a durable job through the real service's server-bound preflight.
+        const direct = await post(`${realBaseUrl}/api/project/outcome-libraries/generate`, {
+            generation: "exact", maxOutcomeSpaceSize: "50000", libraryId: "http-exact",
+        });
+        expect(direct).toMatchObject({status: 202, body: {status: "created"}});
+        const exactJob = await waitForOutcomeLibraryJob(realBaseUrl, (direct.body as {job: {id: string}}).job.id);
+        expect(exactJob).toMatchObject({status: "completed", result: {status: "ok", mode: {libraryId: "http-exact"}, generator: {strategy: "exact"}}});
+
+        // The sampled policy is a fresh real package, rather than an overwrite
+        // of the exact bundle. This preserves both producers' full provenance
+        // and also exercises restart with durable server-owned lifecycle state.
+        await server.stop();
+        replaceServer(new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            homeService: new StudioHomeService("1.0.0", undefined, loadPokieGame),
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadPokieGame)),
+            loadGame: loadPokieGame,
+            initialContext: {mode: "project", projectRoot: sampledProjectRoot},
+        }));
+        const sampledAddress = await server.start();
+        realBaseUrl = `http://${sampledAddress.host}:${sampledAddress.port}`;
+        const sampledRequest = {
+            generation: "sampled", maxOutcomeSpaceSize: "50000", libraryId: "http-sampled",
+            sample: {sampleSize: "19", seed: "http-parity-seed"},
+        };
+        const sampledPreflight = await post(`${realBaseUrl}/api/project/outcome-libraries/generate/estimate`, sampledRequest);
+        expect(sampledPreflight).toMatchObject({status: 200, body: {status: "ok", strategy: "bounded-coverage", sampleSize: 19, seed: "http-parity-seed", requiresBounded: false}});
+        const jobRoute = await post(`${realBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
+            ...sampledRequest,
+            preflightToken: (sampledPreflight.body as {preflightToken: string}).preflightToken,
+        });
+        expect(jobRoute.status).toBe(202);
+        const sampledJob = await waitForOutcomeLibraryJob(realBaseUrl, (jobRoute.body as {job: {id: string}}).job.id);
+        expect(sampledJob).toMatchObject({status: "completed", result: {status: "ok", mode: {libraryId: "http-sampled"}, generator: {strategy: "bounded-coverage", seed: "http-parity-seed"}}});
+        expect(await get(`${realBaseUrl}/api/project/outcome-libraries/registry`)).toMatchObject({status: 200, body: {status: "ok", buildStatus: "compatible", modes: expect.arrayContaining([expect.objectContaining({buildStatus: "compatible"})])}});
+
+        // A preflight's destination is immutable. The public job route may
+        // accept the request envelope, but the real service must publish no
+        // output when the displayed destination has been changed underneath it.
+        const driftPreflight = await post(`${realBaseUrl}/api/project/outcome-libraries/generate/estimate`, {generation: "exact", maxOutcomeSpaceSize: "50000"});
+        const drift = await post(`${realBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
+            generation: "exact", maxOutcomeSpaceSize: "50000", outDir: "changed-destination", preflightToken: (driftPreflight.body as {preflightToken: string}).preflightToken,
+        });
+        expect(drift).toMatchObject({status: 409, body: {error: expect.stringMatching(/destination|preflight/i)}});
+        expect(fs.existsSync(path.join(sampledProjectRoot, "changed-destination"))).toBe(false);
     });
 
     it("reports safe diagnostics on GET /api/studio/diagnostics in home mode", async () => {

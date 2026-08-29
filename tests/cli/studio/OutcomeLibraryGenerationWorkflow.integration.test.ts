@@ -1,4 +1,5 @@
 import {ArtifactConversionPlan, OutcomeLibraryBundleReader, loadPokieGame} from "pokie";
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -13,6 +14,33 @@ const plan: ArtifactConversionPlan = {
     steps: [{kind: "generateOutcomeLibrary", choice: "materialize", estimatedWork: "generate", input: {kind: "tsPackage", capabilities: []}, output: {kind: "outcomeLibrary", capabilities: []}}],
     preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false},
 };
+
+function canonicalize(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(canonicalize);
+    if (value !== null && typeof value === "object") {
+        return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, child]) => [key, canonicalize(child)]));
+    }
+    return value;
+}
+
+function canonicalLibraryHash(library: {readonly outcomes: unknown}): string {
+    return `sha256:${crypto.createHash("sha256").update(JSON.stringify(canonicalize(library.outcomes))).digest("hex")}`;
+}
+
+function withoutGeneratedAt<T extends {readonly generatedAt?: string}>(provenance: T): Omit<T, "generatedAt"> {
+    const {generatedAt: _generatedAt, ...normalized} = provenance;
+    return normalized;
+}
+
+function commandJsonReport(): Record<string, unknown> {
+    const message = (console.log as jest.Mock).mock.calls
+        .map(([value]) => value)
+        .filter((value): value is string => typeof value === "string")
+        .reverse()
+        .find((value) => value.startsWith("{") && value.includes('"diagnostics"'));
+    if (message === undefined) throw new Error("Expected CLI JSON generation report.");
+    return JSON.parse(message) as Record<string, unknown>;
+}
 
 describe("Outcome Library CLI and Studio generation (integration)", () => {
     let root: string;
@@ -55,14 +83,25 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         expect(generated).toMatchObject({status: "ok", generator: {strategy: "bounded-coverage", seed: "parity-seed"}});
 
         const cli = JSON.parse(fs.readFileSync(cliOutput, "utf8"));
-        const cliResult = JSON.parse((console.log as jest.Mock).mock.calls
-            .map(([message]) => message)
-            .find((message) => typeof message === "string" && message.includes('"diagnostics"')) as string);
+        const cliResult = commandJsonReport();
         const bundle = await new OutcomeLibraryBundleReader().readLibrary(path.join(packageRoot, "studio-library"), "base");
         expect(bundle.outcomes).toEqual(cli.outcomes);
-        const {generatedAt: _cliGeneratedAt, ...cliDiagnostics} = cliResult.diagnostics;
-        const {generatedAt: _studioGeneratedAt, ...studioDiagnostics} = (generated as Extract<typeof generated, {status: "ok"}>).generator;
-        expect(studioDiagnostics).toEqual(cliDiagnostics);
+        const generatedResult = generated as Extract<typeof generated, {status: "ok"}>;
+        expect(canonicalLibraryHash(bundle)).toBe(canonicalLibraryHash(cli));
+        expect(generatedResult.mode.hash).toBe((await new OutcomeLibraryBundleReader().readManifest(path.join(packageRoot, "studio-library"))).modes[0].libraryHash);
+        expect(withoutGeneratedAt(generatedResult.generator)).toEqual(withoutGeneratedAt(cliResult.diagnostics as typeof generatedResult.generator));
+        expect(preview).toMatchObject({
+            totalOutcomeSpaceSize: 6,
+            maxOutcomeSpaceSize: 20_000_000,
+            sampleSize: 19,
+            seed: "parity-seed",
+            requiresBounded: false,
+            game: {id: "parity-slot", version: "1.0.0"},
+        });
+        expect(await studio.registry(packageRoot)).toMatchObject({
+            status: "ok", buildStatus: "compatible",
+            modes: [expect.objectContaining({modeName: "base", buildStatus: "compatible", hash: generatedResult.mode.hash})],
+        });
     });
 
     it("binds an exact real-package preflight and publishes the same canonical library as CLI", async () => {
@@ -92,13 +131,28 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         expect(generated).toMatchObject({status: "ok", generator: {strategy: "exact"}});
 
         const cli = JSON.parse(fs.readFileSync(cliOutput, "utf8"));
-        const cliResult = JSON.parse((console.log as jest.Mock).mock.calls
-            .map(([message]) => message)
-            .find((message) => typeof message === "string" && message.includes('"diagnostics"')) as string);
+        const cliResult = commandJsonReport();
         const bundle = await new OutcomeLibraryBundleReader().readLibrary(path.join(packageRoot, "studio-exact"), "base");
         expect(bundle.outcomes).toEqual(cli.outcomes);
-        const {generatedAt: _cliGeneratedAt, ...cliDiagnostics} = cliResult.diagnostics;
-        const {generatedAt: _studioGeneratedAt, ...studioDiagnostics} = (generated as Extract<typeof generated, {status: "ok"}>).generator;
-        expect(studioDiagnostics).toEqual(cliDiagnostics);
+        const generatedResult = generated as Extract<typeof generated, {status: "ok"}>;
+        expect(canonicalLibraryHash(bundle)).toBe(canonicalLibraryHash(cli));
+        expect(withoutGeneratedAt(generatedResult.generator)).toEqual(withoutGeneratedAt(cliResult.diagnostics as typeof generatedResult.generator));
+        expect(preflight).toMatchObject({
+            game: {id: "exact-parity-slot", version: "1.0.0"}, totalOutcomeSpaceSize: 6,
+            maxOutcomeSpaceSize: 20_000_000, strategy: "exact", requiresBounded: false,
+        });
+        expect(await studio.registry(packageRoot)).toMatchObject({
+            status: "ok", buildStatus: "compatible",
+            modes: [expect.objectContaining({modeName: "base", buildStatus: "compatible", hash: generatedResult.mode.hash})],
+        });
+
+        // Registry classification is server-owned and must react immediately to
+        // provenance drift, rather than being reconstructed by a CLI/UI caller.
+        const manifestPath = path.join(packageRoot, "studio-exact", "manifest.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {configHash?: string; game: {id: string}};
+        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, configHash: "stale-config"}));
+        expect(await studio.registry(packageRoot)).toMatchObject({status: "ok", buildStatus: "stale", modes: [expect.objectContaining({buildStatus: "stale"})]});
+        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, game: {...manifest.game, id: "wrong-game"}}));
+        expect(await studio.registry(packageRoot)).toMatchObject({status: "ok", buildStatus: "wrong", modes: [expect.objectContaining({buildStatus: "wrong"})]});
     });
 });

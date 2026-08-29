@@ -244,7 +244,27 @@ export class ArtifactBuilderRegistry {
             };
         }
         if ((source.type === "blueprint" || source.type === "tsPackage") && (target === "outcomeLibrary" || target === "stakeAdapter")) {
-            const prepared = await this.blueprintStakeWorkflow.prepare(source, {outcomeLibraryGeneration: options.outcomeLibraryGeneration});
+            // Studio's bound preflight carries the resolved strategy as the
+            // planner-level contract, while BuildCommand carries the legacy
+            // ArtifactBuildOptions union. Reconstruct the latter here before
+            // the managed workflow selects its automatic policy, so a seeded
+            // Studio request cannot silently become the managed exact default
+            // during the execution-time rebind.
+            let plannedGeneration = options.outcomeLibraryGeneration;
+            if (plannedGeneration === undefined && options.generationSemantics === "exact") {
+                plannedGeneration = {
+                    exact: true,
+                    ...(options.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: BigInt(options.maxExactOutcomeSpaceSize)}),
+                    ...(options.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: options.compatibilityPolicyVersion}),
+                };
+            } else if (plannedGeneration === undefined && options.generationSemantics === "boundedSample") {
+                plannedGeneration = {
+                    sampled: {sampleSize: BigInt(options.sampleCount ?? "0"), seed: options.sampleSeed ?? ""},
+                    ...(options.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: BigInt(options.maxExactOutcomeSpaceSize)}),
+                    ...(options.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: options.compatibilityPolicyVersion}),
+                };
+            }
+            const prepared = await this.blueprintStakeWorkflow.prepare(source, {outcomeLibraryGeneration: plannedGeneration});
             const generation = prepared.generation.sampled;
             const configurationProvenance: ArtifactConfigurationProvenance = {
                 configurationHash: prepared.configHash,

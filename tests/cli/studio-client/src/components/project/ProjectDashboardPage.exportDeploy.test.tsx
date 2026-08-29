@@ -110,6 +110,39 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.getByRole("button", {name: "Generate exact outcome library (base)"})).toBeDisabled();
     });
 
+    it("rehydrates a persisted exact checkpoint and renders classified terminal recovery instead of a raw transport error", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url, init) => {
+            const [requestPath] = url.split("?");
+            if (requestPath === "/api/project/outcome-libraries/generate/jobs" && init?.method === undefined) {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({jobs: [{
+                    id: "saved-checkpoint", status: "cancelled", cancellationRequested: false,
+                    result: {status: "cancelled", processedRawIndex: "2", progressTotal: "6", checkpoint: {id: "saved-checkpoint"}, recovery: "Resume after refreshing the unchanged source."},
+                }]})});
+            }
+            if (requestPath === "/api/project/outcome-libraries/generate/jobs" && init?.method === "POST") {
+                return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({job: {id: "terminal", status: "queued", cancellationRequested: false}})});
+            }
+            if (requestPath === "/api/project/outcome-libraries/generate/jobs/terminal") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({
+                    id: "terminal", status: "failed", cancellationRequested: false,
+                    result: {status: "conflict", error: "The prepared destination changed after preflight."},
+                })});
+            }
+            return fetchImplFrom(BASE_ROUTES)(url, init);
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        expect(await screen.findByRole("button", {name: "Resume exact generation"})).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Generate exact outcome library (base)"}));
+        expect(await screen.findByText(/project, configuration, destination, or bound preflight changed before publication/i)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Show Generation diagnostic"})).toBeInTheDocument();
+        expect(screen.getByText("The prepared destination changed after preflight.")).toBeInTheDocument();
+    });
+
     it("keeps an exchange-only PAR workbook on the Build/Export path and shows its native file preflight", async () => {
         const user = userEvent.setup();
         const routes = {
