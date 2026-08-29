@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 import vm from "vm";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
@@ -29,10 +30,16 @@ import {ClusterWinCalculator} from "../session/videoslot/wincalculator/ClusterWi
 import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/winevaluation/SelectedEvaluatorGroupWinAggregationPolicy.js";
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
-import {generateExactWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
+import {generateWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
+import {
+    DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
+    MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY,
+    prepareOutcomeLibraryGeneration,
+    resolveOutcomeLibraryGenerationDestination,
+    type OutcomeLibraryGenerationDestinationSafety,
+    type OutcomeLibraryGenerationPreflight,
+} from "../weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
 import {estimateExactOutcomeSpaceSize} from "../weightedoutcome/generate/estimateExactOutcomeSpaceSize.js";
-import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
-import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing, type OutcomeProjectCompatibility} from "./ManagedOutcomeProjectService.js";
 import {
@@ -48,11 +55,25 @@ import {
 // hundreds-of-thousands-entry artifact library fit in a normal CLI heap. Managed Blueprint/package exports
 // therefore use a deterministic, explicitly recorded coverage sample above this planning limit unless the
 // caller asks for exact generation.
-export const DEFAULT_MANAGED_EXACT_OUTCOME_SPACE_SIZE = BigInt(50_000);
-export const DEFAULT_MANAGED_SAMPLED_OUTCOME_COUNT = BigInt(5_000);
+// Compatibility aliases retained for direct callers.  The policy itself is
+// domain-owned and versioned in OutcomeLibraryGenerationRequest.ts.
+export const DEFAULT_MANAGED_EXACT_OUTCOME_SPACE_SIZE = MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize;
+export const DEFAULT_MANAGED_SAMPLED_OUTCOME_COUNT = MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.sampledOutcomeCount;
 
 export type ManagedOutcomeGeneration = {
+    // This is an explicitly-versioned compatibility policy for managed Project
+    // conversion.  It is translated into the same domain request used by CLI
+    // and Studio; it never changes the generator's global default cap.
+    readonly generation: "exact" | "sampled";
     readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
+    /**
+     * The exact-space boundary used by the policy which resolved this request.
+     * It is carried into the domain preflight and generator request rather than
+     * being a workflow-only decision which cannot be reconstructed later.
+     */
+    readonly maxExactOutcomeSpaceSize?: bigint;
+    /** Present only when the managed automatic compatibility policy chose this request. */
+    readonly compatibilityPolicyVersion?: string;
 };
 
 const GENERATED_RUNTIME = {
@@ -142,19 +163,62 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     ): Promise<{readonly project: PokieProject; readonly reused: false}> {
         assertArtifactBuildNotCancelled(options);
         const {game, configHash, generation, compatibility} = prepared;
-        assertArtifactDestinationAvailable(bundleDir, "directory");
-        // Only ArtifactBuilderRegistry may authorize the package's canonical
-        // managed Outcome sidecar, and only after it has checked the prepared
-        // plan's destination policy.  Direct workflow callers retain the
-        // normal no-source/no-descendant boundary.
-        if (!allowPlannedSourceSidecar) assertArtifactDestinationIsSafe(source.rootPath, bundleDir);
-        const preflight = outcomeGenerationPreflight(game, generation);
+        // Preparation owns the loaded configuration assertion, selected
+        // strategy, publication identity and destination safety.  The managed
+        // planner only translates this resolved request to its generic view.
+        const preparedRequest = prepareOutcomeLibraryGeneration({
+            libraryId: game.getManifest().id,
+            game,
+            pokieVersion: this.pokieVersion,
+            configHash,
+            generation: generation.generation,
+            ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
+            ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
+            ...(generation.sampled === undefined ? {} : {sample: generation.sampled}),
+            outputDestination: bundleDir,
+            outputDestinationSafety: {
+                sourcePath: source.rootPath,
+                kind: "directory",
+                requireAvailable: true,
+                // Only ArtifactBuilderRegistry may authorize the package's
+                // canonical managed Outcome sidecar.  That exception is
+                // immutable request data, not a writer-local bypass.
+                ...(allowPlannedSourceSidecar ? {allowWithinSource: true} : {}),
+            },
+        });
+        const boundDestination = preparedRequest.preflight.destination?.path;
+        if (boundDestination === undefined) throw new Error("Managed Outcome Library generation requires a bound output destination.");
+        // The shared destination policy explicitly permits a pre-existing
+        // empty directory.  It is user-owned, even though this invocation may
+        // later atomically publish files into it.  Remember that ownership so
+        // rollback never turns a harmless cancelled/failed build into a
+        // destructive removal of the user's chosen destination.
+        const destinationExistedBeforeInvocation = fs.existsSync(boundDestination);
+        // A destination which appears while generation is running belongs to
+        // somebody else until this invocation has passed its final safety
+        // check and entered the writer.  Rollback must not erase it.
+        const publication = {started: false};
+        const preflight = outcomeGenerationPreflight(preparedRequest.preflight);
         reportArtifactBuildProgress(options, {status: "preflight", preflight});
         assertArtifactBuildNotCancelled(options);
         try {
-            await this.generateBundle(source.rootPath, game, configHash, bundleDir, options, preflight, generation);
+            await this.generateBundle(
+                source.rootPath,
+                game,
+                configHash,
+                boundDestination,
+                preparedRequest.outputDestinationSafety,
+                options,
+                preflight,
+                generation,
+                publication,
+            );
             assertArtifactBuildNotCancelled(options);
-            const project = await this.managedOutcomeProjects.registerAndOpen(source.rootPath, bundleDir, compatibility);
+            // The prepared request owns the canonical publication identity.
+            // Do not retain the caller's unnormalised spelling for registry
+            // registration: that would make rollback and later reuse refer to
+            // a different destination than the one the writer published.
+            const project = await this.managedOutcomeProjects.registerAndOpen(source.rootPath, boundDestination, compatibility);
             reportArtifactBuildProgress(options, {
                 status: "completed",
                 completed: preflight.estimatedItemCount,
@@ -165,7 +229,9 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         } catch (error) {
             // A generated bundle is not a managed Project until registerAndOpen commits the registry record.
             // Do not leave a complete-looking orphan behind when registry I/O or cancellation fails.
-            await fs.promises.rm(bundleDir, {recursive: true, force: true}).catch(() => undefined);
+            if (destinationExistedBeforeInvocation || publication.started) {
+                await this.cleanupFailedDestination(boundDestination, destinationExistedBeforeInvocation);
+            }
             if (options?.signal?.aborted) {
                 reportArtifactBuildProgress(options, {status: "cancelled", preflight});
                 if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
@@ -202,6 +268,8 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 generation: generation.sampled === undefined
                     ? "exact"
                     : `sample:${generation.sampled.sampleSize}:${generation.sampled.seed}`,
+                ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize.toString()}),
+                ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
             },
         };
     }
@@ -211,10 +279,16 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         game: PokieGame,
         configHash: string,
         destinationPath: string,
+        destinationSafety: OutcomeLibraryGenerationDestinationSafety | undefined,
         options: ArtifactBuildOptions | undefined,
         preflight: ArtifactBuildPreflight,
         generation: ManagedOutcomeGeneration,
+        publication: {started: boolean},
     ): Promise<void> {
+        // destinationPath is already the immutable publication identity bound
+        // by generatePrepared's domain request. Every per-mode execution below
+        // receives that same identity rather than resolving its own spelling.
+        const boundDestination = destinationPath;
         const declaredModes = game.getBetModes?.();
         // getBetModes() deliberately exposes both the legacy declarative shape and the explicit runtime
         // contract.  Only the latter wraps createExactEnumerationSession() in
@@ -227,14 +301,23 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         const generated = await Promise.all(
             modes.map(async (mode) => ({
                 mode,
-                generated: await generateExactWeightedOutcomeLibrary({
+                generated: await generateWeightedOutcomeLibrary({
                     libraryId: `${game.getManifest().id}-${mode.id}`,
                     game,
                     pokieVersion: this.pokieVersion,
                     configHash,
-                    ...(declaredModes && declaredModes.length > 0 ? {betMode: mode.id} : {}),
+                    ...(declaredModes && declaredModes.length > 0 ? {mode: mode.id} : {}),
                     selectBetMode: hasRuntimeBetModes,
-                    ...(generation.sampled !== undefined ? {sampled: generation.sampled} : {}),
+                    generation: generation.generation,
+                    ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
+                    ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
+                    ...(generation.sampled !== undefined ? {sample: generation.sampled} : {}),
+                    // Bind the managed writer's destination into the same
+                    // resolved domain request used by CLI and Studio. The
+                    // workflow still owns filesystem publication/rollback,
+                    // while the request owns its destination identity.
+                    outputDestination: boundDestination,
+                    ...(destinationSafety === undefined ? {} : {outputDestinationSafety: destinationSafety}),
                     signal: options?.signal,
                     onProgress: (completed, total) => {
                         reportArtifactBuildProgress(options, {status: "running", completed, total, preflight});
@@ -243,6 +326,17 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             })),
         );
         assertArtifactBuildNotCancelled(options);
+        // Generation can take a long time.  Re-run the immutable request's
+        // original availability policy at the durable-publication boundary so
+        // a file created after preflight cannot be replaced by the writer's
+        // atomic bundle swap.  This is deliberately the shared domain
+        // resolver, not a workflow-local existence check.
+        const revalidatedDestination = resolveOutcomeLibraryGenerationDestination(boundDestination, destinationSafety);
+        if (revalidatedDestination?.path !== boundDestination) {
+            throw new Error("Managed Outcome Library destination changed after preflight.");
+        }
+        assertArtifactBuildNotCancelled(options);
+        publication.started = true;
         const result = await this.writer.writeToDirectory(
             generated.map(({mode, generated: library}) => ({
                 modeName: mode.id,
@@ -251,7 +345,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 outcomes: library.library.outcomes,
                 generator: library.diagnostics,
             })),
-            destinationPath,
+            boundDestination,
             {
                 signal: options?.signal,
                 onProgress: (progress) => {
@@ -268,6 +362,28 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         const errors = result.issues.filter((issue) => issue.severity === "error");
         if (errors.length > 0 || result.manifest === undefined) {
             throw new Error(`Could not build Outcome Library from Blueprint "${blueprintPath}": ${errors.map((issue) => issue.message).join("; ")}`);
+        }
+    }
+
+    /** Remove only this invocation's publication while retaining an empty user-owned destination. */
+    private async cleanupFailedDestination(destination: string, existedBeforeInvocation: boolean): Promise<void> {
+        if (!existedBeforeInvocation) {
+            await fs.promises.rm(destination, {recursive: true, force: true}).catch(() => undefined);
+            return;
+        }
+        // OutcomeLibraryBundleWriter publishes atomically, so a cancellation
+        // before publication leaves the original directory untouched.  After
+        // publication, its manifest lists every invocation-owned file; remove
+        // exactly those files and retain the pre-existing directory itself.
+        try {
+            const manifestPath = path.join(destination, "manifest.json");
+            const manifest = JSON.parse(await fs.promises.readFile(manifestPath, "utf-8")) as {files?: unknown};
+            const files = Array.isArray(manifest.files) ? manifest.files.filter((file): file is string => typeof file === "string") : [];
+            await Promise.all(files.map((file) => fs.promises.rm(path.join(destination, file), {force: true})));
+            await fs.promises.rm(manifestPath, {force: true});
+        } catch {
+            // No manifest means publication did not complete. Staging is owned
+            // and cleaned by the writer; the original empty destination stays.
         }
     }
 
@@ -311,34 +427,53 @@ function resolveManagedOutcomeGeneration(
     configHash: string,
     requested: ArtifactBuildOptions["outcomeLibraryGeneration"],
 ): ManagedOutcomeGeneration {
-    if (requested?.sampled !== undefined) return {sampled: requested.sampled};
-    if (requested?.exact) return {};
+    // Explicit requests still need to retain the resolved cap in their
+    // managed compatibility key.  Omitting it previously made a reconstructed
+    // plan unable to distinguish the public default from a historical policy.
+    if (requested?.sampled !== undefined) return {
+        generation: "sampled",
+        sampled: requested.sampled,
+        maxExactOutcomeSpaceSize: requested.maxExactOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
+        ...(requested.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: requested.compatibilityPolicyVersion}),
+    };
+    if (requested?.exact) return {
+        generation: "exact",
+        maxExactOutcomeSpaceSize: requested.maxExactOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
+        ...(requested.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: requested.compatibilityPolicyVersion}),
+    };
 
     const estimate = estimateExactOutcomeSpaceSize(game);
-    if (estimate.totalOutcomeSpaceSize <= DEFAULT_MANAGED_EXACT_OUTCOME_SPACE_SIZE) return {};
+    if (estimate.totalOutcomeSpaceSize <= MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize) {
+        return {
+            generation: "exact",
+            maxExactOutcomeSpaceSize: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize,
+            compatibilityPolicyVersion: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.version,
+        };
+    }
     return {
+        generation: "sampled",
         sampled: {
-            sampleSize: DEFAULT_MANAGED_SAMPLED_OUTCOME_COUNT,
+            sampleSize: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.sampledOutcomeCount,
             // The configuration hash is stable for the same Blueprint/package, so this automatic
             // coverage library is reproducible without machine-local state.
-            seed: `pokie-managed-coverage:${configHash}`,
+            seed: `${MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.seedPrefix}${configHash}`,
         },
+        maxExactOutcomeSpaceSize: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize,
+        compatibilityPolicyVersion: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.version,
     };
 }
 
-function outcomeGenerationPreflight(game: PokieGame, generation: ManagedOutcomeGeneration): ArtifactBuildPreflight {
-    const estimate = estimateExactOutcomeSpaceSize(game);
-    const sampled = generation.sampled;
-    const estimatedItemCount = sampled?.sampleSize ?? estimate.totalOutcomeSpaceSize;
+function outcomeGenerationPreflight(preflight: OutcomeLibraryGenerationPreflight): ArtifactBuildPreflight {
+    const estimatedItemCount = preflight.expectedRawWork;
     return {
         estimatedItemCount,
         // A generated outcome record contains a round artifact, so this intentionally conservative estimate is
         // a planning signal only; the precise output size is unknown until grids have been deduplicated.
         estimatedBytes: estimatedItemCount * BigInt(1024),
-        ...(estimatedItemCount > BigInt(10_000) || sampled !== undefined
-            ? {complexityWarning: sampled === undefined
+        ...(estimatedItemCount > BigInt(10_000) || preflight.strategy === "bounded-coverage"
+            ? {complexityWarning: preflight.strategy === "exact"
                 ? `Exact generation will enumerate ${estimatedItemCount} reel-stop combinations.`
-                : `Large source (${estimate.totalOutcomeSpaceSize} reel-stop combinations): using ${estimatedItemCount} deterministic bounded-coverage draws. Use an explicit exact build only when the full artifact library fits your memory and storage budget.`}
+                : `Large source (${preflight.estimate.totalOutcomeSpaceSize} reel-stop combinations): using ${estimatedItemCount} deterministic bounded-coverage draws. Use an explicit exact build only when the full artifact library fits your memory and storage budget.`}
             : {}),
     };
 }

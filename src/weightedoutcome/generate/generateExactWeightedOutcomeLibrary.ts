@@ -17,15 +17,19 @@ import {supportsBetModeSelecting} from "../../session/videoslot/betmode/supports
 import {sampleStopTuples} from "./internal/sampleStopTuples.js";
 import {sweepStopTuples} from "./internal/sweepStopTuples.js";
 import {toBigIntSafeDecimal} from "./internal/toBigIntSafeDecimal.js";
-import {estimateExactOutcomeSpaceSize} from "./estimateExactOutcomeSpaceSize.js";
 import type {OutcomeLibraryGeneratorDiagnostics, OutcomeLibraryGenerationStrategy} from "./OutcomeLibraryGeneratorDiagnostics.js";
 import type {ExactEnumerationCheckpoint} from "./WeightedOutcomeLibraryGenerationCancelledError.js";
 import {WeightedOutcomeLibraryGenerationError} from "./WeightedOutcomeLibraryGenerationError.js";
+import {
+    adaptLegacyOutcomeLibraryGenerationRequest,
+    type OutcomeLibraryGenerationRequest,
+    prepareOutcomeLibraryGeneration,
+} from "./OutcomeLibraryGenerationRequest.js";
 
 // Above this raw reel-stop combination count, generation refuses to sweep exhaustively unless the caller
 // either raises maxOutcomeSpaceSize explicitly or opts into "bounded" -- chosen as a size any single Node
 // process can sweep (with dedup) in well under a minute for a typical grid, not a hard platform limit.
-export const DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE = BigInt(20_000_000);
+export {DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE} from "./OutcomeLibraryGenerationRequest.js";
 
 // A wide/many-reel grid can have so little raw-combination duplication that the distinct-grid count
 // accumulateUniqueGridWeights retains approaches maxOutcomeSpaceSize itself -- i.e. staying under
@@ -69,6 +73,7 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     readonly game: PokieGame;
     readonly pokieVersion: string;
     readonly configHash?: string;
+    readonly compatibilityPolicyVersion?: string;
     readonly betMode?: string;
     // Opt in only for callers that require the executable session itself to enact the requested mode.
     // The long-standing CLI/Studio generator also supports recording a caller-selected declarative mode on
@@ -76,6 +81,13 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     // false. ArtifactBuilderRegistry sets it true for canonical Project -> Outcome/Stake conversion.
     readonly selectBetMode?: boolean;
     readonly stake?: number;
+    /**
+     * Canonical publication identity for callers which also publish this
+     * result.  The generator remains side-effect free, but keeping this on
+     * the legacy compatibility shape prevents a domain request from losing
+     * its resolved destination while it crosses the old implementation.
+     */
+    readonly outputDestination?: string;
     readonly maxOutcomeSpaceSize?: bigint;
     // Records an explicit caller choice of the default exact strategy. It is mutually exclusive with
     // sampled choices at public command boundaries; exact generation otherwise remains the default.
@@ -117,13 +129,51 @@ export type GenerateExactWeightedOutcomeLibraryResult = {
     readonly diagnostics: OutcomeLibraryGeneratorDiagnostics;
 };
 
+/**
+ * Executes the public domain request without making callers choose legacy
+ * `exact`/`bounded`/`sampled` option names. CLI, Studio, and managed builders
+ * may keep accepting their historical syntax, but must translate it to this
+ * request before crossing the domain boundary.
+ */
+export function generateWeightedOutcomeLibrary(
+    request: OutcomeLibraryGenerationRequest,
+): Promise<GenerateExactWeightedOutcomeLibraryResult> {
+    const prepared = prepareOutcomeLibraryGeneration(request);
+    return generateExactWeightedOutcomeLibrary({
+        libraryId: prepared.libraryId,
+        game: prepared.game,
+        pokieVersion: prepared.pokieVersion,
+        ...(prepared.configHash === undefined ? {} : {configHash: prepared.configHash}),
+        ...(prepared.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.compatibilityPolicyVersion}),
+        ...(prepared.mode === undefined ? {} : {betMode: prepared.mode}),
+        ...(prepared.selectBetMode === undefined ? {} : {selectBetMode: prepared.selectBetMode}),
+        ...(prepared.stake === undefined ? {} : {stake: prepared.stake}),
+        ...(prepared.outputDestination === undefined ? {} : {outputDestination: prepared.outputDestination}),
+        maxOutcomeSpaceSize: prepared.maxExactOutcomeSpaceSize,
+        ...(prepared.generation === "exact" ? {exact: true} : {}),
+        ...(prepared.generation === "sampled" ? {sampled: prepared.sample!} : {}),
+        ...(prepared.generation === "bounded" ? {bounded: prepared.sample!} : {}),
+        ...(prepared.resumeFrom === undefined ? {} : {resumeFrom: prepared.resumeFrom}),
+        ...(prepared.signal === undefined ? {} : {signal: prepared.signal}),
+        ...(prepared.onProgress === undefined ? {} : {onProgress: prepared.onProgress}),
+        ...(prepared.artifactValidator === undefined ? {} : {artifactValidator: prepared.artifactValidator}),
+        ...(prepared.now === undefined ? {} : {now: prepared.now}),
+        ...(prepared.heapUsedLimitBytes === undefined ? {} : {heapUsedLimitBytes: prepared.heapUsedLimitBytes}),
+        ...(prepared.getHeapUsedBytes === undefined ? {} : {getHeapUsedBytes: prepared.getHeapUsedBytes}),
+    });
+}
+
 type PreparedGeneration = {
     readonly strategy: OutcomeLibraryGenerationStrategy;
+    /** The request-resolved cap, retained in the output diagnostics. */
+    readonly maxExactOutcomeSpaceSize: bigint;
     readonly totalOutcomeSpaceSize: bigint;
     readonly progressTotal: bigint;
     readonly reelWindows: string[][][];
     readonly tuples: Generator<{tuple: number[]; rawIndex: bigint}>;
     readonly sourceEnumerationId: string;
+    /** Resolved by the shared request preparation, never a raw caller assertion. */
+    readonly configHash?: string;
     readonly initialGrids?: ReadonlyMap<string, UniqueGridWeightEntry<string>>;
     readonly initialProcessedRawCount?: bigint;
 };
@@ -131,41 +181,19 @@ type PreparedGeneration = {
 function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedGeneration {
     const {game} = options;
     const manifest = game.getManifest();
-    if (options.exact && (options.sampled !== undefined || options.bounded !== undefined)) {
-        throw new WeightedOutcomeLibraryGenerationError(
-            "weighted-outcome-library-generation-strategy-conflict",
-            'exact generation cannot be combined with sampled generation; use either exact generation or `pokie generate <packageRoot> --sample <n> --seed <string>` (or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>`).',
-        );
-    }
-    if (options.sampled !== undefined && options.bounded !== undefined) {
-        throw new WeightedOutcomeLibraryGenerationError(
-            "weighted-outcome-library-generation-strategy-conflict",
-            "sampled and bounded generation cannot be combined; use the direct sampled workflow on its own.",
-        );
-    }
-    const sampled = options.sampled ?? options.bounded;
-    if (sampled !== undefined && sampled.sampleSize <= BigInt(0)) {
-        throw new WeightedOutcomeLibraryGenerationError(
-            "weighted-outcome-library-generation-invalid-sample-size",
-            'sampleSize must be a positive integer; use `pokie generate <packageRoot> --sample <n> --seed <string>` or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>` with a positive n.',
-        );
-    }
+    const request = prepareOutcomeLibraryGeneration(adaptLegacyOutcomeLibraryGenerationRequest(options));
+    // prepareOutcomeLibraryGeneration has already failed closed for this case; retain the local narrowing
+    // because the executable session is consumed below as part of this function's runtime boundary.
     if (typeof game.createExactEnumerationSession !== "function") {
-        throw new WeightedOutcomeLibraryGenerationError(
-            "weighted-outcome-library-generation-unsupported",
-            `"${manifest.id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`,
-        );
+        throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported", `"${manifest.id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`);
     }
-
-    const estimate = estimateExactOutcomeSpaceSize(game);
-    const maxOutcomeSpaceSize = options.maxOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE;
-    const strategy: OutcomeLibraryGenerationStrategy = options.sampled !== undefined || estimate.totalOutcomeSpaceSize > maxOutcomeSpaceSize ? "bounded-coverage" : "exact";
-
-    if (strategy === "bounded-coverage" && sampled === undefined) {
+    const {estimate, strategy, requiresSampledOptIn} = request.preflight;
+    const sampled = request.sample;
+    if (requiresSampledOptIn) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-space-exceeded",
             `"${manifest.id}"'s exact outcome space (${estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
-                `maxOutcomeSpaceSize (${maxOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
+                `maxOutcomeSpaceSize (${request.maxExactOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
                 'bounded-coverage strategy with `pokie generate <packageRoot> --sample <n> --seed <string>` or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>` (or the `sampled` option).',
         );
     }
@@ -196,7 +224,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         Array.from({length: sequence.getSize()}, (_unused, position) => sequence.getSymbols(position, reelsSymbolsNumber)),
     );
     const reelSizes = sequences.map((sequence) => sequence.getSize());
-    const sourceEnumerationId = computeExactEnumerationSourceId(manifest.id, options.configHash, reelWindows);
+    const sourceEnumerationId = computeExactEnumerationSourceId(manifest.id, request.configHash, reelWindows);
 
     // Same cardinality alone never proves a checkpoint belongs to THIS sweep -- two different games/configs
     // can coincidentally enumerate the exact same raw combination count while their actual reel layouts (and
@@ -214,11 +242,13 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
     if (strategy === "exact") {
         return {
             strategy,
+            maxExactOutcomeSpaceSize: request.maxExactOutcomeSpaceSize,
             totalOutcomeSpaceSize: estimate.totalOutcomeSpaceSize,
             progressTotal: estimate.totalOutcomeSpaceSize,
             reelWindows,
             tuples: sweepStopTuples(reelSizes, options.resumeFrom?.processedRawIndex ?? BigInt(0)),
             sourceEnumerationId,
+            ...(request.configHash === undefined ? {} : {configHash: request.configHash}),
             ...(options.resumeFrom !== undefined
                 ? {initialGrids: options.resumeFrom.grids, initialProcessedRawCount: options.resumeFrom.processedRawIndex}
                 : {}),
@@ -228,11 +258,13 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
     const bounded = sampled as BoundedCoverageGenerationOptions;
     return {
         strategy,
+        maxExactOutcomeSpaceSize: request.maxExactOutcomeSpaceSize,
         totalOutcomeSpaceSize: estimate.totalOutcomeSpaceSize,
         progressTotal: bounded.sampleSize,
         reelWindows,
         tuples: sampleStopTuples(reelSizes, bounded.sampleSize, new SeededWeightedOutcomeRandomSource(bounded.seed)),
         sourceEnumerationId,
+        ...(request.configHash === undefined ? {} : {configHash: request.configHash}),
     };
 }
 
@@ -287,7 +319,7 @@ export async function *streamExactWeightedOutcomes(
     const provenance: RoundArtifactProvenance = {
         game: manifest,
         pokieVersion: options.pokieVersion,
-        ...(options.configHash !== undefined ? {configHash: options.configHash} : {}),
+        ...(prepared.configHash !== undefined ? {configHash: prepared.configHash} : {}),
     };
 
     // Canonically sorted by id before ever being yielded -- both so this function's own output already
@@ -339,10 +371,12 @@ export async function *streamExactWeightedOutcomes(
         strategy: prepared.strategy,
         totalOutcomeSpaceSize: toBigIntSafeDecimal(prepared.totalOutcomeSpaceSize),
         sampledRawCount: toBigIntSafeDecimal(processedRawCount),
+        maxExactOutcomeSpaceSize: toBigIntSafeDecimal(prepared.maxExactOutcomeSpaceSize),
         ...(prepared.strategy === "bounded-coverage" ? {seed: (options.sampled ?? options.bounded as BoundedCoverageGenerationOptions).seed} : {}),
         pokieVersion: options.pokieVersion,
         game: manifest,
-        ...(options.configHash !== undefined ? {configHash: options.configHash} : {}),
+        ...(prepared.configHash !== undefined ? {configHash: prepared.configHash} : {}),
+        ...(options.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: options.compatibilityPolicyVersion}),
         generatedAt: (options.now ?? (() => new Date()))().toISOString(),
     };
 }

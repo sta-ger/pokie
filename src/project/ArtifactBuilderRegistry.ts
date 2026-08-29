@@ -106,7 +106,9 @@ function sameConfigurationProvenance(
         left?.gameVersion === right?.gameVersion &&
         left?.manifestIdentity === right?.manifestIdentity &&
         left?.sampleCount === right?.sampleCount &&
-        left?.sampleSeed === right?.sampleSeed;
+        left?.sampleSeed === right?.sampleSeed &&
+        left?.maxExactOutcomeSpaceSize === right?.maxExactOutcomeSpaceSize &&
+        left?.compatibilityPolicyVersion === right?.compatibilityPolicyVersion;
 }
 
 function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
@@ -242,7 +244,27 @@ export class ArtifactBuilderRegistry {
             };
         }
         if ((source.type === "blueprint" || source.type === "tsPackage") && (target === "outcomeLibrary" || target === "stakeAdapter")) {
-            const prepared = await this.blueprintStakeWorkflow.prepare(source, {outcomeLibraryGeneration: options.outcomeLibraryGeneration});
+            // Studio's bound preflight carries the resolved strategy as the
+            // planner-level contract, while BuildCommand carries the legacy
+            // ArtifactBuildOptions union. Reconstruct the latter here before
+            // the managed workflow selects its automatic policy, so a seeded
+            // Studio request cannot silently become the managed exact default
+            // during the execution-time rebind.
+            let plannedGeneration = options.outcomeLibraryGeneration;
+            if (plannedGeneration === undefined && options.generationSemantics === "exact") {
+                plannedGeneration = {
+                    exact: true,
+                    ...(options.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: BigInt(options.maxExactOutcomeSpaceSize)}),
+                    ...(options.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: options.compatibilityPolicyVersion}),
+                };
+            } else if (plannedGeneration === undefined && options.generationSemantics === "boundedSample") {
+                plannedGeneration = {
+                    sampled: {sampleSize: BigInt(options.sampleCount ?? "0"), seed: options.sampleSeed ?? ""},
+                    ...(options.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: BigInt(options.maxExactOutcomeSpaceSize)}),
+                    ...(options.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: options.compatibilityPolicyVersion}),
+                };
+            }
+            const prepared = await this.blueprintStakeWorkflow.prepare(source, {outcomeLibraryGeneration: plannedGeneration});
             const generation = prepared.generation.sampled;
             const configurationProvenance: ArtifactConfigurationProvenance = {
                 configurationHash: prepared.configHash,
@@ -252,6 +274,8 @@ export class ArtifactBuilderRegistry {
                 manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
                 generationSemantics: generation === undefined ? "exact" : "boundedSample",
                 ...(generation === undefined ? {} : {sampleCount: generation.sampleSize.toString(), sampleSeed: generation.seed}),
+                ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize.toString()}),
+                ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
             };
             plannedSource = {...source, configurationProvenance};
             // Both public consumers of a managed Outcome Library inspect the
@@ -274,6 +298,8 @@ export class ArtifactBuilderRegistry {
                 pokieVersion: prepared.compatibility.pokieVersion,
                 generationSemantics: generation === undefined ? "exact" : "boundedSample",
                 ...(generation === undefined ? {} : {sampleCount: generation.sampleSize, sampleSeed: generation.seed}),
+                ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize}),
+                ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
             };
         }
         return this.applyDestinationPolicy(plannedSource, target, planningOptions, this.planner.plan(plannedSource, target, planningOptions));
@@ -631,6 +657,8 @@ export class ArtifactBuilderRegistry {
                     manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
                     generationSemantics: sampled === undefined ? "exact" : "boundedSample",
                     ...(sampled === undefined ? {} : {sampleCount: sampled.sampleSize.toString(), sampleSeed: sampled.seed}),
+                    ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize.toString()}),
+                    ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
                 },
             };
         }
@@ -691,6 +719,8 @@ export class ArtifactBuilderRegistry {
             gameVersion: provenance.gameVersion,
             pokieVersion: provenance.pokieVersion,
             generation,
+            ...(provenance.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: provenance.maxExactOutcomeSpaceSize}),
+            ...(provenance.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: provenance.compatibilityPolicyVersion}),
         });
         if (inspection.project === undefined || plannedIdentity.canonicalLocation === undefined ||
             resolveArtifactIdentity(inspection.project).canonicalLocation !== plannedIdentity.canonicalLocation) {
@@ -712,6 +742,8 @@ export class ArtifactBuilderRegistry {
             generation: provenance.generationSemantics === "boundedSample"
                 ? `sample:${provenance.sampleCount ?? ""}:${provenance.sampleSeed ?? ""}`
                 : "exact",
+            ...(provenance.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: provenance.maxExactOutcomeSpaceSize}),
+            ...(provenance.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: provenance.compatibilityPolicyVersion}),
         });
     }
 
@@ -804,7 +836,7 @@ export class ArtifactBuilderRegistry {
                     seed: provenance.sampleSeed ?? "",
                 },
             };
-        return {...options, outcomeLibraryGeneration};
+        return {...options, outcomeLibraryGeneration: {...outcomeLibraryGeneration, ...(provenance.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: BigInt(provenance.maxExactOutcomeSpaceSize)}), ...(provenance.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: provenance.compatibilityPolicyVersion})}};
     }
 
     private compatibilityFromPlan(source: ArtifactIdentity): import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility {
@@ -818,11 +850,13 @@ export class ArtifactBuilderRegistry {
             gameVersion: provenance.gameVersion,
             pokieVersion: provenance.pokieVersion,
             generation: provenance.generationSemantics === "boundedSample" ? `sample:${provenance.sampleCount ?? ""}:${provenance.sampleSeed ?? ""}` : "exact",
+            ...(provenance.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: provenance.maxExactOutcomeSpaceSize}),
+            ...(provenance.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: provenance.compatibilityPolicyVersion}),
         };
     }
 
     private sameCompatibility(left: import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility, right: import("./ManagedOutcomeProjectService.js").OutcomeProjectCompatibility): boolean {
-        return left.configHash === right.configHash && left.gameId === right.gameId && left.gameVersion === right.gameVersion && left.pokieVersion === right.pokieVersion && (left.generation ?? "exact") === (right.generation ?? "exact");
+        return left.configHash === right.configHash && left.gameId === right.gameId && left.gameVersion === right.gameVersion && left.pokieVersion === right.pokieVersion && (left.generation ?? "exact") === (right.generation ?? "exact") && left.maxExactOutcomeSpaceSize === right.maxExactOutcomeSpaceSize && left.compatibilityPolicyVersion === right.compatibilityPolicyVersion;
     }
 
     private async assertPlanSourceMatches(plan: ArtifactConversionPlan, source: PokieProject): Promise<void> {

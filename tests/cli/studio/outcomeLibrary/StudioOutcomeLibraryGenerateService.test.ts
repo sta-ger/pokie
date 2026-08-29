@@ -1,4 +1,13 @@
-import {ArtifactConversionPlan, OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, PokieGame} from "pokie";
+import {
+    ArtifactConversionPlan,
+    DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE,
+    DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
+    DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
+    OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleWriter,
+    OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
+    PokieGame,
+} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -55,7 +64,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
     }
 
     describe("estimate", () => {
-        it("does not load a runtime after the shared planner rejects the generation prerequisite", async () => {
+        it("does not advertise a planner result when the runtime cannot be loaded", async () => {
             const unavailable: ArtifactConversionPlan = {
                 ...plannedOutcomeLibrary,
                 status: "unavailable",
@@ -67,7 +76,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                     recovery: "Build a verified package.",
                 },
             };
-            const loadGame = jest.fn(() => Promise.reject(new Error("runtime must not load")));
+            const loadGame = jest.fn(() => Promise.reject(new Error("runtime must load before a destination-aware preflight")));
             const svc = new StudioOutcomeLibraryGenerateService(
                 POKIE_VERSION,
                 loadGame,
@@ -75,8 +84,8 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                 {prepare: () => Promise.resolve(unavailable)},
             );
 
-            await expect(svc.estimate(projectRoot, {})).resolves.toMatchObject({status: "unsupported", plan: unavailable});
-            expect(loadGame).not.toHaveBeenCalled();
+            await expect(svc.estimate(projectRoot, {})).resolves.toMatchObject({status: "load-error"});
+            expect(loadGame).toHaveBeenCalledWith(projectRoot);
         });
 
         it("carries the server planner decision through estimate and generation", async () => {
@@ -102,11 +111,11 @@ describe("StudioOutcomeLibraryGenerateService", () => {
 
             expect(estimate).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
             expect(generated).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
-            expect(planning.prepare).toHaveBeenNthCalledWith(1, projectRoot, "outcomeLibrary");
+            expect(planning.prepare).toHaveBeenNthCalledWith(1, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
             expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
         });
 
-        it("prepares bounded generation with its exact sample provenance", async () => {
+        it("keeps legacy bounded generation below the cap exact in the prepared plan", async () => {
             const planning = {prepare: jest.fn(() => Promise.resolve(plannedOutcomeLibrary))};
             const svc = new StudioOutcomeLibraryGenerateService(
                 POKIE_VERSION,
@@ -126,21 +135,61 @@ describe("StudioOutcomeLibraryGenerateService", () => {
 
             await svc.generate(projectRoot, {bounded: {sampleSize: BigInt(2), seed: "fixture-seed"}});
 
-            expect(planning.prepare).toHaveBeenCalledWith(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {
-                generationSemantics: "boundedSample",
-                sampleCount: BigInt(2),
-                sampleSeed: "fixture-seed",
-            });
+            expect(planning.prepare).toHaveBeenCalledWith(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
         });
 
         it("reports the exact strategy for a small fixture game", async () => {
             const result = await service().estimate(projectRoot, {});
-            expect(result).toMatchObject({status: "ok", strategy: "exact", requiresBounded: false, totalOutcomeSpaceSize: 6});
+            expect(result).toMatchObject({
+                status: "ok",
+                strategy: "exact",
+                requiresBounded: false,
+                totalOutcomeSpaceSize: 6,
+                defaults: {
+                    compatibilityVersion: OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
+                    maxExactOutcomeSpaceSize: Number(DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE),
+                    boundedSample: {
+                        sampleSize: Number(DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE),
+                        seed: DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
+                    },
+                },
+            });
         });
 
         it("reports bounded-coverage as required once maxOutcomeSpaceSize is set below the space size", async () => {
             const result = await service().estimate(projectRoot, {maxOutcomeSpaceSize: BigInt(2)});
             expect(result).toMatchObject({status: "ok", strategy: "bounded-coverage", requiresBounded: true});
+        });
+
+        it("uses the same explicit sampled request for Studio preflight and execution", async () => {
+            const sampled = {sampleSize: BigInt(2), seed: "shared-request-seed"};
+            const svc = service();
+            const estimate = await svc.estimate(projectRoot, {generation: "sampled", sample: sampled});
+            const generated = await svc.generate(projectRoot, {generation: "sampled", sample: sampled});
+
+            expect(estimate).toMatchObject({status: "ok", strategy: "bounded-coverage", requiresBounded: false, expectedRawWork: 2, sampleSize: 2, seed: "shared-request-seed"});
+            expect(generated).toMatchObject({status: "ok", generator: {strategy: "bounded-coverage", seed: "shared-request-seed"}});
+        });
+
+        it("fails closed when a resumed checkpoint's bound source changes", async () => {
+            let currentGame: PokieGame = buildFixtureGame();
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(currentGame),
+                undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+                {prepare: () => Promise.resolve(plannedOutcomeLibrary)},
+            );
+            const request = {generation: "exact" as const, outDir: "outcomelibrary"};
+            const preflight = await svc.estimate(projectRoot, request);
+            expect(preflight.status).toBe("ok");
+            if (preflight.status !== "ok") return;
+            const binding = svc.getPreflightBinding(preflight.preflightToken);
+            expect(binding).toBeDefined();
+            currentGame = buildAlternateFixtureGame();
+
+            await expect(svc.rebindCheckpointRequest(projectRoot, {...request, preflightToken: preflight.preflightToken}, binding!)).resolves.toMatchObject({
+                result: {status: "conflict"},
+            });
         });
 
         it("reports unsupported for a game that never opted into exact enumeration", async () => {
@@ -165,7 +214,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                 {prepare: () => Promise.resolve(plannedOutcomeLibrary)},
             );
             const result = await failing.estimate(projectRoot, {});
-            expect(result).toMatchObject({status: "load-error", error: "boom", plan: {status: "planned", source: {kind: "tsPackage"}}});
+            expect(result).toMatchObject({status: "load-error", error: "boom", plan: {status: "unavailable", source: {kind: "tsPackage"}}});
         });
     });
 
@@ -282,6 +331,31 @@ describe("StudioOutcomeLibraryGenerateService", () => {
         it("reports generation-error when the space exceeds maxOutcomeSpaceSize without bounded options", async () => {
             const result = await service().generate(projectRoot, {maxOutcomeSpaceSize: BigInt(2)});
             expect(result).toMatchObject({status: "generation-error", code: "weighted-outcome-library-generation-space-exceeded"});
+        });
+
+        it("uses the prepared domain destination contract for both estimate and execution", async () => {
+            await expect(service().estimate(projectRoot, {outDir: "../outside-project"})).resolves.toMatchObject({
+                status: "conflict",
+                error: expect.stringMatching(/outside its permitted publication root/i),
+            });
+            await expect(service().generate(projectRoot, {outDir: "../outside-project"})).resolves.toMatchObject({
+                status: "conflict",
+                error: expect.stringMatching(/outside its permitted publication root/i),
+            });
+        });
+
+        it("returns a resumable cancellation result without publishing a partial bundle", async () => {
+            const controller = new AbortController();
+            controller.abort();
+
+            const result = await service().generate(projectRoot, {signal: controller.signal});
+
+            expect(result).toMatchObject({status: "cancelled", processedRawIndex: BigInt(0), progressTotal: BigInt(6)});
+            expect(fs.existsSync(path.join(projectRoot, "outcomelibrary", "manifest.json"))).toBe(false);
+            if (result.status === "cancelled") {
+                const resumed = await service().generate(projectRoot, {resumeFrom: result.checkpoint});
+                expect(resumed).toMatchObject({status: "ok", generator: {strategy: "exact"}});
+            }
         });
     });
 

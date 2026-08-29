@@ -38,3 +38,23 @@ export function describeOutcomeLibraryGenerationErrorExplanation(code: string): 
     const {status, remediation} = GENERATION_ERROR_COPY[code] ?? GENERATION_ERROR_FALLBACK;
     return `${status} ${remediation}`;
 }
+
+/**
+ * Server terminal states are already classified. Keep their recovery copy in
+ * this domain model so the UI never turns a lifecycle result back into an
+ * unclassified raw transport message.
+ */
+export function describeOutcomeLibraryGenerationTerminalOutcome(result: {
+    readonly status: "unsupported" | "conflict" | "generation-error" | "invalid" | "load-error" | "cancelled" | "requires-bounded";
+    readonly code?: string;
+    readonly errors?: readonly {readonly message: string}[];
+    readonly recovery?: string;
+}): string {
+    if (result.status === "requires-bounded") return 'This outcome space is too large for the exact limit shown above. Select "Sampled" or "Conditional bounded", enter a sample size and deterministic seed, then refresh the preflight.';
+    if (result.status === "unsupported") return `${OUTCOME_LIBRARY_UNSUPPORTED_EXPLANATION} Choose Simulation & Reports for this game instead.`;
+    if (result.status === "conflict") return "The project, configuration, destination, or bound preflight changed before publication. Refresh the preflight, review the destination, then generate again.";
+    if (result.status === "generation-error") return describeOutcomeLibraryGenerationErrorExplanation(result.code ?? "");
+    if (result.status === "invalid") return "The generated bundle did not pass validation. Review the game configuration and generate again.";
+    if (result.status === "cancelled") return result.recovery ?? "Generation was cancelled safely. Resume the exact checkpoint only after reloading the unchanged project and preflight.";
+    return "The project could not be loaded for outcome-library generation. Reopen or rebuild the project, then refresh the preflight.";
+}

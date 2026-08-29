@@ -2,6 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
+import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js";
 import type {PokieProject} from "./PokieProject.js";
 import type {ProjectResolving} from "./ProjectResolving.js";
 import {ProjectTargetResolver} from "./ProjectTargetResolver.js";
@@ -17,6 +18,10 @@ export type OutcomeProjectCompatibility = {
     // Exact and direct sampled libraries describe different distributions even when they come from the
     // same game configuration.  They must therefore never be silently reused for one another.
     readonly generation?: string;
+    /** Resolved cap of the named managed policy, part of the reuse key. */
+    readonly maxExactOutcomeSpaceSize?: string;
+    /** Named automatic-generation policy used for this managed publication. */
+    readonly compatibilityPolicyVersion?: string;
 };
 
 // The authoritative lifecycle boundary for a Blueprint's managed Outcome Project.  ArtifactBuilderRegistry
@@ -141,11 +146,25 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
     }
 
     public allocateRoot(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): string {
+        // This must use precisely the same key that reuse verifies.  Hashing
+        // only configuration plus a loosely encoded generation meant a prior
+        // policy/cap could occupy the path selected for a new request, turning
+        // a stale artifact into a destination collision instead of a safe
+        // regeneration route.
+        const identity = JSON.stringify({
+            gameId: compatibility.gameId,
+            gameVersion: compatibility.gameVersion,
+            configHash: compatibility.configHash,
+            pokieVersion: compatibility.pokieVersion,
+            generation: compatibility.generation ?? "exact",
+            maxExactOutcomeSpaceSize: compatibility.maxExactOutcomeSpaceSize,
+            compatibilityPolicyVersion: compatibility.compatibilityPolicyVersion,
+        });
         return path.join(
             path.dirname(sourceRootPath),
             ".pokie",
             "outcome-libraries",
-            crypto.createHash("sha256").update(`${compatibility.configHash}:${compatibility.generation ?? "exact"}`).digest("hex"),
+            crypto.createHash("sha256").update(identity).digest("hex"),
         );
     }
 
@@ -201,7 +220,9 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
                 manifest.game.id !== compatibility.gameId ||
                 manifest.game.version !== compatibility.gameVersion ||
                 manifest.configHash !== compatibility.configHash ||
-                manifest.artifactPokieVersion !== compatibility.pokieVersion
+                manifest.artifactPokieVersion !== compatibility.pokieVersion ||
+                manifest.modes.length === 0 ||
+                !manifest.modes.every((mode) => generatorMatchesCompatibility(mode.generator, compatibility))
             ) return undefined;
             const project = await this.resolveProject.resolve(rootPath);
             if (project?.type !== "outcomeLibrary") return undefined;
@@ -218,6 +239,8 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
                     gameVersion: compatibility.gameVersion,
                     manifestIdentity: `${compatibility.gameId}@${compatibility.gameVersion}`,
                     ...(generationProvenance(compatibility.generation)),
+                    ...(compatibility.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: compatibility.maxExactOutcomeSpaceSize}),
+                    ...(compatibility.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: compatibility.compatibilityPolicyVersion}),
                 },
             };
         } catch {
@@ -279,13 +302,48 @@ function generationProvenance(generation: string | undefined): Pick<NonNullable<
         : {generationSemantics: "boundedSample", sampleCount, sampleSeed};
 }
 
+/**
+ * Registry metadata is an index, not provenance.  Reuse is permitted only
+ * when every published bundle mode proves the resolved strategy, sample,
+ * exact-space cap and named policy that selected it.  This also rejects a
+ * manually edited manifest before it reaches a downstream Stake build.
+ */
+function generatorMatchesCompatibility(
+    generator: OutcomeLibraryGeneratorDiagnostics | undefined,
+    compatibility: OutcomeProjectCompatibility,
+): boolean {
+    const generation = compatibility.generation ?? "exact";
+    const expectedSample = generationProvenance(generation);
+
+    // Legacy records without a complete managed policy remain readable only
+    // for their old exact shape.  Every current managed policy carries cap
+    // and version, which makes generator provenance mandatory.
+    if (generator === undefined) {
+        return generation === "exact" &&
+            compatibility.maxExactOutcomeSpaceSize === undefined &&
+            compatibility.compatibilityPolicyVersion === undefined;
+    }
+    if (generator.game.id !== compatibility.gameId ||
+        generator.game.version !== compatibility.gameVersion ||
+        generator.configHash !== compatibility.configHash ||
+        generator.pokieVersion !== compatibility.pokieVersion) return false;
+    if (generator.strategy !== (generation === "exact" ? "exact" : "bounded-coverage")) return false;
+    if (generator.maxExactOutcomeSpaceSize === undefined ||
+        (compatibility.maxExactOutcomeSpaceSize !== undefined && String(generator.maxExactOutcomeSpaceSize) !== compatibility.maxExactOutcomeSpaceSize)) return false;
+    if (generator.compatibilityPolicyVersion !== compatibility.compatibilityPolicyVersion) return false;
+    if (expectedSample.generationSemantics === "exact") return generator.seed === undefined;
+    return generator.seed === expectedSample.sampleSeed && String(generator.sampledRawCount) === expectedSample.sampleCount;
+}
+
 function sameCompatibility(left: OutcomeProjectCompatibility, right: OutcomeProjectCompatibility): boolean {
     return (
         left.gameId === right.gameId &&
         left.gameVersion === right.gameVersion &&
         left.configHash === right.configHash &&
         left.pokieVersion === right.pokieVersion &&
-        (left.generation ?? "exact") === (right.generation ?? "exact")
+        (left.generation ?? "exact") === (right.generation ?? "exact") &&
+        left.maxExactOutcomeSpaceSize === right.maxExactOutcomeSpaceSize &&
+        left.compatibilityPolicyVersion === right.compatibilityPolicyVersion
     );
 }
 
@@ -295,7 +353,9 @@ function isRegisteredOutcomeProject(value: unknown): value is RegisteredOutcomeP
     return typeof entry.rootPath === "string" && typeof entry.gameId === "string" &&
         typeof entry.gameVersion === "string" && typeof entry.configHash === "string" &&
         typeof entry.pokieVersion === "string" &&
-        (entry.generation === undefined || typeof entry.generation === "string");
+        (entry.generation === undefined || typeof entry.generation === "string") &&
+        (entry.maxExactOutcomeSpaceSize === undefined || typeof entry.maxExactOutcomeSpaceSize === "string") &&
+        (entry.compatibilityPolicyVersion === undefined || typeof entry.compatibilityPolicyVersion === "string");
 }
 
 function describeRegistryError(error: unknown): string {

@@ -4,12 +4,11 @@ import path from "path";
 import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
-    assertPreparedArtifactDestinationAvailable,
     computeArtifactInputBindingHash,
-    DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     ExactEnumerationCheckpoint,
-    GenerateExactWeightedOutcomeLibraryOptions,
     GenerateExactWeightedOutcomeLibraryResult,
+    OutcomeLibraryGenerationRequest,
+    ResolvedOutcomeLibraryGenerationRequest,
     OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleValidating,
     OutcomeLibraryBundleValidator,
@@ -26,8 +25,10 @@ import {
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
     estimateExactOutcomeSpaceSize,
-    generateExactWeightedOutcomeLibrary,
+    generateWeightedOutcomeLibrary,
     loadPokieGame,
+    prepareOutcomeLibraryGenerationFromEstimate,
+    resolveOutcomeLibraryGenerationDestination,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -146,7 +147,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     private readonly streamOutcomes: (filePath: string) => AsyncGenerator<WeightedOutcomeInput>;
     private readonly pokieVersion: string;
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
-    private readonly generate: (options: GenerateExactWeightedOutcomeLibraryOptions) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
+    private readonly generate: (request: OutcomeLibraryGenerationRequest) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
     private readonly estimateSpace: (game: PokieGame) => OutcomeSpaceEstimate;
     private readonly writeFile: (filePath: string, contents: string) => void;
     private readonly fileExists: (filePath: string) => boolean;
@@ -162,8 +163,8 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         streamOutcomes: (filePath: string) => AsyncGenerator<WeightedOutcomeInput> = streamJsonlOutcomes,
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
         generate: (
-            options: GenerateExactWeightedOutcomeLibraryOptions,
-        ) => Promise<GenerateExactWeightedOutcomeLibraryResult> = generateExactWeightedOutcomeLibrary,
+            request: OutcomeLibraryGenerationRequest,
+        ) => Promise<GenerateExactWeightedOutcomeLibraryResult> = generateWeightedOutcomeLibrary,
         estimateSpace: (game: PokieGame) => OutcomeSpaceEstimate = estimateExactOutcomeSpaceSize,
         writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
         fileExists: (filePath: string) => boolean = (filePath) => fs.existsSync(filePath),
@@ -448,7 +449,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 }
                 return parsed;
             })
-            .option("--config-hash <hash>", "recorded verbatim into the generated library's own diagnostics")
+            .option("--config-hash <hash>", "verify the loaded package configuration identity before generation")
             .option("--library-id <id>", "id for the generated library (default: derived from the game manifest/mode)")
             .option(
                 "--max-outcome-space-size <n>",
@@ -497,20 +498,58 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
         if (options.estimate || options.dryRun) {
             const game = await this.loadGame(packageRoot);
-            return this.executeEstimate(game, options);
+            // Estimate is a real preflight, not a separate planning shortcut:
+            // construct exactly the request execution would receive so loaded
+            // configuration assertions and the resolved publication identity
+            // fail or bind consistently before either path reports success.
+            return this.executeEstimate(game, options, this.createGenerationRequest(game, packageRoot, options, sampling));
         }
 
         const controller = new AbortController();
         const onCancel = () => controller.abort();
         this.process.once("SIGINT", onCancel);
 
+        let resolvedStrategy: ResolvedOutcomeLibraryGenerationRequest["preflight"]["strategy"] | undefined;
         try {
-            const prepared = this.prepareRawGenerationOperation(packageRoot, options, sampling, controller.signal);
+            const game = await this.loadGame(packageRoot);
+            const request = this.createGenerationRequest(game, packageRoot, options, sampling, controller.signal);
+            // The public request preparation is the one authority for source
+            // provenance, destination identity, and conditional-bounded
+            // strategy. Raw JSON publication consumes this resolved request;
+            // it must not reconstruct a subtly different preflight.
+            const resolvedRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game), request);
+            resolvedStrategy = resolvedRequest.preflight.strategy;
+            // A cap-exceeded default/exact request has no sampled settings to
+            // carry into the conversion planner.  Reject it at the same CLI
+            // diagnostic boundary as the generator instead of constructing a
+            // malformed bounded-plan provenance record below.
+            if (resolvedRequest.preflight.requiresSampledOptIn) {
+                throw new WeightedOutcomeLibraryGenerationError(
+                    "weighted-outcome-library-generation-space-exceeded",
+                    `"${game.getManifest().id}"'s exact outcome space (${resolvedRequest.preflight.estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
+                    `maxOutcomeSpaceSize (${resolvedRequest.preflight.maxExactOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
+                    "bounded-coverage strategy with --sample <n> --seed <string>.",
+                );
+            }
+            const prepared = this.prepareRawGenerationOperation(
+                packageRoot,
+                options,
+                sampling,
+                controller.signal,
+                resolvedRequest,
+            );
             const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution);
             this.printGenerateResult(execution.read, options);
             return 0;
         } catch (error) {
             if (error instanceof WeightedOutcomeLibraryGenerationCancelledError) {
+                if (resolvedStrategy !== "exact") {
+                    console.error(
+                        `Generation of "${packageRoot}" was cancelled after ${error.processedRawIndex} / ${error.progressTotal} raw draws. ` +
+                            "No incomplete library was published; bounded coverage has no exact checkpoint, so retry the same command to start a fresh deterministic sample.",
+                    );
+                    return 130;
+                }
                 if (options.resume === undefined) {
                     console.error(
                         `Generation of "${packageRoot}" was cancelled after ${error.processedRawIndex} / ${error.progressTotal} raw draws, ` +
@@ -526,6 +565,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 return 130;
             }
             if (error instanceof WeightedOutcomeLibraryGenerationError) {
+                // Destination safety is a synchronous invocation precondition
+                // (the same public behavior raw --out historically exposed),
+                // while other generation diagnostics are command results.
+                if (error.getCode() === "weighted-outcome-library-generation-destination-conflict") throw error;
                 console.error(`Could not generate an outcome library from "${packageRoot}" (${error.getCode()}): ${error.message}`);
                 return 1;
             }
@@ -548,6 +591,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         options: GenerateCliOptions,
         sampling: {sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}},
         signal: AbortSignal,
+        resolvedRequest: ResolvedOutcomeLibraryGenerationRequest,
     ) {
         const sourcePaths = [packageRoot, ...(options.resume === undefined ? [] : [options.resume])];
         const currentSource = () => ({
@@ -558,14 +602,14 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             configurationProvenance: {
                 configurationHash: computeArtifactInputBindingHash(sourcePaths),
                 pokieVersion: this.pokieVersion,
-                generationSemantics: sampling.sampled === undefined && sampling.bounded === undefined ? "exact" as const : "boundedSample" as const,
-                ...(sampling.sampled === undefined && sampling.bounded === undefined ? {} : {
-                    sampleCount: String((sampling.sampled ?? sampling.bounded)!.sampleSize),
-                    sampleSeed: (sampling.sampled ?? sampling.bounded)!.seed,
+                generationSemantics: resolvedRequest.preflight.strategy === "exact" ? "exact" as const : "boundedSample" as const,
+                ...(resolvedRequest.preflight.strategy === "exact" ? {} : {
+                    sampleCount: String(resolvedRequest.preflight.sample!.sampleSize),
+                    sampleSeed: resolvedRequest.preflight.sample!.seed,
                 }),
             },
         });
-        const rawOutput = options.out === undefined ? undefined : path.resolve(options.out);
+        const rawOutput = resolvedRequest.preflight.destination?.path;
         let publishedOutput = false;
         return {
             plan: this.planner.planRawOutcomeLibraryJsonPublication(currentSource(), rawOutput),
@@ -574,33 +618,53 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 currentDestination: () => rawOutput,
                 read: async () => {
                     const game = await this.loadGame(packageRoot);
-                    const manifest = game.getManifest();
                     const resumeFrom = options.resume !== undefined && this.fileExists(options.resume) ? this.readCheckpoint(options.resume) : undefined;
-                    return this.generate({
-                        libraryId: options.libraryId ?? `${manifest.id}${options.mode !== undefined ? `-${options.mode}` : ""}`,
-                        game,
-                        pokieVersion: this.pokieVersion,
-                        ...(options.configHash === undefined ? {} : {configHash: options.configHash}),
-                        ...(options.mode === undefined ? {} : {betMode: options.mode}),
-                        ...(options.stake === undefined ? {} : {stake: options.stake}),
-                        ...(options.maxOutcomeSpaceSize === undefined ? {} : {maxOutcomeSpaceSize: options.maxOutcomeSpaceSize}),
-                        ...(options.exact ? {exact: true} : {}),
-                        ...sampling,
-                        ...(resumeFrom === undefined ? {} : {resumeFrom}),
-                        signal,
-                        ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
-                    });
+                    // Rebind the live package immediately before generation;
+                    // a config change after planning cannot inherit the old
+                    // request's provenance merely because its destination is
+                    // still the same bound publication identity.
+                    const reboundRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game),
+                        this.createGenerationRequest(game, packageRoot, options, sampling, signal, resumeFrom),
+                    );
+                    if (
+                        reboundRequest.configHash !== resolvedRequest.configHash ||
+                        reboundRequest.preflight.destination?.path !== rawOutput ||
+                        reboundRequest.preflight.strategy !== resolvedRequest.preflight.strategy ||
+                        reboundRequest.preflight.maxExactOutcomeSpaceSize !== resolvedRequest.preflight.maxExactOutcomeSpaceSize ||
+                        reboundRequest.preflight.sample?.sampleSize !== resolvedRequest.preflight.sample?.sampleSize ||
+                        reboundRequest.preflight.sample?.seed !== resolvedRequest.preflight.sample?.seed
+                    ) {
+                        throw new WeightedOutcomeLibraryGenerationError(
+                            "weighted-outcome-library-generation-configuration-conflict",
+                            "The loaded package configuration or output destination changed after preflight. Re-run generation from a fresh preflight.",
+                        );
+                    }
+                    return this.generate(reboundRequest);
                 },
                 canPublish: () => rawOutput !== undefined,
+                // Generation can take long enough for another actor to create
+                // the prepared output after read() rebound the request. Re-run
+                // the *same* resolved domain contract at the final durable
+                // publication boundary; never let the raw writer overwrite
+                // that late-created destination.
                 assertDestinationAvailable: () => {
                     if (rawOutput === undefined) return;
-                    assertPreparedArtifactDestinationAvailable(packageRoot, rawOutput, "file");
+                    const reboundDestination = resolveOutcomeLibraryGenerationDestination(
+                        rawOutput,
+                        resolvedRequest.preflight.destination?.safety,
+                    );
+                    if (reboundDestination?.path !== rawOutput) {
+                        throw new WeightedOutcomeLibraryGenerationError(
+                            "weighted-outcome-library-generation-destination-conflict",
+                            "The output destination changed after preflight. Re-run generation from a fresh preflight.",
+                        );
+                    }
                 },
                 publish: (result: GenerateExactWeightedOutcomeLibraryResult) => {
                     // The operation has already established a fresh destination.
                     // Keep the legacy injectable writer so test and embedding
                     // callers retain their narrow file-system boundary.
-                    this.writeFile(options.out!, JSON.stringify(result.library, null, 4));
+                    this.writeFile(rawOutput!, JSON.stringify(result.library, null, 4));
                     publishedOutput = true;
                 },
                 rollback: () => {
@@ -610,7 +674,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     if (error === undefined && options.resume !== undefined && this.fileExists(options.resume)) this.removeFile(options.resume);
                 },
                 onTerminalFailure: (error: unknown) => {
-                    if (error instanceof WeightedOutcomeLibraryGenerationCancelledError && options.resume !== undefined) {
+                    if (resolvedRequest.preflight.strategy === "exact" && error instanceof WeightedOutcomeLibraryGenerationCancelledError && options.resume !== undefined) {
                         this.writeFile(options.resume, JSON.stringify(this.serializeCheckpoint(error.checkpoint), null, 4));
                     }
                 },
@@ -623,10 +687,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     // reads reel-strip sizes only, never sweeps a single reel-stop tuple or plays a round. Reports
     // exactly which strategy a real "generate" run would resolve to given the same --max-outcome-space-size/
     // --bounded flags, so a caller can decide whether to opt into --bounded before committing to a full run.
-    private executeEstimate(game: PokieGame, options: GenerateCliOptions): number {
-        let estimate: OutcomeSpaceEstimate;
+    private executeEstimate(game: PokieGame, options: GenerateCliOptions, request: OutcomeLibraryGenerationRequest): number {
+        let resolvedRequest: ResolvedOutcomeLibraryGenerationRequest;
         try {
-            estimate = this.estimateSpace(game);
+            resolvedRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game), request);
         } catch (error) {
             if (error instanceof WeightedOutcomeLibraryGenerationError) {
                 console.error(`Cannot estimate "${game.getManifest().id}"'s exact outcome space (${error.getCode()}): ${error.message}`);
@@ -635,19 +699,20 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             throw error;
         }
 
-        const maxOutcomeSpaceSize = options.maxOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE;
-        const sampling = this.buildSampledOptions(options);
-        const sample = sampling.sampled ?? sampling.bounded;
-        const strategy: "exact" | "bounded-coverage" = sampling.sampled !== undefined || estimate.totalOutcomeSpaceSize > maxOutcomeSpaceSize ? "bounded-coverage" : "exact";
+        const {preflight} = resolvedRequest;
+        const {estimate} = preflight;
+        const sample = preflight.sample;
         const report = {
             game: game.getManifest(),
             reelsNumber: estimate.reelsNumber,
             reelsSymbolsNumber: estimate.reelsSymbolsNumber,
             reelSizes: estimate.reelSizes,
             totalOutcomeSpaceSize: formatBigIntSafely(estimate.totalOutcomeSpaceSize),
-            maxOutcomeSpaceSize: formatBigIntSafely(maxOutcomeSpaceSize),
-            strategy,
-            requiresBounded: strategy === "bounded-coverage" && sample === undefined,
+            maxOutcomeSpaceSize: formatBigIntSafely(preflight.maxExactOutcomeSpaceSize),
+            strategy: preflight.strategy,
+            requiresBounded: preflight.requiresSampledOptIn,
+            expectedRawWork: formatBigIntSafely(preflight.expectedRawWork),
+            warnings: preflight.warnings,
             ...(sample !== undefined ? {sampleSize: formatBigIntSafely(sample.sampleSize), seed: sample.seed} : {}),
         };
 
@@ -691,6 +756,42 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             throw new Error(`--bounded requires both --sample-size and --seed. ${GENERATE_USAGE}`);
         }
         return {bounded: {sampleSize, seed}};
+    }
+
+    /** The CLI grammar is a compatibility adapter; the generator only receives the public domain request. */
+    private createGenerationRequest(
+        game: PokieGame,
+        packageRoot: string,
+        options: GenerateCliOptions,
+        sampling: {sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}},
+        signal?: AbortSignal,
+        resumeFrom?: ExactEnumerationCheckpoint,
+    ): OutcomeLibraryGenerationRequest {
+        const sample = sampling.sampled ?? sampling.bounded;
+        let generation: OutcomeLibraryGenerationRequest["generation"] = "default";
+        if (options.exact) generation = "exact";
+        else if (sampling.sampled !== undefined) generation = "sampled";
+        else if (sampling.bounded !== undefined) generation = "bounded";
+        return {
+            libraryId: options.libraryId ?? `${game.getManifest().id}${options.mode !== undefined ? `-${options.mode}` : ""}`,
+            game,
+            pokieVersion: this.pokieVersion,
+            generation,
+            // This remains a compatibility assertion only. The shared domain
+            // preparation derives the loaded hash and rejects a mismatch.
+            ...(options.configHash === undefined ? {} : {configHash: options.configHash}),
+            ...(options.mode === undefined ? {} : {mode: options.mode}),
+            ...(options.stake === undefined ? {} : {stake: options.stake}),
+            ...(options.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: options.maxOutcomeSpaceSize}),
+            ...(sample === undefined ? {} : {sample}),
+            ...(options.out === undefined ? {} : {
+                outputDestination: options.out,
+                outputDestinationSafety: {sourcePath: packageRoot, kind: "file", requireAvailable: true},
+            }),
+            ...(resumeFrom === undefined ? {} : {resumeFrom}),
+            ...(signal === undefined ? {} : {signal}),
+            ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
+        };
     }
 
     private printGenerateResult(result: GenerateExactWeightedOutcomeLibraryResult, options: GenerateCliOptions): void {

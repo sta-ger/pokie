@@ -3,8 +3,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-    GenerateExactWeightedOutcomeLibraryOptions,
     GenerateExactWeightedOutcomeLibraryResult,
+    OutcomeLibraryGenerationRequest,
     OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleValidateOptions,
     OutcomeLibraryBundleWriteResult,
@@ -301,6 +301,7 @@ describe("OutcomeLibraryCommand", () => {
     describe("generate", () => {
         const FAKE_GAME: PokieGame = {
             getManifest: () => ({id: "slot-1", name: "Slot 1", version: "1.0.0"}),
+            getConfigHash: () => "sha256:abc",
             createSession: () => {
                 throw new Error("createSession() should never be called by the generate CLI path");
             },
@@ -323,7 +324,7 @@ describe("OutcomeLibraryCommand", () => {
 
         function createGenerateCommand(overrides: {
             loadGame?: (packageRoot: string) => Promise<PokieGame>;
-            generate?: (options: GenerateExactWeightedOutcomeLibraryOptions) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
+            generate?: (request: OutcomeLibraryGenerationRequest) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
             estimateSpace?: (game: PokieGame) => OutcomeSpaceEstimate;
             writeFile?: (filePath: string, contents: string) => void;
             loadJson?: (filePath: string) => unknown;
@@ -381,7 +382,7 @@ describe("OutcomeLibraryCommand", () => {
                     game: FAKE_GAME,
                     pokieVersion: "1.3.0",
                     configHash: "sha256:abc",
-                    betMode: "base",
+                    mode: "base",
                     stake: 1.5,
                 }),
             );
@@ -398,6 +399,17 @@ describe("OutcomeLibraryCommand", () => {
             await command.run(["generate", "/project/slot", "--mode", "bonus"]);
 
             expect(generate).toHaveBeenCalledWith(expect.objectContaining({libraryId: "slot-1-bonus"}));
+        });
+
+        it("rejects a caller configuration hash that does not match the loaded game", async () => {
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const command = createGenerateCommand({generate});
+
+            const exitCode = await command.run(["generate", "/project/slot", "--config-hash", "sha256:other"]);
+
+            expect(exitCode).toBe(1);
+            expect(generate).not.toHaveBeenCalled();
+            expect(errorSpy.mock.calls.flat().join("\n")).toContain("configuration-conflict");
         });
 
         it("prints a summary and the location of the written library when --format is the default", async () => {
@@ -441,6 +453,27 @@ describe("OutcomeLibraryCommand", () => {
             }
         });
 
+        it("preserves an output created after preflight rather than overwriting it at raw publication", async () => {
+            const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-raw-generation-race-source-"));
+            const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-raw-generation-race-output-"));
+            const output = path.join(outputRoot, "library.json");
+            const writeFile = jest.fn();
+            const generate = jest.fn(() => {
+                fs.writeFileSync(output, "created by another actor");
+                return Promise.resolve(defaultGenerateResult());
+            });
+            const command = createGenerateCommand({generate, writeFile});
+
+            try {
+                await expect(command.run(["generate", packageRoot, "--out", output])).rejects.toThrow(/already exists/i);
+                expect(writeFile).not.toHaveBeenCalled();
+                expect(fs.readFileSync(output, "utf-8")).toBe("created by another actor");
+            } finally {
+                fs.rmSync(outputRoot, {recursive: true, force: true});
+                fs.rmSync(packageRoot, {recursive: true, force: true});
+            }
+        });
+
         it("--estimate reports the outcome space without invoking generation", async () => {
             const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
             const command = createGenerateCommand({generate});
@@ -469,6 +502,19 @@ describe("OutcomeLibraryCommand", () => {
             expect(generate).not.toHaveBeenCalled();
             const printed = JSON.parse(logSpy.mock.calls[0][0]);
             expect(printed.strategy).toBe("exact");
+        });
+
+        it("runs --estimate through the same prepared request as execution", async () => {
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const command = createGenerateCommand({generate});
+
+            const exitCode = await command.run([
+                "generate", "/project/slot", "--estimate", "--config-hash", "sha256:other", "--out", "/project/library.json",
+            ]);
+
+            expect(exitCode).toBe(1);
+            expect(generate).not.toHaveBeenCalled();
+            expect(errorSpy.mock.calls.flat().join("\n")).toContain("configuration-conflict");
         });
 
         it("flags the estimate as requiring --bounded once the space exceeds --max-outcome-space-size", async () => {
@@ -503,7 +549,7 @@ describe("OutcomeLibraryCommand", () => {
 
             await command.run(["generate", "/project/slot", "--bounded", "--sample-size", "1000", "--seed", "seed-1"]);
 
-            expect(generate).toHaveBeenCalledWith(expect.objectContaining({bounded: {sampleSize: BigInt(1000), seed: "seed-1"}}));
+            expect(generate).toHaveBeenCalledWith(expect.objectContaining({generation: "bounded", sample: {sampleSize: BigInt(1000), seed: "seed-1"}}));
         });
 
         it("makes direct sampled generation explicit and threads its deterministic count and seed", async () => {
@@ -512,7 +558,7 @@ describe("OutcomeLibraryCommand", () => {
 
             await command.run(["generate", "/project/slot", "--sample", "1000", "--seed", "sample-seed"]);
 
-            expect(generate).toHaveBeenCalledWith(expect.objectContaining({sampled: {sampleSize: BigInt(1000), seed: "sample-seed"}}));
+            expect(generate).toHaveBeenCalledWith(expect.objectContaining({generation: "sampled", sample: {sampleSize: BigInt(1000), seed: "sample-seed"}}));
         });
 
         it("rejects incomplete or conflicting exact/sampled choices before loading a game", async () => {
@@ -549,7 +595,7 @@ describe("OutcomeLibraryCommand", () => {
             // calling this.generate), so this is fully deterministic: no reliance on real timers or
             // microtask ordering to land the signal "mid-sweep".
             const generate = jest.fn(
-                (options: GenerateExactWeightedOutcomeLibraryOptions) =>
+                (options: OutcomeLibraryGenerationRequest) =>
                     new Promise<GenerateExactWeightedOutcomeLibraryResult>((_resolve, reject) => {
                         options.signal?.addEventListener("abort", () => {
                             reject(new WeightedOutcomeLibraryGenerationCancelledError(BigInt(3), BigInt(6), grids, "src-1"));
@@ -579,7 +625,7 @@ describe("OutcomeLibraryCommand", () => {
         it("returns 130 without writing a checkpoint when SIGINT cancels a run with no --resume given", async () => {
             const processHandle = new EventEmitter() as unknown as NodeJS.Process;
             const generate = jest.fn(
-                (options: GenerateExactWeightedOutcomeLibraryOptions) =>
+                (options: OutcomeLibraryGenerationRequest) =>
                     new Promise<GenerateExactWeightedOutcomeLibraryResult>((_resolve, reject) => {
                         options.signal?.addEventListener("abort", () => {
                             reject(new WeightedOutcomeLibraryGenerationCancelledError(BigInt(3), BigInt(6), new Map(), "src-1"));
@@ -595,6 +641,27 @@ describe("OutcomeLibraryCommand", () => {
             expect(exitCode).toBe(130);
             expect(writeFile).not.toHaveBeenCalled();
             expect(errorSpy.mock.calls.flat().join("\n")).toContain("no --resume");
+        });
+
+        it("does not write an unusable exact checkpoint when sampled coverage is cancelled with --resume", async () => {
+            const processHandle = new EventEmitter() as unknown as NodeJS.Process;
+            const generate = jest.fn(
+                (options: OutcomeLibraryGenerationRequest) =>
+                    new Promise<GenerateExactWeightedOutcomeLibraryResult>((_resolve, reject) => {
+                        options.signal?.addEventListener("abort", () => {
+                            reject(new WeightedOutcomeLibraryGenerationCancelledError(BigInt(3), BigInt(6), new Map(), "sample-source"));
+                        });
+                        processHandle.emit("SIGINT");
+                    }),
+            );
+            const writeFile = jest.fn();
+            const command = createGenerateCommand({processHandle, generate, writeFile});
+
+            const exitCode = await command.run(["generate", "/project/slot", "--sample", "4", "--seed", "retry-seed", "--resume", "/project/checkpoint.json"]);
+
+            expect(exitCode).toBe(130);
+            expect(writeFile).not.toHaveBeenCalled();
+            expect(errorSpy.mock.calls.flat().join("\n")).toContain("has no exact checkpoint");
         });
 
         it("reads an existing --resume checkpoint file and threads it into resumeFrom, re-hydrating its bigints", async () => {

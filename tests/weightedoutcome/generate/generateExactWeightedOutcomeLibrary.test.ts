@@ -6,9 +6,13 @@ import {
     GamePackageGenerator,
     generateExactWeightedOutcomeLibrary,
     generateSampledWeightedOutcomeLibrary,
+    generateWeightedOutcomeLibrary,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleWriter,
     PokieGame,
+    prepareOutcomeLibraryGeneration,
+    prepareOutcomeLibraryGenerationFromEstimate,
+    preflightOutcomeLibraryGenerationFromEstimate,
     streamExactWeightedOutcomes,
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
@@ -34,6 +38,58 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         expect(estimate.totalOutcomeSpaceSize).toBe(BigInt(6));
     });
 
+    it("uses one preflight decision for the legacy bounded and explicit sampled strategies", () => {
+        const estimate = estimateExactOutcomeSpaceSize(buildFixtureGame());
+
+        expect(preflightOutcomeLibraryGenerationFromEstimate(estimate, {maxExactOutcomeSpaceSize: BigInt(5)})).toMatchObject({
+            strategy: "bounded-coverage",
+            requiresSampledOptIn: true,
+            expectedRawWork: BigInt(0),
+        });
+        expect(preflightOutcomeLibraryGenerationFromEstimate(estimate, {
+            generation: "sampled",
+            maxExactOutcomeSpaceSize: BigInt(5),
+            sample: {sampleSize: BigInt(4), seed: "same-seed"},
+        })).toMatchObject({
+            strategy: "bounded-coverage",
+            requiresSampledOptIn: false,
+            expectedRawWork: BigInt(4),
+        });
+    });
+
+    it("rejects an invalid public preflight cap through the same domain invariant as execution", () => {
+        const estimate = estimateExactOutcomeSpaceSize(buildFixtureGame());
+
+        for (const maxExactOutcomeSpaceSize of [BigInt(0), BigInt(-1)] as const) {
+            expect(() => preflightOutcomeLibraryGenerationFromEstimate(estimate, {maxExactOutcomeSpaceSize}))
+                .toThrow("maxExactOutcomeSpaceSize must be a positive integer");
+        }
+    });
+
+    it("executes the canonical domain request identically to the legacy sampled adapter", async () => {
+        const game = buildFixtureGame();
+        const request = {
+            libraryId: "canonical-sample",
+            game,
+            pokieVersion: "test",
+            generation: "sampled" as const,
+            sample: {sampleSize: BigInt(4), seed: "canonical-seed"},
+        };
+
+        const [canonical, legacy] = await Promise.all([
+            generateWeightedOutcomeLibrary(request),
+            generateSampledWeightedOutcomeLibrary({
+                libraryId: request.libraryId,
+                game,
+                pokieVersion: request.pokieVersion,
+                sampled: request.sample,
+            }),
+        ]);
+
+        expect(canonical.library).toEqual(legacy.library);
+        expect({...canonical.diagnostics, generatedAt: "normalized"}).toEqual({...legacy.diagnostics, generatedAt: "normalized"});
+    });
+
     it("fails closed for a game that never implemented createExactEnumerationSession", () => {
         expect.assertions(2);
         try {
@@ -41,6 +97,142 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         } catch (error) {
             expect(error).toBeInstanceOf(WeightedOutcomeLibraryGenerationError);
             expect((error as WeightedOutcomeLibraryGenerationError).getCode()).toBe("weighted-outcome-library-generation-unsupported");
+        }
+    });
+
+    it("preserves a named compatibility policy in canonical generator provenance", async () => {
+        const result = await generateWeightedOutcomeLibrary({
+            libraryId: "managed-policy-provenance",
+            game: buildFixtureGame(),
+            pokieVersion: "test",
+            compatibilityPolicyVersion: "managed-v1",
+        });
+
+        expect(result.diagnostics).toMatchObject({
+            compatibilityPolicyVersion: "managed-v1",
+            // The raw-library diagnostics are the provenance copied into a
+            // Studio/managed bundle mode, so the policy is independently
+            // reconstructable without consulting the original adapter.
+            maxExactOutcomeSpaceSize: 20_000_000,
+        });
+    });
+
+    it("derives loaded configuration provenance and rejects an incompatible caller assertion in the shared request", async () => {
+        const game: PokieGame = {...buildFixtureGame(), getConfigHash: () => "sha256:loaded-config"};
+        const result = await generateWeightedOutcomeLibrary({
+            libraryId: "resolved-config",
+            game,
+            pokieVersion: "test",
+        });
+
+        expect(result.diagnostics.configHash).toBe("sha256:loaded-config");
+        expect(result.library.outcomes.every((outcome) => outcome.artifact.provenance.configHash === "sha256:loaded-config")).toBe(true);
+        expect(() => prepareOutcomeLibraryGeneration({
+            libraryId: "resolved-config",
+            game,
+            pokieVersion: "test",
+            configHash: "sha256:caller-assertion",
+        })).toThrow("The supplied configuration identity does not match the loaded game");
+    });
+
+    it("binds publication destination into the same resolved preflight consumed by every producer", () => {
+        const prepared = prepareOutcomeLibraryGeneration({
+            libraryId: "bound-destination",
+            game: buildFixtureGame(),
+            pokieVersion: "test",
+            outputDestination: "  /tmp/outcome-library  ",
+        });
+
+        expect(prepared.outputDestination).toBe("/tmp/outcome-library");
+        expect(prepared.preflight.destination).toEqual({path: "/tmp/outcome-library"});
+    });
+
+    it("owns resolved publication safety in the prepared request, including an explicit sidecar policy", () => {
+        const source = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-generation-source-"));
+        const sibling = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-generation-destination-"));
+        const occupied = path.join(sibling, "occupied.json");
+        fs.writeFileSync(occupied, "sentinel");
+        try {
+            const request = {libraryId: "destination-safety", game: buildFixtureGame(), pokieVersion: "test"};
+            expect(() => prepareOutcomeLibraryGeneration({
+                ...request,
+                outputDestination: path.join(source, "generated.json"),
+                outputDestinationSafety: {sourcePath: source, kind: "file", requireAvailable: true},
+            })).toThrow(/source itself or lies inside source/i);
+            expect(() => prepareOutcomeLibraryGeneration({
+                ...request,
+                outputDestination: occupied,
+                outputDestinationSafety: {sourcePath: source, kind: "file", requireAvailable: true},
+            })).toThrow(/already exists and is not available/i);
+
+            const prepared = prepareOutcomeLibraryGeneration({
+                ...request,
+                outputDestination: path.join(source, "managed-sidecar"),
+                outputDestinationSafety: {sourcePath: source, kind: "directory", allowWithinSource: true},
+            });
+            expect(prepared.preflight.destination).toEqual({
+                path: path.join(source, "managed-sidecar"),
+                safety: {sourcePath: source, kind: "directory", allowWithinSource: true},
+            });
+        } finally {
+            fs.rmSync(source, {recursive: true, force: true});
+            fs.rmSync(sibling, {recursive: true, force: true});
+        }
+    });
+
+    it("owns project-relative destination resolution and escape safety in the prepared request", () => {
+        const project = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-generation-project-"));
+        try {
+            const request = {
+                libraryId: "project-destination",
+                game: buildFixtureGame(),
+                pokieVersion: "test",
+                outputDestinationSafety: {basePath: project, requireWithinBase: true, allowWithinSource: true},
+            };
+            expect(prepareOutcomeLibraryGeneration({...request, outputDestination: "generated/library"}).preflight.destination?.path)
+                .toBe(path.join(project, "generated/library"));
+            expect(() => prepareOutcomeLibraryGeneration({...request, outputDestination: "../outside"}))
+                .toThrow(/outside its permitted publication root/i);
+        } finally {
+            fs.rmSync(project, {recursive: true, force: true});
+        }
+    });
+
+    it("binds CLI-style supplied estimates through the same loaded configuration and destination preparation", () => {
+        const game: PokieGame = {...buildFixtureGame(), getConfigHash: () => "sha256:loaded-config"};
+        const prepared = prepareOutcomeLibraryGenerationFromEstimate({
+            reelsNumber: 2,
+            reelsSymbolsNumber: 1,
+            reelSizes: [3, 2],
+            totalOutcomeSpaceSize: BigInt(6),
+        }, {
+            libraryId: "cli-preflight",
+            game,
+            pokieVersion: "test",
+            configHash: "sha256:loaded-config",
+            outputDestination: " /tmp/cli-outcome-library ",
+        });
+
+        expect(prepared.configHash).toBe("sha256:loaded-config");
+        expect(prepared.preflight.destination).toEqual({path: "/tmp/cli-outcome-library"});
+        expect(() => prepareOutcomeLibraryGenerationFromEstimate(prepared.preflight.estimate, {
+            libraryId: "cli-preflight",
+            game,
+            pokieVersion: "test",
+            configHash: "sha256:wrong-assertion",
+        })).toThrow("The supplied configuration identity does not match the loaded game");
+    });
+
+    it("validates shared request identities and exact cap before either preflight or execution", () => {
+        const request = {libraryId: "fixture-lib", game: buildFixtureGame(), pokieVersion: "test"};
+
+        for (const invalid of [
+            {...request, libraryId: " "},
+            {...request, mode: " "},
+            {...request, stake: 0},
+            {...request, maxExactOutcomeSpaceSize: BigInt(0)},
+        ]) {
+            expect(() => prepareOutcomeLibraryGeneration(invalid)).toThrow(WeightedOutcomeLibraryGenerationError);
         }
     });
 

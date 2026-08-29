@@ -7,6 +7,8 @@ import {
     closeProject,
     createPlaySession,
     exportParSheet,
+    cancelOutcomeLibraryGeneration,
+    estimateOutcomeLibraryGeneration,
     FetchLike,
     generateRandomBlueprint,
     getContext,
@@ -15,6 +17,9 @@ import {
     getReport,
     getSimulation,
     importParSheet,
+    getOutcomeLibraryGenerationJob,
+    generateOutcomeLibrary,
+    listOutcomeLibraryGenerationJobs,
     inspectProject,
     listProjectRegistry,
     listReplays,
@@ -34,6 +39,9 @@ import {
     saveManagedBlueprint,
     spinPlaySession,
     startSimulation,
+    startOutcomeLibraryGeneration,
+    resumeOutcomeLibraryGeneration,
+    OutcomeLibraryGenerationStartError,
     validateBlueprint,
     validateProject,
 } from "../../../../../cli/studio-client/src/api/apiClient";
@@ -54,6 +62,113 @@ function createFakeFetch(handler: (call: FakeCall) => {ok: boolean; status: numb
 }
 
 describe("studio-client apiClient", () => {
+    describe("Outcome Library generation lifecycle", () => {
+        const job = {id: "job/1", status: "queued", cancellationRequested: false};
+
+        it("adapts the retained direct route to the same pollable job contract", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: {job}}));
+
+            await expect(generateOutcomeLibrary(fetchImpl, {
+                generation: "sampled", sample: {sampleSize: "19", seed: "parity-seed"}, preflightToken: "bound-preflight",
+            })).resolves.toEqual(job);
+
+            expect(calls).toEqual([{
+                url: "/api/project/outcome-libraries/generate",
+                init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({generation: "sampled", sample: {sampleSize: "19", seed: "parity-seed"}, preflightToken: "bound-preflight"})},
+            }]);
+        });
+
+        it("uses the job routes for start, polling, cancellation, restart discovery, and resume", async () => {
+            const {fetchImpl, calls} = createFakeFetch((call) => {
+                if (call.url.endsWith("/resume")) return {ok: true, status: 202, body: {job: {...job, status: "queued"}}};
+                if (call.url.endsWith("/cancel")) return {ok: true, status: 200, body: {...job, cancellationRequested: true}};
+                if (call.url === "/api/project/outcome-libraries/generate/jobs") {
+                    return call.init?.method === "POST" ? {ok: true, status: 202, body: {job}} : {ok: true, status: 200, body: {jobs: [job]}};
+                }
+                return {ok: true, status: 200, body: job};
+            });
+
+            await expect(startOutcomeLibraryGeneration(fetchImpl, {generation: "exact", preflightToken: "bound-preflight"})).resolves.toEqual(job);
+            await expect(getOutcomeLibraryGenerationJob(fetchImpl, "job/1")).resolves.toEqual(job);
+            await expect(cancelOutcomeLibraryGeneration(fetchImpl, "job/1")).resolves.toMatchObject({cancellationRequested: true});
+            await expect(listOutcomeLibraryGenerationJobs(fetchImpl)).resolves.toEqual([job]);
+            await expect(resumeOutcomeLibraryGeneration(fetchImpl, "job/1")).resolves.toMatchObject({status: "queued"});
+
+            expect(calls.map((call) => [call.url, call.init?.method])).toEqual([
+                ["/api/project/outcome-libraries/generate/jobs", "POST"],
+                ["/api/project/outcome-libraries/generate/jobs/job%2F1", undefined],
+                ["/api/project/outcome-libraries/generate/jobs/job%2F1/cancel", "POST"],
+                ["/api/project/outcome-libraries/generate/jobs", undefined],
+                ["/api/project/outcome-libraries/generate/jobs/job%2F1/resume", "POST"],
+            ]);
+        });
+
+        it("preserves classified lifecycle failures from every route", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {status: "conflict", error: "The prepared source changed after preflight."}}));
+
+            await expect(startOutcomeLibraryGeneration(fetchImpl, {preflightToken: "stale"})).rejects.toMatchObject({outcomeStatus: "conflict", message: "The prepared source changed after preflight."});
+            await expect(resumeOutcomeLibraryGeneration(fetchImpl, "checkpoint")).rejects.toMatchObject({
+                outcomeStatus: "conflict",
+                message: "The prepared source changed after preflight.",
+            });
+            await expect(resumeOutcomeLibraryGeneration(fetchImpl, "checkpoint")).rejects.toBeInstanceOf(OutcomeLibraryGenerationStartError);
+        });
+
+        it("preserves typed invalid start validation for either retained route", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 400,
+                body: {status: "invalid", error: '"sampleSize" must be a positive integer.'},
+            }));
+
+            await expect(generateOutcomeLibrary(fetchImpl, {generation: "sampled"}))
+                .rejects.toMatchObject({outcomeStatus: "invalid", message: '"sampleSize" must be a positive integer.'});
+            await expect(startOutcomeLibraryGeneration(fetchImpl, {generation: "sampled"}))
+                .rejects.toMatchObject({outcomeStatus: "invalid", message: '"sampleSize" must be a positive integer.'});
+        });
+
+        it("preserves a start-time preflight classification instead of reducing it to a generic conflict", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 409,
+                body: {
+                    error: "This game cannot enumerate outcomes.",
+                    preflight: {status: "unsupported"},
+                },
+            }));
+
+            await expect(startOutcomeLibraryGeneration(fetchImpl, {generation: "exact", preflightToken: "unsupported"}))
+                .rejects.toMatchObject({outcomeStatus: "unsupported", message: "This game cannot enumerate outcomes."});
+        });
+
+        it("preserves the shared exact-cap sampled-opt-in outcome for either start route", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 409,
+                body: {
+                    status: "requires-bounded",
+                    error: "This outcome space exceeds the exact-generation cap. Select sampled or bounded coverage with a sample size and deterministic seed.",
+                },
+            }));
+
+            await expect(generateOutcomeLibrary(fetchImpl, {generation: "exact"}))
+                .rejects.toMatchObject({outcomeStatus: "requires-bounded"});
+            await expect(startOutcomeLibraryGeneration(fetchImpl, {generation: "exact", preflightToken: "exact-cap"}))
+                .rejects.toMatchObject({outcomeStatus: "requires-bounded"});
+        });
+
+        it("returns a typed invalid preflight response with its server diagnostic", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 400,
+                body: {status: "invalid", error: '"maxOutcomeSpaceSize" must be a positive integer.'},
+            }));
+
+            await expect(estimateOutcomeLibraryGeneration(fetchImpl, {maxOutcomeSpaceSize: "0"}))
+                .resolves.toEqual({status: "invalid", error: '"maxOutcomeSpaceSize" must be a positive integer.'});
+        });
+    });
+
     describe("runDeployment", () => {
         it("preserves a planner-terminal deployment result instead of turning it into a transport error", async () => {
             const terminal = {

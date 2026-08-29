@@ -11,6 +11,9 @@ import {
     ProjectResolving,
     ValidationIssue,
 } from "pokie";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 
 function createStubValidator(issues: ValidationIssue[]): GameBlueprintValidating & {calledWith?: unknown} {
@@ -146,6 +149,102 @@ describe("BuildCommand", () => {
 
         expect(builder.calledWith).toEqual({source: project, destinationPath: "new-outcomes"});
         expect(builder.lifecycle?.outcomeLibraryGeneration).toEqual({exact: true});
+    });
+
+    it("routes an explicit seeded sample without replacing it with the managed automatic policy", async () => {
+        const project: PokieProject = {
+            type: "outcomeLibrary",
+            rootPath: "outcomes",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+            provenance: "test fixture",
+        } as PokieProject;
+        const builder = stubBuilder("outcomeLibrary", {outputPath: "/fake/outcomes"});
+        const command = new BuildCommand("1.3.0", undefined, undefined, stubProjectResolver(project), registryWithBuilders(builder));
+
+        await expect(command.run(["outcomes", "--target", "outcomeLibrary", "--sample", "17", "--seed", "explicit-seed", "--out", "new-outcomes"])).resolves.toBe(0);
+
+        expect(builder.lifecycle?.outcomeLibraryGeneration).toEqual({sampled: {sampleSize: BigInt(17), seed: "explicit-seed"}});
+    });
+
+    it("reconstructs automatic and explicit managed policies through the real CLI, reuses only a compatible automatic library, and regenerates after source drift", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-command-managed-policy-"));
+        const blueprintPath = path.join(directory, "managed.blueprint.json");
+        const automaticOutput = path.join(directory, "automatic");
+        const automaticReuseOutput = path.join(directory, "automatic-reuse-request");
+        const explicitOutput = path.join(directory, "explicit");
+        const explicitReuseOutput = path.join(directory, "explicit-reuse-request");
+        const staleOutput = path.join(directory, "stale");
+        const explicitStaleOutput = path.join(directory, "explicit-stale");
+        // 20^4 exceeds the managed exact cap and therefore exercises the
+        // versioned automatic 50,000/5,000 bounded-coverage policy.
+        const writeBlueprint = (version: string): void => fs.writeFileSync(blueprintPath, JSON.stringify({
+            manifest: {id: "build-command-managed-policy", name: "Build Command Managed Policy", version},
+            reels: 4, rows: 1, symbols: ["A"], paytable: {A: {3: 1, 4: 2}},
+            reelStrips: Array.from({length: 4}, () => Array.from({length: 20}, () => "A")), availableBets: [1],
+        }));
+        const generatorOf = (bundleDir: string): Record<string, unknown> => {
+            const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, "manifest.json"), "utf8")) as {modes: Array<{generator: Record<string, unknown>}>};
+            return manifest.modes[0].generator;
+        };
+
+        writeBlueprint("1.0.0");
+        try {
+            const command = new BuildCommand("1.3.0");
+            await expect(command.run([blueprintPath, "--target", "outcomeLibrary", "--out", automaticOutput])).resolves.toBe(0);
+            expect(generatorOf(automaticOutput)).toMatchObject({
+                strategy: "bounded-coverage", sampledRawCount: 5000, maxExactOutcomeSpaceSize: 50000,
+                compatibilityPolicyVersion: "managed-v1",
+            });
+
+            // A second automatic command does not reselect a fresh default:
+            // it reconstructs the persisted policy and returns the compatible
+            // managed publication even though the caller supplied another --out.
+            logSpy.mockClear();
+            await expect(command.run([blueprintPath, "--target", "outcomeLibrary", "--out", automaticReuseOutput])).resolves.toBe(0);
+            expect(logSpy.mock.calls.map(([message]) => message).join("\n")).toMatch(/reused compatible Outcome Project/i);
+
+            await expect(command.run([
+                blueprintPath, "--target", "outcomeLibrary", "--sample", "7", "--seed", "build-command-explicit", "--out", explicitOutput,
+            ])).resolves.toBe(0);
+            expect(generatorOf(explicitOutput)).toMatchObject({
+                strategy: "bounded-coverage", sampledRawCount: 7, seed: "build-command-explicit",
+                maxExactOutcomeSpaceSize: 20_000_000,
+            });
+            expect(generatorOf(explicitOutput).compatibilityPolicyVersion).toBeUndefined();
+
+            // The explicit request has a distinct compatibility key from the
+            // automatic policy, but it must reconstruct and reuse that exact
+            // key just as reliably through the public CLI.
+            logSpy.mockClear();
+            await expect(command.run([
+                blueprintPath, "--target", "outcomeLibrary", "--sample", "7", "--seed", "build-command-explicit", "--out", explicitReuseOutput,
+            ])).resolves.toBe(0);
+            expect(logSpy.mock.calls.map(([message]) => message).join("\n")).toMatch(/reused compatible Outcome Project/i);
+
+            // Changing package configuration makes the prior managed policy
+            // stale. The public command must materialize fresh provenance, not
+            // reuse the v1 result merely because its strategy remains sampled.
+            writeBlueprint("2.0.0");
+            logSpy.mockClear();
+            await expect(command.run([blueprintPath, "--target", "outcomeLibrary", "--out", staleOutput])).resolves.toBe(0);
+            expect(logSpy.mock.calls.map(([message]) => message).join("\n")).not.toMatch(/reused compatible Outcome Project/i);
+            expect(generatorOf(staleOutput)).toMatchObject({
+                game: {id: "build-command-managed-policy", version: "2.0.0"},
+                strategy: "bounded-coverage", maxExactOutcomeSpaceSize: 50000,
+                compatibilityPolicyVersion: "managed-v1",
+            });
+            logSpy.mockClear();
+            await expect(command.run([
+                blueprintPath, "--target", "outcomeLibrary", "--sample", "7", "--seed", "build-command-explicit", "--out", explicitStaleOutput,
+            ])).resolves.toBe(0);
+            expect(logSpy.mock.calls.map(([message]) => message).join("\n")).not.toMatch(/reused compatible Outcome Project/i);
+            expect(generatorOf(explicitStaleOutput)).toMatchObject({
+                game: {id: "build-command-managed-policy", version: "2.0.0"},
+                strategy: "bounded-coverage", sampledRawCount: 7, seed: "build-command-explicit",
+            });
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
     });
 
     it("reports the usage error for a missing/empty <project> positional", async () => {

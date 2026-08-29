@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, OutcomeLibraryGeneratorDiagnostics, ValidationIssue} from "pokie";
+import type {ArtifactConversionPlan, ExactEnumerationCheckpoint, OutcomeLibraryGeneratorDiagnostics, ValidationIssue} from "pokie";
 import type {OutcomeLibrarySelector} from "./OutcomeLibrarySelector.js";
 
 // The Studio Generate step's own result: unlike "pokie outcomelibrary generate" (which only ever writes a
@@ -39,6 +39,11 @@ export type StudioOutcomeLibraryGenerateResultView =
     | {readonly status: "unsupported"; readonly error: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "conflict"; readonly error: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "generation-error"; readonly code: string; readonly error: string; readonly plan: ArtifactConversionPlan}
+    // A cancellation is an expected lifecycle result, not a generation error.
+    // Only an exact sweep has a safe position/accumulator that may be resumed.
+    // Bounded coverage can be retried with the same request, but must never
+    // expose its partial sample as an ExactEnumerationCheckpoint.
+    | {readonly status: "cancelled"; readonly processedRawIndex: bigint; readonly progressTotal: bigint; readonly checkpoint?: ExactEnumerationCheckpoint; readonly recovery: string; readonly plan: ArtifactConversionPlan}
     // The write itself failed validation (e.g. this mode's provenance doesn't match another mode already
     // in the bundle) -- the generated outcomes were never persisted, mirroring the writer's own "no
     // partial bundle" guarantee.

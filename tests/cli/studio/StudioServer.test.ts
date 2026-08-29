@@ -1,6 +1,7 @@
 import {
     buildRoundArtifact,
     buildWeightedOutcomeLibrary,
+    computeWeightedOutcomeLibraryHash,
     computeGameBlueprintHash,
     ExternalArtifactGenerationResult,
     ExternalDeploymentProjectedModeInput,
@@ -12,6 +13,7 @@ import {
     loadPokieGame,
     ManagedOutcomeProjectService,
     OutcomeLibraryBundleWriter,
+    OutcomeLibraryBundleReader,
     PokieGame,
     PokieGameManifest,
     PokieGamePackageValidationReport,
@@ -37,6 +39,8 @@ import type {IncomingMessage} from "http";
 import os from "os";
 import path from "path";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
+import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
+import {OutcomeLibraryCommand} from "../../../cli/commands/OutcomeLibraryCommand.js";
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
@@ -57,6 +61,7 @@ import {InMemoryStudioSimulationRepository} from "../../../cli/studio/simulation
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {StudioOutcomeLibraryGenerateService} from "../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
 import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "../../fairness/FairnessRoundProofTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
@@ -107,6 +112,38 @@ async function post(url: string, body?: unknown): Promise<{status: number; body:
 async function del(url: string): Promise<{status: number; body: unknown}> {
     const response = await fetch(url, {method: "DELETE"});
     return {status: response.status, body: await response.json()};
+}
+
+async function waitForOutcomeLibraryJob(baseUrl: string, id: string): Promise<Record<string, unknown>> {
+    for (let attempt = 0; attempt < 600; attempt++) {
+        const response = await get(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${id}`);
+        const job = response.body as Record<string, unknown>;
+        if (job.status !== "queued" && job.status !== "running") return job;
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 10);
+        });
+    }
+    throw new Error(`Outcome Library job ${id} did not finish.`);
+}
+
+async function waitForOutcomeLibraryJobProgress(baseUrl: string, id: string): Promise<Record<string, unknown>> {
+    for (let attempt = 0; attempt < 100; attempt++) {
+        const response = await get(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${id}`);
+        const job = response.body as Record<string, unknown>;
+        if (job.progress !== undefined) return job;
+        if (job.status !== "queued" && job.status !== "running") {
+            throw new Error(`Outcome Library job ${id} completed before reporting observable progress.`);
+        }
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 10);
+        });
+    }
+    throw new Error(`Outcome Library job ${id} did not report observable progress.`);
+}
+
+function expectNoOutcomeLibraryPublication(projectRoot: string, outDir: string): void {
+    expect(fs.existsSync(path.join(projectRoot, outDir))).toBe(false);
+    expect(fs.readdirSync(projectRoot).filter((entry) => entry.startsWith(`${outDir}.staging-`))).toEqual([]);
 }
 
 // Same fakes as materializeRuntimePackage.ts's own boundary tests (see
@@ -391,6 +428,464 @@ describe("StudioServer", () => {
 
         expect(status).toBe(200);
         expect(body).toEqual({mode: "home"});
+    });
+
+    it("serves the Outcome Library preflight and durable job lifecycle over HTTP, including retained direct POST compatibility", async () => {
+        // This is deliberately an HTTP-level contract test.  The domain service has
+        // its own exhaustive producer tests; here we prove Studio does not expose a
+        // second, synchronous or bigint-unsafe transport path around its lifecycle.
+        await server.stop();
+        const projectRoot = fs.mkdtempSync(path.join(studioRoot, "outcome-library-project-"));
+        const plan = {status: "unavailable", source: {kind: "unknown", capabilities: []}, target: {kind: "outcomeLibrary", capabilities: []}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "none", losses: [], oneWay: false}} as const;
+        let issuedToken = 0;
+        const binding = {
+            requestKey: expect.any(String), gameId: "http-slot", gameVersion: "1.0.0", configHash: "config-http", destination: path.join(projectRoot, "outcomelibrary"),
+        };
+        const outcomeService = {
+            estimate: jest.fn((_root: string, request: {readonly mode?: string}) => Promise.resolve({
+                status: "ok" as const,
+                game: {id: "http-slot", name: "HTTP Slot", version: "1.0.0"}, reelsNumber: 2, reelsSymbolsNumber: 2, reelSizes: [2, 2],
+                totalOutcomeSpaceSize: 4, maxOutcomeSpaceSize: 20_000_000, strategy: "exact" as const, expectedRawWork: 4, warnings: [], requiresBounded: request.mode === "cap",
+                defaults: {compatibilityVersion: "v1", maxExactOutcomeSpaceSize: 20_000_000, boundedSample: {sampleSize: 10_000, seed: "seed"}}, plan, preflightToken: request.mode === "cap" ? "cap-token" : `http-token-${++issuedToken}`,
+            })),
+            getPreflightBinding: jest.fn((token?: string) => {
+                let requestKey = JSON.stringify({generation: "exact"});
+                if (token === "http-token-2") requestKey = JSON.stringify({outDir: "outcomelibrary", generation: "exact"});
+                if (token === "http-token-3") requestKey = JSON.stringify({mode: "failure", generation: "exact"});
+                if (token === "http-token-4") requestKey = JSON.stringify({mode: "cancel", generation: "exact"});
+                return {
+                    ...binding,
+                    requestKey,
+                    // A token is server-owned, but it still has to enforce the
+                    // same sampled-opt-in eligibility as the compatibility route.
+                    ...(token === "bounded-token" ? {requiresBounded: true} : {}),
+                };
+            }),
+            validatePreflightBinding: jest.fn((): Promise<string | undefined> => Promise.resolve(undefined)),
+            rebindCheckpointRequest: jest.fn((_root: string, request: object) => Promise.resolve({request: {...request, preflightToken: `resume-token-${++issuedToken}`}})),
+            generate: jest.fn(async (root: string, request: {readonly mode?: string; readonly signal?: AbortSignal; readonly resumeFrom?: unknown}) => {
+                if (request.mode === "failure") return {status: "generation-error" as const, code: "weighted-outcome-library-generation-unsupported", error: "Enumeration is unsupported.", plan};
+                if (request.mode === "cancel" && request.resumeFrom === undefined) {
+                    await new Promise<void>((resolve) => {
+                        request.signal?.addEventListener("abort", () => {
+                            resolve();
+                        }, {once: true});
+                    });
+                    return {
+                        status: "cancelled" as const, processedRawIndex: BigInt(2), progressTotal: BigInt(4),
+                        checkpoint: {processedRawIndex: BigInt(2), progressTotal: BigInt(4), sourceEnumerationId: "http-source", grids: new Map()}, recovery: "resume", plan,
+                    };
+                }
+                return {
+                    status: "ok" as const, bundleDir: "outcomelibrary", files: [], warnings: [],
+                    mode: {modeName: "base", libraryId: "http-library", hash: "http-hash", outcomeCount: 1, totalWeight: 1, rtp: 1},
+                    generator: {} as never, coverage: 1, selector: {kind: "bundle" as const, bundleDir: "outcomelibrary", modeName: "base"}, plan,
+                };
+            }),
+        };
+        const createOutcomeLibraryServer = () => new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            homeService: new StudioHomeService("1.0.0"), blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0")),
+            initialContext: {mode: "project", projectRoot}, outcomeLibraryGenerateService: outcomeService as never,
+        });
+        const replaceServer = (nextServer: StudioServer): void => {
+            server = nextServer;
+        };
+        let outcomeServer = createOutcomeLibraryServer();
+        replaceServer(outcomeServer);
+        const address = await outcomeServer.start();
+        let outcomeBaseUrl = `http://${address.host}:${address.port}`;
+
+        const estimate = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/estimate`, {generation: "exact", outDir: "outcomelibrary"});
+        expect(estimate.status).toBe(200);
+        expect(estimate.body).toMatchObject({status: "ok", preflightToken: "http-token-1", strategy: "exact"});
+
+        // Transport validation is a preflight outcome too.  It must retain a
+        // stable status and diagnostic for the client recovery model instead
+        // of falling back to the server's generic `{error}` envelope.
+        expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/estimate`, {maxOutcomeSpaceSize: "0"}))
+            .toMatchObject({status: 400, body: {status: "invalid", error: expect.stringMatching(/positive integer/i)}});
+
+        // Both retained start routes share the same typed validation outcome;
+        // neither may fall back to an unclassified HTTP `{error}` envelope.
+        for (const route of ["generate", "generate/jobs"]) {
+            expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/${route}`, {generation: "sampled"}))
+                .toMatchObject({status: 400, body: {status: "invalid", error: expect.stringMatching(/requires a "sample"/i)}});
+        }
+
+        // A caller cannot turn a bounded-required preflight into an executable
+        // job simply by presenting its token.  This must match the no-token
+        // compatibility route's eligibility rule.
+        expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
+            generation: "exact", preflightToken: "bounded-token",
+        })).toMatchObject({
+            status: 409,
+            body: {
+                status: "requires-bounded",
+                error: expect.stringMatching(/exceeds the exact-generation cap/i),
+                preflight: {status: "ok", requiresBounded: true},
+            },
+        });
+
+        // The retained direct route makes its own shared preflight. A cap
+        // result must be the same typed sampled-opt-in outcome as a bound
+        // job-route start and must not create a lifecycle record.
+        const generatedBeforeDirectCap = outcomeService.generate.mock.calls.length;
+        expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate`, {
+            generation: "exact", mode: "cap",
+        })).toMatchObject({
+            status: 409,
+            body: {
+                status: "requires-bounded",
+                error: expect.stringMatching(/exceeds the exact-generation cap/i),
+                preflight: {status: "ok", requiresBounded: true},
+            },
+        });
+        expect(outcomeService.generate).toHaveBeenCalledTimes(generatedBeforeDirectCap);
+
+        // A supplied token binds the complete normalized request.  Each of
+        // these drift variants must be rejected at start, before the job
+        // service can expose a queued record or invoke generation.
+        for (const drift of [
+            {generation: "sampled", sample: {sampleSize: "2", seed: "drift"}},
+            {maxOutcomeSpaceSize: "9"},
+            {libraryId: "other-library"},
+            {outDir: "other-output"},
+        ]) {
+            const before = outcomeService.generate.mock.calls.length;
+            const response = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
+                generation: "exact", preflightToken: "http-token-1", ...drift,
+            });
+            expect(response).toMatchObject({status: 409, body: {status: "conflict", error: expect.stringMatching(/immutable preflight/i)}});
+            expect(outcomeService.generate).toHaveBeenCalledTimes(before);
+        }
+
+        // Source/configuration drift is also classified before a job exists;
+        // this represents the real service's re-estimated source snapshot.
+        outcomeService.validatePreflightBinding.mockResolvedValueOnce("The source changed after preflight.");
+        const sourceDrift = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
+            generation: "exact", preflightToken: "http-token-1",
+        });
+        expect(sourceDrift).toMatchObject({status: 409, body: {status: "conflict", error: expect.stringMatching(/source changed/i)}});
+        expect(outcomeService.generate).not.toHaveBeenCalled();
+
+        // The legacy URL still creates the pollable job and obtains its server
+        // binding itself, rather than performing an unbound synchronous run.
+        const created = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate`, {generation: "exact", outDir: "outcomelibrary"});
+        expect(created.status).toBe(202);
+        const jobId = (created.body as {job: {id: string}}).job.id;
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        const completed = await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${jobId}`);
+        expect(completed).toMatchObject({status: 200, body: {id: jobId, status: "completed", result: {status: "ok"}}});
+
+        const failed = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {generation: "exact", mode: "failure"});
+        const failedId = (failed.body as {job: {id: string}}).job.id;
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${failedId}`)).toMatchObject({status: 200, body: {status: "failed", result: {status: "generation-error", code: "weighted-outcome-library-generation-unsupported"}}});
+
+        const cancelled = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {generation: "exact", mode: "cancel"});
+        const cancelledId = (cancelled.body as {job: {id: string}}).job.id;
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${cancelledId}/cancel`)).toMatchObject({status: 200});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        const checkpointed = await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${cancelledId}`);
+        expect(checkpointed).toMatchObject({status: 200, body: {status: "cancelled", result: {status: "cancelled", processedRawIndex: "2", checkpoint: {id: cancelledId}}}});
+        expect(fs.existsSync(path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${cancelledId}.json`))).toBe(true);
+
+        // Checkpoint discovery is durable: a new HTTP server gets the same
+        // cancellation recovery record instead of depending on its old job map.
+        await outcomeServer.stop();
+        outcomeServer = createOutcomeLibraryServer();
+        replaceServer(outcomeServer);
+        const restartedAddress = await outcomeServer.start();
+        outcomeBaseUrl = `http://${restartedAddress.host}:${restartedAddress.port}`;
+        expect(await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`)).toMatchObject({status: 200, body: {jobs: [expect.objectContaining({id: cancelledId, status: "cancelled"})]}});
+
+        // Resume rebinding shares the destination owner with ordinary starts.
+        // A collision is an actionable Outcome Library conflict, never an
+        // untyped server exception from job-service start().
+        const active = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {generation: "exact", mode: "cancel", preflightToken: "http-token-4"});
+        const activeId = (active.body as {job: {id: string}}).job.id;
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${cancelledId}/resume`)).toMatchObject({
+            status: 409,
+            body: {status: "conflict", error: expect.stringMatching(/already active/i)},
+        });
+        await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${activeId}/cancel`);
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        const resumed = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${cancelledId}/resume`);
+        expect(resumed).toMatchObject({status: 202, body: {status: "created", job: {id: cancelledId}}});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${cancelledId}`)).toMatchObject({status: 200, body: {status: "completed", result: {status: "ok"}}});
+        expect(fs.existsSync(path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${cancelledId}.json`))).toBe(false);
+        expect(outcomeService.rebindCheckpointRequest).toHaveBeenCalled();
+    });
+
+    it("runs both Outcome Library HTTP start routes against a real generated package and rejects a bound destination drift", async () => {
+        await server.stop();
+        const projectRoot = path.join(studioRoot, "real-outcome-library-package");
+        const sampledProjectRoot = path.join(studioRoot, "real-sampled-outcome-library-package");
+        const blueprintPath = path.join(studioRoot, "real-outcome-library.blueprint.json");
+        fs.writeFileSync(blueprintPath, JSON.stringify({
+            manifest: {id: "real-http-slot", name: "Real HTTP Slot", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
+            paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
+        }));
+        expect(await new BuildCommand("1.0.0").run([blueprintPath, "--target", "tsPackage", "--out", projectRoot])).toBe(0);
+        expect(await new BuildCommand("1.0.0").run([blueprintPath, "--target", "tsPackage", "--out", sampledProjectRoot])).toBe(0);
+
+        const replaceServer = (nextServer: StudioServer): void => {
+            server = nextServer;
+        };
+        replaceServer(new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            homeService: new StudioHomeService("1.0.0", undefined, loadPokieGame),
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadPokieGame)),
+            loadGame: loadPokieGame,
+            initialContext: {mode: "project", projectRoot},
+        }));
+        const address = await server.start();
+        let realBaseUrl = `http://${address.host}:${address.port}`;
+
+        // The retained direct URL deliberately supplies no token: it must still
+        // create a durable job through the real service's server-bound preflight.
+        const direct = await post(`${realBaseUrl}/api/project/outcome-libraries/generate`, {
+            generation: "exact", maxOutcomeSpaceSize: "50000", libraryId: "http-exact",
+        });
+        expect(direct).toMatchObject({status: 202, body: {status: "created"}});
+        const exactJob = await waitForOutcomeLibraryJob(realBaseUrl, (direct.body as {job: {id: string}}).job.id);
+        expect(exactJob).toMatchObject({status: "completed", result: {status: "ok", mode: {libraryId: "http-exact"}, generator: {strategy: "exact"}}});
+
+        // The sampled policy is a fresh real package, rather than an overwrite
+        // of the exact bundle. This preserves both producers' full provenance
+        // and also exercises restart with durable server-owned lifecycle state.
+        await server.stop();
+        replaceServer(new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            homeService: new StudioHomeService("1.0.0", undefined, loadPokieGame),
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadPokieGame)),
+            loadGame: loadPokieGame,
+            initialContext: {mode: "project", projectRoot: sampledProjectRoot},
+        }));
+        const sampledAddress = await server.start();
+        realBaseUrl = `http://${sampledAddress.host}:${sampledAddress.port}`;
+        const sampledRequest = {
+            generation: "sampled", maxOutcomeSpaceSize: "50000", libraryId: "http-sampled",
+            sample: {sampleSize: "19", seed: "http-parity-seed"},
+        };
+        const sampledPreflight = await post(`${realBaseUrl}/api/project/outcome-libraries/generate/estimate`, sampledRequest);
+        expect(sampledPreflight).toMatchObject({status: 200, body: {status: "ok", strategy: "bounded-coverage", sampleSize: 19, seed: "http-parity-seed", requiresBounded: false}});
+        const jobRoute = await post(`${realBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
+            ...sampledRequest,
+            preflightToken: (sampledPreflight.body as {preflightToken: string}).preflightToken,
+        });
+        expect(jobRoute.status).toBe(202);
+        const sampledJob = await waitForOutcomeLibraryJob(realBaseUrl, (jobRoute.body as {job: {id: string}}).job.id);
+        expect(sampledJob).toMatchObject({status: "completed", result: {status: "ok", mode: {libraryId: "http-sampled"}, generator: {strategy: "bounded-coverage", seed: "http-parity-seed"}}});
+        expect(await get(`${realBaseUrl}/api/project/outcome-libraries/registry`)).toMatchObject({status: 200, body: {status: "ok", buildStatus: "compatible", modes: expect.arrayContaining([expect.objectContaining({buildStatus: "compatible"})])}});
+
+        // A preflight's destination is immutable. The public job route may
+        // accept the request envelope, but the real service must publish no
+        // output when the displayed destination has been changed underneath it.
+        const driftPreflight = await post(`${realBaseUrl}/api/project/outcome-libraries/generate/estimate`, {generation: "exact", maxOutcomeSpaceSize: "50000"});
+        const drift = await post(`${realBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
+            generation: "exact", maxOutcomeSpaceSize: "50000", outDir: "changed-destination", preflightToken: (driftPreflight.body as {preflightToken: string}).preflightToken,
+        });
+        expect(drift).toMatchObject({status: 409, body: {status: "conflict", error: expect.stringMatching(/destination|preflight/i)}});
+        expect(fs.existsSync(path.join(sampledProjectRoot, "changed-destination"))).toBe(false);
+    });
+
+    it("keeps real Outcome Library HTTP lifecycle cancellation, restart, source drift, and diagnostics cleanup-safe", async () => {
+        await server.stop();
+        const lifecycleRoot = path.join(studioRoot, "real-outcome-library-lifecycle-package");
+        const baselineRoot = path.join(studioRoot, "real-outcome-library-uninterrupted-package");
+        const stopRoot = path.join(studioRoot, "real-outcome-library-stop-package");
+        const closeRoot = path.join(studioRoot, "real-outcome-library-close-package");
+        const switchRoot = path.join(studioRoot, "real-outcome-library-switch-package");
+        const capRoot = path.join(studioRoot, "real-outcome-library-cap-package");
+        const sourceDriftRoot = path.join(studioRoot, "real-outcome-library-source-drift-package");
+        const unsupportedRoot = path.join(studioRoot, "real-outcome-library-unsupported-package");
+        const blueprintPath = path.join(studioRoot, "real-outcome-library-lifecycle.blueprint.json");
+        const longStrip = Array.from({length: 1000}, (_unused, index) => (index % 2 === 0 ? "A" : "B"));
+        fs.writeFileSync(blueprintPath, JSON.stringify({
+            manifest: {id: "real-http-lifecycle-slot", name: "Real HTTP Lifecycle Slot", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
+            paytable: {A: {2: 5}}, reelStrips: [longStrip, longStrip], availableBets: [1],
+        }));
+        expect(await new BuildCommand("1.0.0").run([blueprintPath, "--target", "tsPackage", "--out", lifecycleRoot])).toBe(0);
+        // The copies retain a real generated entry module.  They give each
+        // lifecycle case an isolated output/checkpoint namespace, rather than
+        // using cleanup to hide publication from a preceding assertion.
+        fs.cpSync(lifecycleRoot, baselineRoot, {recursive: true});
+        fs.cpSync(lifecycleRoot, stopRoot, {recursive: true});
+        fs.cpSync(lifecycleRoot, closeRoot, {recursive: true});
+        fs.cpSync(lifecycleRoot, switchRoot, {recursive: true});
+        fs.cpSync(lifecycleRoot, capRoot, {recursive: true});
+        fs.cpSync(lifecycleRoot, sourceDriftRoot, {recursive: true});
+        fs.cpSync(lifecycleRoot, unsupportedRoot, {recursive: true});
+
+        const createRealServer = (projectRoot: string): StudioServer => new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            homeService: new StudioHomeService("1.0.0", undefined, loadPokieGame),
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadPokieGame)),
+            loadGame: loadPokieGame,
+            initialContext: {mode: "project", projectRoot},
+        });
+        const startServer = async (projectRoot: string): Promise<string> => {
+            server = createRealServer(projectRoot);
+            const address = await server.start();
+            return `http://${address.host}:${address.port}`;
+        };
+        const startExactJob = async (url: string, libraryId: string): Promise<string> => {
+            const request = {generation: "exact", maxOutcomeSpaceSize: "2000000", libraryId};
+            const preflight = await post(`${url}/api/project/outcome-libraries/generate/estimate`, request);
+            expect(preflight).toMatchObject({status: 200, body: {status: "ok", strategy: "exact", requiresBounded: false, expectedRawWork: 1_000_000}});
+            const started = await post(`${url}/api/project/outcome-libraries/generate/jobs`, {
+                ...request, preflightToken: (preflight.body as {preflightToken: string}).preflightToken,
+            });
+            expect(started).toMatchObject({status: 202, body: {status: "created"}});
+            return (started.body as {job: {id: string}}).job.id;
+        };
+
+        let lifecycleBaseUrl = await startServer(lifecycleRoot);
+        const resumableId = await startExactJob(lifecycleBaseUrl, "resumed-http-library");
+        const observableProgress = await waitForOutcomeLibraryJobProgress(lifecycleBaseUrl, resumableId);
+        expect(observableProgress).toMatchObject({status: "running", progress: {progressTotal: "1000000"}});
+        expect(Number((observableProgress.progress as {processedRawIndex: string}).processedRawIndex)).toBeGreaterThan(0);
+        expect(await post(`${lifecycleBaseUrl}/api/project/outcome-libraries/generate/jobs/${resumableId}/cancel`)).toMatchObject({status: 200});
+        const cancelled = await waitForOutcomeLibraryJob(lifecycleBaseUrl, resumableId);
+        expect(cancelled).toMatchObject({
+            status: "cancelled",
+            result: {status: "cancelled", checkpoint: {id: resumableId}, progressTotal: "1000000"},
+        });
+        expect(Number(((cancelled.result as {processedRawIndex: string}).processedRawIndex))).toBeGreaterThan(0);
+        expectNoOutcomeLibraryPublication(lifecycleRoot, "outcomelibrary");
+        const checkpointPath = path.join(lifecycleRoot, ".pokie", "outcome-library-checkpoints", `${resumableId}.json`);
+        expect(fs.existsSync(checkpointPath)).toBe(true);
+
+        // A fresh production Studio server discovers the persisted exact
+        // checkpoint, rebinds its source/destination, and resumes it through
+        // the retained HTTP lifecycle rather than an in-memory test seam.
+        await server.stop();
+        lifecycleBaseUrl = await startServer(lifecycleRoot);
+        const recoveredJobs = await get(`${lifecycleBaseUrl}/api/project/outcome-libraries/generate/jobs`);
+        expect(recoveredJobs.status).toBe(200);
+        expect((recoveredJobs.body as {jobs: unknown[]}).jobs).toEqual(expect.arrayContaining([
+            expect.objectContaining({id: resumableId, status: "cancelled", result: expect.objectContaining({checkpoint: expect.objectContaining({id: resumableId})})}),
+        ]));
+        const resumed = await post(`${lifecycleBaseUrl}/api/project/outcome-libraries/generate/jobs/${resumableId}/resume`);
+        expect(resumed).toMatchObject({status: 202, body: {status: "created", job: {id: resumableId}}});
+        const resumedTerminal = await waitForOutcomeLibraryJob(lifecycleBaseUrl, resumableId);
+        expect(resumedTerminal).toMatchObject({status: "completed", result: {status: "ok", mode: {libraryId: "resumed-http-library"}, generator: {strategy: "exact"}}});
+        expect(fs.existsSync(checkpointPath)).toBe(false);
+
+        const uninterrupted = new StudioOutcomeLibraryGenerateService("1.0.0");
+        const uninterruptedRequest = {generation: "exact" as const, maxOutcomeSpaceSize: BigInt(2_000_000), libraryId: "resumed-http-library"};
+        const uninterruptedPreflight = await uninterrupted.estimate(baselineRoot, uninterruptedRequest);
+        if (uninterruptedPreflight.status !== "ok") throw new Error("Expected a real uninterrupted exact preflight.");
+        const uninterruptedResult = await uninterrupted.generate(baselineRoot, {...uninterruptedRequest, preflightToken: uninterruptedPreflight.preflightToken});
+        if (uninterruptedResult.status !== "ok") throw new Error("Expected uninterrupted exact generation to complete.");
+        const reader = new OutcomeLibraryBundleReader();
+        const resumedLibrary = await reader.readLibrary(path.join(lifecycleRoot, "outcomelibrary"), "base");
+        const uninterruptedLibrary = await reader.readLibrary(path.join(baselineRoot, "outcomelibrary"), "base");
+        expect(resumedLibrary).toEqual(uninterruptedLibrary);
+        expect(computeWeightedOutcomeLibraryHash(resumedLibrary)).toBe(computeWeightedOutcomeLibraryHash(uninterruptedLibrary));
+        expect((resumedTerminal.result as {mode: {hash: string}}).mode.hash).toBe(uninterruptedResult.mode.hash);
+
+        // stop(), close, and an actual project switch must wait for the same
+        // real generator to observe cancellation and relinquish publication.
+        await server.stop();
+        lifecycleBaseUrl = await startServer(stopRoot);
+        const stoppedId = await startExactJob(lifecycleBaseUrl, "stopped-http-library");
+        await waitForOutcomeLibraryJobProgress(lifecycleBaseUrl, stoppedId);
+        await server.stop();
+        expectNoOutcomeLibraryPublication(stopRoot, "outcomelibrary");
+        expect(fs.existsSync(path.join(stopRoot, ".pokie", "outcome-library-checkpoints", `${stoppedId}.json`))).toBe(true);
+
+        lifecycleBaseUrl = await startServer(closeRoot);
+        const closedId = await startExactJob(lifecycleBaseUrl, "closed-http-library");
+        await waitForOutcomeLibraryJobProgress(lifecycleBaseUrl, closedId);
+        expect(await post(`${lifecycleBaseUrl}/api/projects/close`)).toEqual({status: 200, body: {context: {mode: "home"}}});
+        expectNoOutcomeLibraryPublication(closeRoot, "outcomelibrary");
+        expect(fs.existsSync(path.join(closeRoot, ".pokie", "outcome-library-checkpoints", `${closedId}.json`))).toBe(true);
+
+        expect((await post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: switchRoot})).status).toBe(200);
+        const switchedId = await startExactJob(lifecycleBaseUrl, "switched-http-library");
+        await waitForOutcomeLibraryJobProgress(lifecycleBaseUrl, switchedId);
+        expect((await post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: baselineRoot})).status).toBe(200);
+        expectNoOutcomeLibraryPublication(switchRoot, "outcomelibrary");
+        expect(fs.existsSync(path.join(switchRoot, ".pokie", "outcome-library-checkpoints", `${switchedId}.json`))).toBe(true);
+
+        await server.stop();
+        const sourceBaseUrl = await startServer(sourceDriftRoot);
+        const sourceRequest = {generation: "exact", maxOutcomeSpaceSize: "2000000", libraryId: "source-drift-http-library"};
+        const sourcePreflight = await post(`${sourceBaseUrl}/api/project/outcome-libraries/generate/estimate`, sourceRequest);
+        expect(sourcePreflight).toMatchObject({status: 200, body: {status: "ok"}});
+        // This is the package's actual source/dist boundary: a changed source
+        // which has not been rebuilt must invalidate the preflight rather
+        // than allowing the old generated runtime to publish.
+        fs.appendFileSync(path.join(sourceDriftRoot, "src", "index.ts"), "\n// source changed after Studio preflight\n");
+        expect(await post(`${sourceBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
+            ...sourceRequest, preflightToken: (sourcePreflight.body as {preflightToken: string}).preflightToken,
+        })).toMatchObject({status: 409, body: {status: "conflict", error: expect.stringMatching(/source|configuration|changed/i)}});
+        expectNoOutcomeLibraryPublication(sourceDriftRoot, "outcomelibrary");
+
+        await server.stop();
+        const capBaseUrl = await startServer(capRoot);
+        const cliError = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            expect(await new OutcomeLibraryCommand("1.0.0").run([
+                "generate", capRoot, "--exact", "--max-outcome-space-size", "5", "--format", "json",
+            ])).toBe(1);
+            expect(cliError).toHaveBeenCalledWith(expect.stringMatching(/weighted-outcome-library-generation-space-exceeded/));
+        } finally {
+            cliError.mockRestore();
+        }
+        const cappedRequest = {generation: "exact", maxOutcomeSpaceSize: "5"};
+        const cappedPreflight = await post(`${capBaseUrl}/api/project/outcome-libraries/generate/estimate`, cappedRequest);
+        expect(cappedPreflight).toMatchObject({status: 200, body: {status: "ok", requiresBounded: true}});
+        for (const [route, body] of [
+            ["generate", cappedRequest],
+            ["generate/jobs", {...cappedRequest, preflightToken: (cappedPreflight.body as {preflightToken: string}).preflightToken}],
+        ] as const) {
+            expect(await post(`${capBaseUrl}/api/project/outcome-libraries/${route}`, body)).toMatchObject({
+                status: 409,
+                body: {status: "requires-bounded", error: expect.stringMatching(/exceeds the exact-generation cap/i)},
+            });
+        }
+        expectNoOutcomeLibraryPublication(capRoot, "outcomelibrary");
+
+        await server.stop();
+        const unsupportedEntry = path.join(unsupportedRoot, "dist", "index.js");
+        fs.writeFileSync(unsupportedEntry, fs.readFileSync(unsupportedEntry, "utf8").replace(/createExactEnumerationSession/g, "createUnsupportedEnumerationSession"));
+        Reflect.deleteProperty(require.cache, unsupportedEntry);
+        const unsupportedCliError = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            expect(await new OutcomeLibraryCommand("1.0.0").run(["generate", unsupportedRoot, "--format", "json"])).toBe(1);
+            expect(unsupportedCliError).toHaveBeenCalledWith(expect.stringMatching(/weighted-outcome-library-generation-unsupported/));
+        } finally {
+            unsupportedCliError.mockRestore();
+        }
+        const unsupportedBaseUrl = await startServer(unsupportedRoot);
+        for (const route of ["generate", "generate/jobs"]) {
+            expect(await post(`${unsupportedBaseUrl}/api/project/outcome-libraries/${route}`, {generation: "exact"})).toMatchObject({
+                status: 409,
+                body: {status: "unsupported", error: expect.stringMatching(/cannot be exactly enumerated/i)},
+            });
+        }
+        expectNoOutcomeLibraryPublication(unsupportedRoot, "outcomelibrary");
     });
 
     it("reports safe diagnostics on GET /api/studio/diagnostics in home mode", async () => {

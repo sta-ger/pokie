@@ -1,3 +1,10 @@
+import {
+    type ExactEnumerationCheckpoint,
+    type OutcomeLibraryGenerationMode,
+    type OutcomeLibraryGenerationSample,
+    parsePositiveOutcomeLibraryGenerationDecimal,
+} from "pokie";
+
 export type OutcomeLibraryGenerateBoundedInput = {sampleSize?: unknown; seed?: unknown};
 export type OutcomeLibraryGenerateRequestInput = {
     mode?: unknown;
@@ -5,46 +12,95 @@ export type OutcomeLibraryGenerateRequestInput = {
     configHash?: unknown;
     libraryId?: unknown;
     maxOutcomeSpaceSize?: unknown;
+    // `generation`/`sample` are the domain vocabulary.  The two named sample
+    // forms remain accepted solely as compatibility aliases for saved Studio
+    // requests and the original CLI-shaped HTTP payload.
+    generation?: unknown;
+    sample?: OutcomeLibraryGenerateBoundedInput;
+    sampled?: OutcomeLibraryGenerateBoundedInput;
     bounded?: OutcomeLibraryGenerateBoundedInput;
     outDir?: unknown;
+    preflightToken?: unknown;
 };
 
-export type ValidatedOutcomeLibraryGenerateRequest = {
+/** Fields shared by the preflight and execution HTTP payloads.  Keep this as
+ * the single transport adapter: execution-only lifecycle fields belong in the
+ * thin wrapper below, never in a second copy of the common validation. */
+export type OutcomeLibraryGenerateTransportInput = Omit<OutcomeLibraryGenerateRequestInput, "preflightToken">;
+
+export type ValidatedOutcomeLibraryGenerateTransportRequest = {
     readonly mode?: string;
     readonly stake?: number;
     readonly configHash?: string;
     readonly libraryId?: string;
     readonly maxOutcomeSpaceSize?: bigint;
+    readonly generation?: OutcomeLibraryGenerationMode;
+    readonly sample?: OutcomeLibraryGenerationSample;
+    readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
     readonly bounded?: {readonly sampleSize: bigint; readonly seed: string};
     readonly outDir?: string;
 };
+
+export type ValidatedOutcomeLibraryGenerateRequest = ValidatedOutcomeLibraryGenerateTransportRequest & {
+    /** Opaque token returned by the Studio preflight; binds the displayed decision to execution. */
+    readonly preflightToken?: string;
+    /** In-process lifecycle hooks. HTTP adapters deliberately do not deserialize these opaque values. */
+    readonly resumeFrom?: ExactEnumerationCheckpoint;
+    readonly signal?: AbortSignal;
+    readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
+};
+
+/**
+ * The one HTTP compatibility adapter for the generation portion of Studio
+ * requests.  Estimate and execute intentionally call this same function so a
+ * saved `bounded`/`sampled` payload cannot select a different policy merely
+ * because it crossed a different endpoint.
+ */
+export function adaptOutcomeLibraryGenerationTransport(input: Pick<OutcomeLibraryGenerateRequestInput, "generation" | "sample" | "sampled" | "bounded">): {
+    readonly generation: OutcomeLibraryGenerationMode;
+    readonly sample?: OutcomeLibraryGenerationSample;
+} {
+    const bounded = validateOutcomeLibraryGenerationSample(input.bounded, "bounded");
+    const sampled = validateOutcomeLibraryGenerationSample(input.sampled, "sampled");
+    const sample = validateOutcomeLibraryGenerationSample(input.sample, "sample");
+    if ([bounded, sampled, sample].filter((entry) => entry !== undefined).length > 1) throw new Error('"sample", "bounded", and "sampled" cannot be combined.');
+    const requestedGeneration = validateGeneration(input.generation);
+    let compatibilityGeneration: OutcomeLibraryGenerationMode | undefined;
+    if (sampled !== undefined) compatibilityGeneration = "sampled";
+    else if (bounded !== undefined) compatibilityGeneration = "bounded";
+    if (requestedGeneration !== undefined && compatibilityGeneration !== undefined && requestedGeneration !== compatibilityGeneration) {
+        throw new Error('"generation" cannot conflict with legacy "bounded" or "sampled" input.');
+    }
+    const generation = requestedGeneration ?? compatibilityGeneration ?? "default";
+    const canonicalSample = sample ?? sampled ?? bounded;
+    if ((generation === "sampled" || generation === "bounded") && canonicalSample === undefined) {
+        throw new Error(`"generation" ${generation} requires a "sample" with "sampleSize" and "seed".`);
+    }
+    if ((generation === "default" || generation === "exact") && canonicalSample !== undefined) {
+        throw new Error(`"generation" ${generation} cannot be combined with sampled coverage.`);
+    }
+    return {...(canonicalSample === undefined ? {} : {sample: canonicalSample}), generation};
+}
 
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0;
 }
 
-// Same bigint-safe decimal-string convention as validateOutcomeLibraryGenerateEstimateRequest's own
-// parsePositiveBigIntField -- kept as a private, separately-named copy (not imported from that sibling
-// file) since neither validator has any other reason to depend on the other.
-function parsePositiveBigIntField(value: unknown, field: string): bigint {
-    if (typeof value !== "string" || !(/^[0-9]+$/).test(value)) {
-        throw new Error(`"${field}" must be a positive integer decimal string.`);
-    }
-    const parsed = BigInt(value);
-    if (parsed <= BigInt(0)) {
-        throw new Error(`"${field}" must be a positive integer decimal string.`);
-    }
-    return parsed;
+export function validateOutcomeLibraryGenerationSample(input: OutcomeLibraryGenerateBoundedInput | undefined, field: string): OutcomeLibraryGenerationSample | undefined {
+    if (input === undefined) return undefined;
+    if (typeof input !== "object" || input === null) throw new Error(`"${field}" must be an object with "sampleSize" and "seed" when present.`);
+    if (!isNonEmptyString(input.seed)) throw new Error(`"${field}.seed" must be a non-empty string.`);
+    return {sampleSize: parsePositiveOutcomeLibraryGenerationDecimal(input.sampleSize, `${field}.sampleSize`), seed: input.seed};
 }
 
-// The Studio Generate step's own request shape -- deliberately mirrors "pokie outcomelibrary generate"'s
-// own flags (see OutcomeLibraryCommand's GenerateCliOptions) rather than inventing a parallel vocabulary,
-// since both ultimately call the exact same generateExactWeightedOutcomeLibrary. Unlike the CLI, there is
-// no --dry-run/--resume/--progress here -- --estimate has its own endpoint (see
-// validateOutcomeLibraryGenerateEstimateRequest), and Studio's Generate step is a single synchronous
-// request/response, not a resumable/cancellable job (see StudioOutcomeLibraryGenerateService's own doc
-// comment for that scope decision).
-export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGenerateRequestInput): ValidatedOutcomeLibraryGenerateRequest {
+function validateGeneration(value: unknown): OutcomeLibraryGenerationMode | undefined {
+    if (value === undefined) return undefined;
+    if (value === "default" || value === "exact" || value === "sampled" || value === "bounded") return value;
+    throw new Error('"generation" must be "default", "exact", "sampled", or "bounded" when present.');
+}
+
+/** Parse every field that has identical meaning before and after preflight. */
+export function validateOutcomeLibraryGenerateTransportRequest(input: OutcomeLibraryGenerateTransportInput): ValidatedOutcomeLibraryGenerateTransportRequest {
     if (input.mode !== undefined && !isNonEmptyString(input.mode)) {
         throw new Error('"mode" must be a non-empty string when present.');
     }
@@ -60,25 +116,31 @@ export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGener
     if (input.outDir !== undefined && !isNonEmptyString(input.outDir)) {
         throw new Error('"outDir" must be a non-empty string when present.');
     }
-
-    let bounded: {sampleSize: bigint; seed: string} | undefined;
-    if (input.bounded !== undefined) {
-        if (typeof input.bounded !== "object" || input.bounded === null) {
-            throw new Error('"bounded" must be an object with "sampleSize" and "seed" when present.');
-        }
-        if (!isNonEmptyString(input.bounded.seed)) {
-            throw new Error('"bounded.seed" must be a non-empty string.');
-        }
-        bounded = {sampleSize: parsePositiveBigIntField(input.bounded.sampleSize, "bounded.sampleSize"), seed: input.bounded.seed};
-    }
+    const {generation, sample: canonicalSample} = adaptOutcomeLibraryGenerationTransport(input);
 
     return {
         ...(input.mode !== undefined ? {mode: input.mode as string} : {}),
         ...(input.stake !== undefined ? {stake: input.stake as number} : {}),
         ...(input.configHash !== undefined ? {configHash: input.configHash as string} : {}),
         ...(input.libraryId !== undefined ? {libraryId: input.libraryId as string} : {}),
-        ...(input.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: parsePositiveBigIntField(input.maxOutcomeSpaceSize, "maxOutcomeSpaceSize")} : {}),
-        ...(bounded !== undefined ? {bounded} : {}),
+        ...(input.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: parsePositiveOutcomeLibraryGenerationDecimal(input.maxOutcomeSpaceSize, "maxOutcomeSpaceSize")} : {}),
+        generation,
+        ...(canonicalSample !== undefined ? {sample: canonicalSample} : {}),
+        // Keep these aliases in the validated view while callers migrate. The
+        // service itself consumes only generation/sample below.
         ...(input.outDir !== undefined ? {outDir: input.outDir as string} : {}),
+    };
+}
+
+// The execution route adds only its opaque lifecycle capability to the shared
+// transport shape.  In-process resume/progress values are intentionally not
+// accepted from JSON.
+export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGenerateRequestInput): ValidatedOutcomeLibraryGenerateRequest {
+    if (input.preflightToken !== undefined && !isNonEmptyString(input.preflightToken)) {
+        throw new Error('"preflightToken" must be a non-empty string when present.');
+    }
+    return {
+        ...validateOutcomeLibraryGenerateTransportRequest(input),
+        ...(input.preflightToken === undefined ? {} : {preflightToken: input.preflightToken}),
     };
 }

@@ -63,7 +63,9 @@ import {StudioFsBrowseService} from "./home/StudioFsBrowseService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioNativePickerService} from "./home/StudioNativePickerService.js";
 import {validateNativeBrowseRequest, NativeBrowseRequestInput} from "./home/validateNativeBrowseRequest.js";
-import {StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
+import {generationRequestKey, StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
+import type {StudioOutcomeLibraryGenerateEstimateView} from "./outcomeLibrary/StudioOutcomeLibraryGenerateEstimateView.js";
+import {StudioOutcomeLibraryGenerateJobService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateJobService.js";
 import {
     validateOutcomeLibraryGenerateEstimateRequest,
     OutcomeLibraryGenerateEstimateRequestInput,
@@ -240,6 +242,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly playService: StudioPlayService;
     private readonly deploymentService: StudioDeploymentService;
     private readonly outcomeLibraryGenerateService: StudioOutcomeLibraryGenerateService;
+    private readonly outcomeLibraryGenerateJobService: StudioOutcomeLibraryGenerateJobService;
     private readonly certificationService: StudioCertificationService;
     private readonly fairnessService: StudioFairnessService;
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
@@ -327,6 +330,7 @@ export class StudioServer implements StudioServerHandling {
             options.playService ??
             new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion, undefined, undefined, undefined, this.roundRecorder);
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, loadCurrentProjectGame);
+        this.outcomeLibraryGenerateJobService = new StudioOutcomeLibraryGenerateJobService(this.outcomeLibraryGenerateService);
         this.deploymentService = options.deploymentService ?? StudioDeploymentService.withPokieVersion(
             this.pokieVersion,
             async (projectRoot) => {
@@ -440,7 +444,7 @@ export class StudioServer implements StudioServerHandling {
         });
     }
 
-    public stop(): Promise<void> {
+    public async stop(): Promise<void> {
         this.cancelRuntimePreparation();
         // Best-effort, synchronous, before anything else: a simulation's/replay's chunked run loop
         // (see StudioSimulationService.run()/StudioReplayExecutionService.run()) is scheduled
@@ -449,13 +453,18 @@ export class StudioServer implements StudioServerHandling {
         this.simulationService.cancelAll();
         this.replayService.cancelAll();
         this.artifactBuildService.cancelAll();
+        // Unlike the older fire-and-forget lifecycle services, an Outcome
+        // Library job owns an atomic publication destination and a persisted
+        // checkpoint.  Do not release Studio's server context until its
+        // cancellation has reached that cleanup-safe terminal state.
+        await this.outcomeLibraryGenerateJobService.cancelAll();
         // Never holds an OS port (see StudioPlayService's own doc comment), but still discards whatever
         // session was active.
         this.playService.reset();
         // Every recorded round, from any tab, refers to a session/game this shutdown is about to make
         // unreachable -- see StudioRoundRecorder.clearAll()'s own doc comment.
         this.roundRecorder.clearAll();
-        return new Promise((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
             if (!this.server) {
                 resolve();
                 return;
@@ -477,13 +486,14 @@ export class StudioServer implements StudioServerHandling {
     // you've switched away from is never *reachable* through this project's own routes again, but
     // "unreachable" isn't "stopped": without this, its chunk loop would keep running in the background
     // indefinitely, wasting CPU for a result nothing can ever read.
-    private cancelActiveJobsForOldProject(): void {
+    private async cancelActiveJobsForOldProject(): Promise<void> {
         if (this.currentContext.mode !== "project") {
             return;
         }
         this.simulationService.cancelActiveForProject(this.currentContext.projectRoot);
         this.replayService.cancelActiveForProject(this.currentContext.projectRoot);
         this.artifactBuildService.cancelActiveForProject(this.currentContext.projectRoot);
+        await this.outcomeLibraryGenerateJobService.cancelActiveForProject(this.currentContext.projectRoot);
     }
 
     // Every field is a primitive already safe to expose — no stack traces, env vars, tokens, or service
@@ -717,7 +727,7 @@ export class StudioServer implements StudioServerHandling {
             // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
             // project being left.
             this.roundRecorder.clearAll();
-            this.cancelActiveJobsForOldProject();
+            await this.cancelActiveJobsForOldProject();
             this.currentContext = {mode: "home"};
             this.projectDashboard = undefined;
             this.sendJson(res, 200, {context: this.currentContext});
@@ -858,7 +868,25 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "POST" && url.pathname === "/api/project/outcome-libraries/generate") {
-            await this.handleGenerateOutcomeLibrary(req, res);
+            // Kept as a compatibility URL, but it now creates the same pollable
+            // lifecycle job as the explicit /jobs entrypoint.
+            await this.handleStartOutcomeLibraryGeneration(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/outcome-libraries/generate/jobs") {
+            await this.handleStartOutcomeLibraryGeneration(req, res);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/outcome-libraries/generate/jobs") {
+            this.handleListOutcomeLibraryGenerationJobs(res);
+            return;
+        }
+
+        const outcomeLibraryJobRoute = (/^\/api\/project\/outcome-libraries\/generate\/jobs\/([^/]+)(?:\/(cancel|resume))?$/).exec(url.pathname);
+        if (outcomeLibraryJobRoute !== null) {
+            await this.handleOutcomeLibraryGenerationJob(method, res, outcomeLibraryJobRoute[1], outcomeLibraryJobRoute[2] as "cancel" | "resume" | undefined);
             return;
         }
 
@@ -1232,7 +1260,7 @@ export class StudioServer implements StudioServerHandling {
         // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
         // project being left.
         this.roundRecorder.clearAll();
-        this.cancelActiveJobsForOldProject();
+        await this.cancelActiveJobsForOldProject();
 
         // The explicit Home → Project Studio context transition: mutates this same running server's
         // state in place — no new HTTP server or Studio process is ever started (see the class-level
@@ -1938,7 +1966,8 @@ export class StudioServer implements StudioServerHandling {
 
     private async handleEstimateOutcomeLibraryGeneration(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
-            this.sendJson(res, 409, {error: "No active project."});
+            const result: StudioOutcomeLibraryGenerateEstimateView = {status: "conflict", error: "No active project."};
+            this.sendJson(res, 409, result);
             return;
         }
 
@@ -1947,29 +1976,137 @@ export class StudioServer implements StudioServerHandling {
         try {
             validated = validateOutcomeLibraryGenerateEstimateRequest((body ?? {}) as OutcomeLibraryGenerateEstimateRequestInput);
         } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            const result: StudioOutcomeLibraryGenerateEstimateView = {status: "invalid", error: error instanceof Error ? error.message : String(error)};
+            this.sendJson(res, 400, result);
             return;
         }
 
         this.sendJson(res, 200, await this.outcomeLibraryGenerateService.estimate(this.currentContext.projectRoot, validated));
     }
 
-    private async handleGenerateOutcomeLibrary(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    private async handleStartOutcomeLibraryGeneration(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
-            this.sendJson(res, 409, {error: "No active project."});
+            // Start rejection is part of the Outcome Library lifecycle, even
+            // on the retained direct route.  Keep its recovery classification
+            // server-owned instead of making a browser infer one from HTTP.
+            this.sendJson(res, 409, {status: "conflict", error: "No active project."});
             return;
         }
-
         const body = await this.readJsonBody(req);
         let validated;
         try {
             validated = validateOutcomeLibraryGenerateRequest((body ?? {}) as OutcomeLibraryGenerateRequestInput);
         } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            this.sendJson(res, 400, {status: "invalid", error: error instanceof Error ? error.message : String(error)});
             return;
         }
+        // Retained direct callers predate the visible preflight token.  Adapt
+        // them through the same server-bound snapshot instead of allowing a
+        // second execution path that can skip destination/source validation.
+        if (validated.preflightToken === undefined) {
+            const preflight = await this.outcomeLibraryGenerateService.estimate(this.currentContext.projectRoot, validated);
+            if (preflight.status !== "ok" || preflight.requiresBounded) {
+                this.sendJson(res, 409, {
+                    // `requiresBounded` is the shared preflight's typed
+                    // exact-cap outcome.  Keep that DTO intact so both
+                    // retained start routes give the client the same bounded
+                    // coverage recovery as the CLI, rather than a generic
+                    // transport conflict.
+                    // This is deliberately a first-class transport outcome,
+                    // not merely a 409 containing a convenient message.  The
+                    // browser can therefore render the same bounded-coverage
+                    // recovery for either retained start route without
+                    // guessing from a conflict string.
+                    status: preflight.status === "ok" && preflight.requiresBounded ? "requires-bounded" : preflight.status,
+                    error: preflight.status === "ok"
+                        ? "This outcome space exceeds the exact-generation cap. Select sampled or bounded coverage with a sample size and deterministic seed."
+                        : preflight.error,
+                    preflight,
+                });
+                return;
+            }
+            validated = {...validated, preflightToken: preflight.preflightToken};
+        }
+        // A supplied token must not be a bypass around the same sampled-opt-in
+        // eligibility enforced for the retained compatibility route.  The
+        // token is a server-owned immutable preflight, so this does not trust
+        // a client assertion about the selected strategy.
+        const binding = this.outcomeLibraryGenerateService.getPreflightBinding(validated.preflightToken);
+        if (binding === undefined) {
+            this.sendJson(res, 409, {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating."});
+            return;
+        }
+        if (binding?.requiresBounded) {
+            this.sendJson(res, 409, {
+                status: "requires-bounded",
+                error: "This outcome space exceeds the exact-generation cap. Select sampled or bounded coverage with a sample size and deterministic seed.",
+                preflight: {status: "ok", requiresBounded: true},
+            });
+            return;
+        }
+        if (this.outcomeLibraryGenerateJobService.isDestinationActive(this.currentContext.projectRoot, binding.destination)) {
+            this.sendJson(res, 409, {status: "conflict", error: "An Outcome Library generation is already active for this resolved destination. Wait for it to finish or cancel it before starting another."});
+            return;
+        }
+        // Reject drift before allocating a lifecycle record.  The token is a
+        // server-owned immutable snapshot, not a capability to run an
+        // arbitrarily edited request.  This covers every transport field in
+        // the shared key (strategy/sample/cap/identity/destination), while
+        // the service rechecks current source and resolved destination.
+        if (generationRequestKey(validated) !== binding.requestKey) {
+            this.sendJson(res, 409, {status: "conflict", error: "The generation request no longer matches the immutable preflight. Refresh the displayed preflight before generating."});
+            return;
+        }
+        const bindingConflict = await this.outcomeLibraryGenerateService.validatePreflightBinding(this.currentContext.projectRoot, validated, binding);
+        if (bindingConflict !== undefined) {
+            this.sendJson(res, 409, {status: "conflict", error: bindingConflict});
+            return;
+        }
+        this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.currentContext.projectRoot, validated)});
+    }
 
-        this.sendJson(res, 200, await this.outcomeLibraryGenerateService.generate(this.currentContext.projectRoot, validated));
+    private handleListOutcomeLibraryGenerationJobs(res: ServerResponse): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        this.sendJson(res, 200, {jobs: this.outcomeLibraryGenerateJobService.listForProject(this.currentContext.projectRoot)});
+    }
+
+    private async handleOutcomeLibraryGenerationJob(method: string, res: ServerResponse, id: string, action: "cancel" | "resume" | undefined): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        if ((action === undefined && method !== "GET") || (action !== undefined && method !== "POST")) {
+            this.sendJson(res, 405, {error: "Method not allowed."});
+            return;
+        }
+        let job;
+        if (action === "cancel") {
+            job = this.outcomeLibraryGenerateJobService.cancelForProject(this.currentContext.projectRoot, id);
+        } else if (action === "resume") {
+            try {
+                job = await this.outcomeLibraryGenerateJobService.resumeForProject(this.currentContext.projectRoot, id);
+            } catch (error) {
+                // A resume rebind can race another job's destination ownership.
+                // Preserve the Outcome Library recovery DTO rather than letting
+                // the HTTP boundary turn that actionable conflict into 500.
+                this.sendJson(res, 409, {status: "conflict", error: error instanceof Error ? error.message : String(error)});
+                return;
+            }
+        } else {
+            job = this.outcomeLibraryGenerateJobService.getStatusForProject(this.currentContext.projectRoot, id);
+        }
+        if (job === undefined) {
+            this.sendJson(res, 404, {error: action === "resume" ? "Outcome library checkpoint not found." : "Outcome library generation job not found."});
+            return;
+        }
+        if (action === "resume" && job.status === "failed" && job.result?.status === "conflict") {
+            this.sendJson(res, 409, {status: "conflict", error: job.result.error, plan: job.result.plan});
+            return;
+        }
+        this.sendJson(res, action === "resume" ? 202 : 200, action === "resume" ? {status: "created", job} : job);
     }
 
     private async handleGetOutcomeLibraryRegistry(res: ServerResponse): Promise<void> {
@@ -2885,7 +3022,14 @@ export class StudioServer implements StudioServerHandling {
 
     private sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
         res.writeHead(statusCode, {"Content-Type": "application/json"});
-        res.end(JSON.stringify(body));
+        // A Studio DTO is a transport contract, not an in-process object graph. Generation diagnostics
+        // and cancellation checkpoints contain bigint counters (and maps in legacy direct responses), so
+        // normalize them rather than letting JSON.stringify turn a normal cancellation into a 500.
+        res.end(JSON.stringify(body, (_key, value: unknown) => {
+            if (typeof value === "bigint") return value.toString();
+            if (value instanceof Map) return Array.from(value.entries());
+            return value;
+        }));
     }
 }
 

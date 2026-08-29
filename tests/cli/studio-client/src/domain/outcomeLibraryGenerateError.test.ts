@@ -1,4 +1,4 @@
-import {describeOutcomeLibraryGenerationErrorExplanation} from "../../../../../cli/studio-client/src/domain/outcomeLibraryGenerateError";
+import {describeOutcomeLibraryGenerationErrorExplanation, describeOutcomeLibraryGenerationTerminalOutcome} from "../../../../../cli/studio-client/src/domain/outcomeLibraryGenerateError";
 
 describe("describeOutcomeLibraryGenerationErrorExplanation", () => {
     it("gives a specific recovery action for an exact-generation limit without backend diagnostics", () => {
@@ -14,5 +14,14 @@ describe("describeOutcomeLibraryGenerationErrorExplanation", () => {
 
         expect(explanation).toBe("Generating this outcome library failed. Check the settings above and try again. If it continues, reopen the project and retry.");
         expect(explanation).not.toMatch(/ENOTDIR|\/srv\/private|server log|stack trace/i);
+    });
+});
+
+describe("describeOutcomeLibraryGenerationTerminalOutcome", () => {
+    it("keeps classified lifecycle recovery actionable without rendering raw server text", () => {
+        expect(describeOutcomeLibraryGenerationTerminalOutcome({status: "conflict"})).toContain("bound preflight");
+        expect(describeOutcomeLibraryGenerationTerminalOutcome({status: "unsupported"})).toContain("Simulation & Reports");
+        expect(describeOutcomeLibraryGenerationTerminalOutcome({status: "generation-error", code: "weighted-outcome-library-generation-space-exceeded"})).toContain("set a sample size");
+        expect(describeOutcomeLibraryGenerationTerminalOutcome({status: "cancelled", recovery: "Resume from checkpoint."})).toBe("Resume from checkpoint.");
     });
 });

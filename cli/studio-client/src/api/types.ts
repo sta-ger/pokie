@@ -1018,11 +1018,26 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           maxOutcomeSpaceSize: number | string;
           strategy: OutcomeLibraryGenerationStrategy;
           requiresBounded: boolean;
+          expectedRawWork: number | string;
+          warnings: string[];
+          sampleSize?: number | string;
+          seed?: string;
           plan: StudioArtifactConversionPlan;
+          defaults: {
+              compatibilityVersion: string;
+              maxExactOutcomeSpaceSize: number | string;
+              boundedSample: {sampleSize: number | string; seed: string};
+          };
+          preflightToken: string;
       }
-    | {status: "unsupported"; error: string; plan: StudioArtifactConversionPlan}
-    | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
-    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
+    // Transport validation happens before the service can resolve a project
+    // plan.  Keep it in this same classified union so callers never have to
+    // turn a preflight failure back into an untyped HTTP exception.
+    | {status: "invalid"; error: string; plan?: StudioArtifactConversionPlan}
+    | {status: "unsupported"; error: string; plan?: StudioArtifactConversionPlan}
+    | {status: "conflict"; error: string; plan?: StudioArtifactConversionPlan}
+    | {status: "generation-error"; error: string; code?: string; plan?: StudioArtifactConversionPlan}
+    | {status: "load-error"; error: string; plan?: StudioArtifactConversionPlan};
 
 // OutcomeLibraryGeneratorDiagnostics, embedded verbatim -- see its own doc comment
 // (src/weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.ts).
@@ -1056,8 +1071,27 @@ export type StudioOutcomeLibraryGenerateResultView =
     | {status: "unsupported"; error: string; plan: StudioArtifactConversionPlan}
     | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
     | {status: "generation-error"; code: string; error: string; plan: StudioArtifactConversionPlan}
+    | {
+          status: "cancelled";
+          processedRawIndex: string;
+          progressTotal: string;
+          /** Present only when an exact enumeration can be safely resumed. */
+          checkpoint?: {id: string; processedRawIndex: string; progressTotal: string; sourceEnumerationId: string};
+          recovery: string;
+          plan: StudioArtifactConversionPlan;
+      }
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
     | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
+
+// The pollable Studio lifecycle deliberately contains only decimal strings and an opaque checkpoint id;
+// accumulated grids never cross the HTTP boundary or become browser-owned state.
+export type StudioOutcomeLibraryGenerateJobView = {
+    id: string;
+    status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    cancellationRequested: boolean;
+    progress?: {processedRawIndex: string; progressTotal: string};
+    result?: StudioOutcomeLibraryGenerateResultView;
+};
 
 export type StudioOutcomeLibraryRegistryModeEntry = {
     modeName: string;
