@@ -20,7 +20,7 @@ import {BlueprintMaterializationError} from "../../../cli/materialize/BlueprintM
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
 import {createLocalRuntimeIdentity, createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../../../cli/materialize/UnsupportedProjectOperationError.js";
-import {PackageCommandResult, PackageCommandRunning, withLinkedLocalPokieRuntime} from "../../../cli/prepare/PackageCommandRunner.js";
+import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLinkedLocalPokieRuntime} from "../../../cli/prepare/PackageCommandRunner.js";
 
 type RecordedCommand = {command: string; args: string[]; cwd: string};
 
@@ -116,6 +116,18 @@ function spawnLongLivedPid(): {pid: number; kill: () => void} {
         throw new Error("failed to spawn a long-lived throwaway process to obtain a live pid for the test fixture");
     }
     return {pid: child.pid, kill: () => child.kill()};
+}
+
+async function waitForFile(filePath: string): Promise<void> {
+    for (let attempt = 0; attempt < 100; attempt++) {
+        if (fs.existsSync(filePath)) {
+            return;
+        }
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 10);
+        });
+    }
+    throw new Error(`Timed out waiting for ${filePath}`);
 }
 
 function seedStaleMarkerlessCacheEntry(materializer: BlueprintProjectMaterializer, blueprintPath: string): Promise<string> {
@@ -386,6 +398,47 @@ describe("BlueprintProjectMaterializer", () => {
 
         expect(cached.runtimePath).toBe(retried.runtimePath);
         expect(workingRunner.calls).toHaveLength(1);
+    });
+
+    it("aborts an active dependency-install child without retrying, and removes its staging directory and cache lock", async () => {
+        const childPidPath = path.join(sourceDir, "dependency-install.pid");
+        const calls: RecordedCommand[] = [];
+        const runner: PackageCommandRunning & {calls: RecordedCommand[]} = Object.assign(
+            (command: string, args: string[], cwd: string, options) => {
+                calls.push({command, args, cwd});
+                // Run through the production execFile runner so this verifies
+                // AbortSignal terminates the active child, not only a
+                // cooperative injected Promise.
+                return runPackageCommand(
+                    process.execPath,
+                    ["-e", "require('fs').writeFileSync(process.argv[1], process.pid.toString()); setInterval(() => {}, 1000);", childPidPath],
+                    cwd,
+                    options,
+                );
+            },
+            {calls},
+        );
+        const materializer = new BlueprintProjectMaterializer(
+            "1.3.0",
+            undefined,
+            undefined,
+            undefined,
+            runner,
+            createStubPackageValidator(validReport),
+            cacheRoot,
+        );
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const controller = new AbortController();
+        const materializing = materializer.materialize(blueprintProjectOf(blueprintPath), {signal: controller.signal});
+
+        await waitForFile(childPidPath);
+        const childPid = Number(fs.readFileSync(childPidPath, "utf-8"));
+        controller.abort();
+
+        await expect(materializing).rejects.toThrow(/cancelled/i);
+        expect(runner.calls).toHaveLength(1);
+        expect(fs.readdirSync(cacheRoot)).toEqual([]);
+        expect(() => process.kill(childPid, 0)).toThrow();
     });
 
     it("recovers from a failed verify phase, leaving no cache directory, and is retryable once the package becomes valid", async () => {

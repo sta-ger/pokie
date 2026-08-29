@@ -198,7 +198,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
                 this.assertNotCancelled(signal);
                 this.runGeneratePhase(blueprint, stagingDir);
                 this.assertNotCancelled(signal);
-                await this.runDependenciesPhase(stagingDir);
+                await this.runDependenciesPhase(stagingDir, signal);
                 this.assertNotCancelled(signal);
                 await this.runVerifyPhase(stagingDir, blueprintPath);
                 this.assertNotCancelled(signal);
@@ -249,9 +249,13 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         }
     }
 
-    private async runDependenciesPhase(stagingDir: string): Promise<void> {
+    private async runDependenciesPhase(stagingDir: string, signal?: AbortSignal): Promise<void> {
         let lastError: unknown;
         for (let attempt = 1; attempt <= DEPENDENCY_INSTALL_ATTEMPTS; attempt++) {
+            // A command aborted while npm is active rejects below. Check both
+            // before starting an attempt and before considering a retry, so a
+            // cancellation can never launch a second dependency install.
+            this.assertNotCancelled(signal);
             try {
                 // "--omit=dev": a staged runtime's dist/index.js is already generated here (never compiled --
                 // see this class's own doc comment), so its devDependencies (e.g. "typescript") are never
@@ -260,10 +264,11 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
                 // PackageCommandRunner.ts): a real running POKIE installation that isn't a dev checkout (e.g.
                 // "npm install -g pokie") never has its own devDependencies installed either, so there'd be
                 // nothing on disk for that mechanism to point "typescript" at anyway.
-                await this.runCommand("npm", ["install", "--omit=dev"], stagingDir);
+                await this.runCommand("npm", ["install", "--omit=dev"], stagingDir, {signal});
                 return;
             } catch (error) {
                 lastError = error;
+                this.assertNotCancelled(signal);
             }
         }
         // The only exit after every bounded install attempt has failed is the materialization boundary --

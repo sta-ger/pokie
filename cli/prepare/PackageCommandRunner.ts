@@ -1,24 +1,43 @@
 import {execFile} from "child_process";
 import fs from "fs";
 import path from "path";
-import util from "util";
 import {PackageJsonLike, withLocalPokieDependency} from "pokie";
 import {LocalPokieDependencyClosureEntry, resolveLocalPokieDependencyClosure} from "./localPokieDependencyClosure.js";
 
-const execFileAsync = util.promisify(execFile);
-
 export type PackageCommandResult = {stdout: string; stderr: string};
+export type PackageCommandOptions = {readonly signal?: AbortSignal};
 
 // `cwd` is always the package's own project root -- never a shell string, so `args` (e.g. "install",
 // or "run"/"build") is never interpreted for shell metacharacters.
-export type PackageCommandRunning = (command: string, args: string[], cwd: string) => Promise<PackageCommandResult>;
+export type PackageCommandRunning = (
+    command: string,
+    args: string[],
+    cwd: string,
+    options?: PackageCommandOptions,
+) => Promise<PackageCommandResult>;
 
 // Real npm install/build execution, injected as GamePackagePreparer's own runCommand so tests can
 // assert exactly which commands would run (and in what order) without actually invoking npm.
-export const runPackageCommand: PackageCommandRunning = async (command, args, cwd) => {
-    const {stdout, stderr} = await execFileAsync(command, args, {cwd});
-    return {stdout: stdout.toString(), stderr: stderr.toString()};
-};
+export const runPackageCommand: PackageCommandRunning = (command, args, cwd, options = {}) =>
+    new Promise<PackageCommandResult>((resolve, reject) => {
+        // execFile owns the direct npm child process. Passing the operation
+        // signal lets Node terminate it as soon as runtime preparation is
+        // cancelled. Its callback may run before the process has emitted
+        // "close", so defer the abort rejection until that close event: the
+        // materializer's cleanup/release path then cannot report completion
+        // while an install child is still alive.
+        const child = execFile(command, args, {cwd, signal: options.signal}, (error, stdout, stderr) => {
+            if (error) {
+                if (options.signal?.aborted && child.exitCode === null && child.signalCode === null) {
+                    child.once("close", () => reject(error));
+                    return;
+                }
+                reject(error);
+                return;
+            }
+            resolve({stdout: stdout.toString(), stderr: stderr.toString()});
+        });
+    });
 
 // Rewrites every name in POKIE's own real, on-disk runtime dependency closure (see
 // resolveLocalPokieDependencyClosure) to a `file:` spec pointing at this exact running installation's
@@ -176,9 +195,9 @@ function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJs
 // the first place, at the cost of leaving `node_modules/pokie` for its own generated `require("pokie")` up
 // to the caller.
 export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
-    return async (command, args, cwd) => {
+    return async (command, args, cwd, options) => {
         if (args[0] !== "install") {
-            return base(command, args, cwd);
+            return base(command, args, cwd, options);
         }
         const packageJsonPath = path.join(cwd, "package.json");
         const original = fs.readFileSync(packageJsonPath, "utf-8");
@@ -188,7 +207,7 @@ export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCom
         const patched = withLocalPokieDependencyClosure(withPokie, closure);
         fs.writeFileSync(packageJsonPath, `${JSON.stringify(patched, null, 4)}\n`);
         try {
-            const result = await base(command, args, cwd);
+            const result = await base(command, args, cwd, options);
             const taintedNames = new Set(["pokie", ...closure.map((entry) => entry.name)]);
             restorePersistedPackageLock(cwd, packageJson, taintedNames);
             return result;
@@ -205,9 +224,12 @@ export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCom
 // runtime cache offline and usable in hosts where child npm processes are unavailable. Init/create keep
 // using withLocalPokieInstall above because they produce standalone, hand-editable npm packages.
 export function withLinkedLocalPokieRuntime(pokiePackageRoot: string, base: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
-    return (command, args, cwd) => {
+    return (command, args, cwd, options) => {
         if (command !== "npm" || args[0] !== "install") {
-            return base(command, args, cwd);
+            return base(command, args, cwd, options);
+        }
+        if (options?.signal?.aborted) {
+            return Promise.reject(new Error("Runtime materialization was cancelled."));
         }
         const nodeModules = path.join(cwd, "node_modules");
         fs.mkdirSync(nodeModules, {recursive: true});
