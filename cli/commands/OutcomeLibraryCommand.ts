@@ -512,12 +512,25 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             // execution, but must not execute the generator's runtime-only
             // unsupported check before its own read boundary. This is the
             // shared preflight decision used by the request itself.
+            // Keep raw publication's cheap preflight free of execution-only
+            // runtime probing, while still resolving the domain-owned source
+            // identity and destination before either the planner or generator
+            // observes it.
+            const resolvedRequest = resolveOutcomeLibraryGenerationIdentity(request);
             const preflight = preflightOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game), {
-                generation: request.generation,
-                ...(request.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: request.maxExactOutcomeSpaceSize}),
-                ...(request.sample === undefined ? {} : {sample: request.sample}),
+                generation: resolvedRequest.generation,
+                ...(resolvedRequest.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: resolvedRequest.maxExactOutcomeSpaceSize}),
+                ...(resolvedRequest.sample === undefined ? {} : {sample: resolvedRequest.sample}),
             });
-            const prepared = this.prepareRawGenerationOperation(packageRoot, options, sampling, controller.signal, preflight.strategy);
+            const prepared = this.prepareRawGenerationOperation(
+                packageRoot,
+                options,
+                sampling,
+                controller.signal,
+                preflight.strategy,
+                resolvedRequest.outputDestination,
+                resolvedRequest,
+            );
             const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution);
             this.printGenerateResult(execution.read, options);
             return 0;
@@ -561,6 +574,8 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         sampling: {sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}},
         signal: AbortSignal,
         resolvedStrategy: "exact" | "bounded-coverage",
+        outputDestination: string | undefined,
+        resolvedRequest: OutcomeLibraryGenerationRequest,
     ) {
         const sourcePaths = [packageRoot, ...(options.resume === undefined ? [] : [options.resume])];
         const currentSource = () => ({
@@ -578,7 +593,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 }),
             },
         });
-        const rawOutput = options.out === undefined ? undefined : path.resolve(options.out);
+        const rawOutput = outputDestination;
         let publishedOutput = false;
         return {
             plan: this.planner.planRawOutcomeLibraryJsonPublication(currentSource(), rawOutput),
@@ -588,7 +603,20 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 read: async () => {
                     const game = await this.loadGame(packageRoot);
                     const resumeFrom = options.resume !== undefined && this.fileExists(options.resume) ? this.readCheckpoint(options.resume) : undefined;
-                    return this.generate(this.createGenerationRequest(game, options, sampling, signal, resumeFrom));
+                    // Rebind the live package immediately before generation;
+                    // a config change after planning cannot inherit the old
+                    // request's provenance merely because its destination is
+                    // still the same bound publication identity.
+                    const reboundRequest = resolveOutcomeLibraryGenerationIdentity(
+                        this.createGenerationRequest(game, options, sampling, signal, resumeFrom),
+                    );
+                    if (reboundRequest.configHash !== resolvedRequest.configHash || reboundRequest.outputDestination !== rawOutput) {
+                        throw new WeightedOutcomeLibraryGenerationError(
+                            "weighted-outcome-library-generation-configuration-conflict",
+                            "The loaded package configuration or output destination changed after preflight. Re-run generation from a fresh preflight.",
+                        );
+                    }
+                    return this.generate(reboundRequest);
                 },
                 canPublish: () => rawOutput !== undefined,
                 assertDestinationAvailable: () => {
@@ -599,7 +627,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     // The operation has already established a fresh destination.
                     // Keep the legacy injectable writer so test and embedding
                     // callers retain their narrow file-system boundary.
-                    this.writeFile(options.out!, JSON.stringify(result.library, null, 4));
+                    this.writeFile(rawOutput!, JSON.stringify(result.library, null, 4));
                     publishedOutput = true;
                 },
                 rollback: () => {

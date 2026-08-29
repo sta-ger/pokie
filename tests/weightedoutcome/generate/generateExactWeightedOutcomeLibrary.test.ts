@@ -119,6 +119,18 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         })).toThrow("The supplied configuration identity does not match the loaded game");
     });
 
+    it("binds publication destination into the same resolved preflight consumed by every producer", () => {
+        const prepared = prepareOutcomeLibraryGeneration({
+            libraryId: "bound-destination",
+            game: buildFixtureGame(),
+            pokieVersion: "test",
+            outputDestination: "  /tmp/outcome-library  ",
+        });
+
+        expect(prepared.outputDestination).toBe("/tmp/outcome-library");
+        expect(prepared.preflight.destination).toEqual({path: "/tmp/outcome-library"});
+    });
+
     it("exactly enumerates, dedupes, and sums weights straight off the real calculation path", async () => {
         const result = await generateExactWeightedOutcomeLibrary({
             libraryId: "fixture-lib",

@@ -178,11 +178,15 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: unresolvedPlan};
         }
         const {estimate} = preparedRequest.preflight;
+        const boundDestination = preparedRequest.preflight.destination?.path;
+        if (boundDestination === undefined) {
+            return {status: "load-error", error: "The prepared Outcome Library request has no publication destination.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+        }
         const resolvedConfigHash = preparedRequest.configHash;
         // A preflight is not just an outcome-space calculation: it prepares the
         // same destination and resolved strategy that execution will consume.
         const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
-        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration);
+        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
         if (plan.status === "conflict") {
             return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
         }
@@ -192,7 +196,7 @@ export class StudioOutcomeLibraryGenerateService {
         const preflightToken = String(this.nextPreflightToken++);
         this.preflightSnapshots.set(preflightToken, {
             requestKey: generationRequestKey(request), gameId: game.getManifest().id, gameVersion: game.getManifest().version,
-            ...(resolvedConfigHash === undefined ? {} : {configHash: resolvedConfigHash}), destination: resolvedOutDir.resolvedPath,
+            ...(resolvedConfigHash === undefined ? {} : {configHash: resolvedConfigHash}), destination: boundDestination,
         });
         return {
             status: "ok",
@@ -295,7 +299,11 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "generation-error", code: error instanceof WeightedOutcomeLibraryGenerationError ? error.getCode() : "weighted-outcome-library-generation-invalid-request", error: error instanceof Error ? error.message : String(error), plan: unresolvedPlan};
         }
         const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
-        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration);
+        const boundDestination = preparedRequest.preflight.destination?.path;
+        if (boundDestination === undefined) {
+            return {status: "load-error", error: "The prepared Outcome Library request has no publication destination.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+        }
+        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
         if (plan.status === "conflict") {
             return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
         }
@@ -306,7 +314,7 @@ export class StudioOutcomeLibraryGenerateService {
             plan,
             projectRoot,
             "outcomeLibrary",
-            resolvedOutDir.resolvedPath,
+            boundDestination,
             requestedGeneration.generationSemantics,
             preparedRequest.preflight.sample?.sampleSize,
             preparedRequest.preflight.sample?.seed,
@@ -327,7 +335,7 @@ export class StudioOutcomeLibraryGenerateService {
                 // Resolve again at both prepared-operation binding points. This
                 // binds the actual runtime source rather than treating the
                 // preview plan as a one-time guard.
-                currentSource: async () => (await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration)).source,
+                currentSource: async () => (await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration)).source,
                 read: async (): Promise<PreparedGenerationRead> => {
                     const reuse = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
                     if (reuse !== undefined) {
@@ -372,7 +380,7 @@ export class StudioOutcomeLibraryGenerateService {
                         }
                         throw error;
                     }
-                    const otherModes = await this.readOtherModes(resolvedOutDir.resolvedPath, modeName);
+                    const otherModes = await this.readOtherModes(boundDestination, modeName);
                     if (otherModes.status === "error") return {status: "terminal", view: {status: "load-error", error: otherModes.message, plan}};
                     return {
                         status: "ready",
@@ -383,12 +391,12 @@ export class StudioOutcomeLibraryGenerateService {
                 },
                 canPublish: (read) => read.status === "ready",
                 assertDestinationAvailable: async () => {
-                    const current = await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration);
+                    const current = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
                     if (current.status !== "planned") throw new Error(current.diagnostic?.message ?? "The Outcome Library destination is unavailable.");
                 },
                 publish: (read) => {
                     if (read.status !== "ready") throw new Error("The prepared Outcome Library generation was not publishable.");
-                    return this.writer.writeToDirectory(read.modes, resolvedOutDir.resolvedPath);
+                    return this.writer.writeToDirectory(read.modes, boundDestination);
                 },
                 register: (writeResult) => {
                     if (writeResult.manifest !== undefined && !writeResult.issues.some((issue) => issue.severity === "error")) this.recordDiscoveredBundleDir(projectRoot, outDirRelative);

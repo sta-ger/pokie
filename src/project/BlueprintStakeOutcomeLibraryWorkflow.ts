@@ -30,7 +30,7 @@ import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/w
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
 import {generateWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
-import {MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY, preflightOutcomeLibraryGenerationFromEstimate} from "../weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
+import {MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY, prepareOutcomeLibraryGeneration, preflightOutcomeLibraryGenerationFromEstimate} from "../weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
 import {estimateExactOutcomeSpaceSize} from "../weightedoutcome/generate/estimateExactOutcomeSpaceSize.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
@@ -231,6 +231,21 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         preflight: ArtifactBuildPreflight,
         generation: ManagedOutcomeGeneration,
     ): Promise<void> {
+        // Resolve the single publication identity once. Each mode's request
+        // carries this same domain-bound destination and the writer consumes
+        // it, rather than retaining an independent managed destination.
+        const boundDestination = prepareOutcomeLibraryGeneration({
+            libraryId: game.getManifest().id,
+            game,
+            pokieVersion: this.pokieVersion,
+            configHash,
+            generation: generation.generation,
+            ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
+            ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
+            ...(generation.sampled === undefined ? {} : {sample: generation.sampled}),
+            outputDestination: destinationPath,
+        }).preflight.destination?.path;
+        if (boundDestination === undefined) throw new Error("Managed Outcome Library generation requires a bound output destination.");
         const declaredModes = game.getBetModes?.();
         // getBetModes() deliberately exposes both the legacy declarative shape and the explicit runtime
         // contract.  Only the latter wraps createExactEnumerationSession() in
@@ -258,7 +273,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                     // resolved domain request used by CLI and Studio. The
                     // workflow still owns filesystem publication/rollback,
                     // while the request owns its destination identity.
-                    outputDestination: destinationPath,
+                    outputDestination: boundDestination,
                     signal: options?.signal,
                     onProgress: (completed, total) => {
                         reportArtifactBuildProgress(options, {status: "running", completed, total, preflight});
@@ -275,7 +290,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 outcomes: library.library.outcomes,
                 generator: library.diagnostics,
             })),
-            destinationPath,
+            boundDestination,
             {
                 signal: options?.signal,
                 onProgress: (progress) => {

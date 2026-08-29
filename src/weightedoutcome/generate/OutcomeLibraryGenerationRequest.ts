@@ -35,6 +35,15 @@ export type OutcomeLibraryGenerationSample = {readonly sampleSize: bigint; reado
 export type OutcomeLibraryGenerationMode = "default" | "exact" | "sampled" | "bounded";
 
 /**
+ * The publication identity resolved together with a generation request.  The
+ * generator does not write files itself, but publishers must consume this
+ * value instead of retaining a second, independently-normalised destination.
+ */
+export type OutcomeLibraryGenerationDestination = {
+    readonly path: string;
+};
+
+/**
  * Domain-level generation request.  It carries the complete executable contract, not a CLI or HTTP DTO:
  * identity/provenance, strategy, bounded work, publication intent, and the cooperative lifecycle all travel
  * together.  `default` preserves the historical exact-until-cap behaviour; `bounded` is the legacy
@@ -71,6 +80,8 @@ export type OutcomeLibraryGenerationPreflight = {
     readonly requiresSampledOptIn: boolean;
     readonly expectedRawWork: bigint;
     readonly warnings: readonly string[];
+    /** The destination identity the execution request is bound to, when it publishes output. */
+    readonly destination?: OutcomeLibraryGenerationDestination;
 };
 
 export type ResolvedOutcomeLibraryGenerationRequest = OutcomeLibraryGenerationRequest & {
@@ -83,6 +94,7 @@ export type ResolvedOutcomeLibraryGenerationRequest = OutcomeLibraryGenerationRe
     readonly configHash?: string;
     readonly generation: OutcomeLibraryGenerationMode;
     readonly maxExactOutcomeSpaceSize: bigint;
+    readonly outputDestination?: string;
     readonly preflight: OutcomeLibraryGenerationPreflight;
 };
 
@@ -102,6 +114,15 @@ function validateRequest(request: OutcomeLibraryGenerationRequest): void {
             "outputDestination must be a non-empty destination identity when present.",
         );
     }
+}
+
+function resolveOutputDestination(outputDestination: string | undefined): OutcomeLibraryGenerationDestination | undefined {
+    if (outputDestination === undefined) return undefined;
+    // Deliberately do not apply a filesystem-specific resolver here. CLI,
+    // Studio and managed callers are responsible for resolving their own
+    // project-relative syntax before this domain boundary; from here on all
+    // producers share this one immutable publication identity.
+    return {path: outputDestination.trim()};
 }
 
 function validateGeneration(requestedGeneration: OutcomeLibraryGenerationMode | undefined, sample: OutcomeLibraryGenerationSample | undefined): void {
@@ -148,11 +169,14 @@ export function prepareOutcomeLibraryGeneration(request: OutcomeLibraryGeneratio
         throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported", `"${request.game.getManifest().id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`);
     }
     const estimate = estimateExactOutcomeSpaceSize(identifiedRequest.game);
+    const destination = resolveOutputDestination(identifiedRequest.outputDestination);
+    const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, identifiedRequest);
     return {
         ...identifiedRequest,
+        ...(destination === undefined ? {} : {outputDestination: destination.path}),
         generation: identifiedRequest.generation ?? "default",
         maxExactOutcomeSpaceSize: identifiedRequest.maxExactOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
-        preflight: preflightOutcomeLibraryGenerationFromEstimate(estimate, identifiedRequest),
+        preflight: {...preflight, ...(destination === undefined ? {} : {destination})},
     };
 }
 
