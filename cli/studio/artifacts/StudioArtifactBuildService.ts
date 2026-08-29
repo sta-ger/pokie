@@ -149,6 +149,20 @@ export class StudioArtifactBuildService {
         return {status: "ok", target, destination, destinationKind, plannedOutputs, sourceType: project.type, plan};
     }
 
+    /**
+     * Validates the same prepared Blueprint/package-to-Stake projection used
+     * by Build.  The legacy direct Stake endpoint uses this only for its
+     * empty, project-goal request; explicit Outcome Library inputs retain
+     * their descriptor validation boundary in StudioStakeEngineExportService.
+     */
+    public async validateStakeProjection(projectRoot: string, outDir?: string): Promise<{readonly plan: ArtifactConversionPlan} | undefined> {
+        const resolved = await this.resolveForTarget(projectRoot, "stakeAdapter", outDir);
+        if (resolved === undefined) return undefined;
+        const plan = await this.stakeProjection.prepare(resolved.project, resolved.destination);
+        if (plan.status === "planned") await this.stakeProjection.validate(resolved.project, plan);
+        return {plan};
+    }
+
     // Executes a real build against the active project -- resolves `projectRoot` into a PokieProject
     // exactly like BuildCommand does, re-checks the same capability listTargets()/preview() already reported
     // (so a stale client-side target list or preview can never trigger a build the registry itself would
