@@ -60,6 +60,8 @@ export type ManagedOutcomeGeneration = {
     // and Studio; it never changes the generator's global default cap.
     readonly generation: "exact" | "sampled";
     readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
+    /** Present only when the managed automatic compatibility policy chose this request. */
+    readonly compatibilityPolicyVersion?: string;
 };
 
 const GENERATED_RUNTIME = {
@@ -209,6 +211,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 generation: generation.sampled === undefined
                     ? "exact"
                     : `sample:${generation.sampled.sampleSize}:${generation.sampled.seed}`,
+                ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
             },
         };
     }
@@ -242,6 +245,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                     ...(declaredModes && declaredModes.length > 0 ? {mode: mode.id} : {}),
                     selectBetMode: hasRuntimeBetModes,
                     generation: generation.generation,
+                    ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
                     ...(generation.sampled !== undefined ? {sample: generation.sampled} : {}),
                     signal: options?.signal,
                     onProgress: (completed, total) => {
@@ -319,11 +323,13 @@ function resolveManagedOutcomeGeneration(
     configHash: string,
     requested: ArtifactBuildOptions["outcomeLibraryGeneration"],
 ): ManagedOutcomeGeneration {
-    if (requested?.sampled !== undefined) return {generation: "sampled", sampled: requested.sampled};
-    if (requested?.exact) return {generation: "exact"};
+    if (requested?.sampled !== undefined) return {generation: "sampled", sampled: requested.sampled, ...(requested.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: requested.compatibilityPolicyVersion})};
+    if (requested?.exact) return {generation: "exact", ...(requested.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: requested.compatibilityPolicyVersion})};
 
     const estimate = estimateExactOutcomeSpaceSize(game);
-    if (estimate.totalOutcomeSpaceSize <= MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize) return {generation: "exact"};
+    if (estimate.totalOutcomeSpaceSize <= MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize) {
+        return {generation: "exact", compatibilityPolicyVersion: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.version};
+    }
     return {
         generation: "sampled",
         sampled: {
@@ -332,6 +338,7 @@ function resolveManagedOutcomeGeneration(
             // coverage library is reproducible without machine-local state.
             seed: `${MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.seedPrefix}${configHash}`,
         },
+        compatibilityPolicyVersion: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.version,
     };
 }
 

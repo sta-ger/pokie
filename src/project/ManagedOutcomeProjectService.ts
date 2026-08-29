@@ -17,6 +17,8 @@ export type OutcomeProjectCompatibility = {
     // Exact and direct sampled libraries describe different distributions even when they come from the
     // same game configuration.  They must therefore never be silently reused for one another.
     readonly generation?: string;
+    /** Named automatic-generation policy used for this managed publication. */
+    readonly compatibilityPolicyVersion?: string;
 };
 
 // The authoritative lifecycle boundary for a Blueprint's managed Outcome Project.  ArtifactBuilderRegistry
@@ -218,6 +220,7 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
                     gameVersion: compatibility.gameVersion,
                     manifestIdentity: `${compatibility.gameId}@${compatibility.gameVersion}`,
                     ...(generationProvenance(compatibility.generation)),
+                    ...(compatibility.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: compatibility.compatibilityPolicyVersion}),
                 },
             };
         } catch {
@@ -285,7 +288,8 @@ function sameCompatibility(left: OutcomeProjectCompatibility, right: OutcomeProj
         left.gameVersion === right.gameVersion &&
         left.configHash === right.configHash &&
         left.pokieVersion === right.pokieVersion &&
-        (left.generation ?? "exact") === (right.generation ?? "exact")
+        (left.generation ?? "exact") === (right.generation ?? "exact") &&
+        left.compatibilityPolicyVersion === right.compatibilityPolicyVersion
     );
 }
 

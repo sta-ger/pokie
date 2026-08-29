@@ -301,6 +301,7 @@ describe("OutcomeLibraryCommand", () => {
     describe("generate", () => {
         const FAKE_GAME: PokieGame = {
             getManifest: () => ({id: "slot-1", name: "Slot 1", version: "1.0.0"}),
+            getConfigHash: () => "sha256:abc",
             createSession: () => {
                 throw new Error("createSession() should never be called by the generate CLI path");
             },
@@ -398,6 +399,17 @@ describe("OutcomeLibraryCommand", () => {
             await command.run(["generate", "/project/slot", "--mode", "bonus"]);
 
             expect(generate).toHaveBeenCalledWith(expect.objectContaining({libraryId: "slot-1-bonus"}));
+        });
+
+        it("rejects a caller configuration hash that does not match the loaded game", async () => {
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const command = createGenerateCommand({generate});
+
+            const exitCode = await command.run(["generate", "/project/slot", "--config-hash", "sha256:other"]);
+
+            expect(exitCode).toBe(1);
+            expect(generate).not.toHaveBeenCalled();
+            expect(errorSpy.mock.calls.flat().join("\n")).toContain("configuration-conflict");
         });
 
         it("prints a summary and the location of the written library when --format is the default", async () => {

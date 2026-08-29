@@ -47,6 +47,8 @@ export type OutcomeLibraryGenerationRequest = {
     readonly mode?: string;
     readonly stake?: number;
     readonly configHash?: string;
+    /** Named compatibility policy which selected this request's defaults, when applicable. */
+    readonly compatibilityPolicyVersion?: string;
     readonly selectBetMode?: boolean;
     readonly generation?: OutcomeLibraryGenerationMode;
     readonly maxExactOutcomeSpaceSize?: bigint;

@@ -24,5 +24,7 @@ export type OutcomeLibraryGeneratorDiagnostics = {
     readonly pokieVersion: string;
     readonly game: PokieGameManifest;
     readonly configHash?: string;
+    /** Present when a named compatibility policy selected the request's strategy/defaults. */
+    readonly compatibilityPolicyVersion?: string;
     readonly generatedAt: string;
 };

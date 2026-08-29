@@ -41,6 +41,7 @@ import {
 import {errorMessage} from "../../domain/errorMessage";
 import {describePathActionError} from "../../domain/pathActionError";
 import {describeProjectActionError} from "../../domain/projectActionError";
+import {describeOutcomeLibraryGenerationTerminalOutcome} from "../../domain/outcomeLibraryGenerateError";
 import type {DeploymentManager} from "../../hooks/useDeploymentManager";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
@@ -133,19 +134,13 @@ type StaticExportRunView =
     | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
 function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>): string {
-    if (view.status === "load-error") {
-        return describePathActionError("The outcome library generation", view.error);
-    }
-    if (view.status === "invalid") {
-        const [firstError] = view.errors;
-        return firstError?.message ?? "The outcome library bundle failed validation.";
-    }
-    if (view.status === "cancelled") return view.recovery;
-    return view.error;
+    return describeOutcomeLibraryGenerationTerminalOutcome(view);
 }
 
 function describePreflightError(view: Exclude<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>): string {
-    return view.error;
+    if (view.status === "unsupported") return describeOutcomeLibraryGenerationTerminalOutcome({status: "unsupported"});
+    if (view.status === "conflict") return describeOutcomeLibraryGenerationTerminalOutcome({status: "conflict"});
+    return describeOutcomeLibraryGenerationTerminalOutcome({status: "load-error"});
 }
 
 function generationStrategyLabel(generation: OutcomeLibraryGenerationOptions["generation"]): string {

@@ -89,6 +89,17 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         }
     });
 
+    it("preserves a named compatibility policy in canonical generator provenance", async () => {
+        const result = await generateWeightedOutcomeLibrary({
+            libraryId: "managed-policy-provenance",
+            game: buildFixtureGame(),
+            pokieVersion: "test",
+            compatibilityPolicyVersion: "managed-v1",
+        });
+
+        expect(result.diagnostics.compatibilityPolicyVersion).toBe("managed-v1");
+    });
+
     it("exactly enumerates, dedupes, and sums weights straight off the real calculation path", async () => {
         const result = await generateExactWeightedOutcomeLibrary({
             libraryId: "fixture-lib",

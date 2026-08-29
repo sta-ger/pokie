@@ -51,6 +51,7 @@ export type ArtifactConfigurationProvenance = {
     // bundle ineligible for an exact (or differently seeded) request.
     readonly sampleCount?: string;
     readonly sampleSeed?: string;
+    readonly compatibilityPolicyVersion?: string;
 };
 
 /**
@@ -289,6 +290,7 @@ function sameArtifactIdentity(left: ArtifactIdentity, right: ArtifactIdentity): 
         left.configurationProvenance?.generationSemantics === right.configurationProvenance?.generationSemantics &&
         left.configurationProvenance?.sampleCount === right.configurationProvenance?.sampleCount &&
         left.configurationProvenance?.sampleSeed === right.configurationProvenance?.sampleSeed &&
+        left.configurationProvenance?.compatibilityPolicyVersion === right.configurationProvenance?.compatibilityPolicyVersion &&
         left.configurationProvenance?.pokieVersion === right.configurationProvenance?.pokieVersion &&
         left.configurationProvenance?.gameId === right.configurationProvenance?.gameId &&
         left.configurationProvenance?.gameVersion === right.configurationProvenance?.gameVersion &&
@@ -332,6 +334,7 @@ export type ArtifactConversionPlanningOptions = {
     readonly generationSemantics?: "exact" | "boundedSample";
     readonly sampleCount?: bigint | string;
     readonly sampleSeed?: string;
+    readonly compatibilityPolicyVersion?: string;
     readonly pokieVersion?: string;
     /** A registry lookup may offer a managed outcome bundle. It is reusable only when independently verified. */
     readonly managedOutcome?: {readonly identity: ArtifactIdentity; readonly verified: boolean; readonly staleReason?: string};
@@ -359,6 +362,7 @@ export function verifyManagedOutcomeCandidate(
     const expectedGeneration = options.generationSemantics ?? expected.generationSemantics;
     const expectedSampleCount = options.sampleCount === undefined ? expected.sampleCount : String(options.sampleCount);
     const expectedSampleSeed = options.sampleSeed ?? expected.sampleSeed;
+    const expectedCompatibilityPolicyVersion = options.compatibilityPolicyVersion ?? expected.compatibilityPolicyVersion;
     const comparisons: readonly [string, string | undefined, string | undefined][] = [
         ["configuration hash", expected.configurationHash, actual.configurationHash],
         ["game id", expected.gameId, actual.gameId],
@@ -368,6 +372,7 @@ export function verifyManagedOutcomeCandidate(
         ["generation semantics", expectedGeneration, actual.generationSemantics],
         ["sample count", expectedSampleCount, actual.sampleCount],
         ["sample seed", expectedSampleSeed, actual.sampleSeed],
+        ["compatibility policy version", expectedCompatibilityPolicyVersion, actual.compatibilityPolicyVersion],
     ];
     const mismatch = comparisons.find(([, wanted, found]) => wanted !== undefined && wanted !== found);
     return mismatch === undefined

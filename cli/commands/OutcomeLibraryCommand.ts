@@ -497,6 +497,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
         if (options.estimate || options.dryRun) {
             const game = await this.loadGame(packageRoot);
+            this.assertConfigHashMatchesGame(game, options);
             return this.executeEstimate(game, options);
         }
 
@@ -505,7 +506,18 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         this.process.once("SIGINT", onCancel);
 
         try {
-            const prepared = this.prepareRawGenerationOperation(packageRoot, options, sampling, controller.signal);
+            const game = await this.loadGame(packageRoot);
+            const request = this.createGenerationRequest(game, options, sampling, controller.signal);
+            // The raw-publication planner needs the same resolved strategy as
+            // execution, but must not execute the generator's runtime-only
+            // unsupported check before its own read boundary. This is the
+            // shared preflight decision used by the request itself.
+            const preflight = preflightOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game), {
+                generation: request.generation,
+                ...(request.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: request.maxExactOutcomeSpaceSize}),
+                ...(request.sample === undefined ? {} : {sample: request.sample}),
+            });
+            const prepared = this.prepareRawGenerationOperation(packageRoot, options, sampling, controller.signal, preflight.strategy);
             const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution);
             this.printGenerateResult(execution.read, options);
             return 0;
@@ -548,6 +560,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         options: GenerateCliOptions,
         sampling: {sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}},
         signal: AbortSignal,
+        resolvedStrategy: "exact" | "bounded-coverage",
     ) {
         const sourcePaths = [packageRoot, ...(options.resume === undefined ? [] : [options.resume])];
         const currentSource = () => ({
@@ -558,8 +571,8 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             configurationProvenance: {
                 configurationHash: computeArtifactInputBindingHash(sourcePaths),
                 pokieVersion: this.pokieVersion,
-                generationSemantics: sampling.sampled === undefined && sampling.bounded === undefined ? "exact" as const : "boundedSample" as const,
-                ...(sampling.sampled === undefined && sampling.bounded === undefined ? {} : {
+                generationSemantics: resolvedStrategy === "exact" ? "exact" as const : "boundedSample" as const,
+                ...(resolvedStrategy === "exact" ? {} : {
                     sampleCount: String((sampling.sampled ?? sampling.bounded)!.sampleSize),
                     sampleSeed: (sampling.sampled ?? sampling.bounded)!.seed,
                 }),
@@ -701,11 +714,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         if (options.exact) generation = "exact";
         else if (sampling.sampled !== undefined) generation = "sampled";
         else if (sampling.bounded !== undefined) generation = "bounded";
-        // A generated package owns its configuration identity. Honor an
-        // explicit compatibility override, but otherwise record the same
-        // runtime hash Studio uses so equivalent requests have equivalent
-        // artifact and bundle provenance.
-        const configHash = options.configHash ?? game.getConfigHash?.();
+        // The executable package owns configuration identity. A caller may
+        // assert it for compatibility, but cannot replace the loaded value.
+        this.assertConfigHashMatchesGame(game, options);
+        const configHash = game.getConfigHash?.();
         return {
             libraryId: options.libraryId ?? `${game.getManifest().id}${options.mode !== undefined ? `-${options.mode}` : ""}`,
             game,
@@ -721,6 +733,16 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             ...(signal === undefined ? {} : {signal}),
             ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
         };
+    }
+
+    private assertConfigHashMatchesGame(game: PokieGame, options: GenerateCliOptions): void {
+        const loadedConfigHash = game.getConfigHash?.();
+        if (options.configHash !== undefined && options.configHash !== loadedConfigHash) {
+            throw new WeightedOutcomeLibraryGenerationError(
+                "weighted-outcome-library-generation-configuration-conflict",
+                "The supplied configuration identity does not match the loaded game. Rebuild the package or omit --config-hash.",
+            );
+        }
     }
 
     private printGenerateResult(result: GenerateExactWeightedOutcomeLibraryResult, options: GenerateCliOptions): void {

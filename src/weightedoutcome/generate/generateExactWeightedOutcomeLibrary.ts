@@ -73,6 +73,7 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     readonly game: PokieGame;
     readonly pokieVersion: string;
     readonly configHash?: string;
+    readonly compatibilityPolicyVersion?: string;
     readonly betMode?: string;
     // Opt in only for callers that require the executable session itself to enact the requested mode.
     // The long-standing CLI/Studio generator also supports recording a caller-selected declarative mode on
@@ -136,6 +137,7 @@ export function generateWeightedOutcomeLibrary(
         game: prepared.game,
         pokieVersion: prepared.pokieVersion,
         ...(prepared.configHash === undefined ? {} : {configHash: prepared.configHash}),
+        ...(prepared.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.compatibilityPolicyVersion}),
         ...(prepared.mode === undefined ? {} : {betMode: prepared.mode}),
         ...(prepared.selectBetMode === undefined ? {} : {selectBetMode: prepared.selectBetMode}),
         ...(prepared.stake === undefined ? {} : {stake: prepared.stake}),
@@ -357,6 +359,7 @@ export async function *streamExactWeightedOutcomes(
         pokieVersion: options.pokieVersion,
         game: manifest,
         ...(options.configHash !== undefined ? {configHash: options.configHash} : {}),
+        ...(options.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: options.compatibilityPolicyVersion}),
         generatedAt: (options.now ?? (() => new Date()))().toISOString(),
     };
 }
