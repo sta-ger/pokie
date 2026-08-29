@@ -181,6 +181,39 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(requests).toContain("POST /api/project/outcome-libraries/generate/jobs/saved-checkpoint/resume");
     });
 
+    it("renders a typed active-destination conflict when resuming a rehydrated exact checkpoint", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url, init) => {
+            const [requestPath] = url.split("?");
+            if (requestPath === "/api/project/outcome-libraries/generate/jobs" && init?.method === undefined) {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({jobs: [{
+                    id: "saved-checkpoint", status: "cancelled", cancellationRequested: false,
+                    result: {status: "cancelled", processedRawIndex: "2", progressTotal: "6", checkpoint: {id: "saved-checkpoint"}, recovery: "Resume after refreshing the unchanged source."},
+                }]})});
+            }
+            if (requestPath === "/api/project/outcome-libraries/generate/jobs/saved-checkpoint/resume") {
+                return Promise.resolve({
+                    ok: false,
+                    status: 409,
+                    json: () => Promise.resolve({
+                        status: "conflict",
+                        error: "An Outcome Library generation is already active for this resolved destination.",
+                    }),
+                });
+            }
+            return fetchImplFrom(BASE_ROUTES)(url, init);
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await user.click(await screen.findByRole("button", {name: "Resume exact generation"}));
+
+        expect(await screen.findByText(/project, configuration, destination, or bound preflight changed before publication/i)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Show Generation diagnostic"})).toBeInTheDocument();
+        expect(screen.getByText("An Outcome Library generation is already active for this resolved destination.")).toBeInTheDocument();
+    });
+
     it.each([
         ["unsupported", undefined, /can't be exactly enumerated/i],
         ["conflict", undefined, /bound preflight changed before publication/i],

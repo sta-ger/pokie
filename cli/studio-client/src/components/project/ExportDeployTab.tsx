@@ -1086,7 +1086,16 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
             })
             .catch((error: unknown) => {
                 outcomeLibraryGuard.end();
-                setOutcomeLibraryRun({status: "error", message: describeProjectActionError("Resuming the outcome library generation", errorMessage(error))});
+                // A resume can be rejected before a new job exists (most
+                // commonly because another generation owns the bound
+                // destination).  Render the server-owned Outcome Library
+                // classification and its actionable diagnostic just like a
+                // fresh lifecycle start instead of generic project-action
+                // copy.
+                setOutcomeLibraryRun({status: "error", message: error instanceof OutcomeLibraryGenerationStartError
+                    ? describeOutcomeLibraryGenerationTerminalOutcome({status: error.outcomeStatus})
+                    : describeProjectActionError("Resuming the outcome library generation", errorMessage(error)),
+                ...(error instanceof OutcomeLibraryGenerationStartError ? {diagnostic: error.message} : {})});
             });
     }
 

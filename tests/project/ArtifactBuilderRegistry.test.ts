@@ -513,6 +513,9 @@ describe("ArtifactBuilderRegistry", () => {
                 const reusedAutomaticPlan = await registry.preparePlan(source, "outcomeLibrary", {destinationPath: path.join(workDir, "automatic-republish")});
                 expect(reusedAutomaticPlan.steps.map((step) => step.kind)).toContain("reuseManagedOutcomeLibrary");
                 expect(reusedAutomaticPlan.source.configurationProvenance).toEqual(automaticPlan.source.configurationProvenance);
+                await expect(registry.executePlan(reusedAutomaticPlan, source, path.join(workDir, "automatic-republish"))).resolves.toMatchObject({
+                    outputPath: path.join(workDir, "automatic-republish"),
+                });
 
                 const explicitPlan = await registry.preparePlan(source, "outcomeLibrary", {
                     destinationPath: explicitOut,
@@ -537,6 +540,9 @@ describe("ArtifactBuilderRegistry", () => {
                 });
                 expect(reusedExplicitPlan.steps.map((step) => step.kind)).toContain("reuseManagedOutcomeLibrary");
                 expect(reusedExplicitPlan.source.configurationProvenance).toEqual(explicitPlan.source.configurationProvenance);
+                await expect(registry.executePlan(reusedExplicitPlan, source, path.join(workDir, "explicit-republish"))).resolves.toMatchObject({
+                    outputPath: path.join(workDir, "explicit-republish"),
+                });
 
                 const explicitManifestBeforeDrift = fs.readFileSync(path.join(explicitOut, "manifest.json"), "utf8");
                 writeBlueprint("2.0.0");

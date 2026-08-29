@@ -41,6 +41,7 @@ import {
     startSimulation,
     startOutcomeLibraryGeneration,
     resumeOutcomeLibraryGeneration,
+    OutcomeLibraryGenerationStartError,
     validateBlueprint,
     validateProject,
 } from "../../../../../cli/studio-client/src/api/apiClient";
@@ -106,7 +107,11 @@ describe("studio-client apiClient", () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {status: "conflict", error: "The prepared source changed after preflight."}}));
 
             await expect(startOutcomeLibraryGeneration(fetchImpl, {preflightToken: "stale"})).rejects.toMatchObject({outcomeStatus: "conflict", message: "The prepared source changed after preflight."});
-            await expect(resumeOutcomeLibraryGeneration(fetchImpl, "checkpoint")).rejects.toThrow("The prepared source changed after preflight.");
+            await expect(resumeOutcomeLibraryGeneration(fetchImpl, "checkpoint")).rejects.toMatchObject({
+                outcomeStatus: "conflict",
+                message: "The prepared source changed after preflight.",
+            });
+            await expect(resumeOutcomeLibraryGeneration(fetchImpl, "checkpoint")).rejects.toBeInstanceOf(OutcomeLibraryGenerationStartError);
         });
 
         it("preserves typed invalid start validation for either retained route", async () => {

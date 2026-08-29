@@ -1,5 +1,4 @@
-import {ArtifactConversionPlan, OutcomeLibraryBundleReader, loadPokieGame} from "pokie";
-import crypto from "crypto";
+import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleReader, loadPokieGame} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -15,16 +14,8 @@ const plan: ArtifactConversionPlan = {
     preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false},
 };
 
-function canonicalize(value: unknown): unknown {
-    if (Array.isArray(value)) return value.map(canonicalize);
-    if (value !== null && typeof value === "object") {
-        return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, child]) => [key, canonicalize(child)]));
-    }
-    return value;
-}
-
-function canonicalLibraryHash(library: {readonly outcomes: unknown}): string {
-    return `sha256:${crypto.createHash("sha256").update(JSON.stringify(canonicalize(library.outcomes))).digest("hex")}`;
+function canonicalLibraryHash(library: Parameters<typeof computeWeightedOutcomeLibraryHash>[0]): string {
+    return computeWeightedOutcomeLibraryHash(library);
 }
 
 function withoutGeneratedAt<T extends {readonly generatedAt?: string}>(provenance: T): Omit<T, "generatedAt"> {
@@ -147,7 +138,10 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         const bundle = await new OutcomeLibraryBundleReader().readLibrary(path.join(packageRoot, "studio-library"), "base");
         expect(bundle.outcomes).toEqual(cli.outcomes);
         const generatedResult = generated as Extract<typeof generated, {status: "ok"}>;
+        expect(bundle.libraryId).toBe(cli.libraryId);
+        expect(generatedResult.mode.libraryId).toBe(cli.libraryId);
         expect(canonicalLibraryHash(bundle)).toBe(canonicalLibraryHash(cli));
+        expect(generatedResult.mode.hash).toBe(canonicalLibraryHash(cli));
         expect(generatedResult.mode.hash).toBe((await new OutcomeLibraryBundleReader().readManifest(path.join(packageRoot, "studio-library"))).modes[0].libraryHash);
         expect(withoutGeneratedAt(generatedResult.generator)).toEqual(withoutGeneratedAt(cliResult.diagnostics as typeof generatedResult.generator));
         expect(preview).toMatchObject({
@@ -225,7 +219,10 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         const bundle = await new OutcomeLibraryBundleReader().readLibrary(path.join(packageRoot, "studio-exact"), "base");
         expect(bundle.outcomes).toEqual(cli.outcomes);
         const generatedResult = generated as Extract<typeof generated, {status: "ok"}>;
+        expect(bundle.libraryId).toBe(cli.libraryId);
+        expect(generatedResult.mode.libraryId).toBe(cli.libraryId);
         expect(canonicalLibraryHash(bundle)).toBe(canonicalLibraryHash(cli));
+        expect(generatedResult.mode.hash).toBe(canonicalLibraryHash(cli));
         expect(withoutGeneratedAt(generatedResult.generator)).toEqual(withoutGeneratedAt(cliResult.diagnostics as typeof generatedResult.generator));
         expect(preflight).toMatchObject({
             game: {id: "exact-parity-slot", version: "1.0.0"}, reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], warnings: [], totalOutcomeSpaceSize: 6,

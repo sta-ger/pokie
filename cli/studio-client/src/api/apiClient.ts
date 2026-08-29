@@ -1064,7 +1064,11 @@ export async function cancelOutcomeLibraryGeneration(fetchImpl: FetchLike, id: s
 
 export async function resumeOutcomeLibraryGeneration(fetchImpl: FetchLike, id: string): Promise<StudioOutcomeLibraryGenerateJobView> {
     const response = await fetchImpl(`/api/project/outcome-libraries/generate/jobs/${encodeURIComponent(id)}/resume`, {method: "POST"});
-    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to resume the outcome library generation"));
+    // Resume is a lifecycle start too.  In particular a persisted exact
+    // checkpoint can race an active generation which owns its destination.
+    // Keep the server's Outcome Library DTO rather than flattening that
+    // recoverable conflict into an untyped transport Error.
+    if (!response.ok) return throwOutcomeLibraryGenerationStartError(response, "Failed to resume the outcome library generation");
     return ((await response.json()) as {job: StudioOutcomeLibraryGenerateJobView}).job;
 }
 
