@@ -119,6 +119,41 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
     });
 
+    it.each([
+        ["legacy", "/project/outcomeLibraries", `/project/${encodeURIComponent("/games/a")}/overview`],
+        ["project-scoped", `/project/${encodeURIComponent("/games/a")}/outcomeLibraries`, `/project/${encodeURIComponent("/games/a")}/overview`],
+    ])("routes a %s retired Outcome Libraries deep link to Overview with an unavailable recovery", async (_kind, initialEntry, expectedPath) => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "loaded",
+                    projectRoot: "/games/a",
+                    game: {id: "a", name: "A", version: "1.0.0"},
+                    type: "outcomeLibrary",
+                    capabilities: ["outcomeLibrary.read"],
+                },
+            }),
+            "/api/project/validate": () => ({ok: true, status: 200, body: {valid: true, issues: []}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: []}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "missing"}}),
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: [initialEntry]});
+
+        await screen.findByRole("heading", {name: "A"});
+        await waitFor(() => expect(router.state.location.pathname).toBe(expectedPath));
+        expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByText(/Outcome Libraries is no longer available in Studio/)).toBeInTheDocument();
+        expect(screen.getByText(/has no Build\/Export equivalent/)).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Build/Export"})).toBeInTheDocument();
+    });
+
     it("an unrecognized :tab falls back to the default section instead of erroring", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
@@ -162,6 +197,7 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         await screen.findByRole("heading", {name: "A"});
         await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent("/games/a")}/overview`));
         expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByText(/The requested Studio section is no longer available/)).toBeInTheDocument();
     });
 });
 

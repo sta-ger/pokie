@@ -271,6 +271,10 @@ export default {
             displayName: "studio-client-components",
             cacheDirectory: jestCacheDirectory,
             testEnvironment: "jsdom",
+            // Server-backed browser regressions import Studio's real domain
+            // collaborators. Keep jsdom for rendered UI while resolving their
+            // dependencies through Node's CJS-friendly export condition.
+            testEnvironmentOptions: {customExportConditions: ["node", "node-addons"]},
             moduleFileExtensions: ["tsx", "ts", "js"],
             testMatch: ["<rootDir>/tests/cli/studio-client/src/**/*.test.tsx"],
             testPathIgnorePatterns: studioClientWorkflowsTestPathIgnorePatterns,

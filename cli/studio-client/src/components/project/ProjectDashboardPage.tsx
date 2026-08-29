@@ -1,7 +1,7 @@
-import {Button, Text, Title} from "@mantine/core";
+import {Alert, Button, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
-import {useNavigate, useParams} from "react-router-dom";
+import {useLocation, useNavigate, useParams} from "react-router-dom";
 import {
     buildReportDownloadUrl,
     closeProject,
@@ -137,12 +137,11 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 //
 // "exportDeploy"/ExportDeployTab (labeled "Build/Export") is the sole Studio build surface -- the old
 // standalone Deployment/Stake Engine Export/Outcome Libraries workspaces (each its own Stepper-driven
-// workflow) have been removed outright, not redirected: every builder they used to own is one of
-// Build/Export's own cards (see ExportDeployTargets.ts) except Outcome Libraries' own select-an-existing-
-// library/inspect/compare tools, which have no Build/Export equivalent yet -- only generating a fresh
-// library does. A deep link to one of the old routes now simply falls back to Overview (see
-// isProjectTab/activeTab below) like any other unrecognized tab value, rather than being kept alive
-// merely for pre-release compatibility. Also reachable for a resolved "outcomeLibrary"/"stakeAdapter"
+// workflow) have been removed: every builder they used to own is one of Build/Export's own cards (see
+// ExportDeployTargets.ts) except Outcome Libraries' own select-an-existing-library/inspect/compare tools,
+// which have no Build/Export equivalent yet -- only generating a fresh library does. A deep link to an old
+// route lands on Overview with an explicit unavailable explanation (see legacyProjectRouteMigration), rather
+// than silently changing an inspect/compare task into generation. Also reachable for a resolved "outcomeLibrary"/"stakeAdapter"
 // project (see BUILD_EXPORT_CAPABLE_CAPABILITIES) -- an outcome library or Stake Engine export can
 // republish its canonical outcome source, while a PAR workbook can republish itself through its .xlsx
 // file-save card.
@@ -164,6 +163,47 @@ const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
 
 function isProjectTab(value: string | undefined): value is ProjectTab {
     return ALL_PROJECT_TABS.some((tab) => tab.value === value);
+}
+
+// Retired routes are not kept as a second set of workflow components. They do remain intelligible
+// bookmarks: each one points at the single retained owner and names the migration rather than silently
+// changing a user's task context. A plain unknown tab also reaches Overview with an explicit unavailable
+// explanation: a removed/renamed bookmark must not look as though Studio silently accepted its task.
+type LegacyProjectRouteMigration = {destination: ProjectTab; message: string};
+
+function legacyProjectRouteMigration(tab: string | undefined): LegacyProjectRouteMigration | undefined {
+    // A retained route is already its own canonical destination. Keeping this guard here (rather
+    // than at every caller) also prevents LegacyProjectDashboardRoute from adding `?migrated=` to
+    // ordinary legacy links such as /project/overview while it upgrades them to scoped URLs.
+    if (isProjectTab(tab)) {
+        return undefined;
+    }
+    switch (tab) {
+        case "deployment":
+            return {destination: "exportDeploy", message: "Deployment has moved into Build/Export. Choose Remote delivery there to preview or publish to a configured target."};
+        case "stakeEngineExport":
+            return {destination: "exportDeploy", message: "Stake Engine Export has moved into Build/Export. Choose the Stake Engine export artifact there."};
+        case "outcomeLibraries":
+            return {
+                destination: "overview",
+                message:
+                    "Outcome Libraries is no longer available in Studio. Its retired select-existing, inspect, and compare workflow has no Build/Export equivalent; use Overview to inspect the opened outcome source, or use the CLI outcome-source commands for comparison.",
+            };
+        case "validate":
+        case "validation":
+            return {destination: "overview", message: "Validate is now part of Overview diagnostics. Revalidate there after changing the project."};
+        default:
+            return tab === undefined
+                ? undefined
+                : {
+                    destination: "overview",
+                    message: "The requested Studio section is no longer available. Overview is open so you can choose a supported workflow for this project.",
+                };
+    }
+}
+
+function migrationSearch(tab: string | undefined): string {
+    return legacyProjectRouteMigration(tab) === undefined ? "" : `?migrated=${encodeURIComponent(tab ?? "")}`;
 }
 
 // A project-opening error can happen before this route has safely established which project is
@@ -196,7 +236,7 @@ export function LegacyProjectDashboardRoute() {
     const {tab} = useParams<{tab: string}>();
     const navigate = useNavigate();
     const header = useProjectContext();
-    const activeTab = isProjectTab(tab) ? tab : "overview";
+    const activeTab = isProjectTab(tab) ? tab : (legacyProjectRouteMigration(tab)?.destination ?? "overview");
     const upgradeStartedRef = useRef(false);
 
     // Replace the legacy entry through the data router. Native history.replaceState() changes the hash
@@ -208,10 +248,10 @@ export function LegacyProjectDashboardRoute() {
     useLayoutEffect(() => {
         if (!upgradeStartedRef.current && projectRoot !== undefined && projectRoot !== "") {
             upgradeStartedRef.current = true;
-            const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
+            const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}${migrationSearch(tab)}`;
             navigate(scopedPath, {replace: true});
         }
-    }, [activeTab, navigate, projectRoot]);
+    }, [activeTab, navigate, projectRoot, tab]);
 
     if (header.status === "error" && projectRoot === "") {
         return <ProjectOpeningErrorState message={header.message} detail={header.errorDetail} onReturnToProjects={() => navigate("/home/projects")} />;
@@ -280,9 +320,13 @@ function describeProjectName(header: ProjectHeaderView): string {
 export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRoot?: string} = {}) {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
+    const location = useLocation();
     const confirm = useConfirm();
     const {tab} = useParams<{tab: string}>();
-    const activeTab: ProjectTab = isProjectTab(tab) ? tab : "overview";
+    const requestedMigration = legacyProjectRouteMigration(tab);
+    const activeTab: ProjectTab = isProjectTab(tab) ? tab : (requestedMigration?.destination ?? "overview");
+    const migratedFrom = new URLSearchParams(location.search).get("migrated");
+    const migration = legacyProjectRouteMigration(migratedFrom ?? undefined);
     // The active tab lives in the URL (`/project/:tab`, see routes.tsx) so refresh/back-forward/direct
     // links land on the right section; every existing call site below still just calls `setActiveTab(x)`,
     // now implemented as a navigation instead of local state.
@@ -302,8 +346,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             return;
         }
         const routePrefix = requestedProjectRoot === undefined ? "/project" : `/project/${encodeURIComponent(requestedProjectRoot)}`;
-        navigate(`${routePrefix}/overview`, {replace: true});
-    }, [navigate, requestedProjectRoot, tab]);
+        const destination = requestedMigration?.destination ?? "overview";
+        navigate(`${routePrefix}/${destination}${migrationSearch(tab)}`, {replace: true});
+    }, [navigate, requestedMigration, requestedProjectRoot, tab]);
 
     const header = useProjectContext(requestedProjectRoot);
     const projectKey =
@@ -908,6 +953,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             )}
             {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact") && (
                 <div ref={panelRef} role="region" aria-labelledby="project-dashboard-heading" tabIndex={-1} style={{marginTop: "1rem"}}>
+                    {migration !== undefined && migration.destination === activeTab && (
+                        <Alert color="blue" variant="light" mb="sm">
+                            {migration.message}
+                        </Alert>
+                    )}
                     {!activeTabSupported && activeTabDescriptor !== undefined && (
                         <>
                             <ErrorState message={describeUnsupportedTabMessage(activeTabDescriptor)} />

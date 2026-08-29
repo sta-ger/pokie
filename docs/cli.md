@@ -3091,8 +3091,11 @@ away, just visually secondary — a tab is only offered at all once the loaded p
 support it; see [`studio-frontend.md`](studio-frontend.md#ux--information-architecture) for the exact, current
 tab list). There is no standalone "Validate" tab any more — validation is automatic diagnostics folded into
 Overview itself, run on load and re-run on demand — and no standalone Deployment/Outcome Libraries/Stake Engine
-Export tabs either: those have been removed outright (not redirected), with every builder they used to own now
-one of **Build/Export**'s own cards. Overview is informational diagnostics only — it surfaces validation status
+Export tabs either. Deployment and Stake Engine Export have moved to **Build/Export** cards, so their legacy deep
+links redirect there with migration guidance. Outcome Libraries' retired select-existing/inspect/compare work has
+no Build/Export equivalent: its legacy deep links land on **Overview**, explain that it is unavailable in Studio,
+and point to the opened outcome source plus the CLI comparison commands. The old workflows themselves no longer
+mount. Overview is informational diagnostics only — it surfaces validation status
 alongside the rest of the project's state, with no wizard-like next-step recommendation or call to action:
 
 - **Overview** shows the game's name/id/version, the absolute `projectRoot`, its `package.json` identity (name,
@@ -3291,9 +3294,10 @@ in-memory limit, same as Reports: restarting Studio clears it, and a replay from
 
 #### Build/Export
 
-**Build/Export** (`ExportDeployTab.tsx`) is the sole Studio build surface — the old standalone Deployment/Stake
-Engine Export/Outcome Libraries workspaces (each its own Stepper-driven flow) have been removed outright, not
-redirected; every builder they used to own is one of this tab's own cards, grouped by kind (`ExportDeployTargets.ts`):
+**Build/Export** (`ExportDeployTab.tsx`) is the sole Studio build surface. The old standalone Deployment and Stake
+Engine Export workspaces have moved to their corresponding cards here; Outcome Libraries' retired
+select-existing/inspect/compare workspace is not a builder and has no equivalent card. Every retained builder is
+grouped by kind (`ExportDeployTargets.ts`):
 
 - **Outcome libraries** — generates or selects the canonical `WeightedOutcomeLibrary` every other card below reads
   from (a build step in its own right, not a delivery target), the same underlying operation as
@@ -3332,10 +3336,12 @@ redirected; every builder they used to own is one of this tab's own cards, group
 
 Build/Export is deliberately a single-mode, zero-configuration surface run against the project's own first
 current build mode (or `"base"` when none is known) — a project that genuinely needs a multi-mode bundle has no
-separate dedicated workflow to fall back to yet. Outcome Libraries' own select-an-existing-library/inspect/
-compare tooling has no Build/Export equivalent yet either — only generating a fresh library does; a deep link to
-one of the old removed routes (`/project/deployment`, `/project/stakeEngineExport`, `/project/outcomeLibraries`)
-now simply falls back to Overview, like any other unrecognized tab.
+separate dedicated workflow to fall back to yet. Outcome Libraries' select-an-existing-library/inspect/compare
+tooling has no Build/Export equivalent — only generating a fresh library does. Accordingly, legacy Deployment and
+Stake Engine Export links (`/project/deployment`, `/project/stakeEngineExport`) redirect to Build/Export and explain
+the retained card; legacy Outcome Libraries links (`/project/outcomeLibraries`) land on Overview with an explicit
+unavailable explanation and CLI comparison recovery. Obsolete Validate routes land on Overview diagnostics with
+the corresponding recovery guidance.
 
 ### API
 
@@ -3512,15 +3518,19 @@ client, even for a load/validation failure.
   target's `{id, version, requirements, capabilities}` (empty until a project registers a real
   `ExternalDeploymentTarget` — see Build/Export's own "Remote deployment" card above). `409 {"error": "No
   active project."}` in Home mode.
-- `POST /api/project/deployment/runs` `{"targetId": string, "modes": [{"modeName": string, "libraryPath":
-  string}], "publish"?: boolean}` — runs `ExternalDeploymentService.deploy()` (the SDK's own single orchestrator)
-  for `targetId` against the given modes, each `libraryPath` a `WeightedOutcomeLibrary` JSON file resolved
-  relative to the active project's own root (`publish` defaults to `false` — a side-effect-free preview, since the
-  target's own `runtimeAdapter` is stripped before `deploy()` is called; `true` keeps it, so a successful run
-  actually publishes). `400 {"error": "..."}` for a structurally malformed request (`targetId`/a mode's own
-  `modeName`/`libraryPath` missing or empty, `modes` empty, `publish` present but not a boolean), a `libraryPath`
-  that doesn't resolve to a readable file within the project root, or one that isn't valid JSON. `404 {"error":
-  "Unknown deployment target \"...\"."}` for an unknown `targetId`. Otherwise always `200` with the SDK's own
+- `POST /api/project/deployment/runs` `{"targetId": string, "modes"?: [{"modeName": string, "librarySelector":
+  {"kind": "json" | "bundle" | "stakeengine", ...}}], "publish"?: boolean}` — runs
+  `ExternalDeploymentService.deploy()` (the SDK's own single orchestrator) for `targetId`. Omitting `modes` asks
+  the canonical project planner to resolve compatible registered Outcome Libraries; supplied modes use the same
+  project-contained `librarySelector` contract as Studio Stake export: `json` selects a raw library file, `bundle`
+  selects a named mode from a canonical Outcome Library bundle, and `stakeengine` selects a named mode from a Stake
+  Engine export. `publish` defaults to `false` — a side-effect-free preview, since the target's own
+  `runtimeAdapter` is stripped before `deploy()` is called; `true` keeps it, so a successful run actually
+  publishes. `400 {"error": "..."}` for a structurally malformed request (`targetId`, an explicitly supplied
+  empty `modes` list, duplicate/missing mode names, malformed `librarySelector`, or non-boolean `publish`). The
+  service then reports selector containment, mode/provenance, source-read, compatibility and target failures in
+  the returned run view, with the matching repair/rebuild/reselect recovery. `404 {"error": "Unknown deployment
+  target \"...\"."}` for an unknown `targetId`. Otherwise always `200` with the SDK's own
   `ExternalDeploymentResult`, mirrored field-for-field (every generated artifact's `content` decoded to a plain
   string) — a domain-level pipeline failure (incompatible content, a failed projector, an unwritable output
   directory, ...) is carried in that DTO's own stage-by-stage issue arrays, never a 4xx/5xx, the same "only a
