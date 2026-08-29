@@ -253,6 +253,45 @@ describe("BlueprintProjectMaterializer", () => {
         expect(packageValidator.calls).toHaveLength(1);
     });
 
+    it("does not return a verified cached runtime when cancellation wins during its asynchronous marker inspection", async () => {
+        const runner = createRecordingRunner();
+        const packageValidator = createStubPackageValidator(validReport);
+        const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runner, packageValidator, cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const cached = await materializer.materialize(blueprintProjectOf(blueprintPath));
+        const markerPath = path.join(cached.runtimePath, ".pokie-materialized.json");
+        const realReadFile = fs.promises.readFile.bind(fs.promises);
+        let releaseMarkerRead!: () => void;
+        let markReadStarted!: () => void;
+        const markerReadStarted = new Promise<void>((resolve) => {
+            markReadStarted = resolve;
+        });
+        const readFileSpy = jest.spyOn(fs.promises, "readFile").mockImplementation(((targetPath: fs.PathLike) => {
+            if (targetPath === markerPath) {
+                markReadStarted();
+                return new Promise<string>((resolve, reject) => {
+                    releaseMarkerRead = () => {
+                        realReadFile(markerPath, "utf-8").then(resolve, reject);
+                    };
+                });
+            }
+            return realReadFile(targetPath, "utf-8");
+        }) as typeof fs.promises.readFile);
+        const controller = new AbortController();
+
+        try {
+            const pending = materializer.materialize(blueprintProjectOf(blueprintPath), {signal: controller.signal});
+            await markerReadStarted;
+            controller.abort();
+            releaseMarkerRead();
+
+            await expect(pending).rejects.toThrow("Runtime materialization was cancelled.");
+            expect(runner.calls).toHaveLength(1);
+        } finally {
+            readFileSpy.mockRestore();
+        }
+    });
+
     it("resolves an edited blueprint to a different cache directory, leaving the old entry untouched", async () => {
         const runner = createRecordingRunner();
         const packageValidator = createStubPackageValidator(validReport);

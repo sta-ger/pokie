@@ -511,15 +511,13 @@ export class StudioSimulationService {
         this.markTerminal(record);
     }
 
-    // Retain the familiar immediate recovery line, but append (rather than
-    // replace) the shared planner diagnostic so every Studio adapter exposes
-    // the attempted path and exact failed edge.
+    // Planner diagnostics are already safe, user-facing explanations of the
+    // attempted runtime path, failed edge, and recovery. Preserve them byte
+    // for byte: the client deliberately recognizes their opening phrase and
+    // would otherwise replace them with generic retry copy.
     private describeRuntimePreparationFailure(error: unknown): Error {
-        if (error instanceof Error && error.name === "BlueprintMaterializationError") {
-            return new Error(
-                "Simulation could not prepare a runnable runtime from this Blueprint. Fix the Blueprint or its local npm setup, then retry the simulation. " +
-                error.message,
-            );
+        if (error instanceof Error && (/^Cannot prepare a runnable runtime\b/i).test(error.message)) {
+            return error;
         }
         return error instanceof Error ? error : new Error(String(error));
     }

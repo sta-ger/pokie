@@ -266,7 +266,7 @@ describe("StudioSimulationService", () => {
         }
     });
 
-    it("reports a retryable Blueprint materialization failure without exposing npm output", async () => {
+    it("preserves the planner-enriched Blueprint materialization diagnostic for the client", async () => {
         const blueprintPath = "/projects/broken.blueprint.json";
         const blueprintProject: PokieProject = {
             type: "blueprint",
@@ -309,8 +309,11 @@ describe("StudioSimulationService", () => {
         const job = await waitForTerminal(service, result.job.id);
 
         expect(job.status).toBe("failed");
-        expect(job.error).toContain("could not prepare a runnable runtime");
-        expect(job.error).toContain("Fix the Blueprint or its local npm setup, then retry");
+        expect(job.error).toMatch(new RegExp(`^Cannot prepare a runnable runtime from ${JSON.stringify(blueprintPath)}\\.`));
+        expect(job.error).toContain("Attempted path: blueprint -> tsPackage");
+        expect(job.error).toContain("planned/reusable stages: materialize materializeRuntime (blueprint -> tsPackage)");
+        expect(job.error).toContain("failed conversion edge: blueprint -> tsPackage");
+        expect(job.error).toContain("Next: Fix the reported source or runtime-preparation problem, then retry.");
         expect(job.error).not.toContain("ENOTDIR");
         expect(loadGame).not.toHaveBeenCalled();
     });

@@ -71,7 +71,14 @@ export type ProjectTab =
 // RUNTIME_EXECUTE_CAPABILITY itself; a "blueprint" project never does (see RUNTIME_EXECUTE_CAPABILITY's
 // own doc comment), but Studio always materializes it into a runnable tsPackage before loading it, so
 // BLUEPRINT_BUILD_CAPABILITY is an equally sufficient signal here -- either one unlocks this whole group.
-const RUNTIME_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [BLUEPRINT_BUILD_CAPABILITY, RUNTIME_EXECUTE_CAPABILITY];
+// A PAR workbook likewise reaches the same runtime through the shared planner's private import-to-Blueprint
+// stage. Its exchange capability is intentionally only a reachability signal here: Stake and WASM retain
+// their distinct capabilities and never acquire a runnable-runtime affordance.
+const RUNTIME_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [
+    BLUEPRINT_BUILD_CAPABILITY,
+    RUNTIME_EXECUTE_CAPABILITY,
+    PAR_WORKBOOK_EXCHANGE_CAPABILITY,
+];
 
 // Play/Simulation/Replay each reach a resolved "outcomeLibrary" project through its own real OutcomeSource
 // adapters (StudioPlayService/StudioSimulationService/StudioReplayExecutionService), never loadPokieGame --

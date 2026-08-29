@@ -156,6 +156,10 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         const cacheDir = path.join(this.cacheRoot, cacheKey);
 
         if (await this.isReady(cacheDir, cacheKey)) {
+            // `isReady` performs asynchronous filesystem I/O. A request may
+            // have been cancelled while the marker was being read, so never
+            // hand its borrowed runtime back without observing that race.
+            this.assertNotCancelled(options.signal);
             return this.borrowed(cacheDir);
         }
 
@@ -186,6 +190,9 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         try {
             this.assertNotCancelled(signal);
             if (await this.isReady(cacheDir, cacheKey)) {
+                // As above, cancellation may win while the post-lock cache
+                // verification is awaiting the marker read.
+                this.assertNotCancelled(signal);
                 // Whoever held the lock immediately before us already published a ready, matching entry --
                 // borrow it; this call never evicts, renames, or otherwise touches cacheDir.
                 return this.borrowed(cacheDir);

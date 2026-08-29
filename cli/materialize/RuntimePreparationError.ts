@@ -19,7 +19,8 @@ export class RuntimePreparationError extends Error {
         super(
             `Cannot prepare a runnable runtime from ${JSON.stringify(project.rootPath)}. ` +
             `Attempted path: ${project.type} -> tsPackage; planned/reusable stages: ${stages}; ` +
-            `failed conversion edge: ${failedStep.input.kind} -> ${failedStep.output.kind}. ${reason}`,
+            `failed conversion edge: ${failedStep.input.kind} -> ${failedStep.output.kind}. ${reason} ` +
+            "Next: Fix the reported source or runtime-preparation problem, then retry.",
         );
         this.name = "RuntimePreparationError";
         (this as Error & {cause?: unknown}).cause = cause;
