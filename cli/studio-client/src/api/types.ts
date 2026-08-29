@@ -1018,6 +1018,8 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           maxOutcomeSpaceSize: number | string;
           strategy: OutcomeLibraryGenerationStrategy;
           requiresBounded: boolean;
+          expectedRawWork: number | string;
+          warnings: string[];
           plan: StudioArtifactConversionPlan;
       }
     | {status: "unsupported"; error: string; plan: StudioArtifactConversionPlan}

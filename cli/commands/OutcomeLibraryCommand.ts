@@ -6,7 +6,6 @@ import {
     ArtifactConversionPlanner,
     assertPreparedArtifactDestinationAvailable,
     computeArtifactInputBindingHash,
-    DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     ExactEnumerationCheckpoint,
     GenerateExactWeightedOutcomeLibraryOptions,
     GenerateExactWeightedOutcomeLibraryResult,
@@ -28,6 +27,7 @@ import {
     estimateExactOutcomeSpaceSize,
     generateExactWeightedOutcomeLibrary,
     loadPokieGame,
+    preflightOutcomeLibraryGenerationFromEstimate,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -635,19 +635,28 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             throw error;
         }
 
-        const maxOutcomeSpaceSize = options.maxOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE;
         const sampling = this.buildSampledOptions(options);
         const sample = sampling.sampled ?? sampling.bounded;
-        const strategy: "exact" | "bounded-coverage" = sampling.sampled !== undefined || estimate.totalOutcomeSpaceSize > maxOutcomeSpaceSize ? "bounded-coverage" : "exact";
+        let generation: "default" | "exact" | "sampled" | "bounded" = "default";
+        if (options.exact) generation = "exact";
+        if (sampling.bounded !== undefined) generation = "bounded";
+        if (sampling.sampled !== undefined) generation = "sampled";
+        const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, {
+            generation,
+            ...(options.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: options.maxOutcomeSpaceSize}),
+            ...(sample === undefined ? {} : {sample}),
+        });
         const report = {
             game: game.getManifest(),
             reelsNumber: estimate.reelsNumber,
             reelsSymbolsNumber: estimate.reelsSymbolsNumber,
             reelSizes: estimate.reelSizes,
             totalOutcomeSpaceSize: formatBigIntSafely(estimate.totalOutcomeSpaceSize),
-            maxOutcomeSpaceSize: formatBigIntSafely(maxOutcomeSpaceSize),
-            strategy,
-            requiresBounded: strategy === "bounded-coverage" && sample === undefined,
+            maxOutcomeSpaceSize: formatBigIntSafely(preflight.maxExactOutcomeSpaceSize),
+            strategy: preflight.strategy,
+            requiresBounded: preflight.requiresSampledOptIn,
+            expectedRawWork: formatBigIntSafely(preflight.expectedRawWork),
+            warnings: preflight.warnings,
             ...(sample !== undefined ? {sampleSize: formatBigIntSafely(sample.sampleSize), seed: sample.seed} : {}),
         };
 

@@ -744,5 +744,6 @@ export * from "./weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js"
 export * from "./weightedoutcome/generate/OutcomeSpaceEstimate.js";
 export * from "./weightedoutcome/generate/WeightedOutcomeLibraryGenerationCancelledError.js";
 export * from "./weightedoutcome/generate/WeightedOutcomeLibraryGenerationError.js";
+export * from "./weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
 export * from "./weightedoutcome/generate/estimateExactOutcomeSpaceSize.js";
 export * from "./weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";

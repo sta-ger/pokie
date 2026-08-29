@@ -1,5 +1,4 @@
 import {
-    DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     GenerateExactWeightedOutcomeLibraryOptions,
     GenerateExactWeightedOutcomeLibraryResult,
     loadPokieGame,
@@ -16,6 +15,7 @@ import {
     describeArtifactConversionPlanDiagnostic,
     estimateExactOutcomeSpaceSize,
     generateExactWeightedOutcomeLibrary,
+    preflightOutcomeLibraryGenerationFromEstimate,
 } from "pokie";
 import fs from "fs";
 import path from "path";
@@ -151,8 +151,9 @@ export class StudioOutcomeLibraryGenerateService {
             throw error;
         }
 
-        const maxOutcomeSpaceSize = request.maxOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE;
-        const strategy = estimate.totalOutcomeSpaceSize > maxOutcomeSpaceSize ? "bounded-coverage" : "exact";
+        const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, {
+            ...(request.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: request.maxOutcomeSpaceSize}),
+        });
 
         return {
             status: "ok",
@@ -161,9 +162,11 @@ export class StudioOutcomeLibraryGenerateService {
             reelsSymbolsNumber: estimate.reelsSymbolsNumber,
             reelSizes: estimate.reelSizes,
             totalOutcomeSpaceSize: formatBigIntSafely(estimate.totalOutcomeSpaceSize),
-            maxOutcomeSpaceSize: formatBigIntSafely(maxOutcomeSpaceSize),
-            strategy,
-            requiresBounded: strategy === "bounded-coverage",
+            maxOutcomeSpaceSize: formatBigIntSafely(preflight.maxExactOutcomeSpaceSize),
+            strategy: preflight.strategy,
+            requiresBounded: preflight.requiresSampledOptIn,
+            expectedRawWork: formatBigIntSafely(preflight.expectedRawWork),
+            warnings: preflight.warnings,
             plan,
         };
     }
@@ -176,9 +179,9 @@ export class StudioOutcomeLibraryGenerateService {
     public async generate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest): Promise<StudioOutcomeLibraryGenerateResultView> {
         const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
         const modeName = request.mode ?? "base";
-        const requestedGeneration = request.bounded === undefined
+        const requestedGeneration = request.bounded === undefined && request.sampled === undefined
             ? {generationSemantics: "exact" as const}
-            : {generationSemantics: "boundedSample" as const, sampleCount: request.bounded.sampleSize, sampleSeed: request.bounded.seed};
+            : {generationSemantics: "boundedSample" as const, sampleCount: (request.sampled ?? request.bounded)!.sampleSize, sampleSeed: (request.sampled ?? request.bounded)!.seed};
         // The requested bundle directory is part of the prepared decision, not a
         // writer-local default.  In particular this keeps an occupied or aliased
         // destination from being silently treated as a mode-update after a preview
@@ -200,8 +203,8 @@ export class StudioOutcomeLibraryGenerateService {
             "outcomeLibrary",
             resolvedOutDir.resolvedPath,
             requestedGeneration.generationSemantics,
-            request.bounded?.sampleSize,
-            request.bounded?.seed,
+            (request.sampled ?? request.bounded)?.sampleSize,
+            (request.sampled ?? request.bounded)?.seed,
         );
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
@@ -249,16 +252,18 @@ export class StudioOutcomeLibraryGenerateService {
                         return {status: "terminal", view: {status: "load-error", error: error instanceof Error ? error.message : String(error), plan}};
                     }
                     const manifest = game.getManifest();
+                    const configHash = request.configHash ?? game.getConfigHash?.();
                     const libraryId = request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`;
                     let generated: GenerateExactWeightedOutcomeLibraryResult;
                     try {
                         generated = await this.generateLibrary({
                             libraryId, game, pokieVersion: this.pokieVersion,
-                            ...(game.getConfigHash?.() !== undefined ? {configHash: game.getConfigHash()} : {}),
+                            ...(configHash !== undefined ? {configHash} : {}),
                             ...(request.mode !== undefined ? {betMode: request.mode} : {}),
                             ...(request.stake !== undefined ? {stake: request.stake} : {}),
                             ...(request.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: request.maxOutcomeSpaceSize} : {}),
                             ...(request.bounded !== undefined ? {bounded: request.bounded} : {}),
+                            ...(request.sampled !== undefined ? {sampled: request.sampled} : {}),
                         });
                     } catch (error) {
                         if (error instanceof WeightedOutcomeLibraryGenerationError) {

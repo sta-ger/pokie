@@ -5,6 +5,7 @@ export type OutcomeLibraryGenerateRequestInput = {
     configHash?: unknown;
     libraryId?: unknown;
     maxOutcomeSpaceSize?: unknown;
+    sampled?: OutcomeLibraryGenerateBoundedInput;
     bounded?: OutcomeLibraryGenerateBoundedInput;
     outDir?: unknown;
 };
@@ -15,6 +16,7 @@ export type ValidatedOutcomeLibraryGenerateRequest = {
     readonly configHash?: string;
     readonly libraryId?: string;
     readonly maxOutcomeSpaceSize?: bigint;
+    readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
     readonly bounded?: {readonly sampleSize: bigint; readonly seed: string};
     readonly outDir?: string;
 };
@@ -23,18 +25,11 @@ function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0;
 }
 
-// Same bigint-safe decimal-string convention as validateOutcomeLibraryGenerateEstimateRequest's own
-// parsePositiveBigIntField -- kept as a private, separately-named copy (not imported from that sibling
-// file) since neither validator has any other reason to depend on the other.
-function parsePositiveBigIntField(value: unknown, field: string): bigint {
-    if (typeof value !== "string" || !(/^[0-9]+$/).test(value)) {
-        throw new Error(`"${field}" must be a positive integer decimal string.`);
-    }
-    const parsed = BigInt(value);
-    if (parsed <= BigInt(0)) {
-        throw new Error(`"${field}" must be a positive integer decimal string.`);
-    }
-    return parsed;
+function validateSample(input: OutcomeLibraryGenerateBoundedInput | undefined, field: "bounded" | "sampled"): {sampleSize: bigint; seed: string} | undefined {
+    if (input === undefined) return undefined;
+    if (typeof input !== "object" || input === null) throw new Error(`"${field}" must be an object with "sampleSize" and "seed" when present.`);
+    if (!isNonEmptyString(input.seed)) throw new Error(`"${field}.seed" must be a non-empty string.`);
+    return {sampleSize: parsePositiveOutcomeLibraryGenerationDecimal(input.sampleSize, `${field}.sampleSize`), seed: input.seed};
 }
 
 // The Studio Generate step's own request shape -- deliberately mirrors "pokie outcomelibrary generate"'s
@@ -61,24 +56,19 @@ export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGener
         throw new Error('"outDir" must be a non-empty string when present.');
     }
 
-    let bounded: {sampleSize: bigint; seed: string} | undefined;
-    if (input.bounded !== undefined) {
-        if (typeof input.bounded !== "object" || input.bounded === null) {
-            throw new Error('"bounded" must be an object with "sampleSize" and "seed" when present.');
-        }
-        if (!isNonEmptyString(input.bounded.seed)) {
-            throw new Error('"bounded.seed" must be a non-empty string.');
-        }
-        bounded = {sampleSize: parsePositiveBigIntField(input.bounded.sampleSize, "bounded.sampleSize"), seed: input.bounded.seed};
-    }
+    const bounded = validateSample(input.bounded, "bounded");
+    const sampled = validateSample(input.sampled, "sampled");
+    if (bounded !== undefined && sampled !== undefined) throw new Error('"bounded" and "sampled" cannot be combined.');
 
     return {
         ...(input.mode !== undefined ? {mode: input.mode as string} : {}),
         ...(input.stake !== undefined ? {stake: input.stake as number} : {}),
         ...(input.configHash !== undefined ? {configHash: input.configHash as string} : {}),
         ...(input.libraryId !== undefined ? {libraryId: input.libraryId as string} : {}),
-        ...(input.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: parsePositiveBigIntField(input.maxOutcomeSpaceSize, "maxOutcomeSpaceSize")} : {}),
+        ...(input.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: parsePositiveOutcomeLibraryGenerationDecimal(input.maxOutcomeSpaceSize, "maxOutcomeSpaceSize")} : {}),
         ...(bounded !== undefined ? {bounded} : {}),
+        ...(sampled !== undefined ? {sampled} : {}),
         ...(input.outDir !== undefined ? {outDir: input.outDir as string} : {}),
     };
 }
+import {parsePositiveOutcomeLibraryGenerationDecimal} from "pokie";

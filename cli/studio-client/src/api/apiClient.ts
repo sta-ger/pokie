@@ -941,6 +941,7 @@ export type OutcomeLibraryGenerateRequestOptions = {
     libraryId?: string;
     maxOutcomeSpaceSize?: string;
     bounded?: {sampleSize: string; seed: string};
+    sampled?: {sampleSize: string; seed: string};
     outDir?: string;
 };
 

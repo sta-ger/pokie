@@ -9,6 +9,7 @@ import {
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleWriter,
     PokieGame,
+    preflightOutcomeLibraryGenerationFromEstimate,
     streamExactWeightedOutcomes,
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
@@ -32,6 +33,25 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         expect(estimate.reelsSymbolsNumber).toBe(1);
         expect(estimate.reelSizes).toEqual([3, 2]);
         expect(estimate.totalOutcomeSpaceSize).toBe(BigInt(6));
+    });
+
+    it("uses one preflight decision for the legacy bounded and explicit sampled strategies", () => {
+        const estimate = estimateExactOutcomeSpaceSize(buildFixtureGame());
+
+        expect(preflightOutcomeLibraryGenerationFromEstimate(estimate, {maxExactOutcomeSpaceSize: BigInt(5)})).toMatchObject({
+            strategy: "bounded-coverage",
+            requiresSampledOptIn: true,
+            expectedRawWork: BigInt(0),
+        });
+        expect(preflightOutcomeLibraryGenerationFromEstimate(estimate, {
+            generation: "sampled",
+            maxExactOutcomeSpaceSize: BigInt(5),
+            sample: {sampleSize: BigInt(4), seed: "same-seed"},
+        })).toMatchObject({
+            strategy: "bounded-coverage",
+            requiresSampledOptIn: false,
+            expectedRawWork: BigInt(4),
+        });
     });
 
     it("fails closed for a game that never implemented createExactEnumerationSession", () => {

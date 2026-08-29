@@ -17,15 +17,18 @@ import {supportsBetModeSelecting} from "../../session/videoslot/betmode/supports
 import {sampleStopTuples} from "./internal/sampleStopTuples.js";
 import {sweepStopTuples} from "./internal/sweepStopTuples.js";
 import {toBigIntSafeDecimal} from "./internal/toBigIntSafeDecimal.js";
-import {estimateExactOutcomeSpaceSize} from "./estimateExactOutcomeSpaceSize.js";
 import type {OutcomeLibraryGeneratorDiagnostics, OutcomeLibraryGenerationStrategy} from "./OutcomeLibraryGeneratorDiagnostics.js";
 import type {ExactEnumerationCheckpoint} from "./WeightedOutcomeLibraryGenerationCancelledError.js";
 import {WeightedOutcomeLibraryGenerationError} from "./WeightedOutcomeLibraryGenerationError.js";
+import {
+    adaptLegacyOutcomeLibraryGenerationRequest,
+    prepareOutcomeLibraryGeneration,
+} from "./OutcomeLibraryGenerationRequest.js";
 
 // Above this raw reel-stop combination count, generation refuses to sweep exhaustively unless the caller
 // either raises maxOutcomeSpaceSize explicitly or opts into "bounded" -- chosen as a size any single Node
 // process can sweep (with dedup) in well under a minute for a typical grid, not a hard platform limit.
-export const DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE = BigInt(20_000_000);
+export {DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE} from "./OutcomeLibraryGenerationRequest.js";
 
 // A wide/many-reel grid can have so little raw-combination duplication that the distinct-grid count
 // accumulateUniqueGridWeights retains approaches maxOutcomeSpaceSize itself -- i.e. staying under
@@ -131,41 +134,19 @@ type PreparedGeneration = {
 function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedGeneration {
     const {game} = options;
     const manifest = game.getManifest();
-    if (options.exact && (options.sampled !== undefined || options.bounded !== undefined)) {
-        throw new WeightedOutcomeLibraryGenerationError(
-            "weighted-outcome-library-generation-strategy-conflict",
-            'exact generation cannot be combined with sampled generation; use either exact generation or `pokie generate <packageRoot> --sample <n> --seed <string>` (or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>`).',
-        );
-    }
-    if (options.sampled !== undefined && options.bounded !== undefined) {
-        throw new WeightedOutcomeLibraryGenerationError(
-            "weighted-outcome-library-generation-strategy-conflict",
-            "sampled and bounded generation cannot be combined; use the direct sampled workflow on its own.",
-        );
-    }
-    const sampled = options.sampled ?? options.bounded;
-    if (sampled !== undefined && sampled.sampleSize <= BigInt(0)) {
-        throw new WeightedOutcomeLibraryGenerationError(
-            "weighted-outcome-library-generation-invalid-sample-size",
-            'sampleSize must be a positive integer; use `pokie generate <packageRoot> --sample <n> --seed <string>` or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>` with a positive n.',
-        );
-    }
+    const request = prepareOutcomeLibraryGeneration(adaptLegacyOutcomeLibraryGenerationRequest(options));
+    // prepareOutcomeLibraryGeneration has already failed closed for this case; retain the local narrowing
+    // because the executable session is consumed below as part of this function's runtime boundary.
     if (typeof game.createExactEnumerationSession !== "function") {
-        throw new WeightedOutcomeLibraryGenerationError(
-            "weighted-outcome-library-generation-unsupported",
-            `"${manifest.id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`,
-        );
+        throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported", `"${manifest.id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`);
     }
-
-    const estimate = estimateExactOutcomeSpaceSize(game);
-    const maxOutcomeSpaceSize = options.maxOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE;
-    const strategy: OutcomeLibraryGenerationStrategy = options.sampled !== undefined || estimate.totalOutcomeSpaceSize > maxOutcomeSpaceSize ? "bounded-coverage" : "exact";
-
-    if (strategy === "bounded-coverage" && sampled === undefined) {
+    const {estimate, strategy, requiresSampledOptIn} = request.preflight;
+    const sampled = request.sample;
+    if (requiresSampledOptIn) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-space-exceeded",
             `"${manifest.id}"'s exact outcome space (${estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
-                `maxOutcomeSpaceSize (${maxOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
+                `maxOutcomeSpaceSize (${request.maxExactOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
                 'bounded-coverage strategy with `pokie generate <packageRoot> --sample <n> --seed <string>` or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>` (or the `sampled` option).',
         );
     }

@@ -16,6 +16,8 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           readonly totalOutcomeSpaceSize: number | string;
           readonly maxOutcomeSpaceSize: number | string;
           readonly strategy: OutcomeLibraryGenerationStrategy;
+          readonly expectedRawWork: number | string;
+          readonly warnings: readonly string[];
           // True whenever the raw space exceeds maxOutcomeSpaceSize and no --bounded-equivalent options
           // were supplied -- the same "requires --bounded --sample-size --seed" signal the CLI reports,
           // surfaced here before the caller ever commits to a real generate() run.
