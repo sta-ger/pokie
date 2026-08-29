@@ -482,6 +482,13 @@ describe("StudioServer", () => {
         expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/estimate`, {maxOutcomeSpaceSize: "0"}))
             .toMatchObject({status: 400, body: {status: "invalid", error: expect.stringMatching(/positive integer/i)}});
 
+        // Both retained start routes share the same typed validation outcome;
+        // neither may fall back to an unclassified HTTP `{error}` envelope.
+        for (const route of ["generate", "generate/jobs"]) {
+            expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/${route}`, {generation: "sampled"}))
+                .toMatchObject({status: 400, body: {status: "invalid", error: expect.stringMatching(/requires a "sample"/i)}});
+        }
+
         // A caller cannot turn a bounded-required preflight into an executable
         // job simply by presenting its token.  This must match the no-token
         // compatibility route's eligibility rule.
@@ -525,7 +532,7 @@ describe("StudioServer", () => {
             const response = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
                 generation: "exact", preflightToken: "http-token-1", ...drift,
             });
-            expect(response).toMatchObject({status: 409, body: {error: expect.stringMatching(/immutable preflight/i)}});
+            expect(response).toMatchObject({status: 409, body: {status: "conflict", error: expect.stringMatching(/immutable preflight/i)}});
             expect(outcomeService.generate).toHaveBeenCalledTimes(before);
         }
 
@@ -535,7 +542,7 @@ describe("StudioServer", () => {
         const sourceDrift = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
             generation: "exact", preflightToken: "http-token-1",
         });
-        expect(sourceDrift).toMatchObject({status: 409, body: {error: expect.stringMatching(/source changed/i)}});
+        expect(sourceDrift).toMatchObject({status: 409, body: {status: "conflict", error: expect.stringMatching(/source changed/i)}});
         expect(outcomeService.generate).not.toHaveBeenCalled();
 
         // The legacy URL still creates the pollable job and obtains its server
@@ -656,7 +663,7 @@ describe("StudioServer", () => {
         const drift = await post(`${realBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
             generation: "exact", maxOutcomeSpaceSize: "50000", outDir: "changed-destination", preflightToken: (driftPreflight.body as {preflightToken: string}).preflightToken,
         });
-        expect(drift).toMatchObject({status: 409, body: {error: expect.stringMatching(/destination|preflight/i)}});
+        expect(drift).toMatchObject({status: 409, body: {status: "conflict", error: expect.stringMatching(/destination|preflight/i)}});
         expect(fs.existsSync(path.join(sampledProjectRoot, "changed-destination"))).toBe(false);
     });
 

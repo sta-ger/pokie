@@ -103,10 +103,23 @@ describe("studio-client apiClient", () => {
         });
 
         it("preserves classified lifecycle failures from every route", async () => {
-            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {error: "The prepared source changed after preflight."}}));
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {status: "conflict", error: "The prepared source changed after preflight."}}));
 
-            await expect(startOutcomeLibraryGeneration(fetchImpl, {preflightToken: "stale"})).rejects.toThrow("The prepared source changed after preflight.");
+            await expect(startOutcomeLibraryGeneration(fetchImpl, {preflightToken: "stale"})).rejects.toMatchObject({outcomeStatus: "conflict", message: "The prepared source changed after preflight."});
             await expect(resumeOutcomeLibraryGeneration(fetchImpl, "checkpoint")).rejects.toThrow("The prepared source changed after preflight.");
+        });
+
+        it("preserves typed invalid start validation for either retained route", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 400,
+                body: {status: "invalid", error: '"sampleSize" must be a positive integer.'},
+            }));
+
+            await expect(generateOutcomeLibrary(fetchImpl, {generation: "sampled"}))
+                .rejects.toMatchObject({outcomeStatus: "invalid", message: '"sampleSize" must be a positive integer.'});
+            await expect(startOutcomeLibraryGeneration(fetchImpl, {generation: "sampled"}))
+                .rejects.toMatchObject({outcomeStatus: "invalid", message: '"sampleSize" must be a positive integer.'});
         });
 
         it("preserves a start-time preflight classification instead of reducing it to a generic conflict", async () => {

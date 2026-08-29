@@ -35,6 +35,7 @@ import {
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY,
     prepareOutcomeLibraryGeneration,
+    resolveOutcomeLibraryGenerationDestination,
     type OutcomeLibraryGenerationDestinationSafety,
     type OutcomeLibraryGenerationPreflight,
 } from "../weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
@@ -193,6 +194,10 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         // rollback never turns a harmless cancelled/failed build into a
         // destructive removal of the user's chosen destination.
         const destinationExistedBeforeInvocation = fs.existsSync(boundDestination);
+        // A destination which appears while generation is running belongs to
+        // somebody else until this invocation has passed its final safety
+        // check and entered the writer.  Rollback must not erase it.
+        const publication = {started: false};
         const preflight = outcomeGenerationPreflight(preparedRequest.preflight);
         reportArtifactBuildProgress(options, {status: "preflight", preflight});
         assertArtifactBuildNotCancelled(options);
@@ -206,6 +211,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 options,
                 preflight,
                 generation,
+                publication,
             );
             assertArtifactBuildNotCancelled(options);
             // The prepared request owns the canonical publication identity.
@@ -223,7 +229,9 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         } catch (error) {
             // A generated bundle is not a managed Project until registerAndOpen commits the registry record.
             // Do not leave a complete-looking orphan behind when registry I/O or cancellation fails.
-            await this.cleanupFailedDestination(boundDestination, destinationExistedBeforeInvocation);
+            if (destinationExistedBeforeInvocation || publication.started) {
+                await this.cleanupFailedDestination(boundDestination, destinationExistedBeforeInvocation);
+            }
             if (options?.signal?.aborted) {
                 reportArtifactBuildProgress(options, {status: "cancelled", preflight});
                 if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
@@ -275,6 +283,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         options: ArtifactBuildOptions | undefined,
         preflight: ArtifactBuildPreflight,
         generation: ManagedOutcomeGeneration,
+        publication: {started: boolean},
     ): Promise<void> {
         // destinationPath is already the immutable publication identity bound
         // by generatePrepared's domain request. Every per-mode execution below
@@ -317,6 +326,17 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             })),
         );
         assertArtifactBuildNotCancelled(options);
+        // Generation can take a long time.  Re-run the immutable request's
+        // original availability policy at the durable-publication boundary so
+        // a file created after preflight cannot be replaced by the writer's
+        // atomic bundle swap.  This is deliberately the shared domain
+        // resolver, not a workflow-local existence check.
+        const revalidatedDestination = resolveOutcomeLibraryGenerationDestination(boundDestination, destinationSafety);
+        if (revalidatedDestination?.path !== boundDestination) {
+            throw new Error("Managed Outcome Library destination changed after preflight.");
+        }
+        assertArtifactBuildNotCancelled(options);
+        publication.started = true;
         const result = await this.writer.writeToDirectory(
             generated.map(({mode, generated: library}) => ({
                 modeName: mode.id,

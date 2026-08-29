@@ -1007,6 +1007,9 @@ async function throwOutcomeLibraryGenerationStartError(response: {status: number
     if (body?.status === "requires-bounded" || (preflightStatus === "ok" && body?.preflight?.requiresBounded === true)) {
         throw new OutcomeLibraryGenerationStartError("requires-bounded", message);
     }
+    if (body?.status === "unsupported" || body?.status === "conflict" || body?.status === "invalid" || body?.status === "generation-error" || body?.status === "load-error") {
+        throw new OutcomeLibraryGenerationStartError(body.status, message);
+    }
     if (preflightStatus === "unsupported" || preflightStatus === "conflict" || preflightStatus === "invalid" || preflightStatus === "generation-error" || preflightStatus === "load-error") {
         throw new OutcomeLibraryGenerationStartError(preflightStatus, message);
     }

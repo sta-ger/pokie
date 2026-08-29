@@ -1986,7 +1986,10 @@ export class StudioServer implements StudioServerHandling {
 
     private async handleStartOutcomeLibraryGeneration(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
-            this.sendJson(res, 409, {error: "No active project."});
+            // Start rejection is part of the Outcome Library lifecycle, even
+            // on the retained direct route.  Keep its recovery classification
+            // server-owned instead of making a browser infer one from HTTP.
+            this.sendJson(res, 409, {status: "conflict", error: "No active project."});
             return;
         }
         const body = await this.readJsonBody(req);
@@ -1994,7 +1997,7 @@ export class StudioServer implements StudioServerHandling {
         try {
             validated = validateOutcomeLibraryGenerateRequest((body ?? {}) as OutcomeLibraryGenerateRequestInput);
         } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            this.sendJson(res, 400, {status: "invalid", error: error instanceof Error ? error.message : String(error)});
             return;
         }
         // Retained direct callers predate the visible preflight token.  Adapt
@@ -2030,7 +2033,7 @@ export class StudioServer implements StudioServerHandling {
         // a client assertion about the selected strategy.
         const binding = this.outcomeLibraryGenerateService.getPreflightBinding(validated.preflightToken);
         if (binding === undefined) {
-            this.sendJson(res, 409, {error: "The displayed generation preflight has expired. Refresh it before generating."});
+            this.sendJson(res, 409, {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating."});
             return;
         }
         if (binding?.requiresBounded) {
@@ -2051,12 +2054,12 @@ export class StudioServer implements StudioServerHandling {
         // the shared key (strategy/sample/cap/identity/destination), while
         // the service rechecks current source and resolved destination.
         if (generationRequestKey(validated) !== binding.requestKey) {
-            this.sendJson(res, 409, {error: "The generation request no longer matches the immutable preflight. Refresh the displayed preflight before generating."});
+            this.sendJson(res, 409, {status: "conflict", error: "The generation request no longer matches the immutable preflight. Refresh the displayed preflight before generating."});
             return;
         }
         const bindingConflict = await this.outcomeLibraryGenerateService.validatePreflightBinding(this.currentContext.projectRoot, validated, binding);
         if (bindingConflict !== undefined) {
-            this.sendJson(res, 409, {error: bindingConflict});
+            this.sendJson(res, 409, {status: "conflict", error: bindingConflict});
             return;
         }
         this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.currentContext.projectRoot, validated)});

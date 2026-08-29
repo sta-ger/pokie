@@ -235,4 +235,37 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
+
+    it("revalidates the bound destination immediately before publication without deleting a late external file", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-managed-outcome-late-destination-"));
+        const blueprintPath = path.join(workDir, "game.blueprint.json");
+        const outcomeDir = path.join(workDir, "outcome");
+        const lateFile = path.join(outcomeDir, "created-after-preflight.txt");
+        fs.writeFileSync(blueprintPath, JSON.stringify({
+            manifest: {id: "late-managed-output-slot", name: "Late Managed Output Slot", version: "1.0.0"},
+            reels: 3, rows: 1, symbols: ["A"], paytable: {A: {2: 1, 3: 2}},
+            reelStrips: [["A"], ["A"], ["A"]], availableBets: [1],
+        }));
+        const project: PokieProject = {type: "blueprint", rootPath: blueprintPath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test fixture"};
+        let introducedLateDestination = false;
+
+        try {
+            const workflow = new BlueprintStakeOutcomeLibraryWorkflow("1.3.0", loadGameBlueprint);
+            await expect(workflow.resolveOrGenerate(project, outcomeDir, {
+                onProgress: (event) => {
+                    if (!introducedLateDestination && event.status === "running") {
+                        introducedLateDestination = true;
+                        fs.mkdirSync(outcomeDir, {recursive: true});
+                        fs.writeFileSync(lateFile, "external destination owner");
+                    }
+                },
+            })).rejects.toThrow(/not available|destination changed/i);
+
+            expect(introducedLateDestination).toBe(true);
+            expect(fs.readFileSync(lateFile, "utf-8")).toBe("external destination owner");
+            expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(false);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
 });
