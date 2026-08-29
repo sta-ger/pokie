@@ -1,0 +1,26 @@
+{
+  "schema": "pokie.targeted-verification.v1",
+  "candidate_sha": "bc5248fe1c34486a383838ff50def769db0e06fa",
+  "executed_at_utc": "2026-08-29T17:18:41Z",
+  "executor": "independent-host-shell",
+  "command": "npm run test:targeted -- tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts tests/cli/studio-client/src/hooks/useDeploymentManager.test.tsx tests/cli/studio/OutcomeLibraryGenerationWorkflow.integration.test.ts tests/cli/studio/StudioServer.test.ts tests/project/OutcomeLibraryArtifactBuilder.test.ts",
+  "result": {
+    "exit_code": 0,
+    "test_suites": { "passed": 5, "total": 5 },
+    "tests": { "passed": 327, "total": 327 },
+    "snapshots": { "passed": 0, "total": 0 },
+    "duration_seconds": 16.061
+  },
+  "whole_file_suites": [
+    { "path": "tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts", "sha256": "32cd100aef608d922168b8ce83e02e3e4a411c90419c84b9fd1455f48f4e5003", "status": "passed" },
+    { "path": "tests/cli/studio-client/src/hooks/useDeploymentManager.test.tsx", "sha256": "15545aaafd27bf3a946d1e999689b57c5f518f714833f79a39762048221132df", "status": "passed" },
+    { "path": "tests/cli/studio/OutcomeLibraryGenerationWorkflow.integration.test.ts", "sha256": "2c8f63e90b582fde64d4b3a9e26338e3f92a8a084b31eb0e8c2fc6e9283e5594", "status": "passed" },
+    { "path": "tests/cli/studio/StudioServer.test.ts", "sha256": "0f80d3972553283df6c57929d250862c0432deb1397c7f8985b39e72b069ef49", "status": "passed" },
+    { "path": "tests/project/OutcomeLibraryArtifactBuilder.test.ts", "sha256": "3987f9045781edccfccce8db578e64ebd5fe05dc6a6ab58f05b0aaffd5670a34", "status": "passed" }
+  ],
+  "reviewer_coverage": [
+    "CLI publication",
+    "managed artifact lifecycle",
+    "Studio project-switch lifecycle"
+  ]
+}
