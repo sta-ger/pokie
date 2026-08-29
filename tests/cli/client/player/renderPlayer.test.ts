@@ -354,6 +354,7 @@ describe("renderPlayerRound", () => {
         });
 
         expect(document.getElementById(PLAYER_PRESENTATION_STYLE_ID)?.textContent).toContain("@media (max-width: 480px)");
+        expect(document.getElementById(PLAYER_PRESENTATION_STYLE_ID)?.textContent).toContain("font-family: system-ui");
         expect(elements.betInfo.querySelector("button")?.getAttribute("aria-pressed")).toBe("true");
         expect((elements.betInfo.querySelector("button") as HTMLButtonElement).disabled).toBe(true);
         expect(elements.modeInfo.querySelector("button")?.getAttribute("aria-label")).toBe("Select mode base");

@@ -12,9 +12,9 @@
 import assert from "node:assert/strict";
 import {spawn} from "node:child_process";
 import {createHash} from "node:crypto";
-import {mkdir, mkdtemp, rm, writeFile} from "node:fs/promises";
+import {cp, mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import {inflateSync} from "node:zlib";
-import {dirname, resolve} from "node:path";
+import {basename, dirname, resolve, sep} from "node:path";
 import {tmpdir} from "node:os";
 import {fileURLToPath} from "node:url";
 import WebSocket from "ws";
@@ -29,14 +29,41 @@ export const canonicalPlayerComparisonKeys = [
     "cells", "wins", "features", "totals", "paytable", "controls", "hover", "styles", "layout", "overflow",
 ];
 
+function comparablePlayerRegion(region) {
+    // The player is deliberately hosted inside different applications. Its outer mount can therefore
+    // legitimately receive a different available width/height from Studio's AppShell and the examples
+    // page. Compare every player-owned child layout, but not that host-provided mount geometry.
+    const layout = {...region.layout};
+    delete layout.player;
+    return {...region, layout};
+}
+
 export function comparePlayerRegions(studio, examples) {
     const differing = [];
+    const comparableStudio = comparablePlayerRegion(studio);
+    const comparableExamples = comparablePlayerRegion(examples);
     for (const key of canonicalPlayerComparisonKeys) {
-        if (JSON.stringify(studio[key]) !== JSON.stringify(examples[key])) differing.push(key);
+        if (JSON.stringify(comparableStudio[key]) !== JSON.stringify(comparableExamples[key])) differing.push(key);
     }
     if (differing.length > 0) {
         throw new Error(`Canonical player parity diverged: ${differing.join(", ")}`);
     }
+}
+
+export function exactCandidateConsumerManifest(manifest, candidateArchive) {
+    return {
+        ...manifest,
+        dependencies: {...manifest.dependencies, pokie: `file:${candidateArchive}`},
+    };
+}
+
+export function assertExactCandidatePlayerExport(resolvedExport, consumerRoot) {
+    const installedPackage = `${resolve(consumerRoot, "node_modules", "pokie")}${sep}`;
+    assert.ok(
+        resolve(resolvedExport).startsWith(installedPackage),
+        `pokie/client/player must resolve from the isolated candidate install, received ${resolvedExport}`,
+    );
+    assert.match(resolvedExport, /[\\/]dist[\\/]cli[\\/]client[\\/]player[\\/]index\.js$/, "pokie/client/player must resolve the public player export");
 }
 
 function readPngRgba(bytes) {
@@ -142,6 +169,39 @@ async function terminate(child) {
     if (child.exitCode === null && !child.killed) child.kill("SIGKILL");
 }
 
+async function runCommand(command, args, options) {
+    const child = spawn(command, args, {cwd: options.cwd, stdio: ["ignore", "pipe", "pipe"]});
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    const exitCode = await new Promise((resolveExit, rejectExit) => {
+        child.once("error", rejectExit);
+        child.once("exit", resolveExit);
+    });
+    if (exitCode !== 0) {
+        throw new Error(`${command} ${args.join(" ")} failed with ${exitCode}: ${stderr || stdout}`);
+    }
+    return stdout;
+}
+
+async function prepareExactCandidateConsumer(examplesRoot, staging) {
+    const packed = JSON.parse(await runCommand("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", staging], {cwd: root}));
+    const candidateArchive = resolve(staging, packed[0].filename);
+    const consumerRoot = resolve(staging, "pokie-examples");
+    await cp(examplesRoot, consumerRoot, {
+        recursive: true,
+        filter: (source) => ![".git", "dist", "node_modules"].includes(basename(source)),
+    });
+    const manifest = JSON.parse(await readFile(resolve(consumerRoot, "package.json"), "utf8"));
+    await writeFile(resolve(consumerRoot, "package.json"), `${JSON.stringify(exactCandidateConsumerManifest(manifest, candidateArchive), null, 2)}\n`);
+    await rm(resolve(consumerRoot, "package-lock.json"), {force: true});
+    await runCommand("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], {cwd: consumerRoot});
+    const resolvedExport = (await runCommand(process.execPath, ["--input-type=module", "--eval", "process.stdout.write(import.meta.resolve('pokie/client/player'))"], {cwd: consumerRoot})).trim();
+    assertExactCandidatePlayerExport(resolvedExport, consumerRoot);
+    return {consumerRoot, candidateArchive, resolvedExport};
+}
+
 async function devtoolsJson(url) {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
@@ -211,6 +271,31 @@ function playerSnapshotExpression() {
     })()`;
 }
 
+function normalizedPlayerRegionExpression(width) {
+    return `(() => {
+        const player = document.querySelector(${JSON.stringify(canonicalPlayerSelector)});
+        if (!player) return false;
+        // Screenshot crops are intentionally normalized to a shared player viewport. This strips
+        // unrelated AppShell/container width while preserving every rendered player child, responsive
+        // breakpoint, semantic control and pixel within that viewport.
+        player.style.boxSizing = "border-box";
+        player.style.width = ${JSON.stringify(`${width}px`)};
+        player.style.maxWidth = "none";
+        return true;
+    })()`;
+}
+
+function actualOverflowExpression() {
+    return `(() => {
+        const player = document.querySelector(${JSON.stringify(canonicalPlayerSelector)});
+        if (!player) return undefined;
+        return {
+            player: player.scrollWidth > player.clientWidth,
+            viewport: document.documentElement.scrollWidth > window.innerWidth,
+        };
+    })()`;
+}
+
 export async function runPlayerParityBrowser() {
     const project = process.env.PC_12_STUDIO_PROJECT;
     if (project === undefined || project.trim() === "") {
@@ -223,7 +308,7 @@ export async function runPlayerParityBrowser() {
     if (resolve(project) === resolve(supersedingProject)) {
         throw new Error("PC_12_SUPERSEDING_PROJECT must differ from PC_12_STUDIO_PROJECT.");
     }
-    const examplesRoot = resolve(process.env.POKIE_EXAMPLES_PATH ?? "../pokie-examples");
+    const examplesSourceRoot = resolve(process.env.POKIE_EXAMPLES_PATH ?? "../pokie-examples");
     const evidence = resolve(process.env.PC_12_EVIDENCE_DIR ?? "docs/evidence/phase7-product-coherence/pc-12-player-parity/current-run");
     const profile = await mkdtemp(resolve(tmpdir(), "pokie-pc12-"));
     const studioPort = 32192;
@@ -236,13 +321,17 @@ export async function runPlayerParityBrowser() {
     let examples;
     let chromium;
     let cdp;
+    let exactConsumer;
     const transcript = [];
     const note = (message) => transcript.push(`[${new Date().toISOString()}] ${message}`);
+    let normalizedPlayerWidth = 600;
 
     try {
         await mkdir(evidence, {recursive: true});
+        exactConsumer = await prepareExactCandidateConsumer(examplesSourceRoot, profile);
+        note(`EXACT CANDIDATE export=${exactConsumer.resolvedExport}; archive=${exactConsumer.candidateArchive}`);
         studio = spawn(process.execPath, ["dist/cli/pokie.js", "studio", project, "--no-open", "--host", "127.0.0.1", "--port", String(studioPort)], {cwd: root, stdio: "pipe"});
-        examples = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(examplesPort)], {cwd: examplesRoot, stdio: "pipe"});
+        examples = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(examplesPort)], {cwd: exactConsumer.consumerRoot, stdio: "pipe"});
         await waitFor(async () => {
             try { return (await fetch(`${studioUrl}/api/context`)).ok; } catch { return false; }
         }, "Studio public API");
@@ -295,6 +384,9 @@ export async function runPlayerParityBrowser() {
         };
         const settleAndCapture = async (name) => {
             await waitFor(async () => (await evaluate(playerSnapshotExpression())) !== undefined, `${name} player`);
+            const actualOverflow = await evaluate(actualOverflowExpression());
+            assert.deepEqual(actualOverflow, {player: false, viewport: false}, `${name} must fit its actual host viewport before normalization`);
+            assert.equal(await evaluate(normalizedPlayerRegionExpression(normalizedPlayerWidth)), true, `${name} player must normalize for host-neutral capture`);
             const snapshot = await evaluate(playerSnapshotExpression());
             const screenshot = await capture(name);
             return {snapshot, ...screenshot};
@@ -441,6 +533,7 @@ export async function runPlayerParityBrowser() {
         note(`COMPARE desktop screenshot changed=${desktopVisual.changedRatio.toFixed(4)} mean=${desktopVisual.meanDifference.toFixed(2)}`);
 
         await cdp.send("Emulation.setDeviceMetricsOverride", {width: 390, height: 844, deviceScaleFactor: 1, mobile: true});
+        normalizedPlayerWidth = 320;
         await navigate(examplesUrl);
         await click("Win");
         await click("Scenarios");
@@ -458,7 +551,7 @@ export async function runPlayerParityBrowser() {
         note(`COMPARE narrow screenshot changed=${mobileVisual.changedRatio.toFixed(4)} mean=${mobileVisual.meanDifference.toFixed(2)}`);
         await cdp.send("Emulation.clearDeviceMetricsOverride");
         await writeFile(resolve(evidence, "parity.json"), `${JSON.stringify({
-            fixture: {project, seed: "fixture-round", round: "winning featured round"}, browser: {desktop: [1280, 800], narrow: [390, 844]},
+            fixture: {project, seed: "fixture-round", round: "winning featured round", exactConsumer: exactConsumer.resolvedExport}, browser: {desktop: [1280, 800], narrow: [390, 844]},
             comparison: {dom: "passed", computedStyle: "passed", layout: "passed", overflow: "passed", screenshot: {desktop: desktopVisual, narrow: mobileVisual}},
             screenshots: {
                 studioDesktop: studioDesktop.checksum, examplesDesktop: exampleDesktop.checksum,

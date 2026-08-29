@@ -20,7 +20,7 @@ type CellElement = HTMLElement & {baseColor: string};
 export const PLAYER_PRESENTATION_STYLE_ID = "pokie-canonical-player-presentation";
 
 const PLAYER_PRESENTATION_CSS = `
-.pokie-player { max-width: 100%; min-width: 0; }
+.pokie-player { max-width: 100%; min-width: 0; color: #212529; font-family: system-ui, sans-serif; line-height: normal; }
 .pokie-player-grid-scroll { max-width: 100%; overflow-x: auto; }
 .player-grid { border-collapse: collapse; margin-bottom: 1rem; max-width: 100%; }
 .player-reel { vertical-align: top; padding: 0; }
@@ -29,6 +29,8 @@ const PLAYER_PRESENTATION_CSS = `
 .player-bet-info, .player-mode-info { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
 .player-bet-options, .player-mode-options { display: inline-flex; gap: .35rem; flex-wrap: wrap; }
 .player-bet-option, .player-mode-option, .player-highlight-button { font-size: .875rem; padding: .35rem .75rem; }
+.pokie-player button { color: #212529; background: #f8f9fa; border: 1px solid #6c757d; border-radius: .25rem; font-family: inherit; }
+.pokie-player button:disabled { cursor: not-allowed; opacity: .65; }
 .player-bet-option-selected, .player-mode-option-selected { font-weight: 700; }
 .player-highlight-item { display: inline-block; padding-right: 1rem; padding-bottom: .5rem; }
 .player-paytable-scroll { max-width: 100%; overflow-x: auto; }

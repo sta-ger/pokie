@@ -6,8 +6,10 @@ import {test} from "@jest/globals";
 import {
     canonicalPlayerComparisonKeys,
     canonicalPlayerSelector,
+    assertExactCandidatePlayerExport,
     comparePlayerRegions,
     comparePlayerScreenshots,
+    exactCandidateConsumerManifest,
 } from "../../scripts/pc-12-player-parity-browser.mjs";
 
 const region = {
@@ -45,12 +47,21 @@ test("PC-12 browser parity contract targets only the canonical player region", (
     assert.doesNotThrow(() => comparePlayerRegions(region, {...region}));
 });
 
-test("PC-12 browser parity contract rejects material shared-player divergence", () => {
+test("PC-12 browser parity contract excludes host mount geometry but rejects material shared-player divergence", () => {
+    assert.doesNotThrow(() => comparePlayerRegions(region, {...region, layout: {...region.layout, player: {width: 1000, height: 900}}}));
     assert.throws(() => comparePlayerRegions(region, {...region, controls: [{label: "Select bet 1", disabled: false, pressed: "true"}]}), /controls/);
     assert.throws(() => comparePlayerRegions(region, {...region, overflow: true}), /overflow/);
     assert.throws(() => comparePlayerRegions(region, {...region, cells: [{...region.cells[0], color: "rgb(0, 255, 0)"}]}), /cells/);
     assert.throws(() => comparePlayerRegions(region, {...region, styles: {...region.styles, player: {display: "grid"}}}), /styles/);
-    assert.throws(() => comparePlayerRegions(region, {...region, layout: {...region.layout, player: {width: 600, height: 520}}}), /layout/);
+    assert.throws(() => comparePlayerRegions(region, {...region, layout: {...region.layout, grid: {width: 240, height: 220}}}), /layout/);
+});
+
+test("PC-12 browser parity provisions an isolated exact candidate consumer before loading examples", () => {
+    const manifest = exactCandidateConsumerManifest({dependencies: {pokie: "^1.3.0", vite: "4.3.9"}}, "/tmp/pokie-1.3.0.tgz");
+    assert.equal(manifest.dependencies.pokie, "file:/tmp/pokie-1.3.0.tgz");
+    assert.equal(manifest.dependencies.vite, "4.3.9");
+    assert.doesNotThrow(() => assertExactCandidatePlayerExport("/tmp/isolated/node_modules/pokie/dist/cli/client/player/index.js", "/tmp/isolated"));
+    assert.throws(() => assertExactCandidatePlayerExport("/workspace/dist/cli/client/player/index.js", "/tmp/isolated"), /isolated candidate install/);
 });
 
 test("PC-12 browser parity compares canonical screenshots as pixels, with an anti-aliasing tolerance", () => {
