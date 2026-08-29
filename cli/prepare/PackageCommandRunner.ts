@@ -1,4 +1,4 @@
-import {execFile} from "child_process";
+import {execFile, spawn} from "child_process";
 import fs from "fs";
 import path from "path";
 import {PackageJsonLike, withLocalPokieDependency} from "pokie";
@@ -16,26 +16,127 @@ export type PackageCommandRunning = (
     options?: PackageCommandOptions,
 ) => Promise<PackageCommandResult>;
 
+const PROCESS_TREE_POLL_MS = 10;
+const PROCESS_TREE_TERM_GRACE_MS = 250;
+
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
+}
+
+function processGroupIsAlive(pid: number): boolean {
+    try {
+        process.kill(-pid, 0);
+        return true;
+    } catch (error) {
+        return (error as NodeJS.ErrnoException).code !== "ESRCH";
+    }
+}
+
+async function waitForProcessGroupExit(pid: number, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (processGroupIsAlive(pid)) {
+        if (Date.now() >= deadline) {
+            return false;
+        }
+        await delay(PROCESS_TREE_POLL_MS);
+    }
+    return true;
+}
+
+async function waitForProcessGroupTermination(pid: number): Promise<void> {
+    while (processGroupIsAlive(pid)) {
+        await delay(PROCESS_TREE_POLL_MS);
+    }
+}
+
+// execFile can only kill its immediate child when it receives an AbortSignal. npm, however, commonly
+// creates lifecycle children which inherit that child's process group. Run POSIX commands in their own
+// process group and tear down that complete group on cancellation; cleanup is not allowed to continue
+// until the group is gone. Windows' taskkill /T is the corresponding OS process-tree operation.
+async function terminateProcessTree(pid: number | undefined): Promise<void> {
+    if (pid === undefined) {
+        return;
+    }
+    if (process.platform === "win32") {
+        await new Promise<void>((resolve) => {
+            execFile("taskkill", ["/pid", String(pid), "/T", "/F"], () => resolve());
+        });
+        return;
+    }
+    try {
+        process.kill(-pid, "SIGTERM");
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+            return;
+        }
+        throw error;
+    }
+    if (await waitForProcessGroupExit(pid, PROCESS_TREE_TERM_GRACE_MS)) {
+        return;
+    }
+    try {
+        process.kill(-pid, "SIGKILL");
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+            throw error;
+        }
+    }
+    await waitForProcessGroupTermination(pid);
+}
+
 // Real npm install/build execution, injected as GamePackagePreparer's own runCommand so tests can
 // assert exactly which commands would run (and in what order) without actually invoking npm.
 export const runPackageCommand: PackageCommandRunning = (command, args, cwd, options = {}) =>
     new Promise<PackageCommandResult>((resolve, reject) => {
-        // execFile owns the direct npm child process. Passing the operation
-        // signal lets Node terminate it as soon as runtime preparation is
-        // cancelled. Its callback may run before the process has emitted
-        // "close", so defer the abort rejection until that close event: the
-        // materializer's cleanup/release path then cannot report completion
-        // while an install child is still alive.
-        const child = execFile(command, args, {cwd, signal: options.signal}, (error, stdout, stderr) => {
-            if (error) {
-                if (options.signal?.aborted && child.exitCode === null && child.signalCode === null) {
-                    child.once("close", () => reject(error));
-                    return;
-                }
+        if (options.signal?.aborted) {
+            reject(new Error("Package command was cancelled."));
+            return;
+        }
+
+        // Unlike spawn(), execFile does not forward `detached` to its child,
+        // which would leave npm in this process's own group. Use spawn here
+        // so POSIX can address npm and every inherited lifecycle descendant
+        // as one private process group.
+        const child = spawn(command, args, {cwd, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"]});
+        let stdout = "";
+        let stderr = "";
+        let spawnError: Error | undefined;
+        let termination: Promise<void> | undefined;
+        const abort = (): void => {
+            termination ??= terminateProcessTree(child.pid);
+        };
+        options.signal?.addEventListener("abort", abort, {once: true});
+        child.stdout.on("data", (chunk: Buffer) => {
+            stdout += chunk.toString();
+        });
+        child.stderr.on("data", (chunk: Buffer) => {
+            stderr += chunk.toString();
+        });
+        child.once("error", (error) => {
+            spawnError = error;
+        });
+        const settle = async (code: number | null, signal: NodeJS.Signals | null): Promise<void> => {
+            options.signal?.removeEventListener("abort", abort);
+            await termination;
+            if (options.signal?.aborted) {
+                reject(spawnError ?? new Error("Package command was cancelled."));
+                return;
+            }
+            if (spawnError) {
+                reject(spawnError);
+                return;
+            }
+            if (code !== 0) {
+                const error = Object.assign(new Error(`${command} ${args.join(" ")} exited with ${signal ?? code}.`), {stderr});
                 reject(error);
                 return;
             }
-            resolve({stdout: stdout.toString(), stderr: stderr.toString()});
+            resolve({stdout, stderr});
+        };
+        child.once("close", (code, signal) => {
+            settle(code, signal).catch(reject);
         });
     });
 

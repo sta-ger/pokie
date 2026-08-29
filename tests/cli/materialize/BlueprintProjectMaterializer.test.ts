@@ -400,18 +400,23 @@ describe("BlueprintProjectMaterializer", () => {
         expect(workingRunner.calls).toHaveLength(1);
     });
 
-    it("aborts an active dependency-install child without retrying, and removes its staging directory and cache lock", async () => {
-        const childPidPath = path.join(sourceDir, "dependency-install.pid");
+    it("aborts an active dependency-install process tree without retrying, and removes its staging directory and cache lock", async () => {
+        const childPidPath = path.join(sourceDir, "dependency-install-pids.json");
         const calls: RecordedCommand[] = [];
         const runner: PackageCommandRunning & {calls: RecordedCommand[]} = Object.assign(
             (command: string, args: string[], cwd: string, options) => {
                 calls.push({command, args, cwd});
-                // Run through the production execFile runner so this verifies
-                // AbortSignal terminates the active child, not only a
-                // cooperative injected Promise.
+                // Run through the production process runner so this verifies
+                // AbortSignal terminates the active npm-like process tree,
+                // including an adversarial lifecycle descendant, before the
+                // materializer removes staging and releases its lock.
                 return runPackageCommand(
                     process.execPath,
-                    ["-e", "require('fs').writeFileSync(process.argv[1], process.pid.toString()); setInterval(() => {}, 1000);", childPidPath],
+                    [
+                        "-e",
+                        "const {spawn}=require('child_process'); const fs=require('fs'); const descendant=spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio: 'ignore'}); fs.writeFileSync(process.argv[1], JSON.stringify({parent: process.pid, descendant: descendant.pid})); setInterval(() => {}, 1000);",
+                        childPidPath,
+                    ],
                     cwd,
                     options,
                 );
@@ -432,13 +437,14 @@ describe("BlueprintProjectMaterializer", () => {
         const materializing = materializer.materialize(blueprintProjectOf(blueprintPath), {signal: controller.signal});
 
         await waitForFile(childPidPath);
-        const childPid = Number(fs.readFileSync(childPidPath, "utf-8"));
+        const pids = JSON.parse(fs.readFileSync(childPidPath, "utf-8")) as {parent: number; descendant: number};
         controller.abort();
 
         await expect(materializing).rejects.toThrow(/cancelled/i);
         expect(runner.calls).toHaveLength(1);
         expect(fs.readdirSync(cacheRoot)).toEqual([]);
-        expect(() => process.kill(childPid, 0)).toThrow();
+        expect(() => process.kill(pids.parent, 0)).toThrow();
+        expect(() => process.kill(pids.descendant, 0)).toThrow();
     });
 
     it("recovers from a failed verify phase, leaving no cache directory, and is retryable once the package becomes valid", async () => {
