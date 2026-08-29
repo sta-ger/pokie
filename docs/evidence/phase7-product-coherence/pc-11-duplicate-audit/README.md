@@ -42,6 +42,22 @@ would falsely present generation as equivalent to the retired inspect/compare ta
 
 ## Convergence evidence
 
-The bounded PC-11 targeted tests cover retained-entrypoint outputs, shared readiness, selector containment,
-cancellation/staging cleanup, retry/resume, project-switch/shutdown invalidation, and legacy-route migration.
-Those service and browser checks are evidence; screenshots are not a substitute for actual job results.
+PC-11 uses a server-backed browser seam: the routed client assertions inject a fetch implementation that calls a
+started `StudioServer`, so route recovery and visible readiness consume the same HTTP DTOs that submit paths use.
+They do not treat a fake fetch response as domain-output evidence. `StudioDuplicateEntrypoints.browser.test.tsx`
+exercises scoped and unscoped retired links against a real project context; `StudioReadinessConvergence.test.tsx`
+uses the server validation response for the Overview recovery state.
+
+The bounded service regression set supplies the durable-output and lifecycle proof that a browser route cannot:
+
+| Required closure | Server/domain evidence |
+| --- | --- |
+| Blueprint/PAR continuation and artifact output | `StudioArtifactBuildService.integration.test.ts`, `StudioCapabilityConvergence.integration.test.ts` |
+| Outcome generation, cancellation/staging cleanup, restart resume/retry, source drift, project close/switch, and shutdown | `StudioServer.test.ts`, `OutcomeLibraryGenerationWorkflow.integration.test.ts`, `StudioOutcomeLibraryGenerateJobService.test.ts` |
+| Stake selector/readiness and deployment preflight/publication | `StudioStakeEngineExportService.test.ts`, `StudioDeploymentService.test.ts`, `StudioRequestContractBaseline.test.ts` |
+| Certification build and verifier handoff | `StudioCertificationService.test.ts`, `ProjectDashboardPage.certificationWorkflow.test.tsx` |
+| Simulation, replay, project registry/opening, project isolation, and shutdown invalidation | `StudioFullWorkflow.integration.test.ts`, `StudioServer.test.ts`, `StudioCommand.test.ts` |
+| Retained cards, direct scoped/unscoped migrations, and client recovery | `StudioDuplicateEntrypoints.browser.test.tsx`, `StudioReadinessConvergence.test.tsx`, `routing.test.tsx`, `studioSurfaceInventory.baseline.test.tsx` |
+
+These tests assert actual files, job records, HTTP responses, and rendered recovery text. Screenshots are not a
+substitute for those outputs.

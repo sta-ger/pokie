@@ -3091,9 +3091,11 @@ away, just visually secondary — a tab is only offered at all once the loaded p
 support it; see [`studio-frontend.md`](studio-frontend.md#ux--information-architecture) for the exact, current
 tab list). There is no standalone "Validate" tab any more — validation is automatic diagnostics folded into
 Overview itself, run on load and re-run on demand — and no standalone Deployment/Outcome Libraries/Stake Engine
-Export tabs either: those have been removed outright, with every builder they used to own now one of
-**Build/Export**'s own cards. Their legacy deep links redirect to Build/Export with migration guidance; the old
-workflows themselves no longer mount. Overview is informational diagnostics only — it surfaces validation status
+Export tabs either. Deployment and Stake Engine Export have moved to **Build/Export** cards, so their legacy deep
+links redirect there with migration guidance. Outcome Libraries' retired select-existing/inspect/compare work has
+no Build/Export equivalent: its legacy deep links land on **Overview**, explain that it is unavailable in Studio,
+and point to the opened outcome source plus the CLI comparison commands. The old workflows themselves no longer
+mount. Overview is informational diagnostics only — it surfaces validation status
 alongside the rest of the project's state, with no wizard-like next-step recommendation or call to action:
 
 - **Overview** shows the game's name/id/version, the absolute `projectRoot`, its `package.json` identity (name,
@@ -3292,9 +3294,10 @@ in-memory limit, same as Reports: restarting Studio clears it, and a replay from
 
 #### Build/Export
 
-**Build/Export** (`ExportDeployTab.tsx`) is the sole Studio build surface — the old standalone Deployment/Stake
-Engine Export/Outcome Libraries workspaces (each its own Stepper-driven flow) have been removed outright, not
-redirected; every builder they used to own is one of this tab's own cards, grouped by kind (`ExportDeployTargets.ts`):
+**Build/Export** (`ExportDeployTab.tsx`) is the sole Studio build surface. The old standalone Deployment and Stake
+Engine Export workspaces have moved to their corresponding cards here; Outcome Libraries' retired
+select-existing/inspect/compare workspace is not a builder and has no equivalent card. Every retained builder is
+grouped by kind (`ExportDeployTargets.ts`):
 
 - **Outcome libraries** — generates or selects the canonical `WeightedOutcomeLibrary` every other card below reads
   from (a build step in its own right, not a delivery target), the same underlying operation as
@@ -3333,11 +3336,12 @@ redirected; every builder they used to own is one of this tab's own cards, group
 
 Build/Export is deliberately a single-mode, zero-configuration surface run against the project's own first
 current build mode (or `"base"` when none is known) — a project that genuinely needs a multi-mode bundle has no
-separate dedicated workflow to fall back to yet. Outcome Libraries' own select-an-existing-library/inspect/
-compare tooling has no Build/Export equivalent yet either — only generating a fresh library does; deep links to
-the old removed routes (`/project/deployment`, `/project/stakeEngineExport`, `/project/outcomeLibraries`) redirect
-to Build/Export and explain the retained workflow, while obsolete Validate routes land on Overview diagnostics
-with the corresponding recovery guidance.
+separate dedicated workflow to fall back to yet. Outcome Libraries' select-an-existing-library/inspect/compare
+tooling has no Build/Export equivalent — only generating a fresh library does. Accordingly, legacy Deployment and
+Stake Engine Export links (`/project/deployment`, `/project/stakeEngineExport`) redirect to Build/Export and explain
+the retained card; legacy Outcome Libraries links (`/project/outcomeLibraries`) land on Overview with an explicit
+unavailable explanation and CLI comparison recovery. Obsolete Validate routes land on Overview diagnostics with
+the corresponding recovery guidance.
 
 ### API
 

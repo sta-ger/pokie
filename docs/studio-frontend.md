@@ -135,10 +135,11 @@ Dashboard passes `[projectName, activeTabLabel]`). Every page sets `document.tit
 users don't lose their place after a tab switch or a cross-page navigation.
 
 This redesign consolidated rather than merely relabeled: Home's old standalone scaffolding/init/build-from-file
-surface ("Advanced Tools") was removed outright — those flows now live only in the CLI — and the Project
-Dashboard's old standalone Deployment/Outcome Libraries/Stake Engine Export tabs were likewise removed, folded
-into Build/Export's own cards (see the Project Dashboard section above). Everything else from before the
-redesign is still reachable, just re-labeled and de-emphasized relative to the primary flow.
+surface ("Advanced Tools") was removed outright — those flows now live only in the CLI. The Project Dashboard's
+old Deployment and Stake Engine Export tabs moved to Build/Export cards; its old Outcome Libraries
+select-existing/inspect/compare task has no equivalent builder, so it recovers on Overview with explicit
+unavailable/CLI-comparison guidance. Everything else from before the redesign is still reachable, just
+re-labeled and de-emphasized relative to the primary flow.
 
 Certification has one deliberate handoff. Studio owns source validation, evidence build, inspection, and
 manifest download; after a successful build it displays `pokie certification verify <certDir> --source
