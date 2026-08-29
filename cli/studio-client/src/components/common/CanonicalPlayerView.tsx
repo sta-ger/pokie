@@ -1,6 +1,6 @@
-import {Table} from "@mantine/core";
 import {useLayoutEffect, useRef} from "react";
 import {
+    createPlayerRoundElements,
     deriveWinHighlightsFromRoundArtifactWins,
     renderPlayerRound,
     type FeatureCounter,
@@ -57,52 +57,15 @@ export function CanonicalPlayerView({
     payoutMultiplier?: number;
 }) {
     const artwork = useActiveSymbolArtwork();
-    const gridRef = useRef<HTMLDivElement>(null);
-    const winsSectionRef = useRef<HTMLDivElement>(null);
-    const winsListRef = useRef<HTMLDivElement>(null);
-    const linesListRef = useRef<HTMLDivElement>(null);
-    const featuresRef = useRef<HTMLDListElement>(null);
-    const betInfoRef = useRef<HTMLDivElement>(null);
-    const modeInfoRef = useRef<HTMLDivElement>(null);
-    const paytableHeadRef = useRef<HTMLTableRowElement>(null);
-    const paytableBodyRef = useRef<HTMLTableSectionElement>(null);
-    const creditsRef = useRef<HTMLElement>(null);
-    const totalWinRef = useRef<HTMLSpanElement>(null);
-    const payoutMultiplierRef = useRef<HTMLSpanElement>(null);
+    const playerRootRef = useRef<HTMLDivElement>(null);
 
     useLayoutEffect(() => {
-        if (
-            !gridRef.current ||
-            !winsSectionRef.current ||
-            !winsListRef.current ||
-            !linesListRef.current ||
-            !featuresRef.current ||
-            !betInfoRef.current ||
-            !modeInfoRef.current ||
-            !paytableHeadRef.current ||
-            !paytableBodyRef.current ||
-            (credits !== undefined && !creditsRef.current) ||
-            (totalWin !== undefined && !totalWinRef.current) ||
-            (payoutMultiplier !== undefined && !payoutMultiplierRef.current)
-        ) {
+        if (!playerRootRef.current) {
             return;
         }
         const highlights = deriveWinHighlightsFromRoundArtifactWins(wins ?? [], reelsSymbols.length);
         renderPlayerRound(
-            {
-                ...(creditsRef.current ? {credits: creditsRef.current} : {}),
-                ...(totalWinRef.current ? {totalWin: totalWinRef.current} : {}),
-                ...(payoutMultiplierRef.current ? {payoutMultiplier: payoutMultiplierRef.current} : {}),
-                gridContainer: gridRef.current,
-                winsSection: winsSectionRef.current,
-                winsList: winsListRef.current,
-                linesList: linesListRef.current,
-                features: featuresRef.current,
-                betInfo: betInfoRef.current,
-                modeInfo: modeInfoRef.current,
-                paytableHead: paytableHeadRef.current,
-                paytableBody: paytableBodyRef.current,
-            },
+            createPlayerRoundElements(playerRootRef.current),
             {
                 credits,
                 totalWin,
@@ -128,37 +91,5 @@ export function CanonicalPlayerView({
         );
     }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, payoutMultiplier, reelsSymbols, totalWin, wins]);
 
-    return (
-        <div className="pokie-player" aria-label="Game player">
-            <Table.ScrollContainer className="pokie-player-grid-scroll" minWidth={200}>
-                <div ref={gridRef} />
-            </Table.ScrollContainer>
-            <dl hidden={credits === undefined && totalWin === undefined && payoutMultiplier === undefined}>
-                {credits !== undefined && <><dt>Credits</dt><dd ref={creditsRef} /></>}
-                {totalWin !== undefined && (
-                    <>
-                        <dt>Total win</dt>
-                        <dd>
-                            <span ref={totalWinRef} /> {payoutMultiplier !== undefined && <span>(<span ref={payoutMultiplierRef} />x)</span>}
-                        </dd>
-                    </>
-                )}
-            </dl>
-            <div ref={winsSectionRef} hidden>
-                <div ref={winsListRef} />
-            </div>
-            <div ref={linesListRef} hidden={lines === undefined || lines.length === 0} />
-            <dl ref={featuresRef} hidden={featureCounters === undefined || featureCounters.length === 0} />
-            <div ref={betInfoRef} hidden={availableBets === undefined || availableBets.length === 0} />
-            <div ref={modeInfoRef} hidden={availableModeIds === undefined || availableModeIds.length === 0} />
-            <Table.ScrollContainer className="player-paytable-scroll" minWidth={200} hidden={paytable === undefined}>
-                <Table className="player-paytable" withColumnBorders>
-                    <Table.Thead>
-                        <tr ref={paytableHeadRef} />
-                    </Table.Thead>
-                    <tbody ref={paytableBodyRef} />
-                </Table>
-            </Table.ScrollContainer>
-        </div>
-    );
+    return <div ref={playerRootRef} />;
 }

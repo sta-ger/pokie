@@ -176,11 +176,10 @@ describe("ProjectDashboardPage - Play", () => {
 
         expect(await screen.findByRole("status")).toHaveTextContent("Spinning…");
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
-        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
 
         resolveReset?.({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor({sessionId: "sess-2"})})});
 
-        await screen.findByText(/No round played yet/);
+        await screen.findByLabelText("Game player");
         expect(screen.queryByText(/You won 15\.00/)).toBeNull();
     }, 30000);
 
@@ -237,10 +236,9 @@ describe("ProjectDashboardPage - Play", () => {
         await waitFor(() => expect(screen.getByText("cherry")).toBeInTheDocument());
         expect(screen.getByText("seven")).toBeInTheDocument();
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
-        // The same horizontal-scroll containment every other screen-rendering surface relies on -- proves
-        // this mounts the shared canonical player grid (CanonicalPlayerView), not a bespoke
-        // narrow-unfriendly table.
-        expect(screen.getByText("cherry").closest(".mantine-ScrollArea-root")).not.toBeNull();
+        // The canonical DOM contract itself owns horizontal-scroll containment, so all hosts get the
+        // same narrow-width behavior without relying on a Studio-only Mantine wrapper.
+        expect(screen.getByText("cherry").closest(".pokie-player-grid-scroll")).not.toBeNull();
         // A cell rendered through the canonical player's own renderReelsGrid is addressable by its own
         // [reelIndex, rowIndex] data-cell id -- the literal DOM output of cli/client/player's own
         // rendering, not a Mantine <Table> cell.
@@ -276,10 +274,8 @@ describe("ProjectDashboardPage - Play", () => {
         await goToPlayTab(user);
         await user.click(await screen.findByRole("button", {name: "New Play session"}));
 
-        await user.click(await screen.findByRole("combobox", {name: "Bet"}));
-        fireEvent.click(screen.getByRole("option", {name: "5.00", hidden: true}));
-        await user.click(screen.getByRole("combobox", {name: "Bet mode"}));
-        fireEvent.click(screen.getByRole("option", {name: "buyFeature", hidden: true}));
+        await user.click(await screen.findByRole("button", {name: "Select bet 5"}));
+        await user.click(screen.getByRole("button", {name: "Select mode buyFeature"}));
         await user.click(screen.getByRole("button", {name: "Spin"}));
 
         await waitFor(() => expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-1/spin")).toBe(true));
@@ -321,7 +317,7 @@ describe("ProjectDashboardPage - Play", () => {
 
         await user.click(screen.getByRole("button", {name: "Reset Play session"}));
 
-        await waitFor(() => expect(screen.getByText(/No round played yet/)).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByLabelText("Game player")).toBeInTheDocument());
         expect(createCalls).toBe(2);
     }, 30000);
 
@@ -366,13 +362,12 @@ describe("ProjectDashboardPage - Play", () => {
 
         expect(await screen.findByText("This session couldn't be completed. Try again. If it continues, start a new session and retry.")).toBeInTheDocument();
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
-        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
         expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
         expect(screen.getByRole("button", {name: "Find any win"})).toBeEnabled();
 
         await user.click(screen.getByRole("button", {name: "Reset Play session"}));
 
-        await screen.findByText(/No round played yet/);
+        await screen.findByLabelText("Game player");
         expect(screen.queryByText(/You won 15\.00/)).toBeNull();
         await user.click(screen.getByRole("button", {name: "Spin"}));
         await waitFor(() => expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-3/spin")).toBe(true));

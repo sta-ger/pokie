@@ -7,6 +7,7 @@ import * as canonicalPlayer from "../../../../cli/client/player/index.js";
 import {
     applyPersistentHighlights,
     clearConnectionError,
+    createPlayerRoundElements,
     renderBetInfo,
     renderConnectionError,
     renderFeatureCounters,
@@ -226,6 +227,28 @@ describe("renderBetInfo / renderModeInfo", () => {
 });
 
 describe("renderPlayerRound", () => {
+    it("owns the complete player section order in one reusable mount contract", () => {
+        const root = document.createElement("section");
+        root.appendChild(document.createElement("p"));
+        const elements = createPlayerRoundElements(root);
+
+        expect(root.classList.contains("pokie-player")).toBe(true);
+        expect(root.getAttribute("aria-label")).toBe("Game player");
+        expect(Array.from(root.children).map((element) => element.className)).toEqual([
+            "player-bet-info",
+            "player-mode-info",
+            "pokie-player-grid-scroll",
+            "player-round-totals",
+            "player-features",
+            "player-wins",
+            "player-lines-details",
+            "player-paytable-details",
+        ]);
+        expect(elements.gridContainer.closest(".pokie-player-grid-scroll")).not.toBeNull();
+        expect(elements.paytableBody.closest(".player-paytable-details")).not.toBeNull();
+        expect(root.querySelector("p")).toBeNull();
+    });
+
     function createElements() {
         return {
             credits: document.createElement("div"),
@@ -324,8 +347,10 @@ describe("canonical Player source reachability", () => {
         );
 
         expect(devClient).toContain('from "./player/index.js"');
+        expect(devClient).toContain("createPlayerRoundElements(");
         expect(devClient).toContain("renderPlayerRound(");
         expect(studio).toContain('from "../../../../client/player"');
+        expect(studio).toContain("createPlayerRoundElements(");
         expect(studio).toContain("renderPlayerRound(");
         expect(studio).not.toContain('from "../../../../client/player/renderPlayer"');
     });
@@ -338,7 +363,10 @@ describe("canonical Player source reachability", () => {
         const examplesIndex = readFileSync(resolve(pokieExamplesRoot, "index.html"), "utf8");
 
         expect(examplesUi).toContain('from "pokie/client/player"');
+        expect(examplesUi).toContain("createPlayerRoundElements(");
         expect(examplesUi).toContain("renderPlayerRound(");
+        expect(examplesUi).toContain("onSelectBet:");
+        expect(examplesUi).toContain("onSelectMode:");
         // The public examples index exposes a real navigation control to the fixture page; that
         // page boots the normal initializeUi() Player workflow, whose rendered Play control runs a
         // genuine seeded VideoSlotSession.  This intentionally proves source reachability through

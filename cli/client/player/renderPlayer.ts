@@ -53,6 +53,10 @@ export function installPlayerPresentationStyles(doc: Document = document): void 
 // player-specific section.  Keeping that composition here prevents an examples app, the dev client
 // and Studio from each growing a subtly different "screen with wins" implementation.
 export type PlayerRoundElements = {
+    totals?: HTMLElement;
+    creditsRow?: HTMLElement;
+    totalWinRow?: HTMLElement;
+    payoutMultiplierRow?: HTMLElement;
     credits?: HTMLElement;
     totalWin?: HTMLElement;
     payoutMultiplier?: HTMLElement;
@@ -66,6 +70,96 @@ export type PlayerRoundElements = {
     paytableHead: HTMLElement;
     paytableBody: HTMLElement;
 };
+
+/**
+ * Creates the complete, ordered Player DOM contract inside a host-owned mount point.
+ *
+ * A host is deliberately not given individual section markup to reproduce: it supplies one
+ * empty mount point and already-computed round data to renderPlayerRound().  That makes the
+ * player window, controls, totals, wins, feature state and paytable one implementation whether
+ * it is mounted by the standalone client, Studio, or a package consumer.
+ */
+export function createPlayerRoundElements(root: HTMLElement): PlayerRoundElements {
+    const doc = root.ownerDocument;
+    clearChildren(root);
+    root.classList.add("pokie-player");
+    root.setAttribute("aria-label", "Game player");
+
+    const create = <T extends keyof HTMLElementTagNameMap>(tag: T, className?: string): HTMLElementTagNameMap[T] => {
+        const element = doc.createElement(tag);
+        if (className !== undefined) {
+            element.className = className;
+        }
+        return element;
+    };
+    const appendValue = (totals: HTMLDListElement, label: string): {row: HTMLElement; value: HTMLElement} => {
+        const row = create("div", "player-round-total");
+        const term = create("dt");
+        term.textContent = label;
+        const value = create("dd");
+        row.append(term, value);
+        totals.appendChild(row);
+        return {row, value};
+    };
+
+    const betInfo = create("div", "player-bet-info");
+    const modeInfo = create("div", "player-mode-info");
+    const gridScroll = create("div", "pokie-player-grid-scroll");
+    const gridContainer = create("div");
+    gridScroll.appendChild(gridContainer);
+
+    const totals = create("dl", "player-round-totals");
+    totals.setAttribute("aria-label", "Round totals");
+    const credits = appendValue(totals, "Credits");
+    const totalWin = appendValue(totals, "Total win");
+    const payoutMultiplier = appendValue(totals, "Payout multiplier");
+
+    const features = create("dl", "player-features");
+    const winsSection = create("section", "player-wins");
+    const winsHeading = create("h2");
+    winsHeading.textContent = "Wins";
+    const winsList = create("div", "player-wins-list");
+    winsSection.append(winsHeading, winsList);
+
+    const linesDetails = create("details", "player-lines-details");
+    const linesSummary = create("summary");
+    linesSummary.textContent = "Paylines / ways";
+    const linesList = create("div", "player-lines-list");
+    linesDetails.append(linesSummary, linesList);
+
+    const paytableDetails = create("details", "player-paytable-details");
+    const paytableSummary = create("summary");
+    paytableSummary.textContent = "Paytable";
+    const paytableScroll = create("div", "player-paytable-scroll");
+    const paytable = create("table", "player-paytable");
+    const paytableHead = create("tr");
+    const head = create("thead");
+    const paytableBody = create("tbody");
+    head.appendChild(paytableHead);
+    paytable.append(head, paytableBody);
+    paytableScroll.appendChild(paytable);
+    paytableDetails.append(paytableSummary, paytableScroll);
+
+    root.append(betInfo, modeInfo, gridScroll, totals, features, winsSection, linesDetails, paytableDetails);
+    return {
+        totals,
+        creditsRow: credits.row,
+        totalWinRow: totalWin.row,
+        payoutMultiplierRow: payoutMultiplier.row,
+        credits: credits.value,
+        totalWin: totalWin.value,
+        payoutMultiplier: payoutMultiplier.value,
+        gridContainer,
+        winsSection,
+        winsList,
+        linesList,
+        features,
+        betInfo,
+        modeInfo,
+        paytableHead,
+        paytableBody,
+    };
+}
 
 export type PlayerRoundView = {
     // Round-level facts are rendered here with the grid and its individual wins, rather than being
@@ -426,6 +520,27 @@ export function renderPlayerRound(elements: PlayerRoundElements, view: PlayerRou
         view.payoutMultiplierSuffix,
         view.formatPayoutMultiplier,
     );
+    if (elements.totals !== undefined) {
+        const hasTotals = view.credits !== undefined || view.totalWin !== undefined || view.payoutMultiplier !== undefined;
+        elements.totals.hidden = !hasTotals;
+        if (!hasTotals) {
+            elements.totals.querySelectorAll("dd").forEach((value) => {
+                value.textContent = "";
+            });
+        }
+    }
+    for (const [row, value, present] of [
+        [elements.creditsRow, elements.credits, view.credits !== undefined],
+        [elements.totalWinRow, elements.totalWin, view.totalWin !== undefined],
+        [elements.payoutMultiplierRow, elements.payoutMultiplier, view.payoutMultiplier !== undefined],
+    ] as const) {
+        if (row !== undefined) {
+            row.hidden = !present;
+            if (!present && value !== undefined) {
+                value.textContent = "";
+            }
+        }
+    }
     renderReelsGrid(elements.gridContainer, view.reelsSymbols, view.artworkUrlForSymbol);
     applyPersistentHighlights(elements.gridContainer, view.highlights);
     renderWinsSection(elements.winsSection, view.highlights.length > 0);

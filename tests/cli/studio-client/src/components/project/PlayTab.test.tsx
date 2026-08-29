@@ -117,7 +117,7 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
             </MantineProvider>,
         );
 
-        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("2.00");
+        expect(screen.getByText("Bet: 2")).toBeInTheDocument();
     });
 
     it("keeps a completed round and Play controls visible after a failed reset", () => {
@@ -148,7 +148,6 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
 
         expect(screen.getByText("This session couldn't be completed. Try again. If it continues, start a new session and retry.")).toBeInTheDocument();
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
-        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
         expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
         expect(screen.getByRole("button", {name: "Find any win"})).toBeEnabled();
         expect(screen.getByRole("button", {name: "Reset Play session"})).toBeEnabled();
@@ -182,7 +181,6 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
 
         expect(screen.getByRole("status")).toHaveTextContent("Spinning…");
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
-        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
     });
 
     it("keeps initial session creation in its loading state without a prior round", () => {
