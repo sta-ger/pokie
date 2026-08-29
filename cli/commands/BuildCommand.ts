@@ -18,6 +18,7 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     resolveReelStripGeneration,
+    StakeProjectionExportService,
 } from "pokie";
 import {Command} from "commander";
 import path from "path";
@@ -56,6 +57,7 @@ export class BuildCommand implements CliCommandHandling {
     private readonly validator: GameBlueprintValidating;
     private readonly resolveProject: ProjectResolving;
     private readonly registry: ArtifactBuilderRegistry;
+    private readonly stakeProjection: StakeProjectionExportService;
 
     constructor(
         pokieVersion: string,
@@ -72,6 +74,7 @@ export class BuildCommand implements CliCommandHandling {
         this.validator = validator ?? new GameBlueprintValidator();
         this.resolveProject = projectResolver;
         this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(projectResolver));
+        this.stakeProjection = new StakeProjectionExportService(this.registry);
         if (pokiePackageRoot !== undefined) this.registry.withRuntimePackageRoot(pokiePackageRoot);
     }
 
@@ -173,10 +176,9 @@ export class BuildCommand implements CliCommandHandling {
         }
 
         const out = options.out ?? this.resolveDestination(project.rootPath, options.target);
-        const conversionPlan = await this.registry.preparePlan(project, options.target, {
-            destinationPath: out,
-            outcomeLibraryGeneration: generation,
-        });
+        const conversionPlan = options.target === "stakeAdapter"
+            ? await this.stakeProjection.prepare(project, out, {outcomeLibraryGeneration: generation})
+            : await this.registry.preparePlan(project, options.target, {destinationPath: out, outcomeLibraryGeneration: generation});
         if (conversionPlan.status === "unavailable") {
             const compatibility = describeArtifactConversionPlanDiagnostic(conversionPlan);
             throw new Error(`${conversionPlan.diagnostic!.message} Next: ${conversionPlan.diagnostic!.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
@@ -191,7 +193,8 @@ export class BuildCommand implements CliCommandHandling {
             // Every other supported cell must validate its own registry source/artifact contract before
             // the generic dry-run branch can claim success.
             if (!(options.target === "tsPackage" && project.type === "blueprint")) {
-                await this.registry.validate(options.target, project, conversionPlan);
+                if (options.target === "stakeAdapter") await this.stakeProjection.validate(project, conversionPlan);
+                else await this.registry.validate(options.target, project, conversionPlan);
             }
         }
 
@@ -323,7 +326,9 @@ export class BuildCommand implements CliCommandHandling {
 
         let result;
         try {
-            result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.executePlan(plan, project, out, {...lifecycle, ...(generation !== undefined ? {outcomeLibraryGeneration: generation} : {})}));
+            result = await this.runWithArtifactLifecycle((lifecycle) => target === "stakeAdapter"
+                ? this.stakeProjection.execute(project, out, plan, {...lifecycle, ...(generation !== undefined ? {outcomeLibraryGeneration: generation} : {})})
+                : this.registry.executePlan(plan, project, out, {...lifecycle, ...(generation !== undefined ? {outcomeLibraryGeneration: generation} : {})}));
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
                 throw new Error(describeDestinationConflict(target, error.message));

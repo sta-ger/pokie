@@ -13,6 +13,7 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     assertArtifactBuildNotCancelled,
+    StakeProjectionExportService,
 } from "pokie";
 import path from "path";
 import fs from "fs";
@@ -67,16 +68,14 @@ function resolveDefaultDestination(rootPath: string, target: ArtifactTargetType)
 // resolve -> capability-check -> build pipeline "pokie build <project> --target <target>" itself runs (see
 // cli/commands/BuildCommand.ts) -- never a second, Studio-only build or serialization path.
 //
-// Deliberately separate from StudioOutcomeLibraryGenerateService/StudioStakeEngineExportService: those
-// generate a fresh outcome library, or export one with per-mode cost, *from* a runnable game -- an
-// operation ArtifactBuilderRegistry's own "outcomeLibrary"/"stakeAdapter" targets explicitly do not
-// perform (each only republishes an already-built artifact of its own type to a new location; see
-// ArtifactBuilderRegistry's own UNSUPPORTED_NOTES). This service only ever runs that same narrower
-// republish -- or a "blueprint" source's own tsPackage build -- exactly like the CLI, so the two Studio
-// surfaces stay two legitimately different pipelines rather than one masquerading as the other (see
-// ExportDeployTargets.ts's own top-level doc comment).
+// StudioOutcomeLibraryGenerateService remains the advanced, user-directed library action.  In contrast,
+// the Build/Export Stake goal is deliberately complete from a Blueprint/package: the canonical projection
+// service chooses a verified managed library or generation before publication.  The direct Stake service
+// still supports its explicit per-mode Outcome Library input flow, but it must not become a hidden
+// prerequisite for this project-goal action.
 export class StudioArtifactBuildService {
     private readonly registry: ArtifactBuilderRegistry;
+    private readonly stakeProjection: StakeProjectionExportService;
     private readonly resolveProject: ProjectResolving;
     private readonly jobs = new Map<string, StudioArtifactBuildJobRecord>();
     private nextJobId = 1;
@@ -95,6 +94,7 @@ export class StudioArtifactBuildService {
     ) {
         this.resolveProject = resolveProject ?? new ProjectTargetResolver();
         this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
+        this.stakeProjection = new StakeProjectionExportService(this.registry);
         if (pokiePackageRoot !== undefined) this.registry.withRuntimePackageRoot(pokiePackageRoot);
     }
 
@@ -182,7 +182,9 @@ export class StudioArtifactBuildService {
         if (plan.status === "conflict") return {status: "conflict", target, message: plan.diagnostic!.message, plan};
 
         try {
-            const result = await this.registry.executePlan(plan, project, destination, options);
+            const result = target === "stakeAdapter"
+                ? await this.stakeProjection.execute(project, destination, plan, options)
+                : await this.registry.executePlan(plan, project, destination, options);
             // executePlan's terminal writer has returned, but Studio has one
             // more publication boundary: project registration.  Honour the
             // same signal before exposing any registry entry or success DTO.
@@ -354,7 +356,9 @@ export class StudioArtifactBuildService {
     }
 
     private plan(project: PokieProject, target: ArtifactTargetType, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
-        return this.registry.preparePlan(project, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
+        return target === "stakeAdapter"
+            ? this.stakeProjection.prepare(project, destinationPath ?? resolveDefaultDestination(project.rootPath, target), options)
+            : this.registry.preparePlan(project, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
     }
 
     // Resolves `projectRoot` into a PokieProject and `target`'s own default destination -- the exact same

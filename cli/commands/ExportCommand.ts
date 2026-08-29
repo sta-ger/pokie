@@ -1,5 +1,5 @@
 import path from "path";
-import {ArtifactBuilderRegistry, ArtifactConversionPlanner, ProjectTargetResolver, type ArtifactConversionExecution, type ArtifactTargetType, type ProjectResolving} from "pokie";
+import {ArtifactBuilderRegistry, ArtifactConversionPlanner, ProjectTargetResolver, StakeProjectionExportService, type ArtifactConversionExecution, type ArtifactTargetType, type ProjectResolving} from "pokie";
 import {Command} from "commander";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {OutcomeLibraryCommand} from "./OutcomeLibraryCommand.js";
@@ -20,6 +20,7 @@ export class ExportCommand implements CliCommandHandling {
     private readonly par: ParCommand;
     private readonly stake: StakeEngineCommand;
     private readonly registry: ArtifactBuilderRegistry;
+    private readonly stakeProjection: StakeProjectionExportService;
     private readonly resolveProject: ProjectResolving;
     private readonly planner = new ArtifactConversionPlanner();
 
@@ -28,6 +29,7 @@ export class ExportCommand implements CliCommandHandling {
         this.par = new ParCommand(pokieVersion);
         this.stake = new StakeEngineCommand(pokieVersion);
         this.registry = new ArtifactBuilderRegistry(pokieVersion);
+        this.stakeProjection = new StakeProjectionExportService(this.registry);
         this.resolveProject = resolveProject;
     }
 
@@ -68,7 +70,9 @@ export class ExportCommand implements CliCommandHandling {
     private async runProjectExport(args: ExportArgs, project: Awaited<ReturnType<ProjectResolving["resolve"]>> & {}): Promise<number> {
         const target = this.artifactTarget(args.target);
         const destination = this.resolveDestination(args);
-        const plan = await this.registry.preparePlan(project, target, {destinationPath: destination});
+        const plan = target === "stakeAdapter"
+            ? await this.stakeProjection.prepare(project, destination)
+            : await this.registry.preparePlan(project, target, {destinationPath: destination});
         if (plan.status === "unavailable") {
             throw new Error(`${plan.diagnostic!.message} Next: ${plan.diagnostic!.recovery}`);
         }
@@ -76,7 +80,8 @@ export class ExportCommand implements CliCommandHandling {
             throw new Error(this.describeDestinationConflict(args.target, plan.diagnostic!.message));
         }
         if (args.dryRun) {
-            await this.registry.validate(target, project, plan);
+            if (target === "stakeAdapter") await this.stakeProjection.validate(project, plan);
+            else await this.registry.validate(target, project, plan);
             console.log(`Dry run -- would export target "${args.target}" from "${project.rootPath}" to "${destination}". No files written.`);
             console.log(`Conversion plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}.`);
             console.log(`Preflight: ${plan.preflight.estimatedWork} work; ${plan.preflight.destinationKind} destination.`);
@@ -96,7 +101,9 @@ export class ExportCommand implements CliCommandHandling {
             process.once("SIGINT", onCancel);
             let result;
             try {
-                result = await this.registry.executePlan(plan, project, destination, {signal: controller.signal});
+                result = target === "stakeAdapter"
+                    ? await this.stakeProjection.execute(project, destination, plan, {signal: controller.signal})
+                    : await this.registry.executePlan(plan, project, destination, {signal: controller.signal});
             } finally {
                 process.off("SIGINT", onCancel);
             }

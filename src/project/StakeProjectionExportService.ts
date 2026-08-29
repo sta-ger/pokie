@@ -1,0 +1,60 @@
+import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
+import {ArtifactBuilderRegistry} from "./ArtifactBuilderRegistry.js";
+import {describeArtifactConversionPlanDiagnostic, type ArtifactConversionPlan} from "./ArtifactConversionPlanner.js";
+import type {PokieProject} from "./PokieProject.js";
+
+/**
+ * The goal-oriented Stake projection boundary.  A Blueprint or package is a
+ * complete Stake source: the registry prepares one immutable plan which
+ * selects either a verified managed Outcome Library or generation, then
+ * validates and publishes the Stake artifact.  CLI and Studio use this
+ * boundary instead of treating an Outcome Library as a hidden prerequisite.
+ *
+ * Descriptor-based Stake exports intentionally remain outside this service:
+ * their descriptor is an explicit Outcome Library input and cannot acquire
+ * Blueprint/package provenance by passing through a project projection.
+ */
+export interface StakeProjectionExportServicing {
+    prepare(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan>;
+    validate(source: PokieProject, prepared: ArtifactConversionPlan): Promise<void>;
+    execute(
+        source: PokieProject,
+        destinationPath: string,
+        prepared: ArtifactConversionPlan,
+        options?: ArtifactBuildOptions,
+    ): Promise<ArtifactBuildResult>;
+}
+
+export class StakeProjectionExportService implements StakeProjectionExportServicing {
+    private readonly registry: ArtifactBuilderRegistry;
+
+    public constructor(registry: ArtifactBuilderRegistry) {
+        this.registry = registry;
+    }
+
+    public prepare(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
+        return this.registry.preparePlan(source, "stakeAdapter", {
+            destinationPath,
+            outcomeLibraryGeneration: options?.outcomeLibraryGeneration,
+        });
+    }
+
+    public validate(source: PokieProject, prepared: ArtifactConversionPlan): Promise<void> {
+        return this.registry.validate("stakeAdapter", source, prepared);
+    }
+
+    public execute(
+        source: PokieProject,
+        destinationPath: string,
+        prepared: ArtifactConversionPlan,
+        options?: ArtifactBuildOptions,
+    ): Promise<ArtifactBuildResult> {
+        return this.registry.executePlan(prepared, source, destinationPath, options);
+    }
+
+    /** Stable terminal diagnostic for callers that render a preflight failure. */
+    public describe(prepared: ArtifactConversionPlan): string | undefined {
+        return describeArtifactConversionPlanDiagnostic(prepared) ?? prepared.diagnostic?.message;
+    }
+}
