@@ -104,9 +104,12 @@ export class StudioArtifactBuildService {
     }
 
     // Every target ArtifactBuilderRegistry knows about, alongside whether the active project (by its own
-    // resolved ProjectType) actually supports building it -- the exact same registry.supportsConversionFrom()
-    // check BuildCommand itself runs, computed once here so ExportDeployTab never re-derives a ProjectType/
-    // capability rule of its own.
+    // resolved ProjectType) actually supports building it -- the exact same registry-supported plan BuildCommand
+    // itself runs, computed once here so ExportDeployTab never re-derives a ProjectType/capability rule of its own.
+    // This is intentionally destination-free: a target card describes whether a conversion is possible, while
+    // preview() owns the chosen/default output's conflict diagnostic. In particular, a Stake export's default
+    // sibling name is also its own root when a Stake export is reopened, which must not make its supported
+    // republish edge disappear from the available-targets surface.
     public async listTargets(projectRoot: string): Promise<readonly StudioArtifactTargetView[]> {
         const project = await this.resolveProject.resolve(projectRoot);
         return Promise.all(this.registry.listTargets().map(async (target) => {
@@ -536,7 +539,7 @@ export class StudioArtifactBuildService {
 
     private plan(project: PokieProject, target: ArtifactTargetType, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
         return target === "stakeAdapter"
-            ? this.stakeProjection.prepare(project, destinationPath ?? resolveDefaultDestination(project.rootPath, target), options)
+            ? this.stakeProjection.prepare(project, destinationPath, options)
             : this.registry.preparePlan(project, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
     }
 

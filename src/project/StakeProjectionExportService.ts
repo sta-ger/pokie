@@ -16,7 +16,7 @@ import type {PokieProject} from "./PokieProject.js";
  * Blueprint/package provenance by passing through a project projection.
  */
 export interface StakeProjectionExportServicing {
-    prepare(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan>;
+    prepare(source: PokieProject, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan>;
     validate(source: PokieProject, prepared: ArtifactConversionPlan): Promise<void>;
     execute(
         source: PokieProject,
@@ -56,9 +56,9 @@ export class StakeProjectionExportService implements StakeProjectionExportServic
         this.registry = registry;
     }
 
-    public prepare(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
+    public prepare(source: PokieProject, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
         return this.registry.preparePlan(source, "stakeAdapter", {
-            destinationPath,
+            ...(destinationPath === undefined ? {} : {destinationPath}),
             outcomeLibraryGeneration: options?.outcomeLibraryGeneration,
         });
     }
