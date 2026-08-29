@@ -95,6 +95,8 @@ export class StudioOutcomeLibraryGenerateService {
     private readonly ensureDirectory: (dirPath: string) => void;
     private readonly planning: StudioArtifactConversionPlanning;
     private readonly planner = new ArtifactConversionPlanner();
+    private readonly preflightSnapshots = new Map<string, {readonly requestKey: string; readonly gameId: string; readonly gameVersion: string; readonly configHash?: string; readonly destination: string}>();
+    private nextPreflightToken = 1;
 
     constructor(
         pokieVersion: string,
@@ -170,6 +172,15 @@ export class StudioOutcomeLibraryGenerateService {
             ...(sample === undefined ? {} : {sample}),
         });
 
+        const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
+        const resolvedOutDir = resolveProjectDirectory(projectRoot, outDirRelative, this.realpath);
+        if (resolvedOutDir.status === "error") return {status: "load-error", error: resolvedOutDir.message, plan};
+        const resolvedConfigHash = request.configHash ?? game.getConfigHash?.();
+        const preflightToken = String(this.nextPreflightToken++);
+        this.preflightSnapshots.set(preflightToken, {
+            requestKey: generationRequestKey(request), gameId: game.getManifest().id, gameVersion: game.getManifest().version,
+            ...(resolvedConfigHash === undefined ? {} : {configHash: resolvedConfigHash}), destination: resolvedOutDir.resolvedPath,
+        });
         return {
             status: "ok",
             game: game.getManifest(),
@@ -184,6 +195,7 @@ export class StudioOutcomeLibraryGenerateService {
             warnings: preflight.warnings,
             ...(preflight.sample === undefined ? {} : {sampleSize: formatBigIntSafely(preflight.sample.sampleSize), seed: preflight.sample.seed}),
             plan,
+            preflightToken,
         };
     }
 
@@ -213,6 +225,11 @@ export class StudioOutcomeLibraryGenerateService {
         let domainRequest: OutcomeLibraryGenerationRequest;
         try {
             game = await this.loadGame(projectRoot);
+            const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
+            if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+            if (snapshot !== undefined && (snapshot.requestKey !== generationRequestKey(request) || snapshot.destination !== resolvedOutDir.resolvedPath || snapshot.gameId !== game.getManifest().id || snapshot.gameVersion !== game.getManifest().version || snapshot.configHash !== (request.configHash ?? game.getConfigHash?.()))) {
+                return {status: "conflict", error: "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+            }
             const manifest = game.getManifest();
             const configHash = request.configHash ?? game.getConfigHash?.();
             const libraryId = request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`;
@@ -598,4 +615,8 @@ export class StudioOutcomeLibraryGenerateService {
             // Best-effort persistence -- see this method's own doc comment.
         }
     }
+}
+
+function generationRequestKey(request: {mode?: string; stake?: number; configHash?: string; libraryId?: string; outDir?: string; generation?: string; maxOutcomeSpaceSize?: bigint; sample?: {sampleSize: bigint; seed: string}}): string {
+    return JSON.stringify({mode: request.mode, stake: request.stake, configHash: request.configHash, libraryId: request.libraryId, outDir: request.outDir, generation: request.generation, maxOutcomeSpaceSize: request.maxOutcomeSpaceSize?.toString(), sample: request.sample === undefined ? undefined : {sampleSize: request.sample.sampleSize.toString(), seed: request.sample.seed}});
 }

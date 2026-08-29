@@ -1023,6 +1023,7 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           sampleSize?: number | string;
           seed?: string;
           plan: StudioArtifactConversionPlan;
+          preflightToken: string;
       }
     | {status: "unsupported"; error: string; plan: StudioArtifactConversionPlan}
     | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
@@ -1060,8 +1061,26 @@ export type StudioOutcomeLibraryGenerateResultView =
     | {status: "unsupported"; error: string; plan: StudioArtifactConversionPlan}
     | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
     | {status: "generation-error"; code: string; error: string; plan: StudioArtifactConversionPlan}
+    | {
+          status: "cancelled";
+          processedRawIndex: string;
+          progressTotal: string;
+          checkpoint: {id: string; processedRawIndex: string; progressTotal: string; sourceEnumerationId: string};
+          recovery: string;
+          plan: StudioArtifactConversionPlan;
+      }
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
     | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
+
+// The pollable Studio lifecycle deliberately contains only decimal strings and an opaque checkpoint id;
+// accumulated grids never cross the HTTP boundary or become browser-owned state.
+export type StudioOutcomeLibraryGenerateJobView = {
+    id: string;
+    status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    cancellationRequested: boolean;
+    progress?: {processedRawIndex: string; progressTotal: string};
+    result?: StudioOutcomeLibraryGenerateResultView;
+};
 
 export type StudioOutcomeLibraryRegistryModeEntry = {
     modeName: string;

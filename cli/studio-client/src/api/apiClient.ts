@@ -39,6 +39,7 @@ import type {
     StudioOpenFolderView,
     StudioRevealPathView,
     StudioOutcomeLibraryGenerateEstimateView,
+    StudioOutcomeLibraryGenerateJobView,
     StudioOutcomeLibraryGenerateResultView,
     StudioOutcomeLibraryRegistryView,
     StudioParSheetExportView,
@@ -921,6 +922,10 @@ export async function runDeployment(
 // Number.MAX_SAFE_INTEGER.
 export type OutcomeLibraryGenerationPreflightOptions = {
     mode?: string;
+    stake?: number;
+    configHash?: string;
+    libraryId?: string;
+    outDir?: string;
     maxOutcomeSpaceSize?: string;
     generation?: "default" | "exact" | "sampled" | "bounded";
     sample?: {sampleSize: string; seed: string};
@@ -964,6 +969,7 @@ export type OutcomeLibraryGenerateRequestOptions = {
     bounded?: {sampleSize: string; seed: string};
     sampled?: {sampleSize: string; seed: string};
     outDir?: string;
+    preflightToken?: string;
 };
 
 // Drives generateExactWeightedOutcomeLibrary against the current project's own built package -- the exact
@@ -982,6 +988,33 @@ export async function generateOutcomeLibrary(fetchImpl: FetchLike, options: Outc
         throw new Error(await extractErrorMessage(response, "Failed to generate the outcome library"));
     }
     return (await response.json()) as StudioOutcomeLibraryGenerateResultView;
+}
+
+/** Starts the cancellable Outcome Library lifecycle. Poll the returned job until it is terminal. */
+export async function startOutcomeLibraryGeneration(fetchImpl: FetchLike, options: OutcomeLibraryGenerateRequestOptions): Promise<StudioOutcomeLibraryGenerateJobView> {
+    const response = await fetchImpl("/api/project/outcome-libraries/generate/jobs", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(options),
+    });
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to start the outcome library generation"));
+    return ((await response.json()) as {job: StudioOutcomeLibraryGenerateJobView}).job;
+}
+
+export async function getOutcomeLibraryGenerationJob(fetchImpl: FetchLike, id: string): Promise<StudioOutcomeLibraryGenerateJobView> {
+    const response = await fetchImpl(`/api/project/outcome-libraries/generate/jobs/${encodeURIComponent(id)}`);
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to read the outcome library generation"));
+    return (await response.json()) as StudioOutcomeLibraryGenerateJobView;
+}
+
+export async function cancelOutcomeLibraryGeneration(fetchImpl: FetchLike, id: string): Promise<StudioOutcomeLibraryGenerateJobView> {
+    const response = await fetchImpl(`/api/project/outcome-libraries/generate/jobs/${encodeURIComponent(id)}/cancel`, {method: "POST"});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to cancel the outcome library generation"));
+    return (await response.json()) as StudioOutcomeLibraryGenerateJobView;
+}
+
+export async function resumeOutcomeLibraryGeneration(fetchImpl: FetchLike, id: string): Promise<StudioOutcomeLibraryGenerateJobView> {
+    const response = await fetchImpl(`/api/project/outcome-libraries/generate/jobs/${encodeURIComponent(id)}/resume`, {method: "POST"});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to resume the outcome library generation"));
+    return ((await response.json()) as {job: StudioOutcomeLibraryGenerateJobView}).job;
 }
 
 // The Registry panel's own "does a compatible library already exist for this build?" check -- see

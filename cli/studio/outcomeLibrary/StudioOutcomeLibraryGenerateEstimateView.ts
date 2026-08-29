@@ -27,6 +27,8 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           // surfaced here before the caller ever commits to a real generate() run.
           readonly requiresBounded: boolean;
           readonly plan: ArtifactConversionPlan;
+          /** Opaque server snapshot. Pass it unchanged to generate to reject source/configuration/destination drift. */
+          readonly preflightToken: string;
       }
     // The loaded package doesn't implement createExactEnumerationSession at all -- there is no exact
     // outcome space to estimate (see WeightedOutcomeLibraryGenerationError's own

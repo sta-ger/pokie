@@ -20,6 +20,7 @@ export type OutcomeLibraryGenerateRequestInput = {
     sampled?: OutcomeLibraryGenerateBoundedInput;
     bounded?: OutcomeLibraryGenerateBoundedInput;
     outDir?: unknown;
+    preflightToken?: unknown;
 };
 
 export type ValidatedOutcomeLibraryGenerateRequest = {
@@ -33,6 +34,8 @@ export type ValidatedOutcomeLibraryGenerateRequest = {
     readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
     readonly bounded?: {readonly sampleSize: bigint; readonly seed: string};
     readonly outDir?: string;
+    /** Opaque token returned by the Studio preflight; binds the displayed decision to execution. */
+    readonly preflightToken?: string;
     /** In-process lifecycle hooks. HTTP adapters deliberately do not deserialize these opaque values. */
     readonly resumeFrom?: ExactEnumerationCheckpoint;
     readonly signal?: AbortSignal;
@@ -111,6 +114,9 @@ export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGener
     if (input.outDir !== undefined && !isNonEmptyString(input.outDir)) {
         throw new Error('"outDir" must be a non-empty string when present.');
     }
+    if (input.preflightToken !== undefined && !isNonEmptyString(input.preflightToken)) {
+        throw new Error('"preflightToken" must be a non-empty string when present.');
+    }
 
     const {generation, sample: canonicalSample} = adaptOutcomeLibraryGenerationTransport(input);
 
@@ -125,5 +131,6 @@ export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGener
         // Keep these aliases in the validated view while callers migrate. The
         // service itself consumes only generation/sample below.
         ...(input.outDir !== undefined ? {outDir: input.outDir as string} : {}),
+        ...(input.preflightToken !== undefined ? {preflightToken: input.preflightToken as string} : {}),
     };
 }

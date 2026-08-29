@@ -64,6 +64,7 @@ import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioNativePickerService} from "./home/StudioNativePickerService.js";
 import {validateNativeBrowseRequest, NativeBrowseRequestInput} from "./home/validateNativeBrowseRequest.js";
 import {StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
+import {StudioOutcomeLibraryGenerateJobService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateJobService.js";
 import {
     validateOutcomeLibraryGenerateEstimateRequest,
     OutcomeLibraryGenerateEstimateRequestInput,
@@ -240,6 +241,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly playService: StudioPlayService;
     private readonly deploymentService: StudioDeploymentService;
     private readonly outcomeLibraryGenerateService: StudioOutcomeLibraryGenerateService;
+    private readonly outcomeLibraryGenerateJobService: StudioOutcomeLibraryGenerateJobService;
     private readonly certificationService: StudioCertificationService;
     private readonly fairnessService: StudioFairnessService;
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
@@ -327,6 +329,7 @@ export class StudioServer implements StudioServerHandling {
             options.playService ??
             new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion, undefined, undefined, undefined, this.roundRecorder);
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, loadCurrentProjectGame);
+        this.outcomeLibraryGenerateJobService = new StudioOutcomeLibraryGenerateJobService(this.outcomeLibraryGenerateService);
         this.deploymentService = options.deploymentService ?? StudioDeploymentService.withPokieVersion(
             this.pokieVersion,
             async (projectRoot) => {
@@ -859,6 +862,17 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/project/outcome-libraries/generate") {
             await this.handleGenerateOutcomeLibrary(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/outcome-libraries/generate/jobs") {
+            await this.handleStartOutcomeLibraryGeneration(req, res);
+            return;
+        }
+
+        const outcomeLibraryJobRoute = (/^\/api\/project\/outcome-libraries\/generate\/jobs\/([^/]+)(?:\/(cancel|resume))?$/).exec(url.pathname);
+        if (outcomeLibraryJobRoute !== null) {
+            this.handleOutcomeLibraryGenerationJob(method, res, outcomeLibraryJobRoute[1], outcomeLibraryJobRoute[2] as "cancel" | "resume" | undefined);
             return;
         }
 
@@ -1972,6 +1986,46 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, await this.outcomeLibraryGenerateService.generate(this.currentContext.projectRoot, validated));
     }
 
+    private async handleStartOutcomeLibraryGeneration(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateOutcomeLibraryGenerateRequest((body ?? {}) as OutcomeLibraryGenerateRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+        this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.currentContext.projectRoot, validated)});
+    }
+
+    private handleOutcomeLibraryGenerationJob(method: string, res: ServerResponse, id: string, action: "cancel" | "resume" | undefined): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        if ((action === undefined && method !== "GET") || (action !== undefined && method !== "POST")) {
+            this.sendJson(res, 405, {error: "Method not allowed."});
+            return;
+        }
+        let job;
+        if (action === "cancel") {
+            job = this.outcomeLibraryGenerateJobService.cancelForProject(this.currentContext.projectRoot, id);
+        } else if (action === "resume") {
+            job = this.outcomeLibraryGenerateJobService.resumeForProject(this.currentContext.projectRoot, id);
+        } else {
+            job = this.outcomeLibraryGenerateJobService.getStatusForProject(this.currentContext.projectRoot, id);
+        }
+        if (job === undefined) {
+            this.sendJson(res, 404, {error: action === "resume" ? "Outcome library checkpoint not found." : "Outcome library generation job not found."});
+            return;
+        }
+        this.sendJson(res, action === "resume" ? 202 : 200, action === "resume" ? {status: "created", job} : job);
+    }
+
     private async handleGetOutcomeLibraryRegistry(res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
@@ -2885,7 +2939,14 @@ export class StudioServer implements StudioServerHandling {
 
     private sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
         res.writeHead(statusCode, {"Content-Type": "application/json"});
-        res.end(JSON.stringify(body));
+        // A Studio DTO is a transport contract, not an in-process object graph. Generation diagnostics
+        // and cancellation checkpoints contain bigint counters (and maps in legacy direct responses), so
+        // normalize them rather than letting JSON.stringify turn a normal cancellation into a 500.
+        res.end(JSON.stringify(body, (_key, value: unknown) => {
+            if (typeof value === "bigint") return value.toString();
+            if (value instanceof Map) return Array.from(value.entries());
+            return value;
+        }));
     }
 }
 

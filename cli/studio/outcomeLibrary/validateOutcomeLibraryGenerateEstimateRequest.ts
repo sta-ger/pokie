@@ -3,6 +3,10 @@ import {adaptOutcomeLibraryGenerationTransport, type OutcomeLibraryGenerateBound
 
 export type OutcomeLibraryGenerateEstimateRequestInput = {
     mode?: unknown;
+    stake?: unknown;
+    configHash?: unknown;
+    libraryId?: unknown;
+    outDir?: unknown;
     maxOutcomeSpaceSize?: unknown;
     generation?: unknown;
     sample?: OutcomeLibraryGenerateBoundedInput;
@@ -11,6 +15,10 @@ export type OutcomeLibraryGenerateEstimateRequestInput = {
 };
 export type ValidatedOutcomeLibraryGenerateEstimateRequest = {
     readonly mode?: string;
+    readonly stake?: number;
+    readonly configHash?: string;
+    readonly libraryId?: string;
+    readonly outDir?: string;
     readonly maxOutcomeSpaceSize?: bigint;
     readonly generation?: OutcomeLibraryGenerationMode;
     readonly sample?: OutcomeLibraryGenerationSample;
@@ -27,9 +35,17 @@ export function validateOutcomeLibraryGenerateEstimateRequest(input: OutcomeLibr
     if (input.mode !== undefined && !isNonEmptyString(input.mode)) {
         throw new Error('"mode" must be a non-empty string when present.');
     }
+    if (input.stake !== undefined && (typeof input.stake !== "number" || !Number.isFinite(input.stake) || input.stake <= 0)) throw new Error('"stake" must be a positive number when present.');
+    if (input.configHash !== undefined && !isNonEmptyString(input.configHash)) throw new Error('"configHash" must be a non-empty string when present.');
+    if (input.libraryId !== undefined && !isNonEmptyString(input.libraryId)) throw new Error('"libraryId" must be a non-empty string when present.');
+    if (input.outDir !== undefined && !isNonEmptyString(input.outDir)) throw new Error('"outDir" must be a non-empty string when present.');
     const {generation, sample: canonicalSample} = adaptOutcomeLibraryGenerationTransport(input);
     return {
         ...(input.mode !== undefined ? {mode: input.mode as string} : {}),
+        ...(input.stake !== undefined ? {stake: input.stake as number} : {}),
+        ...(input.configHash !== undefined ? {configHash: input.configHash as string} : {}),
+        ...(input.libraryId !== undefined ? {libraryId: input.libraryId as string} : {}),
+        ...(input.outDir !== undefined ? {outDir: input.outDir as string} : {}),
         ...(input.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: parsePositiveOutcomeLibraryGenerationDecimal(input.maxOutcomeSpaceSize, "maxOutcomeSpaceSize")} : {}),
         generation,
         ...(canonicalSample === undefined ? {} : {sample: canonicalSample}),
