@@ -21,7 +21,6 @@ import {
     estimateExactOutcomeSpaceSize,
     generateWeightedOutcomeLibrary,
     prepareOutcomeLibraryGeneration,
-    preflightOutcomeLibraryGenerationFromEstimate,
 } from "pokie";
 import fs from "fs";
 import path from "path";
@@ -33,7 +32,7 @@ import type {StudioOutcomeLibraryGenerateEstimateView} from "./StudioOutcomeLibr
 import type {StudioOutcomeLibraryGenerateResultView} from "./StudioOutcomeLibraryGenerateResultView.js";
 import type {StudioOutcomeLibraryRegistryView} from "./StudioOutcomeLibraryRegistryView.js";
 import type {ValidatedOutcomeLibraryGenerateEstimateRequest} from "./validateOutcomeLibraryGenerateEstimateRequest.js";
-import type {ValidatedOutcomeLibraryGenerateRequest} from "./validateOutcomeLibraryGenerateRequest.js";
+import type {ValidatedOutcomeLibraryGenerateRequest, ValidatedOutcomeLibraryGenerateTransportRequest} from "./validateOutcomeLibraryGenerateRequest.js";
 
 // Same bigint-safe number-or-decimal-string convention as OutcomeLibraryCommand's own
 // formatBigIntSafely/toBigIntSafeDecimal -- a raw reel-stop combination count routinely exceeds
@@ -159,37 +158,30 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
 
-        let estimate: OutcomeSpaceEstimate;
-        try {
-            estimate = this.estimateSpace(game);
-        } catch (error) {
-            if (error instanceof WeightedOutcomeLibraryGenerationError) {
-                return {status: "unsupported", error: error.message, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
-            }
-            throw error;
-        }
-
-        const generation = resolveGeneration(request);
-        const sample = resolveSample(request);
-        const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, {
-            generation,
-            ...(request.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: request.maxOutcomeSpaceSize}),
-            ...(sample === undefined ? {} : {sample}),
-        });
-
         const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
         const resolvedOutDir = resolveProjectDirectory(projectRoot, outDirRelative, this.realpath);
         if (resolvedOutDir.status === "error") return {status: "load-error", error: resolvedOutDir.message, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
-        // configHash is a caller assertion, never an authority over the loaded package.
-        // Keeping the loaded value in the snapshot makes source drift detectable even when
-        // an old browser form contains a previously valid compatibility hash.
-        const resolvedConfigHash = game.getConfigHash?.();
-        if (request.configHash !== undefined && request.configHash !== resolvedConfigHash) {
-            return {status: "conflict", error: "The supplied configuration identity does not match the loaded game. Reload the project or clear the compatibility override.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+        let preparedRequest;
+        try {
+            // This is deliberately the same prepared request generation will
+            // execute. It owns loaded configuration identity and the resolved
+            // destination rather than leaving either as estimate-only DTO data.
+            preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(game, request, resolvedOutDir.resolvedPath));
+        } catch (error) {
+            const unresolvedPlan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
+            if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-configuration-conflict") {
+                return {status: "conflict", error: error.message, plan: unresolvedPlan};
+            }
+            if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-unsupported") {
+                return {status: "unsupported", error: error.message, plan: unresolvedPlan};
+            }
+            return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: unresolvedPlan};
         }
+        const {estimate} = preparedRequest.preflight;
+        const resolvedConfigHash = preparedRequest.configHash;
         // A preflight is not just an outcome-space calculation: it prepares the
         // same destination and resolved strategy that execution will consume.
-        const requestedGeneration = requestedGenerationFor(preflight);
+        const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
         const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration);
         if (plan.status === "conflict") {
             return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
@@ -209,12 +201,12 @@ export class StudioOutcomeLibraryGenerateService {
             reelsSymbolsNumber: estimate.reelsSymbolsNumber,
             reelSizes: estimate.reelSizes,
             totalOutcomeSpaceSize: formatBigIntSafely(estimate.totalOutcomeSpaceSize),
-            maxOutcomeSpaceSize: formatBigIntSafely(preflight.maxExactOutcomeSpaceSize),
-            strategy: preflight.strategy,
-            requiresBounded: preflight.requiresSampledOptIn,
-            expectedRawWork: formatBigIntSafely(preflight.expectedRawWork),
-            warnings: preflight.warnings,
-            ...(preflight.sample === undefined ? {} : {sampleSize: formatBigIntSafely(preflight.sample.sampleSize), seed: preflight.sample.seed}),
+            maxOutcomeSpaceSize: formatBigIntSafely(preparedRequest.preflight.maxExactOutcomeSpaceSize),
+            strategy: preparedRequest.preflight.strategy,
+            requiresBounded: preparedRequest.preflight.requiresSampledOptIn,
+            expectedRawWork: formatBigIntSafely(preparedRequest.preflight.expectedRawWork),
+            warnings: preparedRequest.preflight.warnings,
+            ...(preparedRequest.preflight.sample === undefined ? {} : {sampleSize: formatBigIntSafely(preparedRequest.preflight.sample.sampleSize), seed: preparedRequest.preflight.sample.seed}),
             plan,
             defaults: {
                 compatibilityVersion: OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
@@ -263,8 +255,6 @@ export class StudioOutcomeLibraryGenerateService {
     public async generate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest): Promise<StudioOutcomeLibraryGenerateResultView> {
         const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
         const modeName = request.mode ?? "base";
-        const generation = resolveGeneration(request);
-        const sample = resolveSample(request);
         // The requested bundle directory is part of the prepared decision, not a
         // writer-local default.  In particular this keeps an occupied or aliased
         // destination from being silently treated as a mode-update after a preview
@@ -284,30 +274,10 @@ export class StudioOutcomeLibraryGenerateService {
             const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
             if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
             const loadedConfigHash = game.getConfigHash?.();
-            if (request.configHash !== undefined && request.configHash !== loadedConfigHash) {
-                return {status: "conflict", error: "The supplied configuration identity does not match the loaded game. Reload the project or clear the compatibility override.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
-            }
             if (snapshot !== undefined && (snapshot.requestKey !== generationRequestKey(request) || snapshot.destination !== resolvedOutDir.resolvedPath || snapshot.gameId !== game.getManifest().id || snapshot.gameVersion !== game.getManifest().version || snapshot.configHash !== loadedConfigHash)) {
                 return {status: "conflict", error: "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
             }
-            const manifest = game.getManifest();
-            const configHash = loadedConfigHash;
-            const libraryId = request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`;
-            domainRequest = {
-                libraryId,
-                game,
-                pokieVersion: this.pokieVersion,
-                ...(configHash === undefined ? {} : {configHash}),
-                ...(request.mode === undefined ? {} : {mode: request.mode}),
-                ...(request.stake === undefined ? {} : {stake: request.stake}),
-                generation,
-                ...(request.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: request.maxOutcomeSpaceSize}),
-                ...(sample === undefined ? {} : {sample}),
-                outputDestination: outDirRelative,
-                ...(request.resumeFrom === undefined ? {} : {resumeFrom: request.resumeFrom}),
-                ...(request.signal === undefined ? {} : {signal: request.signal}),
-                ...(request.onProgress === undefined ? {} : {onProgress: request.onProgress}),
-            };
+            domainRequest = this.createDomainRequest(game, request, resolvedOutDir.resolvedPath);
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
@@ -316,6 +286,9 @@ export class StudioOutcomeLibraryGenerateService {
             preparedRequest = prepareOutcomeLibraryGeneration(domainRequest);
         } catch (error) {
             const unresolvedPlan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
+            if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-configuration-conflict") {
+                return {status: "conflict", error: error.message, plan: unresolvedPlan};
+            }
             if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-unsupported") {
                 return {status: "unsupported", error: error.message, plan: unresolvedPlan};
             }
@@ -335,8 +308,8 @@ export class StudioOutcomeLibraryGenerateService {
             "outcomeLibrary",
             resolvedOutDir.resolvedPath,
             requestedGeneration.generationSemantics,
-            sample?.sampleSize,
-            sample?.seed,
+            preparedRequest.preflight.sample?.sampleSize,
+            preparedRequest.preflight.sample?.seed,
         );
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
@@ -672,6 +645,36 @@ export class StudioOutcomeLibraryGenerateService {
         } catch {
             // Best-effort persistence -- see this method's own doc comment.
         }
+    }
+
+    /**
+     * The only Studio-to-domain adapter.  It intentionally carries the
+     * project-resolved destination and the caller's config assertion intact;
+     * `prepareOutcomeLibraryGeneration` then resolves both into the immutable
+     * request consumed by preflight and execution.
+     */
+    private createDomainRequest(
+        game: PokieGame,
+        request: ValidatedOutcomeLibraryGenerateTransportRequest | ValidatedOutcomeLibraryGenerateRequest,
+        resolvedDestination: string,
+    ): OutcomeLibraryGenerationRequest {
+        const manifest = game.getManifest();
+        const sample = resolveSample(request);
+        return {
+            libraryId: request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`,
+            game,
+            pokieVersion: this.pokieVersion,
+            ...(request.configHash === undefined ? {} : {configHash: request.configHash}),
+            ...(request.mode === undefined ? {} : {mode: request.mode}),
+            ...(request.stake === undefined ? {} : {stake: request.stake}),
+            generation: resolveGeneration(request),
+            ...(request.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: request.maxOutcomeSpaceSize}),
+            ...(sample === undefined ? {} : {sample}),
+            outputDestination: resolvedDestination,
+            ...("resumeFrom" in request && request.resumeFrom !== undefined ? {resumeFrom: request.resumeFrom} : {}),
+            ...("signal" in request && request.signal !== undefined ? {signal: request.signal} : {}),
+            ...("onProgress" in request && request.onProgress !== undefined ? {onProgress: request.onProgress} : {}),
+        };
     }
 }
 

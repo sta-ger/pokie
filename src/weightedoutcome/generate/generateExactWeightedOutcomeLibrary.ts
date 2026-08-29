@@ -162,6 +162,8 @@ type PreparedGeneration = {
     readonly reelWindows: string[][][];
     readonly tuples: Generator<{tuple: number[]; rawIndex: bigint}>;
     readonly sourceEnumerationId: string;
+    /** Resolved by the shared request preparation, never a raw caller assertion. */
+    readonly configHash?: string;
     readonly initialGrids?: ReadonlyMap<string, UniqueGridWeightEntry<string>>;
     readonly initialProcessedRawCount?: bigint;
 };
@@ -212,7 +214,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         Array.from({length: sequence.getSize()}, (_unused, position) => sequence.getSymbols(position, reelsSymbolsNumber)),
     );
     const reelSizes = sequences.map((sequence) => sequence.getSize());
-    const sourceEnumerationId = computeExactEnumerationSourceId(manifest.id, options.configHash, reelWindows);
+    const sourceEnumerationId = computeExactEnumerationSourceId(manifest.id, request.configHash, reelWindows);
 
     // Same cardinality alone never proves a checkpoint belongs to THIS sweep -- two different games/configs
     // can coincidentally enumerate the exact same raw combination count while their actual reel layouts (and
@@ -235,6 +237,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             reelWindows,
             tuples: sweepStopTuples(reelSizes, options.resumeFrom?.processedRawIndex ?? BigInt(0)),
             sourceEnumerationId,
+            ...(request.configHash === undefined ? {} : {configHash: request.configHash}),
             ...(options.resumeFrom !== undefined
                 ? {initialGrids: options.resumeFrom.grids, initialProcessedRawCount: options.resumeFrom.processedRawIndex}
                 : {}),
@@ -249,6 +252,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         reelWindows,
         tuples: sampleStopTuples(reelSizes, bounded.sampleSize, new SeededWeightedOutcomeRandomSource(bounded.seed)),
         sourceEnumerationId,
+        ...(request.configHash === undefined ? {} : {configHash: request.configHash}),
     };
 }
 
@@ -303,7 +307,7 @@ export async function *streamExactWeightedOutcomes(
     const provenance: RoundArtifactProvenance = {
         game: manifest,
         pokieVersion: options.pokieVersion,
-        ...(options.configHash !== undefined ? {configHash: options.configHash} : {}),
+        ...(prepared.configHash !== undefined ? {configHash: prepared.configHash} : {}),
     };
 
     // Canonically sorted by id before ever being yielded -- both so this function's own output already
@@ -358,7 +362,7 @@ export async function *streamExactWeightedOutcomes(
         ...(prepared.strategy === "bounded-coverage" ? {seed: (options.sampled ?? options.bounded as BoundedCoverageGenerationOptions).seed} : {}),
         pokieVersion: options.pokieVersion,
         game: manifest,
-        ...(options.configHash !== undefined ? {configHash: options.configHash} : {}),
+        ...(prepared.configHash !== undefined ? {configHash: prepared.configHash} : {}),
         ...(options.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: options.compatibilityPolicyVersion}),
         generatedAt: (options.now ?? (() => new Date()))().toISOString(),
     };

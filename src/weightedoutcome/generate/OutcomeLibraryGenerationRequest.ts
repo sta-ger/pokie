@@ -74,6 +74,13 @@ export type OutcomeLibraryGenerationPreflight = {
 };
 
 export type ResolvedOutcomeLibraryGenerationRequest = OutcomeLibraryGenerationRequest & {
+    /**
+     * The executable package is the authority for configuration provenance.
+     * When it exposes a hash this is always that loaded value, never a
+     * caller-supplied label.  It remains optional for handwritten packages
+     * which have no configuration identity to expose.
+     */
+    readonly configHash?: string;
     readonly generation: OutcomeLibraryGenerationMode;
     readonly maxExactOutcomeSpaceSize: bigint;
     readonly preflight: OutcomeLibraryGenerationPreflight;
@@ -89,6 +96,12 @@ export function parsePositiveOutcomeLibraryGenerationDecimal(value: unknown, fie
 
 function validateRequest(request: OutcomeLibraryGenerationRequest): void {
     validateGeneration(request.generation, request.sample);
+    if (request.outputDestination !== undefined && request.outputDestination.trim().length === 0) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-destination-conflict",
+            "outputDestination must be a non-empty destination identity when present.",
+        );
+    }
 }
 
 function validateGeneration(requestedGeneration: OutcomeLibraryGenerationMode | undefined, sample: OutcomeLibraryGenerationSample | undefined): void {
@@ -107,14 +120,40 @@ function validateGeneration(requestedGeneration: OutcomeLibraryGenerationMode | 
     }
 }
 
+/**
+ * Resolves the identity-bearing part of a request without enumerating it.
+ * Adapters use this only while translating legacy transport syntax; execution
+ * and preflight still go through prepareOutcomeLibraryGeneration below.
+ */
+export function resolveOutcomeLibraryGenerationIdentity(request: OutcomeLibraryGenerationRequest): OutcomeLibraryGenerationRequest {
+    validateRequest(request);
+    // Do this at the domain boundary, before any estimate, generation, or
+    // publisher can observe caller supplied provenance.  CLI, Studio and
+    // managed artifacts consequently share the direct TypeScript caller's
+    // fail-closed identity semantics instead of each owning a local check.
+    const loadedConfigHash = request.game.getConfigHash?.();
+    if (loadedConfigHash !== undefined && request.configHash !== undefined && request.configHash !== loadedConfigHash) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-configuration-conflict",
+            "The supplied configuration identity does not match the loaded game. Rebuild the package or omit the caller assertion.",
+        );
+    }
+    return {...request, ...(loadedConfigHash === undefined ? {} : {configHash: loadedConfigHash})};
+}
+
 /** Resolves a request once, so estimate and execution select exactly the same strategy and work. */
 export function prepareOutcomeLibraryGeneration(request: OutcomeLibraryGenerationRequest): ResolvedOutcomeLibraryGenerationRequest {
-    validateRequest(request);
-    if (typeof request.game.createExactEnumerationSession !== "function") {
+    const identifiedRequest = resolveOutcomeLibraryGenerationIdentity(request);
+    if (typeof identifiedRequest.game.createExactEnumerationSession !== "function") {
         throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported", `"${request.game.getManifest().id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`);
     }
-    const estimate = estimateExactOutcomeSpaceSize(request.game);
-    return {...request, generation: request.generation ?? "default", maxExactOutcomeSpaceSize: request.maxExactOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE, preflight: preflightOutcomeLibraryGenerationFromEstimate(estimate, request)};
+    const estimate = estimateExactOutcomeSpaceSize(identifiedRequest.game);
+    return {
+        ...identifiedRequest,
+        generation: identifiedRequest.generation ?? "default",
+        maxExactOutcomeSpaceSize: identifiedRequest.maxExactOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
+        preflight: preflightOutcomeLibraryGenerationFromEstimate(estimate, identifiedRequest),
+    };
 }
 
 /** Lets adapters which already loaded an estimate render the canonical decision without reimplementing it. */

@@ -28,6 +28,7 @@ import {
     generateWeightedOutcomeLibrary,
     loadPokieGame,
     preflightOutcomeLibraryGenerationFromEstimate,
+    resolveOutcomeLibraryGenerationIdentity,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -497,7 +498,6 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
         if (options.estimate || options.dryRun) {
             const game = await this.loadGame(packageRoot);
-            this.assertConfigHashMatchesGame(game, options);
             return this.executeEstimate(game, options);
         }
 
@@ -714,16 +714,14 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         if (options.exact) generation = "exact";
         else if (sampling.sampled !== undefined) generation = "sampled";
         else if (sampling.bounded !== undefined) generation = "bounded";
-        // The executable package owns configuration identity. A caller may
-        // assert it for compatibility, but cannot replace the loaded value.
-        this.assertConfigHashMatchesGame(game, options);
-        const configHash = game.getConfigHash?.();
-        return {
+        return resolveOutcomeLibraryGenerationIdentity({
             libraryId: options.libraryId ?? `${game.getManifest().id}${options.mode !== undefined ? `-${options.mode}` : ""}`,
             game,
             pokieVersion: this.pokieVersion,
             generation,
-            ...(configHash === undefined ? {} : {configHash}),
+            // This remains a compatibility assertion only. The shared domain
+            // preparation derives the loaded hash and rejects a mismatch.
+            ...(options.configHash === undefined ? {} : {configHash: options.configHash}),
             ...(options.mode === undefined ? {} : {mode: options.mode}),
             ...(options.stake === undefined ? {} : {stake: options.stake}),
             ...(options.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: options.maxOutcomeSpaceSize}),
@@ -732,17 +730,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             ...(resumeFrom === undefined ? {} : {resumeFrom}),
             ...(signal === undefined ? {} : {signal}),
             ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
-        };
-    }
-
-    private assertConfigHashMatchesGame(game: PokieGame, options: GenerateCliOptions): void {
-        const loadedConfigHash = game.getConfigHash?.();
-        if (options.configHash !== undefined && options.configHash !== loadedConfigHash) {
-            throw new WeightedOutcomeLibraryGenerationError(
-                "weighted-outcome-library-generation-configuration-conflict",
-                "The supplied configuration identity does not match the loaded game. Rebuild the package or omit --config-hash.",
-            );
-        }
+        });
     }
 
     private printGenerateResult(result: GenerateExactWeightedOutcomeLibraryResult, options: GenerateCliOptions): void {

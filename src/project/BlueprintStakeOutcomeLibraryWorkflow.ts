@@ -254,6 +254,11 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                     ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
                     ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
                     ...(generation.sampled !== undefined ? {sample: generation.sampled} : {}),
+                    // Bind the managed writer's destination into the same
+                    // resolved domain request used by CLI and Studio. The
+                    // workflow still owns filesystem publication/rollback,
+                    // while the request owns its destination identity.
+                    outputDestination: destinationPath,
                     signal: options?.signal,
                     onProgress: (completed, total) => {
                         reportArtifactBuildProgress(options, {status: "running", completed, total, preflight});

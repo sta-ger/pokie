@@ -10,6 +10,7 @@ import {
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleWriter,
     PokieGame,
+    prepareOutcomeLibraryGeneration,
     preflightOutcomeLibraryGenerationFromEstimate,
     streamExactWeightedOutcomes,
     WeightedOutcomeLibraryGenerationCancelledError,
@@ -98,6 +99,24 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         });
 
         expect(result.diagnostics.compatibilityPolicyVersion).toBe("managed-v1");
+    });
+
+    it("derives loaded configuration provenance and rejects an incompatible caller assertion in the shared request", async () => {
+        const game: PokieGame = {...buildFixtureGame(), getConfigHash: () => "sha256:loaded-config"};
+        const result = await generateWeightedOutcomeLibrary({
+            libraryId: "resolved-config",
+            game,
+            pokieVersion: "test",
+        });
+
+        expect(result.diagnostics.configHash).toBe("sha256:loaded-config");
+        expect(result.library.outcomes.every((outcome) => outcome.artifact.provenance.configHash === "sha256:loaded-config")).toBe(true);
+        expect(() => prepareOutcomeLibraryGeneration({
+            libraryId: "resolved-config",
+            game,
+            pokieVersion: "test",
+            configHash: "sha256:caller-assertion",
+        })).toThrow("The supplied configuration identity does not match the loaded game");
     });
 
     it("exactly enumerates, dedupes, and sums weights straight off the real calculation path", async () => {
