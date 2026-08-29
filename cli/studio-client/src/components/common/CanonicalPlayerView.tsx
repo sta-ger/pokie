@@ -129,8 +129,8 @@ export function CanonicalPlayerView({
     }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, payoutMultiplier, reelsSymbols, totalWin, wins]);
 
     return (
-        <div>
-            <Table.ScrollContainer minWidth={200}>
+        <div className="pokie-player" aria-label="Game player">
+            <Table.ScrollContainer className="pokie-player-grid-scroll" minWidth={200}>
                 <div ref={gridRef} />
             </Table.ScrollContainer>
             <dl hidden={credits === undefined && totalWin === undefined && payoutMultiplier === undefined}>
@@ -151,8 +151,8 @@ export function CanonicalPlayerView({
             <dl ref={featuresRef} hidden={featureCounters === undefined || featureCounters.length === 0} />
             <div ref={betInfoRef} hidden={availableBets === undefined || availableBets.length === 0} />
             <div ref={modeInfoRef} hidden={availableModeIds === undefined || availableModeIds.length === 0} />
-            <Table.ScrollContainer minWidth={200} hidden={paytable === undefined}>
-                <Table withColumnBorders>
+            <Table.ScrollContainer className="player-paytable-scroll" minWidth={200} hidden={paytable === undefined}>
+                <Table className="player-paytable" withColumnBorders>
                     <Table.Thead>
                         <tr ref={paytableHeadRef} />
                     </Table.Thead>

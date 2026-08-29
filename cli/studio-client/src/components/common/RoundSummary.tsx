@@ -37,7 +37,19 @@ function formatFieldValue(value: unknown): string {
 // a generic "Additional round data" table for whatever extra public fields the game's own serializer
 // returned -- see extractAdditionalRoundFields's own doc comment) only when no artifact was captured
 // (debug mode off, or a non-video-slot session that never builds one).
-export function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
+export function RoundSummary({
+    session,
+    selectedBet,
+    selectedBetMode,
+    onSelectBet,
+    onSelectBetMode,
+}: {
+    session: StudioRuntimeSessionView;
+    selectedBet?: number;
+    selectedBetMode?: string;
+    onSelectBet?: (bet: number) => void;
+    onSelectBetMode?: (modeId: string) => void;
+}) {
     const [artifactInspectorOpen, setArtifactInspectorOpen] = useState(false);
     if (session.debug?.artifact) {
         const artifact = describeRoundArtifact(session.debug.artifact);
@@ -68,9 +80,11 @@ export function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
                     featureCounters={presentation.featureCounters}
                     lines={presentation.lines}
                     availableBets={presentation.availableBets}
-                    currentBet={presentation.currentBet ?? artifact.stake}
+                    currentBet={selectedBet ?? presentation.currentBet ?? artifact.stake}
+                    onSelectBet={onSelectBet}
                     availableModeIds={presentation.availableModeIds}
-                    currentModeId={presentation.currentModeId}
+                    currentModeId={selectedBetMode ?? presentation.currentModeId}
+                    onSelectMode={onSelectBetMode}
                 />
                 <FeatureStateView events={artifact.featureEvents ?? []} />
                 <RoundWinsTable wins={artifact.wins} stake={artifact.stake} />

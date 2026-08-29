@@ -27,8 +27,10 @@ export function GameScreenView({
     lines,
     availableBets,
     currentBet,
+    onSelectBet,
     availableModeIds,
     currentModeId,
+    onSelectMode,
 }: {
     screen: string[][];
     wins?: readonly RoundArtifactWin[];
@@ -40,8 +42,10 @@ export function GameScreenView({
     lines?: LineDefinitionView[];
     availableBets?: number[];
     currentBet?: number;
+    onSelectBet?: (bet: number) => void;
     availableModeIds?: string[];
     currentModeId?: string;
+    onSelectMode?: (modeId: string) => void;
 }) {
     return (
         <CanonicalPlayerView
@@ -55,8 +59,10 @@ export function GameScreenView({
             lines={lines}
             availableBets={availableBets}
             currentBet={currentBet}
+            onSelectBet={onSelectBet}
             availableModeIds={availableModeIds}
             currentModeId={currentModeId}
+            onSelectMode={onSelectMode}
         />
     );
 }

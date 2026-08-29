@@ -14,6 +14,40 @@ import {
 
 type CellElement = HTMLElement & {baseColor: string};
 
+// This stylesheet is intentionally installed by the renderer instead of being copied into each host
+// application's stylesheet.  The dev client, Studio and package consumers therefore share both the
+// player DOM and the rules that make that DOM usable at narrow widths.
+export const PLAYER_PRESENTATION_STYLE_ID = "pokie-canonical-player-presentation";
+
+const PLAYER_PRESENTATION_CSS = `
+.pokie-player { max-width: 100%; min-width: 0; }
+.pokie-player-grid-scroll { max-width: 100%; overflow-x: auto; }
+.player-grid { border-collapse: collapse; margin-bottom: 1rem; max-width: 100%; }
+.player-reel { vertical-align: top; padding: 0; }
+.player-cell { box-sizing: border-box; height: 3rem; min-width: 3rem; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 700; border: 3px solid currentColor; overflow: hidden; }
+.player-symbol-artwork { max-width: 100%; }
+.player-bet-info, .player-mode-info { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
+.player-bet-options, .player-mode-options { display: inline-flex; gap: .35rem; flex-wrap: wrap; }
+.player-bet-option, .player-mode-option, .player-highlight-button { font-size: .875rem; padding: .35rem .75rem; }
+.player-bet-option-selected, .player-mode-option-selected { font-weight: 700; }
+.player-highlight-item { display: inline-block; padding-right: 1rem; padding-bottom: .5rem; }
+.player-paytable-scroll { max-width: 100%; overflow-x: auto; }
+.player-paytable { border-collapse: collapse; width: 100%; }
+.player-paytable th, .player-paytable td { border: 1px solid currentColor; padding: .35rem .6rem; text-align: center; }
+@media (max-width: 480px) { .player-cell { height: 2.25rem; min-width: 2.25rem; font-size: .75rem; } }
+`;
+
+/** Installs the canonical, scoped player CSS once for DOM hosts outside the dev client. */
+export function installPlayerPresentationStyles(doc: Document = document): void {
+    if (doc.getElementById(PLAYER_PRESENTATION_STYLE_ID) !== null) {
+        return;
+    }
+    const style = doc.createElement("style");
+    style.id = PLAYER_PRESENTATION_STYLE_ID;
+    style.textContent = PLAYER_PRESENTATION_CSS;
+    doc.head.appendChild(style);
+}
+
 // The complete DOM contract of one Player surface.  Hosts own only these mounting points and the
 // transport that supplies PlayerRoundView; this module owns the ordering and rendering of every
 // player-specific section.  Keeping that composition here prevents an examples app, the dev client
@@ -323,6 +357,8 @@ function renderOptionsRow(
         button.className = `${classPrefix}-option` + (value === currentValue ? ` ${classPrefix}-option-selected` : "");
         button.textContent = value;
         button.disabled = value === currentValue;
+        button.setAttribute("aria-pressed", value === currentValue ? "true" : "false");
+        button.setAttribute("aria-label", `Select ${classPrefix === "player-bet" ? "bet" : "mode"} ${value}`);
         button.addEventListener("click", () => onSelect(value));
         optionsEl.appendChild(button);
     });
@@ -380,6 +416,7 @@ function renderRoundValue(
 // Empty/undefined optional data is rendered as an empty section, which also prevents stale details
 // from a preceding round from surviving when a feature or selector is not applicable.
 export function renderPlayerRound(elements: PlayerRoundElements, view: PlayerRoundView): void {
+    installPlayerPresentationStyles(elements.gridContainer.ownerDocument);
     renderRoundValue(elements.credits, view.credits, view.creditsLabel);
     renderRoundValue(elements.totalWin, view.totalWin, view.totalWinLabel, "", view.formatTotalWin);
     renderRoundValue(

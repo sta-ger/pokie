@@ -17,6 +17,7 @@ import {
     renderReelsGrid,
     renderWinHighlightsList,
     renderWinsSection,
+    PLAYER_PRESENTATION_STYLE_ID,
 } from "../../../../cli/client/player/renderPlayer.js";
 import {
     deriveAvailableBetModeIds,
@@ -294,6 +295,23 @@ describe("renderPlayerRound", () => {
         expect(elements.totalWin.textContent).toBe("—");
         expect(elements.payoutMultiplier.textContent).toBe("—");
         expect(elements.gridContainer.querySelector('[data-cell="0:0"]')?.textContent).toBe("B");
+    });
+
+    it("installs the shared responsive presentation stylesheet and exposes selected controls to assistive technology", () => {
+        const elements = createElements();
+        renderPlayerRound(elements, {
+            reelsSymbols: [["A"]],
+            highlights: [],
+            availableBets: [1, 2],
+            currentBet: 1,
+            availableModeIds: ["base", "ante"],
+            currentModeId: "base",
+        });
+
+        expect(document.getElementById(PLAYER_PRESENTATION_STYLE_ID)?.textContent).toContain("@media (max-width: 480px)");
+        expect(elements.betInfo.querySelector("button")?.getAttribute("aria-pressed")).toBe("true");
+        expect((elements.betInfo.querySelector("button") as HTMLButtonElement).disabled).toBe(true);
+        expect(elements.modeInfo.querySelector("button")?.getAttribute("aria-label")).toBe("Select mode base");
     });
 });
 

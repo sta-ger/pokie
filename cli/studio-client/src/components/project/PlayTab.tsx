@@ -257,7 +257,18 @@ export function PlayTab({
             {errorNotice}
 
             {loading && <LoadingState label="Spinning…" />}
-            {(!loading || playedRound !== undefined) && (playedRound === undefined ? <EmptyState message="No round played yet -- Spin to play." /> : <RoundSummary session={playedRound} />)}
+            {(!loading || playedRound !== undefined) &&
+                (playedRound === undefined ? (
+                    <EmptyState message="No round played yet -- Spin to play." />
+                ) : (
+                    <RoundSummary
+                        session={playedRound}
+                        selectedBet={selectedBet === null ? undefined : Number(selectedBet)}
+                        selectedBetMode={selectedBetMode ?? undefined}
+                        onSelectBet={(bet) => setSelectedBet(String(bet))}
+                        onSelectBetMode={setSelectedBetMode}
+                    />
+                ))}
         </div>
     );
 }
