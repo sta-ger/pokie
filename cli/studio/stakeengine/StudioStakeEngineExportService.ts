@@ -24,6 +24,17 @@ import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedAr
 import type {StudioStakeEngineExportModeInput} from "./StudioStakeEngineExportModeInput.js";
 import type {StudioStakeEngineExportValidateView} from "./StudioStakeEngineExportValidateView.js";
 import type {StudioStakeEngineExportView} from "./StudioStakeEngineExportView.js";
+import type {StudioArtifactBuildView} from "../artifacts/StudioArtifactBuildView.js";
+
+/** The canonical Studio project-goal boundary, implemented by StudioArtifactBuildService. */
+export interface StudioStakeProjectGoalExporting {
+    /** @deprecated Kept optional for embedders compiled against the old adapter. */
+    build?: (projectRoot: string, target: "stakeAdapter", outDir?: string, options?: import("pokie").ArtifactBuildOptions) => Promise<StudioArtifactBuildView>;
+    executeStakeProjection?: (operation: import("pokie").PreparedStakeProjectionOperation, options?: import("pokie").ArtifactBuildOptions) => Promise<StudioArtifactBuildView>;
+    validateStakeProjection(projectRoot: string, outDir?: string): Promise<{readonly plan: import("pokie").ArtifactConversionPlan; readonly operation: import("pokie").PreparedStakeProjectionOperation} | undefined>;
+    validateStakeProjectionSource(sourcePath: string, destinationPath: string): Promise<{readonly plan: import("pokie").ArtifactConversionPlan} | undefined>;
+    buildStakeProjectionSource(sourcePath: string, destinationPath: string, options?: import("pokie").ArtifactBuildOptions): Promise<StudioArtifactBuildView>;
+}
 
 type LoadModesResult =
     | {readonly status: "ok"; readonly loaded: readonly StakeEngineExportModeInput<string>[]}
@@ -75,6 +86,7 @@ export class StudioStakeEngineExportService {
     private readonly resolveCurrentConfigHash: (projectRoot: string) => Promise<string | undefined>;
     private readonly planning: StudioArtifactConversionPlanning;
     private readonly resolveServerSelectedModes: StudioServerStakeEngineModesResolving;
+    private readonly projectGoal: StudioStakeProjectGoalExporting | undefined;
 
     constructor(
         pokieVersion: string,
@@ -87,6 +99,7 @@ export class StudioStakeEngineExportService {
         resolveCurrentConfigHash: (projectRoot: string) => Promise<string | undefined> = () => Promise.resolve(undefined),
         planning: StudioArtifactConversionPlanning = new StudioArtifactConversionPlanningService(pokieVersion),
         resolveServerSelectedModes: StudioServerStakeEngineModesResolving = () => Promise.resolve([]),
+        projectGoal: StudioStakeProjectGoalExporting | undefined = undefined,
     ) {
         this.exporter = exporter;
         this.validator = validator;
@@ -97,6 +110,7 @@ export class StudioStakeEngineExportService {
         this.resolveCurrentConfigHash = resolveCurrentConfigHash;
         this.planning = planning;
         this.resolveServerSelectedModes = resolveServerSelectedModes;
+        this.projectGoal = projectGoal;
     }
 
     // The exact preflight StakeEngineExporter itself runs (and aborts the whole export on) before writing
@@ -104,9 +118,23 @@ export class StudioStakeEngineExportService {
     // to Export, without triggering a write attempt. Also returns a per-mode provenance summary (outcome
     // count, libraryId/hash) read straight off each loaded library, never Stake-specific and never
     // recomputed beyond what computeWeightedOutcomeLibraryHash already does for every other tab.
-    public async validate(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): Promise<StudioStakeEngineExportValidateView> {
+    public async validate(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[], outDir?: string): Promise<StudioStakeEngineExportValidateView> {
+        if (modes.length === 0 && this.projectGoal !== undefined) {
+            const prepared = await this.projectGoal.validateStakeProjection(projectRoot, outDir);
+            if (prepared === undefined) {
+                return {status: "unavailable", error: `"${projectRoot}" was not recognized as a POKIE project.`, plan: createExternalOutcomeLibraryPlan(undefined, "stakeAdapter")};
+            }
+            if (prepared.plan.status === "conflict") return {status: "conflict", error: prepared.plan.diagnostic?.message ?? "Stake Engine export has a destination conflict.", plan: prepared.plan};
+            if (prepared.plan.status === "unavailable") return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(prepared.plan) ?? prepared.plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan: prepared.plan};
+            return {status: "ok", modes: [], errors: [], warnings: [], plan: prepared.plan};
+        }
+        if (this.projectGoal !== undefined) return this.retiredSelector(projectRoot, modes, outDir);
         const selectedModes = await this.selectModes(projectRoot, modes);
-        const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes, undefined);
+        const selectedBundleSource = this.selectedBundleSource(projectRoot, selectedModes);
+        if (selectedBundleSource !== undefined && this.projectGoal !== undefined && outDir !== undefined) {
+            return this.validateSelectedBundleProjectGoal(projectRoot, selectedModes, selectedBundleSource, outDir);
+        }
+        const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes, outDir === undefined ? undefined : this.resolveArtifactDestination(projectRoot, outDir));
         // A validation result is part of the same planner-governed lifecycle
         // as export.  Do not keep resolving selector-specific inputs after a
         // prepared plan has already established that this project cannot
@@ -157,7 +185,15 @@ export class StudioStakeEngineExportService {
         _overwrite: boolean,
         signal?: AbortSignal,
     ): Promise<StudioStakeEngineExportView> {
+        if (modes.length === 0 && this.projectGoal !== undefined) {
+            return this.exportProjectGoal(projectRoot, outDir, signal);
+        }
+        if (this.projectGoal !== undefined) return this.retiredSelector(projectRoot, modes, outDir);
         const selectedModes = await this.selectModes(projectRoot, modes);
+        const selectedBundleSource = this.selectedBundleSource(projectRoot, selectedModes);
+        if (selectedBundleSource !== undefined && this.projectGoal !== undefined) {
+            return this.exportSelectedBundleProjectGoal(projectRoot, selectedBundleSource, outDir, signal);
+        }
         // Prepare and bind the source before resolving the write path.  A stale
         // managed bundle must retain its prepared-plan diagnostic even when a
         // requested output path is invalid; the view contract requires that
@@ -242,6 +278,132 @@ export class StudioStakeEngineExportService {
         } finally {
             signal?.removeEventListener("abort", abortPreparedOperation);
         }
+    }
+
+    /**
+     * Empty Studio requests are the user-facing Blueprint/package goal.  Do
+     * not resolve a registry row, assign costs, or publish here: the shared
+     * projection service has already made every one of those decisions.
+     */
+    private async exportProjectGoal(projectRoot: string, outDir: string, signal?: AbortSignal): Promise<StudioStakeEngineExportView> {
+        // Match validate()'s empty-request boundary before attempting the
+        // materializing build.  An unrecognised project or planner-owned
+        // prerequisite problem is an actionable unavailable/conflict result,
+        // not a writer/load failure.
+        const prepared = await this.projectGoal!.validateStakeProjection(projectRoot, outDir);
+        if (prepared === undefined) {
+            return {
+                status: "unavailable",
+                error: `"${projectRoot}" was not recognized as a POKIE project.`,
+                plan: createExternalOutcomeLibraryPlan(undefined, "stakeAdapter", this.resolveArtifactDestination(projectRoot, outDir)),
+            };
+        }
+        if (prepared.plan.status === "conflict") {
+            return {status: "conflict", outDir, overwritable: false, error: prepared.plan.diagnostic?.message ?? "Stake Engine export has a destination conflict.", plan: prepared.plan};
+        }
+        if (prepared.plan.status === "unavailable") {
+            return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(prepared.plan) ?? prepared.plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan: prepared.plan};
+        }
+        // Do not call build(projectRoot, ...) here: it would prepare a second
+        // plan after validation and could select a different managed library.
+        if (this.projectGoal!.executeStakeProjection === undefined) {
+            return {status: "load-error", error: "The Studio Stake projection executor is unavailable.", plan: prepared.plan};
+        }
+        const result = await this.projectGoal!.executeStakeProjection(prepared.operation, {signal});
+        if (result.status === "conflict") return {status: "conflict", outDir, overwritable: false, error: result.message, plan: result.plan};
+        if (result.status === "unsupported") return {status: "unavailable", error: result.message, plan: result.plan};
+        if (result.status === "cancelled") return {status: "cancelled", message: result.message, plan: result.plan};
+        if (result.status === "error") return {status: "load-error", error: result.message, plan: result.plan};
+
+        return this.inspectProjectGoalResult(result);
+    }
+
+    /** An explicit canonical bundle is an advanced source choice, never a second publisher. */
+    private async exportSelectedBundleProjectGoal(
+        projectRoot: string,
+        sourcePath: string,
+        outDir: string,
+        signal?: AbortSignal,
+    ): Promise<StudioStakeEngineExportView> {
+        const destination = this.resolveArtifactDestination(projectRoot, outDir);
+        const prepared = await this.projectGoal!.validateStakeProjectionSource(sourcePath, destination);
+        if (prepared === undefined) return {status: "unavailable", error: `"${sourcePath}" was not recognized as a canonical Outcome Library.`, plan: createExternalOutcomeLibraryPlan(sourcePath, "stakeAdapter", destination)};
+        if (prepared.plan.status === "conflict") return {status: "conflict", outDir: destination, overwritable: false, error: prepared.plan.diagnostic?.message ?? "Stake Engine export has a destination conflict.", plan: prepared.plan};
+        if (prepared.plan.status === "unavailable") return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(prepared.plan) ?? prepared.plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan: prepared.plan};
+        return this.inspectProjectGoalResult(await this.projectGoal!.buildStakeProjectionSource(sourcePath, destination, {signal}));
+    }
+
+    private async validateSelectedBundleProjectGoal(
+        projectRoot: string,
+        selectedModes: readonly StudioStakeEngineExportModeInput[],
+        sourcePath: string,
+        outDir: string,
+    ): Promise<StudioStakeEngineExportValidateView> {
+        const destination = this.resolveArtifactDestination(projectRoot, outDir);
+        const prepared = await this.projectGoal!.validateStakeProjectionSource(sourcePath, destination);
+        if (prepared === undefined) return {status: "unavailable", error: `"${sourcePath}" was not recognized as a canonical Outcome Library.`, plan: createExternalOutcomeLibraryPlan(sourcePath, "stakeAdapter", destination)};
+        if (prepared.plan.status === "conflict") return {status: "conflict", error: prepared.plan.diagnostic?.message ?? "Stake Engine export has a destination conflict.", plan: prepared.plan};
+        if (prepared.plan.status === "unavailable") return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(prepared.plan) ?? prepared.plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan: prepared.plan};
+        const loaded = await this.loadModes(projectRoot, selectedModes);
+        if (loaded.status === "load-error") return {...loaded, plan: prepared.plan};
+        const issues = this.validator.validate(loaded.loaded);
+        return {
+            status: "ok",
+            modes: loaded.loaded.map((mode) => ({modeName: mode.modeName, cost: mode.cost, outcomeCount: mode.library.outcomes.length, libraryId: mode.library.libraryId, libraryHash: computeWeightedOutcomeLibraryHash(mode.library)})),
+            errors: issues.filter((issue) => issue.severity === "error"),
+            warnings: issues.filter((issue) => issue.severity !== "error"),
+            plan: prepared.plan,
+        };
+    }
+
+    private async inspectProjectGoalResult(result: StudioArtifactBuildView): Promise<StudioStakeEngineExportView> {
+        if (result.status === "conflict") return {status: "conflict", outDir: result.plan.target.canonicalLocation ?? "", overwritable: false, error: result.message, plan: result.plan};
+        if (result.status === "unsupported") return {status: "unavailable", error: result.message, plan: result.plan};
+        if (result.status === "cancelled") return {status: "cancelled", message: result.message, plan: result.plan};
+        if (result.status === "error") return {status: "load-error", error: result.message, plan: result.plan};
+        try {
+            const imported = await this.stakeEngineImporter.importFromDirectory(result.outputPath);
+            const errors = imported.issues.filter((issue) => issue.severity === "error");
+            if (imported.manifest === undefined || errors.length > 0) return {status: "invalid", errors, warnings: imported.issues.filter((issue) => issue.severity !== "error"), plan: result.plan};
+            return {status: "ok", outDir: result.outputPath, files: this.outputFiles(result.outputPath), manifest: imported.manifest, warnings: imported.issues, plan: result.plan};
+        } catch (error) {
+            return {status: "load-error", error: `Could not inspect the exported Stake artifact: ${error instanceof Error ? error.message : String(error)}`, plan: result.plan};
+        }
+    }
+
+    private outputFiles(outputPath: string): readonly string[] {
+        const files: string[] = [];
+        const visit = (directory: string): void => {
+            for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
+                const resolved = path.join(directory, entry.name);
+                if (entry.isDirectory()) visit(resolved);
+                else files.push(resolved);
+            }
+        };
+        visit(outputPath);
+        return files;
+    }
+
+    /**
+     * Direct selector payloads were a separate publisher with weaker
+     * provenance and mode/cost binding.  Keep the route shape for clients
+     * during migration, but make its terminal response explicit: use the
+     * project-goal artifact endpoint (or the separate Outcome Library action)
+     * instead of silently accepting a stale browser-selected bundle.
+     */
+    private retiredSelector(
+        projectRoot: string,
+        modes: readonly StudioStakeEngineExportModeInput[],
+        outDir?: string,
+    ): {readonly status: "unavailable"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan} {
+        const sourcePath = this.selectedBundleSource(projectRoot, modes) ?? this.selectedExternalSource(projectRoot, modes);
+        const destination = outDir === undefined ? undefined : this.resolveArtifactDestination(projectRoot, outDir);
+        const plan = createExternalOutcomeLibraryPlan(sourcePath, "stakeAdapter", destination);
+        return {
+            status: "unavailable",
+            error: "Explicit Outcome Library selectors are retired for Studio Stake export. Use the project-goal Stake artifact action; regenerate a compatible Outcome Library from the current project when needed.",
+            plan,
+        };
     }
 
     private selectModes(

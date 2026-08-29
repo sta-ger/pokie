@@ -278,6 +278,7 @@ export * from "./project/ProjectTargetUnsupportedError.js";
 export * from "./project/ProjectType.js";
 export * from "./project/StakeAdapterArtifactBuilder.js";
 export * from "./project/StakeAdapterProjectTargetAdapter.js";
+export * from "./project/StakeProjectionExportService.js";
 export * from "./project/TsPackageArtifactBuilder.js";
 export * from "./project/TsPackageProjectTargetAdapter.js";
 export * from "./project/UnsupportedProjectOperationDiagnostic.js";

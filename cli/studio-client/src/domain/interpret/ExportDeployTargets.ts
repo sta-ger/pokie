@@ -2,20 +2,11 @@ import type {StudioArtifactConversionPlan, StudioArtifactTargetType, StudioArtif
 import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
 
 // Pure view-model for the shared Build/Export shell (see ExportDeployTab) -- the sole Studio surface a
-// project's outputs are built/published from. It classifies, but never merges, the four backend pipelines
-// this Studio actually has (Stake Engine Export's own static exporter, the outcome-library
-// generator/registry, ArtifactBuilderRegistry's own "pokie build <project> --target <target>" conversions,
-// and the External Adapter SDK's own registered-target pipeline). Stake Engine Export still runs through
-// StudioStakeEngineExportService unchanged, outcome-library generation still runs through
-// StudioOutcomeLibraryGenerateService unchanged, every "buildArtifact" card runs through
-// StudioArtifactBuildService/ArtifactBuilderRegistry directly (see describeArtifactBuildTargetCards below
-// and StudioArtifactBuildService's own doc comment for why that's a genuinely separate operation from the
-// first two, not a duplicate of either), and every registered ExternalDeploymentTarget still runs through
-// useDeploymentManager unchanged -- ExportDeployTab runs each of those pipelines directly (see its own
-// doc comment), but this module's own job is unchanged: it only ever *describes* those pipelines' existing
-// targets side by side, it never routes one through another's registry. See docs/external-adapter-sdk.md's
-// own "Why Stake Engine Export isn't an ExternalDeploymentTarget" -- that split is confirmed structural,
-// not an oversight this shell should paper over.
+// project's outputs are built/published from. Stake Engine is one registry-backed
+// `stakeAdapter` goal alongside the other artifact conversions: a Blueprint or
+// package automatically reuses or generates its compatible Outcome Library.
+// The separate Outcome Library card is intentionally advanced user-directed
+// generation, not a prerequisite for Stake.
 //
 // Each actionable card here is offered only once this project's own resolved capabilities/ProjectType
 // actually grant what it needs -- see canGenerateOutcomeLibrary/canReachCanonicalOutcomeLibrary and the
@@ -24,7 +15,7 @@ import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE
 // demo target is never described as a card at all, on any project (see LOCAL_JSON_EXAMPLE_TARGET_ID's own
 // doc comment) -- it exists to exercise the SDK end to end, not as a real deployment pipeline this page
 // should ever present alongside genuine registered targets.
-export type ExportDeployTargetKind = "staticExport" | "outcomeLibrary" | "buildArtifact" | "remoteDeployment";
+export type ExportDeployTargetKind = "outcomeLibrary" | "buildArtifact" | "remoteDeployment";
 
 export type ExportDeployTargetCard = {
     readonly kind: ExportDeployTargetKind;
@@ -152,55 +143,15 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
         });
 }
 
-// Mirrors STAKE_ENGINE_MANIFEST_SCHEMA_VERSION (src/stakeengine/StakeEngineManifest.ts) as a plain literal
-// -- studio-client never imports the pokie package directly (unlike the Studio server), and Stake Engine
-// Export's own format/version is fixed and known before any run, unlike a registered
-// ExternalDeploymentTarget's own (dynamic, server-reported) version below.
-const STAKE_ENGINE_MANIFEST_SCHEMA_VERSION = 1;
-
-const STAKE_ENGINE_EXPORT_CARD: ExportDeployTargetCard = {
-    kind: "staticExport",
-    id: "stakeengine-export",
-    label: "Stake Engine Export",
-    adapter: "Stake Engine math-sdk static file format",
-    version: `manifest schema v${STAKE_ENGINE_MANIFEST_SCHEMA_VERSION}`,
-    purpose:
-        "Create a standalone Stake Engine bundle from this project's outcomes.",
-    destination: "Choose a local folder for the finished export. Studio checks it before creating the export.",
-    technicalDestination: "A local output directory: index.json, a per-mode lookup CSV, per-mode zstd-compressed books, and a sibling pokie-manifest.json.",
-    writePublishBehavior:
-        "Export writes the whole bundle to disk in one atomic swap (an existing directory is only replaced once every file has been generated); Validate diagnostics runs the same checks first without writing anything.",
-    capabilities: [
-        "Multiple bet modes, each with its own cost, published together as one atomic bundle",
-        "Feature events and debug metadata carried through from the source outcome library",
-        "A pokie-manifest.json provenance file alongside Stake's own strict index.json",
-    ],
-    limits: [
-        "Every outcome id must already be a valid Stake Engine integer id",
-        "Every mode in one export must come from the same game build (id, version, config)",
-        "Every payout amount must be exactly representable in Stake's integer unit convention",
-    ],
-    prerequisites: ["A canonical outcome library file per mode", "A positive cost for every mode", "An output directory to write to"],
-    unavailableReasons: [],
-    supported: true,
-    locality: "local",
-    compatibility:
-        "A deliberately separate, sibling pipeline to the External Adapter SDK -- not built on the ExternalDeploymentTarget contract, so it never competes with (or is limited by) a registered adapter's own requirements.",
-};
-
-// The outcome-library generator/registry, described as a build target in its own right -- generating (or
-// selecting) a canonical outcome library is the one build step every other target on this page ultimately
-// reads from (a Deployment mode, a Stake Engine Export mode, and this card's own Registry all discover
-// against the same bundle), so it belongs in this list rather than only being reachable as a side-effect
-// of configuring one of the others.
+// Advanced, user-directed Outcome Library generation. Stake's goal-oriented
+// card does not require this action first.
 const OUTCOME_LIBRARY_CARD: ExportDeployTargetCard = {
     kind: "outcomeLibrary",
     id: "outcome-library",
     label: "Outcome library generator",
     adapter: "pokie's own weighted-outcome-library generator",
     version: "--",
-    purpose:
-        "Create the outcome library used by the other export and delivery options.",
+    purpose: "Create or refresh an Outcome Library for advanced inspection and delivery workflows.",
     destination: "Choose a local folder for the outcome library. Nothing is sent outside Studio.",
     technicalDestination: "A local bundle directory registered for this project (outcomelibrary by default, or a custom directory) -- nothing is deployed or exported externally.",
     writePublishBehavior: "Generate writes the bundle to disk and registers it for discovery; Select/Validate/Inspect never write anything.",
@@ -210,8 +161,7 @@ const OUTCOME_LIBRARY_CARD: ExportDeployTargetCard = {
     unavailableReasons: [],
     supported: true,
     locality: "local",
-    compatibility:
-        "Read by every remote deployment target and Stake Engine Export alike -- generating or fixing a library here is reflected the next time either target's own Configure step looks it up.",
+    compatibility: "A generated library is available to compatible advanced delivery workflows; Stake can also generate one as part of its own project goal.",
 };
 
 // Every registered target still standing once the SDK's own local-json-example demo has been filtered out
@@ -274,7 +224,6 @@ export function describeExportDeployTargetCards(
 ): ExportDeployTargetCard[] {
     const cards: ExportDeployTargetCard[] = [
         plannerBackedCard(OUTCOME_LIBRARY_CARD, "outcomeLibrary", artifactTargets),
-        plannerBackedCard(STAKE_ENGINE_EXPORT_CARD, "stakeAdapter", artifactTargets),
     ];
     const adapterCards = deploymentTargets.filter((target) => target.id !== LOCAL_JSON_EXAMPLE_TARGET_ID).map(describeExternalAdapterTargetCard);
     cards.push(...adapterCards, ...(adapterCards.length > 0 ? [] : [REMOTE_DEPLOYMENT_PLACEHOLDER_CARD]));

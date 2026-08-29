@@ -5,7 +5,6 @@ import {
     checkNativePickerAvailability,
     cancelOutcomeLibraryGeneration,
     estimateOutcomeLibraryGeneration,
-    exportStakeEngine,
     getOutcomeLibraryGenerationJob,
     listOutcomeLibraryGenerationJobs,
     getArtifactBuild,
@@ -30,7 +29,6 @@ import type {
     StudioOutcomeLibraryGenerateJobView,
     StudioOutcomeLibraryGenerateEstimateView,
     StudioProjectCapability,
-    StudioStakeEngineExportView,
 } from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {
@@ -40,7 +38,6 @@ import {
     type ExportDeployTargetKind,
 } from "../../domain/interpret/ExportDeployTargets";
 import {errorMessage} from "../../domain/errorMessage";
-import {describePathActionError} from "../../domain/pathActionError";
 import {describeProjectActionError} from "../../domain/projectActionError";
 import {describeOutcomeLibraryGenerationTerminalOutcome} from "../../domain/outcomeLibraryGenerateError";
 import type {DeploymentManager} from "../../hooks/useDeploymentManager";
@@ -59,10 +56,6 @@ const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: strin
     outcomeLibrary: {
         legend: "Outcome libraries",
         blurb: "Create the game outcomes used by the export and delivery options below.",
-    },
-    staticExport: {
-        legend: "Static export",
-        blurb: "Create a standalone bundle for another system to use.",
     },
     buildArtifact: {
         legend: "Build artifact",
@@ -86,7 +79,13 @@ function artifactDestinationTitle(target: StudioArtifactTargetType): string {
     return "Choose an artifact output directory";
 }
 
-const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["outcomeLibrary", "staticExport", "buildArtifact", "remoteDeployment"];
+function describeStakeRoute(route: "reuse" | "generate" | "publish"): string {
+    if (route === "reuse") return "reuse verified Outcome Library";
+    if (route === "generate") return "generate compatible Outcome Library";
+    return "publish existing Stake source";
+}
+
+const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["outcomeLibrary", "buildArtifact", "remoteDeployment"];
 
 // Every "Configure"/etc-free run below runs against this single project-wide mode name -- the project's
 // own first current build mode when known, "base" (the same fallback generateOutcomeLibrary's own
@@ -97,8 +96,6 @@ const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["outcomeLibrary", "stati
 function resolveDefaultModeName(projectModesView: DeploymentManager["projectModesView"]): string {
     return projectModesView.status === "ok" && projectModesView.modeIds.length > 0 ? projectModesView.modeIds[0] : "base";
 }
-
-const STAKE_ENGINE_DEFAULT_OUT_DIR = "stakeengine";
 
 // Both choices intentionally map one-to-one onto generateExactWeightedOutcomeLibrary's public
 // options. In particular, enabling bounded coverage remains an explicit user decision: setting a
@@ -127,13 +124,6 @@ type OutcomeLibraryPreflightView =
     | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>}
     | {status: "error"; result?: Exclude<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>; message?: string};
 
-type StaticExportRunView =
-    | {status: "idle"}
-    | {status: "running"}
-    | {status: "ok"; result: Extract<StudioStakeEngineExportView, {status: "ok"}>}
-    | {status: "conflict"; result: Extract<StudioStakeEngineExportView, {status: "conflict"}>}
-    | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
-
 function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>): string {
     return describeOutcomeLibraryGenerationTerminalOutcome(view);
 }
@@ -153,16 +143,6 @@ function generationStrategyLabel(generation: OutcomeLibraryGenerationOptions["ge
     return labels[generation];
 }
 
-// Never called for a "conflict" result -- the shared planner's destination policy is authoritative,
-// so the card renders its server-provided recovery rather than inventing an overwrite route.
-function describeStakeEngineResultError(view: Exclude<StudioStakeEngineExportView, {status: "ok"} | {status: "conflict"}>): string {
-    if (view.status === "load-error" || view.status === "unavailable") {
-        return describePathActionError("The Stake Engine export's outcome library", view.error);
-    }
-    const [firstError] = view.errors;
-    return firstError?.message ?? "The Stake Engine export failed validation.";
-}
-
 function PlannerSummary({plan, label = "Server plan"}: {plan: StudioArtifactConversionPlan | undefined; label?: string}) {
     if (plan === undefined) return null;
     const summary =
@@ -177,8 +157,7 @@ function PlannerSummary({plan, label = "Server plan"}: {plan: StudioArtifactConv
 }
 
 // One entry per "buildArtifact" card, keyed by its own artifactTarget -- each target runs (and reports)
-// independently of every other, same "own status per card" convention outcomeLibraryRun/staticExportRun
-// already use for their own single card.
+// independently of every other.
 type ArtifactBuildRunView =
     | {status: "idle"}
     | {status: "running"; jobId: string; progress?: StudioArtifactBuildJobView["progress"]; cancellationRequested: boolean}
@@ -228,8 +207,6 @@ function TargetCard({
     onResumeOutcomeLibrary,
     outcomeLibraryGenerationOptions,
     onOutcomeLibraryGenerationOptionsChange,
-    staticExportRun,
-    onRunStaticExport,
     deployment,
     onOpenFolder,
     artifactPreview,
@@ -254,8 +231,6 @@ function TargetCard({
     onResumeOutcomeLibrary: () => void;
     outcomeLibraryGenerationOptions: OutcomeLibraryGenerationOptions;
     onOutcomeLibraryGenerationOptionsChange: (options: OutcomeLibraryGenerationOptions) => void;
-    staticExportRun: StaticExportRunView;
-    onRunStaticExport: () => void;
     deployment: DeploymentManager;
     onOpenFolder: (path: string) => void;
     artifactPreview: ArtifactPreviewRunView;
@@ -272,7 +247,6 @@ function TargetCard({
     onCopyPath: (path: string) => void;
 }) {
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
-    const staticExportModeName = defaultModeName;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
 
@@ -476,37 +450,6 @@ function TargetCard({
                 </>
             )}
 
-            {card.kind === "staticExport" && (
-                <>
-                    <Button size="xs" mt="sm" onClick={onRunStaticExport} loading={staticExportRun.status === "running"}>
-                        Run Stake Engine Export ({staticExportModeName})
-                    </Button>
-                    {staticExportRun.status === "error" && (
-                        <>
-                            <ErrorState message={staticExportRun.message} />
-                            <PlannerSummary plan={staticExportRun.plan} />
-                        </>
-                    )}
-                    {staticExportRun.status === "conflict" && (
-                        <>
-                            <ErrorState message={staticExportRun.result.error} />
-                            <PlannerSummary plan={staticExportRun.result.plan} />
-                        </>
-                    )}
-                    {staticExportRun.status === "ok" && (
-                        <>
-                            <Text size="sm" mt={4}>
-                                Exported {staticExportRun.result.files.length} file(s) to {staticExportRun.result.outDir}.{" "}
-                                <Button size="xs" variant="default" onClick={() => onOpenFolder(staticExportRun.result.outDir)}>
-                                    Open output folder
-                                </Button>
-                            </Text>
-                            <PlannerSummary plan={staticExportRun.result.plan} />
-                        </>
-                    )}
-                </>
-            )}
-
             {card.kind === "buildArtifact" && card.artifactTarget && card.supported && (
                 <>
                     <PathInput
@@ -536,6 +479,17 @@ function TargetCard({
                             <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
                             <Text size="sm">Destination kind: {artifactPreview.result.destinationKind}</Text>
                             <Text size="sm">Status: {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}</Text>
+                            {"stakePreflight" in artifactPreview.result && artifactPreview.result.stakePreflight !== undefined && (
+                                <Text size="sm" c="dimmed">
+                                    Stake route: {describeStakeRoute(artifactPreview.result.stakePreflight.route)}.
+                                    {artifactPreview.result.stakePreflight.selectedPrerequisiteLocation !== undefined && ` Selected prerequisite: ${artifactPreview.result.stakePreflight.selectedPrerequisiteLocation}.`}
+                                    {` Estimated Stake items: ${artifactPreview.result.stakePreflight.estimatedItemCount ?? "unavailable"}`}
+                                    {artifactPreview.result.stakePreflight.estimatedBytes !== undefined ? `, ${artifactPreview.result.stakePreflight.estimatedBytes} bytes` : ""}.
+                                    {artifactPreview.result.stakePreflight.complexityWarning !== undefined ? ` Warning: ${artifactPreview.result.stakePreflight.complexityWarning}` : ""}
+                                    {artifactPreview.result.stakePreflight.unavailableMetrics?.length ? ` ${artifactPreview.result.stakePreflight.unavailableMetrics.join(" ")}` : ""}
+                                    {artifactPreview.result.stakePreflight.warnings.length > 0 ? ` ${artifactPreview.result.stakePreflight.warnings.join(" ")}` : ""}
+                                </Text>
+                            )}
                             {artifactPreview.result.plan !== undefined && (
                                 <>
                                     <Text size="sm">Plan: {artifactPreview.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}</Text>
@@ -615,6 +569,21 @@ function TargetCard({
                             {artifactBuildRun.result.plan !== undefined && (
                                 <Text size="sm" c="dimmed" mt={4}>
                                     Executed plan: {artifactBuildRun.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}.
+                                </Text>
+                            )}
+                            {artifactBuildRun.result.stakeManifest !== undefined && (
+                                <Text size="sm" c="dimmed" mt={4}>
+                                    Stake manifest: {artifactBuildRun.result.stakeManifest.modes.map((mode) => `${mode.name} (cost ${mode.cost})`).join(", ") || "no modes"}. Files: {artifactBuildRun.result.stakeFiles?.join(", ") || "none"}.
+                                </Text>
+                            )}
+                            {artifactBuildRun.result.stakePrerequisiteProvenance !== undefined && (
+                                <Text size="sm" c="dimmed" mt={4}>
+                                    Stake prerequisite: {artifactBuildRun.result.stakePrerequisiteProvenance.route} ({artifactBuildRun.result.stakePrerequisiteProvenance.disposition}).
+                                    {artifactBuildRun.result.stakePrerequisiteProvenance.selectedPrerequisiteLocation !== undefined && ` Location: ${artifactBuildRun.result.stakePrerequisiteProvenance.selectedPrerequisiteLocation}.`}
+                                    {artifactBuildRun.result.stakePrerequisiteProvenance.sourceGameId !== undefined && ` Source: ${artifactBuildRun.result.stakePrerequisiteProvenance.sourceGameId}@${artifactBuildRun.result.stakePrerequisiteProvenance.sourceGameVersion ?? "unknown"}.`}
+                                    {artifactBuildRun.result.stakePrerequisiteProvenance.sourceConfigurationHash !== undefined && ` Configuration: ${artifactBuildRun.result.stakePrerequisiteProvenance.sourceConfigurationHash}.`}
+                                    {artifactBuildRun.result.stakePrerequisiteProvenance.generationSemantics !== undefined && ` Generation: ${artifactBuildRun.result.stakePrerequisiteProvenance.generationSemantics}${artifactBuildRun.result.stakePrerequisiteProvenance.sampleCount !== undefined ? ` (${artifactBuildRun.result.stakePrerequisiteProvenance.sampleCount}, seed ${artifactBuildRun.result.stakePrerequisiteProvenance.sampleSeed ?? "none"})` : ""}.`}
+                                    {artifactBuildRun.result.stakePrerequisiteProvenance.compatibilityPolicyVersion !== undefined && ` Policy: ${artifactBuildRun.result.stakePrerequisiteProvenance.compatibilityPolicyVersion}.`}
                                 </Text>
                             )}
                             {artifactBuildRun.result.preflight && (
@@ -876,9 +845,6 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         };
     }, [defaultModeName, fetchImpl, outcomeLibraryGenerationOptions]);
 
-    const [staticExportRun, setStaticExportRun] = useState<StaticExportRunView>({status: "idle"});
-    const staticExportGuard = useDoubleSubmitGuard();
-
     // The "Build artifact" group's own target list -- see StudioArtifactBuildService.listTargets's own
     // doc comment. Fetched once on mount: it depends only on the active project's own resolved ProjectType,
     // which is fixed for the lifetime of this tab (switching projects remounts the whole Project Dashboard).
@@ -1099,36 +1065,6 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
             });
     }
 
-    // The browser never selects a prerequisite.  An empty request means the
-    // server resolves the verified managed Outcome Library and prepares the
-    // exact plan it will execute; unavailable/conflict outcomes remain
-    // terminal server DTOs rather than local inferred states.
-    function runStaticExport(): void {
-        setStaticExportRun({status: "running"});
-        exportStakeEngine(fetchImpl, [], STAKE_ENGINE_DEFAULT_OUT_DIR, false)
-            .then((view) => {
-                staticExportGuard.end();
-                if (view.status === "ok") {
-                    setStaticExportRun({status: "ok", result: view});
-                } else if (view.status === "conflict") {
-                    setStaticExportRun({status: "conflict", result: view});
-                } else {
-                    setStaticExportRun({status: "error", message: describeStakeEngineResultError(view), plan: view.plan});
-                }
-            })
-            .catch((error: unknown) => {
-                staticExportGuard.end();
-                setStaticExportRun({status: "error", message: describeProjectActionError("The Stake Engine export", errorMessage(error))});
-            });
-    }
-
-    function handleRunStaticExport(): void {
-        if (!staticExportGuard.begin()) {
-            return;
-        }
-        runStaticExport();
-    }
-
     // Runs a single "Build artifact" card's own target through ArtifactBuilderRegistry (via
     // /api/project/artifacts/build) -- see StudioArtifactBuildService.build's own doc comment for exactly
     // what this does and doesn't promise. Guarded by this target's own current run status (rather than a
@@ -1137,7 +1073,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         if (artifactBuildRuns[target]?.status === "running") {
             return;
         }
-        startArtifactBuild(fetchImpl, target, artifactDestinations[target]?.trim() || undefined)
+        const preview = artifactPreviews[target];
+        const preparedOperationId = preview?.status === "ok" ? preview.result.preparedOperationId : undefined;
+        startArtifactBuild(fetchImpl, target, artifactDestinations[target]?.trim() || undefined, preparedOperationId)
             .then((job) => {
                 setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId: job.id, progress: job.progress, cancellationRequested: false}}));
                 pollArtifactBuild(target, job.id);
@@ -1271,8 +1209,6 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                                             onResumeOutcomeLibrary={handleResumeOutcomeLibrary}
                                             outcomeLibraryGenerationOptions={outcomeLibraryGenerationOptions}
                                             onOutcomeLibraryGenerationOptionsChange={setOutcomeLibraryGenerationOptions}
-                                            staticExportRun={staticExportRun}
-                                            onRunStaticExport={handleRunStaticExport}
                                             deployment={deployment}
                                             onOpenFolder={handleOpenFolder}
                                             artifactPreview={artifactPreview}

@@ -2,7 +2,7 @@ import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibrar
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {StudioStakeEngineExportService} from "../../../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
+import {StudioStakeEngineExportService, type StudioStakeProjectGoalExporting} from "../../../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
 
 const TEST_POKIE_VERSION = "1.3.0";
@@ -38,6 +38,26 @@ describe("StudioStakeEngineExportService", () => {
     });
 
     describe("validate", () => {
+        it("retires advanced bundle selectors instead of accepting a second unverified Stake pipeline", async () => {
+            const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
+            const projectGoal: StudioStakeProjectGoalExporting = {
+                validateStakeProjection: jest.fn(),
+                validateStakeProjectionSource: jest.fn(() => Promise.resolve({plan: plannedStakeExport})),
+                build: jest.fn(),
+                buildStakeProjectionSource: jest.fn(),
+            };
+            const service = new StudioStakeEngineExportService(
+                TEST_POKIE_VERSION,
+                undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, projectGoal,
+            );
+
+            const view = await service.validate(tmpRoot, [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1}], "requested-stake");
+
+            expect(view).toMatchObject({status: "unavailable", error: expect.stringContaining("retired")});
+            expect(projectGoal.validateStakeProjectionSource).not.toHaveBeenCalled();
+        });
+
         it("does not attach a project-root plan to an external JSON selector", async () => {
             const unavailable: ArtifactConversionPlan = {
                 ...plannedStakeExport,
@@ -218,6 +238,24 @@ describe("StudioStakeEngineExportService", () => {
     });
 
     describe("export", () => {
+        it("executes the exact prepared project-goal operation and preserves cancellation as a terminal result", async () => {
+            const operation = {source: {type: "blueprint", rootPath: tmpRoot}, destinationPath: path.join(tmpRoot, "stakeengine"), plan: plannedStakeExport} as unknown as import("pokie").PreparedStakeProjectionOperation;
+            const executeStakeProjection = jest.fn(() => Promise.resolve({status: "cancelled" as const, message: "Artifact build was cancelled.", plan: plannedStakeExport}));
+            const projectGoal: StudioStakeProjectGoalExporting = {
+                validateStakeProjection: jest.fn(() => Promise.resolve({plan: plannedStakeExport, operation})),
+                validateStakeProjectionSource: jest.fn(),
+                executeStakeProjection,
+                buildStakeProjectionSource: jest.fn(),
+            };
+            const service = new StudioStakeEngineExportService(
+                TEST_POKIE_VERSION,
+                undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, projectGoal,
+            );
+
+            await expect(service.export(tmpRoot, [], "stakeengine", false)).resolves.toMatchObject({status: "cancelled", plan: plannedStakeExport});
+            expect(executeStakeProjection).toHaveBeenCalledWith(operation, expect.objectContaining({signal: undefined}));
+        });
+
         it("resolves an empty dashboard request to the server-selected compatible bundle before preparing and publishing", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
             await writeLibraryBundle(tmpRoot, "outcomelibrary", library);

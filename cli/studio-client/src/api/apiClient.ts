@@ -1177,12 +1177,16 @@ export async function verifyFairnessProof(
 export async function validateStakeEngineExport(
     fetchImpl: FetchLike,
     modes: StudioStakeEngineExportModeInput[],
+    outDir?: string,
 ): Promise<StudioStakeEngineExportValidateView> {
     const response = await fetchImpl("/api/project/stakeengine/validate", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({modes}),
+        body: JSON.stringify({modes, ...(outDir === undefined ? {} : {outDir})}),
     });
+    if (response.status === 410) {
+        return (await response.json()) as StudioStakeEngineExportValidateView;
+    }
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to validate the Stake Engine export"));
     }
@@ -1203,7 +1207,7 @@ export async function exportStakeEngine(
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({modes, outDir, overwrite}),
     });
-    if (response.status === 409) {
+    if (response.status === 409 || response.status === 410) {
         return (await response.json()) as StudioStakeEngineExportView;
     }
     if (!response.ok) {
@@ -1246,11 +1250,12 @@ export async function startArtifactBuild(
     fetchImpl: FetchLike,
     target: StudioArtifactTargetType,
     outDir?: string,
+    preparedOperationId?: string,
 ): Promise<StudioArtifactBuildJobView> {
     const response = await fetchImpl("/api/project/artifacts/build", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({target, outDir}),
+        body: JSON.stringify({target, outDir, ...(preparedOperationId === undefined ? {} : {preparedOperationId})}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to start the artifact build"));

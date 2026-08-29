@@ -13,6 +13,8 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     assertArtifactBuildNotCancelled,
+    StakeProjectionExportService,
+    type PreparedStakeProjectionOperation,
 } from "pokie";
 import path from "path";
 import fs from "fs";
@@ -67,19 +69,21 @@ function resolveDefaultDestination(rootPath: string, target: ArtifactTargetType)
 // resolve -> capability-check -> build pipeline "pokie build <project> --target <target>" itself runs (see
 // cli/commands/BuildCommand.ts) -- never a second, Studio-only build or serialization path.
 //
-// Deliberately separate from StudioOutcomeLibraryGenerateService/StudioStakeEngineExportService: those
-// generate a fresh outcome library, or export one with per-mode cost, *from* a runnable game -- an
-// operation ArtifactBuilderRegistry's own "outcomeLibrary"/"stakeAdapter" targets explicitly do not
-// perform (each only republishes an already-built artifact of its own type to a new location; see
-// ArtifactBuilderRegistry's own UNSUPPORTED_NOTES). This service only ever runs that same narrower
-// republish -- or a "blueprint" source's own tsPackage build -- exactly like the CLI, so the two Studio
-// surfaces stay two legitimately different pipelines rather than one masquerading as the other (see
-// ExportDeployTargets.ts's own top-level doc comment).
+// StudioOutcomeLibraryGenerateService remains the advanced, user-directed library action.  In contrast,
+// the Build/Export Stake goal is deliberately complete from a Blueprint/package: the canonical projection
+// service chooses a verified managed library or generation before publication.  The direct Stake service
+// still supports its explicit per-mode Outcome Library input flow, but it must not become a hidden
+// prerequisite for this project-goal action.
 export class StudioArtifactBuildService {
     private readonly registry: ArtifactBuilderRegistry;
+    private readonly stakeProjection: StakeProjectionExportService;
     private readonly resolveProject: ProjectResolving;
     private readonly jobs = new Map<string, StudioArtifactBuildJobRecord>();
+    // A Stake preview is an executable capability decision. Retain the exact
+    // operation server-side so Build never repeats its library lookup.
+    private readonly preparedStakeOperations = new Map<string, PreparedStakeOperationRecord>();
     private nextJobId = 1;
+    private nextPreparedStakeOperationId = 1;
 
     constructor(
         pokieVersion: string,
@@ -95,13 +99,17 @@ export class StudioArtifactBuildService {
     ) {
         this.resolveProject = resolveProject ?? new ProjectTargetResolver();
         this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
+        this.stakeProjection = new StakeProjectionExportService(this.registry);
         if (pokiePackageRoot !== undefined) this.registry.withRuntimePackageRoot(pokiePackageRoot);
     }
 
     // Every target ArtifactBuilderRegistry knows about, alongside whether the active project (by its own
-    // resolved ProjectType) actually supports building it -- the exact same registry.supportsConversionFrom()
-    // check BuildCommand itself runs, computed once here so ExportDeployTab never re-derives a ProjectType/
-    // capability rule of its own.
+    // resolved ProjectType) actually supports building it -- the exact same registry-supported plan BuildCommand
+    // itself runs, computed once here so ExportDeployTab never re-derives a ProjectType/capability rule of its own.
+    // This is intentionally destination-free: a target card describes whether a conversion is possible, while
+    // preview() owns the chosen/default output's conflict diagnostic. In particular, a Stake export's default
+    // sibling name is also its own root when a Stake export is reopened, which must not make its supported
+    // republish edge disappear from the available-targets surface.
     public async listTargets(projectRoot: string): Promise<readonly StudioArtifactTargetView[]> {
         const project = await this.resolveProject.resolve(projectRoot);
         return Promise.all(this.registry.listTargets().map(async (target) => {
@@ -138,7 +146,10 @@ export class StudioArtifactBuildService {
         const destinationKind = destinationKindFor(target);
         const plannedOutputs = plannedOutputsFor(target);
 
-        const plan = await this.plan(project, target, destination);
+        const operation = target === "stakeAdapter"
+            ? await this.stakeProjection.prepareOperation(project, destination)
+            : undefined;
+        const plan = operation?.plan ?? await this.plan(project, target, destination);
         if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
         }
@@ -146,7 +157,72 @@ export class StudioArtifactBuildService {
             return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: plan.diagnostic!.message, plan};
         }
 
-        return {status: "ok", target, destination, destinationKind, plannedOutputs, sourceType: project.type, plan};
+        const preparedOperationId = operation === undefined
+            ? undefined
+            : this.retainPreparedStakeOperation(projectRoot, operation);
+        return {
+            status: "ok",
+            target,
+            destination,
+            destinationKind,
+            plannedOutputs,
+            sourceType: project.type,
+            plan,
+            ...(preparedOperationId === undefined ? {} : {preparedOperationId}),
+            ...(operation === undefined ? {} : {stakePreflight: this.stakePreflightView(operation)}),
+        };
+    }
+
+    /**
+     * Validates the same prepared Blueprint/package-to-Stake projection used
+     * by Build.  The legacy direct Stake endpoint uses this only for its
+     * empty, project-goal request; explicit Outcome Library inputs retain
+     * their descriptor validation boundary in StudioStakeEngineExportService.
+     */
+    public async prepareStakeProjection(projectRoot: string, outDir?: string): Promise<PreparedStakeProjectionOperation | undefined> {
+        const resolved = await this.resolveForTarget(projectRoot, "stakeAdapter", outDir);
+        if (resolved === undefined) return undefined;
+        return this.stakeProjection.prepareOperation(resolved.project, resolved.destination);
+    }
+
+    public async validateStakeProjection(projectRoot: string, outDir?: string): Promise<{readonly plan: ArtifactConversionPlan; readonly operation: PreparedStakeProjectionOperation} | undefined> {
+        const operation = await this.prepareStakeProjection(projectRoot, outDir);
+        return operation === undefined ? undefined : {plan: operation.plan, operation};
+    }
+
+    /**
+     * Advanced Outcome Library inputs use the same prepared Stake lifecycle as
+     * a Blueprint/package goal.  `destinationPath` is already resolved by the
+     * calling Studio boundary, so selecting a library never changes the final
+     * destination that preflight inspected.
+     */
+    public async validateStakeProjectionSource(sourcePath: string, destinationPath: string): Promise<{readonly plan: ArtifactConversionPlan; readonly operation: PreparedStakeProjectionOperation} | undefined> {
+        const source = await this.resolveProject.resolve(sourcePath);
+        if (source === undefined) return undefined;
+        const operation = await this.stakeProjection.prepareOperation(source, destinationPath);
+        return {plan: operation.plan, operation};
+    }
+
+    public async buildStakeProjectionSource(
+        sourcePath: string,
+        destinationPath: string,
+        options?: ArtifactBuildOptions,
+    ): Promise<StudioArtifactBuildView> {
+        const source = await this.resolveProject.resolve(sourcePath);
+        if (source === undefined) {
+            return {
+                status: "error",
+                message: `"${sourcePath}" was not recognized as a POKIE project.`,
+                plan: createUnresolvedRuntimePlan(sourcePath, "stakeAdapter", destinationPath),
+            };
+        }
+        const operation = await this.stakeProjection.prepareOperation(source, destinationPath, options);
+        return this.executeStakeProjection(operation, options);
+    }
+
+    /** Execute a previously validated Studio Stake operation without preparing another plan. */
+    public executeStakeProjection(operation: PreparedStakeProjectionOperation, options?: ArtifactBuildOptions): Promise<StudioArtifactBuildView> {
+        return this.buildResolved(operation.source, "stakeAdapter", operation.destinationPath, options, operation);
     }
 
     // Executes a real build against the active project -- resolves `projectRoot` into a PokieProject
@@ -168,21 +244,35 @@ export class StudioArtifactBuildService {
             const plan = createUnresolvedRuntimePlan(projectRoot, target, outDir);
             return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`, plan};
         }
-        const {project, destination} = resolved;
+        return this.buildResolved(resolved.project, target, resolved.destination, options);
+    }
+
+    public async buildResolved(
+        project: PokieProject,
+        target: ArtifactTargetType,
+        destination: string,
+        options?: ArtifactBuildOptions,
+        preparedStakeOperation?: PreparedStakeProjectionOperation,
+    ): Promise<StudioArtifactBuildView> {
         // Directory targets deliberately accept a caller-created empty
         // destination.  It is not owned by this operation, even though its
         // contents will be, so a later Studio registration failure must leave
         // that directory in place.
         const outputDestinationExisted = fs.existsSync(destination);
 
-        const plan = await this.plan(project, target, destination, options);
+        const operation = target === "stakeAdapter"
+            ? preparedStakeOperation ?? await this.stakeProjection.prepareOperation(project, destination, options)
+            : undefined;
+        const plan = operation?.plan ?? await this.plan(project, target, destination, options);
         if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
         }
         if (plan.status === "conflict") return {status: "conflict", target, message: plan.diagnostic!.message, plan};
 
         try {
-            const result = await this.registry.executePlan(plan, project, destination, options);
+            const result = target === "stakeAdapter"
+                ? await this.stakeProjection.executeOperation(operation!, options)
+                : await this.registry.executePlan(plan, project, destination, options);
             // executePlan's terminal writer has returned, but Studio has one
             // more publication boundary: project registration.  Honour the
             // same signal before exposing any registry entry or success DTO.
@@ -249,6 +339,8 @@ export class StudioArtifactBuildService {
                     : {}),
                 ...(result.importedBlueprintPath !== undefined ? {importedBlueprintPath: result.importedBlueprintPath} : {}),
                 ...(result.conversionEvidencePath !== undefined ? {conversionEvidencePath: result.conversionEvidencePath} : {}),
+                ...(result.stakeManifest !== undefined ? {stakeManifest: result.stakeManifest, stakeFiles: result.stakeFiles ?? []} : {}),
+                ...(operation === undefined ? {} : {stakePrerequisiteProvenance: this.stakePrerequisiteProvenance(operation, result)}),
             };
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
@@ -265,22 +357,21 @@ export class StudioArtifactBuildService {
     // every running update rather than waiting for one terminal HTTP response.  Retention is bounded;
     // active jobs are never evicted.
     public start(projectRoot: string, target: ArtifactTargetType, outDir?: string): StudioArtifactBuildJobView {
-        this.trimTerminalJobs();
-        const record: StudioArtifactBuildJobRecord = {
-            id: String(this.nextJobId++),
-            projectRoot,
-            target,
-            status: "queued",
-            cancellationRequested: false,
-            controller: new AbortController(),
-        };
-        this.jobs.set(record.id, record);
-        queueMicrotask(() => {
-            this.run(record, outDir).catch(() => {
-                // run() converts every builder failure into the public terminal result.
-            });
-        });
-        return this.toJobView(record);
+        return this.startOperation(projectRoot, target, outDir);
+    }
+
+    /** Consume a preview-issued operation, rejecting stale or cross-project handles. */
+    public startPreparedStakeProjection(projectRoot: string, preparedOperationId: string): StudioArtifactBuildJobView | undefined {
+        const prepared = this.preparedStakeOperations.get(preparedOperationId);
+        if (prepared === undefined || prepared.projectRoot !== projectRoot) return undefined;
+        this.preparedStakeOperations.delete(preparedOperationId);
+        return this.startOperation(projectRoot, "stakeAdapter", prepared.operation.destinationPath, prepared.operation);
+    }
+
+    /** Returns the destination bound by a preview without exposing its operation. */
+    public preparedStakeProjectionDestination(projectRoot: string, preparedOperationId: string): string | undefined {
+        const prepared = this.preparedStakeOperations.get(preparedOperationId);
+        return prepared?.projectRoot === projectRoot ? prepared.operation.destinationPath : undefined;
     }
 
     public getStatusForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
@@ -316,9 +407,34 @@ export class StudioArtifactBuildService {
         }
     }
 
+    private startOperation(
+        projectRoot: string,
+        target: ArtifactTargetType,
+        outDir?: string,
+        preparedStakeOperation?: PreparedStakeProjectionOperation,
+    ): StudioArtifactBuildJobView {
+        this.trimTerminalJobs();
+        const record: StudioArtifactBuildJobRecord = {
+            id: String(this.nextJobId++),
+            projectRoot,
+            target,
+            status: "queued",
+            cancellationRequested: false,
+            controller: new AbortController(),
+            preparedStakeOperation,
+        };
+        this.jobs.set(record.id, record);
+        queueMicrotask(() => {
+            this.run(record, outDir).catch(() => {
+                // run() converts every builder failure into the public terminal result.
+            });
+        });
+        return this.toJobView(record);
+    }
+
     private async run(record: StudioArtifactBuildJobRecord, outDir: string | undefined): Promise<void> {
         record.status = "running";
-        const result = await this.build(record.projectRoot, record.target, outDir, {
+        const options: ArtifactBuildOptions = {
             signal: record.controller.signal,
             onProgress: (progress) => {
                 const next = toProgressView(progress);
@@ -329,7 +445,10 @@ export class StudioArtifactBuildService {
                     ? {...next, preflight: record.progress.preflight}
                     : next;
             },
-        });
+        };
+        const result = record.preparedStakeOperation === undefined
+            ? await this.build(record.projectRoot, record.target, outDir, options)
+            : await this.executeStakeProjection(record.preparedStakeOperation, options);
         const status = terminalStatusFor(result);
         Object.assign(record, {result, status});
     }
@@ -353,8 +472,75 @@ export class StudioArtifactBuildService {
         }
     }
 
+    private retainPreparedStakeOperation(projectRoot: string, operation: PreparedStakeProjectionOperation): string {
+        const id = `stake-${this.nextPreparedStakeOperationId++}`;
+        this.preparedStakeOperations.set(id, {projectRoot, operation});
+        while (this.preparedStakeOperations.size > 20) {
+            const oldest = this.preparedStakeOperations.keys().next().value as string | undefined;
+            if (oldest === undefined) break;
+            this.preparedStakeOperations.delete(oldest);
+        }
+        return id;
+    }
+
+    private stakePreflightView(operation: PreparedStakeProjectionOperation): {
+        readonly route: "reuse" | "generate" | "publish";
+        readonly selectedPrerequisiteLocation?: string;
+        readonly estimatedItemCount?: string;
+        readonly estimatedBytes?: string;
+        readonly complexityWarning?: string;
+        readonly unavailableMetrics?: readonly string[];
+        readonly warnings: readonly string[];
+    } {
+        const warnings: string[] = [];
+        if (operation.preflight.route === "reuse") {
+            warnings.push("A compatible managed Outcome Library will be reused.");
+        }
+        if (operation.preflight.route === "generate") {
+            warnings.push("A compatible Outcome Library will be generated before Stake publication.");
+        }
+        return {
+            route: operation.preflight.route,
+            ...(operation.preflight.selectedPrerequisiteLocation === undefined ? {} : {selectedPrerequisiteLocation: operation.preflight.selectedPrerequisiteLocation}),
+            ...(operation.preflight.estimatedItemCount === undefined ? {} : {estimatedItemCount: operation.preflight.estimatedItemCount.toString()}),
+            ...(operation.preflight.estimatedBytes === undefined ? {} : {estimatedBytes: operation.preflight.estimatedBytes.toString()}),
+            ...(operation.preflight.complexityWarning === undefined ? {} : {complexityWarning: operation.preflight.complexityWarning}),
+            ...(operation.preflight.unavailableMetrics === undefined ? {} : {unavailableMetrics: operation.preflight.unavailableMetrics}),
+            warnings,
+        };
+    }
+
+    private stakePrerequisiteProvenance(
+        operation: PreparedStakeProjectionOperation,
+        result: import("pokie").ArtifactBuildResult,
+    ): NonNullable<Extract<StudioArtifactBuildView, {readonly status: "ok"}>["stakePrerequisiteProvenance"]> {
+        const source = operation.plan.source.configurationProvenance;
+        const ownership = this.managedOutcomeOwnership(result, operation.plan)[0];
+        let disposition: "borrowed" | "owned" | "transient" | "none" = "none";
+        if (operation.preflight.route === "reuse") disposition = "borrowed";
+        else if (operation.preflight.route === "generate") disposition = "owned";
+        return {
+            route: operation.preflight.route,
+            ...(operation.preflight.selectedPrerequisiteLocation === undefined
+                ? {selectedPrerequisiteLocation: ownership?.rootPath ?? result.prerequisiteProjectRoots?.[0]}
+                : {selectedPrerequisiteLocation: operation.preflight.selectedPrerequisiteLocation}),
+            disposition: ownership?.disposition ?? disposition,
+            ...(source?.gameId === undefined ? {} : {sourceGameId: source.gameId}),
+            ...(source?.gameVersion === undefined ? {} : {sourceGameVersion: source.gameVersion}),
+            ...(source?.configurationHash === undefined ? {} : {sourceConfigurationHash: source.configurationHash}),
+            ...(source?.pokieVersion === undefined ? {} : {sourcePokieVersion: source.pokieVersion}),
+            ...(source?.generationSemantics === undefined ? {} : {generationSemantics: source.generationSemantics}),
+            ...(source?.sampleCount === undefined ? {} : {sampleCount: source.sampleCount}),
+            ...(source?.sampleSeed === undefined ? {} : {sampleSeed: source.sampleSeed}),
+            ...(source?.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: source.maxExactOutcomeSpaceSize}),
+            ...(source?.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: source.compatibilityPolicyVersion}),
+        };
+    }
+
     private plan(project: PokieProject, target: ArtifactTargetType, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
-        return this.registry.preparePlan(project, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
+        return target === "stakeAdapter"
+            ? this.stakeProjection.prepare(project, destinationPath, options)
+            : this.registry.preparePlan(project, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
     }
 
     // Resolves `projectRoot` into a PokieProject and `target`'s own default destination -- the exact same
@@ -492,8 +678,14 @@ type StudioArtifactBuildJobRecord = {
     status: "queued" | "running" | "completed" | "failed" | "cancelled";
     cancellationRequested: boolean;
     readonly controller: AbortController;
+    readonly preparedStakeOperation?: PreparedStakeProjectionOperation;
     progress?: StudioArtifactBuildProgressView;
     result?: StudioArtifactBuildView;
+};
+
+type PreparedStakeOperationRecord = {
+    readonly projectRoot: string;
+    readonly operation: PreparedStakeProjectionOperation;
 };
 
 function toProgressView(progress: ArtifactBuildProgress): StudioArtifactBuildProgressView {

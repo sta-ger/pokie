@@ -3,11 +3,13 @@ import {ADVERTISED_ARTIFACT_BUILD_TARGETS, type ArtifactTargetType} from "pokie"
 export type ArtifactBuildRequestInput = {
     target?: unknown;
     outDir?: unknown;
+    preparedOperationId?: unknown;
 };
 
 export type ValidatedArtifactBuildRequest = {
     readonly target: ArtifactTargetType;
     readonly outDir?: string;
+    readonly preparedOperationId?: string;
 };
 
 // The same closed vocabulary ArtifactBuilderRegistry.listTargets() (and BuildCommand's own --target
@@ -26,7 +28,7 @@ function isNonEmptyString(value: unknown): value is string {
 // are StudioArtifactBuildService's own job (the same capability-diagnostic/conflict concerns
 // ArtifactBuilderRegistry.build() itself already reports, not a second, differently-worded check here).
 export function validateArtifactBuildRequest(input: ArtifactBuildRequestInput): ValidatedArtifactBuildRequest {
-    const {target, outDir} = input;
+    const {target, outDir, preparedOperationId} = input;
 
     if (!isNonEmptyString(target) || !ARTIFACT_TARGET_TYPES.includes(target as ArtifactTargetType)) {
         throw new Error(`"target" must be one of: ${ARTIFACT_TARGET_TYPES.join(", ")}.`);
@@ -34,6 +36,13 @@ export function validateArtifactBuildRequest(input: ArtifactBuildRequestInput): 
     if (outDir !== undefined && !isNonEmptyString(outDir)) {
         throw new Error('"outDir" must be a non-empty string when given.');
     }
+    if (preparedOperationId !== undefined && !isNonEmptyString(preparedOperationId)) {
+        throw new Error('"preparedOperationId" must be a non-empty string when given.');
+    }
 
-    return {target: target as ArtifactTargetType, outDir: outDir as string | undefined};
+    return {
+        target: target as ArtifactTargetType,
+        outDir: outDir as string | undefined,
+        ...(preparedOperationId === undefined ? {} : {preparedOperationId}),
+    };
 }

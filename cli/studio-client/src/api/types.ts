@@ -1256,7 +1256,13 @@ export type StudioStakeEngineExportValidateView =
     // failure.
     | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
     | {status: "unavailable"; error: string; plan: StudioArtifactConversionPlan}
-    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
+    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan}
+    | StudioStakeEngineExportMigrationView;
+
+export type StudioStakeEngineExportMigrationView = {
+    status: "migration";
+    message: string;
+};
 
 // Mirrors pokie's own StakeEngineManifest/StakeEngineManifestModeEntry
 // (src/stakeengine/StakeEngineManifest.ts) — every hash/metric here is read verbatim off the export
@@ -1295,7 +1301,9 @@ export type StudioStakeEngineExportView =
     | {status: "conflict"; outDir: string; overwritable: boolean; error: string; plan: StudioArtifactConversionPlan}
     | {status: "unavailable"; error: string; plan: StudioArtifactConversionPlan}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
-    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
+    | {status: "cancelled"; message: string; plan: StudioArtifactConversionPlan}
+    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan}
+    | StudioStakeEngineExportMigrationView;
 
 // Mirrors the "pokie" package's own ArtifactTargetType -- the closed vocabulary ArtifactBuilderRegistry
 // (and "pokie build <project> --target <target>") builds toward. Studio-client never imports the pokie
@@ -1340,6 +1348,9 @@ export type StudioArtifactBuildView =
           sourceType: StudioProjectType;
           plan: StudioArtifactConversionPlan;
           preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
+          stakeManifest?: StakeEngineManifest;
+          stakeFiles?: string[];
+          stakePrerequisiteProvenance?: {route: "reuse" | "generate" | "publish"; selectedPrerequisiteLocation?: string; disposition: "borrowed" | "owned" | "transient" | "none"; sourceGameId?: string; sourceGameVersion?: string; sourceConfigurationHash?: string; sourcePokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; sampleCount?: string; sampleSeed?: string; maxExactOutcomeSpaceSize?: string; compatibilityPolicyVersion?: string};
           importedBlueprintPath?: string;
           conversionEvidencePath?: string;
       }
@@ -1378,6 +1389,8 @@ export type StudioArtifactPreviewView =
           plannedOutputs: string[];
           sourceType: StudioProjectType;
           plan: StudioArtifactConversionPlan;
+          preparedOperationId?: string;
+          stakePreflight?: {route: "reuse" | "generate" | "publish"; selectedPrerequisiteLocation?: string; estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string; unavailableMetrics?: string[]; warnings: string[]};
       }
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
     | {

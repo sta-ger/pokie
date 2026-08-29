@@ -6352,7 +6352,7 @@ describe("StudioServer", () => {
             expect((missingOutDir.body as {error: string}).error).toMatch(/outDir/);
         });
 
-        it("returns a planner-owned unavailable terminal result for an empty Stake action", async () => {
+        it("returns an explicit migration terminal for the retired direct Stake action", async () => {
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);
 
             const response = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
@@ -6360,30 +6360,27 @@ describe("StudioServer", () => {
                 outDir: "stakeengine",
             });
 
-            expect(response.status).toBe(200);
-            expect(response.body).toMatchObject({
-                status: "unavailable",
-                plan: {status: "unavailable", source: {capabilities: []}, target: {kind: "stakeAdapter"}},
-            });
+            expect(response.status).toBe(410);
+            expect(response.body).toMatchObject({status: "migration", message: expect.stringContaining("artifact job")});
             expect(fs.existsSync(path.join(stakeProjectRoot, "stakeengine"))).toBe(false);
         });
 
-        it("returns an unavailable plan for raw JSON before Stake validation or export", async () => {
+        it("returns an explicit migration terminal instead of executing raw selector input", async () => {
             writeLibrary("base.json", {libraryId: "base-lib", betMode: "base", stake: 1});
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);
 
             const validateResponse = await post(`${projectBaseUrl}/api/project/stakeengine/validate`, {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
             });
-            expect(validateResponse.status).toBe(200);
-            expect(validateResponse.body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
+            expect(validateResponse.status).toBe(410);
+            expect(validateResponse.body).toMatchObject({status: "migration"});
 
             const exportResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
-            expect(exportResponse.status).toBe(200);
-            expect(exportResponse.body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
+            expect(exportResponse.status).toBe(410);
+            expect(exportResponse.body).toMatchObject({status: "migration"});
             expect(fs.existsSync(path.join(stakeProjectRoot, "stakeengine", "index.json"))).toBe(false);
         });
 
@@ -6397,8 +6394,8 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
-            expect(conflictResponse.status).toBe(200);
-            expect(conflictResponse.body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
+            expect(conflictResponse.status).toBe(410);
+            expect(conflictResponse.body).toMatchObject({status: "migration"});
             expect(fs.readFileSync(path.join(stakeProjectRoot, "stakeengine", "unrelated.txt"), "utf-8")).toBe("pre-existing");
         });
 
@@ -6414,8 +6411,8 @@ describe("StudioServer", () => {
                 overwrite: true,
             });
 
-            expect(status).toBe(200);
-            expect(body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
+            expect(status).toBe(410);
+            expect(body).toMatchObject({status: "migration"});
             expect(fs.readFileSync(path.join(stakeProjectRoot, "stakeengine", "unrelated.txt"), "utf-8")).toBe("pre-existing");
         });
 
@@ -6430,24 +6427,24 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
-            expect(firstExport.status).toBe(200);
-            expect(firstExport.body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
+            expect(firstExport.status).toBe(410);
+            expect(firstExport.body).toMatchObject({status: "migration"});
 
             writeLibrary("bonus.json", {libraryId: "bonus-lib", betMode: "bonus", stake: 1});
             const conflictResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
                 modes: [{modeName: "bonus", librarySelector: {kind: "json", path: "bonus.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
-            expect(conflictResponse.status).toBe(200);
-            expect(conflictResponse.body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
+            expect(conflictResponse.status).toBe(410);
+            expect(conflictResponse.body).toMatchObject({status: "migration"});
 
             const overwriteResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
                 modes: [{modeName: "bonus", librarySelector: {kind: "json", path: "bonus.json"}, cost: 1}],
                 outDir: "stakeengine",
                 overwrite: true,
             });
-            expect(overwriteResponse.status).toBe(200);
-            expect(overwriteResponse.body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
+            expect(overwriteResponse.status).toBe(410);
+            expect(overwriteResponse.body).toMatchObject({status: "migration"});
         });
 
         it("does not infer Stake compatibility from a raw selector", async () => {
@@ -6459,8 +6456,8 @@ describe("StudioServer", () => {
                 outDir: "stakeengine",
             });
 
-            expect(status).toBe(200);
-            expect(body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
+            expect(status).toBe(410);
+            expect(body).toMatchObject({status: "migration"});
         });
 
         it("returns an unavailable plan for a raw selector outside the project root", async () => {
@@ -6470,8 +6467,8 @@ describe("StudioServer", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "json", path: "../outside.json"}, cost: 1}],
             });
 
-            expect(status).toBe(200);
-            expect(body).toMatchObject({status: "unavailable", plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}}});
+            expect(status).toBe(410);
+            expect(body).toMatchObject({status: "migration"});
         });
     });
 
@@ -6605,7 +6602,11 @@ describe("StudioServer", () => {
             const blueprintPath = writeBlueprintFile();
             const projectBaseUrl = await startServerForProject(blueprintPath);
 
-            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "stakeAdapter"});
+            const preview = await post(`${projectBaseUrl}/api/project/artifacts/preview`, {target: "stakeAdapter"});
+            expect(preview.status).toBe(200);
+            const preparedOperationId = (preview.body as {preparedOperationId?: string}).preparedOperationId;
+            expect(preparedOperationId).toBeDefined();
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "stakeAdapter", preparedOperationId});
 
             expect(started.status).toBe(202);
             const job = (started.body as {job: {id: string; status: string}}).job;
@@ -6637,7 +6638,11 @@ describe("StudioServer", () => {
             const address = await artifactServer.start();
             const projectBaseUrl = `http://${address.host}:${address.port}`;
 
-            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "stakeAdapter"});
+            const preview = await post(`${projectBaseUrl}/api/project/artifacts/preview`, {target: "stakeAdapter"});
+            expect(preview.status).toBe(200);
+            const preparedOperationId = (preview.body as {preparedOperationId?: string}).preparedOperationId;
+            expect(preparedOperationId).toBeDefined();
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "stakeAdapter", preparedOperationId});
             expect(started.status).toBe(202);
             const job = (started.body as {job: {id: string}}).job;
             const completed = await waitForArtifactBuildJob(projectBaseUrl, job.id);

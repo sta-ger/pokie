@@ -195,6 +195,31 @@ export class ArtifactBuilderRegistry {
     }
 
     /**
+     * Read-only Stake estimate bound to a prepared plan.  A reuse route reads
+     * exactly the verified bundle named in that plan; generation reports the
+     * workflow's real planning estimate without allocating an artifact.
+     */
+    public inspectPreparedStakePreflight(source: PokieProject, plan: ArtifactConversionPlan): Promise<import("./ArtifactBuildOptions.js").ArtifactBuildPreflight> {
+        const reuse = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
+        if (reuse?.output.canonicalLocation !== undefined) {
+            const builder = this.builders.get("stakeAdapter");
+            if (builder instanceof StakeAdapterArtifactBuilder) {
+                return builder.inspectPreflight({
+                    type: "outcomeLibrary",
+                    rootPath: reuse.output.canonicalLocation,
+                    capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+                    provenance: "prepared compatible managed Outcome Library",
+                    configurationProvenance: reuse.output.configurationProvenance,
+                });
+            }
+        }
+        if (plan.steps.some((step) => step.kind === "generateOutcomeLibrary") && (source.type === "blueprint" || source.type === "tsPackage")) {
+            return this.blueprintStakeWorkflow.inspectGenerationPreflight(source, this.optionsForPlan(undefined, plan.source));
+        }
+        return Promise.resolve({});
+    }
+
+    /**
      * Releases a managed Outcome record that was registered while executing a
      * plan which later failed at an outer publication boundary.  The caller
      * deliberately owns removing the corresponding files: this registry

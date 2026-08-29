@@ -106,10 +106,7 @@ import type {StudioSimulationStatus} from "./simulation/StudioSimulationStatus.j
 import {validateSimulationRequest, SimulationRequestInput} from "./simulation/validateSimulationRequest.js";
 import {StudioStakeEngineExportService} from "./stakeengine/StudioStakeEngineExportService.js";
 import {validateStakeEngineExportRequest, StakeEngineExportRequestInput} from "./stakeengine/validateStakeEngineExportRequest.js";
-import {
-    validateStakeEngineExportValidateRequest,
-    StakeEngineExportValidateRequestInput,
-} from "./stakeengine/validateStakeEngineExportValidateRequest.js";
+import {validateStakeEngineExportValidateRequest, StakeEngineExportValidateRequestInput} from "./stakeengine/validateStakeEngineExportValidateRequest.js";
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioServerHandling} from "./StudioServerHandling.js";
 
@@ -348,38 +345,6 @@ export class StudioServer implements StudioServerHandling {
         );
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
         this.fairnessService = options.fairnessService ?? new StudioFairnessService();
-        this.stakeEngineExportService =
-            options.stakeEngineExportService ?? new StudioStakeEngineExportService(
-                this.pokieVersion,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                async (projectRoot) => {
-                    const game = await loadCurrentProjectGame(projectRoot);
-                    return game.getConfigHash?.();
-                },
-                undefined,
-                async (projectRoot) => {
-                    // The Build/Export card posts no prerequisite selector.  Pick
-                    // only a registry entry independently verified against this
-                    // project's current build, so a stale/moved bundle cannot be
-                    // revived from browser state between preflight and export.
-                    const registry = await this.outcomeLibraryGenerateService.registry(projectRoot);
-                    if (registry.status !== "ok" || registry.buildStatus !== "compatible") {
-                        return [];
-                    }
-                    return registry.modes
-                        .filter((mode) => mode.buildStatus === "compatible")
-                        .map((mode) => ({
-                            modeName: mode.modeName,
-                            librarySelector: {kind: "bundle" as const, bundleDir: mode.bundleDir, modeName: mode.modeName},
-                            cost: 1,
-                        }));
-                },
-            );
         this.projectRegistrationService = options.projectRegistrationService ?? createDefaultStudioProjectRegistrationService();
         this.artifactBuildService =
             options.artifactBuildService ??
@@ -408,6 +373,26 @@ export class StudioServer implements StudioServerHandling {
                 }, undefined, (projectRoot) => this.projectRegistrationService.remove(projectRoot)),
                 options.pokiePackageRoot,
                 (projectRoot) => this.projectRegistrationService.remove(projectRoot),
+            );
+        this.stakeEngineExportService =
+            options.stakeEngineExportService ?? new StudioStakeEngineExportService(
+                this.pokieVersion,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                async (projectRoot) => {
+                    const game = await loadCurrentProjectGame(projectRoot);
+                    return game.getConfigHash?.();
+                },
+                undefined,
+                // Explicit selector requests are the advanced Outcome Library
+                // input flow. Empty project-goal requests are delegated below
+                // to the canonical ArtifactBuilderRegistry projection.
+                undefined,
+                this.artifactBuildService,
             );
         this.describeProjectLocation = (location) => this.projectRegistrationService.describeLocation(location);
         this.toolHandlers = options.toolHandlers ?? [];
@@ -2362,21 +2347,24 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private async handleValidateStakeEngineExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        // Direct Stake routes did not have a durable prepared operation or a
+        // poll/cancel lifecycle. Retire them explicitly instead of accepting
+        // a preflight whose later export could be a different plan.
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-
         const body = await this.readJsonBody(req);
-        let validated;
         try {
-            validated = validateStakeEngineExportValidateRequest((body ?? {}) as StakeEngineExportValidateRequestInput);
+            validateStakeEngineExportValidateRequest((body ?? {}) as StakeEngineExportValidateRequestInput);
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
-
-        this.sendJson(res, 200, await this.stakeEngineExportService.validate(this.currentContext.projectRoot, validated.modes));
+        this.sendJson(res, 410, {
+            status: "migration",
+            message: "Stake validation moved to /api/project/artifacts/preview. Supply target \"stakeAdapter\" and the final outDir; Build must use the returned preparedOperationId.",
+        });
     }
 
     // A well-formed request that fails at the domain level (an unreadable/malformed library, a
@@ -2387,21 +2375,20 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-
         const body = await this.readJsonBody(req);
-        let validated;
         try {
-            validated = validateStakeEngineExportRequest((body ?? {}) as StakeEngineExportRequestInput);
+            validateStakeEngineExportRequest((body ?? {}) as StakeEngineExportRequestInput);
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
-
-        const result = await this.stakeEngineExportService.export(this.currentContext.projectRoot, validated.modes, validated.outDir, validated.overwrite);
-        this.sendJson(res, this.statusForStakeEngineExport(result.status), result);
+        this.sendJson(res, 410, {
+            status: "migration",
+            message: "Stake export moved to the pollable artifact job. Preview target \"stakeAdapter\" first, then POST /api/project/artifacts/build with its preparedOperationId.",
+        });
     }
 
-    private statusForStakeEngineExport(status: "ok" | "conflict" | "unavailable" | "invalid" | "load-error"): number {
+    private statusForStakeEngineExport(status: "ok" | "conflict" | "unavailable" | "invalid" | "cancelled" | "load-error"): number {
         if (status === "ok") {
             return 201;
         }
@@ -2466,6 +2453,24 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (validated.target === "stakeAdapter") {
+            if (validated.preparedOperationId === undefined) {
+                this.sendJson(res, 409, {error: "Stake build requires the preparedOperationId returned by its current preview. Refresh the preflight before building."});
+                return;
+            }
+            const preparedDestination = this.artifactBuildService.preparedStakeProjectionDestination(this.currentContext.projectRoot, validated.preparedOperationId);
+            if (preparedDestination === undefined || (validated.outDir !== undefined && validated.outDir !== preparedDestination)) {
+                this.sendJson(res, 409, {error: "The prepared Stake operation is stale or names a different destination. Refresh the preflight before building."});
+                return;
+            }
+            const job = this.artifactBuildService.startPreparedStakeProjection(this.currentContext.projectRoot, validated.preparedOperationId);
+            if (job === undefined) {
+                this.sendJson(res, 409, {error: "The prepared Stake operation is stale or belongs to another project. Refresh the preflight before building."});
+                return;
+            }
+            this.sendJson(res, 202, {status: "created", job});
+            return;
+        }
         this.sendJson(res, 202, {status: "created", job: this.artifactBuildService.start(this.currentContext.projectRoot, validated.target, validated.outDir)});
     }
 

@@ -1,0 +1,42 @@
+{
+  "schema": "pokie.targeted-verification.v1",
+  "candidate_sha": "8d4f55be073b590a7953485d2dd544b8adf0d4fd",
+  "executed_at_utc": "2026-08-29T20:25:47Z",
+  "executor": "independent-host-shell",
+  "command": "npm run test:targeted -- tests/cli/BuildCommand.test.ts tests/cli/BuildProductMatrix.crossSurface.contract.test.ts tests/cli/BuildWorkflow.integration.test.ts tests/cli/commands/ExportCommand.test.ts tests/cli/commands/StakeEngineCommand.test.ts tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts tests/cli/studio/StudioArtifactBuildService.test.ts tests/cli/studio/StudioServer.test.ts tests/cli/studio/stakeengine/StudioStakeEngineExportService.test.ts tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts tests/project/StakeProjectionExportService.test.ts --forceExit",
+  "result": {
+    "jest_reported": {
+      "test_suites": { "passed": 12, "total": 12 },
+      "tests": { "passed": 506, "total": 506 },
+      "snapshots": { "passed": 0, "total": 0 },
+      "duration_seconds": 69.631
+    },
+    "process": {
+      "terminal_exit_code": 0,
+      "reason": "Jest reported its usual post-suite open-handle notice, then exited cleanly through its documented --forceExit option; no process was interrupted."
+    }
+  },
+  "whole_file_suites": [
+    { "path": "tests/cli/BuildCommand.test.ts", "sha256": "57d4b2923dba979f8cd97fc3b207addb2581da7b4b95a5faa69b58d179330887", "status": "passed" },
+    { "path": "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts", "sha256": "ceb8df9bd900b6338f69ef348ed777a95083246374084e0e9997385a18b0e424", "status": "passed" },
+    { "path": "tests/cli/BuildWorkflow.integration.test.ts", "sha256": "aba7c566771d64de10a702243beaf6e22fed0e4949641b99e8639f4c17dc34b4", "status": "passed" },
+    { "path": "tests/cli/commands/ExportCommand.test.ts", "sha256": "6093430fb3218ab632f012151462948c584c538da7636f7094e655f52cf7cd0b", "status": "passed" },
+    { "path": "tests/cli/commands/StakeEngineCommand.test.ts", "sha256": "a1fce07a93400a20ba3f03635540ddad522f3ef11ed24a2ece2f4736cd62e0ca", "status": "passed" },
+    { "path": "tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx", "sha256": "0b4fd3a9746082e7e9f7dd83474d565ab18fe8e203baf1f2262e2e92358ad6ac", "status": "passed" },
+    { "path": "tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts", "sha256": "ae61a32acbc8a376cf2a1ec2ef38ec4de7bd85f2211d99fee2fbbd53e8a84fb8", "status": "passed" },
+    { "path": "tests/cli/studio/StudioArtifactBuildService.test.ts", "sha256": "86bdebc4f28860b77fbc5db2f687f64e80930248a9c4e03700e0d904e9532b89", "status": "passed" },
+    { "path": "tests/cli/studio/StudioServer.test.ts", "sha256": "1cbae40549c44fc577181edf01f4b61d9785decb77f4ec3e753c37e733671514", "status": "passed" },
+    { "path": "tests/cli/studio/stakeengine/StudioStakeEngineExportService.test.ts", "sha256": "796dfb21e471eb7f935309bed324b5e3e4610d6c6ad25d469d3cec41e68cd267", "status": "passed" },
+    { "path": "tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts", "sha256": "9acdc7741c5c60da9ab1b6992be75b6a10132286f42f775f343a0b4238f7de30", "status": "passed" },
+    { "path": "tests/project/StakeProjectionExportService.test.ts", "sha256": "9ffcf4790b6606ff3d6e3e40ee846e7c0c4e054b877879f8a93a396e649cbd56", "status": "passed" }
+  ],
+  "reviewer_coverage": [
+    "Blueprint, TypeScript package, Outcome Library, PAR workbook, and Stake export source-to-Stake readbacks",
+    "Stake-to-Stake default destination conflict preservation"
+  ],
+  "recovery": {
+    "previous_inconclusive_cause": "Jest had completed all suites but did not exit after its open-handle notice.",
+    "stable_harness_change": "Passed Jest's documented --forceExit flag through the single required npm command.",
+    "result": "The same complete 12-file command exited 0 after 12/12 suites and 506/506 tests passed."
+  }
+}

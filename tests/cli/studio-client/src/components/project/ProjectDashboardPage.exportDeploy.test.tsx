@@ -419,8 +419,8 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         const outcomeLibrarySection = screen.getByText("Outcome libraries").closest("fieldset") as HTMLElement;
         expect(within(outcomeLibrarySection).getByText("Outcome library generator")).toBeInTheDocument();
 
-        const staticExportSection = screen.getByText("Static export").closest("fieldset") as HTMLElement;
-        expect(within(staticExportSection).getByText("Stake Engine Export")).toBeInTheDocument();
+        const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+        expect(within(buildArtifactSection).getByText("Stake Engine export")).toBeInTheDocument();
 
         expect(screen.queryByText("local-json-example")).not.toBeInTheDocument();
 
@@ -484,16 +484,13 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(buildArtifactSection).getAllByRole("button", {name: "Build"})).toHaveLength(1);
         expect(screen.queryByText(/WASM/)).not.toBeInTheDocument();
 
-        const staticExportSection = screen.getByText("Static export").closest("fieldset") as HTMLElement;
         const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
-        expect(screen.getByText(/index\.json, a per-mode lookup CSV/)).not.toBeVisible();
-        expect(screen.getByText(/zstd-compressed books/)).not.toBeVisible();
         expect(screen.getByText(/runtime adapter delivers/)).not.toBeVisible();
         expect(await screen.findByText("package.json")).not.toBeVisible();
 
-        await user.click(within(staticExportSection).getByRole("button", {name: "Show advanced details (technical information)"}));
-        expect(within(staticExportSection).getByText(/index\.json, a per-mode lookup CSV/)).toBeVisible();
-        expect(within(staticExportSection).getByText(/zstd-compressed books/)).toBeVisible();
+        const stakeCard = within(buildArtifactSection).getByText("Stake Engine export").closest('div[style*="margin-bottom"]') as HTMLElement;
+        await user.click(within(stakeCard).getByRole("button", {name: "Show advanced details (technical information)"}));
+        expect(within(stakeCard).getByText(/Stake Engine export directory/)).toBeVisible();
 
         await user.click(within(remoteSection).getByRole("button", {name: "Show advanced details (technical information)"}));
         expect(within(remoteSection).getByText(/runtime adapter delivers/)).toBeVisible();
@@ -645,11 +642,6 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await screen.findByText("Remote delivery");
-        // Waits for the same registry-backed resolution the Stake Engine Export card's own enabled state
-        // depends on, so the compatibility check below is guaranteed to run after the registry's
-        // already-registered library has actually loaded, not against a still-loading registryView.
-        await waitFor(() => expect(screen.getByRole("button", {name: "Run Stake Engine Export (base)"})).toBeEnabled());
-
         await user.click(screen.getByRole("button", {name: "Check compatibility"}));
 
         expect(await screen.findByText("Compatible -- ready to publish.")).toBeInTheDocument();
@@ -658,226 +650,70 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(capturedRunBody?.modes).toBeUndefined();
     });
 
-    it("runs the Stake Engine Export right here (no hand-off to the Stake Engine Export tab) once a canonical outcome library is available", async () => {
+    it("builds a Stake Engine export through the shared artifact goal without selecting an outcome library", async () => {
         const user = userEvent.setup();
-        const routes = {
-            ...BASE_ROUTES,
-            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
-            "/api/project/outcome-libraries/registry": () => ({
-                ok: true,
-                status: 200,
-                body: {
-                    status: "ok",
-                    bundleDir: "outcomelibrary",
-                    buildStatus: "compatible",
-                    game: {id: "a", name: "A", version: "1.0.0"},
-                    currentGame: {id: "a", name: "A", version: "1.0.0"},
-                    artifactPokieVersion: "1.0.0",
-                    currentPokieVersion: "1.0.0",
-                    generatedAt: "2026-01-01T00:00:00.000Z",
-                    modes: [
-                        {
-                            modeName: "base",
-                            libraryId: "a-base",
-                            bundleDir: "outcomelibrary",
-                            buildStatus: "compatible",
-                            outcomeCount: 500,
-                            totalWeight: 1000,
-                            rtp: 0.95,
-                            hash: "sha256:library",
-                        },
-                    ],
-                },
-            }),
-            "/api/project/stakeengine/export": () => ({
-                ok: true,
-                status: 200,
-                body: {status: "ok", outDir: "stakeengine", files: ["index.json"], manifest: {}, warnings: []},
-            }),
-        };
-        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
-        await screen.findByRole("heading", {name: "A"});
-
-        await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (base)"}));
-
-        expect(await screen.findByText("Exported 1 file(s) to stakeengine.")).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Open output folder"})).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Continue to Preview"})).not.toBeInTheDocument();
-    });
-
-    it("does not turn a registry fallback into a local Stake selector", async () => {
-        const user = userEvent.setup();
-        let capturedExportBody: {modes?: unknown[]} | undefined;
-        const routes = {
-            ...BASE_ROUTES,
-            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
-            "/api/project/outcome-libraries/registry": () => ({
-                ok: true,
-                status: 200,
-                body: {
-                    status: "ok",
-                    bundleDir: "outcomelibrary",
-                    buildStatus: "compatible",
-                    game: {id: "a", name: "A", version: "1.0.0"},
-                    currentGame: {id: "a", name: "A", version: "1.0.0"},
-                    artifactPokieVersion: "1.0.0",
-                    currentPokieVersion: "1.0.0",
-                    generatedAt: "2026-01-01T00:00:00.000Z",
-                    // Only a non-"base" mode is registered. Build/Export must
-                    // not promote it into a locally inferred action input.
-                    modes: [
-                        {
-                            modeName: "bonus",
-                            libraryId: "a-bonus",
-                            bundleDir: "outcomelibrary",
-                            buildStatus: "compatible",
-                            outcomeCount: 500,
-                            totalWeight: 1000,
-                            rtp: 0.95,
-                            hash: "sha256:library",
-                        },
-                    ],
-                },
-            }),
-        };
+        let buildRequest: unknown;
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
-            if (path === "/api/project/stakeengine/export") {
-                capturedExportBody = JSON.parse((init?.body as string | undefined) ?? "{}");
+            if (path === "/api/project/artifacts/preview") {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: () => Promise.resolve({status: "ok", outDir: "stakeengine", files: ["index.json"], manifest: {}, warnings: []}),
+                    json: () => Promise.resolve({
+                        status: "ok", target: "stakeAdapter", destination: "/games/stakeengine", destinationKind: "directory",
+                        plannedOutputs: ["index.json"], sourceType: "blueprint",
+                        preparedOperationId: "stake-preview-1",
+                        stakePreflight: {
+                            route: "generate",
+                            estimatedItemCount: "5000",
+                            estimatedBytes: "5120000",
+                            complexityWarning: "Large source",
+                            unavailableMetrics: ["Final Stake byte size is unavailable until the generated Outcome Library is materialized."],
+                            warnings: ["A compatible Outcome Library will be generated."],
+                        },
+                        plan: {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "stakeAdapter", capabilities: []}, steps: [{choice: "generate", kind: "generateManagedOutcomeLibrary", output: {kind: "outcomeLibrary"}}], preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false}},
+                    }),
                 });
             }
-            return fetchImplFrom(routes)(url, init);
-        };
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await screen.findByRole("heading", {name: "A"});
-
-        await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (base)"}));
-
-        expect(await screen.findByText("Exported 1 file(s) to stakeengine.")).toBeInTheDocument();
-        expect(capturedExportBody?.modes).toEqual([]);
-    });
-
-    it("renders an occupied Stake Engine destination as the server planner's terminal conflict without a local overwrite action", async () => {
-        const user = userEvent.setup();
-        const capturedBodies: {modes?: unknown; outDir?: string; overwrite?: boolean}[] = [];
-        const routes = {
-            ...BASE_ROUTES,
-            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
-            "/api/project/outcome-libraries/registry": () => ({
-                ok: true,
-                status: 200,
-                body: {
-                    status: "ok",
-                    bundleDir: "outcomelibrary",
-                    buildStatus: "compatible",
-                    game: {id: "a", name: "A", version: "1.0.0"},
-                    currentGame: {id: "a", name: "A", version: "1.0.0"},
-                    artifactPokieVersion: "1.0.0",
-                    currentPokieVersion: "1.0.0",
-                    generatedAt: "2026-01-01T00:00:00.000Z",
-                    modes: [
-                        {
-                            modeName: "base",
-                            libraryId: "a-base",
-                            bundleDir: "outcomelibrary",
-                            buildStatus: "compatible",
-                            outcomeCount: 500,
-                            totalWeight: 1000,
-                            rtp: 0.95,
-                            hash: "sha256:library",
-                        },
-                    ],
-                },
-            }),
-        };
-        const fetchImpl: FetchLike = (url, init) => {
-            const [path] = url.split("?");
-            if (path === "/api/project/stakeengine/export") {
-                const body = JSON.parse((init?.body as string | undefined) ?? "{}") as {modes?: unknown; outDir?: string; overwrite?: boolean};
-                capturedBodies.push(body);
+            if (path === "/api/project/artifacts/build" && init?.method === "POST") {
+                buildRequest = JSON.parse(String(init.body));
+                return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({status: "created", job: {id: "stake-build", target: "stakeAdapter", status: "queued", cancellationRequested: false}})});
+            }
+            if (path === "/api/project/artifacts/build/stake-build") {
                 return Promise.resolve({
-                    ok: false,
-                    status: 409,
-                    json: () =>
-                        Promise.resolve({
-                            status: "conflict",
-                            outDir: "stakeengine",
-                            overwritable: false,
-                            error: '"stakeengine" is occupied. Choose a new output directory and retry.',
-                        }),
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({
+                        id: "stake-build", target: "stakeAdapter", status: "completed", cancellationRequested: false,
+                        result: {
+                            status: "ok", target: "stakeAdapter", outputPath: "/games/stakeengine", outputKind: "directory", sourceType: "blueprint",
+                            stakeManifest: {schemaVersion: 1, generatedBy: "pokie", pokieVersion: "1.3.0", generatedAt: "2026-01-01", modes: [], files: []},
+                            stakeFiles: ["pokie-manifest.json"],
+                            stakePrerequisiteProvenance: {route: "generate", disposition: "owned", selectedPrerequisiteLocation: "/games/.pokie/outcome", sourceGameId: "sample-slot", sourceGameVersion: "0.1.0", sourceConfigurationHash: "sha256:test", generationSemantics: "boundedSample", sampleCount: "5000", sampleSeed: "seed", compatibilityPolicyVersion: "managed-v1"},
+                        },
+                    }),
                 });
             }
-            return fetchImplFrom(routes)(url, init);
+            return fetchImplFrom({
+                ...BASE_ROUTES,
+                "/api/project/artifacts/targets": () => ({ok: true, status: 200, body: [{target: "stakeAdapter", supported: true, state: "supported", unsupportedNotes: []}]}),
+            })(url, init);
         };
+
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
-
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (base)"}));
 
-        expect(await screen.findByText('"stakeengine" is occupied. Choose a new output directory and retry.')).toBeInTheDocument();
-        expect(screen.queryByText(/open Stake Engine Export directly/)).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Overwrite"})).not.toBeInTheDocument();
-        expect(capturedBodies).toEqual([{modes: [], outDir: "stakeengine", overwrite: false}]);
-    });
+        const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+        expect(await within(buildArtifactSection).findByText("Target: Stake Engine export")).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByText("Plan: generate generateManagedOutcomeLibrary")).toBeInTheDocument();
+        await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
 
-    it("gives an actionable in-place message, with no Overwrite action, for a non-overwritable Stake Engine export conflict", async () => {
-        const user = userEvent.setup();
-        const routes = {
-            ...BASE_ROUTES,
-            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
-            "/api/project/outcome-libraries/registry": () => ({
-                ok: true,
-                status: 200,
-                body: {
-                    status: "ok",
-                    bundleDir: "outcomelibrary",
-                    buildStatus: "compatible",
-                    game: {id: "a", name: "A", version: "1.0.0"},
-                    currentGame: {id: "a", name: "A", version: "1.0.0"},
-                    artifactPokieVersion: "1.0.0",
-                    currentPokieVersion: "1.0.0",
-                    generatedAt: "2026-01-01T00:00:00.000Z",
-                    modes: [
-                        {
-                            modeName: "base",
-                            libraryId: "a-base",
-                            bundleDir: "outcomelibrary",
-                            buildStatus: "compatible",
-                            outcomeCount: 500,
-                            totalWeight: 1000,
-                            rtp: 0.95,
-                            hash: "sha256:library",
-                        },
-                    ],
-                },
-            }),
-            "/api/project/stakeengine/export": () => ({
-                ok: false,
-                status: 409,
-                body: {
-                    status: "conflict",
-                    outDir: "stakeengine",
-                    overwritable: false,
-                    error: '"stakeengine" already exists and is not empty, and wasn\'t produced by a previous Stake Engine export. Choose a different output directory or empty it first.',
-                },
-            }),
-        };
-        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
-        await screen.findByRole("heading", {name: "A"});
-
-        await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (base)"}));
-
-        expect(await screen.findByText(/wasn't produced by a previous Stake Engine export/)).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Overwrite"})).not.toBeInTheDocument();
-        expect(screen.queryByText(/open Stake Engine Export directly/)).not.toBeInTheDocument();
+        expect(buildRequest).toEqual({target: "stakeAdapter", outDir: undefined, preparedOperationId: "stake-preview-1"});
+        expect(within(buildArtifactSection).getByText(/Stake route: generate compatible Outcome Library/)).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByText(/Estimated Stake items: 5000/)).toBeInTheDocument();
+        expect(await within(buildArtifactSection).findByText("Built to /games/stakeengine.")).toBeInTheDocument();
+        expect(await within(buildArtifactSection).findByText(/Stake prerequisite: generate \(owned\)/)).toBeInTheDocument();
     });
 
     it("runs the outcome-library generation right here (no hand-off to the Outcome Libraries tab) when its own card is chosen", async () => {
@@ -942,13 +778,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.getByLabelText("Mode")).toBeInTheDocument();
         expect(generated).toBe(true);
 
-        // The successful session result itself (not a separately refreshed registry response) unlocks
-        // the next visible Build/Export action with the exact bundle/mode it just generated.
-        const stakeExport = screen.getByRole("button", {name: "Run Stake Engine Export (base)"});
-        expect(stakeExport).toBeEnabled();
-        await user.click(stakeExport);
-        expect(await screen.findByText("Exported 1 file(s) to stakeengine.")).toBeInTheDocument();
-        expect(stakeRequest).toEqual({modes: [], outDir: "stakeengine", overwrite: false});
+        expect(stakeRequest).toBeUndefined();
     });
 
     it("keeps visible progress on the Outcome library card while generation is still running", async () => {
@@ -981,46 +811,6 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(await screen.findByRole("button", {name: "Generate exact outcome library (base)"}));
 
         expect(await screen.findByText("Generating outcome library from this project's current build…")).toBeInTheDocument();
-    });
-
-    it("submits the Stake action without a local selector and renders the server planner terminal result", async () => {
-        const user = userEvent.setup();
-        let stakeRequest: unknown;
-        const routes = {
-            ...BASE_ROUTES,
-            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
-            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
-            "/api/project/stakeengine/export": () => ({
-                ok: true,
-                status: 200,
-                body: {
-                    status: "unavailable",
-                    error: "No recognized Outcome Library is available.",
-                    plan: {
-                        status: "unavailable",
-                        source: {kind: "outcomeLibrary", capabilities: []},
-                        target: {kind: "stakeAdapter", capabilities: []},
-                        steps: [],
-                        preflight: {destinationKind: "directory", estimatedWork: "none", losses: [], oneWay: false},
-                        diagnostic: {message: "No recognized Outcome Library is available."},
-                    },
-                },
-            }),
-        };
-        const fetchImpl: FetchLike = (url, init) => {
-            if (url === "/api/project/stakeengine/export") {
-                stakeRequest = JSON.parse(String(init?.body));
-            }
-            return fetchImplFrom(routes)(url, init);
-        };
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await screen.findByRole("heading", {name: "A"});
-        await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (base)"}));
-
-        expect(stakeRequest).toEqual({modes: [], outDir: "stakeengine", overwrite: false});
-        expect(await screen.findByText("Server plan: Unavailable — No recognized Outcome Library is available.")).toBeInTheDocument();
     });
 
     it("lets a project above the exact-generation cap explicitly generate bounded coverage and continue to Stake Engine Export", async () => {
@@ -1083,8 +873,6 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         });
         expect(await screen.findByText(/Generated 10,000 outcomes for mode "base" using bounded-coverage \(0\.0021% of the raw space\) \(RTP 95\.00%\) into outcomelibrary\./)).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "Run Stake Engine Export (base)"}));
-        expect(await screen.findByText("Exported 1 file(s) to stakeengine.")).toBeInTheDocument();
     });
 
     it("falls back to Overview for the removed /project/deployment, /project/stakeEngineExport, and /project/outcomeLibraries routes, never mounting their own old workflows", async () => {
