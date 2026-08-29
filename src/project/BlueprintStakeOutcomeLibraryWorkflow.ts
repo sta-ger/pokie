@@ -30,7 +30,7 @@ import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/w
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
 import {generateWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
-import {preflightOutcomeLibraryGenerationFromEstimate} from "../weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
+import {MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY, preflightOutcomeLibraryGenerationFromEstimate} from "../weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
 import {estimateExactOutcomeSpaceSize} from "../weightedoutcome/generate/estimateExactOutcomeSpaceSize.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
@@ -49,8 +49,10 @@ import {
 // hundreds-of-thousands-entry artifact library fit in a normal CLI heap. Managed Blueprint/package exports
 // therefore use a deterministic, explicitly recorded coverage sample above this planning limit unless the
 // caller asks for exact generation.
-export const DEFAULT_MANAGED_EXACT_OUTCOME_SPACE_SIZE = BigInt(50_000);
-export const DEFAULT_MANAGED_SAMPLED_OUTCOME_COUNT = BigInt(5_000);
+// Compatibility aliases retained for direct callers.  The policy itself is
+// domain-owned and versioned in OutcomeLibraryGenerationRequest.ts.
+export const DEFAULT_MANAGED_EXACT_OUTCOME_SPACE_SIZE = MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize;
+export const DEFAULT_MANAGED_SAMPLED_OUTCOME_COUNT = MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.sampledOutcomeCount;
 
 export type ManagedOutcomeGeneration = {
     // This is an explicitly-versioned compatibility policy for managed Project
@@ -321,14 +323,14 @@ function resolveManagedOutcomeGeneration(
     if (requested?.exact) return {generation: "exact"};
 
     const estimate = estimateExactOutcomeSpaceSize(game);
-    if (estimate.totalOutcomeSpaceSize <= DEFAULT_MANAGED_EXACT_OUTCOME_SPACE_SIZE) return {generation: "exact"};
+    if (estimate.totalOutcomeSpaceSize <= MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize) return {generation: "exact"};
     return {
         generation: "sampled",
         sampled: {
-            sampleSize: DEFAULT_MANAGED_SAMPLED_OUTCOME_COUNT,
+            sampleSize: MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.sampledOutcomeCount,
             // The configuration hash is stable for the same Blueprint/package, so this automatic
             // coverage library is reproducible without machine-local state.
-            seed: `pokie-managed-coverage:${configHash}`,
+            seed: `${MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.seedPrefix}${configHash}`,
         },
     };
 }

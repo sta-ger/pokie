@@ -71,6 +71,24 @@ function fetchImplFrom(routes: Record<string, () => {ok: boolean; status: number
 }
 
 describe("ProjectDashboardPage - Export & Deploy shell", () => {
+    it("gets the fresh preflight from server defaults without sending empty generation fields", async () => {
+        const user = userEvent.setup();
+        let initialPreflightRequest: unknown;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/outcome-libraries/generate/estimate") {
+                initialPreflightRequest ??= JSON.parse(String(init?.body));
+            }
+            return fetchImplFrom(BASE_ROUTES)(url, init);
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await screen.findByText(/Exact enumeration: 27 raw combinations/);
+
+        expect(initialPreflightRequest).toEqual({mode: "base", generation: "default"});
+    });
+
     it("keeps an exchange-only PAR workbook on the Build/Export path and shows its native file preflight", async () => {
         const user = userEvent.setup();
         const routes = {

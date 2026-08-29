@@ -64,7 +64,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
     }
 
     describe("estimate", () => {
-        it("does not load a runtime after the shared planner rejects the generation prerequisite", async () => {
+        it("does not advertise a planner result when the runtime cannot be loaded", async () => {
             const unavailable: ArtifactConversionPlan = {
                 ...plannedOutcomeLibrary,
                 status: "unavailable",
@@ -76,7 +76,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                     recovery: "Build a verified package.",
                 },
             };
-            const loadGame = jest.fn(() => Promise.reject(new Error("runtime must not load")));
+            const loadGame = jest.fn(() => Promise.reject(new Error("runtime must load before a destination-aware preflight")));
             const svc = new StudioOutcomeLibraryGenerateService(
                 POKIE_VERSION,
                 loadGame,
@@ -84,8 +84,8 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                 {prepare: () => Promise.resolve(unavailable)},
             );
 
-            await expect(svc.estimate(projectRoot, {})).resolves.toMatchObject({status: "unsupported", plan: unavailable});
-            expect(loadGame).not.toHaveBeenCalled();
+            await expect(svc.estimate(projectRoot, {})).resolves.toMatchObject({status: "load-error"});
+            expect(loadGame).toHaveBeenCalledWith(projectRoot);
         });
 
         it("carries the server planner decision through estimate and generation", async () => {
@@ -111,7 +111,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
 
             expect(estimate).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
             expect(generated).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
-            expect(planning.prepare).toHaveBeenNthCalledWith(1, projectRoot, "outcomeLibrary");
+            expect(planning.prepare).toHaveBeenNthCalledWith(1, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
             expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
         });
 
@@ -193,7 +193,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                 {prepare: () => Promise.resolve(plannedOutcomeLibrary)},
             );
             const result = await failing.estimate(projectRoot, {});
-            expect(result).toMatchObject({status: "load-error", error: "boom", plan: {status: "planned", source: {kind: "tsPackage"}}});
+            expect(result).toMatchObject({status: "load-error", error: "boom", plan: {status: "unavailable", source: {kind: "tsPackage"}}});
         });
     });
 

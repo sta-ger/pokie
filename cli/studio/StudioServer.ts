@@ -452,6 +452,7 @@ export class StudioServer implements StudioServerHandling {
         this.simulationService.cancelAll();
         this.replayService.cancelAll();
         this.artifactBuildService.cancelAll();
+        this.outcomeLibraryGenerateJobService.cancelAll();
         // Never holds an OS port (see StudioPlayService's own doc comment), but still discards whatever
         // session was active.
         this.playService.reset();
@@ -487,6 +488,7 @@ export class StudioServer implements StudioServerHandling {
         this.simulationService.cancelActiveForProject(this.currentContext.projectRoot);
         this.replayService.cancelActiveForProject(this.currentContext.projectRoot);
         this.artifactBuildService.cancelActiveForProject(this.currentContext.projectRoot);
+        this.outcomeLibraryGenerateJobService.cancelActiveForProject(this.currentContext.projectRoot);
     }
 
     // Every field is a primitive already safe to expose — no stack traces, env vars, tokens, or service
@@ -1987,6 +1989,19 @@ export class StudioServer implements StudioServerHandling {
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
+        }
+        // Retained direct callers predate the visible preflight token.  Adapt
+        // them through the same server-bound snapshot instead of allowing a
+        // second execution path that can skip destination/source validation.
+        if (validated.preflightToken === undefined) {
+            const preflight = await this.outcomeLibraryGenerateService.estimate(this.currentContext.projectRoot, validated);
+            if (preflight.status !== "ok" || preflight.requiresBounded) {
+                this.sendJson(res, 409, {error: preflight.status === "ok"
+                    ? "This request needs explicit sampled or bounded coverage before it can execute."
+                    : preflight.error, preflight});
+                return;
+            }
+            validated = {...validated, preflightToken: preflight.preflightToken};
         }
         this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.currentContext.projectRoot, validated)});
     }

@@ -836,6 +836,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     useEffect(() => {
         let cancelled = false;
         const generation = outcomeLibraryGenerationOptions.generation;
+        // Do not turn an unset input into an invalid empty decimal.  This first
+        // request is how a fresh Studio form receives the domain defaults.
+        setOutcomeLibraryPreflight({status: "loading"});
         estimateOutcomeLibraryGeneration(fetchImpl, {
             mode: outcomeLibraryGenerationOptions.mode.trim() || defaultModeName,
             ...(outcomeLibraryGenerationOptions.stake.trim() === "" ? {} : {stake: Number(outcomeLibraryGenerationOptions.stake)}),
@@ -843,7 +846,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
             ...(outcomeLibraryGenerationOptions.configHash.trim() === "" ? {} : {configHash: outcomeLibraryGenerationOptions.configHash.trim()}),
             ...(outcomeLibraryGenerationOptions.outDir.trim() === "" || outcomeLibraryGenerationOptions.outDir.trim() === "outcomelibrary" ? {} : {outDir: outcomeLibraryGenerationOptions.outDir.trim()}),
             generation,
-            maxOutcomeSpaceSize: outcomeLibraryGenerationOptions.maxOutcomeSpaceSize,
+            ...(outcomeLibraryGenerationOptions.maxOutcomeSpaceSize.trim() === "" ? {} : {maxOutcomeSpaceSize: outcomeLibraryGenerationOptions.maxOutcomeSpaceSize}),
             ...(generation === "sampled" || generation === "bounded" ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}} : {}),
         })
             .then((result) => {
@@ -1008,7 +1011,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         startOutcomeLibraryGeneration(fetchImpl, {
             mode: outcomeLibraryGenerationOptions.mode.trim() || defaultModeName,
             generation: outcomeLibraryGenerationOptions.generation,
-            maxOutcomeSpaceSize: outcomeLibraryGenerationOptions.maxOutcomeSpaceSize,
+            ...(outcomeLibraryGenerationOptions.maxOutcomeSpaceSize.trim() === "" ? {} : {maxOutcomeSpaceSize: outcomeLibraryGenerationOptions.maxOutcomeSpaceSize}),
             ...(outcomeLibraryGenerationOptions.stake.trim() === "" ? {} : {stake: Number(outcomeLibraryGenerationOptions.stake)}),
             ...(outcomeLibraryGenerationOptions.libraryId.trim() === "" ? {} : {libraryId: outcomeLibraryGenerationOptions.libraryId.trim()}),
             ...(outcomeLibraryGenerationOptions.configHash.trim() === "" ? {} : {configHash: outcomeLibraryGenerationOptions.configHash.trim()}),

@@ -135,6 +135,26 @@ export class StudioOutcomeLibraryGenerateJobService {
         return this.toView(record);
     }
 
+    /** Abort every active job before Studio loses the HTTP surface that owns it. */
+    public cancelAll(): void {
+        for (const record of this.jobs.values()) {
+            if (record.status === "queued" || record.status === "running") {
+                record.cancellationRequested = true;
+                record.controller.abort();
+            }
+        }
+    }
+
+    /** Abort active work for a project which Studio is about to leave. */
+    public cancelActiveForProject(projectRoot: string): void {
+        for (const record of this.jobs.values()) {
+            if (record.projectRoot === projectRoot && (record.status === "queued" || record.status === "running")) {
+                record.cancellationRequested = true;
+                record.controller.abort();
+            }
+        }
+    }
+
     public resumeForProject(projectRoot: string, id: string): StudioOutcomeLibraryGenerateJobView | undefined {
         const persisted = this.readCheckpoint(projectRoot, id);
         if (persisted === undefined) return undefined;

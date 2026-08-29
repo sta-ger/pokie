@@ -17,6 +17,20 @@ export const DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE = BigInt(10_000);
 export const DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED = "pokie-bounded-coverage-v1";
 export const OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION = "v1";
 
+/**
+ * A deliberately separate compatibility policy for managed Blueprint/package
+ * conversion.  Managed artifacts are much larger than raw libraries, so this
+ * historical 50,000/5,000 boundary must not silently replace the public
+ * CLI/Studio default.  Keeping it here gives every adapter one versioned
+ * owner and makes policy changes observable in provenance/review.
+ */
+export const MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY = {
+    version: "managed-v1",
+    maxExactOutcomeSpaceSize: BigInt(50_000),
+    sampledOutcomeCount: BigInt(5_000),
+    seedPrefix: "pokie-managed-coverage:",
+} as const;
+
 export type OutcomeLibraryGenerationSample = {readonly sampleSize: bigint; readonly seed: string};
 export type OutcomeLibraryGenerationMode = "default" | "exact" | "sampled" | "bounded";
 

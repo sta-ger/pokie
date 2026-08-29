@@ -143,19 +143,11 @@ export class StudioOutcomeLibraryGenerateService {
     // Generate step's own "estimate/cost" panel never disagrees with what the CLI would report for the
     // same package/options.
     public async estimate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateEstimateRequest): Promise<StudioOutcomeLibraryGenerateEstimateView> {
-        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary");
-        // The estimate is a preview of this action, not a second source-capability
-        // probe.  Once the shared planner says that the opened project cannot
-        // reach an Outcome Library, do not load its runtime and accidentally
-        // present an executable-looking estimate.
-        if (plan.status !== "planned") {
-            return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
-        }
         let game: PokieGame;
         try {
             game = await this.loadGame(projectRoot);
         } catch (error) {
-            return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan};
+            return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
 
         let estimate: OutcomeSpaceEstimate;
@@ -163,7 +155,7 @@ export class StudioOutcomeLibraryGenerateService {
             estimate = this.estimateSpace(game);
         } catch (error) {
             if (error instanceof WeightedOutcomeLibraryGenerationError) {
-                return {status: "unsupported", error: error.message, plan};
+                return {status: "unsupported", error: error.message, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
             }
             throw error;
         }
@@ -178,13 +170,23 @@ export class StudioOutcomeLibraryGenerateService {
 
         const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
         const resolvedOutDir = resolveProjectDirectory(projectRoot, outDirRelative, this.realpath);
-        if (resolvedOutDir.status === "error") return {status: "load-error", error: resolvedOutDir.message, plan};
+        if (resolvedOutDir.status === "error") return {status: "load-error", error: resolvedOutDir.message, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         // configHash is a caller assertion, never an authority over the loaded package.
         // Keeping the loaded value in the snapshot makes source drift detectable even when
         // an old browser form contains a previously valid compatibility hash.
         const resolvedConfigHash = game.getConfigHash?.();
         if (request.configHash !== undefined && request.configHash !== resolvedConfigHash) {
-            return {status: "conflict", error: "The supplied configuration identity does not match the loaded game. Reload the project or clear the compatibility override.", plan};
+            return {status: "conflict", error: "The supplied configuration identity does not match the loaded game. Reload the project or clear the compatibility override.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+        }
+        // A preflight is not just an outcome-space calculation: it prepares the
+        // same destination and resolved strategy that execution will consume.
+        const requestedGeneration = requestedGenerationFor(preflight);
+        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration);
+        if (plan.status === "conflict") {
+            return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
+        }
+        if (plan.status !== "planned") {
+            return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
         }
         const preflightToken = String(this.nextPreflightToken++);
         this.preflightSnapshots.set(preflightToken, {
@@ -283,9 +285,7 @@ export class StudioOutcomeLibraryGenerateService {
             }
             return {status: "generation-error", code: error instanceof WeightedOutcomeLibraryGenerationError ? error.getCode() : "weighted-outcome-library-generation-invalid-request", error: error instanceof Error ? error.message : String(error), plan: unresolvedPlan};
         }
-        const requestedGeneration = preparedRequest.preflight.strategy === "bounded-coverage" && preparedRequest.sample !== undefined
-            ? {generationSemantics: "boundedSample" as const, sampleCount: preparedRequest.sample!.sampleSize, sampleSeed: preparedRequest.sample!.seed}
-            : {generationSemantics: "exact" as const};
+        const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
         const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", resolvedOutDir.resolvedPath, requestedGeneration);
         if (plan.status === "conflict") {
             return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
@@ -641,4 +641,12 @@ export class StudioOutcomeLibraryGenerateService {
 
 function generationRequestKey(request: {mode?: string; stake?: number; configHash?: string; libraryId?: string; outDir?: string; generation?: string; maxOutcomeSpaceSize?: bigint; sample?: {sampleSize: bigint; seed: string}}): string {
     return JSON.stringify({mode: request.mode, stake: request.stake, configHash: request.configHash, libraryId: request.libraryId, outDir: request.outDir, generation: request.generation, maxOutcomeSpaceSize: request.maxOutcomeSpaceSize?.toString(), sample: request.sample === undefined ? undefined : {sampleSize: request.sample.sampleSize.toString(), seed: request.sample.seed}});
+}
+
+function requestedGenerationFor(preflight: {readonly strategy: string; readonly sample?: {readonly sampleSize: bigint; readonly seed: string}}):
+    | {readonly generationSemantics: "exact"}
+    | {readonly generationSemantics: "boundedSample"; readonly sampleCount: bigint; readonly sampleSeed: string} {
+    return preflight.strategy === "bounded-coverage" && preflight.sample !== undefined
+        ? {generationSemantics: "boundedSample", sampleCount: preflight.sample.sampleSize, sampleSeed: preflight.sample.seed}
+        : {generationSemantics: "exact"};
 }
