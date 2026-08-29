@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import {spawnSync} from "node:child_process";
+import {resolve} from "node:path";
 import {deflateSync} from "node:zlib";
 import {test} from "@jest/globals";
 import {
@@ -57,4 +59,15 @@ test("PC-12 browser parity compares canonical screenshots as pixels, with an ant
 
     const divergent = png(2, 1, Buffer.from([0, 0, 255, 255, 0, 255, 0, 255]));
     assert.throws(() => comparePlayerScreenshots(matching, divergent), /screenshot diverged/);
+});
+
+test("PC-12 browser parity invokes its executable runner before browser setup", () => {
+    const execution = spawnSync(process.execPath, [resolve(process.cwd(), "scripts/pc-12-player-parity-browser.mjs")], {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: {PATH: process.env.PATH ?? ""},
+    });
+
+    assert.equal(execution.status, 1);
+    assert.match(execution.stderr, /PC_12_STUDIO_PROJECT must name the deterministic same-game fixture package/);
 });

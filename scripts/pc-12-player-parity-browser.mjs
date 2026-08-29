@@ -4,8 +4,10 @@
  * fixture-slot page, then crops the shared [data-pokie-player] region before comparing it.  The host
  * shells are allowed to differ; the mounted player contract is not.
  *
- * Run after building POKIE, with PC_12_STUDIO_PROJECT set to the deterministic fixture package root:
- *   PC_12_STUDIO_PROJECT=/path/to/fixture-package node scripts/pc-12-player-parity-browser.mjs
+ * Run after building POKIE, with two deterministic fixture package roots.  The second one is opened
+ * while a Play preparation is pending, so this verifies Studio's real project-switch boundary:
+ *   PC_12_STUDIO_PROJECT=/path/to/fixture-a PC_12_SUPERSEDING_PROJECT=/path/to/fixture-b \
+ *     node scripts/pc-12-player-parity-browser.mjs
  */
 import assert from "node:assert/strict";
 import {spawn} from "node:child_process";
@@ -209,10 +211,17 @@ function playerSnapshotExpression() {
     })()`;
 }
 
-async function main() {
+export async function runPlayerParityBrowser() {
     const project = process.env.PC_12_STUDIO_PROJECT;
     if (project === undefined || project.trim() === "") {
         throw new Error("PC_12_STUDIO_PROJECT must name the deterministic same-game fixture package.");
+    }
+    const supersedingProject = process.env.PC_12_SUPERSEDING_PROJECT;
+    if (supersedingProject === undefined || supersedingProject.trim() === "") {
+        throw new Error("PC_12_SUPERSEDING_PROJECT must name a different fixture package for the project-switch exercise.");
+    }
+    if (resolve(project) === resolve(supersedingProject)) {
+        throw new Error("PC_12_SUPERSEDING_PROJECT must differ from PC_12_STUDIO_PROJECT.");
     }
     const examplesRoot = resolve(process.env.POKIE_EXAMPLES_PATH ?? "../pokie-examples");
     const evidence = resolve(process.env.PC_12_EVIDENCE_DIR ?? "docs/evidence/phase7-product-coherence/pc-12-player-parity/current-run");
@@ -335,10 +344,75 @@ async function main() {
             await evaluate("window.__pc12RestoreFetch?.()");
             await click("Spin");
             await waitFor(async () => (await evaluate(playerSnapshotExpression())) !== undefined, "Studio retry result");
-            // A reset replaces the prepared session through Studio's public preparation path.  Its
-            // settled player is removed, so a stale preparation cannot republish the old round.
+            // Make the replacement assertion against a known featured result. Reset deliberately
+            // leaves the canonical player mounted for the freshly prepared *pre-spin* session.
+            await click("Find free games");
+            await waitFor(async () => {
+                const snapshot = await evaluate(playerSnapshotExpression());
+                return snapshot?.features.length > 0 && snapshot.wins.length > 0;
+            }, "Studio featured round before reset");
+            const featured = await evaluate(playerSnapshotExpression());
             await click("Reset Play session");
-            await waitFor(async () => !(await evaluate(`Boolean(document.querySelector(${JSON.stringify(canonicalPlayerSelector)}))`)), "Studio preparation supersession cleanup");
+            await waitFor(async () => {
+                const snapshot = await evaluate(playerSnapshotExpression());
+                return snapshot !== undefined && snapshot.wins.length === 0 && snapshot.features.length === 0;
+            }, "Studio replacement pre-spin player");
+            const replacement = await evaluate(playerSnapshotExpression());
+            assert.notDeepEqual(replacement, featured, "Reset must replace the old winning/featured player rather than retaining it");
+            assert.equal(replacement.wins.length, 0, "Reset pre-spin player must not retain winning details");
+            assert.equal(replacement.features.length, 0, "Reset pre-spin player must not retain feature details");
+        };
+        const assertStudioPreparationProjectSwitch = async () => {
+            // The real Studio browser route calls the public Home open-project surface. Start a real
+            // reset preparation, keep its response pending at the client boundary, then switch to a
+            // distinct project. This is deliberately not a synthetic request-id mutation.
+            await evaluate(`(() => {
+                const original = window.fetch;
+                window.__pc12PreparationStarted = false;
+                window.__pc12RestorePreparationFetch = () => { window.fetch = original; };
+                window.fetch = (input, init) => {
+                    if (String(input).includes("/api/project/play/session")) {
+                        window.__pc12PreparationStarted = true;
+                        return original(input, init).then(async (response) => {
+                            const payload = await response.clone().json();
+                            window.__pc12PreparedSessionId = payload.session?.sessionId;
+                            return new Promise(() => undefined);
+                        });
+                    }
+                    return original(input, init);
+                };
+            })()`);
+            await click("Reset Play session");
+            await waitFor(async () => await evaluate("window.__pc12PreparationStarted === true"), "Studio pending reset preparation request");
+            await waitFor(async () => await evaluate("typeof window.__pc12PreparedSessionId === 'string'"), "prepared Studio session identity");
+            const preparedSessionId = await evaluate("window.__pc12PreparedSessionId");
+            await navigate(`${studioUrl}/#/project/${encodeURIComponent(resolve(supersedingProject))}/play`);
+            await waitFor(async () => {
+                const context = await fetch(`${studioUrl}/api/context`).then((response) => response.json());
+                return context.mode === "project" && context.projectRoot === resolve(supersedingProject);
+            }, "Studio project switch");
+            await click("New Play session");
+            await waitFor(async () => await evaluate(`Boolean(document.querySelector(${JSON.stringify(canonicalPlayerSelector)}))`), "superseding project's pre-spin player");
+            const switched = await evaluate(playerSnapshotExpression());
+            assert.equal(switched.wins.length, 0, "A superseding project must not publish the old session round");
+            assert.equal(switched.features.length, 0, "A superseding project must not publish the old feature result");
+            const staleSession = await fetch(`${studioUrl}/api/project/play/sessions/${encodeURIComponent(preparedSessionId)}/spin`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: "{}",
+            });
+            assert.equal(staleSession.status, 404, "A superseding project must not retain the old prepared session");
+            const rounds = await fetch(`${studioUrl}/api/project/rounds`).then(async (response) => ({status: response.status, body: await response.json()}));
+            assert.equal(rounds.status, 200, "The switched project must expose its recorder through the public Studio API");
+            assert.deepEqual(rounds.body, [], "A superseding project must expose no stale recorder-visible round");
+            await evaluate("window.__pc12RestorePreparationFetch?.()");
+            // Return through the same browser entry point so the rest of the parity workflow still uses
+            // the original deterministic fixture project.
+            await navigate(`${studioUrl}/#/project/${encodeURIComponent(resolve(project))}/play`);
+            await waitFor(async () => {
+                const context = await fetch(`${studioUrl}/api/context`).then((response) => response.json());
+                return context.mode === "project" && context.projectRoot === resolve(project);
+            }, "return to deterministic fixture project");
         };
 
         note(`fixture project=${project}; examples fixture=${examplesUrl}; seed=fixture-round; round=find-free-games`);
@@ -356,7 +430,9 @@ async function main() {
         await click("Find free games");
         await waitFor(async () => await evaluate(`Boolean(document.querySelector(${JSON.stringify(canonicalPlayerSelector)} + " .player-features:not([hidden]) dd"))`), "Studio feature state");
         await assertStudioInspectorAndRecovery();
-        // Resetting a session removes its round, so obtain the same deterministic featured result again
+        await assertStudioPreparationProjectSwitch();
+        await click("New Play session");
+        // Project switching gives us a pre-spin player, so obtain the deterministic featured result again
         // before capturing the comparable canonical region.
         await click("Find free games");
         const studioDesktop = await settleAndCapture("studio-desktop");
@@ -404,7 +480,7 @@ async function main() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-    main().catch((error) => {
+    runPlayerParityBrowser().catch((error) => {
         process.stderr.write(`${error.stack ?? error}\n`);
         process.exitCode = 1;
     });
