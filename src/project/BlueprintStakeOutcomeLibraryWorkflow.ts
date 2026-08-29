@@ -30,7 +30,12 @@ import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/w
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
 import {generateWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
-import {MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY, prepareOutcomeLibraryGeneration, type OutcomeLibraryGenerationPreflight} from "../weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
+import {
+    MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY,
+    prepareOutcomeLibraryGeneration,
+    type OutcomeLibraryGenerationDestinationSafety,
+    type OutcomeLibraryGenerationPreflight,
+} from "../weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
 import {estimateExactOutcomeSpaceSize} from "../weightedoutcome/generate/estimateExactOutcomeSpaceSize.js";
 import type {PokieProject} from "./PokieProject.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing, type OutcomeProjectCompatibility} from "./ManagedOutcomeProjectService.js";
@@ -184,9 +189,22 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         reportArtifactBuildProgress(options, {status: "preflight", preflight});
         assertArtifactBuildNotCancelled(options);
         try {
-            await this.generateBundle(source.rootPath, game, configHash, boundDestination, options, preflight, generation);
+            await this.generateBundle(
+                source.rootPath,
+                game,
+                configHash,
+                boundDestination,
+                preparedRequest.outputDestinationSafety,
+                options,
+                preflight,
+                generation,
+            );
             assertArtifactBuildNotCancelled(options);
-            const project = await this.managedOutcomeProjects.registerAndOpen(source.rootPath, bundleDir, compatibility);
+            // The prepared request owns the canonical publication identity.
+            // Do not retain the caller's unnormalised spelling for registry
+            // registration: that would make rollback and later reuse refer to
+            // a different destination than the one the writer published.
+            const project = await this.managedOutcomeProjects.registerAndOpen(source.rootPath, boundDestination, compatibility);
             reportArtifactBuildProgress(options, {
                 status: "completed",
                 completed: preflight.estimatedItemCount,
@@ -197,7 +215,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         } catch (error) {
             // A generated bundle is not a managed Project until registerAndOpen commits the registry record.
             // Do not leave a complete-looking orphan behind when registry I/O or cancellation fails.
-            await fs.promises.rm(bundleDir, {recursive: true, force: true}).catch(() => undefined);
+            await fs.promises.rm(boundDestination, {recursive: true, force: true}).catch(() => undefined);
             if (options?.signal?.aborted) {
                 reportArtifactBuildProgress(options, {status: "cancelled", preflight});
                 if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
@@ -244,6 +262,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         game: PokieGame,
         configHash: string,
         destinationPath: string,
+        destinationSafety: OutcomeLibraryGenerationDestinationSafety | undefined,
         options: ArtifactBuildOptions | undefined,
         preflight: ArtifactBuildPreflight,
         generation: ManagedOutcomeGeneration,
@@ -280,6 +299,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                     // workflow still owns filesystem publication/rollback,
                     // while the request owns its destination identity.
                     outputDestination: boundDestination,
+                    ...(destinationSafety === undefined ? {} : {outputDestinationSafety: destinationSafety}),
                     signal: options?.signal,
                     onProgress: (completed, total) => {
                         reportArtifactBuildProgress(options, {status: "running", completed, total, preflight});
