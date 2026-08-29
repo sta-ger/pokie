@@ -102,9 +102,17 @@ Simulation** (the primary flow, in that order), then a visually separated **Adva
 Build/Export, Certification, Fairness (`NavTabItem`'s optional `section` field drives the grouping in
 `NavTabs`; see `ALL_PROJECT_TABS` in `ProjectDashboardPage.tsx` for the exact, current tab list). There is
 no standalone "Validate" tab any more (validation is now automatic diagnostics folded into Overview), and
-the old standalone Deployment/Outcome Libraries/Stake Engine Export tabs have been removed outright --
-Build/Export is the sole Studio build surface now (see `ExportDeployTab.tsx`), and every builder they used
-to own is one of its own cards.
+the old standalone Deployment/Outcome Libraries/Stake Engine Export tabs have been removed outright.
+Build/Export is the sole Studio build surface for artifact materialization, Stake export, and Remote delivery
+(see `ExportDeployTab.tsx`). Outcome Libraries' retired select-existing/inspect/compare task is intentionally
+not represented as generation: the retained Outcome source Overview owns inspection, and comparison remains
+an explicit CLI outcome-source workflow.
+
+Legacy `#/project/:tab` links are first converted to their project-scoped equivalent; the same policy applies
+to direct `#/project/:projectRoot/:tab` links. `deployment` and `stakeEngineExport` go to Build/Export with
+migration text; `validate` and `validation` go to Overview diagnostics; `outcomeLibraries` goes to Overview
+with an explicit unavailable/deprecated explanation because it has no equivalent Build/Export task. Unknown
+removed routes also go to Overview rather than guessing an operation. No retired route mounts a duplicate tab.
 
 - **Validate** runs `POST /api/project/validate` through an explicit `idle|loading|error|success` state
   (`ProjectValidationView`) rather than a bare result + a separate loading flag — a failed re-validation
@@ -131,6 +139,12 @@ surface ("Advanced Tools") was removed outright — those flows now live only in
 Dashboard's old standalone Deployment/Outcome Libraries/Stake Engine Export tabs were likewise removed, folded
 into Build/Export's own cards (see the Project Dashboard section above). Everything else from before the
 redesign is still reachable, just re-labeled and de-emphasized relative to the primary flow.
+
+Certification has one deliberate handoff. Studio owns source validation, evidence build, inspection, and
+manifest download; after a successful build it displays `pokie certification verify <certDir> --source
+<bundleDir>` for independent verification. Run it from the project directory with the same live, unchanged
+outcome-library source; if source or evidence changed, rebuild before verification. A downloaded manifest is
+not an evidence bundle and is never a substitute for that verifier.
 
 ## Directory layout
 
@@ -311,10 +325,10 @@ for a flow with no order dependency at all (that belongs in tabs) or for a flow 
 
 The standalone Deployment (`project/DeploymentTab.tsx`), Stake Engine Export (`project/StakeEngineExportTab.tsx`),
 and Outcome Libraries (`project/OutcomeLibrariesTab.tsx`) Steppers this audit originally covered have since been
-removed outright, not just replaced -- every builder they owned is now one of Build/Export's own cards (see
-`ExportDeployTargets.ts`). Their old `/project/deployment`/`/project/stakeEngineExport`/`/project/outcomeLibraries`
-routes redirect to Build/Export with migration guidance; they do not mount an alternate workflow. They're kept
-out of the table below rather than left in with a stale "Kept as Stepper" disposition.
+removed outright, not just replaced. Deployment and Stake builders are Build/Export cards (see
+`ExportDeployTargets.ts`); Outcome Libraries' select-existing/inspect/compare task has no equivalent card and
+now reaches Overview with an explicit unavailable recovery. Their legacy routes never mount an alternate
+workflow. They're kept out of the table below rather than left in with a stale "Kept as Stepper" disposition.
 
 | Workflow | File | Classification | Disposition |
 |---|---|---|---|

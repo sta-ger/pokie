@@ -179,7 +179,7 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
         expect(within(nav).queryByRole("button", {name: "Provably Fair"})).not.toBeInTheDocument();
     });
 
-    it("redirects retired Deployment, Stake Engine Export, and Outcome Libraries deep links to Build/Export with migration guidance, without retaining duplicate workflows", async () => {
+    it("redirects retired build routes to Build/Export and the unavailable Outcome Libraries route to Overview with recovery guidance", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
         const deploymentRender = renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
@@ -191,8 +191,9 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
 
         const outcomeLibrariesRender = renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await outcomeLibrariesRender.findByRole("heading", {name: "My Slot"});
-        expect(outcomeLibrariesRender.getByRole("button", {name: "Build/Export"})).toHaveAttribute("aria-current", "page");
-        expect(outcomeLibrariesRender.getByText(/Outcome Libraries has moved into Build\/Export/)).toBeInTheDocument();
+        expect(outcomeLibrariesRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(outcomeLibrariesRender.getByText(/Outcome Libraries is no longer available in Studio/)).toBeInTheDocument();
+        expect(outcomeLibrariesRender.getByText(/has no Build\/Export equivalent/)).toBeInTheDocument();
         expect(outcomeLibrariesRender.queryByRole("button", {name: stepperStep("Select/import", "Choose a library")})).not.toBeInTheDocument();
         outcomeLibrariesRender.unmount();
 

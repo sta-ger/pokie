@@ -140,8 +140,8 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // workflow) have been removed: every builder they used to own is one of Build/Export's own cards (see
 // ExportDeployTargets.ts) except Outcome Libraries' own select-an-existing-library/inspect/compare tools,
 // which have no Build/Export equivalent yet -- only generating a fresh library does. A deep link to an old
-// route redirects to Build/Export with migration guidance (see legacyProjectRouteMigration), rather than
-// preserving an executable duplicate. Also reachable for a resolved "outcomeLibrary"/"stakeAdapter"
+// route lands on Overview with an explicit unavailable explanation (see legacyProjectRouteMigration), rather
+// than silently changing an inspect/compare task into generation. Also reachable for a resolved "outcomeLibrary"/"stakeAdapter"
 // project (see BUILD_EXPORT_CAPABLE_CAPABILITIES) -- an outcome library or Stake Engine export can
 // republish its canonical outcome source, while a PAR workbook can republish itself through its .xlsx
 // file-save card.
@@ -178,7 +178,11 @@ function legacyProjectRouteMigration(tab: string | undefined): LegacyProjectRout
         case "stakeEngineExport":
             return {destination: "exportDeploy", message: "Stake Engine Export has moved into Build/Export. Choose the Stake Engine export artifact there."};
         case "outcomeLibraries":
-            return {destination: "exportDeploy", message: "Outcome Libraries has moved into Build/Export. Choose Outcome library generator or a registry-backed artifact there."};
+            return {
+                destination: "overview",
+                message:
+                    "Outcome Libraries is no longer available in Studio. Its retired select-existing, inspect, and compare workflow has no Build/Export equivalent; use Overview to inspect the opened outcome source, or use the CLI outcome-source commands for comparison.",
+            };
         case "validate":
         case "validation":
             return {destination: "overview", message: "Validate is now part of Overview diagnostics. Revalidate there after changing the project."};

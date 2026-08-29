@@ -894,8 +894,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         const outcomeLibrariesRender = renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/outcomeLibraries"]});
         await outcomeLibrariesRender.findByRole("heading", {name: "A"});
-        expect(outcomeLibrariesRender.getByRole("button", {name: "Build/Export"})).toHaveAttribute("aria-current", "page");
-        expect(outcomeLibrariesRender.getByText(/Outcome Libraries has moved into Build\/Export/)).toBeInTheDocument();
+        expect(outcomeLibrariesRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(outcomeLibrariesRender.getByText(/Outcome Libraries is no longer available in Studio/)).toBeInTheDocument();
+        expect(outcomeLibrariesRender.getByText(/has no Build\/Export equivalent/)).toBeInTheDocument();
         // Build/Export may offer its own mode selector, but the retired Outcome Libraries analysis
         // workflow never mounts from this route.
         expect(outcomeLibrariesRender.queryByRole("button", {name: "Analysis"})).not.toBeInTheDocument();
