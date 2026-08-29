@@ -861,12 +861,19 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "POST" && url.pathname === "/api/project/outcome-libraries/generate") {
-            await this.handleGenerateOutcomeLibrary(req, res);
+            // Kept as a compatibility URL, but it now creates the same pollable
+            // lifecycle job as the explicit /jobs entrypoint.
+            await this.handleStartOutcomeLibraryGeneration(req, res);
             return;
         }
 
         if (method === "POST" && url.pathname === "/api/project/outcome-libraries/generate/jobs") {
             await this.handleStartOutcomeLibraryGeneration(req, res);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/outcome-libraries/generate/jobs") {
+            this.handleListOutcomeLibraryGenerationJobs(res);
             return;
         }
 
@@ -1968,24 +1975,6 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, await this.outcomeLibraryGenerateService.estimate(this.currentContext.projectRoot, validated));
     }
 
-    private async handleGenerateOutcomeLibrary(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        if (this.currentContext.mode !== "project") {
-            this.sendJson(res, 409, {error: "No active project."});
-            return;
-        }
-
-        const body = await this.readJsonBody(req);
-        let validated;
-        try {
-            validated = validateOutcomeLibraryGenerateRequest((body ?? {}) as OutcomeLibraryGenerateRequestInput);
-        } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
-            return;
-        }
-
-        this.sendJson(res, 200, await this.outcomeLibraryGenerateService.generate(this.currentContext.projectRoot, validated));
-    }
-
     private async handleStartOutcomeLibraryGeneration(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
@@ -2000,6 +1989,14 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.currentContext.projectRoot, validated)});
+    }
+
+    private handleListOutcomeLibraryGenerationJobs(res: ServerResponse): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        this.sendJson(res, 200, {jobs: this.outcomeLibraryGenerateJobService.listForProject(this.currentContext.projectRoot)});
     }
 
     private handleOutcomeLibraryGenerationJob(method: string, res: ServerResponse, id: string, action: "cancel" | "resume" | undefined): void {

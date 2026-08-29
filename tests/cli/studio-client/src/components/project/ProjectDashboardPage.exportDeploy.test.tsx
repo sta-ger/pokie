@@ -45,6 +45,15 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
             sourceType: "blueprint",
         },
     }),
+    "/api/project/outcome-libraries/generate/estimate": () => ({
+        ok: true,
+        status: 200,
+        body: {
+            status: "ok", game: {id: "a", name: "A", version: "1.0.0"}, reelsNumber: 3, reelsSymbolsNumber: 3, reelSizes: [3, 3, 3],
+            totalOutcomeSpaceSize: 27, maxOutcomeSpaceSize: 20_000_000, strategy: "exact", requiresBounded: false, expectedRawWork: 27, warnings: [],
+            plan: {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "outcomeLibrary", capabilities: []}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false}}, preflightToken: "bound-preflight",
+        },
+    }),
 };
 
 function fetchImplFrom(routes: Record<string, () => {ok: boolean; status: number; body: unknown}>): FetchLike {
@@ -808,16 +817,17 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(screen.getByRole("checkbox", {name: "Bounded coverage (sampled; not exact)"}));
+        await user.click(screen.getByRole("button", {name: "Conditional bounded"}));
         expect(screen.getByLabelText("Sample size")).toHaveValue("10000");
-        expect(screen.getByLabelText("Coverage seed")).toHaveValue("studio-bounded-coverage");
-        await user.click(screen.getByRole("button", {name: "Generate bounded-coverage outcome library (base)"}));
+        expect(screen.getByLabelText("Coverage seed")).toHaveValue("pokie-bounded-coverage-v1");
+        await user.click(screen.getByRole("button", {name: "Generate bounded outcome library (base)"}));
 
         expect(generationRequest).toEqual({
             mode: "base",
             generation: "bounded",
             maxOutcomeSpaceSize: "20000000",
-            sample: {sampleSize: "10000", seed: "studio-bounded-coverage"},
+            sample: {sampleSize: "10000", seed: "pokie-bounded-coverage-v1"},
+            preflightToken: "bound-preflight",
         });
         expect(await screen.findByText(/Generated 10,000 outcomes for mode "base" using bounded-coverage \(0\.0021% of the raw space\) \(RTP 95\.00%\) into outcomelibrary\./)).toBeInTheDocument();
 

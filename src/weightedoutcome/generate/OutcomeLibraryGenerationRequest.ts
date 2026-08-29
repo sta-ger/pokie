@@ -12,6 +12,11 @@ import type {OutcomeLibraryGenerationStrategy} from "./OutcomeLibraryGeneratorDi
 // than silently replacing this safety boundary.
 export const DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE = BigInt(20_000_000);
 
+/** The named compatibility policy used when a caller elects conditional bounded coverage. */
+export const DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE = BigInt(10_000);
+export const DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED = "pokie-bounded-coverage-v1";
+export const OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION = "v1";
+
 export type OutcomeLibraryGenerationSample = {readonly sampleSize: bigint; readonly seed: string};
 export type OutcomeLibraryGenerationMode = "default" | "exact" | "sampled" | "bounded";
 

@@ -175,7 +175,13 @@ export class StudioOutcomeLibraryGenerateService {
         const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
         const resolvedOutDir = resolveProjectDirectory(projectRoot, outDirRelative, this.realpath);
         if (resolvedOutDir.status === "error") return {status: "load-error", error: resolvedOutDir.message, plan};
-        const resolvedConfigHash = request.configHash ?? game.getConfigHash?.();
+        // configHash is a caller assertion, never an authority over the loaded package.
+        // Keeping the loaded value in the snapshot makes source drift detectable even when
+        // an old browser form contains a previously valid compatibility hash.
+        const resolvedConfigHash = game.getConfigHash?.();
+        if (request.configHash !== undefined && request.configHash !== resolvedConfigHash) {
+            return {status: "conflict", error: "The supplied configuration identity does not match the loaded game. Reload the project or clear the compatibility override.", plan};
+        }
         const preflightToken = String(this.nextPreflightToken++);
         this.preflightSnapshots.set(preflightToken, {
             requestKey: generationRequestKey(request), gameId: game.getManifest().id, gameVersion: game.getManifest().version,
@@ -227,11 +233,15 @@ export class StudioOutcomeLibraryGenerateService {
             game = await this.loadGame(projectRoot);
             const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
             if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
-            if (snapshot !== undefined && (snapshot.requestKey !== generationRequestKey(request) || snapshot.destination !== resolvedOutDir.resolvedPath || snapshot.gameId !== game.getManifest().id || snapshot.gameVersion !== game.getManifest().version || snapshot.configHash !== (request.configHash ?? game.getConfigHash?.()))) {
+            const loadedConfigHash = game.getConfigHash?.();
+            if (request.configHash !== undefined && request.configHash !== loadedConfigHash) {
+                return {status: "conflict", error: "The supplied configuration identity does not match the loaded game. Reload the project or clear the compatibility override.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+            }
+            if (snapshot !== undefined && (snapshot.requestKey !== generationRequestKey(request) || snapshot.destination !== resolvedOutDir.resolvedPath || snapshot.gameId !== game.getManifest().id || snapshot.gameVersion !== game.getManifest().version || snapshot.configHash !== loadedConfigHash)) {
                 return {status: "conflict", error: "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
             }
             const manifest = game.getManifest();
-            const configHash = request.configHash ?? game.getConfigHash?.();
+            const configHash = loadedConfigHash;
             const libraryId = request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`;
             domainRequest = {
                 libraryId,

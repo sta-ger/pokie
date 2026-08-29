@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from "react";
-import {Badge, Button, Checkbox, Group, List, Text, TextInput} from "@mantine/core";
+import {Badge, Button, Group, List, Text, TextInput} from "@mantine/core";
 import {
     cancelArtifactBuild,
     checkNativePickerAvailability,
@@ -7,6 +7,7 @@ import {
     estimateOutcomeLibraryGeneration,
     exportStakeEngine,
     getOutcomeLibraryGenerationJob,
+    listOutcomeLibraryGenerationJobs,
     getArtifactBuild,
     listArtifactTargets,
     openOutputFolder,
@@ -97,8 +98,11 @@ function resolveDefaultModeName(projectModesView: DeploymentManager["projectMode
 
 const STAKE_ENGINE_DEFAULT_OUT_DIR = "stakeengine";
 const DEFAULT_MAX_OUTCOME_SPACE_SIZE = "20000000";
+// These are the browser representation of the public v1 compatibility policy
+// (DEFAULT_BOUNDED_OUTCOME_LIBRARY_* in the domain package). Keep the version
+// visible here because persisted Studio forms are a transport compatibility seam.
 const DEFAULT_BOUNDED_SAMPLE_SIZE = "10000";
-const DEFAULT_BOUNDED_SEED = "studio-bounded-coverage";
+const DEFAULT_BOUNDED_SEED = "pokie-bounded-coverage-v1";
 
 // Both choices intentionally map one-to-one onto generateExactWeightedOutcomeLibrary's public
 // options. In particular, enabling bounded coverage remains an explicit user decision: setting a
@@ -110,7 +114,7 @@ type OutcomeLibraryGenerationOptions = {
     configHash: string;
     outDir: string;
     maxOutcomeSpaceSize: string;
-    bounded: boolean;
+    generation: "default" | "exact" | "sampled" | "bounded";
     sampleSize: string;
     seed: string;
 };
@@ -125,7 +129,7 @@ type OutcomeLibraryRunView =
 type OutcomeLibraryPreflightView =
     | {status: "loading"}
     | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>}
-    | {status: "error"};
+    | {status: "error"; result?: Exclude<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>; message?: string};
 
 type StaticExportRunView =
     | {status: "idle"}
@@ -144,6 +148,20 @@ function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateR
     }
     if (view.status === "cancelled") return view.recovery;
     return view.error;
+}
+
+function describePreflightError(view: Exclude<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>): string {
+    return view.error;
+}
+
+function generationStrategyLabel(generation: OutcomeLibraryGenerationOptions["generation"]): string {
+    const labels: Record<OutcomeLibraryGenerationOptions["generation"], string> = {
+        default: "Default (exact until cap)",
+        exact: "Exact",
+        sampled: "Sampled",
+        bounded: "Conditional bounded",
+    };
+    return labels[generation];
 }
 
 // Never called for a "conflict" result -- the shared planner's destination policy is authoritative,
@@ -355,7 +373,7 @@ function TargetCard({
                         />
                         <TextInput
                             label="Configuration identity"
-                            description="Optional configuration hash for provenance; blank uses the loaded game."
+                            description="Optional loaded configuration identity to verify; it never overrides the loaded game provenance."
                             value={outcomeLibraryGenerationOptions.configHash}
                             onChange={(event) =>
                                 onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, configHash: event.currentTarget.value})
@@ -372,16 +390,15 @@ function TargetCard({
                             onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, maxOutcomeSpaceSize: event.currentTarget.value})
                         }
                     />
-                    <Checkbox
-                        mt="sm"
-                        label="Bounded coverage (sampled; not exact)"
-                        description="Explicitly sample the outcome space when it exceeds the exact-generation limit. The resulting library records its bounded-coverage strategy and seed."
-                        checked={outcomeLibraryGenerationOptions.bounded}
-                        onChange={(event) =>
-                            onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, bounded: event.currentTarget.checked})
-                        }
-                    />
-                    {outcomeLibraryGenerationOptions.bounded && (
+                    <Text size="sm" mt="sm" fw={600}>Generation strategy</Text>
+                    <Group gap="xs" mt={4}>
+                        {(["default", "exact", "sampled", "bounded"] as const).map((generation) => (
+                            <Button key={generation} size="xs" variant={outcomeLibraryGenerationOptions.generation === generation ? "filled" : "default"} onClick={() => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, generation})}>
+                                {generationStrategyLabel(generation)}
+                            </Button>
+                        ))}
+                    </Group>
+                    {(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "bounded") && (
                         <Group align="start" grow mt="sm">
                             <TextInput
                                 label="Sample size"
@@ -402,24 +419,24 @@ function TargetCard({
                     )}
                     <Text size="sm" mt="sm" fw={600}>Generation preflight</Text>
                     {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
-                    {outcomeLibraryPreflight.status === "error" && <Text size="sm" c="red">Preflight could not be prepared. Check the current package and generation settings, then retry.</Text>}
+                    {outcomeLibraryPreflight.status === "error" && <Text size="sm" c="red">{outcomeLibraryPreflight.result === undefined ? outcomeLibraryPreflight.message ?? "Preflight could not be prepared." : describePreflightError(outcomeLibraryPreflight.result)} Refresh the preflight after resolving this issue.</Text>}
                     {outcomeLibraryPreflight.status === "ok" && (
                         <Text size="sm" c={outcomeLibraryPreflight.result.requiresBounded ? "orange" : "dimmed"}>
                             {outcomeLibraryPreflight.result.strategy === "exact" ? "Exact enumeration" : "Bounded coverage"}: {String(outcomeLibraryPreflight.result.totalOutcomeSpaceSize)} raw combinations; expected work {String(outcomeLibraryPreflight.result.expectedRawWork)}.
                             {outcomeLibraryPreflight.result.warnings.map((warning) => ` ${warning}`).join("")}
                         </Text>
                     )}
-                    {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && !outcomeLibraryGenerationOptions.bounded && (
-                        <Text size="sm" c="orange">Choose bounded coverage with a sample size and seed, or raise the exact limit before generating.</Text>
+                    {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded" && (
+                        <Text size="sm" c="orange">Choose sampled or conditional bounded coverage with a sample size and seed, or raise the exact limit before generating.</Text>
                     )}
                     <Button
                         size="xs"
                         mt="sm"
                         onClick={onGenerateOutcomeLibrary}
                         loading={outcomeLibraryRun.status === "running"}
-                        disabled={outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && !outcomeLibraryGenerationOptions.bounded}
+                        disabled={outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded")}
                     >
-                        Generate {outcomeLibraryGenerationOptions.bounded ? "bounded-coverage" : "exact"} outcome library ({outcomeLibraryGenerationOptions.mode.trim() || defaultModeName})
+                        Generate {outcomeLibraryGenerationOptions.generation === "default" ? "exact" : outcomeLibraryGenerationOptions.generation} outcome library ({outcomeLibraryGenerationOptions.mode.trim() || defaultModeName})
                     </Button>
                     {outcomeLibraryRun.status === "running" && (
                         <>
@@ -797,14 +814,33 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         configHash: "",
         outDir: "outcomelibrary",
         maxOutcomeSpaceSize: DEFAULT_MAX_OUTCOME_SPACE_SIZE,
-        bounded: false,
+        generation: "default",
         sampleSize: DEFAULT_BOUNDED_SAMPLE_SIZE,
         seed: DEFAULT_BOUNDED_SEED,
     });
     const [outcomeLibraryPreflight, setOutcomeLibraryPreflight] = useState<OutcomeLibraryPreflightView>({status: "loading"});
+    // A cancellation checkpoint is server-persisted. Rehydrate it after a browser
+    // reload so recovery never depends on an in-memory React state or a job id
+    // copied by the user before refreshing the page.
     useEffect(() => {
         let cancelled = false;
-        const generation = outcomeLibraryGenerationOptions.bounded ? "bounded" as const : "default" as const;
+        listOutcomeLibraryGenerationJobs(fetchImpl)
+            .then((jobs) => {
+                if (cancelled) return;
+                const resumable = jobs.find((job) => job.status === "cancelled" && job.result?.status === "cancelled");
+                if (resumable?.result?.status === "cancelled") setOutcomeLibraryRun({status: "cancelled", result: resumable.result});
+            })
+            .catch(() => {
+                // Older Studio servers do not expose checkpoint discovery; the
+                // bound preflight remains the authoritative execution gate.
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchImpl]);
+    useEffect(() => {
+        let cancelled = false;
+        const generation = outcomeLibraryGenerationOptions.generation;
         estimateOutcomeLibraryGeneration(fetchImpl, {
             mode: outcomeLibraryGenerationOptions.mode.trim() || defaultModeName,
             ...(outcomeLibraryGenerationOptions.stake.trim() === "" ? {} : {stake: Number(outcomeLibraryGenerationOptions.stake)}),
@@ -813,16 +849,13 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
             ...(outcomeLibraryGenerationOptions.outDir.trim() === "" || outcomeLibraryGenerationOptions.outDir.trim() === "outcomelibrary" ? {} : {outDir: outcomeLibraryGenerationOptions.outDir.trim()}),
             generation,
             maxOutcomeSpaceSize: outcomeLibraryGenerationOptions.maxOutcomeSpaceSize,
-            ...(outcomeLibraryGenerationOptions.bounded ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}} : {}),
+            ...(generation === "sampled" || generation === "bounded" ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}} : {}),
         })
             .then((result) => {
-                if (!cancelled) setOutcomeLibraryPreflight(result.status === "ok" ? {status: "ok", result} : {status: "error"});
+                if (!cancelled) setOutcomeLibraryPreflight(result.status === "ok" ? {status: "ok", result} : {status: "error", result});
             })
-            // A pre-PC-09 Studio server has no full-request estimate endpoint.
-            // Keep its existing generate action usable while making the new
-            // endpoint authoritative whenever it is available.
-            .catch(() => {
-                if (!cancelled) setOutcomeLibraryPreflight({status: "error"});
+            .catch((error: unknown) => {
+                if (!cancelled) setOutcomeLibraryPreflight({status: "error", message: describeProjectActionError("The outcome library preflight", errorMessage(error))});
             });
         return () => {
             cancelled = true;
@@ -960,21 +993,24 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     }
 
     function handleGenerateOutcomeLibrary(): void {
+        // Execution is deliberately impossible without the precise successful
+        // snapshot shown above; the server independently enforces this token.
+        if (outcomeLibraryPreflight.status !== "ok") return;
         if (!outcomeLibraryGuard.begin()) {
             return;
         }
         startOutcomeLibraryGeneration(fetchImpl, {
             mode: outcomeLibraryGenerationOptions.mode.trim() || defaultModeName,
-            generation: outcomeLibraryGenerationOptions.bounded ? "bounded" : "default",
+            generation: outcomeLibraryGenerationOptions.generation,
             maxOutcomeSpaceSize: outcomeLibraryGenerationOptions.maxOutcomeSpaceSize,
             ...(outcomeLibraryGenerationOptions.stake.trim() === "" ? {} : {stake: Number(outcomeLibraryGenerationOptions.stake)}),
             ...(outcomeLibraryGenerationOptions.libraryId.trim() === "" ? {} : {libraryId: outcomeLibraryGenerationOptions.libraryId.trim()}),
             ...(outcomeLibraryGenerationOptions.configHash.trim() === "" ? {} : {configHash: outcomeLibraryGenerationOptions.configHash.trim()}),
             ...(outcomeLibraryGenerationOptions.outDir.trim() === "" || outcomeLibraryGenerationOptions.outDir.trim() === "outcomelibrary" ? {} : {outDir: outcomeLibraryGenerationOptions.outDir.trim()}),
-            ...(outcomeLibraryGenerationOptions.bounded
+            ...(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "bounded"
                 ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}}
                 : {}),
-            ...(outcomeLibraryPreflight.status === "ok" ? {preflightToken: outcomeLibraryPreflight.result.preflightToken} : {}),
+            preflightToken: outcomeLibraryPreflight.result.preflightToken,
         })
             .then((job) => {
                 setOutcomeLibraryRun({status: "running", job});

@@ -34,4 +34,5 @@ export type StudioOutcomeLibraryGenerateEstimateView =
     // outcome space to estimate (see WeightedOutcomeLibraryGenerationError's own
     // "weighted-outcome-library-generation-unsupported" code).
     | {readonly status: "unsupported"; readonly error: string; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "conflict"; readonly error: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "load-error"; readonly error: string; readonly plan: ArtifactConversionPlan};

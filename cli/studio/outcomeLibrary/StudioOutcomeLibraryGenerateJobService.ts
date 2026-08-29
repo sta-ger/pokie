@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
+import {randomUUID} from "crypto";
 import type {ExactEnumerationCheckpoint} from "pokie";
+import {createUnresolvedRuntimePlan} from "../artifacts/createExternalArtifactConversionPlan.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "./StudioOutcomeLibraryGenerateResultView.js";
 import {StudioOutcomeLibraryGenerateService} from "./StudioOutcomeLibraryGenerateService.js";
 import type {ValidatedOutcomeLibraryGenerateRequest} from "./validateOutcomeLibraryGenerateRequest.js";
@@ -61,24 +63,33 @@ type PersistedRequest = Omit<ValidatedOutcomeLibraryGenerateRequest, "maxOutcome
 // atomically-replaced bundle destination.
 export class StudioOutcomeLibraryGenerateJobService {
     private readonly jobs = new Map<string, JobRecord>();
-    private nextId = 1;
     private readonly generateService: StudioOutcomeLibraryGenerateService;
 
     constructor(generateService: StudioOutcomeLibraryGenerateService) {
         this.generateService = generateService;
     }
 
-    public start(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest): StudioOutcomeLibraryGenerateJobView {
+    public start(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest, resumedId?: string): StudioOutcomeLibraryGenerateJobView {
         this.trimTerminalJobs();
         const record: JobRecord = {
-            id: String(this.nextId++), projectRoot, request, controller: new AbortController(), status: "queued", cancellationRequested: false,
+            // UUIDs make checkpoints safely discoverable across a server restart without
+            // reusing the old process-local 1, 2, … namespace.
+            id: resumedId ?? randomUUID(), projectRoot, request, controller: new AbortController(), status: "queued", cancellationRequested: false,
         };
         this.jobs.set(record.id, record);
         queueMicrotask(() => {
-            this.run(record).catch(() => {
+            this.run(record).catch((error: unknown) => {
                 // generate() normally converts domain failures into its result union. Keep an unexpected
                 // adapter failure observable as a terminal job instead of an unhandled server rejection.
-                Object.assign(record, {status: "failed" as const});
+                Object.assign(record, {
+                    status: "failed" as const,
+                    result: {
+                        status: "generation-error" as const,
+                        code: "studio-outcome-library-job-failed",
+                        error: error instanceof Error ? error.message : String(error),
+                        plan: createUnresolvedRuntimePlan(record.projectRoot, "outcomeLibrary"),
+                    },
+                });
             });
         });
         return this.toView(record);
@@ -86,7 +97,32 @@ export class StudioOutcomeLibraryGenerateJobService {
 
     public getStatusForProject(projectRoot: string, id: string): StudioOutcomeLibraryGenerateJobView | undefined {
         const record = this.jobs.get(id);
-        return record?.projectRoot === projectRoot ? this.toView(record) : undefined;
+        if (record?.projectRoot === projectRoot) return this.toView(record);
+        const persisted = this.readCheckpoint(projectRoot, id);
+        if (persisted === undefined) return undefined;
+        return this.toView(this.restoreCancelledRecord(projectRoot, id, persisted));
+    }
+
+    /** Includes persisted cancellation checkpoints, so a fresh Studio process can offer recovery. */
+    public listForProject(projectRoot: string): readonly StudioOutcomeLibraryGenerateJobView[] {
+        const visible = new Map<string, StudioOutcomeLibraryGenerateJobView>();
+        for (const record of this.jobs.values()) {
+            if (record.projectRoot === projectRoot) visible.set(record.id, this.toView(record));
+        }
+        const directory = path.dirname(this.checkpointPath(projectRoot, "placeholder"));
+        try {
+            for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
+                if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+                const id = entry.name.slice(0, -5);
+                if (!visible.has(id)) {
+                    const persisted = this.readCheckpoint(projectRoot, id);
+                    if (persisted !== undefined) visible.set(id, this.toView(this.restoreCancelledRecord(projectRoot, id, persisted)));
+                }
+            }
+        } catch {
+            // No checkpoint directory is the normal state before a cancellation.
+        }
+        return Array.from(visible.values());
     }
 
     public cancelForProject(projectRoot: string, id: string): StudioOutcomeLibraryGenerateJobView | undefined {
@@ -100,12 +136,11 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     public resumeForProject(projectRoot: string, id: string): StudioOutcomeLibraryGenerateJobView | undefined {
-        const record = this.jobs.get(id);
-        const persisted = record?.projectRoot === projectRoot && record.result?.status === "cancelled"
-            ? this.readCheckpoint(projectRoot, id)
-            : this.readCheckpoint(projectRoot, id);
+        const persisted = this.readCheckpoint(projectRoot, id);
         if (persisted === undefined) return undefined;
-        return this.start(projectRoot, {...fromPersistedRequest(persisted.request), resumeFrom: fromPersistedCheckpoint(persisted.checkpoint)});
+        // Reuse the checkpoint identity.  A successful resumed publication removes this
+        // original file, avoiding an orphan which could be resumed a second time later.
+        return this.start(projectRoot, {...fromPersistedRequest(persisted.request), preflightToken: undefined, resumeFrom: fromPersistedCheckpoint(persisted.checkpoint)}, id);
     }
 
     private async run(record: JobRecord): Promise<void> {
@@ -164,6 +199,28 @@ export class StudioOutcomeLibraryGenerateJobService {
 
     private removeCheckpoint(projectRoot: string, id: string): void {
         fs.rmSync(this.checkpointPath(projectRoot, id), {force: true});
+    }
+
+    private restoreCancelledRecord(projectRoot: string, id: string, persisted: PersistedCheckpoint): JobRecord {
+        const record: JobRecord = {
+            id,
+            projectRoot,
+            request: fromPersistedRequest(persisted.request),
+            controller: new AbortController(),
+            status: "cancelled",
+            cancellationRequested: true,
+            progress: {processedRawIndex: persisted.checkpoint.processedRawIndex, progressTotal: persisted.checkpoint.progressTotal},
+            result: {
+                status: "cancelled",
+                processedRawIndex: persisted.checkpoint.processedRawIndex,
+                progressTotal: persisted.checkpoint.progressTotal,
+                checkpoint: {id, processedRawIndex: persisted.checkpoint.processedRawIndex, progressTotal: persisted.checkpoint.progressTotal, sourceEnumerationId: persisted.checkpoint.sourceEnumerationId},
+                recovery: "Generation was cancelled before publication. Resume this exact checkpoint while the loaded game configuration is unchanged.",
+                plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary"),
+            },
+        };
+        this.jobs.set(id, record);
+        return record;
     }
 
     private trimTerminalJobs(): void {

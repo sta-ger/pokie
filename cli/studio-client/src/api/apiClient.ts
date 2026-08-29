@@ -40,7 +40,6 @@ import type {
     StudioRevealPathView,
     StudioOutcomeLibraryGenerateEstimateView,
     StudioOutcomeLibraryGenerateJobView,
-    StudioOutcomeLibraryGenerateResultView,
     StudioOutcomeLibraryRegistryView,
     StudioParSheetExportView,
     StudioParSheetImportView,
@@ -972,13 +971,10 @@ export type OutcomeLibraryGenerateRequestOptions = {
     preflightToken?: string;
 };
 
-// Drives generateExactWeightedOutcomeLibrary against the current project's own built package -- the exact
-// same public generation service "pokie outcomelibrary generate" itself calls -- then writes the result
-// straight into the project's own outcome-library bundle (see StudioOutcomeLibraryGenerateService.generate's
-// own doc comment). Never throws for a domain-level failure (unsupported package, generation error, invalid
-// write) -- that's carried in the returned view's own status, same convention as every other
-// outcome-library apiClient function here.
-export async function generateOutcomeLibrary(fetchImpl: FetchLike, options: OutcomeLibraryGenerateRequestOptions): Promise<StudioOutcomeLibraryGenerateResultView> {
+// Compatibility URL for the Outcome Library lifecycle. It starts the same
+// cancellable job as /jobs; terminal diagnostics are obtained by polling it.
+/** @deprecated The retained direct URL now returns the same pollable job as /jobs. */
+export async function generateOutcomeLibrary(fetchImpl: FetchLike, options: OutcomeLibraryGenerateRequestOptions): Promise<StudioOutcomeLibraryGenerateJobView> {
     const response = await fetchImpl("/api/project/outcome-libraries/generate", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -987,7 +983,7 @@ export async function generateOutcomeLibrary(fetchImpl: FetchLike, options: Outc
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to generate the outcome library"));
     }
-    return (await response.json()) as StudioOutcomeLibraryGenerateResultView;
+    return ((await response.json()) as {job: StudioOutcomeLibraryGenerateJobView}).job;
 }
 
 /** Starts the cancellable Outcome Library lifecycle. Poll the returned job until it is terminal. */
@@ -1003,6 +999,13 @@ export async function getOutcomeLibraryGenerationJob(fetchImpl: FetchLike, id: s
     const response = await fetchImpl(`/api/project/outcome-libraries/generate/jobs/${encodeURIComponent(id)}`);
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to read the outcome library generation"));
     return (await response.json()) as StudioOutcomeLibraryGenerateJobView;
+}
+
+/** Lists in-flight jobs and persisted cancellation checkpoints after a Studio reload. */
+export async function listOutcomeLibraryGenerationJobs(fetchImpl: FetchLike): Promise<readonly StudioOutcomeLibraryGenerateJobView[]> {
+    const response = await fetchImpl("/api/project/outcome-libraries/generate/jobs");
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to list outcome library generations"));
+    return ((await response.json()) as {jobs: StudioOutcomeLibraryGenerateJobView[]}).jobs;
 }
 
 export async function cancelOutcomeLibraryGeneration(fetchImpl: FetchLike, id: string): Promise<StudioOutcomeLibraryGenerateJobView> {
