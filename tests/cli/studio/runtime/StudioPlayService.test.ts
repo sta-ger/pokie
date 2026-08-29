@@ -394,6 +394,30 @@ describe("StudioPlayService", () => {
         expect(result).toEqual({status: "not-found"});
     });
 
+    it("does not install a session when reset cancels a pending runtime preparation", async () => {
+        let resolveRuntime: ((value: {runtimePath: string; release(): Promise<void>}) => void) | undefined;
+        const release = jest.fn(() => Promise.resolve());
+        const service = new StudioPlayService(
+            fakeLoadVideoSlotGame(),
+            () => new Promise((resolve) => {
+                resolveRuntime = resolve;
+            }),
+            "unknown",
+            {resolve: () => Promise.resolve(undefined)},
+        );
+
+        const pending = service.newSession("/old-project");
+        await new Promise<void>((resolve) => {
+            setImmediate(() => resolve());
+        });
+        service.reset();
+        resolveRuntime?.({runtimePath: "/runtime", release});
+
+        await expect(pending).resolves.toEqual({status: "failed", error: "Runtime preparation was cancelled before a runnable game was available."});
+        expect(release).toHaveBeenCalledTimes(1);
+        await expect(service.spin("old-session")).resolves.toEqual({status: "not-found"});
+    });
+
     it("crosses the shared runtime-package-materialization boundary exactly once per newSession(), loading only the resolved runtime path", async () => {
         const rawProjectRoot = "/blueprints/raw-game.json";
         const resolvedRuntimePath = "/materialized/raw-game";

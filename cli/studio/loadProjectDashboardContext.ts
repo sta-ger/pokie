@@ -39,6 +39,8 @@ const defaultResolveOutcomeSourceProject: OutcomeSourceProjectResolving = async 
 // runnable-compatible workbooks go through the shared runtime planner below.
 export type ArtifactProjectResolving = (projectRoot: string) => Promise<PokieProject | undefined>;
 
+export type ProjectDashboardLoadOptions = {readonly signal?: AbortSignal};
+
 const defaultResolveArtifactProject: ArtifactProjectResolving = () => Promise.resolve(undefined);
 
 // Adapts loadPokieGame's throw-on-failure contract into ProjectDashboardContext's safe, typed
@@ -71,7 +73,9 @@ export async function loadProjectDashboardContext(
     describeLocation: ProjectLocationDescribing = noDescribeLocation,
     resolveOutcomeSourceProject: OutcomeSourceProjectResolving = defaultResolveOutcomeSourceProject,
     resolveArtifactProject: ArtifactProjectResolving = defaultResolveArtifactProject,
+    options: ProjectDashboardLoadOptions = {},
 ): Promise<ProjectDashboardContext> {
+    assertDashboardLoadNotCancelled(options.signal);
     const resolvedRoot = path.resolve(projectRoot);
 
     // Checked first, before ever touching resolveRuntimePackageRoot/loadGame: an "outcomeLibrary"/
@@ -81,6 +85,7 @@ export async function loadProjectDashboardContext(
     // unresolvable), so every existing tsPackage/blueprint/wasm caller falls straight through
     // to the unchanged path below.
     const outcomeSource = await resolveOutcomeSourceProject(projectRoot).catch(() => undefined);
+    assertDashboardLoadNotCancelled(options.signal);
     if (outcomeSource !== undefined) {
         const identity = await describeLocation(projectRoot).catch(() => undefined);
         return {
@@ -94,6 +99,7 @@ export async function loadProjectDashboardContext(
 
     // Keep any truly non-runnable artifact visible without claiming it loaded.
     const artifact = await resolveArtifactProject(projectRoot).catch(() => undefined);
+    assertDashboardLoadNotCancelled(options.signal);
     if (artifact !== undefined) {
         const identity = await describeLocation(projectRoot).catch(() => undefined);
         return {
@@ -105,9 +111,13 @@ export async function loadProjectDashboardContext(
     }
 
     try {
-        const resolution = await resolveRuntimePackageRoot(projectRoot);
+        const resolution = options.signal === undefined
+            ? await resolveRuntimePackageRoot(projectRoot)
+            : await resolveRuntimePackageRoot(projectRoot, {signal: options.signal});
         try {
+            assertDashboardLoadNotCancelled(options.signal);
             const game = await loadGame(resolution.runtimePath);
+            assertDashboardLoadNotCancelled(options.signal);
             const identity = await describeLocation(projectRoot).catch(() => undefined);
             return {
                 status: "loaded",
@@ -127,5 +137,11 @@ export async function loadProjectDashboardContext(
             error: error instanceof Error ? error.message : String(error),
             errorDetail: error instanceof BlueprintMaterializationError || error instanceof RuntimePreparationError ? error.details : undefined,
         };
+    }
+}
+
+function assertDashboardLoadNotCancelled(signal: AbortSignal | undefined): void {
+    if (signal?.aborted) {
+        throw new Error("Runtime preparation was cancelled before a runnable game was available.");
     }
 }

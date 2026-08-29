@@ -2,7 +2,7 @@ import {loadPokieGame} from "pokie";
 import fs from "fs";
 import path from "path";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
-import {loadProjectDashboardContext, type ProjectLocationDescribing} from "../loadProjectDashboardContext.js";
+import {loadProjectDashboardContext, type ProjectDashboardLoadOptions, type ProjectLocationDescribing} from "../loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "../ProjectDashboardContext.js";
 import {InMemoryRecentProjectsRepository} from "../InMemoryRecentProjectsRepository.js";
 import type {RecentProjectsRepository} from "../RecentProjectsRepository.js";
@@ -85,8 +85,11 @@ export class StudioHomeService {
     // the (now-removed) single-shot Open Project flow both already did — "does this path actually
     // load" is decided in exactly one place. StudioServer itself performs the actual Studio context
     // transition on a "loaded" result; this only loads and records it as a recent project.
-    public async openProject(projectRoot: string): Promise<ProjectDashboardContext> {
-        const dashboard = await loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeLocation);
+    public async openProject(projectRoot: string, options: ProjectDashboardLoadOptions = {}): Promise<ProjectDashboardContext> {
+        const dashboard = await loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeLocation, undefined, undefined, options);
+        if (options.signal?.aborted) {
+            throw new Error("Runtime preparation was cancelled before a runnable game was available.");
+        }
         if (dashboard.status === "loaded") {
             await this.rememberRecentProject(dashboard.projectRoot, dashboard.game.name);
         } else if (dashboard.status === "outcome-source" || dashboard.status === "artifact") {

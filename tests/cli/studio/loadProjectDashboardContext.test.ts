@@ -119,6 +119,34 @@ describe("loadProjectDashboardContext", () => {
         }
     });
 
+    it("releases a prepared runtime and never returns loaded when cancellation wins during dashboard loading", async () => {
+        const controller = new AbortController();
+        const release = jest.fn().mockResolvedValue(undefined);
+        let finishLoad: ((game: PokieGame) => void) | undefined;
+        const loadGame = jest.fn(() => new Promise<PokieGame>((resolve) => {
+            finishLoad = resolve;
+        }));
+        const resolver = jest.fn().mockResolvedValue({runtimePath: "/temporary-runtime", release});
+
+        const pending = loadProjectDashboardContext(
+            "/old-project",
+            loadGame,
+            resolver,
+            undefined,
+            () => Promise.resolve(undefined),
+            () => Promise.resolve(undefined),
+            {signal: controller.signal},
+        );
+        await new Promise<void>((resolve) => {
+            setImmediate(() => resolve());
+        });
+        controller.abort();
+        finishLoad?.(createFakeGame({id: "old", name: "Old", version: "1.0.0"}));
+
+        await expect(pending).resolves.toMatchObject({status: "error", projectRoot: "/old-project"});
+        expect(release).toHaveBeenCalledTimes(1);
+    });
+
     it("returns the shared PAR recognition/import diagnostic for corrupt and incomplete workbooks without loading a dashboard runtime", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-malformed-par-dashboard-"));
         const corrupt = path.join(workDir, "corrupt.xlsx");
