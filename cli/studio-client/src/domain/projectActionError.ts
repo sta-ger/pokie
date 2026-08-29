@@ -1,3 +1,5 @@
+import {isRuntimePreparationDiagnostic} from "./runtimeActionError";
+
 // Same role as domain/pathActionError.ts's describePathActionError, domain/replayActionError.ts's
 // describeReplayActionError, and domain/runtimeActionError.ts's describeRuntimeActionError, for the
 // page-owned failure surfaces that don't belong to any one of those three tabs: Simulation & Reports'
@@ -38,6 +40,7 @@ const PROJECT_ACTION_ISSUE_COPY: Record<ProjectActionErrorReason, (subject: stri
 // describe*ActionError helper in this directory follows -- a network hiccup or a rejected request is an
 // everyday outcome of driving a real local server, not a bug worth surfacing verbatim.
 export function describeProjectActionError(subject: string, message: string): string {
+    if (isRuntimePreparationDiagnostic(message)) return message;
     const {status, remediation} = PROJECT_ACTION_ISSUE_COPY[classifyProjectActionErrorReason(message)](subject);
     return `${status} ${remediation}`;
 }

@@ -53,6 +53,15 @@ const RUNTIME_ACTION_ISSUE_COPY: Record<RuntimeActionErrorReason, (subject: stri
 // persists." Never echoes the raw message back, same convention as describePathActionError -- a network
 // hiccup or a game's own failure is an everyday outcome, not a bug worth surfacing verbatim.
 export function describeRuntimeActionError(subject: string, message: string): string {
+    if (isRuntimePreparationDiagnostic(message)) return message;
     const {status, remediation} = RUNTIME_ACTION_ISSUE_COPY[classifyRuntimeActionErrorReason(message)](subject);
     return `${status} ${remediation}`;
+}
+
+// Runtime preparation diagnostics are deliberately safe, planner-owned user
+// guidance: unlike arbitrary backend errors they name the attempted path,
+// failed conversion edge, and recovery.  Every Project Dashboard runtime tab
+// must show this intact rather than replacing it with generic retry copy.
+export function isRuntimePreparationDiagnostic(message: string): boolean {
+    return (/^Cannot prepare a runnable runtime\b/i).test(message);
 }

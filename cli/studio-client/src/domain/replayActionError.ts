@@ -1,3 +1,5 @@
+import {isRuntimePreparationDiagnostic} from "./runtimeActionError";
+
 // Same role as domain/pathActionError.ts's describePathActionError and domain/runtimeActionError.ts's
 // describeRuntimeActionError, for the Replay & Debug tab's own failure surfaces (list/refresh, run/cancel,
 // and the recent-spins/recent-simulations list fetches feeding its Session Spin/Recent Simulation sources)
@@ -47,6 +49,7 @@ const REPLAY_ACTION_ISSUE_COPY: Record<ReplayActionErrorReason, (subject: string
 // describeRuntimeActionError -- a network hiccup or a since-expired replay/spin/simulation entry is an
 // everyday outcome of driving a real local server, not a bug worth surfacing verbatim.
 export function describeReplayActionError(subject: string, message: string): string {
+    if (isRuntimePreparationDiagnostic(message)) return message;
     const {status, remediation} = REPLAY_ACTION_ISSUE_COPY[classifyReplayActionErrorReason(message)](subject);
     return `${status} ${remediation}`;
 }

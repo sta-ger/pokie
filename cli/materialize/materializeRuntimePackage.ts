@@ -106,8 +106,10 @@ function compareFileNames(left: string, right: string): number {
 // The default for every call site that hasn't been wired to a real resolver -- hands packageRoot back
 // completely untouched. This is what keeps every existing caller (and every test constructing a command
 // without this dependency) behaving exactly as if this boundary didn't exist yet.
-export const passthroughRuntimePackageResolver: RuntimePackageResolving = (packageRoot) =>
-    Promise.resolve({runtimePath: packageRoot, release: noRelease});
+export const passthroughRuntimePackageResolver: RuntimePackageResolving = (packageRoot, options = {}) => {
+    assertRuntimePreparationNotCancelled(options.signal);
+    return Promise.resolve({runtimePath: packageRoot, release: noRelease});
+};
 
 export type MaterializingRuntimePackageResolverDependencies = {
     resolveProject?: ProjectResolving;
@@ -162,8 +164,12 @@ export function createMaterializingRuntimePackageResolver(
     const materializer = new RunnableArtifactMaterializer(blueprintMaterializer);
 
     return async (packageRoot: string, options: RuntimePackageResolutionOptions = {}): Promise<RuntimePackageResolution> => {
-        if (options.signal?.aborted) throw new Error("Runtime preparation was cancelled before a runnable game was available.");
+        assertRuntimePreparationNotCancelled(options.signal);
         const project: PokieProject | undefined = await resolveProject.resolve(packageRoot);
+        // Resolving a project can include filesystem inspection.  Do not let a
+        // cancellation that arrives there escape through an otherwise harmless
+        // package/passthrough return and start a Studio job afterwards.
+        assertRuntimePreparationNotCancelled(options.signal);
         if (project === undefined) {
             return {runtimePath: packageRoot, release: noRelease};
         }
@@ -173,11 +179,16 @@ export function createMaterializingRuntimePackageResolver(
         // none of those asks the user to publish a durable package first.
         const runtimePlan = new ArtifactConversionPlanner().planRuntime(project);
         if (project.type === "tsPackage") {
+            assertRuntimePreparationNotCancelled(options.signal);
             return {runtimePath: project.rootPath, release: noRelease};
         }
         if (runtimePlan.status === "planned") {
             try {
                 const materialized = await materializer.materialize(project, options);
+                if (options.signal?.aborted) {
+                    await materialized.release();
+                    assertRuntimePreparationNotCancelled(options.signal);
+                }
                 return {runtimePath: materialized.runtimePath, release: materialized.release};
             } catch (error) {
                 if (options.signal?.aborted) throw error;
@@ -212,4 +223,8 @@ export function createMaterializingRuntimePackageResolver(
                 : `${diagnostic?.message === undefined ? "" : `${diagnostic.message} `}${plannerMessage}`,
         });
     };
+}
+
+function assertRuntimePreparationNotCancelled(signal: AbortSignal | undefined): void {
+    if (signal?.aborted) throw new Error("Runtime preparation was cancelled before a runnable game was available.");
 }

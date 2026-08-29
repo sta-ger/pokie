@@ -3,6 +3,8 @@ import {
     loadPokieGame,
     OutcomeLibraryBundleWriter,
     PokieGame,
+    PokieGamePackageValidating,
+    PokieGamePackageValidationReport,
     PokieGameManifest,
     PokieProject,
     ProjectTargetResolver,
@@ -14,6 +16,7 @@ import os from "os";
 import path from "path";
 import {InMemoryStudioSimulationRepository} from "../../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {BlueprintMaterializationError} from "../../../../cli/materialize/BlueprintMaterializationError.js";
+import {BlueprintProjectMaterializer} from "../../../../cli/materialize/BlueprintProjectMaterializer.js";
 import {createMaterializingRuntimePackageResolver} from "../../../../cli/materialize/materializeRuntimePackage.js";
 import {StudioSimulationJobView} from "../../../../cli/studio/simulation/StudioSimulationJobView.js";
 import {StudioSimulationService} from "../../../../cli/studio/simulation/StudioSimulationService.js";
@@ -101,6 +104,14 @@ async function waitForTerminal(service: StudioSimulationService, id: string): Pr
         await flushMacrotask();
     }
     throw new Error("Timed out waiting for the simulation to reach a terminal state.");
+}
+
+async function waitFor(condition: () => boolean, message: string): Promise<void> {
+    for (let i = 0; i < 2000; i++) {
+        if (condition()) return;
+        await flushMacrotask();
+    }
+    throw new Error(message);
 }
 
 // A controllable substitute for the real setImmediate-based yieldToEventLoop: each call queues its
@@ -196,6 +207,63 @@ describe("StudioSimulationService", () => {
         expect(loadGame).toHaveBeenCalledWith(runtimePath);
         expect(loadGame).not.toHaveBeenCalledWith(blueprintPath);
         expect(release).toHaveBeenCalledTimes(1);
+    });
+
+    it("cancels the real PAR resolver preparation without loading a game, publishing a report, or retaining either stage", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-sim-par-"));
+        const cacheRoot = path.join(workDir, "cache");
+        const workbookPath = path.join(workDir, "slot.par.xlsx");
+        fs.copyFileSync(path.join(process.cwd(), "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+        const runCommand = jest.fn((_command: string, _args: string[], _cwd: string, options: {signal?: AbortSignal} = {}) =>
+            new Promise<never>((_resolve, reject) => {
+                if (options.signal?.aborted) {
+                    reject(new Error("cancelled"));
+                    return;
+                }
+                options.signal?.addEventListener("abort", () => reject(new Error("cancelled")), {once: true});
+            }),
+        );
+        const packageValidator: PokieGamePackageValidating = {
+            validate: (packageRoot: string): Promise<PokieGamePackageValidationReport> => Promise.resolve({
+                packageRoot,
+                valid: true,
+                game: manifest,
+                errors: [],
+                warnings: [],
+                suggestions: [],
+            }),
+        };
+        const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runCommand, packageValidator, cacheRoot);
+        const materialize = jest.spyOn(materializer, "materialize");
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {materializer});
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const service = new StudioSimulationService(
+            new InMemoryStudioSimulationRepository(), loadGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, resolveRuntimePackageRoot,
+        );
+
+        try {
+            const started = service.start(workbookPath, {rounds: 5});
+            if (started.status !== "created") throw new Error("expected job to be created");
+            await waitFor(() => runCommand.mock.calls.length === 1, "PAR runtime dependency stage did not start");
+            const temporaryBlueprint = materialize.mock.calls[0][0].rootPath;
+            const parStage = path.dirname(temporaryBlueprint);
+            const runtimeStage = runCommand.mock.calls[0][2] as string;
+            expect(fs.existsSync(parStage)).toBe(true);
+            expect(fs.existsSync(runtimeStage)).toBe(true);
+            expect(fs.readdirSync(cacheRoot).some((entry) => entry.endsWith(".lock"))).toBe(true);
+
+            service.cancel(started.job.id);
+            const job = await waitForTerminal(service, started.job.id);
+
+            expect(job.status).toBe("cancelled");
+            expect(job.report).toBeUndefined();
+            expect(loadGame).not.toHaveBeenCalled();
+            expect(fs.existsSync(parStage)).toBe(false);
+            expect(fs.existsSync(runtimeStage)).toBe(false);
+            expect(fs.readdirSync(cacheRoot).some((entry) => entry.endsWith(".lock") || entry.includes(".staging-"))).toBe(false);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("reports a retryable Blueprint materialization failure without exposing npm output", async () => {

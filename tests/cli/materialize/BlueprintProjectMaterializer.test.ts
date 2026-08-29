@@ -1109,6 +1109,51 @@ describe("createMaterializingRuntimePackageResolver", () => {
         expect(materializer.calls).toEqual([]);
     });
 
+    it.each<[string, PokieProject | undefined]>([
+        ["an unresolved passthrough", undefined],
+        ["a resolved package passthrough", {type: "tsPackage", rootPath: "/some/existing/package", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage, provenance: "test fixture"} as PokieProject],
+    ])("does not return %s when cancellation arrives during project resolution", async (_label, project) => {
+        const controller = new AbortController();
+        const materializer = rejectingMaterializer("must not be called after cancellation");
+        const resolveProject: ProjectResolving = {
+            resolve: () => {
+                controller.abort();
+                return Promise.resolve(project);
+            },
+        };
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {resolveProject, materializer});
+        const loadGame = jest.fn();
+
+        await expect(resolveRuntimePackageRoot("/project", {signal: controller.signal}).then((resolution) => loadGame(resolution.runtimePath)))
+            .rejects.toThrow(/cancelled/i);
+
+        expect(materializer.calls).toEqual([]);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("releases a materialized runtime instead of returning it when cancellation wins its final boundary", async () => {
+        const controller = new AbortController();
+        const release = jest.fn(() => Promise.resolve());
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const materializer: ProjectMaterializing = {
+            materialize: () => {
+                controller.abort();
+                return Promise.resolve({runtimePath: "/runtime-cache/slot", ownsRuntimePath: false, release});
+            },
+        };
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {
+            resolveProject: stubProjectResolver(blueprintProjectOf(blueprintPath)),
+            materializer,
+        });
+        const loadGame = jest.fn();
+
+        await expect(resolveRuntimePackageRoot(blueprintPath, {signal: controller.signal}).then((resolution) => loadGame(resolution.runtimePath)))
+            .rejects.toThrow(/cancelled/i);
+
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
     it("surfaces a materialization failure as its own BlueprintMaterializationError, with its failing phase intact, and never yields a runtime path the operation could load", async () => {
         const failingRunner = createRecordingRunner("network unreachable");
         const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, failingRunner, createStubPackageValidator(validReport), cacheRoot);

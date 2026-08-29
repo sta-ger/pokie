@@ -58,4 +58,10 @@ describe("describeRuntimeActionError", () => {
             "Find free games didn't find a matching round. Check the game feature configuration, then start a new session.",
         );
     });
+
+    it("preserves the safe planner runtime diagnostic and its recovery", () => {
+        const diagnostic = "Cannot prepare a runnable runtime from \\\"/games/slot.par.xlsx\\\". Attempted path: parWorkbook -> tsPackage; planned/reusable stages: import blueprint; failed conversion edge: blueprint -> tsPackage. Fix the workbook and retry.";
+
+        expect(describeRuntimeActionError("This session", diagnostic)).toBe(diagnostic);
+    });
 });
