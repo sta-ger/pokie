@@ -166,7 +166,7 @@ export class StudioOutcomeLibraryGenerateService {
             // This is deliberately the same prepared request generation will
             // execute. It owns loaded configuration identity and the resolved
             // destination rather than leaving either as estimate-only DTO data.
-            preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(game, request, resolvedOutDir.resolvedPath));
+            preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(game, request, resolvedOutDir.resolvedPath, projectRoot));
         } catch (error) {
             const unresolvedPlan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
             if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-configuration-conflict") {
@@ -281,7 +281,7 @@ export class StudioOutcomeLibraryGenerateService {
             if (snapshot !== undefined && (snapshot.requestKey !== generationRequestKey(request) || snapshot.destination !== resolvedOutDir.resolvedPath || snapshot.gameId !== game.getManifest().id || snapshot.gameVersion !== game.getManifest().version || snapshot.configHash !== loadedConfigHash)) {
                 return {status: "conflict", error: "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
             }
-            domainRequest = this.createDomainRequest(game, request, resolvedOutDir.resolvedPath);
+            domainRequest = this.createDomainRequest(game, request, resolvedOutDir.resolvedPath, projectRoot);
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
@@ -665,6 +665,7 @@ export class StudioOutcomeLibraryGenerateService {
         game: PokieGame,
         request: ValidatedOutcomeLibraryGenerateTransportRequest | ValidatedOutcomeLibraryGenerateRequest,
         resolvedDestination: string,
+        projectRoot: string,
     ): OutcomeLibraryGenerationRequest {
         const manifest = game.getManifest();
         const sample = resolveSample(request);
@@ -679,6 +680,12 @@ export class StudioOutcomeLibraryGenerateService {
             ...(request.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: request.maxOutcomeSpaceSize}),
             ...(sample === undefined ? {} : {sample}),
             outputDestination: resolvedDestination,
+            // Studio's bundle is an explicit project sidecar and can preserve
+            // sibling modes, so availability/reuse remains the planner's
+            // domain.  The exceptional inside-project publication policy is
+            // nevertheless bound by the same prepared domain request as CLI
+            // and managed generation.
+            outputDestinationSafety: {sourcePath: projectRoot, kind: "directory", allowWithinSource: true},
             ...("resumeFrom" in request && request.resumeFrom !== undefined ? {resumeFrom: request.resumeFrom} : {}),
             ...("signal" in request && request.signal !== undefined ? {signal: request.signal} : {}),
             ...("onProgress" in request && request.onProgress !== undefined ? {onProgress: request.onProgress} : {}),

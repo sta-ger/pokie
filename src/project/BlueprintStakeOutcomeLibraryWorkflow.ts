@@ -32,8 +32,6 @@ import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/Outcom
 import {generateWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
 import {MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY, prepareOutcomeLibraryGeneration, type OutcomeLibraryGenerationPreflight} from "../weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
 import {estimateExactOutcomeSpaceSize} from "../weightedoutcome/generate/estimateExactOutcomeSpaceSize.js";
-import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
-import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing, type OutcomeProjectCompatibility} from "./ManagedOutcomeProjectService.js";
 import {
@@ -157,15 +155,9 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     ): Promise<{readonly project: PokieProject; readonly reused: false}> {
         assertArtifactBuildNotCancelled(options);
         const {game, configHash, generation, compatibility} = prepared;
-        assertArtifactDestinationAvailable(bundleDir, "directory");
-        // Only ArtifactBuilderRegistry may authorize the package's canonical
-        // managed Outcome sidecar, and only after it has checked the prepared
-        // plan's destination policy.  Direct workflow callers retain the
-        // normal no-source/no-descendant boundary.
-        if (!allowPlannedSourceSidecar) assertArtifactDestinationIsSafe(source.rootPath, bundleDir);
         // Preparation owns the loaded configuration assertion, selected
-        // strategy, and exact publication identity.  The managed planner only
-        // adapts that resolved preflight to its generic artifact view.
+        // strategy, publication identity and destination safety.  The managed
+        // planner only translates this resolved request to its generic view.
         const preparedRequest = prepareOutcomeLibraryGeneration({
             libraryId: game.getManifest().id,
             game,
@@ -176,6 +168,15 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
             ...(generation.sampled === undefined ? {} : {sample: generation.sampled}),
             outputDestination: bundleDir,
+            outputDestinationSafety: {
+                sourcePath: source.rootPath,
+                kind: "directory",
+                requireAvailable: true,
+                // Only ArtifactBuilderRegistry may authorize the package's
+                // canonical managed Outcome sidecar.  That exception is
+                // immutable request data, not a writer-local bypass.
+                ...(allowPlannedSourceSidecar ? {allowWithinSource: true} : {}),
+            },
         });
         const boundDestination = preparedRequest.preflight.destination?.path;
         if (boundDestination === undefined) throw new Error("Managed Outcome Library generation requires a bound output destination.");

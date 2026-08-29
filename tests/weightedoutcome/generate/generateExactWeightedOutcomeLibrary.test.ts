@@ -132,6 +132,39 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         expect(prepared.preflight.destination).toEqual({path: "/tmp/outcome-library"});
     });
 
+    it("owns resolved publication safety in the prepared request, including an explicit sidecar policy", () => {
+        const source = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-generation-source-"));
+        const sibling = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-generation-destination-"));
+        const occupied = path.join(sibling, "occupied.json");
+        fs.writeFileSync(occupied, "sentinel");
+        try {
+            const request = {libraryId: "destination-safety", game: buildFixtureGame(), pokieVersion: "test"};
+            expect(() => prepareOutcomeLibraryGeneration({
+                ...request,
+                outputDestination: path.join(source, "generated.json"),
+                outputDestinationSafety: {sourcePath: source, kind: "file", requireAvailable: true},
+            })).toThrow(/source itself or lies inside source/i);
+            expect(() => prepareOutcomeLibraryGeneration({
+                ...request,
+                outputDestination: occupied,
+                outputDestinationSafety: {sourcePath: source, kind: "file", requireAvailable: true},
+            })).toThrow(/already exists and is not available/i);
+
+            const prepared = prepareOutcomeLibraryGeneration({
+                ...request,
+                outputDestination: path.join(source, "managed-sidecar"),
+                outputDestinationSafety: {sourcePath: source, kind: "directory", allowWithinSource: true},
+            });
+            expect(prepared.preflight.destination).toEqual({
+                path: path.join(source, "managed-sidecar"),
+                safety: {sourcePath: source, kind: "directory", allowWithinSource: true},
+            });
+        } finally {
+            fs.rmSync(source, {recursive: true, force: true});
+            fs.rmSync(sibling, {recursive: true, force: true});
+        }
+    });
+
     it("binds CLI-style supplied estimates through the same loaded configuration and destination preparation", () => {
         const game: PokieGame = {...buildFixtureGame(), getConfigHash: () => "sha256:loaded-config"};
         const prepared = prepareOutcomeLibraryGenerationFromEstimate({

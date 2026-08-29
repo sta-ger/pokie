@@ -4,7 +4,6 @@ import path from "path";
 import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
-    assertPreparedArtifactDestinationAvailable,
     computeArtifactInputBindingHash,
     ExactEnumerationCheckpoint,
     GenerateExactWeightedOutcomeLibraryResult,
@@ -502,7 +501,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             // construct exactly the request execution would receive so loaded
             // configuration assertions and the resolved publication identity
             // fail or bind consistently before either path reports success.
-            return this.executeEstimate(game, options, this.createGenerationRequest(game, options, sampling));
+            return this.executeEstimate(game, options, this.createGenerationRequest(game, packageRoot, options, sampling));
         }
 
         const controller = new AbortController();
@@ -511,7 +510,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
         try {
             const game = await this.loadGame(packageRoot);
-            const request = this.createGenerationRequest(game, options, sampling, controller.signal);
+            const request = this.createGenerationRequest(game, packageRoot, options, sampling, controller.signal);
             // The public request preparation is the one authority for source
             // provenance, destination identity, and conditional-bounded
             // strategy. Raw JSON publication consumes this resolved request;
@@ -544,6 +543,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 return 130;
             }
             if (error instanceof WeightedOutcomeLibraryGenerationError) {
+                // Destination safety is a synchronous invocation precondition
+                // (the same public behavior raw --out historically exposed),
+                // while other generation diagnostics are command results.
+                if (error.getCode() === "weighted-outcome-library-generation-destination-conflict") throw error;
                 console.error(`Could not generate an outcome library from "${packageRoot}" (${error.getCode()}): ${error.message}`);
                 return 1;
             }
@@ -599,7 +602,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     // request's provenance merely because its destination is
                     // still the same bound publication identity.
                     const reboundRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game),
-                        this.createGenerationRequest(game, options, sampling, signal, resumeFrom),
+                        this.createGenerationRequest(game, packageRoot, options, sampling, signal, resumeFrom),
                     );
                     if (
                         reboundRequest.configHash !== resolvedRequest.configHash ||
@@ -617,10 +620,11 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     return this.generate(reboundRequest);
                 },
                 canPublish: () => rawOutput !== undefined,
-                assertDestinationAvailable: () => {
-                    if (rawOutput === undefined) return;
-                    assertPreparedArtifactDestinationAvailable(packageRoot, rawOutput, "file");
-                },
+                // Re-preparation in read() above rechecks the immutable domain
+                // destination contract immediately before publication.  The
+                // CLI only translates --out syntax; it has no second safety
+                // policy of its own.
+                assertDestinationAvailable: () => undefined,
                 publish: (result: GenerateExactWeightedOutcomeLibraryResult) => {
                     // The operation has already established a fresh destination.
                     // Keep the legacy injectable writer so test and embedding
@@ -722,6 +726,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     /** The CLI grammar is a compatibility adapter; the generator only receives the public domain request. */
     private createGenerationRequest(
         game: PokieGame,
+        packageRoot: string,
         options: GenerateCliOptions,
         sampling: {sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}},
         signal?: AbortSignal,
@@ -744,7 +749,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             ...(options.stake === undefined ? {} : {stake: options.stake}),
             ...(options.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: options.maxOutcomeSpaceSize}),
             ...(sample === undefined ? {} : {sample}),
-            ...(options.out === undefined ? {} : {outputDestination: path.resolve(options.out)}),
+            ...(options.out === undefined ? {} : {
+                outputDestination: options.out,
+                outputDestinationSafety: {sourcePath: packageRoot, kind: "file", requireAvailable: true},
+            }),
             ...(resumeFrom === undefined ? {} : {resumeFrom}),
             ...(signal === undefined ? {} : {signal}),
             ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),

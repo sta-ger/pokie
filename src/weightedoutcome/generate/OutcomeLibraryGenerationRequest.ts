@@ -1,6 +1,8 @@
 import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {ValidationRule} from "../../validation/ValidationRule.js";
+import fs from "fs";
+import path from "path";
 import {estimateExactOutcomeSpaceSize} from "./estimateExactOutcomeSpaceSize.js";
 import type {OutcomeSpaceEstimate} from "./OutcomeSpaceEstimate.js";
 import type {ExactEnumerationCheckpoint} from "./WeightedOutcomeLibraryGenerationCancelledError.js";
@@ -41,6 +43,23 @@ export type OutcomeLibraryGenerationMode = "default" | "exact" | "sampled" | "bo
  */
 export type OutcomeLibraryGenerationDestination = {
     readonly path: string;
+    readonly safety?: OutcomeLibraryGenerationDestinationSafety;
+};
+
+/**
+ * Filesystem-independent producers still need one vocabulary for publication
+ * safety.  Adapters translate their path syntax and declare the one supported
+ * publication shape; preparation then canonicalises and verifies it once.
+ *
+ * `allowWithinSource` is deliberately explicit for a managed/Studio sidecar.
+ * It is not an adapter bypass: it records the exceptional publication policy
+ * in the immutable request that is bound to preflight and execution.
+ */
+export type OutcomeLibraryGenerationDestinationSafety = {
+    readonly sourcePath?: string;
+    readonly kind?: "file" | "directory";
+    readonly requireAvailable?: boolean;
+    readonly allowWithinSource?: boolean;
 };
 
 /**
@@ -63,6 +82,8 @@ export type OutcomeLibraryGenerationRequest = {
     readonly maxExactOutcomeSpaceSize?: bigint;
     readonly sample?: OutcomeLibraryGenerationSample;
     readonly outputDestination?: string;
+    /** Publication policy consumed by the domain request, never by a writer-local default. */
+    readonly outputDestinationSafety?: OutcomeLibraryGenerationDestinationSafety;
     readonly resumeFrom?: ExactEnumerationCheckpoint;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
@@ -95,6 +116,7 @@ export type ResolvedOutcomeLibraryGenerationRequest = OutcomeLibraryGenerationRe
     readonly generation: OutcomeLibraryGenerationMode;
     readonly maxExactOutcomeSpaceSize: bigint;
     readonly outputDestination?: string;
+    readonly outputDestinationSafety?: OutcomeLibraryGenerationDestinationSafety;
     readonly preflight: OutcomeLibraryGenerationPreflight;
 };
 
@@ -146,13 +168,61 @@ function validateRequest(request: OutcomeLibraryGenerationRequest): void {
     }
 }
 
-function resolveOutputDestination(outputDestination: string | undefined): OutcomeLibraryGenerationDestination | undefined {
+function resolveThroughExistingAncestor(targetPath: string): string {
+    const suffix: string[] = [];
+    let current = path.resolve(targetPath);
+    while (!fs.existsSync(current)) {
+        const parent = path.dirname(current);
+        if (parent === current) break;
+        suffix.unshift(path.basename(current));
+        current = parent;
+    }
+    return path.join(fs.existsSync(current) ? fs.realpathSync(current) : current, ...suffix);
+}
+
+function isSameOrDescendant(candidate: string, root: string): boolean {
+    const relative = path.relative(root, candidate);
+    return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
+}
+
+/** Resolve and verify the one publication identity that execution is allowed to use. */
+function resolveOutputDestination(
+    outputDestination: string | undefined,
+    safety: OutcomeLibraryGenerationDestinationSafety | undefined,
+): OutcomeLibraryGenerationDestination | undefined {
     if (outputDestination === undefined) return undefined;
-    // Deliberately do not apply a filesystem-specific resolver here. CLI,
-    // Studio and managed callers are responsible for resolving their own
-    // project-relative syntax before this domain boundary; from here on all
-    // producers share this one immutable publication identity.
-    return {path: outputDestination.trim()};
+    const resolvedPath = path.resolve(outputDestination.trim());
+    const resolvedSafety: OutcomeLibraryGenerationDestinationSafety = {
+        ...(safety?.sourcePath === undefined ? {} : {sourcePath: path.resolve(safety.sourcePath)}),
+        ...(safety?.kind === undefined ? {} : {kind: safety.kind}),
+        ...(safety?.requireAvailable === undefined ? {} : {requireAvailable: safety.requireAvailable}),
+        ...(safety?.allowWithinSource === undefined ? {} : {allowWithinSource: safety.allowWithinSource}),
+    };
+    if (resolvedSafety.sourcePath !== undefined && !resolvedSafety.allowWithinSource) {
+        const source = resolveThroughExistingAncestor(resolvedSafety.sourcePath);
+        const destination = resolveThroughExistingAncestor(resolvedPath);
+        const sourceIsDirectory = fs.existsSync(resolvedSafety.sourcePath) && fs.statSync(resolvedSafety.sourcePath).isDirectory();
+        if (source === destination || (sourceIsDirectory && isSameOrDescendant(destination, source))) {
+            throw new WeightedOutcomeLibraryGenerationError(
+                "weighted-outcome-library-generation-destination-conflict",
+                `Outcome Library destination "${resolvedPath}" is the source itself or lies inside source "${resolvedSafety.sourcePath}". Choose a separate output path.`,
+            );
+        }
+    }
+    if (resolvedSafety.requireAvailable && fs.existsSync(resolvedPath)) {
+        const kind = resolvedSafety.kind ?? "directory";
+        const available = kind === "directory" && fs.statSync(resolvedPath).isDirectory() && fs.readdirSync(resolvedPath).length === 0;
+        if (!available) {
+            throw new WeightedOutcomeLibraryGenerationError(
+                "weighted-outcome-library-generation-destination-conflict",
+                `Outcome Library destination "${resolvedPath}" already exists and is not available for a new ${kind} publication. Choose a different output path or remove it first.`,
+            );
+        }
+    }
+    return {
+        path: resolvedPath,
+        ...(Object.keys(resolvedSafety).length === 0 ? {} : {safety: resolvedSafety}),
+    };
 }
 
 function validateGeneration(requestedGeneration: OutcomeLibraryGenerationMode | undefined, sample: OutcomeLibraryGenerationSample | undefined): void {
@@ -218,11 +288,14 @@ export function prepareOutcomeLibraryGenerationFromEstimate(
     request: OutcomeLibraryGenerationRequest,
 ): ResolvedOutcomeLibraryGenerationRequest {
     const identifiedRequest = resolveOutcomeLibraryGenerationIdentity(request);
-    const destination = resolveOutputDestination(identifiedRequest.outputDestination);
+    const destination = resolveOutputDestination(identifiedRequest.outputDestination, identifiedRequest.outputDestinationSafety);
     const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, identifiedRequest);
     return {
         ...identifiedRequest,
-        ...(destination === undefined ? {} : {outputDestination: destination.path}),
+        ...(destination === undefined ? {} : {
+            outputDestination: destination.path,
+            ...(destination.safety === undefined ? {} : {outputDestinationSafety: destination.safety}),
+        }),
         generation: identifiedRequest.generation ?? "default",
         maxExactOutcomeSpaceSize: identifiedRequest.maxExactOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
         preflight: {...preflight, ...(destination === undefined ? {} : {destination})},
