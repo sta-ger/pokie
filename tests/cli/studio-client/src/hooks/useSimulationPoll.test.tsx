@@ -77,6 +77,97 @@ describe("useSimulationPoll - StrictMode + cleanup", () => {
 });
 
 describe("useSimulationPoll - resetForProjectSwitch", () => {
+    it("discards a start response that resolves after a project switch", async () => {
+        let releaseStart: (() => void) | undefined;
+        let pollCalls = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations" && init?.method === "POST") {
+                return new Promise((resolve) => {
+                    releaseStart = () => resolve({ok: true, status: 200, json: () => Promise.resolve(job("queued", 0))});
+                });
+            }
+            if (url === "/api/project/simulations/job-1") {
+                pollCalls += 1;
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.run(10, undefined, 1));
+        act(() => result.current.resetForProjectSwitch());
+        act(() => releaseStart?.());
+
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 20);
+        });
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.error).toBeUndefined();
+        expect(pollCalls).toBe(0);
+    });
+
+    it("discards a cancel response that resolves after a project switch", async () => {
+        let releaseCancel: (() => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations" && init?.method === "POST") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("queued", 0))});
+            }
+            if (url === "/api/project/simulations/job-1" && init?.method === "DELETE") {
+                return new Promise((resolve) => {
+                    releaseCancel = () => resolve({ok: true, status: 200, json: () => Promise.resolve(job("cancelled", 0))});
+                });
+            }
+            if (url === "/api/project/simulations/job-1") {
+                return new Promise(() => {
+                    // Keep the old project's poll pending through the reset.
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.run(10, undefined, 1));
+        await waitFor(() => expect(result.current.job?.status).toBe("queued"));
+        act(() => result.current.cancel());
+        act(() => result.current.resetForProjectSwitch());
+        act(() => releaseCancel?.());
+
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 20);
+        });
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.error).toBeUndefined();
+    });
+
+    it("discards a poll failure that arrives after a project switch", async () => {
+        let rejectPoll: ((reason?: unknown) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations" && init?.method === "POST") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("queued", 0))});
+            }
+            if (url === "/api/project/simulations/job-1") {
+                return new Promise((_, reject) => {
+                    rejectPoll = reject;
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.run(10, undefined, 1));
+        await waitFor(() => expect(rejectPoll).toBeDefined());
+        act(() => result.current.resetForProjectSwitch());
+        act(() => rejectPoll?.(new Error("old project poll failed")));
+
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 20);
+        });
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.error).toBeUndefined();
+    });
+
     it("clears job/progress/error so a genuinely different project never shows a trace of the previous one's simulation", async () => {
         const fetchImpl: FetchLike = (url, init) => {
             if (url === "/api/project/simulations" && init?.method === "POST") {
