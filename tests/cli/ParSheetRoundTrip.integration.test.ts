@@ -70,6 +70,28 @@ describe("CLI workflow (integration): pokie par export -> pokie par import round
         expect(roundTripped).toEqual(originalBlueprint);
     });
 
+    it("uses the shared PAR publication lifecycle for nested par and generic import destinations", async () => {
+        const parDestination = path.join(workDir, "missing", "par", "imported.blueprint.json");
+        const genericDestination = path.join(workDir, "missing", "generic", "imported.blueprint.json");
+
+        expect(await new ParCommand("1.3.0").run(["import", shippedParSheetPath, "--out", parDestination])).toBe(0);
+        expect(await new ImportCommand("1.3.0").run([shippedParSheetPath, "--out", genericDestination])).toBe(0);
+
+        for (const destination of [parDestination, genericDestination]) {
+            expect(JSON.parse(fs.readFileSync(destination, "utf-8"))).toEqual(originalBlueprint);
+            expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(true);
+        }
+    });
+
+    it("uses the same nested-path PAR Blueprint publication through pokie build", async () => {
+        const destination = path.join(workDir, "missing", "build", "imported.blueprint.json");
+        const command = new BuildCommand("1.3.0", undefined, undefined, new ProjectTargetResolver(), new ArtifactBuilderRegistry("1.3.0"));
+
+        expect(await command.run([shippedParSheetPath, "--target", "blueprint", "--out", destination])).toBe(0);
+        expect(JSON.parse(fs.readFileSync(destination, "utf-8"))).toEqual(originalBlueprint);
+        expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(true);
+    });
+
     it("round-trips the canonical Blueprint through the generic workbook aliases, including an uppercase XLSX suffix", async () => {
         const genericWorkbookPath = path.join(workDir, "starter.PAR.XLSX");
         const genericBlueprintPath = path.join(workDir, "starter.generic-import.blueprint.json");

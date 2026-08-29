@@ -172,6 +172,18 @@ describe("StudioArtifactBuildService", () => {
             expect(result.outputPath).toBe(explicitOut);
         });
 
+        it("builds PAR Blueprints into an explicit nested destination whose parent is absent", async () => {
+            const workbookPath = path.join(workDir, "source.xlsx");
+            const destination = path.join(workDir, "missing", "blueprints", "imported.blueprint.json");
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+
+            const result = await service.build(workbookPath, "blueprint", destination);
+
+            expect(result).toMatchObject({status: "ok", outputPath: destination});
+            expect(fs.existsSync(destination)).toBe(true);
+            expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(true);
+        });
+
         it("rolls back PAR terminal, durable evidence, generated prerequisite, and registrations when Studio registration fails", async () => {
             const outputPath = path.join(workDir, "package");
             const importedBlueprintPath = path.join(outputPath, ".pokie", "par-import", "imported.blueprint.json");

@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
+import {BlueprintArtifactBuilder} from "../../src/project/BlueprintArtifactBuilder.js";
 import {computeArtifactInputBindingHash, type ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
 import {ManagedOutcomeProjectService} from "../../src/project/ManagedOutcomeProjectService.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
@@ -147,6 +148,49 @@ describe("ArtifactBuilderRegistry", () => {
             expect(builder.calls).toBe(0);
             expect(fs.existsSync(path.join(directory, "package"))).toBe(false);
             fs.rmSync(directory, {recursive: true, force: true});
+        });
+
+        it("creates a missing explicit parent before publishing PAR Blueprints and staging downstream plans", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-parent-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const blueprintDestination = path.join(directory, "nested", "blueprints", "imported.blueprint.json");
+            const packageDestination = path.join(directory, "nested", "packages", "game");
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            const packageBuilder: ArtifactBuilder = {
+                target: "tsPackage",
+                destinationKind: "directory",
+                async build(_source, destinationPath) {
+                    await fs.promises.mkdir(destinationPath, {recursive: true});
+                    await fs.promises.writeFile(path.join(destinationPath, "package.json"), "{}", "utf8");
+                    return {outputPath: destinationPath};
+                },
+            };
+            const downstreamRegistry = new ArtifactBuilderRegistry("1.3.0", new Map([
+                ["blueprint", new BlueprintArtifactBuilder()],
+                ["tsPackage", packageBuilder],
+            ]));
+
+            try {
+                fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+
+                const blueprint = await registry.build("blueprint", source, blueprintDestination);
+                expect(blueprint.outputPath).toBe(blueprintDestination);
+                expect(fs.existsSync(blueprintDestination)).toBe(true);
+                expect(fs.existsSync(`${blueprintDestination}.conversion-evidence.json`)).toBe(true);
+
+                const packageResult = await downstreamRegistry.build("tsPackage", source, packageDestination);
+                expect(packageResult.outputPath).toBe(packageDestination);
+                expect(fs.existsSync(path.join(packageDestination, "package.json"))).toBe(true);
+                expect(fs.existsSync(path.join(packageDestination, ".pokie", "par-import", "conversion-evidence.json"))).toBe(true);
+                expect(fs.readdirSync(path.dirname(packageDestination))).not.toEqual(expect.arrayContaining([expect.stringMatching(/^\.pokie-par-import-/)]));
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
         });
 
         it.each(["outcomeLibrary", "stakeAdapter"] as const)("removes the managed and Studio registrations when PAR-to-%s promotion is cancelled", async (target) => {

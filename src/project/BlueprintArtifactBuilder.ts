@@ -5,7 +5,7 @@ import {computeBlueprintHash} from "../parsheet/computeBlueprintHash.js";
 import type {ParSheetImporting} from "../parsheet/ParSheetImporting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
-import {assertArtifactBuildNotCancelled, captureArtifactDestinationState, cleanupIncompleteArtifactOutput, reportArtifactBuildProgress, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import {assertArtifactBuildNotCancelled, captureArtifactDestinationState, cleanupIncompleteArtifactOutput, ensureArtifactDestinationParent, reportArtifactBuildProgress, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
@@ -32,6 +32,7 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
         assertArtifactBuildNotCancelled(options);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+        await ensureArtifactDestinationParent(destinationPath);
         const state = captureArtifactDestinationState(destinationPath, this.destinationKind);
         const evidencePath = `${destinationPath}.conversion-evidence.json`;
         // Evidence is part of the Blueprint publication contract, not a

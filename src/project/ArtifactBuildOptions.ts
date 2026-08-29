@@ -61,6 +61,17 @@ export function captureArtifactDestinationState(destinationPath: string, kind: "
     return {existed: fs.existsSync(destinationPath), kind};
 }
 
+// A file artifact may have a nested explicit destination whose parent has not
+// been created yet. Builders must create that parent before allocating their
+// adjacent staging files; doing it here keeps the direct-builder and
+// registry-owned PAR publication lifecycles on the same safe contract. The
+// parent is deliberately not removed during rollback: it may have existed
+// before this operation (including through a concurrent creator), while the
+// publication cleanup below is limited to operation-owned artifacts.
+export async function ensureArtifactDestinationParent(destinationPath: string): Promise<void> {
+    await fs.promises.mkdir(path.dirname(destinationPath), {recursive: true});
+}
+
 export async function cleanupIncompleteArtifactOutput(destinationPath: string, state: ArtifactDestinationState): Promise<void> {
     try {
         if (!state.existed) {

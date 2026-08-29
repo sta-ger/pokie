@@ -32,9 +32,10 @@ const USAGE = "Usage: pokie build <project> --target <artifact> [--exact | --sam
 const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
 const PROJECT_HINT =
     "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
-    "project (see docs/cli.md#pokie-build-project). Supported workflows: PAR workbook -> Blueprint, tsPackage, " +
-    "outcomeLibrary, stakeAdapter, or parWorkbook; tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> " +
-    "outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; parWorkbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or parWorkbook.";
+    "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, outcomeLibrary, " +
+    "stakeAdapter, or PAR workbook; PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or PAR workbook; " +
+    "tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; " +
+    "parWorkbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or parWorkbook.";
 // parWorkbook is the one target whose artifact is a single file rather than a directory (see
 // assertArtifactDestinationAvailable's own "file"/"directory" split) -- its default destination needs a real
 // file extension, every other target's default is just a bare directory name.

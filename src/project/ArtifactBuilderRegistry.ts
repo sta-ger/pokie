@@ -32,7 +32,7 @@ import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
-import {assertArtifactBuildNotCancelled, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import {assertArtifactBuildNotCancelled, ensureArtifactDestinationParent, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
 import {ArtifactConversionPlanner, computeArtifactInputBindingHash, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type ArtifactConfigurationProvenance, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions, type ArtifactIdentity} from "./ArtifactConversionPlanner.js";
 import {
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
@@ -442,6 +442,11 @@ export class ArtifactBuilderRegistry {
         const target = plan.target.kind as ArtifactTargetType;
         const destination = this.checkDestination(target, destinationPath, source.rootPath);
         if (!destination.available) throw new ArtifactBuildConflictError(destination.message ?? "The destination is unavailable.");
+        // PAR's imported Blueprint is staged alongside the requested output,
+        // before any downstream builder gets a chance to create a directory.
+        // Create the explicit output parent at this shared boundary so every
+        // registry-backed PAR entry point has identical nested-path behavior.
+        await ensureArtifactDestinationParent(destinationPath);
         if (target === "blueprint" || target === "parWorkbook") {
             const builder = this.builders.get(target);
             if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
