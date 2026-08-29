@@ -50,24 +50,47 @@ function commandJsonReport(): Record<string, unknown> {
 
 function expectEquivalentPreflight(
     cli: Record<string, unknown>,
-    studio: {readonly totalOutcomeSpaceSize: number | string; readonly maxOutcomeSpaceSize: number | string; readonly strategy: string; readonly expectedRawWork: number | string; readonly requiresBounded: boolean; readonly sampleSize?: number | string; readonly seed?: string},
+    studio: {
+        readonly game: unknown;
+        readonly reelsNumber: number;
+        readonly reelsSymbolsNumber: number;
+        readonly reelSizes: readonly number[];
+        readonly totalOutcomeSpaceSize: number | string;
+        readonly maxOutcomeSpaceSize: number | string;
+        readonly strategy: string;
+        readonly expectedRawWork: number | string;
+        readonly warnings: readonly string[];
+        readonly requiresBounded: boolean;
+        readonly sampleSize?: number | string;
+        readonly seed?: string;
+    },
 ): void {
-    // This deliberately compares the execution-relevant fields rather than a
-    // presentation string. Both adapters preserve bigint safety with the same
+    // This is the complete common preflight contract, rather than a display
+    // subset. Both adapters preserve bigint safety with the same
     // number-or-decimal-string transport convention before publishing.
     expect({
+        game: cli.game,
+        reelsNumber: cli.reelsNumber,
+        reelsSymbolsNumber: cli.reelsSymbolsNumber,
+        reelSizes: cli.reelSizes,
         totalOutcomeSpaceSize: cli.totalOutcomeSpaceSize,
         maxOutcomeSpaceSize: cli.maxOutcomeSpaceSize,
         strategy: cli.strategy,
         expectedRawWork: cli.expectedRawWork,
+        warnings: cli.warnings,
         requiresBounded: cli.requiresBounded,
         sampleSize: cli.sampleSize,
         seed: cli.seed,
     }).toEqual({
+        game: studio.game,
+        reelsNumber: studio.reelsNumber,
+        reelsSymbolsNumber: studio.reelsSymbolsNumber,
+        reelSizes: studio.reelSizes,
         totalOutcomeSpaceSize: studio.totalOutcomeSpaceSize,
         maxOutcomeSpaceSize: studio.maxOutcomeSpaceSize,
         strategy: studio.strategy,
         expectedRawWork: studio.expectedRawWork,
+        warnings: studio.warnings,
         requiresBounded: studio.requiresBounded,
         sampleSize: studio.sampleSize,
         seed: studio.seed,
@@ -92,24 +115,24 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         const packageRoot = path.join(root, "package");
         fs.writeFileSync(blueprint, JSON.stringify({
             manifest: {id: "parity-slot", name: "Parity Slot", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
-            paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]],
+            paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
         }));
         expect(await new BuildCommand("1.3.0").run([blueprint, "--target", "tsPackage", "--out", packageRoot])).toBe(0);
 
         const cliOutput = path.join(root, "cli.json");
         expect(await new OutcomeLibraryCommand("1.3.0").run([
-            "generate", packageRoot, "--library-id", "parity-lib", "--sample", "19", "--seed", "parity-seed", "--out", cliOutput, "--estimate", "--format", "json",
+            "generate", packageRoot, "--mode", "base", "--stake", "1", "--library-id", "parity-lib", "--sample", "19", "--seed", "parity-seed", "--out", cliOutput, "--estimate", "--format", "json",
         ])).toBe(0);
         const cliPreflight = latestCommandJson();
         expect(await new OutcomeLibraryCommand("1.3.0").run([
-            "generate", packageRoot, "--library-id", "parity-lib", "--sample", "19", "--seed", "parity-seed", "--out", cliOutput, "--format", "json",
+            "generate", packageRoot, "--mode", "base", "--stake", "1", "--library-id", "parity-lib", "--sample", "19", "--seed", "parity-seed", "--out", cliOutput, "--format", "json",
         ])).toBe(0);
 
         const studio = new StudioOutcomeLibraryGenerateService(
             "1.3.0", loadPokieGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
             {prepare: () => Promise.resolve(plan)},
         );
-        const studioRequest = {libraryId: "parity-lib", generation: "sampled" as const, sample: {sampleSize: BigInt(19), seed: "parity-seed"}, outDir: "studio-library"};
+        const studioRequest = {libraryId: "parity-lib", mode: "base", stake: 1, generation: "sampled" as const, sample: {sampleSize: BigInt(19), seed: "parity-seed"}, outDir: "studio-library"};
         const preview = await studio.estimate(packageRoot, studioRequest);
         if (preview.status !== "ok") throw new Error("Expected sampled Studio preflight.");
         expectEquivalentPreflight(cliPreflight, preview);
@@ -133,7 +156,8 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
             sampleSize: 19,
             seed: "parity-seed",
             requiresBounded: false,
-            game: {id: "parity-slot", version: "1.0.0"},
+            game: {id: "parity-slot", version: "1.0.0"}, reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2],
+            warnings: ["Bounded coverage is deterministic but is not an exact enumeration."],
         });
         expect(await studio.registry(packageRoot)).toMatchObject({
             status: "ok", buildStatus: "compatible",
@@ -155,29 +179,29 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         const packageRoot = path.join(root, "exact-package");
         fs.writeFileSync(blueprint, JSON.stringify({
             manifest: {id: "exact-parity-slot", name: "Exact Parity Slot", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
-            paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]],
+            paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
         }));
         expect(await new BuildCommand("1.3.0").run([blueprint, "--target", "tsPackage", "--out", packageRoot])).toBe(0);
 
         const cliOutput = path.join(root, "exact-cli.json");
         expect(await new OutcomeLibraryCommand("1.3.0").run([
-            "generate", packageRoot, "--library-id", "exact-parity-lib", "--out", cliOutput, "--estimate", "--format", "json",
+            "generate", packageRoot, "--mode", "base", "--stake", "1", "--library-id", "exact-parity-lib", "--out", cliOutput, "--estimate", "--format", "json",
         ])).toBe(0);
         const cliPreflight = latestCommandJson();
         expect(await new OutcomeLibraryCommand("1.3.0").run([
-            "generate", packageRoot, "--library-id", "exact-parity-lib", "--out", cliOutput, "--format", "json",
+            "generate", packageRoot, "--mode", "base", "--stake", "1", "--library-id", "exact-parity-lib", "--out", cliOutput, "--format", "json",
         ])).toBe(0);
 
         const studio = new StudioOutcomeLibraryGenerateService(
             "1.3.0", loadPokieGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
             {prepare: () => Promise.resolve(plan)},
         );
-        const preflight = await studio.estimate(packageRoot, {libraryId: "exact-parity-lib", outDir: "studio-exact"});
+        const preflight = await studio.estimate(packageRoot, {libraryId: "exact-parity-lib", mode: "base", stake: 1, outDir: "studio-exact"});
         expect(preflight).toMatchObject({status: "ok", strategy: "exact", expectedRawWork: 6});
         if (preflight.status !== "ok") throw new Error("Expected exact Studio preflight.");
         expectEquivalentPreflight(cliPreflight, preflight);
         const generated = await studio.generate(packageRoot, {
-            libraryId: "exact-parity-lib", outDir: "studio-exact", preflightToken: preflight.preflightToken,
+            libraryId: "exact-parity-lib", mode: "base", stake: 1, outDir: "studio-exact", preflightToken: preflight.preflightToken,
         });
         expect(generated).toMatchObject({status: "ok", generator: {strategy: "exact"}});
 
@@ -189,7 +213,7 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         expect(canonicalLibraryHash(bundle)).toBe(canonicalLibraryHash(cli));
         expect(withoutGeneratedAt(generatedResult.generator)).toEqual(withoutGeneratedAt(cliResult.diagnostics as typeof generatedResult.generator));
         expect(preflight).toMatchObject({
-            game: {id: "exact-parity-slot", version: "1.0.0"}, totalOutcomeSpaceSize: 6,
+            game: {id: "exact-parity-slot", version: "1.0.0"}, reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], warnings: [], totalOutcomeSpaceSize: 6,
             maxOutcomeSpaceSize: 20_000_000, strategy: "exact", requiresBounded: false,
         });
         expect(await studio.registry(packageRoot)).toMatchObject({
