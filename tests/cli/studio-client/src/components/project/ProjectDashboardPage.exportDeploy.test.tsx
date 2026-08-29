@@ -51,7 +51,9 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
         body: {
             status: "ok", game: {id: "a", name: "A", version: "1.0.0"}, reelsNumber: 3, reelsSymbolsNumber: 3, reelSizes: [3, 3, 3],
             totalOutcomeSpaceSize: 27, maxOutcomeSpaceSize: 20_000_000, strategy: "exact", requiresBounded: false, expectedRawWork: 27, warnings: [],
-            plan: {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "outcomeLibrary", capabilities: []}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false}}, preflightToken: "bound-preflight",
+            plan: {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "outcomeLibrary", capabilities: []}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false}},
+            defaults: {compatibilityVersion: "v1", maxExactOutcomeSpaceSize: 20_000_000, boundedSample: {sampleSize: 10_000, seed: "pokie-bounded-coverage-v1"}},
+            preflightToken: "bound-preflight",
         },
     }),
 };

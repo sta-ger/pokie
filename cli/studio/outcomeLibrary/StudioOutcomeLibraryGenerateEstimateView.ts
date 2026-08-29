@@ -27,6 +27,12 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           // surfaced here before the caller ever commits to a real generate() run.
           readonly requiresBounded: boolean;
           readonly plan: ArtifactConversionPlan;
+          /** Versioned public domain policy serialized for browser clients. */
+          readonly defaults: {
+              readonly compatibilityVersion: string;
+              readonly maxExactOutcomeSpaceSize: number | string;
+              readonly boundedSample: {readonly sampleSize: number | string; readonly seed: string};
+          };
           /** Opaque server snapshot. Pass it unchanged to generate to reject source/configuration/destination drift. */
           readonly preflightToken: string;
       }

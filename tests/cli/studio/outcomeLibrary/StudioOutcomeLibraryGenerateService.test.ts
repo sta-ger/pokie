@@ -1,4 +1,13 @@
-import {ArtifactConversionPlan, OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, PokieGame} from "pokie";
+import {
+    ArtifactConversionPlan,
+    DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE,
+    DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
+    DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
+    OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleWriter,
+    OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
+    PokieGame,
+} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -131,7 +140,20 @@ describe("StudioOutcomeLibraryGenerateService", () => {
 
         it("reports the exact strategy for a small fixture game", async () => {
             const result = await service().estimate(projectRoot, {});
-            expect(result).toMatchObject({status: "ok", strategy: "exact", requiresBounded: false, totalOutcomeSpaceSize: 6});
+            expect(result).toMatchObject({
+                status: "ok",
+                strategy: "exact",
+                requiresBounded: false,
+                totalOutcomeSpaceSize: 6,
+                defaults: {
+                    compatibilityVersion: OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
+                    maxExactOutcomeSpaceSize: Number(DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE),
+                    boundedSample: {
+                        sampleSize: Number(DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE),
+                        seed: DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
+                    },
+                },
+            });
         });
 
         it("reports bounded-coverage as required once maxOutcomeSpaceSize is set below the space size", async () => {

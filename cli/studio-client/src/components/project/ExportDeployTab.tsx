@@ -97,12 +97,6 @@ function resolveDefaultModeName(projectModesView: DeploymentManager["projectMode
 }
 
 const STAKE_ENGINE_DEFAULT_OUT_DIR = "stakeengine";
-const DEFAULT_MAX_OUTCOME_SPACE_SIZE = "20000000";
-// These are the browser representation of the public v1 compatibility policy
-// (DEFAULT_BOUNDED_OUTCOME_LIBRARY_* in the domain package). Keep the version
-// visible here because persisted Studio forms are a transport compatibility seam.
-const DEFAULT_BOUNDED_SAMPLE_SIZE = "10000";
-const DEFAULT_BOUNDED_SEED = "pokie-bounded-coverage-v1";
 
 // Both choices intentionally map one-to-one onto generateExactWeightedOutcomeLibrary's public
 // options. In particular, enabling bounded coverage remains an explicit user decision: setting a
@@ -813,10 +807,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         libraryId: "",
         configHash: "",
         outDir: "outcomelibrary",
-        maxOutcomeSpaceSize: DEFAULT_MAX_OUTCOME_SPACE_SIZE,
+        // A successful preflight fills these from the domain-owned policy.
+        maxOutcomeSpaceSize: "",
         generation: "default",
-        sampleSize: DEFAULT_BOUNDED_SAMPLE_SIZE,
-        seed: DEFAULT_BOUNDED_SEED,
+        sampleSize: "",
+        seed: "",
     });
     const [outcomeLibraryPreflight, setOutcomeLibraryPreflight] = useState<OutcomeLibraryPreflightView>({status: "loading"});
     // A cancellation checkpoint is server-persisted. Rehydrate it after a browser
@@ -852,7 +847,18 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
             ...(generation === "sampled" || generation === "bounded" ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}} : {}),
         })
             .then((result) => {
-                if (!cancelled) setOutcomeLibraryPreflight(result.status === "ok" ? {status: "ok", result} : {status: "error", result});
+                if (cancelled) return;
+                setOutcomeLibraryPreflight(result.status === "ok" ? {status: "ok", result} : {status: "error", result});
+                if (result.status === "ok" && result.defaults !== undefined) {
+                    // Never overwrite an explicit choice with a later preflight.
+                    setOutcomeLibraryGenerationOptions((current) => {
+                        const maxOutcomeSpaceSize = current.maxOutcomeSpaceSize || String(result.defaults.maxExactOutcomeSpaceSize);
+                        const sampleSize = current.sampleSize || String(result.defaults.boundedSample.sampleSize);
+                        const seed = current.seed || result.defaults.boundedSample.seed;
+                        if (maxOutcomeSpaceSize === current.maxOutcomeSpaceSize && sampleSize === current.sampleSize && seed === current.seed) return current;
+                        return {...current, maxOutcomeSpaceSize, sampleSize, seed};
+                    });
+                }
             })
             .catch((error: unknown) => {
                 if (!cancelled) setOutcomeLibraryPreflight({status: "error", message: describeProjectActionError("The outcome library preflight", errorMessage(error))});

@@ -13,6 +13,10 @@ import {
     WeightedOutcomeLibraryGenerationError,
     WeightedOutcomeLibraryGenerationCancelledError,
     ArtifactConversionPlanner,
+    DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE,
+    DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
+    DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
+    OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
     describeArtifactConversionPlanDiagnostic,
     estimateExactOutcomeSpaceSize,
     generateWeightedOutcomeLibrary,
@@ -201,6 +205,14 @@ export class StudioOutcomeLibraryGenerateService {
             warnings: preflight.warnings,
             ...(preflight.sample === undefined ? {} : {sampleSize: formatBigIntSafely(preflight.sample.sampleSize), seed: preflight.sample.seed}),
             plan,
+            defaults: {
+                compatibilityVersion: OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
+                maxExactOutcomeSpaceSize: formatBigIntSafely(DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE),
+                boundedSample: {
+                    sampleSize: formatBigIntSafely(DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE),
+                    seed: DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
+                },
+            },
             preflightToken,
         };
     }

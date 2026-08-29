@@ -1023,6 +1023,11 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           sampleSize?: number | string;
           seed?: string;
           plan: StudioArtifactConversionPlan;
+          defaults: {
+              compatibilityVersion: string;
+              maxExactOutcomeSpaceSize: number | string;
+              boundedSample: {sampleSize: number | string; seed: string};
+          };
           preflightToken: string;
       }
     | {status: "unsupported"; error: string; plan: StudioArtifactConversionPlan}
