@@ -1,6 +1,9 @@
 // Keeps the three local-runtime commands' actionable startup/load diagnostics in one place. These
 // commands deliberately expose the same local HTTP workflow, so their recovery guidance must not
 // drift as their individual server wiring evolves.
+import {ProjectTargetMalformedError} from "pokie";
+import {RuntimePreparationError} from "../../materialize/RuntimePreparationError.js";
+
 export function describeLocalServerStartError(
     error: unknown,
     listenerName: string,
@@ -41,5 +44,3 @@ export function describeRuntimePackageLoadError(packageRoot: string, error: unkn
             `Run \`pokie validate ${JSON.stringify(packageRoot)}\` to diagnose the package, then retry.`,
     );
 }
-import {ProjectTargetMalformedError} from "pokie";
-import {RuntimePreparationError} from "../../materialize/RuntimePreparationError.js";

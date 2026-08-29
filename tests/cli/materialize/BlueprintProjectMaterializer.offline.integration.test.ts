@@ -118,6 +118,7 @@ describe("BlueprintProjectMaterializer (offline end-to-end: default production r
             outputPaths: [COMPILED_CJS_ENTRY, COMPILED_CJS_PACKAGE_JSON, COMPILED_ESM_WORKER_ENTRY],
             lockName: "compiled-runtime",
             command: ["npm", "run", "build-test-runtime"],
+            forceRebuild: true,
         });
 
         pokiePackageRootWithSpaces = path.join(os.tmpdir(), `pokie install root with spaces ${crypto.randomBytes(4).toString("hex")}`);
@@ -559,6 +560,7 @@ describe("CLI command coverage (offline end-to-end, through the built CLI execut
             outputPaths: [path.join(REPO_ROOT, "dist", "cli", "pokie.js")],
             lockName: "compiled-cli",
             command: [path.join(REPO_ROOT, "node_modules", ".bin", "tsc"), "--project", "tsconfig.cli.json"],
+            forceRebuild: true,
         });
 
         pokiePackageRootWithSpaces = fs.mkdtempSync(path.join(os.tmpdir(), "pokie install root with spaces cli e2e "));
