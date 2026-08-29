@@ -171,6 +171,27 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(generated).toMatchObject({status: "ok", generator: {strategy: "bounded-coverage", seed: "shared-request-seed"}});
         });
 
+        it("fails closed when a resumed checkpoint's bound source changes", async () => {
+            let currentGame: PokieGame = buildFixtureGame();
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(currentGame),
+                undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+                {prepare: () => Promise.resolve(plannedOutcomeLibrary)},
+            );
+            const request = {generation: "exact" as const, outDir: "outcomelibrary"};
+            const preflight = await svc.estimate(projectRoot, request);
+            expect(preflight.status).toBe("ok");
+            if (preflight.status !== "ok") return;
+            const binding = svc.getPreflightBinding(preflight.preflightToken);
+            expect(binding).toBeDefined();
+            currentGame = buildAlternateFixtureGame();
+
+            await expect(svc.rebindCheckpointRequest(projectRoot, {...request, preflightToken: preflight.preflightToken}, binding!)).resolves.toMatchObject({
+                result: {status: "conflict"},
+            });
+        });
+
         it("reports unsupported for a game that never opted into exact enumeration", async () => {
             const result = await service(POKIE_VERSION, buildUnsupportedFixtureGame()).estimate(projectRoot, {});
             expect(result.status).toBe("unsupported");

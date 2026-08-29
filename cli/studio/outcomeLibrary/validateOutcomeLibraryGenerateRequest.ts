@@ -23,7 +23,12 @@ export type OutcomeLibraryGenerateRequestInput = {
     preflightToken?: unknown;
 };
 
-export type ValidatedOutcomeLibraryGenerateRequest = {
+/** Fields shared by the preflight and execution HTTP payloads.  Keep this as
+ * the single transport adapter: execution-only lifecycle fields belong in the
+ * thin wrapper below, never in a second copy of the common validation. */
+export type OutcomeLibraryGenerateTransportInput = Omit<OutcomeLibraryGenerateRequestInput, "preflightToken">;
+
+export type ValidatedOutcomeLibraryGenerateTransportRequest = {
     readonly mode?: string;
     readonly stake?: number;
     readonly configHash?: string;
@@ -34,6 +39,9 @@ export type ValidatedOutcomeLibraryGenerateRequest = {
     readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
     readonly bounded?: {readonly sampleSize: bigint; readonly seed: string};
     readonly outDir?: string;
+};
+
+export type ValidatedOutcomeLibraryGenerateRequest = ValidatedOutcomeLibraryGenerateTransportRequest & {
     /** Opaque token returned by the Studio preflight; binds the displayed decision to execution. */
     readonly preflightToken?: string;
     /** In-process lifecycle hooks. HTTP adapters deliberately do not deserialize these opaque values. */
@@ -91,14 +99,8 @@ function validateGeneration(value: unknown): OutcomeLibraryGenerationMode | unde
     throw new Error('"generation" must be "default", "exact", "sampled", or "bounded" when present.');
 }
 
-// The Studio Generate step's own request shape -- deliberately mirrors "pokie outcomelibrary generate"'s
-// own flags (see OutcomeLibraryCommand's GenerateCliOptions) rather than inventing a parallel vocabulary,
-// since both ultimately call the exact same generateExactWeightedOutcomeLibrary. Unlike the CLI, there is
-// no --dry-run/--resume/--progress here -- --estimate has its own endpoint (see
-// validateOutcomeLibraryGenerateEstimateRequest), and Studio's Generate step is a single synchronous
-// request/response, not a resumable/cancellable job (see StudioOutcomeLibraryGenerateService's own doc
-// comment for that scope decision).
-export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGenerateRequestInput): ValidatedOutcomeLibraryGenerateRequest {
+/** Parse every field that has identical meaning before and after preflight. */
+export function validateOutcomeLibraryGenerateTransportRequest(input: OutcomeLibraryGenerateTransportInput): ValidatedOutcomeLibraryGenerateTransportRequest {
     if (input.mode !== undefined && !isNonEmptyString(input.mode)) {
         throw new Error('"mode" must be a non-empty string when present.');
     }
@@ -114,10 +116,6 @@ export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGener
     if (input.outDir !== undefined && !isNonEmptyString(input.outDir)) {
         throw new Error('"outDir" must be a non-empty string when present.');
     }
-    if (input.preflightToken !== undefined && !isNonEmptyString(input.preflightToken)) {
-        throw new Error('"preflightToken" must be a non-empty string when present.');
-    }
-
     const {generation, sample: canonicalSample} = adaptOutcomeLibraryGenerationTransport(input);
 
     return {
@@ -131,6 +129,18 @@ export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGener
         // Keep these aliases in the validated view while callers migrate. The
         // service itself consumes only generation/sample below.
         ...(input.outDir !== undefined ? {outDir: input.outDir as string} : {}),
-        ...(input.preflightToken !== undefined ? {preflightToken: input.preflightToken as string} : {}),
+    };
+}
+
+// The execution route adds only its opaque lifecycle capability to the shared
+// transport shape.  In-process resume/progress values are intentionally not
+// accepted from JSON.
+export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGenerateRequestInput): ValidatedOutcomeLibraryGenerateRequest {
+    if (input.preflightToken !== undefined && !isNonEmptyString(input.preflightToken)) {
+        throw new Error('"preflightToken" must be a non-empty string when present.');
+    }
+    return {
+        ...validateOutcomeLibraryGenerateTransportRequest(input),
+        ...(input.preflightToken === undefined ? {} : {preflightToken: input.preflightToken}),
     };
 }

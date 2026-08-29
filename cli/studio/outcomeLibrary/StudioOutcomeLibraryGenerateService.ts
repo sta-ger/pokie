@@ -63,6 +63,15 @@ function resolveSample(request: {sample?: {sampleSize: bigint; seed: string}; sa
 
 type OtherModesResult = {readonly status: "ok"; readonly modes: readonly OutcomeLibraryBundleModeInput<string>[]} | {readonly status: "error"; readonly message: string};
 
+/** Immutable source/destination snapshot behind a Studio preflight token. */
+export type StudioOutcomeLibraryPreflightBinding = {
+    readonly requestKey: string;
+    readonly gameId: string;
+    readonly gameVersion: string;
+    readonly configHash?: string;
+    readonly destination: string;
+};
+
 // The Project Dashboard's Generate step (and Registry panel), built directly on top of the exact same
 // public generation service "pokie outcomelibrary generate"/"build" already drive
 // (generateExactWeightedOutcomeLibrary / estimateExactOutcomeSpaceSize / OutcomeLibraryBundleWriter) --
@@ -99,7 +108,7 @@ export class StudioOutcomeLibraryGenerateService {
     private readonly ensureDirectory: (dirPath: string) => void;
     private readonly planning: StudioArtifactConversionPlanning;
     private readonly planner = new ArtifactConversionPlanner();
-    private readonly preflightSnapshots = new Map<string, {readonly requestKey: string; readonly gameId: string; readonly gameVersion: string; readonly configHash?: string; readonly destination: string}>();
+    private readonly preflightSnapshots = new Map<string, StudioOutcomeLibraryPreflightBinding>();
     private nextPreflightToken = 1;
 
     constructor(
@@ -217,6 +226,33 @@ export class StudioOutcomeLibraryGenerateService {
             },
             preflightToken,
         };
+    }
+
+    /**
+     * Recreates a preflight only after proving that the persisted request still
+     * describes the same source, configuration, strategy and destination. A
+     * checkpoint never trusts an expired process-local token after restart.
+     */
+    public async rebindCheckpointRequest(
+        projectRoot: string,
+        request: ValidatedOutcomeLibraryGenerateRequest,
+        binding: StudioOutcomeLibraryPreflightBinding,
+    ): Promise<{readonly request: ValidatedOutcomeLibraryGenerateRequest} | {readonly result: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"} | {status: "cancelled"} | {status: "invalid"} | {status: "generation-error"}>}> {
+        if (generationRequestKey(request) !== binding.requestKey) {
+            return {result: {status: "conflict", error: "The persisted checkpoint request identity no longer matches its immutable binding.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")}};
+        }
+        const preflight = await this.estimate(projectRoot, request);
+        if (preflight.status !== "ok") return {result: preflight};
+        const current = this.preflightSnapshots.get(preflight.preflightToken);
+        if (current === undefined || current.requestKey !== binding.requestKey || current.gameId !== binding.gameId || current.gameVersion !== binding.gameVersion || current.configHash !== binding.configHash || current.destination !== binding.destination) {
+            return {result: {status: "conflict", error: "The source, configuration, destination, or generation strategy changed since this checkpoint was created. Refresh the project and start a new generation.", plan: preflight.plan}};
+        }
+        return {request: {...request, preflightToken: preflight.preflightToken}};
+    }
+
+    /** Snapshot a live preflight token before a cancellation checkpoint is persisted. */
+    public getPreflightBinding(token: string | undefined): StudioOutcomeLibraryPreflightBinding | undefined {
+        return token === undefined ? undefined : this.preflightSnapshots.get(token);
     }
 
     // Drives generateExactWeightedOutcomeLibrary -- the exact same "core, reusable public producer" (see

@@ -881,7 +881,7 @@ export class StudioServer implements StudioServerHandling {
 
         const outcomeLibraryJobRoute = (/^\/api\/project\/outcome-libraries\/generate\/jobs\/([^/]+)(?:\/(cancel|resume))?$/).exec(url.pathname);
         if (outcomeLibraryJobRoute !== null) {
-            this.handleOutcomeLibraryGenerationJob(method, res, outcomeLibraryJobRoute[1], outcomeLibraryJobRoute[2] as "cancel" | "resume" | undefined);
+            await this.handleOutcomeLibraryGenerationJob(method, res, outcomeLibraryJobRoute[1], outcomeLibraryJobRoute[2] as "cancel" | "resume" | undefined);
             return;
         }
 
@@ -2014,7 +2014,7 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, {jobs: this.outcomeLibraryGenerateJobService.listForProject(this.currentContext.projectRoot)});
     }
 
-    private handleOutcomeLibraryGenerationJob(method: string, res: ServerResponse, id: string, action: "cancel" | "resume" | undefined): void {
+    private async handleOutcomeLibraryGenerationJob(method: string, res: ServerResponse, id: string, action: "cancel" | "resume" | undefined): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
@@ -2027,7 +2027,7 @@ export class StudioServer implements StudioServerHandling {
         if (action === "cancel") {
             job = this.outcomeLibraryGenerateJobService.cancelForProject(this.currentContext.projectRoot, id);
         } else if (action === "resume") {
-            job = this.outcomeLibraryGenerateJobService.resumeForProject(this.currentContext.projectRoot, id);
+            job = await this.outcomeLibraryGenerateJobService.resumeForProject(this.currentContext.projectRoot, id);
         } else {
             job = this.outcomeLibraryGenerateJobService.getStatusForProject(this.currentContext.projectRoot, id);
         }

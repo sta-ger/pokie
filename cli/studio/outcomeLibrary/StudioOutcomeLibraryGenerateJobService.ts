@@ -4,7 +4,7 @@ import {randomUUID} from "crypto";
 import type {ExactEnumerationCheckpoint} from "pokie";
 import {createUnresolvedRuntimePlan} from "../artifacts/createExternalArtifactConversionPlan.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "./StudioOutcomeLibraryGenerateResultView.js";
-import {StudioOutcomeLibraryGenerateService} from "./StudioOutcomeLibraryGenerateService.js";
+import {StudioOutcomeLibraryGenerateService, type StudioOutcomeLibraryPreflightBinding} from "./StudioOutcomeLibraryGenerateService.js";
 import type {ValidatedOutcomeLibraryGenerateRequest} from "./validateOutcomeLibraryGenerateRequest.js";
 
 export type StudioOutcomeLibraryCheckpointView = {
@@ -45,6 +45,8 @@ type JobRecord = {
 
 type PersistedCheckpoint = {
     readonly request: PersistedRequest;
+    /** The original prepared source/configuration/destination identity. */
+    readonly binding: PersistedRequestBinding;
     readonly checkpoint: {
         readonly processedRawIndex: string;
         readonly progressTotal: string;
@@ -52,6 +54,8 @@ type PersistedCheckpoint = {
         readonly grids: readonly {readonly key: string; readonly grid: string[][]; readonly weight: string}[];
     };
 };
+
+type PersistedRequestBinding = StudioOutcomeLibraryPreflightBinding & {readonly requestIdentity: string};
 
 type PersistedRequest = Omit<ValidatedOutcomeLibraryGenerateRequest, "maxOutcomeSpaceSize" | "sample" | "resumeFrom" | "signal" | "onProgress"> & {
     readonly maxOutcomeSpaceSize?: string;
@@ -155,12 +159,19 @@ export class StudioOutcomeLibraryGenerateJobService {
         }
     }
 
-    public resumeForProject(projectRoot: string, id: string): StudioOutcomeLibraryGenerateJobView | undefined {
+    public async resumeForProject(projectRoot: string, id: string): Promise<StudioOutcomeLibraryGenerateJobView | undefined> {
         const persisted = this.readCheckpoint(projectRoot, id);
         if (persisted === undefined) return undefined;
-        // Reuse the checkpoint identity.  A successful resumed publication removes this
-        // original file, avoiding an orphan which could be resumed a second time later.
-        return this.start(projectRoot, {...fromPersistedRequest(persisted.request), preflightToken: undefined, resumeFrom: fromPersistedCheckpoint(persisted.checkpoint)}, id);
+        const request = fromPersistedRequest(persisted.request);
+        if (requestIdentity(request) !== persisted.binding.requestIdentity) return this.restoreRejectedResume(projectRoot, id, request, "The persisted checkpoint request identity is invalid.");
+        // A restarted server has no process-local token map. Re-preflight the
+        // immutable request, compare its source/configuration/destination
+        // snapshot, then pass the fresh token through normal generation.
+        const rebound = await this.generateService.rebindCheckpointRequest(projectRoot, request, persisted.binding);
+        if ("result" in rebound) return this.restoreRejectedResume(projectRoot, id, request, rebound.result.error, rebound.result.plan);
+        // Reuse the checkpoint identity. A successful resumed publication removes
+        // this original file, avoiding an orphan which could be resumed later.
+        return this.start(projectRoot, {...rebound.request, resumeFrom: fromPersistedCheckpoint(persisted.checkpoint)}, id);
     }
 
     private async run(record: JobRecord): Promise<void> {
@@ -198,8 +209,19 @@ export class StudioOutcomeLibraryGenerateJobService {
     private persistCheckpoint(projectRoot: string, id: string, request: ValidatedOutcomeLibraryGenerateRequest, checkpoint: ExactEnumerationCheckpoint): StudioOutcomeLibraryCheckpointView {
         const filePath = this.checkpointPath(projectRoot, id);
         fs.mkdirSync(path.dirname(filePath), {recursive: true});
+        // Keep the in-process service seam usable for direct callers that do
+        // not expose Studio preflight state; HTTP jobs always provide it.
+        const preflightBinding = this.generateService.getPreflightBinding?.(request.preflightToken);
         const stored: PersistedCheckpoint = {
             request: toPersistedRequest(request),
+            binding: {
+                requestIdentity: requestIdentity(request),
+                requestKey: preflightBinding?.requestKey ?? generationRequestKey(request),
+                gameId: preflightBinding?.gameId ?? "",
+                gameVersion: preflightBinding?.gameVersion ?? "",
+                ...(preflightBinding?.configHash === undefined ? {} : {configHash: preflightBinding.configHash}),
+                destination: preflightBinding?.destination ?? request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR,
+            },
             checkpoint: {
                 processedRawIndex: checkpoint.processedRawIndex.toString(), progressTotal: checkpoint.progressTotal.toString(), sourceEnumerationId: checkpoint.sourceEnumerationId,
                 grids: Array.from(checkpoint.grids, ([key, entry]) => ({key, grid: entry.grid, weight: entry.weight.toString()})),
@@ -211,7 +233,10 @@ export class StudioOutcomeLibraryGenerateJobService {
 
     private readCheckpoint(projectRoot: string, id: string): PersistedCheckpoint | undefined {
         try {
-            return JSON.parse(fs.readFileSync(this.checkpointPath(projectRoot, id), "utf8")) as PersistedCheckpoint;
+            const persisted = JSON.parse(fs.readFileSync(this.checkpointPath(projectRoot, id), "utf8")) as PersistedCheckpoint;
+            // Old/unbound or hand-edited checkpoints must never be resumed into a
+            // potentially different project state.
+            return persisted.binding !== undefined && requestIdentity(fromPersistedRequest(persisted.request)) === persisted.binding.requestIdentity ? persisted : undefined;
         } catch {
             return undefined;
         }
@@ -243,6 +268,15 @@ export class StudioOutcomeLibraryGenerateJobService {
         return record;
     }
 
+    private restoreRejectedResume(projectRoot: string, id: string, request: ValidatedOutcomeLibraryGenerateRequest, error: string, plan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")): StudioOutcomeLibraryGenerateJobView {
+        const record: JobRecord = {
+            id, projectRoot, request, controller: new AbortController(), status: "failed", cancellationRequested: false,
+            result: {status: "conflict", error, plan},
+        };
+        this.jobs.set(id, record);
+        return this.toView(record);
+    }
+
     private trimTerminalJobs(): void {
         const terminal = Array.from(this.jobs.values()).filter((job) => job.status !== "queued" && job.status !== "running");
         while (terminal.length >= 20) {
@@ -267,4 +301,21 @@ function fromPersistedCheckpoint(checkpoint: PersistedCheckpoint["checkpoint"]):
         processedRawIndex: BigInt(checkpoint.processedRawIndex), progressTotal: BigInt(checkpoint.progressTotal), sourceEnumerationId: checkpoint.sourceEnumerationId,
         grids: new Map(checkpoint.grids.map((entry) => [entry.key, {grid: entry.grid, weight: BigInt(entry.weight)}])),
     };
+}
+
+function requestIdentity(request: ValidatedOutcomeLibraryGenerateRequest): string {
+    return JSON.stringify({
+        mode: request.mode, stake: request.stake, configHash: request.configHash, libraryId: request.libraryId,
+        maxOutcomeSpaceSize: request.maxOutcomeSpaceSize?.toString(), generation: request.generation,
+        sample: request.sample === undefined ? undefined : {sampleSize: request.sample.sampleSize.toString(), seed: request.sample.seed},
+        outDir: request.outDir, preflightToken: request.preflightToken,
+    });
+}
+
+function generationRequestKey(request: ValidatedOutcomeLibraryGenerateRequest): string {
+    return JSON.stringify({
+        mode: request.mode, stake: request.stake, configHash: request.configHash, libraryId: request.libraryId,
+        outDir: request.outDir, generation: request.generation, maxOutcomeSpaceSize: request.maxOutcomeSpaceSize?.toString(),
+        sample: request.sample === undefined ? undefined : {sampleSize: request.sample.sampleSize.toString(), seed: request.sample.seed},
+    });
 }

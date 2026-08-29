@@ -10,13 +10,18 @@ import {
 // execution route later reinterprets.
 describe("Outcome Library generation route requests", () => {
     it("normalizes the same sampled contract for preflight and execution", () => {
-        const input = {generation: "sampled", sample: {sampleSize: "17", seed: "route-seed"}, maxOutcomeSpaceSize: "20"};
+        const input = {
+            mode: "bonus", stake: 2, configHash: "config-1", libraryId: "route-library", outDir: "custom-library",
+            generation: "sampled", sample: {sampleSize: "17", seed: "route-seed"}, maxOutcomeSpaceSize: "20",
+        };
 
         expect(validateOutcomeLibraryGenerateEstimateRequest(input)).toMatchObject({
+            mode: "bonus", stake: 2, configHash: "config-1", libraryId: "route-library", outDir: "custom-library",
             generation: "sampled", sample: {sampleSize: BigInt(17), seed: "route-seed"}, maxOutcomeSpaceSize: BigInt(20),
         });
-        expect(validateOutcomeLibraryGenerateRequest({...input, outDir: "custom-library"})).toMatchObject({
-            generation: "sampled", sample: {sampleSize: BigInt(17), seed: "route-seed"}, maxOutcomeSpaceSize: BigInt(20), outDir: "custom-library",
+        expect(validateOutcomeLibraryGenerateRequest({...input, preflightToken: "bound-token"})).toMatchObject({
+            mode: "bonus", stake: 2, configHash: "config-1", libraryId: "route-library", outDir: "custom-library", preflightToken: "bound-token",
+            generation: "sampled", sample: {sampleSize: BigInt(17), seed: "route-seed"}, maxOutcomeSpaceSize: BigInt(20),
         });
     });
 

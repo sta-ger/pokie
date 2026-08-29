@@ -57,4 +57,52 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
             fs.rmSync(otherProjectRoot, {recursive: true, force: true});
         }
     });
+
+    it("rebinds an immutable checkpoint before resume and removes it after successful publication", async () => {
+        const checkpoint: ExactEnumerationCheckpoint = {
+            processedRawIndex: BigInt(1), progressTotal: BigInt(6), sourceEnumerationId: "fixture-source", grids: new Map(),
+        };
+        let runs = 0;
+        const generate = jest.fn(async (root: string, request: {readonly signal?: AbortSignal}) => {
+            runs += 1;
+            if (runs === 1) {
+                await new Promise<void>((resolve) => {
+                    request.signal?.addEventListener("abort", () => {
+                        resolve();
+                    }, {once: true});
+                });
+                return {status: "cancelled" as const, processedRawIndex: BigInt(1), progressTotal: BigInt(6), checkpoint, recovery: "resume", plan: createUnresolvedRuntimePlan(root, "outcomeLibrary")};
+            }
+            return {
+                status: "ok" as const, bundleDir: "outcomelibrary", files: [], warnings: [],
+                mode: {modeName: "base", libraryId: "library", hash: "hash", outcomeCount: 1, totalWeight: 1, rtp: 1},
+                generator: {} as never, coverage: 1, selector: {kind: "bundle" as const, bundleDir: "outcomelibrary", modeName: "base"}, plan: createUnresolvedRuntimePlan(root, "outcomeLibrary"),
+            };
+        });
+        const binding = {requestKey: JSON.stringify({generation: "exact"}), gameId: "game", gameVersion: "1", configHash: "config", destination: path.join(projectRoot, "outcomelibrary")};
+        const service = {
+            generate,
+            getPreflightBinding: jest.fn(() => binding),
+            rebindCheckpointRequest: jest.fn((_root: string, request: unknown) => Promise.resolve({request: {...request as object, preflightToken: "fresh-token"}})),
+        } as unknown as StudioOutcomeLibraryGenerateService;
+        const jobs = new StudioOutcomeLibraryGenerateJobService(service);
+        const job = jobs.start(projectRoot, {generation: "exact", preflightToken: "original-token"});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        jobs.cancelForProject(projectRoot, job.id);
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        const checkpointPath = path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${job.id}.json`);
+        expect(fs.existsSync(checkpointPath)).toBe(true);
+
+        await jobs.resumeForProject(projectRoot, job.id);
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(service.rebindCheckpointRequest).toHaveBeenCalledWith(projectRoot, expect.objectContaining({generation: "exact", preflightToken: "original-token"}), expect.objectContaining({requestIdentity: expect.any(String)}));
+        expect(jobs.getStatusForProject(projectRoot, job.id)).toMatchObject({status: "completed"});
+        expect(fs.existsSync(checkpointPath)).toBe(false);
+    });
 });
