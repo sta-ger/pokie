@@ -107,14 +107,6 @@ async function waitForTerminal(service: StudioSimulationService, id: string): Pr
     throw new Error("Timed out waiting for the simulation to reach a terminal state.");
 }
 
-async function waitFor(condition: () => boolean, message: string): Promise<void> {
-    for (let i = 0; i < 2000; i++) {
-        if (condition()) return;
-        await flushMacrotask();
-    }
-    throw new Error(message);
-}
-
 // A controllable substitute for the real setImmediate-based yieldToEventLoop: each call queues its
 // own resolver rather than resolving immediately, so a test can precisely pause the chunk loop
 // between chunks, inspect intermediate progress, then release it one step at a time.
@@ -246,8 +238,13 @@ describe("StudioSimulationService", () => {
         const cacheRoot = path.join(workDir, "cache");
         const workbookPath = path.join(workDir, "slot.par.xlsx");
         fs.copyFileSync(path.join(process.cwd(), "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+        let signalRuntimeDependenciesStarted: () => void;
+        const runtimeDependenciesStarted = new Promise<void>((resolve) => {
+            signalRuntimeDependenciesStarted = resolve;
+        });
         const runCommand = jest.fn((_command: string, _args: string[], _cwd: string, options: {signal?: AbortSignal} = {}) =>
             new Promise<never>((_resolve, reject) => {
+                signalRuntimeDependenciesStarted();
                 if (options.signal?.aborted) {
                     reject(new Error("cancelled"));
                     return;
@@ -276,7 +273,7 @@ describe("StudioSimulationService", () => {
         try {
             const started = service.start(workbookPath, {rounds: 5});
             if (started.status !== "created") throw new Error("expected job to be created");
-            await waitFor(() => runCommand.mock.calls.length === 1, "PAR runtime dependency stage did not start");
+            await runtimeDependenciesStarted;
             const temporaryBlueprint = materialize.mock.calls[0][0].rootPath;
             const parStage = path.dirname(temporaryBlueprint);
             const runtimeStage = runCommand.mock.calls[0][2] as string;

@@ -503,8 +503,16 @@ describe("StudioServer", () => {
         const directManifest: PokieGameManifest = {id: "direct", name: "Direct", version: "1.0.0"};
         const homeManifest: PokieGameManifest = {id: "home", name: "Home", version: "1.0.0"};
         const completeLoads = new Map<string, PendingGameLoad>();
+        const loadStarted = new Map<string, PendingLoadStarted>();
+        const directLoadStarted = new Promise<void>((resolve) => {
+            loadStarted.set("./direct", resolve);
+        });
+        const homeLoadStarted = new Promise<void>((resolve) => {
+            loadStarted.set("./home", resolve);
+        });
         loadGame.mockImplementation((projectRoot: string) => new Promise<PokieGame>((resolve) => {
             completeLoads.set(projectRoot, resolve);
+            loadStarted.get(projectRoot)?.();
         }));
         const homeService = new StudioHomeService("1.0.0", undefined, loadGame);
         const directServer = new StudioServer({
@@ -520,16 +528,10 @@ describe("StudioServer", () => {
         const address = await directServer.start();
         const directBaseUrl = `http://${address.host}:${address.port}`;
         try {
-            for (let attempt = 0; attempt < 20 && !completeLoads.has("./direct"); attempt++) {
-                await flushMacrotask();
-            }
-            expect(completeLoads.has("./direct")).toBe(true);
+            await directLoadStarted;
 
             const homeOpen = post(`${directBaseUrl}/api/home/projects/open`, {projectRoot: "./home"});
-            for (let attempt = 0; attempt < 20 && !completeLoads.has("./home"); attempt++) {
-                await flushMacrotask();
-            }
-            expect(completeLoads.has("./home")).toBe(true);
+            await homeLoadStarted;
             completeLoads.get("./home")?.(createFakeGame(homeManifest));
             expect((await homeOpen).status).toBe(200);
 
@@ -545,15 +547,17 @@ describe("StudioServer", () => {
     it("does not publish or remember a Home open superseded by project close", async () => {
         const manifest: PokieGameManifest = {id: "late", name: "Late", version: "1.0.0"};
         const completeLoads = new Map<string, PendingGameLoad>();
+        let signalLateLoadStarted: () => void;
+        const lateLoadStarted = new Promise<void>((resolve) => {
+            signalLateLoadStarted = resolve;
+        });
         loadGame.mockImplementation(() => new Promise<PokieGame>((resolve) => {
             completeLoads.set("./late", resolve);
+            signalLateLoadStarted();
         }));
 
         const opening = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./late"});
-        for (let attempt = 0; attempt < 20 && !completeLoads.has("./late"); attempt++) {
-            await flushMacrotask();
-        }
-        expect(completeLoads.has("./late")).toBe(true);
+        await lateLoadStarted;
         expect(await post(`${baseUrl}/api/projects/close`)).toEqual({status: 200, body: {context: {mode: "home"}}});
 
         completeLoads.get("./late")?.(createFakeGame(manifest));
