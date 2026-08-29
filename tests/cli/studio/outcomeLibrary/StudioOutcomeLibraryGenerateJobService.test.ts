@@ -58,6 +58,38 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         }
     });
 
+    it("keeps one resolved bundle destination owned until cancelled work finishes cleanup", async () => {
+        const checkpoint: ExactEnumerationCheckpoint = {
+            processedRawIndex: BigInt(1), progressTotal: BigInt(2), sourceEnumerationId: "fixture-source", grids: new Map(),
+        };
+        const destination = path.join(projectRoot, "shared-bundle");
+        const generate = jest.fn(async (root: string, request: {readonly signal?: AbortSignal}) => {
+            if (!request.signal?.aborted) {
+                await new Promise<void>((resolve) => {
+                    request.signal?.addEventListener("abort", () => resolve(), {once: true});
+                });
+            }
+            return {
+                status: "cancelled" as const, processedRawIndex: BigInt(1), progressTotal: BigInt(2), checkpoint,
+                recovery: "resume", plan: createUnresolvedRuntimePlan(root, "outcomeLibrary"),
+            };
+        });
+        const service = {
+            generate,
+            getPreflightBinding: jest.fn(() => ({requestKey: "request", gameId: "game", gameVersion: "1", destination, requiresBounded: false})),
+        } as unknown as StudioOutcomeLibraryGenerateService;
+        const jobs = new StudioOutcomeLibraryGenerateJobService(service);
+
+        jobs.start(projectRoot, {preflightToken: "first"});
+        expect(jobs.isDestinationActive(projectRoot, destination)).toBe(true);
+        expect(() => jobs.start(projectRoot, {preflightToken: "second"})).toThrow("already active for this destination");
+
+        await jobs.cancelAll();
+        expect(jobs.isDestinationActive(projectRoot, destination)).toBe(false);
+        expect(jobs.start(projectRoot, {preflightToken: "third"})).toMatchObject({status: "queued"});
+        await jobs.cancelAll();
+    });
+
     it("rebinds an immutable checkpoint before resume and removes it after successful publication", async () => {
         const checkpoint: ExactEnumerationCheckpoint = {
             processedRawIndex: BigInt(1), progressTotal: BigInt(6), sourceEnumerationId: "fixture-source", grids: new Map(),

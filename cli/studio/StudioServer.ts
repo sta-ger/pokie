@@ -444,7 +444,7 @@ export class StudioServer implements StudioServerHandling {
         });
     }
 
-    public stop(): Promise<void> {
+    public async stop(): Promise<void> {
         this.cancelRuntimePreparation();
         // Best-effort, synchronous, before anything else: a simulation's/replay's chunked run loop
         // (see StudioSimulationService.run()/StudioReplayExecutionService.run()) is scheduled
@@ -453,14 +453,18 @@ export class StudioServer implements StudioServerHandling {
         this.simulationService.cancelAll();
         this.replayService.cancelAll();
         this.artifactBuildService.cancelAll();
-        this.outcomeLibraryGenerateJobService.cancelAll();
+        // Unlike the older fire-and-forget lifecycle services, an Outcome
+        // Library job owns an atomic publication destination and a persisted
+        // checkpoint.  Do not release Studio's server context until its
+        // cancellation has reached that cleanup-safe terminal state.
+        await this.outcomeLibraryGenerateJobService.cancelAll();
         // Never holds an OS port (see StudioPlayService's own doc comment), but still discards whatever
         // session was active.
         this.playService.reset();
         // Every recorded round, from any tab, refers to a session/game this shutdown is about to make
         // unreachable -- see StudioRoundRecorder.clearAll()'s own doc comment.
         this.roundRecorder.clearAll();
-        return new Promise((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
             if (!this.server) {
                 resolve();
                 return;
@@ -482,14 +486,14 @@ export class StudioServer implements StudioServerHandling {
     // you've switched away from is never *reachable* through this project's own routes again, but
     // "unreachable" isn't "stopped": without this, its chunk loop would keep running in the background
     // indefinitely, wasting CPU for a result nothing can ever read.
-    private cancelActiveJobsForOldProject(): void {
+    private async cancelActiveJobsForOldProject(): Promise<void> {
         if (this.currentContext.mode !== "project") {
             return;
         }
         this.simulationService.cancelActiveForProject(this.currentContext.projectRoot);
         this.replayService.cancelActiveForProject(this.currentContext.projectRoot);
         this.artifactBuildService.cancelActiveForProject(this.currentContext.projectRoot);
-        this.outcomeLibraryGenerateJobService.cancelActiveForProject(this.currentContext.projectRoot);
+        await this.outcomeLibraryGenerateJobService.cancelActiveForProject(this.currentContext.projectRoot);
     }
 
     // Every field is a primitive already safe to expose — no stack traces, env vars, tokens, or service
@@ -723,7 +727,7 @@ export class StudioServer implements StudioServerHandling {
             // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
             // project being left.
             this.roundRecorder.clearAll();
-            this.cancelActiveJobsForOldProject();
+            await this.cancelActiveJobsForOldProject();
             this.currentContext = {mode: "home"};
             this.projectDashboard = undefined;
             this.sendJson(res, 200, {context: this.currentContext});
@@ -1256,7 +1260,7 @@ export class StudioServer implements StudioServerHandling {
         // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
         // project being left.
         this.roundRecorder.clearAll();
-        this.cancelActiveJobsForOldProject();
+        await this.cancelActiveJobsForOldProject();
 
         // The explicit Home → Project Studio context transition: mutates this same running server's
         // state in place — no new HTTP server or Studio process is ever started (see the class-level
@@ -2035,6 +2039,10 @@ export class StudioServer implements StudioServerHandling {
                 error: "This outcome space exceeds the exact-generation cap. Select sampled or bounded coverage with a sample size and deterministic seed.",
                 preflight: {status: "ok", requiresBounded: true},
             });
+            return;
+        }
+        if (this.outcomeLibraryGenerateJobService.isDestinationActive(this.currentContext.projectRoot, binding.destination)) {
+            this.sendJson(res, 409, {status: "conflict", error: "An Outcome Library generation is already active for this resolved destination. Wait for it to finish or cancel it before starting another."});
             return;
         }
         // Reject drift before allocating a lifecycle record.  The token is a

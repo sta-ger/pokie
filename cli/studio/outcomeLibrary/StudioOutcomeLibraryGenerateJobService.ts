@@ -41,6 +41,9 @@ type JobRecord = {
     cancellationRequested: boolean;
     progress?: {processedRawIndex: string; progressTotal: string};
     result?: StudioOutcomeLibraryGenerateJobResultView;
+    /** Resolves only after generation has reached its cleanup-safe terminal state. */
+    completion: Promise<void>;
+    readonly destinationKey: string;
 };
 
 type PersistedCheckpoint = {
@@ -67,6 +70,8 @@ type PersistedRequest = Omit<ValidatedOutcomeLibraryGenerateRequest, "maxOutcome
 // atomically-replaced bundle destination.
 export class StudioOutcomeLibraryGenerateJobService {
     private readonly jobs = new Map<string, JobRecord>();
+    /** One atomic bundle writer owns a resolved destination at a time. */
+    private readonly activeDestinationOwners = new Map<string, string>();
     private readonly generateService: StudioOutcomeLibraryGenerateService;
 
     constructor(generateService: StudioOutcomeLibraryGenerateService) {
@@ -75,28 +80,46 @@ export class StudioOutcomeLibraryGenerateJobService {
 
     public start(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest, resumedId?: string): StudioOutcomeLibraryGenerateJobView {
         this.trimTerminalJobs();
+        const destinationKey = this.destinationKey(projectRoot, request);
+        if (this.activeDestinationOwners.has(destinationKey)) {
+            throw new Error("An Outcome Library generation is already active for this destination.");
+        }
         const record: JobRecord = {
             // UUIDs make checkpoints safely discoverable across a server restart without
             // reusing the old process-local 1, 2, … namespace.
             id: resumedId ?? randomUUID(), projectRoot, request, controller: new AbortController(), status: "queued", cancellationRequested: false,
+            destinationKey,
+            // Assigned below after the record exists for run() to update.
+            completion: Promise.resolve(),
         };
         this.jobs.set(record.id, record);
-        queueMicrotask(() => {
-            this.run(record).catch((error: unknown) => {
-                // generate() normally converts domain failures into its result union. Keep an unexpected
-                // adapter failure observable as a terminal job instead of an unhandled server rejection.
-                Object.assign(record, {
-                    status: "failed" as const,
-                    result: {
-                        status: "generation-error" as const,
-                        code: "studio-outcome-library-job-failed",
-                        error: error instanceof Error ? error.message : String(error),
-                        plan: createUnresolvedRuntimePlan(record.projectRoot, "outcomeLibrary"),
-                    },
-                });
+        this.activeDestinationOwners.set(destinationKey, record.id);
+        record.completion = new Promise<void>((resolve) => {
+            queueMicrotask(resolve);
+        }).then(() => this.run(record)).catch((error: unknown) => {
+            // generate() normally converts domain failures into its result union. Keep an unexpected
+            // adapter failure observable as a terminal job instead of an unhandled server rejection.
+            Object.assign(record, {
+                status: "failed" as const,
+                result: {
+                    status: "generation-error" as const,
+                    code: "studio-outcome-library-job-failed",
+                    error: error instanceof Error ? error.message : String(error),
+                    plan: createUnresolvedRuntimePlan(record.projectRoot, "outcomeLibrary"),
+                },
             });
+        }).finally(() => {
+            // Generation owns staging/partial-output cleanup and only resolves once that is
+            // complete. Release the destination after that terminal boundary, never on abort.
+            if (this.activeDestinationOwners.get(destinationKey) === record.id) {
+                this.activeDestinationOwners.delete(destinationKey);
+            }
         });
         return this.toView(record);
+    }
+
+    public isDestinationActive(projectRoot: string, destination: string): boolean {
+        return this.activeDestinationOwners.has(path.resolve(projectRoot, destination));
     }
 
     public getStatusForProject(projectRoot: string, id: string): StudioOutcomeLibraryGenerateJobView | undefined {
@@ -140,23 +163,29 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     /** Abort every active job before Studio loses the HTTP surface that owns it. */
-    public cancelAll(): void {
+    public async cancelAll(): Promise<void> {
+        const active: JobRecord[] = [];
         for (const record of this.jobs.values()) {
             if (record.status === "queued" || record.status === "running") {
                 record.cancellationRequested = true;
                 record.controller.abort();
+                active.push(record);
             }
         }
+        await Promise.all(active.map((record) => record.completion));
     }
 
     /** Abort active work for a project which Studio is about to leave. */
-    public cancelActiveForProject(projectRoot: string): void {
+    public async cancelActiveForProject(projectRoot: string): Promise<void> {
+        const active: JobRecord[] = [];
         for (const record of this.jobs.values()) {
             if (record.projectRoot === projectRoot && (record.status === "queued" || record.status === "running")) {
                 record.cancellationRequested = true;
                 record.controller.abort();
+                active.push(record);
             }
         }
+        await Promise.all(active.map((record) => record.completion));
     }
 
     public async resumeForProject(projectRoot: string, id: string): Promise<StudioOutcomeLibraryGenerateJobView | undefined> {
@@ -287,6 +316,11 @@ export class StudioOutcomeLibraryGenerateJobService {
             const oldest = terminal.shift();
             if (oldest !== undefined) this.jobs.delete(oldest.id);
         }
+    }
+
+    private destinationKey(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest): string {
+        const binding = this.generateService.getPreflightBinding?.(request.preflightToken);
+        return path.resolve(projectRoot, binding?.destination ?? request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR);
     }
 }
 
