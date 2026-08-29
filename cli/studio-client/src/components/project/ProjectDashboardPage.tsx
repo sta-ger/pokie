@@ -172,6 +172,12 @@ function isProjectTab(value: string | undefined): value is ProjectTab {
 type LegacyProjectRouteMigration = {destination: ProjectTab; message: string};
 
 function legacyProjectRouteMigration(tab: string | undefined): LegacyProjectRouteMigration | undefined {
+    // A retained route is already its own canonical destination. Keeping this guard here (rather
+    // than at every caller) also prevents LegacyProjectDashboardRoute from adding `?migrated=` to
+    // ordinary legacy links such as /project/overview while it upgrades them to scoped URLs.
+    if (isProjectTab(tab)) {
+        return undefined;
+    }
     switch (tab) {
         case "deployment":
             return {destination: "exportDeploy", message: "Deployment has moved into Build/Export. Choose Remote delivery there to preview or publish to a configured target."};
