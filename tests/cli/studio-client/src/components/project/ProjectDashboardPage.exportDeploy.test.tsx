@@ -627,18 +627,31 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             ...BASE_ROUTES,
             "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
             "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
-            "/api/project/outcome-libraries/generate": () => ({
+            "/api/project/outcome-libraries/generate/jobs": () => ({
+                ok: true,
+                status: 202,
+                body: {
+                    status: "created",
+                    job: {id: "generate-exact", status: "queued", cancellationRequested: false},
+                },
+            }),
+            "/api/project/outcome-libraries/generate/jobs/generate-exact": () => ({
                 ok: true,
                 status: 200,
                 body: {
-                    status: "ok",
-                    bundleDir: "outcomelibrary",
-                    files: ["manifest.json"],
-                    warnings: [],
-                    mode: {modeName: "base", libraryId: "a-base", hash: "sha256:library", outcomeCount: 500, totalWeight: 1000, rtp: 0.95},
-                    generator: {algorithm: "exact", strategy: "exact", pokieVersion: "1.0.0"},
-                    coverage: 1,
-                    selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
+                    id: "generate-exact",
+                    status: "completed",
+                    cancellationRequested: false,
+                    result: {
+                        status: "ok",
+                        bundleDir: "outcomelibrary",
+                        files: ["manifest.json"],
+                        warnings: [],
+                        mode: {modeName: "base", libraryId: "a-base", hash: "sha256:library", outcomeCount: 500, totalWeight: 1000, rtp: 0.95},
+                        generator: {algorithm: "exact", strategy: "exact", pokieVersion: "1.0.0"},
+                        coverage: 1,
+                        selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
+                    },
                 },
             }),
             "/api/project/stakeengine/export": () => ({
@@ -649,7 +662,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         };
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
-            if (path === "/api/project/outcome-libraries/generate") {
+            if (path === "/api/project/outcome-libraries/generate/jobs") {
                 generated = true;
             }
             if (path === "/api/project/stakeengine/export") {
@@ -686,7 +699,14 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         };
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
-            if (path === "/api/project/outcome-libraries/generate") {
+            if (path === "/api/project/outcome-libraries/generate/jobs") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 202,
+                    json: () => Promise.resolve({status: "created", job: {id: "generate-running", status: "running", cancellationRequested: false}}),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs/generate-running") {
                 return new Promise(() => {
                     // Deliberately unsettled: this assertion exercises the in-flight UI state.
                 });
@@ -749,24 +769,37 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             ...BASE_ROUTES,
             "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
             "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
-            "/api/project/outcome-libraries/generate": () => ({
+            "/api/project/outcome-libraries/generate/jobs": () => ({
+                ok: true,
+                status: 202,
+                body: {
+                    status: "created",
+                    job: {id: "generate-bounded", status: "queued", cancellationRequested: false},
+                },
+            }),
+            "/api/project/outcome-libraries/generate/jobs/generate-bounded": () => ({
                 ok: true,
                 status: 200,
                 body: {
-                    status: "ok",
-                    bundleDir: "outcomelibrary",
-                    files: ["manifest.json"],
-                    warnings: [],
-                    mode: {modeName: "base", libraryId: "random-base", hash: "sha256:library", outcomeCount: 10_000, totalWeight: 10_000, rtp: 0.95},
-                    generator: {algorithm: "bounded", strategy: "bounded-coverage", pokieVersion: "1.0.0"},
-                    coverage: 0.000020752,
-                    selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
+                    id: "generate-bounded",
+                    status: "completed",
+                    cancellationRequested: false,
+                    result: {
+                        status: "ok",
+                        bundleDir: "outcomelibrary",
+                        files: ["manifest.json"],
+                        warnings: [],
+                        mode: {modeName: "base", libraryId: "random-base", hash: "sha256:library", outcomeCount: 10_000, totalWeight: 10_000, rtp: 0.95},
+                        generator: {algorithm: "bounded", strategy: "bounded-coverage", pokieVersion: "1.0.0"},
+                        coverage: 0.000020752,
+                        selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
+                    },
                 },
             }),
             "/api/project/stakeengine/export": () => ({ok: true, status: 200, body: {status: "ok", outDir: "stakeengine", files: ["index.json"], manifest: {}, warnings: []}}),
         };
         const fetchImpl: FetchLike = (url, init) => {
-            if (url === "/api/project/outcome-libraries/generate") {
+            if (url === "/api/project/outcome-libraries/generate/jobs") {
                 generationRequest = JSON.parse(String(init?.body));
             }
             return fetchImplFrom(routes)(url, init);

@@ -423,7 +423,7 @@ function TargetCard({
                     </Button>
                     {outcomeLibraryRun.status === "running" && (
                         <>
-                            <LoadingState label={outcomeLibraryRun.job.progress === undefined ? "Preparing outcome library generation…" : `Generating outcome library: ${outcomeLibraryRun.job.progress.processedRawIndex} / ${outcomeLibraryRun.job.progress.progressTotal} raw combinations…`} />
+                            <LoadingState label={outcomeLibraryRun.job.progress === undefined ? "Generating outcome library from this project's current build…" : `Generating outcome library: ${outcomeLibraryRun.job.progress.processedRawIndex} / ${outcomeLibraryRun.job.progress.progressTotal} raw combinations…`} />
                             <Button size="xs" color="red" variant="light" mt="xs" onClick={onCancelOutcomeLibrary}>Cancel generation</Button>
                         </>
                     )}
