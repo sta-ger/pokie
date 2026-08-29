@@ -63,12 +63,14 @@ export type PlayerRoundElements = {
     gridContainer: HTMLElement;
     winsSection: HTMLElement;
     winsList: HTMLElement;
+    linesDetails?: HTMLDetailsElement;
     linesList: HTMLElement;
     features: HTMLElement;
     betInfo: HTMLElement;
     modeInfo: HTMLElement;
     paytableHead: HTMLElement;
     paytableBody: HTMLElement;
+    paytableDetails?: HTMLDetailsElement;
 };
 
 /**
@@ -83,6 +85,7 @@ export function createPlayerRoundElements(root: HTMLElement): PlayerRoundElement
     const doc = root.ownerDocument;
     clearChildren(root);
     root.classList.add("pokie-player");
+    root.dataset.pokiePlayer = "canonical-v1";
     root.setAttribute("aria-label", "Game player");
 
     const create = <T extends keyof HTMLElementTagNameMap>(tag: T, className?: string): HTMLElementTagNameMap[T] => {
@@ -152,12 +155,14 @@ export function createPlayerRoundElements(root: HTMLElement): PlayerRoundElement
         gridContainer,
         winsSection,
         winsList,
+        linesDetails,
         linesList,
         features,
         betInfo,
         modeInfo,
         paytableHead,
         paytableBody,
+        paytableDetails,
     };
 }
 
@@ -213,21 +218,22 @@ export function renderReelsGrid(
     artworkUrlForSymbol?: (symbolId: string) => string | undefined,
 ): void {
     clearChildren(container);
-    const table = document.createElement("table");
+    const doc = container.ownerDocument;
+    const table = doc.createElement("table");
     table.className = "player-grid";
     const tr = document.createElement("tr");
     reelsSymbols.forEach((reelSymbols, reelIndex) => {
-        const td = document.createElement("td");
+        const td = doc.createElement("td");
         td.className = "player-reel";
         reelSymbols.forEach((symbol, rowIndex) => {
-            const cell = document.createElement("div") as unknown as CellElement;
+            const cell = doc.createElement("div") as unknown as CellElement;
             cell.dataset.cell = cellId(reelIndex, rowIndex);
             cell.className = "player-cell";
             cell.textContent = symbol;
             cell.baseColor = "";
             const artworkUrl = artworkUrlForSymbol?.(symbol);
             if (artworkUrl !== undefined) {
-                const image = document.createElement("img");
+                const image = doc.createElement("img");
                 image.className = "player-symbol-artwork";
                 image.src = artworkUrl;
                 image.alt = symbol;
@@ -550,6 +556,12 @@ export function renderPlayerRound(elements: PlayerRoundElements, view: PlayerRou
     renderModeInfo(elements.modeInfo, view.availableModeIds ?? [], view.currentModeId, view.onSelectMode ?? (() => undefined));
     renderLineDefinitionsList(elements.linesList, elements.gridContainer, view.lines ?? []);
     renderPaytable(elements.paytableHead, elements.paytableBody, view.paytable);
+    if (elements.linesDetails !== undefined) {
+        elements.linesDetails.hidden = (view.lines?.length ?? 0) === 0;
+    }
+    if (elements.paytableDetails !== undefined) {
+        elements.paytableDetails.hidden = view.paytable === undefined || view.paytable.rows.length === 0;
+    }
 }
 
 // A short, readable message plus the raw technical detail (an Error's message/stack, or a response

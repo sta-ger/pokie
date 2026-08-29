@@ -233,6 +233,7 @@ describe("renderPlayerRound", () => {
         const elements = createPlayerRoundElements(root);
 
         expect(root.classList.contains("pokie-player")).toBe(true);
+        expect(root.getAttribute("data-pokie-player")).toBe("canonical-v1");
         expect(root.getAttribute("aria-label")).toBe("Game player");
         expect(Array.from(root.children).map((element) => element.className)).toEqual([
             "player-bet-info",
@@ -318,6 +319,27 @@ describe("renderPlayerRound", () => {
         expect(elements.totalWin.textContent).toBe("—");
         expect(elements.payoutMultiplier.textContent).toBe("—");
         expect(elements.gridContainer.querySelector('[data-cell="0:0"]')?.textContent).toBe("B");
+    });
+
+    it("hides empty payline and paytable disclosures after a later plain round", () => {
+        const root = document.createElement("section");
+        const elements = createPlayerRoundElements(root);
+
+        renderPlayerRound(elements, {
+            reelsSymbols: [["A"]],
+            highlights: [],
+            lines: [{lineId: "0", definition: [0]}],
+            paytable: {multipliers: [3], rows: [{symbolId: "A", amounts: [1]}]},
+        });
+        expect(elements.linesDetails?.hidden).toBe(false);
+        expect(elements.paytableDetails?.hidden).toBe(false);
+
+        renderPlayerRound(elements, {reelsSymbols: [["B"]], highlights: []});
+
+        expect(elements.linesDetails?.hidden).toBe(true);
+        expect(elements.paytableDetails?.hidden).toBe(true);
+        expect(elements.linesList.children).toHaveLength(0);
+        expect(elements.paytableBody.children).toHaveLength(0);
     });
 
     it("installs the shared responsive presentation stylesheet and exposes selected controls to assistive technology", () => {

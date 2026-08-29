@@ -9,8 +9,6 @@ import {CodeBlock} from "./CodeBlock";
 import {GameScreenView} from "./GameScreenView";
 import {PageSection} from "./PageSection";
 import {RoundArtifactInspector} from "./RoundArtifactInspector";
-import {RoundWinsTable} from "./RoundWinsTable";
-import {FeatureStateView} from "./FeatureStateView";
 import {describeRoundPresentation} from "./roundPresentation";
 
 function formatFieldValue(value: unknown): string {
@@ -86,9 +84,11 @@ export function RoundSummary({
                     currentModeId={selectedBetMode ?? presentation.currentModeId}
                     onSelectMode={onSelectBetMode}
                 />
-                <FeatureStateView events={artifact.featureEvents ?? []} />
-                <RoundWinsTable wins={artifact.wins} stake={artifact.stake} />
 
+                {/* Structured win rows, state snapshots and raw feature payloads are inspection data,
+                    not a second player screen.  Keep them behind this explicit disclosure; the
+                    canonical player above already owns the player-facing win/highlight, payline and
+                    feature-counter presentation. */}
                 <details onToggle={(event) => setArtifactInspectorOpen(event.currentTarget.open)}>
                     <summary>Inspect round artifact</summary>
                     {artifactInspectorOpen && (
