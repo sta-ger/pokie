@@ -2396,7 +2396,7 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, this.statusForStakeEngineExport(result.status), result);
     }
 
-    private statusForStakeEngineExport(status: "ok" | "conflict" | "unavailable" | "invalid" | "load-error"): number {
+    private statusForStakeEngineExport(status: "ok" | "conflict" | "unavailable" | "invalid" | "cancelled" | "load-error"): number {
         if (status === "ok") {
             return 201;
         }

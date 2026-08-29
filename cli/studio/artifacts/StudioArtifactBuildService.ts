@@ -14,6 +14,7 @@ import {
     ProjectTargetResolver,
     assertArtifactBuildNotCancelled,
     StakeProjectionExportService,
+    type PreparedStakeProjectionOperation,
 } from "pokie";
 import path from "path";
 import fs from "fs";
@@ -155,12 +156,15 @@ export class StudioArtifactBuildService {
      * empty, project-goal request; explicit Outcome Library inputs retain
      * their descriptor validation boundary in StudioStakeEngineExportService.
      */
-    public async validateStakeProjection(projectRoot: string, outDir?: string): Promise<{readonly plan: ArtifactConversionPlan} | undefined> {
+    public async prepareStakeProjection(projectRoot: string, outDir?: string): Promise<PreparedStakeProjectionOperation | undefined> {
         const resolved = await this.resolveForTarget(projectRoot, "stakeAdapter", outDir);
         if (resolved === undefined) return undefined;
-        const plan = await this.stakeProjection.prepare(resolved.project, resolved.destination);
-        if (plan.status === "planned") await this.stakeProjection.validate(resolved.project, plan);
-        return {plan};
+        return this.stakeProjection.prepareOperation(resolved.project, resolved.destination);
+    }
+
+    public async validateStakeProjection(projectRoot: string, outDir?: string): Promise<{readonly plan: ArtifactConversionPlan; readonly operation: PreparedStakeProjectionOperation} | undefined> {
+        const operation = await this.prepareStakeProjection(projectRoot, outDir);
+        return operation === undefined ? undefined : {plan: operation.plan, operation};
     }
 
     /**
@@ -169,12 +173,11 @@ export class StudioArtifactBuildService {
      * calling Studio boundary, so selecting a library never changes the final
      * destination that preflight inspected.
      */
-    public async validateStakeProjectionSource(sourcePath: string, destinationPath: string): Promise<{readonly plan: ArtifactConversionPlan} | undefined> {
+    public async validateStakeProjectionSource(sourcePath: string, destinationPath: string): Promise<{readonly plan: ArtifactConversionPlan; readonly operation: PreparedStakeProjectionOperation} | undefined> {
         const source = await this.resolveProject.resolve(sourcePath);
         if (source === undefined) return undefined;
-        const plan = await this.stakeProjection.prepare(source, destinationPath);
-        if (plan.status === "planned") await this.stakeProjection.validate(source, plan);
-        return {plan};
+        const operation = await this.stakeProjection.prepareOperation(source, destinationPath);
+        return {plan: operation.plan, operation};
     }
 
     public async buildStakeProjectionSource(
@@ -190,7 +193,13 @@ export class StudioArtifactBuildService {
                 plan: createUnresolvedRuntimePlan(sourcePath, "stakeAdapter", destinationPath),
             };
         }
-        return this.buildResolved(source, "stakeAdapter", destinationPath, options);
+        const operation = await this.stakeProjection.prepareOperation(source, destinationPath, options);
+        return this.executeStakeProjection(operation, options);
+    }
+
+    /** Execute a previously validated Studio Stake operation without preparing another plan. */
+    public executeStakeProjection(operation: PreparedStakeProjectionOperation, options?: ArtifactBuildOptions): Promise<StudioArtifactBuildView> {
+        return this.buildResolved(operation.source, "stakeAdapter", operation.destinationPath, options, operation);
     }
 
     // Executes a real build against the active project -- resolves `projectRoot` into a PokieProject
@@ -220,6 +229,7 @@ export class StudioArtifactBuildService {
         target: ArtifactTargetType,
         destination: string,
         options?: ArtifactBuildOptions,
+        preparedStakeOperation?: PreparedStakeProjectionOperation,
     ): Promise<StudioArtifactBuildView> {
         // Directory targets deliberately accept a caller-created empty
         // destination.  It is not owned by this operation, even though its
@@ -227,7 +237,10 @@ export class StudioArtifactBuildService {
         // that directory in place.
         const outputDestinationExisted = fs.existsSync(destination);
 
-        const plan = await this.plan(project, target, destination, options);
+        const operation = target === "stakeAdapter"
+            ? preparedStakeOperation ?? await this.stakeProjection.prepareOperation(project, destination, options)
+            : undefined;
+        const plan = operation?.plan ?? await this.plan(project, target, destination, options);
         if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
         }
@@ -235,7 +248,7 @@ export class StudioArtifactBuildService {
 
         try {
             const result = target === "stakeAdapter"
-                ? await this.stakeProjection.execute(project, destination, plan, options)
+                ? await this.stakeProjection.executeOperation(operation!, options)
                 : await this.registry.executePlan(plan, project, destination, options);
             // executePlan's terminal writer has returned, but Studio has one
             // more publication boundary: project registration.  Honour the
@@ -303,6 +316,7 @@ export class StudioArtifactBuildService {
                     : {}),
                 ...(result.importedBlueprintPath !== undefined ? {importedBlueprintPath: result.importedBlueprintPath} : {}),
                 ...(result.conversionEvidencePath !== undefined ? {conversionEvidencePath: result.conversionEvidencePath} : {}),
+                ...(result.stakeManifest !== undefined ? {stakeManifest: result.stakeManifest, stakeFiles: result.stakeFiles ?? []} : {}),
             };
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {

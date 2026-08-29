@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, ArtifactTargetType, ProjectType} from "pokie";
+import type {ArtifactConversionPlan, ArtifactTargetType, ProjectType, StakeEngineManifest} from "pokie";
 
 // POST /api/project/artifacts/build's own DTO -- mirrors ArtifactBuilderRegistry.build()'s own outcomes
 // exactly, the same ones "pokie build <project> --target <target>" itself can hit: a successful build's
@@ -22,6 +22,9 @@ export type StudioArtifactBuildView =
           readonly importedBlueprintPath?: string;
           readonly conversionEvidencePath?: string;
           readonly preflight?: {readonly estimatedItemCount?: string; readonly estimatedBytes?: string; readonly complexityWarning?: string};
+          /** Exact Stake publication evidence for the goal-oriented Stake card. */
+          readonly stakeManifest?: StakeEngineManifest;
+          readonly stakeFiles?: readonly string[];
       }
     | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "conflict"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}

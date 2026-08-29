@@ -15,4 +15,5 @@ export type StudioStakeEngineExportView =
     | {readonly status: "conflict"; readonly outDir: string; readonly overwritable: boolean; readonly error: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "unavailable"; readonly error: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]; readonly plan: ArtifactConversionPlan}
+    | {readonly status: "cancelled"; readonly message: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "load-error"; readonly error: string; readonly plan: ArtifactConversionPlan};

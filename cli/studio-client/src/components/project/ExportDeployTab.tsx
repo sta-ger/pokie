@@ -554,6 +554,11 @@ function TargetCard({
                                     Executed plan: {artifactBuildRun.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}.
                                 </Text>
                             )}
+                            {artifactBuildRun.result.stakeManifest !== undefined && (
+                                <Text size="sm" c="dimmed" mt={4}>
+                                    Stake manifest: {artifactBuildRun.result.stakeManifest.modes.map((mode) => `${mode.name} (cost ${mode.cost})`).join(", ") || "no modes"}. Files: {artifactBuildRun.result.stakeFiles?.join(", ") || "none"}.
+                                </Text>
+                            )}
                             {artifactBuildRun.result.preflight && (
                                 <Text size="sm" c="dimmed" mt={4}>
                                     Published {artifactBuildRun.result.preflight.estimatedItemCount ?? "the estimated"} item(s)

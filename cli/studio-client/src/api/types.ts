@@ -1295,6 +1295,7 @@ export type StudioStakeEngineExportView =
     | {status: "conflict"; outDir: string; overwritable: boolean; error: string; plan: StudioArtifactConversionPlan}
     | {status: "unavailable"; error: string; plan: StudioArtifactConversionPlan}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
+    | {status: "cancelled"; message: string; plan: StudioArtifactConversionPlan}
     | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
 
 // Mirrors the "pokie" package's own ArtifactTargetType -- the closed vocabulary ArtifactBuilderRegistry
@@ -1340,6 +1341,8 @@ export type StudioArtifactBuildView =
           sourceType: StudioProjectType;
           plan: StudioArtifactConversionPlan;
           preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
+          stakeManifest?: StakeEngineManifest;
+          stakeFiles?: string[];
           importedBlueprintPath?: string;
           conversionEvidencePath?: string;
       }

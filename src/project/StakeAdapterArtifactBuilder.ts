@@ -92,7 +92,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
             }
 
             reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
-            return {outputPath: result.outDir, preflight};
+            return {outputPath: result.outDir, preflight, stakeManifest: result.manifest, stakeFiles: result.files};
         } catch (error) {
             await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
             if (options?.signal?.aborted) {

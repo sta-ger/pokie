@@ -26,6 +26,20 @@ export interface StakeProjectionExportServicing {
     ): Promise<ArtifactBuildResult>;
 }
 
+/**
+ * A Stake publish is deliberately a single prepared operation, rather than a
+ * plan DTO which a caller can validate and then accidentally replace with a
+ * fresh lookup.  The source, destination and generation request are retained
+ * beside the registry plan so every interactive boundary executes exactly the
+ * decision it showed during preflight.
+ */
+export type PreparedStakeProjectionOperation = {
+    readonly source: PokieProject;
+    readonly destinationPath: string;
+    readonly plan: ArtifactConversionPlan;
+    readonly options?: Pick<ArtifactBuildOptions, "outcomeLibraryGeneration">;
+};
+
 export class StakeProjectionExportService implements StakeProjectionExportServicing {
     private readonly registry: ArtifactBuilderRegistry;
 
@@ -37,6 +51,34 @@ export class StakeProjectionExportService implements StakeProjectionExportServic
         return this.registry.preparePlan(source, "stakeAdapter", {
             destinationPath,
             outcomeLibraryGeneration: options?.outcomeLibraryGeneration,
+        });
+    }
+
+    public async prepareOperation(
+        source: PokieProject,
+        destinationPath: string,
+        options?: ArtifactBuildOptions,
+    ): Promise<PreparedStakeProjectionOperation> {
+        const preparedOptions = options?.outcomeLibraryGeneration === undefined
+            ? undefined
+            : {outcomeLibraryGeneration: options.outcomeLibraryGeneration};
+        const plan = await this.prepare(source, destinationPath, preparedOptions);
+        if (plan.status === "planned") await this.validate(source, plan);
+        return {source, destinationPath, plan, ...(preparedOptions === undefined ? {} : {options: preparedOptions})};
+    }
+
+    /** Execute the immutable operation prepared for this exact destination. */
+    public executeOperation(
+        operation: PreparedStakeProjectionOperation,
+        options?: ArtifactBuildOptions,
+    ): Promise<ArtifactBuildResult> {
+        return this.execute(operation.source, operation.destinationPath, operation.plan, {
+            ...operation.options,
+            ...options,
+            // A caller may supply progress/cancellation at execution time,
+            // but it must never replace the generation decision that was
+            // bound when the operation was prepared.
+            outcomeLibraryGeneration: operation.options?.outcomeLibraryGeneration,
         });
     }
 
