@@ -4,16 +4,22 @@ import {
     loadPokieGame,
     OutcomeLibraryBundleWriter,
     PokieGame,
+    PokieGamePackageValidating,
+    PokieGamePackageValidationReport,
     PokieGameManifest,
     PokieProject,
     ProjectTargetResolver,
+    REPLAY_OPERATION,
     ReplayRecorder,
     WinEvaluationResult,
 } from "pokie";
+import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {InMemoryStudioReplayRepository} from "../../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
+import {BlueprintProjectMaterializer} from "../../../../cli/materialize/BlueprintProjectMaterializer.js";
+import {createMaterializingRuntimePackageResolver} from "../../../../cli/materialize/materializeRuntimePackage.js";
 import {StudioReplayExecutionService} from "../../../../cli/studio/replay/StudioReplayExecutionService.js";
 import type {StudioReplayJobView} from "../../../../cli/studio/replay/StudioReplayJobView.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
@@ -237,6 +243,14 @@ async function waitForTerminal(service: StudioReplayExecutionService, projectRoo
     throw new Error("Timed out waiting for the replay to reach a terminal state.");
 }
 
+async function waitFor(condition: () => boolean, message: string): Promise<void> {
+    for (let i = 0; i < 2000; i++) {
+        if (condition()) return;
+        await flushMacrotask();
+    }
+    throw new Error(message);
+}
+
 // A controllable substitute for the real setImmediate-based yieldToEventLoop: each call queues its own
 // resolver rather than resolving immediately, so a test can precisely pause the chunk loop between
 // chunks, inspect intermediate progress, then release it one step at a time. Same helper as
@@ -310,6 +324,43 @@ describe("StudioReplayExecutionService", () => {
         expect(job.descriptor?.totalBet).toBe(5);
         expect(job.descriptor?.screen).toEqual([[expect.stringContaining("round-5")]]);
         expect(job.descriptor?.credits).toBe(1005);
+    });
+
+    it("fails corrupt and incomplete PAR preparation without loading a game or publishing a replay descriptor", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-replay-malformed-par-"));
+        const corrupt = path.join(workDir, "corrupt.xlsx");
+        const incomplete = path.join(workDir, "incomplete.xlsx");
+        fs.writeFileSync(corrupt, "not an XLSX");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(incomplete);
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", REPLAY_OPERATION);
+        const loadGame = jest.fn((_runtimePath: string) => Promise.resolve(createSeedAwareFakeGame(manifest)));
+        const loadRuntimeGame = async (projectRoot: string, options?: {signal?: AbortSignal}) => {
+            const resolution = await resolveRuntimePackageRoot(projectRoot, options);
+            try {
+                return await loadGame(resolution.runtimePath);
+            } finally {
+                await resolution.release();
+            }
+        };
+        const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), loadGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, loadRuntimeGame);
+
+        try {
+            for (const workbookPath of [corrupt, incomplete]) {
+                const started = service.start(workbookPath, {round: 3, seed: "malformed-par"});
+                if (started.status !== "created") throw new Error("expected job to be created");
+                const job = await waitForTerminal(service, workbookPath, started.job.id);
+                expect(job).toMatchObject({
+                    status: "failed",
+                    error: expect.stringMatching(/Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/),
+                });
+                expect(job.descriptor).toBeUndefined();
+            }
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("produces the exact same descriptor for the same seed/round (reproducibility)", async () => {
@@ -705,6 +756,105 @@ describe("StudioReplayExecutionService", () => {
         // No further chunk ran after the cancel was observed.
         expect(job?.completedRounds).toBe(10);
         expect(job?.descriptor).toBeUndefined();
+    });
+
+    it("cancels while runtime preparation is pending without loading a game or publishing a descriptor", async () => {
+        let preparationStarted = false;
+        const gameLoaded = false;
+        const service = new StudioReplayExecutionService(
+            new InMemoryStudioReplayRepository(),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            (_projectRoot, options) => new Promise<never>((_resolve, reject) => {
+                preparationStarted = true;
+                options?.signal?.addEventListener("abort", () => reject(new Error("preparation aborted")), {once: true});
+            }),
+        );
+
+        const result = service.start("/preparing", {round: 1});
+        if (result.status !== "created") throw new Error("expected job to be created");
+        await flushMacrotask();
+        expect(preparationStarted).toBe(true);
+
+        service.cancel("/preparing", result.job.id);
+        await flushMacrotask();
+
+        const job = service.getStatus("/preparing", result.job.id);
+        expect(job?.status).toBe("cancelled");
+        expect(gameLoaded).toBe(false);
+        expect(job?.descriptor).toBeUndefined();
+    });
+
+    it("cancels the real PAR resolver preparation without loading a game, publishing a descriptor, or retaining either stage", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-replay-par-"));
+        const cacheRoot = path.join(workDir, "cache");
+        const workbookPath = path.join(workDir, "slot.par.xlsx");
+        fs.copyFileSync(path.join(process.cwd(), "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+        const runCommand = jest.fn((_command: string, _args: string[], _cwd: string, options: {signal?: AbortSignal} = {}) =>
+            new Promise<never>((_resolve, reject) => {
+                if (options.signal?.aborted) {
+                    reject(new Error("cancelled"));
+                    return;
+                }
+                options.signal?.addEventListener("abort", () => reject(new Error("cancelled")), {once: true});
+            }),
+        );
+        const packageValidator: PokieGamePackageValidating = {
+            validate: (packageRoot: string): Promise<PokieGamePackageValidationReport> => Promise.resolve({
+                packageRoot,
+                valid: true,
+                game: manifest,
+                errors: [],
+                warnings: [],
+                suggestions: [],
+            }),
+        };
+        const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runCommand, packageValidator, cacheRoot);
+        const materialize = jest.spyOn(materializer, "materialize");
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", REPLAY_OPERATION, undefined, {materializer});
+        const loadGame: typeof loadPokieGame = jest.fn(() => Promise.resolve(createSeedAwareFakeGame(manifest)));
+        const loadRuntimeGame = async (projectRoot: string, options: {signal?: AbortSignal} = {}) => {
+            const resolution = await resolveRuntimePackageRoot(projectRoot, options);
+            try {
+                if (options.signal?.aborted) throw new Error("cancelled");
+                return await loadGame(resolution.runtimePath);
+            } finally {
+                await resolution.release();
+            }
+        };
+        const service = new StudioReplayExecutionService(
+            new InMemoryStudioReplayRepository(), loadGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, loadRuntimeGame,
+        );
+
+        try {
+            const started = service.start(workbookPath, {round: 1});
+            if (started.status !== "created") throw new Error("expected job to be created");
+            await waitFor(() => runCommand.mock.calls.length === 1, "PAR runtime dependency stage did not start");
+            const temporaryBlueprint = materialize.mock.calls[0][0].rootPath;
+            const parStage = path.dirname(temporaryBlueprint);
+            const runtimeStage = runCommand.mock.calls[0][2] as string;
+            expect(fs.existsSync(parStage)).toBe(true);
+            expect(fs.existsSync(runtimeStage)).toBe(true);
+            expect(fs.readdirSync(cacheRoot).some((entry) => entry.endsWith(".lock"))).toBe(true);
+
+            service.cancel(workbookPath, started.job.id);
+            const job = await waitForTerminal(service, workbookPath, started.job.id);
+
+            expect(job.status).toBe("cancelled");
+            expect(job.descriptor).toBeUndefined();
+            expect(loadGame).not.toHaveBeenCalled();
+            expect(fs.existsSync(parStage)).toBe(false);
+            expect(fs.existsSync(runtimeStage)).toBe(false);
+            expect(fs.readdirSync(cacheRoot).some((entry) => entry.endsWith(".lock") || entry.includes(".staging-"))).toBe(false);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("is idempotent when cancelling an already-terminal replay", async () => {

@@ -3,6 +3,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {InMemoryRecentProjectsRepository} from "../../../../cli/studio/InMemoryRecentProjectsRepository.js";
+import type {RecentProjectEntry} from "../../../../cli/studio/RecentProjectEntry.js";
+import type {RecentProjectsRepository} from "../../../../cli/studio/RecentProjectsRepository.js";
 import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.js";
 
 function createFakeGame(manifest: PokieGameManifest): PokieGame {
@@ -91,6 +93,52 @@ describe("StudioHomeService", () => {
 
             expect(dashboard).toEqual({status: "error", projectRoot: path.resolve(tmpDir), error: "not a pokie game package"});
             expect(await repository.list()).toEqual([]);
+        });
+
+        it("does not record a project when its owning Home request has been superseded", async () => {
+            const repository = new InMemoryRecentProjectsRepository();
+            const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+            const service = new StudioHomeService("1.2.1", repository, () => Promise.resolve(createFakeGame(manifest)));
+
+            await expect(service.openProject(tmpDir, {isCurrent: () => false})).rejects.toThrow("Runtime preparation was cancelled");
+
+            expect(await repository.list()).toEqual([]);
+        });
+
+        it("does not commit a recent project when superseded during delayed recent-project bookkeeping", async () => {
+            const entries: RecentProjectEntry[] = [];
+            let releaseWrite: (() => void) | undefined;
+            let notifyAddStarted: (() => void) | undefined;
+            const addStarted = new Promise<void>((resolve) => {
+                notifyAddStarted = resolve;
+            });
+            const repository: RecentProjectsRepository = {
+                list: () => Promise.resolve([...entries]),
+                add: async (entry, options = {}) => {
+                    notifyAddStarted?.();
+                    await new Promise<void>((resolve) => {
+                        releaseWrite = () => {
+                            resolve();
+                        };
+                    });
+                    if (options.isCurrent?.() === false) {
+                        return false;
+                    }
+                    entries.splice(0, entries.length, entry, ...entries.filter((existing) => existing.projectRoot !== entry.projectRoot));
+                    return true;
+                },
+            };
+            const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+            const service = new StudioHomeService("1.2.1", repository, () => Promise.resolve(createFakeGame(manifest)));
+            let current = true;
+
+            const opening = service.openProject(tmpDir, {isCurrent: () => current});
+            await addStarted;
+            current = false;
+            releaseWrite?.();
+
+            await expect(opening).rejects.toThrow("Runtime preparation was cancelled");
+            expect(entries).toEqual([]);
         });
     });
 

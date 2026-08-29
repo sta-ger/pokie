@@ -22,7 +22,6 @@ import {
 } from "pokie";
 import crypto from "crypto";
 import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
-import {BlueprintMaterializationError} from "../../materialize/BlueprintMaterializationError.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {InMemoryStudioSimulationRepository} from "./InMemoryStudioSimulationRepository.js";
 import type {StudioSimulationJobRecord} from "./StudioSimulationJobRecord.js";
@@ -307,9 +306,10 @@ export class StudioSimulationService {
 
         let runtime;
         try {
-            runtime = await this.resolveRuntimePackageRoot(record.projectRoot);
+            runtime = await this.resolveRuntimePackageRoot(record.projectRoot, {signal: record.abortController.signal});
         } catch (error) {
-            this.fail(record, this.describeRuntimePreparationFailure(error));
+            if (record.abortController.signal.aborted) this.cancelRecord(record);
+            else this.fail(record, this.describeRuntimePreparationFailure(error));
             return;
         }
 
@@ -511,16 +511,13 @@ export class StudioSimulationService {
         this.markTerminal(record);
     }
 
-    // BlueprintMaterializationError.details may contain npm's full stderr. A simulation job only
-    // exposes one primary error line, so keep that technical output out of this surface and tell the
-    // user what they can actually do next. The dashboard-load path can still expose details separately
-    // where it has an expandable diagnostic field.
+    // Planner diagnostics are already safe, user-facing explanations of the
+    // attempted runtime path, failed edge, and recovery. Preserve them byte
+    // for byte: the client deliberately recognizes their opening phrase and
+    // would otherwise replace them with generic retry copy.
     private describeRuntimePreparationFailure(error: unknown): Error {
-        if (error instanceof BlueprintMaterializationError) {
-            return new Error(
-                `Simulation could not prepare a runnable runtime from this Blueprint (${error.phase} step). ` +
-                    "Fix the Blueprint or its local npm setup, then retry the simulation.",
-            );
+        if (error instanceof Error && (/^Cannot prepare a runnable runtime\b/i).test(error.message)) {
+            return error;
         }
         return error instanceof Error ? error : new Error(String(error));
     }

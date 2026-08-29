@@ -2,13 +2,18 @@ import {loadPokieGame} from "pokie";
 import fs from "fs";
 import path from "path";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
-import {loadProjectDashboardContext, type ProjectLocationDescribing} from "../loadProjectDashboardContext.js";
+import {loadProjectDashboardContext, type ProjectDashboardLoadOptions, type ProjectLocationDescribing} from "../loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "../ProjectDashboardContext.js";
 import {InMemoryRecentProjectsRepository} from "../InMemoryRecentProjectsRepository.js";
 import type {RecentProjectsRepository} from "../RecentProjectsRepository.js";
 import {IndependentProjectDirectoryResult, PokiePathResolver} from "../../paths/PokiePathResolver.js";
 import type {StudioDefaultLocationView} from "./StudioDefaultLocationView.js";
 import type {StudioHomeRecentProjectView} from "./StudioHomeRecentProjectView.js";
+
+// A Home open is owned by StudioServer's runtime-preparation generation.  The service accepts the
+// owner's predicate as well as its AbortSignal because remembering a project is an observable
+// commit, not preparatory work that can safely race a newer Home intent.
+export type StudioHomeOpenProjectOptions = ProjectDashboardLoadOptions & {readonly recordRecentProject?: boolean};
 
 // Drives loadPokieGame -- the exact same project-loading path every migrated CLI command already uses
 // -- directly. No CLI command is ever spawned as a subprocess, and none of their logic is
@@ -85,16 +90,19 @@ export class StudioHomeService {
     // the (now-removed) single-shot Open Project flow both already did — "does this path actually
     // load" is decided in exactly one place. StudioServer itself performs the actual Studio context
     // transition on a "loaded" result; this only loads and records it as a recent project.
-    public async openProject(projectRoot: string): Promise<ProjectDashboardContext> {
-        const dashboard = await loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeLocation);
-        if (dashboard.status === "loaded") {
-            await this.rememberRecentProject(dashboard.projectRoot, dashboard.game.name);
-        } else if (dashboard.status === "outcome-source" || dashboard.status === "artifact") {
+    public async openProject(projectRoot: string, options: StudioHomeOpenProjectOptions = {}): Promise<ProjectDashboardContext> {
+        const dashboard = await loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeLocation, undefined, undefined, options);
+        this.assertOpenProjectCurrent(options);
+        if (options.recordRecentProject !== false && dashboard.status === "loaded") {
+            await this.rememberRecentProject(dashboard.projectRoot, dashboard.game.name, options);
+            this.assertOpenProjectCurrent(options);
+        } else if (options.recordRecentProject !== false && (dashboard.status === "outcome-source" || dashboard.status === "artifact")) {
             // Neither an outcome source nor an exchange-only artifact carries a PokieGameManifest to name itself
             // with (see ProjectDashboardContext's own doc comment) -- the resolved project's own
             // directory/file name is the only stable identity available here, same fallback Overview
             // already uses for an unresolved name elsewhere.
-            await this.rememberRecentProject(dashboard.projectRoot, path.basename(dashboard.projectRoot));
+            await this.rememberRecentProject(dashboard.projectRoot, path.basename(dashboard.projectRoot), options);
+            this.assertOpenProjectCurrent(options);
         }
         return dashboard;
     }
@@ -102,8 +110,22 @@ export class StudioHomeService {
     // Public so StudioBlueprintService (see cli/studio/blueprint/StudioBlueprintService.ts) can record a
     // successful blueprint-editor build here too, rather than needing a second, divergent
     // RecentProjectsRepository instance — this stays the one place recent-projects bookkeeping happens.
-    public async rememberRecentProject(projectRoot: string, name: string): Promise<void> {
-        await this.recentProjectsRepository.add({projectRoot, name, openedAt: new Date().toISOString()});
+    public async rememberRecentProject(projectRoot: string, name: string, options: StudioHomeOpenProjectOptions = {}): Promise<void> {
+        this.assertOpenProjectCurrent(options);
+        const committed = await this.recentProjectsRepository.add(
+            {projectRoot, name, openedAt: new Date().toISOString()},
+            {isCurrent: () => !options.signal?.aborted && options.isCurrent?.() !== false},
+        );
+        if (!committed) {
+            this.assertOpenProjectCurrent({...options, isCurrent: () => false});
+        }
+        this.assertOpenProjectCurrent(options);
+    }
+
+    private assertOpenProjectCurrent(options: StudioHomeOpenProjectOptions): void {
+        if (options.signal?.aborted || options.isCurrent?.() === false) {
+            throw new Error("Runtime preparation was cancelled before a runnable game was available.");
+        }
     }
 
     private projectStillExists(projectRoot: string): boolean {

@@ -1,4 +1,5 @@
 import {spawn, spawnSync} from "child_process";
+import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -20,7 +21,7 @@ import {BlueprintMaterializationError} from "../../../cli/materialize/BlueprintM
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
 import {createLocalRuntimeIdentity, createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../../../cli/materialize/UnsupportedProjectOperationError.js";
-import {PackageCommandResult, PackageCommandRunning, withLinkedLocalPokieRuntime} from "../../../cli/prepare/PackageCommandRunner.js";
+import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLinkedLocalPokieRuntime} from "../../../cli/prepare/PackageCommandRunner.js";
 
 type RecordedCommand = {command: string; args: string[]; cwd: string};
 
@@ -118,6 +119,18 @@ function spawnLongLivedPid(): {pid: number; kill: () => void} {
     return {pid: child.pid, kill: () => child.kill()};
 }
 
+async function waitForFile(filePath: string): Promise<void> {
+    for (let attempt = 0; attempt < 100; attempt++) {
+        if (fs.existsSync(filePath)) {
+            return;
+        }
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 10);
+        });
+    }
+    throw new Error(`Timed out waiting for ${filePath}`);
+}
+
 function seedStaleMarkerlessCacheEntry(materializer: BlueprintProjectMaterializer, blueprintPath: string): Promise<string> {
     return materializer.materialize(blueprintProjectOf(blueprintPath)).then((seeded) => {
         const cacheDir = seeded.runtimePath;
@@ -143,6 +156,27 @@ describe("BlueprintProjectMaterializer", () => {
     afterEach(() => {
         fs.rmSync(cacheRoot, {recursive: true, force: true});
         fs.rmSync(sourceDir, {recursive: true, force: true});
+    });
+
+    it("does not materialize corrupt or required-sheet-incomplete PAR workbooks when the real resolver reports their recognition boundary", async () => {
+        const corrupt = path.join(sourceDir, "corrupt.xlsx");
+        const incomplete = path.join(sourceDir, "incomplete.xlsx");
+        fs.writeFileSync(corrupt, "not an XLSX");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(incomplete);
+        const materialize = jest.fn();
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {
+            materializer: {materialize},
+        });
+
+        for (const workbookPath of [corrupt, incomplete]) {
+            await expect(resolveRuntimePackageRoot(workbookPath)).rejects.toThrow(
+                /Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/,
+            );
+        }
+        expect(materialize).not.toHaveBeenCalled();
+        expect(fs.readdirSync(cacheRoot)).toEqual([]);
     });
 
     it("materializes a blueprint into a fresh cache directory, running generate -> npm install -> verify in order", async () => {
@@ -239,6 +273,45 @@ describe("BlueprintProjectMaterializer", () => {
         expect(second.runtimePath).toBe(first.runtimePath);
         expect(runner.calls).toHaveLength(1);
         expect(packageValidator.calls).toHaveLength(1);
+    });
+
+    it("does not return a verified cached runtime when cancellation wins during its asynchronous marker inspection", async () => {
+        const runner = createRecordingRunner();
+        const packageValidator = createStubPackageValidator(validReport);
+        const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runner, packageValidator, cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const cached = await materializer.materialize(blueprintProjectOf(blueprintPath));
+        const markerPath = path.join(cached.runtimePath, ".pokie-materialized.json");
+        const realReadFile = fs.promises.readFile.bind(fs.promises);
+        let releaseMarkerRead!: () => void;
+        let markReadStarted!: () => void;
+        const markerReadStarted = new Promise<void>((resolve) => {
+            markReadStarted = resolve;
+        });
+        const readFileSpy = jest.spyOn(fs.promises, "readFile").mockImplementation(((targetPath: fs.PathLike) => {
+            if (targetPath === markerPath) {
+                markReadStarted();
+                return new Promise<string>((resolve, reject) => {
+                    releaseMarkerRead = () => {
+                        realReadFile(markerPath, "utf-8").then(resolve, reject);
+                    };
+                });
+            }
+            return realReadFile(targetPath, "utf-8");
+        }) as typeof fs.promises.readFile);
+        const controller = new AbortController();
+
+        try {
+            const pending = materializer.materialize(blueprintProjectOf(blueprintPath), {signal: controller.signal});
+            await markerReadStarted;
+            controller.abort();
+            releaseMarkerRead();
+
+            await expect(pending).rejects.toThrow("Runtime materialization was cancelled.");
+            expect(runner.calls).toHaveLength(1);
+        } finally {
+            readFileSpy.mockRestore();
+        }
     });
 
     it("resolves an edited blueprint to a different cache directory, leaving the old entry untouched", async () => {
@@ -386,6 +459,53 @@ describe("BlueprintProjectMaterializer", () => {
 
         expect(cached.runtimePath).toBe(retried.runtimePath);
         expect(workingRunner.calls).toHaveLength(1);
+    });
+
+    it("aborts an active dependency-install process tree without retrying, and removes its staging directory and cache lock", async () => {
+        const childPidPath = path.join(sourceDir, "dependency-install-pids.json");
+        const calls: RecordedCommand[] = [];
+        const runner: PackageCommandRunning & {calls: RecordedCommand[]} = Object.assign(
+            (command: string, args: string[], cwd: string, options) => {
+                calls.push({command, args, cwd});
+                // Run through the production process runner so this verifies
+                // AbortSignal terminates the active npm-like process tree,
+                // including an adversarial lifecycle descendant, before the
+                // materializer removes staging and releases its lock.
+                return runPackageCommand(
+                    process.execPath,
+                    [
+                        "-e",
+                        "const {spawn}=require('child_process'); const fs=require('fs'); const descendant=spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio: 'ignore'}); fs.writeFileSync(process.argv[1], JSON.stringify({parent: process.pid, descendant: descendant.pid})); setInterval(() => {}, 1000);",
+                        childPidPath,
+                    ],
+                    cwd,
+                    options,
+                );
+            },
+            {calls},
+        );
+        const materializer = new BlueprintProjectMaterializer(
+            "1.3.0",
+            undefined,
+            undefined,
+            undefined,
+            runner,
+            createStubPackageValidator(validReport),
+            cacheRoot,
+        );
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const controller = new AbortController();
+        const materializing = materializer.materialize(blueprintProjectOf(blueprintPath), {signal: controller.signal});
+
+        await waitForFile(childPidPath);
+        const pids = JSON.parse(fs.readFileSync(childPidPath, "utf-8")) as {parent: number; descendant: number};
+        controller.abort();
+
+        await expect(materializing).rejects.toThrow(/cancelled/i);
+        expect(runner.calls).toHaveLength(1);
+        expect(fs.readdirSync(cacheRoot)).toEqual([]);
+        expect(() => process.kill(pids.parent, 0)).toThrow();
+        expect(() => process.kill(pids.descendant, 0)).toThrow();
     });
 
     it("recovers from a failed verify phase, leaving no cache directory, and is retryable once the package becomes valid", async () => {
@@ -1048,6 +1168,65 @@ describe("createMaterializingRuntimePackageResolver", () => {
 
         expect(resolution.runtimePath).toBe("/does/not/resolve");
         expect(materializer.calls).toEqual([]);
+    });
+
+    it("turns a malformed PAR recognition into a path-aware runtime-preparation diagnostic without yielding a runtime", async () => {
+        const materializer = rejectingMaterializer("must not be called for malformed PAR workbooks");
+        const workbookPath = path.join(sourceDir, "incomplete.par.xlsx");
+        fs.writeFileSync(workbookPath, "not a readable workbook");
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {materializer});
+        const loadGame = jest.fn();
+
+        await expect(resolveRuntimePackageRoot(workbookPath).then((resolution) => loadGame(resolution.runtimePath))).rejects.toThrow(
+            /Cannot prepare a runnable runtime[\s\S]*Attempted path: PAR workbook recognition -> PAR workbook import -> blueprint -> tsPackage[\s\S]*failed PAR recognition\/import stage: PAR workbook recognition[\s\S]*Restore a readable PAR workbook/,
+        );
+        expect(materializer.calls).toEqual([]);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it.each<[string, PokieProject | undefined]>([
+        ["an unresolved passthrough", undefined],
+        ["a resolved package passthrough", {type: "tsPackage", rootPath: "/some/existing/package", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage, provenance: "test fixture"} as PokieProject],
+    ])("does not return %s when cancellation arrives during project resolution", async (_label, project) => {
+        const controller = new AbortController();
+        const materializer = rejectingMaterializer("must not be called after cancellation");
+        const resolveProject: ProjectResolving = {
+            resolve: () => {
+                controller.abort();
+                return Promise.resolve(project);
+            },
+        };
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {resolveProject, materializer});
+        const loadGame = jest.fn();
+
+        await expect(resolveRuntimePackageRoot("/project", {signal: controller.signal}).then((resolution) => loadGame(resolution.runtimePath)))
+            .rejects.toThrow(/cancelled/i);
+
+        expect(materializer.calls).toEqual([]);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("releases a materialized runtime instead of returning it when cancellation wins its final boundary", async () => {
+        const controller = new AbortController();
+        const release = jest.fn(() => Promise.resolve());
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const materializer: ProjectMaterializing = {
+            materialize: () => {
+                controller.abort();
+                return Promise.resolve({runtimePath: "/runtime-cache/slot", ownsRuntimePath: false, release});
+            },
+        };
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {
+            resolveProject: stubProjectResolver(blueprintProjectOf(blueprintPath)),
+            materializer,
+        });
+        const loadGame = jest.fn();
+
+        await expect(resolveRuntimePackageRoot(blueprintPath, {signal: controller.signal}).then((resolution) => loadGame(resolution.runtimePath)))
+            .rejects.toThrow(/cancelled/i);
+
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(loadGame).not.toHaveBeenCalled();
     });
 
     it("surfaces a materialization failure as its own BlueprintMaterializationError, with its failing phase intact, and never yields a runtime path the operation could load", async () => {

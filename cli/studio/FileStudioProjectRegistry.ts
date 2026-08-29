@@ -15,6 +15,11 @@ import type {StudioProjectRegistryEntry} from "./StudioProjectRegistryEntry.js";
 // crash or failed write mid-save can never leave `registryFile` truncated or partially overwritten.
 export class FileStudioProjectRegistry implements StudioProjectRegistry {
     private readonly registryFile: string;
+    // Every mutation shares this queue. Atomic file replacement prevents a torn file, while this
+    // queue makes each read-modify-write operation one transaction with respect to the other Studio
+    // registry writers. In particular, a guarded Home commit and a registration/removal cannot each
+    // write an earlier snapshot over the other one's durable change.
+    private mutation: Promise<void> = Promise.resolve();
 
     constructor(registryFile: string) {
         this.registryFile = registryFile;
@@ -24,14 +29,47 @@ export class FileStudioProjectRegistry implements StudioProjectRegistry {
         return this.read();
     }
 
-    public async upsert(entry: StudioProjectRegistryEntry): Promise<void> {
-        const entries = await this.read();
-        await this.write([entry, ...entries.filter((existing) => existing.location !== entry.location)]);
+    public upsert(entry: StudioProjectRegistryEntry): Promise<void> {
+        return this.enqueue(async () => {
+            const entries = await this.read();
+            await this.write([entry, ...entries.filter((existing) => existing.location !== entry.location)]);
+        });
     }
 
-    public async remove(location: string): Promise<void> {
-        const entries = await this.read();
-        await this.write(entries.filter((existing) => existing.location !== location));
+    public replace(entry: StudioProjectRegistryEntry, replacedLocations: readonly string[], options: {readonly isCurrent?: () => boolean} = {}): Promise<boolean> {
+        return this.enqueue(async () => {
+            const entries = await this.read();
+            // Do not remove aliases before this check: a stale Home request must leave a pre-existing
+            // record untouched as well as avoid publishing its own entry.
+            if (options.isCurrent?.() === false) {
+                return false;
+            }
+            const replaced = new Set(replacedLocations);
+            await this.write([entry, ...entries.filter((existing) => !replaced.has(existing.location))]);
+            if (options.isCurrent?.() !== false) {
+                return true;
+            }
+
+            // A supersession can land while the atomic file write is in flight. Restore precisely the
+            // rows this prepared commit displaced, but only if its own timestamped record is still
+            // present; a newer request's record is deliberately left alone.
+            const committedEntries = await this.read();
+            if (committedEntries.some((candidate) => this.isPreparedEntry(candidate, entry))) {
+                const restored = entries.filter((candidate) => replaced.has(candidate.location));
+                await this.write([
+                    ...restored,
+                    ...committedEntries.filter((candidate) => !this.isPreparedEntry(candidate, entry)),
+                ]);
+            }
+            return false;
+        });
+    }
+
+    public remove(location: string): Promise<void> {
+        return this.enqueue(async () => {
+            const entries = await this.read();
+            await this.write(entries.filter((existing) => existing.location !== location));
+        });
     }
 
     private async read(): Promise<StudioProjectRegistryEntry[]> {
@@ -61,5 +99,15 @@ export class FileStudioProjectRegistry implements StudioProjectRegistry {
     private async write(entries: StudioProjectRegistryEntry[]): Promise<void> {
         await fs.promises.mkdir(path.dirname(this.registryFile), {recursive: true});
         await writeFileAtomically(this.registryFile, (tempPath) => fs.promises.writeFile(tempPath, `${JSON.stringify(entries, null, 4)}\n`, "utf-8"));
+    }
+
+    private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+        const result = this.mutation.then(operation, operation);
+        this.mutation = result.then(() => undefined, () => undefined);
+        return result;
+    }
+
+    private isPreparedEntry(candidate: StudioProjectRegistryEntry, prepared: StudioProjectRegistryEntry): boolean {
+        return candidate.location === prepared.location && candidate.lastOpenedAt === prepared.lastOpenedAt;
     }
 }

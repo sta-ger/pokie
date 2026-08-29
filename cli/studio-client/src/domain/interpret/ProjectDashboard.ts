@@ -54,6 +54,12 @@ const PROJECT_OPEN_FAILURE_MESSAGE =
 // designer-facing recovery moment. Keep the server's response available for support, but never let
 // its implementation-specific wording become the alert a designer sees first.
 export function describeProjectContextFailure(projectRoot: string, detail?: string): ProjectHeaderView {
+    // Planner diagnostics are already safe, actionable user-facing text.  In particular they carry
+    // the attempted path, exact conversion edge, and recovery; replacing them with opening copy loses
+    // the only information a designer can use to repair a non-runnable source.
+    if (detail?.startsWith("Cannot prepare a runnable runtime")) {
+        return {status: "error", projectRoot, message: detail};
+    }
     return {status: "error", projectRoot, message: PROJECT_OPEN_FAILURE_MESSAGE, errorDetail: detail};
 }
 

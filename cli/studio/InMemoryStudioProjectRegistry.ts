@@ -16,6 +16,15 @@ export class InMemoryStudioProjectRegistry implements StudioProjectRegistry {
         return Promise.resolve();
     }
 
+    public replace(entry: StudioProjectRegistryEntry, replacedLocations: readonly string[], options: {readonly isCurrent?: () => boolean} = {}): Promise<boolean> {
+        if (options.isCurrent?.() === false) {
+            return Promise.resolve(false);
+        }
+        const replaced = new Set(replacedLocations);
+        this.entries = [entry, ...this.entries.filter((existing) => !replaced.has(existing.location))];
+        return Promise.resolve(true);
+    }
+
     public remove(location: string): Promise<void> {
         this.entries = this.entries.filter((existing) => existing.location !== location);
         return Promise.resolve();

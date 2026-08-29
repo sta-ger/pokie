@@ -46,10 +46,14 @@ export function ensureCompiledTestOutput(options: {
     outputPaths: readonly string[];
     lockName: string;
     command: readonly string[];
+    // End-to-end tests that execute a built binary need their production
+    // surface rebuilt from the current checkout, rather than borrowing a
+    // previously generated dist artifact.
+    forceRebuild?: boolean;
 }): void {
-    const {repositoryRoot, outputPaths, lockName, command} = options;
+    const {repositoryRoot, outputPaths, lockName, command, forceRebuild = false} = options;
     const outputsExist = () => outputPaths.every((outputPath) => fs.existsSync(outputPath));
-    if (outputsExist()) {
+    if (!forceRebuild && outputsExist()) {
         return;
     }
 
@@ -60,7 +64,7 @@ export function ensureCompiledTestOutput(options: {
     const deadline = Date.now() + BUILD_WAIT_TIMEOUT_MS;
 
     for (;;) {
-        if (outputsExist()) {
+        if (!forceRebuild && outputsExist()) {
             return;
         }
 
@@ -69,7 +73,7 @@ export function ensureCompiledTestOutput(options: {
             try {
                 fs.writeFileSync(path.join(lockDirectory, "owner.json"), JSON.stringify({pid: process.pid}));
                 // A previous owner can finish between our initial exists check and lock acquisition.
-                if (!outputsExist()) {
+                if (forceRebuild || !outputsExist()) {
                     execFileSync(command[0], [...command.slice(1)], {cwd: repositoryRoot, stdio: "inherit"});
                 }
             } finally {

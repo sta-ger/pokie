@@ -23,6 +23,7 @@ import {
     PreGeneratedRoundReplayDescriptor,
     PreGeneratedOutcomeSourcing,
     ProjectResolving,
+    ProjectTargetMalformedError,
     ProjectTargetResolver,
     resolveGameSessionSerializer,
     resolveOutcomeLibraryModeName,
@@ -41,9 +42,11 @@ import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/derive
 import crypto from "crypto";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {StudioRoundRecorder, type StudioRoundOperation} from "./StudioRoundRecorder.js";
+import {describeRuntimePackageLoadError} from "../../commands/internal/describeLocalRuntimeError.js";
 import type {StudioRuntimeSessionView} from "./StudioRuntimeSessionView.js";
 
 export type StudioPlaySessionResult = {status: "ok"; session: StudioRuntimeSessionView} | {status: "failed"; error: string};
+export type StudioPlaySessionOptions = {readonly signal?: AbortSignal};
 
 // The two shapes an active Play session can take, discriminated by "kind" -- a "runtime" session (a real
 // loaded PokieGame, spun through SpinCommandHandler) or an "outcomeSource" session (a resolved
@@ -161,6 +164,7 @@ export class StudioPlayService {
 
     private active: ActiveSession | undefined;
     private currentSessionId: string | undefined;
+    private sessionGeneration = 0;
 
     constructor(
         loadGame: typeof loadPokieGame = loadPokieGame,
@@ -186,28 +190,37 @@ export class StudioPlayService {
     // needed for the synchronous loadGame() call itself (see resolveRuntimePackageRoot's own doc comment
     // on why a "tsPackage" project's own release() is already a no-op) -- released immediately afterward,
     // never held for this session's own lifetime.
-    public async newSession(projectRoot: string, seed?: string | number, modeName?: string): Promise<StudioPlaySessionResult> {
+    public async newSession(projectRoot: string, seed?: string | number, modeName?: string, options: StudioPlaySessionOptions = {}): Promise<StudioPlaySessionResult> {
+        const generation = ++this.sessionGeneration;
+        const assertCurrent = (): void => {
+            if (options.signal?.aborted || generation !== this.sessionGeneration) {
+                throw new Error("Runtime preparation was cancelled before a runnable game was available.");
+            }
+        };
         let project: PokieProject | undefined;
         try {
             project = await this.resolveProject.resolve(projectRoot);
+            assertCurrent();
         } catch (error) {
-            return this.fail(error);
+            return this.fail(error, projectRoot);
         }
 
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
-            return this.newOutcomeSourceSession(project, seed, modeName);
+            return this.newOutcomeSourceSession(project, seed, modeName, assertCurrent);
         }
 
         let game: PokieGame;
         try {
-            const resolution = await this.resolveRuntimePackageRoot(projectRoot);
+            const resolution = await this.resolveRuntimePackageRoot(projectRoot, {signal: options.signal});
             try {
+                assertCurrent();
                 game = await this.loadGame(resolution.runtimePath);
+                assertCurrent();
             } finally {
                 await resolution.release();
             }
         } catch (error) {
-            return this.fail(error);
+            return this.fail(error, projectRoot);
         }
 
         const manifest = game.getManifest();
@@ -240,6 +253,7 @@ export class StudioPlayService {
             await wallet.setBalance(sessionId, session.getCreditsAmount());
             state = captureInitialPokieSessionState(context, session, resolveGameSessionSerializer(game), true);
             await sessionRepository.save(sessionId, state);
+            assertCurrent();
         } catch (error) {
             return this.fail(error);
         }
@@ -395,6 +409,7 @@ export class StudioPlayService {
     // (see newSession()'s own doc comment on why materialization is never held past loadGame), so this is
     // just discarding in-memory references, never an async teardown.
     public reset(): void {
+        this.sessionGeneration++;
         this.active = undefined;
         this.currentSessionId = undefined;
     }
@@ -463,7 +478,7 @@ export class StudioPlayService {
     // OutcomeLibraryBundleOutcomeSource -- the exact same selector class
     // PreGeneratedSpinCommandHandler/sampleOutcomeSourceProject already use in production -- never
     // loadPokieGame, never a regenerated game-model draw.
-    private async newOutcomeSourceSession(project: PokieProject, seed?: string | number, modeName?: string): Promise<StudioPlaySessionResult> {
+    private async newOutcomeSourceSession(project: PokieProject, seed?: string | number, modeName?: string, assertCurrent: () => void = () => undefined): Promise<StudioPlaySessionResult> {
         const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_SOURCE_SAMPLE_OPERATION);
         if (diagnostic !== undefined) {
             return {status: "failed", error: diagnostic.message};
@@ -484,6 +499,7 @@ export class StudioPlayService {
             }
             bundleGame = manifest.game;
             resolvedModeName = resolveOutcomeLibraryModeName(manifest.modes, modeName);
+            assertCurrent();
         } catch (error) {
             return this.fail(error);
         }
@@ -557,7 +573,10 @@ export class StudioPlayService {
         return {status: "ok", session: this.buildOutcomeSourceSessionView(sessionId, active, artifact, replay)};
     }
 
-    private fail(error: unknown): StudioPlaySessionResult {
+    private fail(error: unknown, projectRoot = "the selected project"): StudioPlaySessionResult {
+        if (error instanceof ProjectTargetMalformedError && error.targetType === "parWorkbook") {
+            return {status: "failed", error: describeRuntimePackageLoadError(projectRoot, error).message};
+        }
         return {status: "failed", error: error instanceof Error ? error.message : String(error)};
     }
 

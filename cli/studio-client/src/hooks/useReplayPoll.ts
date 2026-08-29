@@ -22,6 +22,9 @@ export function useReplayPoll(onTerminal?: () => void) {
     const [error, setError] = useState<string>();
     const currentJobId = useRef<string | undefined>(undefined);
     const cancelledRef = useRef(false);
+    const generationRef = useRef(0);
+    const runGuardGenerationRef = useRef<number | undefined>(undefined);
+    const cancelGuardGenerationRef = useRef<number | undefined>(undefined);
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const onTerminalRef = useRef(onTerminal);
     const runGuard = useDoubleSubmitGuard();
@@ -35,6 +38,7 @@ export function useReplayPoll(onTerminal?: () => void) {
         cancelledRef.current = false;
         return () => {
             cancelledRef.current = true;
+            generationRef.current += 1;
             if (timeoutRef.current !== undefined) {
                 clearTimeout(timeoutRef.current);
                 timeoutRef.current = undefined;
@@ -42,25 +46,29 @@ export function useReplayPoll(onTerminal?: () => void) {
         };
     }, []);
 
-    function poll(id: string): void {
-        if (cancelledRef.current) {
+    function isCurrent(generation: number): boolean {
+        return !cancelledRef.current && generationRef.current === generation;
+    }
+
+    function poll(id: string, generation: number): void {
+        if (!isCurrent(generation)) {
             return;
         }
         getReplay(fetchImpl, id)
             .then((polledJob) => {
-                if (cancelledRef.current || currentJobId.current !== id) {
+                if (!isCurrent(generation) || currentJobId.current !== id) {
                     return;
                 }
                 setJob(polledJob);
                 setProgress(describeReplayProgress(polledJob));
                 if (isReplayActive(polledJob)) {
-                    timeoutRef.current = setTimeout(() => poll(id), POLL_INTERVAL_MS);
+                    timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
                 } else if (isReplayTerminal(polledJob)) {
                     onTerminalRef.current?.();
                 }
             })
             .catch((err: unknown) => {
-                if (!cancelledRef.current) {
+                if (isCurrent(generation) && currentJobId.current === id) {
                     setError(errorMessage(err));
                 }
             });
@@ -70,11 +78,14 @@ export function useReplayPoll(onTerminal?: () => void) {
         if (!runGuard.begin()) {
             return;
         }
+        const generation = generationRef.current + 1;
+        generationRef.current = generation;
+        runGuardGenerationRef.current = generation;
         setError(undefined);
         setProgress({status: "queued", completedRounds: 0, round, percent: 0, durationMs: 0});
         runReplay(fetchImpl, round, seed, simulationId, modeName, outcomeSource)
             .then((result) => {
-                if (cancelledRef.current) {
+                if (!isCurrent(generation)) {
                     return;
                 }
                 const id = result.status === "conflict" ? result.activeJobId : result.job.id;
@@ -83,14 +94,19 @@ export function useReplayPoll(onTerminal?: () => void) {
                     setJob(result.job);
                     setProgress(describeReplayProgress(result.job));
                 }
-                poll(id);
+                poll(id, generation);
             })
             .catch((err: unknown) => {
-                if (!cancelledRef.current) {
+                if (isCurrent(generation)) {
                     setError(errorMessage(err));
                 }
             })
-            .finally(() => runGuard.end());
+            .finally(() => {
+                if (runGuardGenerationRef.current === generation) {
+                    runGuardGenerationRef.current = undefined;
+                    runGuard.end();
+                }
+            });
     }
 
     function cancel(): void {
@@ -98,28 +114,37 @@ export function useReplayPoll(onTerminal?: () => void) {
         if (id === undefined || !cancelGuard.begin()) {
             return;
         }
+        const generation = generationRef.current;
+        cancelGuardGenerationRef.current = generation;
         cancelReplay(fetchImpl, id)
             .then((polledJob) => {
-                if (cancelledRef.current) {
+                if (!isCurrent(generation) || currentJobId.current !== id) {
                     return;
                 }
                 setJob(polledJob);
                 setProgress(describeReplayProgress(polledJob));
             })
             .catch((err: unknown) => {
-                if (!cancelledRef.current) {
+                if (isCurrent(generation) && currentJobId.current === id) {
                     setError(errorMessage(err));
                 }
             })
-            .finally(() => cancelGuard.end());
+            .finally(() => {
+                if (cancelGuardGenerationRef.current === generation) {
+                    cancelGuardGenerationRef.current = undefined;
+                    cancelGuard.end();
+                }
+            });
     }
 
     function selectExisting(selectedJob: StudioReplayJobView): void {
+        const generation = generationRef.current + 1;
+        generationRef.current = generation;
         currentJobId.current = selectedJob.id;
         setJob(selectedJob);
         setProgress(describeReplayProgress(selectedJob));
         if (isReplayActive(selectedJob)) {
-            poll(selectedJob.id);
+            poll(selectedJob.id, generation);
         }
     }
 
@@ -128,6 +153,11 @@ export function useReplayPoll(onTerminal?: () => void) {
     // first so an in-flight poll response from the old project is discarded rather than repopulating
     // what's cleared here, cancels the pending recursive-poll timer outright, then clears job state.
     function resetForProjectSwitch(): void {
+        generationRef.current += 1;
+        runGuardGenerationRef.current = undefined;
+        cancelGuardGenerationRef.current = undefined;
+        runGuard.end();
+        cancelGuard.end();
         currentJobId.current = undefined;
         if (timeoutRef.current !== undefined) {
             clearTimeout(timeoutRef.current);

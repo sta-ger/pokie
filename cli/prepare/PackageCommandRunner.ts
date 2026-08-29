@@ -1,24 +1,144 @@
-import {execFile} from "child_process";
+import {execFile, spawn} from "child_process";
 import fs from "fs";
 import path from "path";
-import util from "util";
 import {PackageJsonLike, withLocalPokieDependency} from "pokie";
 import {LocalPokieDependencyClosureEntry, resolveLocalPokieDependencyClosure} from "./localPokieDependencyClosure.js";
 
-const execFileAsync = util.promisify(execFile);
-
 export type PackageCommandResult = {stdout: string; stderr: string};
+export type PackageCommandOptions = {readonly signal?: AbortSignal};
 
 // `cwd` is always the package's own project root -- never a shell string, so `args` (e.g. "install",
 // or "run"/"build") is never interpreted for shell metacharacters.
-export type PackageCommandRunning = (command: string, args: string[], cwd: string) => Promise<PackageCommandResult>;
+export type PackageCommandRunning = (
+    command: string,
+    args: string[],
+    cwd: string,
+    options?: PackageCommandOptions,
+) => Promise<PackageCommandResult>;
+
+const PROCESS_TREE_POLL_MS = 10;
+const PROCESS_TREE_TERM_GRACE_MS = 250;
+
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
+}
+
+function processGroupIsAlive(pid: number): boolean {
+    try {
+        process.kill(-pid, 0);
+        return true;
+    } catch (error) {
+        return (error as NodeJS.ErrnoException).code !== "ESRCH";
+    }
+}
+
+async function waitForProcessGroupExit(pid: number, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (processGroupIsAlive(pid)) {
+        if (Date.now() >= deadline) {
+            return false;
+        }
+        await delay(PROCESS_TREE_POLL_MS);
+    }
+    return true;
+}
+
+async function waitForProcessGroupTermination(pid: number): Promise<void> {
+    while (processGroupIsAlive(pid)) {
+        await delay(PROCESS_TREE_POLL_MS);
+    }
+}
+
+// execFile can only kill its immediate child when it receives an AbortSignal. npm, however, commonly
+// creates lifecycle children which inherit that child's process group. Run POSIX commands in their own
+// process group and tear down that complete group on cancellation; cleanup is not allowed to continue
+// until the group is gone. Windows' taskkill /T is the corresponding OS process-tree operation.
+async function terminateProcessTree(pid: number | undefined): Promise<void> {
+    if (pid === undefined) {
+        return;
+    }
+    if (process.platform === "win32") {
+        await new Promise<void>((resolve) => {
+            execFile("taskkill", ["/pid", String(pid), "/T", "/F"], () => resolve());
+        });
+        return;
+    }
+    try {
+        process.kill(-pid, "SIGTERM");
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+            return;
+        }
+        throw error;
+    }
+    if (await waitForProcessGroupExit(pid, PROCESS_TREE_TERM_GRACE_MS)) {
+        return;
+    }
+    try {
+        process.kill(-pid, "SIGKILL");
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+            throw error;
+        }
+    }
+    await waitForProcessGroupTermination(pid);
+}
 
 // Real npm install/build execution, injected as GamePackagePreparer's own runCommand so tests can
 // assert exactly which commands would run (and in what order) without actually invoking npm.
-export const runPackageCommand: PackageCommandRunning = async (command, args, cwd) => {
-    const {stdout, stderr} = await execFileAsync(command, args, {cwd});
-    return {stdout: stdout.toString(), stderr: stderr.toString()};
-};
+export const runPackageCommand: PackageCommandRunning = (command, args, cwd, options = {}) =>
+    new Promise<PackageCommandResult>((resolve, reject) => {
+        if (options.signal?.aborted) {
+            reject(new Error("Package command was cancelled."));
+            return;
+        }
+
+        // Unlike spawn(), execFile does not forward `detached` to its child,
+        // which would leave npm in this process's own group. Use spawn here
+        // so POSIX can address npm and every inherited lifecycle descendant
+        // as one private process group.
+        const child = spawn(command, args, {cwd, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"]});
+        let stdout = "";
+        let stderr = "";
+        let spawnError: Error | undefined;
+        let termination: Promise<void> | undefined;
+        const abort = (): void => {
+            termination ??= terminateProcessTree(child.pid);
+        };
+        options.signal?.addEventListener("abort", abort, {once: true});
+        child.stdout.on("data", (chunk: Buffer) => {
+            stdout += chunk.toString();
+        });
+        child.stderr.on("data", (chunk: Buffer) => {
+            stderr += chunk.toString();
+        });
+        child.once("error", (error) => {
+            spawnError = error;
+        });
+        const settle = async (code: number | null, signal: NodeJS.Signals | null): Promise<void> => {
+            options.signal?.removeEventListener("abort", abort);
+            await termination;
+            if (options.signal?.aborted) {
+                reject(spawnError ?? new Error("Package command was cancelled."));
+                return;
+            }
+            if (spawnError) {
+                reject(spawnError);
+                return;
+            }
+            if (code !== 0) {
+                const error = Object.assign(new Error(`${command} ${args.join(" ")} exited with ${signal ?? code}.`), {stderr});
+                reject(error);
+                return;
+            }
+            resolve({stdout, stderr});
+        };
+        child.once("close", (code, signal) => {
+            settle(code, signal).catch(reject);
+        });
+    });
 
 // Rewrites every name in POKIE's own real, on-disk runtime dependency closure (see
 // resolveLocalPokieDependencyClosure) to a `file:` spec pointing at this exact running installation's
@@ -176,9 +296,9 @@ function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJs
 // the first place, at the cost of leaving `node_modules/pokie` for its own generated `require("pokie")` up
 // to the caller.
 export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
-    return async (command, args, cwd) => {
+    return async (command, args, cwd, options) => {
         if (args[0] !== "install") {
-            return base(command, args, cwd);
+            return base(command, args, cwd, options);
         }
         const packageJsonPath = path.join(cwd, "package.json");
         const original = fs.readFileSync(packageJsonPath, "utf-8");
@@ -188,7 +308,7 @@ export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCom
         const patched = withLocalPokieDependencyClosure(withPokie, closure);
         fs.writeFileSync(packageJsonPath, `${JSON.stringify(patched, null, 4)}\n`);
         try {
-            const result = await base(command, args, cwd);
+            const result = await base(command, args, cwd, options);
             const taintedNames = new Set(["pokie", ...closure.map((entry) => entry.name)]);
             restorePersistedPackageLock(cwd, packageJson, taintedNames);
             return result;
@@ -205,9 +325,12 @@ export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCom
 // runtime cache offline and usable in hosts where child npm processes are unavailable. Init/create keep
 // using withLocalPokieInstall above because they produce standalone, hand-editable npm packages.
 export function withLinkedLocalPokieRuntime(pokiePackageRoot: string, base: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
-    return (command, args, cwd) => {
+    return (command, args, cwd, options) => {
         if (command !== "npm" || args[0] !== "install") {
-            return base(command, args, cwd);
+            return base(command, args, cwd, options);
+        }
+        if (options?.signal?.aborted) {
+            return Promise.reject(new Error("Runtime materialization was cancelled."));
         }
         const nodeModules = path.join(cwd, "node_modules");
         fs.mkdirSync(nodeModules, {recursive: true});

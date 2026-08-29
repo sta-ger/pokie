@@ -197,17 +197,36 @@ describe("ProjectTargetResolver", () => {
         expect(await resolver.resolve(plainJsonFile)).toBeUndefined();
     });
 
-    it("returns undefined for a .xlsx file that isn't a real workbook, rather than trusting the extension", async () => {
+    it("identifies a corrupt .xlsx as a failed PAR workbook recognition", async () => {
         const workbookFile = path.join(workDir, "fake.xlsx");
         fs.writeFileSync(workbookFile, "not a real workbook, extension only");
 
-        expect(await resolver.resolve(workbookFile)).toBeUndefined();
+        await expect(resolver.resolve(workbookFile)).rejects.toMatchObject({
+            name: "ProjectTargetMalformedError",
+            targetType: "parWorkbook",
+            stage: "PAR workbook recognition",
+        });
+        await expect(resolver.resolve(workbookFile)).rejects.toThrow(/could not read/);
     });
 
-    it("returns undefined for a readable .xlsx file missing a required PAR sheet", async () => {
+    it("identifies a readable .xlsx with PAR sheets missing from its required set as incomplete", async () => {
         const workbookFile = path.join(workDir, "incomplete.xlsx");
         const workbook = new ExcelJS.Workbook();
         workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(workbookFile);
+
+        await expect(resolver.resolve(workbookFile)).rejects.toMatchObject({
+            name: "ProjectTargetMalformedError",
+            targetType: "parWorkbook",
+            stage: "PAR workbook recognition",
+        });
+        await expect(resolver.resolve(workbookFile)).rejects.toThrow(/missing required sheets: "Symbols", "Paytable"/);
+    });
+
+    it("keeps an unrelated readable spreadsheet outside PAR recognition", async () => {
+        const workbookFile = path.join(workDir, "budget.xlsx");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Budget");
         await workbook.xlsx.writeFile(workbookFile);
 
         expect(await resolver.resolve(workbookFile)).toBeUndefined();

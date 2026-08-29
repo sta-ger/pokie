@@ -154,6 +154,15 @@ export type ArtifactConversionPlan = {
     readonly diagnostic?: ArtifactConversionDiagnostic;
 };
 
+/** A destinationless plan for an operation which needs a loadable game now. */
+export type RunnableRuntimePlan = {
+    readonly status: "planned" | "unavailable";
+    readonly source: ArtifactIdentity;
+    readonly target: ArtifactTargetIdentity;
+    readonly steps: readonly ArtifactConversionStep[];
+    readonly diagnostic?: ArtifactConversionDiagnostic;
+};
+
 /**
  * A prepared publication for a non-bundle file.  Keeping it separate from
  * ArtifactConversionPlan prevents raw JSON from accidentally acquiring a
@@ -421,6 +430,64 @@ export class ArtifactConversionPlanner {
 
     public planType(source: ProjectType, target: ArtifactTargetType): ArtifactConversionPlan {
         return this.planIdentity({kind: source, capabilities: PROJECT_TYPE_CAPABILITIES[source]}, target);
+    }
+
+    /**
+     * Plans a runtime lease, not a durable tsPackage publication.  A Blueprint
+     * is materialized into a verified cache; PAR first imports into an
+     * operation-owned temporary Blueprint.  The returned target intentionally
+     * has no location, so callers cannot mistake this request for `build`.
+     */
+    public planRuntime(source: PokieProject): RunnableRuntimePlan {
+        return this.planRuntimeIdentity(resolveArtifactIdentity(source));
+    }
+
+    public planRuntimeIdentity(source: ArtifactIdentity): RunnableRuntimePlan {
+        const sourceKind = source.kind as ProjectType;
+        const target: ArtifactTargetIdentity = {
+            kind: "tsPackage",
+            capabilities: TARGET_CAPABILITIES.tsPackage,
+            recognitionProvenance: "ephemeral runnable runtime",
+        };
+        const unavailable = (code: ArtifactConversionDiagnostic["code"], message: string, recovery: string): RunnableRuntimePlan => ({
+            status: "unavailable", source, target, steps: [],
+            diagnostic: {code, failedEdge: {from: sourceKind, to: "tsPackage"}, message, recovery},
+        });
+        if (sourceKind === "tsPackage") {
+            return {status: "planned", source, target, steps: [{kind: "materializeRuntime", input: source, output: target, choice: "reuse", estimatedWork: "none"}]};
+        }
+        if (sourceKind === "blueprint") {
+            if (!source.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY)) {
+                return unavailable("missing-capability", "This Blueprint cannot be materialized because its build capability is unavailable.", "Resolve the Blueprint again and retry.");
+            }
+            return {status: "planned", source, target, steps: [{kind: "materializeRuntime", input: source, output: target, choice: "materialize", estimatedWork: "materialize"}]};
+        }
+        if (sourceKind === "parWorkbook") {
+            if (!source.capabilities.includes(PAR_WORKBOOK_EXCHANGE_CAPABILITY)) {
+                return unavailable("missing-capability", "This PAR workbook cannot be imported into a runnable game model.", "Resolve a compatible PAR workbook and retry.");
+            }
+            const blueprint: ArtifactIdentity = {
+                kind: "blueprint", capabilities: TARGET_CAPABILITIES.blueprint,
+                recognitionProvenance: "operation-owned PAR runtime import",
+                configurationProvenance: source.configurationProvenance,
+            };
+            return {
+                status: "planned", source, target,
+                steps: [
+                    {kind: "importParWorkbook", input: source, output: blueprint, choice: "materialize", estimatedWork: "read", losses: ["PAR import is a one-way game-model reconstruction; conversion evidence is kept only for this runtime operation."]},
+                    {kind: "materializeRuntime", input: blueprint, output: target, choice: "materialize", estimatedWork: "materialize"},
+                ],
+            };
+        }
+        let detail = `A ${sourceKind} artifact cannot yield a runnable POKIE game.`;
+        if (sourceKind === "outcomeLibrary") {
+            detail = "An Outcome Library has native sampling and exact replay paths, but does not retain executable game logic.";
+        } else if (sourceKind === "stakeAdapter") {
+            detail = "A Stake Engine export is an exchange artifact and does not retain an executable game runtime.";
+        } else if (sourceKind === "wasm") {
+            detail = "A WASM component is metadata-only; POKIE has no WASM game runtime.";
+        }
+        return unavailable("unsupported-boundary", detail, "Use the original Blueprint or POKIE package, or choose the artifact's native supported operation.");
     }
 
     /**

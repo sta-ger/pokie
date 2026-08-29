@@ -2,16 +2,20 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {
-    BLUEPRINT_BUILD_CAPABILITY,
+    ArtifactConversionPlanner,
     describeUnsupportedProjectOperation,
     PokieOperation,
     PokieProject,
     ProjectMaterializing,
     ProjectResolving,
     ProjectTargetResolver,
+    ProjectTargetMalformedError,
 } from "pokie";
 import {withLinkedLocalPokieRuntime} from "../prepare/PackageCommandRunner.js";
 import {BlueprintProjectMaterializer} from "./BlueprintProjectMaterializer.js";
+import {BlueprintMaterializationError} from "./BlueprintMaterializationError.js";
+import {RunnableArtifactMaterializer} from "./RunnableArtifactMaterializer.js";
+import {RuntimePreparationError} from "./RuntimePreparationError.js";
 import {UnsupportedProjectOperationError} from "./UnsupportedProjectOperationError.js";
 
 // What every CLI runtime operation (sim/dev/serve/replay, Studio's Play runtime) gets back once it's
@@ -25,7 +29,9 @@ export type RuntimePackageResolution = {
     release(): Promise<void>;
 };
 
-export type RuntimePackageResolving = (packageRoot: string) => Promise<RuntimePackageResolution>;
+export type RuntimePackageResolutionOptions = {readonly signal?: AbortSignal};
+
+export type RuntimePackageResolving = (packageRoot: string, options?: RuntimePackageResolutionOptions) => Promise<RuntimePackageResolution>;
 
 const noRelease = (): Promise<void> => Promise.resolve();
 
@@ -101,8 +107,10 @@ function compareFileNames(left: string, right: string): number {
 // The default for every call site that hasn't been wired to a real resolver -- hands packageRoot back
 // completely untouched. This is what keeps every existing caller (and every test constructing a command
 // without this dependency) behaving exactly as if this boundary didn't exist yet.
-export const passthroughRuntimePackageResolver: RuntimePackageResolving = (packageRoot) =>
-    Promise.resolve({runtimePath: packageRoot, release: noRelease});
+export const passthroughRuntimePackageResolver: RuntimePackageResolving = (packageRoot, options = {}) => {
+    assertRuntimePreparationNotCancelled(options.signal);
+    return Promise.resolve({runtimePath: packageRoot, release: noRelease});
+};
 
 export type MaterializingRuntimePackageResolverDependencies = {
     resolveProject?: ProjectResolving;
@@ -141,39 +149,91 @@ export function createMaterializingRuntimePackageResolver(
     dependencies: MaterializingRuntimePackageResolverDependencies = {},
 ): RuntimePackageResolving {
     const resolveProject = dependencies.resolveProject ?? new ProjectTargetResolver();
-    const materializer =
-        dependencies.materializer ??
-        new BlueprintProjectMaterializer(
-            pokieVersion,
-            undefined,
-            undefined,
-            undefined,
-            pokiePackageRoot !== undefined ? withLinkedLocalPokieRuntime(pokiePackageRoot) : undefined,
-            undefined,
-            undefined,
-            pokiePackageRoot !== undefined ? createLocalRuntimeIdentity(pokiePackageRoot) : pokieVersion,
-        );
+    // Even an injected materializer is a Blueprint-stage materializer.  Keep
+    // PAR import/staging planner-owned so tests and host integrations cannot
+    // accidentally receive an unsupported workbook directly.
+    const blueprintMaterializer = dependencies.materializer ?? new BlueprintProjectMaterializer(
+        pokieVersion,
+        undefined,
+        undefined,
+        undefined,
+        pokiePackageRoot !== undefined ? withLinkedLocalPokieRuntime(pokiePackageRoot) : undefined,
+        undefined,
+        undefined,
+        pokiePackageRoot !== undefined ? createLocalRuntimeIdentity(pokiePackageRoot) : pokieVersion,
+    );
+    const materializer = new RunnableArtifactMaterializer(blueprintMaterializer);
 
-    return async (packageRoot: string): Promise<RuntimePackageResolution> => {
-        const project: PokieProject | undefined = await resolveProject.resolve(packageRoot);
+    return async (packageRoot: string, options: RuntimePackageResolutionOptions = {}): Promise<RuntimePackageResolution> => {
+        assertRuntimePreparationNotCancelled(options.signal);
+        let project: PokieProject | undefined;
+        try {
+            project = await resolveProject.resolve(packageRoot);
+        } catch (error) {
+            if (error instanceof ProjectTargetMalformedError && error.targetType === "parWorkbook") {
+                throw RuntimePreparationError.parWorkbookRecognition(path.resolve(packageRoot), error);
+            }
+            throw error;
+        }
+        // Resolving a project can include filesystem inspection.  Do not let a
+        // cancellation that arrives there escape through an otherwise harmless
+        // package/passthrough return and start a Studio job afterwards.
+        assertRuntimePreparationNotCancelled(options.signal);
         if (project === undefined) {
             return {runtimePath: packageRoot, release: noRelease};
         }
 
-        // A Blueprint is runnable only after it exercises its build capability. This is intentionally
-        // capability-based rather than a second, local type switch: the resolver has already made the
-        // authoritative decision about what this project can do, and simulation must receive the
-        // resulting package runtime rather than the Blueprint JSON path.
-        if (project.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY)) {
-            const materialized = await materializer.materialize(project);
-            return {runtimePath: materialized.runtimePath, release: materialized.release};
+        // Runtime preparation is planner-owned.  It may borrow a package,
+        // materialize a Blueprint cache, or import PAR into a private stage;
+        // none of those asks the user to publish a durable package first.
+        const runtimePlan = new ArtifactConversionPlanner().planRuntime(project);
+        if (project.type === "tsPackage") {
+            assertRuntimePreparationNotCancelled(options.signal);
+            return {runtimePath: project.rootPath, release: noRelease};
         }
-
+        if (runtimePlan.status === "planned") {
+            try {
+                const materialized = await materializer.materialize(project, options);
+                if (options.signal?.aborted) {
+                    await materialized.release();
+                    assertRuntimePreparationNotCancelled(options.signal);
+                }
+                return {runtimePath: materialized.runtimePath, release: materialized.release};
+            } catch (error) {
+                if (options.signal?.aborted) throw error;
+                // Preserve the dedicated lifecycle error (including phase and
+                // npm detail) for direct consumers while enriching its public
+                // message with the planner-owned runtime path.
+                if (error instanceof BlueprintMaterializationError) {
+                    error.message = new RuntimePreparationError(project, runtimePlan, error).message;
+                    throw error;
+                }
+                throw new RuntimePreparationError(project, runtimePlan, error);
+            }
+        }
+        // Native Outcome Library routes are selected by their commands before
+        // this boundary. Everything else retains the planner's attempted path
+        // and failed conversion edge instead of being mislabeled as a bad
+        // package validation problem.
         const diagnostic = describeUnsupportedProjectOperation(project, operation);
-        if (diagnostic !== undefined) {
-            throw new UnsupportedProjectOperationError(diagnostic);
-        }
-
-        return {runtimePath: project.rootPath, release: noRelease};
+        const plannerDiagnostic = runtimePlan.diagnostic!;
+        const plannerMessage = `Cannot prepare a runnable runtime from ${JSON.stringify(project.rootPath)}. Attempted path: ${project.type} -> tsPackage; reusable steps: ${runtimePlan.steps.length === 0 ? "none" : runtimePlan.steps.map((step) => `${step.choice} ${step.kind}`).join(", ")}; blocker at ${plannerDiagnostic.failedEdge.from} -> ${plannerDiagnostic.failedEdge.to}: ${plannerDiagnostic.message} Next: ${plannerDiagnostic.recovery}`;
+        throw new UnsupportedProjectOperationError({
+            ...(diagnostic ?? {
+                operation,
+                detectedType: project.type,
+                missingCapability: "runtime.execute",
+                alternatives: [],
+            }),
+            // Outcome Library is intentionally kept on its native paths; its
+            // established open-Studio diagnostic remains the clearest recovery.
+            message: project.type === "outcomeLibrary" && diagnostic !== undefined
+                ? diagnostic.message
+                : `${diagnostic?.message === undefined ? "" : `${diagnostic.message} `}${plannerMessage}`,
+        });
     };
+}
+
+function assertRuntimePreparationNotCancelled(signal: AbortSignal | undefined): void {
+    if (signal?.aborted) throw new Error("Runtime preparation was cancelled before a runnable game was available.");
 }

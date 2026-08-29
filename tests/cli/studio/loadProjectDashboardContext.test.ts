@@ -1,9 +1,10 @@
 import ExcelJS from "exceljs";
-import {PokieGame, PokieGameManifest} from "pokie";
+import {PokieGame, PokieGameManifest, STUDIO_OPERATION} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {loadProjectDashboardContext} from "../../../cli/studio/loadProjectDashboardContext.js";
+import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 
 function createFakeGame(manifest: PokieGameManifest): PokieGame {
     return {
@@ -89,9 +90,11 @@ describe("loadProjectDashboardContext", () => {
         await expect(loadProjectDashboardContext("./broken-game", loadGame)).resolves.not.toThrow();
     });
 
-    it("opens a PAR workbook as an exchange-only artifact without materializing or loading a runtime", async () => {
-        const loadGame = jest.fn();
-        const resolveRuntimePackageRoot = jest.fn();
+    it("opens a runnable PAR workbook through the shared runtime materialization boundary", async () => {
+        const manifest: PokieGameManifest = {id: "par-slot", name: "PAR Slot", version: "1.0.0"};
+        const loadGame = jest.fn().mockResolvedValue(createFakeGame(manifest));
+        const release = jest.fn().mockResolvedValue(undefined);
+        const resolveRuntimePackageRoot = jest.fn().mockResolvedValue({runtimePath: "/cached/par-runtime", release});
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-par-dashboard-test-"));
         const workbookPath = path.join(workDir, "sheet.xlsx");
         const workbook = new ExcelJS.Workbook();
@@ -103,12 +106,67 @@ describe("loadProjectDashboardContext", () => {
             await workbook.xlsx.writeFile(workbookPath);
             const dashboard = await loadProjectDashboardContext(workbookPath, loadGame, resolveRuntimePackageRoot);
 
-            expect(dashboard).toMatchObject({
-                status: "artifact",
+            expect(dashboard).toEqual({
+                status: "loaded",
                 projectRoot: workbookPath,
-                project: {type: "parWorkbook", rootPath: workbookPath, capabilities: ["parWorkbook.exchange"]},
+                game: manifest,
             });
-            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+            expect(resolveRuntimePackageRoot).toHaveBeenCalledWith(workbookPath);
+            expect(loadGame).toHaveBeenCalledWith("/cached/par-runtime");
+            expect(release).toHaveBeenCalledTimes(1);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("releases a prepared runtime and never returns loaded when cancellation wins during dashboard loading", async () => {
+        const controller = new AbortController();
+        const release = jest.fn().mockResolvedValue(undefined);
+        let finishLoad: ((game: PokieGame) => void) | undefined;
+        const loadGame = jest.fn(() => new Promise<PokieGame>((resolve) => {
+            finishLoad = resolve;
+        }));
+        const resolver = jest.fn().mockResolvedValue({runtimePath: "/temporary-runtime", release});
+
+        const pending = loadProjectDashboardContext(
+            "/old-project",
+            loadGame,
+            resolver,
+            undefined,
+            () => Promise.resolve(undefined),
+            () => Promise.resolve(undefined),
+            {signal: controller.signal},
+        );
+        await new Promise<void>((resolve) => {
+            setImmediate(() => resolve());
+        });
+        controller.abort();
+        finishLoad?.(createFakeGame({id: "old", name: "Old", version: "1.0.0"}));
+
+        await expect(pending).resolves.toMatchObject({status: "error", projectRoot: "/old-project"});
+        expect(release).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns the shared PAR recognition/import diagnostic for corrupt and incomplete workbooks without loading a dashboard runtime", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-malformed-par-dashboard-"));
+        const corrupt = path.join(workDir, "corrupt.xlsx");
+        const incomplete = path.join(workDir, "incomplete.xlsx");
+        fs.writeFileSync(corrupt, "not an XLSX");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(incomplete);
+        const loadGame = jest.fn();
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", STUDIO_OPERATION);
+
+        try {
+            for (const workbookPath of [corrupt, incomplete]) {
+                const dashboard = await loadProjectDashboardContext(workbookPath, loadGame, resolveRuntimePackageRoot);
+                expect(dashboard).toMatchObject({
+                    status: "error",
+                    projectRoot: path.resolve(workbookPath),
+                    error: expect.stringMatching(/Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/),
+                });
+            }
             expect(loadGame).not.toHaveBeenCalled();
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});

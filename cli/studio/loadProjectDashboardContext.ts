@@ -1,6 +1,7 @@
 import {loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, type ProjectType} from "pokie";
 import path from "path";
 import {BlueprintMaterializationError} from "../materialize/BlueprintMaterializationError.js";
+import {RuntimePreparationError} from "../materialize/RuntimePreparationError.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
 import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
@@ -34,15 +35,17 @@ const defaultResolveOutcomeSourceProject: OutcomeSourceProjectResolving = async 
     return {project, report};
 };
 
-// Resolves an already-built artifact that Studio can operate on without a game runtime. PAR workbooks
-// are intentionally kept separate from outcome-source projects: they have no canonical analysis to
-// report, only the `parWorkbook.exchange` capability Build/Export needs to republish the workbook.
+// Resolves artifacts which deliberately have no runtime path. PAR is omitted:
+// runnable-compatible workbooks go through the shared runtime planner below.
 export type ArtifactProjectResolving = (projectRoot: string) => Promise<PokieProject | undefined>;
 
-const defaultResolveArtifactProject: ArtifactProjectResolving = async (projectRoot) => {
-    const project = await new ProjectTargetResolver().resolve(projectRoot).catch(() => undefined);
-    return project?.type === "parWorkbook" ? project : undefined;
-};
+// `isCurrent` belongs to Studio's request-generation owner.  An AbortSignal stops the
+// materializer itself, while this second guard protects the small completion windows around
+// collaborators that cannot observe a signal (for example a location description finishing at
+// the same time as a project switch).
+export type ProjectDashboardLoadOptions = {readonly signal?: AbortSignal; readonly isCurrent?: () => boolean};
+
+const defaultResolveArtifactProject: ArtifactProjectResolving = () => Promise.resolve(undefined);
 
 // Adapts loadPokieGame's throw-on-failure contract into ProjectDashboardContext's safe, typed
 // "loaded"/"error" result — the one place a failure to load `projectRoot` (missing build output, a
@@ -74,7 +77,9 @@ export async function loadProjectDashboardContext(
     describeLocation: ProjectLocationDescribing = noDescribeLocation,
     resolveOutcomeSourceProject: OutcomeSourceProjectResolving = defaultResolveOutcomeSourceProject,
     resolveArtifactProject: ArtifactProjectResolving = defaultResolveArtifactProject,
+    options: ProjectDashboardLoadOptions = {},
 ): Promise<ProjectDashboardContext> {
+    assertDashboardLoadCurrent(options);
     const resolvedRoot = path.resolve(projectRoot);
 
     // Checked first, before ever touching resolveRuntimePackageRoot/loadGame: an "outcomeLibrary"/
@@ -84,8 +89,10 @@ export async function loadProjectDashboardContext(
     // unresolvable), so every existing tsPackage/blueprint/wasm caller falls straight through
     // to the unchanged path below.
     const outcomeSource = await resolveOutcomeSourceProject(projectRoot).catch(() => undefined);
+    assertDashboardLoadCurrent(options);
     if (outcomeSource !== undefined) {
         const identity = await describeLocation(projectRoot).catch(() => undefined);
+        assertDashboardLoadCurrent(options);
         return {
             status: "outcome-source",
             projectRoot: resolvedRoot,
@@ -95,12 +102,12 @@ export async function loadProjectDashboardContext(
         };
     }
 
-    // A PAR workbook is a directly exchangeable artifact, not a runtime package. Do this before the
-    // materializing boundary below so opening it reaches Build/Export instead of failing with the
-    // unrelated `runtime.execute` diagnostic.
+    // Keep any truly non-runnable artifact visible without claiming it loaded.
     const artifact = await resolveArtifactProject(projectRoot).catch(() => undefined);
+    assertDashboardLoadCurrent(options);
     if (artifact !== undefined) {
         const identity = await describeLocation(projectRoot).catch(() => undefined);
+        assertDashboardLoadCurrent(options);
         return {
             status: "artifact",
             projectRoot: resolvedRoot,
@@ -110,10 +117,15 @@ export async function loadProjectDashboardContext(
     }
 
     try {
-        const resolution = await resolveRuntimePackageRoot(projectRoot);
+        const resolution = options.signal === undefined
+            ? await resolveRuntimePackageRoot(projectRoot)
+            : await resolveRuntimePackageRoot(projectRoot, {signal: options.signal});
         try {
+            assertDashboardLoadCurrent(options);
             const game = await loadGame(resolution.runtimePath);
+            assertDashboardLoadCurrent(options);
             const identity = await describeLocation(projectRoot).catch(() => undefined);
+            assertDashboardLoadCurrent(options);
             return {
                 status: "loaded",
                 projectRoot: resolvedRoot,
@@ -130,7 +142,13 @@ export async function loadProjectDashboardContext(
             status: "error",
             projectRoot: resolvedRoot,
             error: error instanceof Error ? error.message : String(error),
-            errorDetail: error instanceof BlueprintMaterializationError ? error.details : undefined,
+            errorDetail: error instanceof BlueprintMaterializationError || error instanceof RuntimePreparationError ? error.details : undefined,
         };
+    }
+}
+
+function assertDashboardLoadCurrent(options: ProjectDashboardLoadOptions): void {
+    if (options.signal?.aborted || options.isCurrent?.() === false) {
+        throw new Error("Runtime preparation was cancelled before a runnable game was available.");
     }
 }

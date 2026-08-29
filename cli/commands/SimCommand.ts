@@ -27,6 +27,7 @@ import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../mat
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {writeOutputFileAtomically} from "./internal/writeOutputFile.js";
+import {describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
 
 type SimFormat = "summary" | "json";
 
@@ -307,7 +308,12 @@ export class SimCommand implements CliCommandHandling {
         // all). A path that doesn't resolve to either of those two types -- including one ProjectResolving
         // doesn't recognize as any known project at all -- falls through to the original, unaffected
         // materialize-and-load flow.
-        const project = await this.resolveProject.resolve(options.packageRoot);
+        let project: PokieProject | undefined;
+        try {
+            project = await this.resolveProject.resolve(options.packageRoot);
+        } catch (error) {
+            throw describeRuntimePackageLoadError(options.packageRoot, error);
+        }
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
             await this.runOutcomeSourceSim(project, options);
             return;

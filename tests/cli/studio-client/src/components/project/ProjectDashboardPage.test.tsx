@@ -61,6 +61,84 @@ describe("ProjectDashboardPage", () => {
         await waitFor(() => expect(activePanel).toHaveFocus());
     });
 
+    it("offers every planner-backed runtime workflow for a loaded PAR workbook", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...baseFetchRoutes(),
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "loaded",
+                    projectRoot: "/games/sample.par.xlsx",
+                    game: {id: "sample-slot", name: "Sample PAR Slot", version: "1.0.0"},
+                    type: "parWorkbook",
+                    capabilities: ["parWorkbook.exchange"],
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "Sample PAR Slot"});
+
+        expect(screen.getByRole("button", {name: "Play"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Simulation"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Replay"})).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Play"}));
+        expect(await screen.findByRole("button", {name: "New Play session"})).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        expect(await screen.findByRole("button", {name: "Run Simulation"})).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Replay"}));
+        expect(await screen.findByText(/Load a round above to run it/)).toBeInTheDocument();
+    });
+
+    it("renders a planner runtime-preparation failure with its path, edge, and recovery intact", async () => {
+        const user = userEvent.setup();
+        const diagnostic =
+            'Cannot prepare a runnable runtime from "/games/sample.par.xlsx". Attempted path: parWorkbook -> tsPackage; planned/reusable stages: import blueprint (parWorkbook -> blueprint), materialize tsPackage (blueprint -> tsPackage); failed conversion edge: blueprint -> tsPackage. Workbook import rejected. Next: Fix the workbook and retry.';
+        const {fetchImpl} = createFakeFetch((call) => {
+            const [path] = call.url.split("?");
+            if (path === "/api/project/simulations") {
+                return {
+                    ok: true,
+                    status: 201,
+                    body: {id: "sim-planner-failure", status: "queued", rounds: 10000, workers: 1, startedAt: new Date().toISOString(), roundsCompleted: 0, durationMs: 0},
+                };
+            }
+            if (path === "/api/project/simulations/sim-planner-failure") {
+                return {
+                    ok: true,
+                    status: 200,
+                    body: {
+                        id: "sim-planner-failure",
+                        status: "failed",
+                        rounds: 10000,
+                        workers: 1,
+                        startedAt: new Date().toISOString(),
+                        completedAt: new Date().toISOString(),
+                        roundsCompleted: 0,
+                        durationMs: 1,
+                        error: diagnostic,
+                    },
+                };
+            }
+            const routes = baseFetchRoutes();
+            const route = routes[path as keyof typeof routes];
+            if (route) return route();
+            throw new Error(`no fake route for ${call.url}`);
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "Sample Slot"});
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent(diagnostic);
+        expect(alert).not.toHaveTextContent("couldn't be completed");
+    });
+
     it("keeps a running simulation's polling alive across a tab switch", async () => {
         const user = userEvent.setup();
         let simulationPollCount = 0;

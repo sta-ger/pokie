@@ -15,11 +15,14 @@ export class InMemoryRecentProjectsRepository implements RecentProjectsRepositor
 
     // Most-recent-first, de-duplicated by projectRoot (re-opening an existing entry moves it to the
     // front rather than creating a second one), capped at MAX_ENTRIES.
-    public add(entry: RecentProjectEntry): Promise<void> {
+    public add(entry: RecentProjectEntry, options: {readonly isCurrent?: () => boolean} = {}): Promise<boolean> {
+        if (options.isCurrent?.() === false) {
+            return Promise.resolve(false);
+        }
         this.entries = [entry, ...this.entries.filter((existing) => existing.projectRoot !== entry.projectRoot)].slice(
             0,
             MAX_ENTRIES,
         );
-        return Promise.resolve();
+        return Promise.resolve(true);
     }
 }

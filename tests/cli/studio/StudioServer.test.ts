@@ -49,6 +49,7 @@ import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {StudioNativePickerService} from "../../../cli/studio/home/StudioNativePickerService.js";
 import {isLoopbackRequest} from "../../../cli/studio/isLoopbackRequest.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
+import {FileStudioProjectRegistry} from "../../../cli/studio/FileStudioProjectRegistry.js";
 import {InMemoryStudioReplayRepository} from "../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
 import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
 import {StudioPlayService} from "../../../cli/studio/runtime/StudioPlayService.js";
@@ -66,6 +67,8 @@ import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
 const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
 const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
 const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
+type PendingGameLoad = (game: PokieGame) => void;
+type PendingLoadStarted = () => void;
 
 function restoreEnv(name: string, value: string | undefined): void {
     if (value === undefined) {
@@ -457,6 +460,183 @@ describe("StudioServer", () => {
         expect(loadGame).toHaveBeenCalledWith("./sample-slot");
     });
 
+    it("publishes only the latest overlapping Home open and records only that project", async () => {
+        const firstManifest: PokieGameManifest = {id: "first", name: "First", version: "1.0.0"};
+        const secondManifest: PokieGameManifest = {id: "second", name: "Second", version: "1.0.0"};
+        const completeLoads = new Map<string, PendingGameLoad>();
+        const loadStarted = new Map<string, PendingLoadStarted>();
+        const firstLoadStarted = new Promise<void>((resolve) => {
+            loadStarted.set("./first", resolve);
+        });
+        const secondLoadStarted = new Promise<void>((resolve) => {
+            loadStarted.set("./second", resolve);
+        });
+        loadGame.mockImplementation((projectRoot: string) => new Promise<PokieGame>((resolve) => {
+            completeLoads.set(projectRoot, resolve);
+            loadStarted.get(projectRoot)?.();
+        }));
+
+        const firstOpen = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./first"});
+        await firstLoadStarted;
+
+        const secondOpen = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./second"});
+        await secondLoadStarted;
+        completeLoads.get("./second")?.(createFakeGame(secondManifest));
+
+        expect(await secondOpen).toEqual({
+            status: 200,
+            body: {
+                context: {mode: "project", projectRoot: path.resolve("./second")},
+                manifest: secondManifest,
+            },
+        });
+
+        completeLoads.get("./first")?.(createFakeGame(firstManifest));
+        expect(await firstOpen).toEqual({status: 409, body: {error: "Project opening was superseded by a newer request."}});
+        expect((await get(`${baseUrl}/api/context`)).body).toEqual({mode: "project", projectRoot: path.resolve("./second")});
+        expect((await get(`${baseUrl}/api/project/context`)).body).toMatchObject({status: "loaded", game: secondManifest});
+        expect(await get(`${baseUrl}/api/home/recent-projects`)).toMatchObject({
+            body: [expect.objectContaining({projectRoot: path.resolve("./second"), name: "Second"})],
+        });
+    });
+
+    it("keeps a registry registration made during a Home commit through the real file-backed server path", async () => {
+        const registryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-registry-overlap-"));
+        const registry = new FileStudioProjectRegistry(path.join(registryDirectory, "projects.json"));
+        const registrationService = new StudioProjectRegistrationService(registry, {
+            resolve: (projectRoot) => Promise.resolve({
+                type: "tsPackage",
+                rootPath: path.resolve(projectRoot),
+                capabilities: ["runtime.execute"],
+                provenance: '"package.json" declares a "pokie.entry" field',
+            }),
+        });
+        const manifest: PokieGameManifest = {id: "opening", name: "Opening", version: "1.0.0"};
+        loadGame.mockResolvedValue(createFakeGame(manifest));
+        const overlapHomeService = new StudioHomeService("1.0.0", undefined, loadGame);
+        const overlapServer = new StudioServer({
+            pokieVersion: "1.0.0",
+            host: "127.0.0.1",
+            port: 0,
+            studioRoot,
+            homeService: overlapHomeService,
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, overlapHomeService),
+            loadGame,
+            resolveRuntimePackageRoot: (projectRoot) => Promise.resolve({runtimePath: projectRoot, ownsRuntimePath: false, release: () => Promise.resolve()}),
+            gamePackageInspector: {inspect},
+            gamePackageValidator: {validate},
+            projectRegistrationService: registrationService,
+        });
+
+        const originalWriteFile = fs.promises.writeFile.bind(fs.promises);
+        let releaseHomeWrite: (() => void) | undefined;
+        let notifyHomeWrite: (() => void) | undefined;
+        const homeWriteStarted = new Promise<void>((resolve) => {
+            notifyHomeWrite = resolve;
+        });
+        let writeCount = 0;
+        const writeSpy = jest.spyOn(fs.promises, "writeFile").mockImplementation(async (...arguments_) => {
+            writeCount++;
+            if (writeCount === 1) {
+                notifyHomeWrite?.();
+                await new Promise<void>((resolve) => {
+                    releaseHomeWrite = resolve;
+                });
+            }
+            return originalWriteFile(...arguments_);
+        });
+
+        try {
+            const address = await overlapServer.start();
+            const overlapBaseUrl = `http://${address.host}:${address.port}`;
+            const opening = post(`${overlapBaseUrl}/api/home/projects/open`, {projectRoot: "./opening"});
+            await homeWriteStarted;
+            const registering = post(`${overlapBaseUrl}/api/home/projects/registry/register`, {location: "./registered", name: "Registered"});
+
+            await flushMacrotask();
+            expect(writeCount).toBe(1);
+            releaseHomeWrite?.();
+
+            expect((await opening).status).toBe(200);
+            expect((await registering).status).toBe(201);
+            expect((await registry.list()).map((candidate) => candidate.location)).toEqual(expect.arrayContaining([
+                path.resolve("./opening"),
+                path.resolve("./registered"),
+            ]));
+        } finally {
+            writeSpy.mockRestore();
+            await overlapServer.stop();
+            fs.rmSync(registryDirectory, {recursive: true, force: true});
+        }
+    });
+
+    it("lets a Home open supersede a pending direct-entry dashboard load", async () => {
+        const directManifest: PokieGameManifest = {id: "direct", name: "Direct", version: "1.0.0"};
+        const homeManifest: PokieGameManifest = {id: "home", name: "Home", version: "1.0.0"};
+        const completeLoads = new Map<string, PendingGameLoad>();
+        const loadStarted = new Map<string, PendingLoadStarted>();
+        const directLoadStarted = new Promise<void>((resolve) => {
+            loadStarted.set("./direct", resolve);
+        });
+        const homeLoadStarted = new Promise<void>((resolve) => {
+            loadStarted.set("./home", resolve);
+        });
+        loadGame.mockImplementation((projectRoot: string) => new Promise<PokieGame>((resolve) => {
+            completeLoads.set(projectRoot, resolve);
+            loadStarted.get(projectRoot)?.();
+        }));
+        const homeService = new StudioHomeService("1.0.0", undefined, loadGame);
+        const directServer = new StudioServer({
+            pokieVersion: "1.0.0",
+            host: "127.0.0.1",
+            port: 0,
+            studioRoot,
+            homeService,
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
+            loadGame,
+            initialContext: {mode: "project", projectRoot: "./direct"},
+        });
+        const address = await directServer.start();
+        const directBaseUrl = `http://${address.host}:${address.port}`;
+        try {
+            await directLoadStarted;
+
+            const homeOpen = post(`${directBaseUrl}/api/home/projects/open`, {projectRoot: "./home"});
+            await homeLoadStarted;
+            completeLoads.get("./home")?.(createFakeGame(homeManifest));
+            expect((await homeOpen).status).toBe(200);
+
+            completeLoads.get("./direct")?.(createFakeGame(directManifest));
+            await flushMacrotask();
+            expect((await get(`${directBaseUrl}/api/context`)).body).toEqual({mode: "project", projectRoot: path.resolve("./home")});
+            expect((await get(`${directBaseUrl}/api/project/context`)).body).toMatchObject({status: "loaded", game: homeManifest});
+        } finally {
+            await directServer.stop();
+        }
+    });
+
+    it("does not publish or remember a Home open superseded by project close", async () => {
+        const manifest: PokieGameManifest = {id: "late", name: "Late", version: "1.0.0"};
+        const completeLoads = new Map<string, PendingGameLoad>();
+        let signalLateLoadStarted: () => void;
+        const lateLoadStarted = new Promise<void>((resolve) => {
+            signalLateLoadStarted = resolve;
+        });
+        loadGame.mockImplementation(() => new Promise<PokieGame>((resolve) => {
+            completeLoads.set("./late", resolve);
+            signalLateLoadStarted();
+        }));
+
+        const opening = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./late"});
+        await lateLoadStarted;
+        expect(await post(`${baseUrl}/api/projects/close`)).toEqual({status: 200, body: {context: {mode: "home"}}});
+
+        completeLoads.get("./late")?.(createFakeGame(manifest));
+        expect(await opening).toEqual({status: 409, body: {error: "Project opening was superseded by a newer request."}});
+        expect((await get(`${baseUrl}/api/context`)).body).toEqual({mode: "home"});
+        expect((await get(`${baseUrl}/api/home/recent-projects`)).body).toEqual([]);
+    });
+
     it("returns 400 for a projectRoot that fails to load", async () => {
         loadGame.mockRejectedValue(new Error("not a pokie game package"));
 
@@ -491,6 +671,42 @@ describe("StudioServer", () => {
     // to a no-op passthrough resolver) specifically so a materializing resolver is on the request path
     // the HTTP route actually runs.
     describe("Home Open Project runtime package materialization boundary", () => {
+        it("returns the PAR recognition/import diagnostic for corrupt and incomplete workbooks without loading a dashboard runtime", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-malformed-par-"));
+            const corrupt = path.join(workDir, "corrupt.xlsx");
+            const incomplete = path.join(workDir, "incomplete.xlsx");
+            fs.writeFileSync(corrupt, "not an XLSX");
+            const workbook = new ExcelJS.Workbook();
+            workbook.addWorksheet("Manifest");
+            await workbook.xlsx.writeFile(incomplete);
+            const diagnosticLoadGame = jest.fn();
+            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION);
+            const diagnosticHomeService = new StudioHomeService("1.0.0", undefined, diagnosticLoadGame, undefined, resolveRuntimePackageRoot);
+            const diagnosticServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot,
+                homeService: diagnosticHomeService,
+                blueprintService: new StudioBlueprintService("1.0.0", studioRoot, diagnosticHomeService),
+                loadGame: diagnosticLoadGame,
+            });
+            const address = await diagnosticServer.start();
+            const diagnosticBaseUrl = `http://${address.host}:${address.port}`;
+
+            try {
+                for (const workbookPath of [corrupt, incomplete]) {
+                    const {status, body} = await post(`${diagnosticBaseUrl}/api/home/projects/open`, {projectRoot: workbookPath});
+                    expect(status).toBe(400);
+                    expect(body).toEqual({error: expect.stringMatching(/Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/)});
+                }
+                expect(diagnosticLoadGame).not.toHaveBeenCalled();
+            } finally {
+                await diagnosticServer.stop();
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
         it("loads the dashboard from the materialized runtime path instead of the raw blueprint path Home was given", async () => {
             const rawProjectRoot = "/blueprints/raw-game.json";
             const materializedRuntimePath = "/materialized/raw-game";

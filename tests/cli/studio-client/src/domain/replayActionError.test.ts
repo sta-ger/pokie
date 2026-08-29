@@ -16,4 +16,10 @@ describe("describeReplayActionError", () => {
         expect(explanation).toBe("The replay list could no longer be found. It may have been deleted or aged out of the server's history -- refresh and try again.");
         expect(explanation).not.toMatch(/internal-job-42|server logs|unknown replay id/i);
     });
+
+    it("preserves the safe planner runtime diagnostic and its recovery", () => {
+        const diagnostic = "Cannot prepare a runnable runtime from \\\"/games/slot.par.xlsx\\\". Attempted path: parWorkbook -> tsPackage; planned/reusable stages: import blueprint; failed conversion edge: blueprint -> tsPackage. Fix the workbook and retry.";
+
+        expect(describeReplayActionError("This replay request", diagnostic)).toBe(diagnostic);
+    });
 });

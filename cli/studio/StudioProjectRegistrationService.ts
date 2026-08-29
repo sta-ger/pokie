@@ -108,13 +108,19 @@ export class StudioProjectRegistrationService {
     // Records the successful Open as Project transition in the same durable registry as Import and
     // managed creation.  This is deliberately separate from registerExternal(): opening an already
     // managed project must refresh its recency without quietly changing its origin to "external".
-    public async recordOpened(location: string, name?: string): Promise<StudioProjectRegistrationResult> {
+    public async recordOpened(
+        location: string,
+        name?: string,
+        options: {readonly isCurrent?: () => boolean; readonly signal?: AbortSignal} = {},
+    ): Promise<StudioProjectRegistrationResult> {
         const resolved = await this.resolveRecognizedProject(location);
+        this.assertRecordOpenedCurrent(options);
         if (resolved === undefined) {
             return {status: "unrecognized", path: await this.canonicalize(location)};
         }
 
         const matchingEntries = await this.entriesAt(resolved.location);
+        this.assertRecordOpenedCurrent(options);
         const existing = matchingEntries[0];
         const entry: StudioProjectRegistryEntry = {
             location: resolved.location,
@@ -126,7 +132,11 @@ export class StudioProjectRegistrationService {
             importedFromParSheetPath: existing?.importedFromParSheetPath,
             conversionEvidencePath: existing?.conversionEvidencePath,
         };
-        await this.replace(entry, matchingEntries);
+        const committed = await this.replace(entry, matchingEntries, {isCurrent: () => !options.signal?.aborted && options.isCurrent?.() !== false});
+        if (!committed) {
+            this.assertRecordOpenedCurrent({...options, isCurrent: () => false});
+        }
+        this.assertRecordOpenedCurrent(options);
         return {status: "ok", entry: {...entry, status: "ok"}};
     }
 
@@ -305,9 +315,18 @@ export class StudioProjectRegistrationService {
         return canonicalEntries.filter(({location}) => location === canonicalLocation).map(({entry}) => entry);
     }
 
-    private async replace(entry: StudioProjectRegistryEntry, replacedEntries: readonly StudioProjectRegistryEntry[]): Promise<void> {
-        await Promise.all(replacedEntries.map((replaced) => this.registry.remove(replaced.location)));
-        await this.registry.upsert(entry);
+    private replace(
+        entry: StudioProjectRegistryEntry,
+        replacedEntries: readonly StudioProjectRegistryEntry[],
+        options: {readonly isCurrent?: () => boolean} = {},
+    ): Promise<boolean> {
+        return this.registry.replace(entry, replacedEntries.map((replaced) => replaced.location), options);
+    }
+
+    private assertRecordOpenedCurrent(options: {readonly isCurrent?: () => boolean; readonly signal?: AbortSignal}): void {
+        if (options.signal?.aborted || options.isCurrent?.() === false) {
+            throw new Error("Runtime preparation was cancelled before a runnable game was available.");
+        }
     }
 }
 

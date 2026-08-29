@@ -9,11 +9,14 @@ import {
     PokieDevServerOptions,
     PokieGame,
     PokieGameManifest,
+    DEV_OPERATION,
 } from "pokie";
+import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {DevCommand} from "../../../cli/commands/DevCommand.js";
+import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 
 function createFakeGame(manifest: PokieGameManifest): PokieGame {
     return {
@@ -524,6 +527,31 @@ describe("DevCommand (integration, real loadPokieGame + PokieDevServer + PokieCl
 // runtime path that boundary hands back -- never the caller's own raw packageRoot.
 describe("DevCommand runtime package materialization boundary", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+    it("keeps corrupt and incomplete PAR workbooks on the recognition/import diagnostic path without loading or starting either listener", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-dev-malformed-par-"));
+        const corrupt = path.join(workDir, "corrupt.xlsx");
+        const incomplete = path.join(workDir, "incomplete.xlsx");
+        fs.writeFileSync(corrupt, "not an XLSX");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(incomplete);
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 0});
+        const clientServer = createStubServer<PokieClientServerHandling>({host: "127.0.0.1", port: 0});
+        const command = new DevCommand(loadGame, () => apiServer, {createClientServer: () => clientServer, clientRoot: "/fake/client/root", process: new FakeProcess() as unknown as NodeJS.Process}, createMaterializingRuntimePackageResolver("1.3.0", DEV_OPERATION));
+
+        try {
+            for (const workbookPath of [corrupt, incomplete]) {
+                await expect(command.run([workbookPath, "--no-open"])).rejects.toThrow(/Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/);
+            }
+            expect(loadGame).not.toHaveBeenCalled();
+            expect(apiServer.startCalls).toBe(0);
+            expect(clientServer.startCalls).toBe(0);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
 
     it("resolves the raw packageRoot once and loads the resolved runtime path instead", async () => {
         const rawPackageRoot = "/blueprints/raw-game.json";

@@ -45,4 +45,10 @@ describe("describeProjectActionError", () => {
         expect(described).not.toContain(rawMessage);
         expect(described).toBe("This validation request couldn't be completed. Try again. If it continues, reopen the project and retry.");
     });
+
+    it("preserves the safe planner runtime diagnostic and its recovery", () => {
+        const diagnostic = "Cannot prepare a runnable runtime from \\\"/games/slot.par.xlsx\\\". Attempted path: parWorkbook -> tsPackage; planned/reusable stages: import blueprint; failed conversion edge: blueprint -> tsPackage. Fix the workbook and retry.";
+
+        expect(describeProjectActionError("This simulation request", diagnostic)).toBe(diagnostic);
+    });
 });

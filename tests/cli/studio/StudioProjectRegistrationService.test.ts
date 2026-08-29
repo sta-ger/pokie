@@ -12,8 +12,11 @@ import os from "os";
 import path from "path";
 import type {PlatformDirectoryEnvironment} from "../../../cli/paths/PlatformDirectoryEnvironment.js";
 import {PokiePathResolver} from "../../../cli/paths/PokiePathResolver.js";
+import {FileStudioProjectRegistry} from "../../../cli/studio/FileStudioProjectRegistry.js";
 import type {StudioHomeRecentProjectView} from "../../../cli/studio/home/StudioHomeRecentProjectView.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
+import type {StudioProjectRegistry} from "../../../cli/studio/StudioProjectRegistry.js";
+import type {StudioProjectRegistryEntry} from "../../../cli/studio/StudioProjectRegistryEntry.js";
 import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
@@ -338,6 +341,83 @@ describe("StudioProjectRegistrationService", () => {
                 importedFromParSheetPath: "/imports/sample.xlsx",
                 conversionEvidencePath: "/imports/sample.evidence.json",
             })]);
+        });
+
+        it("does not commit a registry entry when superseded during delayed opened-project bookkeeping", async () => {
+            const entries: StudioProjectRegistryEntry[] = [];
+            let replaceStarted = false;
+            let releaseReplace: (() => void) | undefined;
+            const registry: StudioProjectRegistry = {
+                list: () => Promise.resolve([...entries]),
+                upsert: (entry) => {
+                    entries.splice(0, entries.length, entry, ...entries.filter((existing) => existing.location !== entry.location));
+                    return Promise.resolve();
+                },
+                replace: async (entry, replacedLocations, options = {}) => {
+                    replaceStarted = true;
+                    await new Promise<void>((resolve) => {
+                        releaseReplace = () => {
+                            resolve();
+                        };
+                    });
+                    if (options.isCurrent?.() === false) {
+                        return false;
+                    }
+                    const replaced = new Set(replacedLocations);
+                    entries.splice(0, entries.length, entry, ...entries.filter((existing) => !replaced.has(existing.location)));
+                    return true;
+                },
+                remove: (location) => {
+                    entries.splice(0, entries.length, ...entries.filter((entry) => entry.location !== location));
+                    return Promise.resolve();
+                },
+            };
+            const service = new StudioProjectRegistrationService(registry, fakeResolver({"/projects/sample-slot": tsPackageProject("/projects/sample-slot")}));
+            let current = true;
+
+            const recording = service.recordOpened("/projects/sample-slot", "Sample Slot", {isCurrent: () => current});
+            for (let attempt = 0; attempt < 20; attempt++) {
+                if (replaceStarted) {
+                    break;
+                }
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+            expect(replaceStarted).toBe(true);
+            current = false;
+            releaseReplace?.();
+
+            await expect(recording).rejects.toThrow("Runtime preparation was cancelled");
+            expect(entries).toEqual([]);
+        });
+
+        it("keeps a concurrent external registration when a current Home open commits through the file registry", async () => {
+            const registryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-registration-home-overlap-"));
+            try {
+                const registry = new FileStudioProjectRegistry(path.join(registryDirectory, "projects.json"));
+                const resolver = fakeResolver({
+                    "/projects/existing": tsPackageProject("/projects/existing"),
+                    "/projects/opening": tsPackageProject("/projects/opening"),
+                    "/projects/registered": tsPackageProject("/projects/registered"),
+                });
+                const service = new StudioProjectRegistrationService(registry, resolver);
+                await service.registerExternal("/projects/existing", "Existing");
+
+                const [opened] = await Promise.all([
+                    service.recordOpened("/projects/opening", "Opening"),
+                    service.registerExternal("/projects/registered", "Registered"),
+                ]);
+
+                expect(opened.status).toBe("ok");
+                expect((await registry.list()).map((candidate) => candidate.location)).toEqual(expect.arrayContaining([
+                    path.resolve("/projects/opening"),
+                    path.resolve("/projects/registered"),
+                    path.resolve("/projects/existing"),
+                ]));
+            } finally {
+                fs.rmSync(registryDirectory, {recursive: true, force: true});
+            }
         });
     });
 

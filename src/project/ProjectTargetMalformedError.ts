@@ -8,8 +8,15 @@
 // same "a dedicated Error subclass per specific failure" naming convention ProjectTargetAmbiguousError/
 // ProjectTargetUnsupportedError use.
 export class ProjectTargetMalformedError extends Error {
-    constructor(message: string) {
+    public readonly targetType?: string;
+    public readonly stage?: string;
+    public readonly recovery?: string;
+
+    constructor(message: string, details: {readonly targetType?: string; readonly stage?: string; readonly recovery?: string} = {}) {
         super(message);
         this.name = "ProjectTargetMalformedError";
+        this.targetType = details.targetType;
+        this.stage = details.stage;
+        this.recovery = details.recovery;
     }
 }

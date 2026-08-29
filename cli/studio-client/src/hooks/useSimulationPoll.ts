@@ -29,6 +29,9 @@ export function useSimulationPoll() {
     const [error, setError] = useState<string>();
     const currentJobId = useRef<string | undefined>(undefined);
     const cancelledRef = useRef(false);
+    const generationRef = useRef(0);
+    const runGuardGenerationRef = useRef<number | undefined>(undefined);
+    const cancelGuardGenerationRef = useRef<number | undefined>(undefined);
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const runGuard = useDoubleSubmitGuard();
     const cancelGuard = useDoubleSubmitGuard();
@@ -37,6 +40,7 @@ export function useSimulationPoll() {
         cancelledRef.current = false;
         return () => {
             cancelledRef.current = true;
+            generationRef.current += 1;
             if (timeoutRef.current !== undefined) {
                 clearTimeout(timeoutRef.current);
                 timeoutRef.current = undefined;
@@ -44,23 +48,27 @@ export function useSimulationPoll() {
         };
     }, []);
 
-    function poll(id: string): void {
-        if (cancelledRef.current) {
+    function isCurrent(generation: number): boolean {
+        return !cancelledRef.current && generationRef.current === generation;
+    }
+
+    function poll(id: string, generation: number): void {
+        if (!isCurrent(generation)) {
             return;
         }
         getSimulation(fetchImpl, id)
             .then((polledJob) => {
-                if (cancelledRef.current || currentJobId.current !== id) {
+                if (!isCurrent(generation) || currentJobId.current !== id) {
                     return;
                 }
                 setJob(polledJob);
                 setProgress(describeSimulationProgress(polledJob));
                 if (isSimulationActive(polledJob)) {
-                    timeoutRef.current = setTimeout(() => poll(id), POLL_INTERVAL_MS);
+                    timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
                 }
             })
             .catch((err: unknown) => {
-                if (!cancelledRef.current) {
+                if (isCurrent(generation) && currentJobId.current === id) {
                     setError(errorMessage(err));
                 }
             });
@@ -70,11 +78,14 @@ export function useSimulationPoll() {
         if (!runGuard.begin()) {
             return;
         }
+        const generation = generationRef.current + 1;
+        generationRef.current = generation;
+        runGuardGenerationRef.current = generation;
         setError(undefined);
         setProgress({status: "queued", roundsCompleted: 0, rounds, workers, percent: 0, durationMs: 0});
         startSimulation(fetchImpl, rounds, seed, workers, modeName)
             .then((result) => {
-                if (cancelledRef.current) {
+                if (!isCurrent(generation)) {
                     return;
                 }
                 const id = result.status === "conflict" ? result.activeJobId : result.job.id;
@@ -83,14 +94,19 @@ export function useSimulationPoll() {
                     setJob(result.job);
                     setProgress(describeSimulationProgress(result.job));
                 }
-                poll(id);
+                poll(id, generation);
             })
             .catch((err: unknown) => {
-                if (!cancelledRef.current) {
+                if (isCurrent(generation)) {
                     setError(errorMessage(err));
                 }
             })
-            .finally(() => runGuard.end());
+            .finally(() => {
+                if (runGuardGenerationRef.current === generation) {
+                    runGuardGenerationRef.current = undefined;
+                    runGuard.end();
+                }
+            });
     }
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
@@ -100,6 +116,11 @@ export function useSimulationPoll() {
     // cancels the pending recursive-poll timer outright (otherwise one more, now-pointless request for
     // the old job still goes out before that same check stops it) and clears every piece of job state.
     function resetForProjectSwitch(): void {
+        generationRef.current += 1;
+        runGuardGenerationRef.current = undefined;
+        cancelGuardGenerationRef.current = undefined;
+        runGuard.end();
+        cancelGuard.end();
         currentJobId.current = undefined;
         if (timeoutRef.current !== undefined) {
             clearTimeout(timeoutRef.current);
@@ -115,20 +136,27 @@ export function useSimulationPoll() {
         if (id === undefined || !cancelGuard.begin()) {
             return;
         }
+        const generation = generationRef.current;
+        cancelGuardGenerationRef.current = generation;
         cancelSimulation(fetchImpl, id)
             .then((polledJob) => {
-                if (cancelledRef.current) {
+                if (!isCurrent(generation) || currentJobId.current !== id) {
                     return;
                 }
                 setJob(polledJob);
                 setProgress(describeSimulationProgress(polledJob));
             })
             .catch((err: unknown) => {
-                if (!cancelledRef.current) {
+                if (isCurrent(generation) && currentJobId.current === id) {
                     setError(errorMessage(err));
                 }
             })
-            .finally(() => cancelGuard.end());
+            .finally(() => {
+                if (cancelGuardGenerationRef.current === generation) {
+                    cancelGuardGenerationRef.current = undefined;
+                    cancelGuard.end();
+                }
+            });
     }
 
     return {progress, job, error, run, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};

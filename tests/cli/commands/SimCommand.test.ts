@@ -14,12 +14,15 @@ import {
     ProjectTargetResolver,
     SimulationReport,
     SimulationReportSet,
+    SIM_OPERATION,
     WeightedOutcomeRandomSource,
 } from "pokie";
+import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
+import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
@@ -1052,6 +1055,31 @@ describe("SimCommand (integration, real game with an explicit custom category)",
 // also what lets a resolved Blueprint reach a real materialized runtime instead of a raw blueprint file.
 describe("SimCommand runtime package materialization boundary", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+    it("keeps corrupt and incomplete PAR workbooks on the recognition/import diagnostic path without loading or writing a report", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-malformed-par-"));
+        const corrupt = path.join(workDir, "corrupt.xlsx");
+        const incomplete = path.join(workDir, "incomplete.xlsx");
+        const reportPath = path.join(workDir, "report.json");
+        fs.writeFileSync(corrupt, "not an XLSX");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        await workbook.xlsx.writeFile(incomplete);
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const writeFile = jest.fn();
+        const command = new SimCommand(loadGame, writeFile, undefined, undefined, undefined, createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION));
+
+        try {
+            for (const workbookPath of [corrupt, incomplete]) {
+                await expect(command.run([workbookPath, "--rounds", "1", "--out", reportPath])).rejects.toThrow(/Cannot prepare a runnable runtime.*PAR workbook recognition.*failed PAR recognition\/import stage.*Next:/);
+            }
+            expect(loadGame).not.toHaveBeenCalled();
+            expect(writeFile).not.toHaveBeenCalled();
+            expect(fs.existsSync(reportPath)).toBe(false);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
 
     it("resolves the raw packageRoot once and runs the simulation against the resolved runtime path instead", async () => {
         const rawPackageRoot = "/blueprints/raw-game.json";

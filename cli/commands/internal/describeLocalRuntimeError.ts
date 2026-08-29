@@ -1,6 +1,9 @@
 // Keeps the three local-runtime commands' actionable startup/load diagnostics in one place. These
 // commands deliberately expose the same local HTTP workflow, so their recovery guidance must not
 // drift as their individual server wiring evolves.
+import {ProjectTargetMalformedError} from "pokie";
+import {RuntimePreparationError} from "../../materialize/RuntimePreparationError.js";
+
 export function describeLocalServerStartError(
     error: unknown,
     listenerName: string,
@@ -22,7 +25,20 @@ export function describeLocalServerStartError(
     );
 }
 
-export function describeRuntimePackageLoadError(packageRoot: string, _error: unknown): Error {
+export function describeRuntimePackageLoadError(packageRoot: string, error: unknown): Error {
+    if (error instanceof ProjectTargetMalformedError && error.targetType === "parWorkbook") {
+        return RuntimePreparationError.parWorkbookRecognition(packageRoot, error);
+    }
+    // Planner/materialization errors already name the attempted runtime path
+    // and exact failed stage. Replacing them with package-validation advice is
+    // actively misleading for a valid Blueprint or PAR workbook.
+    if (error instanceof Error && (
+        error.name === "UnsupportedProjectOperationError" ||
+        error.name === "BlueprintMaterializationError" ||
+        error.name === "RuntimePreparationError" ||
+        error.message.startsWith("Cannot prepare a runnable runtime") ||
+        error.message.includes("Runtime materialization was cancelled")
+    )) return error;
     return new Error(
         `Could not load a POKIE game package from ${JSON.stringify(packageRoot)}. ` +
             `Run \`pokie validate ${JSON.stringify(packageRoot)}\` to diagnose the package, then retry.`,

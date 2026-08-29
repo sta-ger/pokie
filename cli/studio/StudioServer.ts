@@ -254,6 +254,11 @@ export class StudioServer implements StudioServerHandling {
     // create/open/close, while this can lag behind briefly after startup (see start()'s background
     // load for `pokie .`/`pokie <path>`).
     private projectDashboard: ProjectDashboardContext | undefined;
+    // Every dashboard/Home/Play preparation belongs to one generation.  A new project intent aborts
+    // the previous resolver work; the generation check is still required because a loader can finish
+    // just as its signal is observed.
+    private runtimePreparation: {generation: number; controller: AbortController} | undefined;
+    private nextRuntimePreparationGeneration = 0;
     private server: http.Server | undefined;
 
     constructor(options: StudioServerOptions) {
@@ -275,14 +280,16 @@ export class StudioServer implements StudioServerHandling {
         // Every default Project execution service loads through the same materializing boundary as
         // Play. This makes a Blueprint save observable on the next simulation/replay/generation
         // instead of letting those paths load an earlier package-shaped interpretation of the path.
-        const loadCurrentProjectGame: typeof loadPokieGame = async (projectRoot) => {
-            const resolution = await this.resolveRuntimePackageRoot(projectRoot);
+        const loadCurrentProjectRuntimeGame = async (projectRoot: string, options: {readonly signal?: AbortSignal} = {}) => {
+            const resolution = await this.resolveRuntimePackageRoot(projectRoot, options);
             try {
+                if (options.signal?.aborted) throw new Error("Runtime preparation was cancelled before a runnable game was available.");
                 return await this.loadGame(resolution.runtimePath);
             } finally {
                 await resolution.release();
             }
         };
+        const loadCurrentProjectGame: typeof loadPokieGame = (projectRoot) => loadCurrentProjectRuntimeGame(projectRoot);
         this.simulationService =
             options.simulationService ??
             new StudioSimulationService(
@@ -301,8 +308,19 @@ export class StudioServer implements StudioServerHandling {
             );
         this.replayService =
             options.replayService ??
-            new StudioReplayExecutionService(undefined, loadCurrentProjectGame, undefined, undefined, undefined, undefined, this.pokieVersion, (record) =>
-                this.recordSimulationSampleReplay(record),
+            // Legacy construction shape: new StudioReplayExecutionService(undefined, loadCurrentProjectGame)
+            // now routes its signal-aware counterpart through the explicit runtime loader below.
+            new StudioReplayExecutionService(
+                undefined,
+                this.loadGame,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                this.pokieVersion,
+                (record) => this.recordSimulationSampleReplay(record),
+                undefined,
+                loadCurrentProjectRuntimeGame,
             );
         this.roundRecorder = options.roundRecorder ?? new StudioRoundRecorder();
         this.playService =
@@ -423,6 +441,7 @@ export class StudioServer implements StudioServerHandling {
     }
 
     public stop(): Promise<void> {
+        this.cancelRuntimePreparation();
         // Best-effort, synchronous, before anything else: a simulation's/replay's chunked run loop
         // (see StudioSimulationService.run()/StudioReplayExecutionService.run()) is scheduled
         // independently of any HTTP connection, so closing the server alone would leave either running
@@ -487,15 +506,38 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private startProjectDashboardLoad(projectRoot: string): void {
+        const preparation = this.beginRuntimePreparation();
         this.projectDashboard = {status: "loading", projectRoot};
-        loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation)
+        loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation, undefined, undefined, {
+            signal: preparation.controller.signal,
+            isCurrent: () => this.isCurrentRuntimePreparation(preparation),
+        })
             .then((dashboard) => {
-                this.projectDashboard = dashboard;
+                if (this.isCurrentRuntimePreparation(preparation) && this.currentContext.mode === "project" && this.currentContext.projectRoot === projectRoot) {
+                    this.projectDashboard = dashboard;
+                }
             })
             .catch(() => {
                 // loadProjectDashboardContext itself never rejects (it catches internally) — this is
                 // an extra safety net only, so a StudioServer never crashes on a background load.
             });
+    }
+
+    private beginRuntimePreparation(): {generation: number; controller: AbortController} {
+        this.runtimePreparation?.controller.abort();
+        const preparation = {generation: ++this.nextRuntimePreparationGeneration, controller: new AbortController()};
+        this.runtimePreparation = preparation;
+        return preparation;
+    }
+
+    private cancelRuntimePreparation(): void {
+        this.runtimePreparation?.controller.abort();
+        this.runtimePreparation = undefined;
+        this.nextRuntimePreparationGeneration++;
+    }
+
+    private isCurrentRuntimePreparation(preparation: {generation: number; controller: AbortController}): boolean {
+        return this.runtimePreparation?.generation === preparation.generation && !preparation.controller.signal.aborted;
     }
 
     // A one-time sync of Home's own (never-persisted, process-lifetime) recent-projects list into the
@@ -670,6 +712,7 @@ export class StudioServer implements StudioServerHandling {
             // Simulation/Replay jobs for the project being left are cancelled too — see
             // cancelActiveJobsForOldProject()'s own doc comment for why this can't just rely on their
             // existing projectRoot scoping alone.
+            this.cancelRuntimePreparation();
             this.playService.reset();
             // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
             // project being left.
@@ -1120,7 +1163,28 @@ export class StudioServer implements StudioServerHandling {
         // into its own canonical-reader-backed dashboard, while a PAR workbook opens as its own
         // exchange-only artifact (see ProjectDashboardContext's own doc comment); neither carries a
         // `game` manifest to report back.
-        const dashboard = await this.homeService.openProject(validated.projectRoot);
+        // Every Home intent owns a generation, including an open of the same path.  In particular it
+        // must supersede a direct-entry dashboard load and an earlier Home request; sharing the prior
+        // controller would let the older handler publish after the newer one completed.
+        const preparation = this.beginRuntimePreparation();
+        let dashboard: ProjectDashboardContext;
+        try {
+            dashboard = await this.homeService.openProject(validated.projectRoot, {
+                signal: preparation.controller.signal,
+                isCurrent: () => this.isCurrentRuntimePreparation(preparation),
+            });
+        } catch (error) {
+            if (!this.isCurrentRuntimePreparation(preparation)) {
+                this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
+                return;
+            }
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+        if (!this.isCurrentRuntimePreparation(preparation)) {
+            this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
+            return;
+        }
         if (dashboard.status !== "loaded" && dashboard.status !== "outcome-source" && dashboard.status !== "artifact") {
             const message = dashboard.status === "error" ? dashboard.error : `Could not load "${validated.projectRoot}".`;
             // "detail" -- e.g. a failed materialization "npm install"'s own raw stderr (see
@@ -1135,6 +1199,35 @@ export class StudioServer implements StudioServerHandling {
         // Reset only now that the new project's dashboard has actually loaded — a *failed* open never
         // strands the previous project's Play session prematurely. Same reasoning as the
         // /api/projects/close branch's own call.
+        //
+        // HomeService made its recent-project commit under this same generation guard.  Check again
+        // before every remaining observable commit because registry I/O yields to a competing Home
+        // request, and a late request must never reset/play-switch/publish over the newer project.
+        if (!this.isCurrentRuntimePreparation(preparation)) {
+            this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
+            return;
+        }
+        try {
+            await this.projectRegistrationService.recordOpened(
+                dashboard.projectRoot,
+                dashboard.status === "loaded" ? dashboard.game.name : path.basename(dashboard.projectRoot),
+                {
+                    signal: preparation.controller.signal,
+                    isCurrent: () => this.isCurrentRuntimePreparation(preparation),
+                },
+            );
+        } catch (error) {
+            if (!this.isCurrentRuntimePreparation(preparation)) {
+                this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
+                return;
+            }
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+        if (!this.isCurrentRuntimePreparation(preparation)) {
+            this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
+            return;
+        }
         this.playService.reset();
         // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
         // project being left.
@@ -1146,13 +1239,6 @@ export class StudioServer implements StudioServerHandling {
         // doc comment).
         this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
         this.projectDashboard = dashboard;
-        // Opening is a first-class Project lifecycle event, not merely a recent-project hint.  Record it
-        // only after the dashboard was successfully loaded, preserving a managed entry's origin while
-        // making an ad-hoc Open as Project durable and most-recent in the same registry Home renders.
-        await this.projectRegistrationService.recordOpened(
-            dashboard.projectRoot,
-            dashboard.status === "loaded" ? dashboard.game.name : path.basename(dashboard.projectRoot),
-        );
         this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.status === "loaded" ? dashboard.game : undefined});
     }
 
@@ -2629,7 +2715,13 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.playService.newSession(this.currentContext.projectRoot, validated.seed, validated.modeName);
+        const preparation = this.beginRuntimePreparation();
+        const projectRoot = this.currentContext.projectRoot;
+        const result = await this.playService.newSession(projectRoot, validated.seed, validated.modeName, {signal: preparation.controller.signal});
+        if (!this.isCurrentRuntimePreparation(preparation) || this.currentContext.mode !== "project" || this.currentContext.projectRoot !== projectRoot) {
+            this.sendJson(res, 409, {error: "Play session preparation was superseded by a project change."});
+            return;
+        }
         if (result.status === "ok") {
             this.sendJson(res, 201, {status: "ok", session: result.session});
             return;

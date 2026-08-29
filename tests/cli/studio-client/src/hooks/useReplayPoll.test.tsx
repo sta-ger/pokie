@@ -99,6 +99,126 @@ describe("useReplayPoll - StrictMode + cleanup", () => {
 });
 
 describe("useReplayPoll - resetForProjectSwitch", () => {
+    it("discards a start response that resolves after a project switch", async () => {
+        let releaseStart: (() => void) | undefined;
+        let pollCalls = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/replays" && init?.method === "POST") {
+                return new Promise((resolve) => {
+                    releaseStart = () => resolve({ok: true, status: 200, json: () => Promise.resolve(job("queued", 0))});
+                });
+            }
+            if (url === "/api/project/replays/job-1") {
+                pollCalls += 1;
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useReplayPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.run(5, undefined));
+        act(() => result.current.resetForProjectSwitch());
+        act(() => releaseStart?.());
+
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 20);
+        });
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.error).toBeUndefined();
+        expect(pollCalls).toBe(0);
+    });
+
+    it("discards a cancel response that resolves after a project switch", async () => {
+        let releaseCancel: (() => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/replays" && init?.method === "POST") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("queued", 0))});
+            }
+            if (url === "/api/project/replays/job-1" && init?.method === "DELETE") {
+                return new Promise((resolve) => {
+                    releaseCancel = () => resolve({ok: true, status: 200, json: () => Promise.resolve(job("cancelled", 0))});
+                });
+            }
+            if (url === "/api/project/replays/job-1") {
+                return new Promise(() => {
+                    // Keep the old project's poll pending through the reset.
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useReplayPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.run(5, undefined));
+        await waitFor(() => expect(result.current.job?.status).toBe("queued"));
+        act(() => result.current.cancel());
+        act(() => result.current.resetForProjectSwitch());
+        act(() => releaseCancel?.());
+
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 20);
+        });
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.error).toBeUndefined();
+    });
+
+    it("discards a poll failure that arrives after a project switch", async () => {
+        let rejectPoll: ((reason?: unknown) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/replays" && init?.method === "POST") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("queued", 0))});
+            }
+            if (url === "/api/project/replays/job-1") {
+                return new Promise((_, reject) => {
+                    rejectPoll = reject;
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useReplayPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.run(5, undefined));
+        await waitFor(() => expect(rejectPoll).toBeDefined());
+        act(() => result.current.resetForProjectSwitch());
+        act(() => rejectPoll?.(new Error("old project poll failed")));
+
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 20);
+        });
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.error).toBeUndefined();
+    });
+
+    it("does not refresh replays when an old project's terminal poll resolves after a switch", async () => {
+        let releasePoll: (() => void) | undefined;
+        const onTerminal = jest.fn();
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/replays" && init?.method === "POST") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("queued", 0))});
+            }
+            if (url === "/api/project/replays/job-1") {
+                return new Promise((resolve) => {
+                    releasePoll = () => resolve({ok: true, status: 200, json: () => Promise.resolve(job("completed", 5))});
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useReplayPoll(onTerminal), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.run(5, undefined));
+        await waitFor(() => expect(releasePoll).toBeDefined());
+        act(() => result.current.resetForProjectSwitch());
+        act(() => releasePoll?.());
+
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 20);
+        });
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.progress).toBeUndefined();
+        expect(onTerminal).not.toHaveBeenCalled();
+    });
+
     it("clears job/progress/error so a genuinely different project never shows a trace of the previous one's replay", async () => {
         const fetchImpl: FetchLike = (url, init) => {
             if (url === "/api/project/replays" && init?.method === "POST") {

@@ -33,6 +33,16 @@ describe("describeProjectHeader", () => {
         });
     });
 
+    it("shows a safe planner diagnostic directly, including its path, failed edge, and recovery", () => {
+        const diagnostic = "Cannot prepare a runnable runtime from \\\"/a\\\". Attempted path: parWorkbook -> blueprint -> tsPackage; blocker at parWorkbook -> blueprint: required sheet is missing. Next: restore the required sheet and try again.";
+
+        expect(describeProjectHeader({status: "error", projectRoot: "/a", error: diagnostic})).toEqual({
+            status: "error",
+            projectRoot: "/a",
+            message: diagnostic,
+        });
+    });
+
     it("flattens the loaded state's manifest fields", () => {
         const view = describeProjectHeader({
             status: "loaded",
