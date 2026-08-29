@@ -91,7 +91,7 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
         try {
             const result = await new ArtifactBuilderRegistry("1.3.0").build("outcomeLibrary", project, outcomeDir);
             const manifest = JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")) as {
-                modes: Array<{generator: {strategy: string; totalOutcomeSpaceSize: number; sampledRawCount: number; seed?: string; compatibilityPolicyVersion?: string}}>;
+                modes: Array<{generator: {strategy: string; totalOutcomeSpaceSize: number; sampledRawCount: number; maxExactOutcomeSpaceSize: number; seed?: string; compatibilityPolicyVersion?: string}}>;
             };
 
             expect(result).toMatchObject({outputPath: outcomeDir, managedProjectRoots: [outcomeDir]});
@@ -99,6 +99,7 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
                 strategy: "bounded-coverage",
                 totalOutcomeSpaceSize: 100_000,
                 sampledRawCount: 5_000,
+                maxExactOutcomeSpaceSize: 50_000,
                 seed: expect.stringMatching(/^pokie-managed-coverage:sha256:/),
                 compatibilityPolicyVersion: "managed-v1",
             }));

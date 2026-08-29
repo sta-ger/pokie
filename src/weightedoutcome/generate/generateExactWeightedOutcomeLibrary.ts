@@ -165,6 +165,8 @@ export function generateWeightedOutcomeLibrary(
 
 type PreparedGeneration = {
     readonly strategy: OutcomeLibraryGenerationStrategy;
+    /** The request-resolved cap, retained in the output diagnostics. */
+    readonly maxExactOutcomeSpaceSize: bigint;
     readonly totalOutcomeSpaceSize: bigint;
     readonly progressTotal: bigint;
     readonly reelWindows: string[][][];
@@ -240,6 +242,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
     if (strategy === "exact") {
         return {
             strategy,
+            maxExactOutcomeSpaceSize: request.maxExactOutcomeSpaceSize,
             totalOutcomeSpaceSize: estimate.totalOutcomeSpaceSize,
             progressTotal: estimate.totalOutcomeSpaceSize,
             reelWindows,
@@ -255,6 +258,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
     const bounded = sampled as BoundedCoverageGenerationOptions;
     return {
         strategy,
+        maxExactOutcomeSpaceSize: request.maxExactOutcomeSpaceSize,
         totalOutcomeSpaceSize: estimate.totalOutcomeSpaceSize,
         progressTotal: bounded.sampleSize,
         reelWindows,
@@ -367,6 +371,7 @@ export async function *streamExactWeightedOutcomes(
         strategy: prepared.strategy,
         totalOutcomeSpaceSize: toBigIntSafeDecimal(prepared.totalOutcomeSpaceSize),
         sampledRawCount: toBigIntSafeDecimal(processedRawCount),
+        maxExactOutcomeSpaceSize: toBigIntSafeDecimal(prepared.maxExactOutcomeSpaceSize),
         ...(prepared.strategy === "bounded-coverage" ? {seed: (options.sampled ?? options.bounded as BoundedCoverageGenerationOptions).seed} : {}),
         pokieVersion: options.pokieVersion,
         game: manifest,

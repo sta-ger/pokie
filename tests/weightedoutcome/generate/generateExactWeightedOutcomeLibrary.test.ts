@@ -99,7 +99,13 @@ describe("generateExactWeightedOutcomeLibrary", () => {
             compatibilityPolicyVersion: "managed-v1",
         });
 
-        expect(result.diagnostics.compatibilityPolicyVersion).toBe("managed-v1");
+        expect(result.diagnostics).toMatchObject({
+            compatibilityPolicyVersion: "managed-v1",
+            // The raw-library diagnostics are the provenance copied into a
+            // Studio/managed bundle mode, so the policy is independently
+            // reconstructable without consulting the original adapter.
+            maxExactOutcomeSpaceSize: 20_000_000,
+        });
     });
 
     it("derives loaded configuration provenance and rejects an incompatible caller assertion in the shared request", async () => {

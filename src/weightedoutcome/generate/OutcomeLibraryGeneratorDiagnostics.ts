@@ -24,6 +24,13 @@ export type OutcomeLibraryGeneratorDiagnostics = {
     readonly pokieVersion: string;
     readonly game: PokieGameManifest;
     readonly configHash?: string;
+    /**
+     * The resolved exact-space cap that selected this run's strategy.  This
+     * is deliberately recorded even for exact output: a compatible library
+     * must be able to prove the complete policy decision without recovering
+     * defaults from the producer that wrote it.
+     */
+    readonly maxExactOutcomeSpaceSize: number | string;
     /** Present when a named compatibility policy selected the request's strategy/defaults. */
     readonly compatibilityPolicyVersion?: string;
     readonly generatedAt: string;
