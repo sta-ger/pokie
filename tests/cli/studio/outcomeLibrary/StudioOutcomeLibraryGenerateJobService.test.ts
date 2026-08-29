@@ -41,17 +41,13 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
                 setImmediate(resolve);
             });
 
-            jobs.cancelActiveForProject(projectRoot);
-            await new Promise<void>((resolve) => {
-                setImmediate(resolve);
-            });
+            // The project lifecycle must not release its context while this
+            // generation still owns its checkpoint/publication cleanup.
+            await jobs.cancelActiveForProject(projectRoot);
             expect(jobs.getStatusForProject(projectRoot, first.id)).toMatchObject({status: "cancelled", cancellationRequested: true});
             expect(jobs.getStatusForProject(otherProjectRoot, second.id)).toMatchObject({status: "running"});
 
-            jobs.cancelAll();
-            await new Promise<void>((resolve) => {
-                setImmediate(resolve);
-            });
+            await jobs.cancelAll();
             expect(jobs.getStatusForProject(otherProjectRoot, second.id)).toMatchObject({status: "cancelled", cancellationRequested: true});
         } finally {
             fs.rmSync(otherProjectRoot, {recursive: true, force: true});
