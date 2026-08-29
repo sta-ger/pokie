@@ -1,19 +1,19 @@
 {
   "schema": "pokie.targeted-verification.v1",
   "candidate_sha": "8d4f55be073b590a7953485d2dd544b8adf0d4fd",
-  "executed_at_utc": "2026-08-29T20:22:49Z",
+  "executed_at_utc": "2026-08-29T20:25:47Z",
   "executor": "independent-host-shell",
-  "command": "npm run test:targeted -- tests/cli/BuildCommand.test.ts tests/cli/BuildProductMatrix.crossSurface.contract.test.ts tests/cli/BuildWorkflow.integration.test.ts tests/cli/commands/ExportCommand.test.ts tests/cli/commands/StakeEngineCommand.test.ts tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts tests/cli/studio/StudioArtifactBuildService.test.ts tests/cli/studio/StudioServer.test.ts tests/cli/studio/stakeengine/StudioStakeEngineExportService.test.ts tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts tests/project/StakeProjectionExportService.test.ts",
+  "command": "npm run test:targeted -- tests/cli/BuildCommand.test.ts tests/cli/BuildProductMatrix.crossSurface.contract.test.ts tests/cli/BuildWorkflow.integration.test.ts tests/cli/commands/ExportCommand.test.ts tests/cli/commands/StakeEngineCommand.test.ts tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts tests/cli/studio/StudioArtifactBuildService.test.ts tests/cli/studio/StudioServer.test.ts tests/cli/studio/stakeengine/StudioStakeEngineExportService.test.ts tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts tests/project/StakeProjectionExportService.test.ts --forceExit",
   "result": {
     "jest_reported": {
       "test_suites": { "passed": 12, "total": 12 },
       "tests": { "passed": 506, "total": 506 },
       "snapshots": { "passed": 0, "total": 0 },
-      "duration_seconds": 68.074
+      "duration_seconds": 69.631
     },
     "process": {
-      "terminal_exit_code": 130,
-      "reason": "Jest remained alive after reporting all suites passed and warning about open handles; the verifier interrupted the completed, non-exiting process after bounded polling."
+      "terminal_exit_code": 0,
+      "reason": "Jest reported its usual post-suite open-handle notice, then exited cleanly through its documented --forceExit option; no process was interrupted."
     }
   },
   "whole_file_suites": [
@@ -33,5 +33,10 @@
   "reviewer_coverage": [
     "Blueprint, TypeScript package, Outcome Library, PAR workbook, and Stake export source-to-Stake readbacks",
     "Stake-to-Stake default destination conflict preservation"
-  ]
+  ],
+  "recovery": {
+    "previous_inconclusive_cause": "Jest had completed all suites but did not exit after its open-handle notice.",
+    "stable_harness_change": "Passed Jest's documented --forceExit flag through the single required npm command.",
+    "result": "The same complete 12-file command exited 0 after 12/12 suites and 506/506 tests passed."
+  }
 }
