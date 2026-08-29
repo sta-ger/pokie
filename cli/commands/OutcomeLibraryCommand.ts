@@ -28,6 +28,7 @@ import {
     generateWeightedOutcomeLibrary,
     loadPokieGame,
     prepareOutcomeLibraryGenerationFromEstimate,
+    resolveOutcomeLibraryGenerationDestination,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -620,11 +621,24 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     return this.generate(reboundRequest);
                 },
                 canPublish: () => rawOutput !== undefined,
-                // Re-preparation in read() above rechecks the immutable domain
-                // destination contract immediately before publication.  The
-                // CLI only translates --out syntax; it has no second safety
-                // policy of its own.
-                assertDestinationAvailable: () => undefined,
+                // Generation can take long enough for another actor to create
+                // the prepared output after read() rebound the request. Re-run
+                // the *same* resolved domain contract at the final durable
+                // publication boundary; never let the raw writer overwrite
+                // that late-created destination.
+                assertDestinationAvailable: () => {
+                    if (rawOutput === undefined) return;
+                    const reboundDestination = resolveOutcomeLibraryGenerationDestination(
+                        rawOutput,
+                        resolvedRequest.preflight.destination?.safety,
+                    );
+                    if (reboundDestination?.path !== rawOutput) {
+                        throw new WeightedOutcomeLibraryGenerationError(
+                            "weighted-outcome-library-generation-destination-conflict",
+                            "The output destination changed after preflight. Re-run generation from a fresh preflight.",
+                        );
+                    }
+                },
                 publish: (result: GenerateExactWeightedOutcomeLibraryResult) => {
                     // The operation has already established a fresh destination.
                     // Keep the legacy injectable writer so test and embedding

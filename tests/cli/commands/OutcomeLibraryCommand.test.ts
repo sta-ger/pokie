@@ -453,6 +453,27 @@ describe("OutcomeLibraryCommand", () => {
             }
         });
 
+        it("preserves an output created after preflight rather than overwriting it at raw publication", async () => {
+            const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-raw-generation-race-source-"));
+            const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-raw-generation-race-output-"));
+            const output = path.join(outputRoot, "library.json");
+            const writeFile = jest.fn();
+            const generate = jest.fn(() => {
+                fs.writeFileSync(output, "created by another actor");
+                return Promise.resolve(defaultGenerateResult());
+            });
+            const command = createGenerateCommand({generate, writeFile});
+
+            try {
+                await expect(command.run(["generate", packageRoot, "--out", output])).rejects.toThrow(/already exists/i);
+                expect(writeFile).not.toHaveBeenCalled();
+                expect(fs.readFileSync(output, "utf-8")).toBe("created by another actor");
+            } finally {
+                fs.rmSync(outputRoot, {recursive: true, force: true});
+                fs.rmSync(packageRoot, {recursive: true, force: true});
+            }
+        });
+
         it("--estimate reports the outcome space without invoking generation", async () => {
             const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
             const command = createGenerateCommand({generate});
