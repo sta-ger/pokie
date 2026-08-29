@@ -272,6 +272,24 @@ export class StudioStakeEngineExportService {
      * projection service has already made every one of those decisions.
      */
     private async exportProjectGoal(projectRoot: string, outDir: string): Promise<StudioStakeEngineExportView> {
+        // Match validate()'s empty-request boundary before attempting the
+        // materializing build.  An unrecognised project or planner-owned
+        // prerequisite problem is an actionable unavailable/conflict result,
+        // not a writer/load failure.
+        const prepared = await this.projectGoal!.validateStakeProjection(projectRoot, outDir);
+        if (prepared === undefined) {
+            return {
+                status: "unavailable",
+                error: `"${projectRoot}" was not recognized as a POKIE project.`,
+                plan: createExternalOutcomeLibraryPlan(undefined, "stakeAdapter", this.resolveArtifactDestination(projectRoot, outDir)),
+            };
+        }
+        if (prepared.plan.status === "conflict") {
+            return {status: "conflict", outDir, overwritable: false, error: prepared.plan.diagnostic?.message ?? "Stake Engine export has a destination conflict.", plan: prepared.plan};
+        }
+        if (prepared.plan.status === "unavailable") {
+            return {status: "unavailable", error: describeArtifactConversionPlanDiagnostic(prepared.plan) ?? prepared.plan.diagnostic?.message ?? "Stake Engine export is unavailable.", plan: prepared.plan};
+        }
         const result = await this.projectGoal!.build(projectRoot, "stakeAdapter", outDir);
         if (result.status === "conflict") return {status: "conflict", outDir, overwritable: false, error: result.message, plan: result.plan};
         if (result.status === "unsupported") return {status: "unavailable", error: result.message, plan: result.plan};
