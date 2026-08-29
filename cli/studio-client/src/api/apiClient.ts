@@ -995,16 +995,16 @@ export class OutcomeLibraryGenerationStartError extends Error {
 }
 
 async function throwOutcomeLibraryGenerationStartError(response: {status: number; json(): Promise<unknown>}, fallback: string): Promise<never> {
-    let body: {error?: unknown; preflight?: {status?: unknown; requiresBounded?: unknown}} | undefined;
+    let body: {status?: unknown; error?: unknown; preflight?: {status?: unknown; requiresBounded?: unknown}} | undefined;
     try {
-        body = (await response.json()) as {error?: unknown; preflight?: {status?: unknown; requiresBounded?: unknown}};
+        body = (await response.json()) as {status?: unknown; error?: unknown; preflight?: {status?: unknown; requiresBounded?: unknown}};
     } catch {
         // Keep the ordinary HTTP fallback below.  A malformed error response
         // must never make the generation card invent a success state.
     }
     const message = typeof body?.error === "string" ? body.error : `${fallback} (HTTP ${response.status}).`;
     const preflightStatus = body?.preflight?.status;
-    if (preflightStatus === "ok" && body?.preflight?.requiresBounded === true) {
+    if (body?.status === "requires-bounded" || (preflightStatus === "ok" && body?.preflight?.requiresBounded === true)) {
         throw new OutcomeLibraryGenerationStartError("requires-bounded", message);
     }
     if (preflightStatus === "unsupported" || preflightStatus === "conflict" || preflightStatus === "invalid" || preflightStatus === "generation-error" || preflightStatus === "load-error") {

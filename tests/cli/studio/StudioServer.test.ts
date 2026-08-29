@@ -418,11 +418,11 @@ describe("StudioServer", () => {
             requestKey: expect.any(String), gameId: "http-slot", gameVersion: "1.0.0", configHash: "config-http", destination: path.join(projectRoot, "outcomelibrary"),
         };
         const outcomeService = {
-            estimate: jest.fn(() => Promise.resolve({
+            estimate: jest.fn((_root: string, request: {readonly mode?: string}) => Promise.resolve({
                 status: "ok" as const,
                 game: {id: "http-slot", name: "HTTP Slot", version: "1.0.0"}, reelsNumber: 2, reelsSymbolsNumber: 2, reelSizes: [2, 2],
-                totalOutcomeSpaceSize: 4, maxOutcomeSpaceSize: 20_000_000, strategy: "exact" as const, expectedRawWork: 4, warnings: [], requiresBounded: false,
-                defaults: {compatibilityVersion: "v1", maxExactOutcomeSpaceSize: 20_000_000, boundedSample: {sampleSize: 10_000, seed: "seed"}}, plan, preflightToken: `http-token-${++issuedToken}`,
+                totalOutcomeSpaceSize: 4, maxOutcomeSpaceSize: 20_000_000, strategy: "exact" as const, expectedRawWork: 4, warnings: [], requiresBounded: request.mode === "cap",
+                defaults: {compatibilityVersion: "v1", maxExactOutcomeSpaceSize: 20_000_000, boundedSample: {sampleSize: 10_000, seed: "seed"}}, plan, preflightToken: request.mode === "cap" ? "cap-token" : `http-token-${++issuedToken}`,
             })),
             getPreflightBinding: jest.fn((token?: string) => {
                 let requestKey = JSON.stringify({generation: "exact"});
@@ -490,10 +490,27 @@ describe("StudioServer", () => {
         })).toMatchObject({
             status: 409,
             body: {
+                status: "requires-bounded",
                 error: expect.stringMatching(/exceeds the exact-generation cap/i),
                 preflight: {status: "ok", requiresBounded: true},
             },
         });
+
+        // The retained direct route makes its own shared preflight. A cap
+        // result must be the same typed sampled-opt-in outcome as a bound
+        // job-route start and must not create a lifecycle record.
+        const generatedBeforeDirectCap = outcomeService.generate.mock.calls.length;
+        expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate`, {
+            generation: "exact", mode: "cap",
+        })).toMatchObject({
+            status: 409,
+            body: {
+                status: "requires-bounded",
+                error: expect.stringMatching(/exceeds the exact-generation cap/i),
+                preflight: {status: "ok", requiresBounded: true},
+            },
+        });
+        expect(outcomeService.generate).toHaveBeenCalledTimes(generatedBeforeDirectCap);
 
         // A supplied token binds the complete normalized request.  Each of
         // these drift variants must be rejected at start, before the job

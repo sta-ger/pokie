@@ -128,8 +128,8 @@ describe("studio-client apiClient", () => {
                 ok: false,
                 status: 409,
                 body: {
+                    status: "requires-bounded",
                     error: "This outcome space exceeds the exact-generation cap. Select sampled or bounded coverage with a sample size and deterministic seed.",
-                    preflight: {status: "ok", requiresBounded: true},
                 },
             }));
 

@@ -2005,6 +2005,12 @@ export class StudioServer implements StudioServerHandling {
                     // retained start routes give the client the same bounded
                     // coverage recovery as the CLI, rather than a generic
                     // transport conflict.
+                    // This is deliberately a first-class transport outcome,
+                    // not merely a 409 containing a convenient message.  The
+                    // browser can therefore render the same bounded-coverage
+                    // recovery for either retained start route without
+                    // guessing from a conflict string.
+                    status: preflight.status === "ok" && preflight.requiresBounded ? "requires-bounded" : preflight.status,
                     error: preflight.status === "ok"
                         ? "This outcome space exceeds the exact-generation cap. Select sampled or bounded coverage with a sample size and deterministic seed."
                         : preflight.error,
@@ -2025,6 +2031,7 @@ export class StudioServer implements StudioServerHandling {
         }
         if (binding?.requiresBounded) {
             this.sendJson(res, 409, {
+                status: "requires-bounded",
                 error: "This outcome space exceeds the exact-generation cap. Select sampled or bounded coverage with a sample size and deterministic seed.",
                 preflight: {status: "ok", requiresBounded: true},
             });
