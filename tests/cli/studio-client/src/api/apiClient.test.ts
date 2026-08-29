@@ -123,6 +123,22 @@ describe("studio-client apiClient", () => {
                 .rejects.toMatchObject({outcomeStatus: "unsupported", message: "This game cannot enumerate outcomes."});
         });
 
+        it("preserves the shared exact-cap sampled-opt-in outcome for either start route", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 409,
+                body: {
+                    error: "This outcome space exceeds the exact-generation cap. Select sampled or bounded coverage with a sample size and deterministic seed.",
+                    preflight: {status: "ok", requiresBounded: true},
+                },
+            }));
+
+            await expect(generateOutcomeLibrary(fetchImpl, {generation: "exact"}))
+                .rejects.toMatchObject({outcomeStatus: "requires-bounded"});
+            await expect(startOutcomeLibraryGeneration(fetchImpl, {generation: "exact", preflightToken: "exact-cap"}))
+                .rejects.toMatchObject({outcomeStatus: "requires-bounded"});
+        });
+
         it("returns a typed invalid preflight response with its server diagnostic", async () => {
             const {fetchImpl} = createFakeFetch(() => ({
                 ok: false,

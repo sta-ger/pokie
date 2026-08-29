@@ -487,7 +487,13 @@ describe("StudioServer", () => {
         // compatibility route's eligibility rule.
         expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {
             generation: "exact", preflightToken: "bounded-token",
-        })).toMatchObject({status: 409, body: {error: expect.stringMatching(/explicit sampled or bounded coverage/i)}});
+        })).toMatchObject({
+            status: 409,
+            body: {
+                error: expect.stringMatching(/exceeds the exact-generation cap/i),
+                preflight: {status: "ok", requiresBounded: true},
+            },
+        });
 
         // A supplied token binds the complete normalized request.  Each of
         // these drift variants must be rejected at start, before the job

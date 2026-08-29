@@ -206,4 +206,33 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
+
+    it("retains a pre-existing empty destination when managed registration fails", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-managed-outcome-owned-destination-"));
+        const blueprintPath = path.join(workDir, "game.blueprint.json");
+        const outcomeDir = path.join(workDir, "user-owned-empty-output");
+        fs.mkdirSync(outcomeDir);
+        fs.writeFileSync(blueprintPath, JSON.stringify({
+            manifest: {id: "owned-empty-output-slot", name: "Owned Empty Output Slot", version: "1.0.0"},
+            reels: 3, rows: 1, symbols: ["A"], paytable: {A: {2: 1, 3: 2}},
+            reelStrips: [["A"], ["A"], ["A"]], availableBets: [1],
+        }));
+        const project: PokieProject = {type: "blueprint", rootPath: blueprintPath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test fixture"};
+        const managedOutcomes = {
+            findCompatible: () => Promise.resolve(undefined),
+            allocateRoot: () => outcomeDir,
+            registerAndOpen: () => Promise.reject(new Error("injected registration failure")),
+            release: () => Promise.resolve(),
+        };
+
+        try {
+            const workflow = new BlueprintStakeOutcomeLibraryWorkflow("1.3.0", loadGameBlueprint, undefined, managedOutcomes);
+            await expect(workflow.resolveOrGenerate(project, outcomeDir)).rejects.toThrow("injected registration failure");
+
+            expect(fs.existsSync(outcomeDir)).toBe(true);
+            expect(fs.readdirSync(outcomeDir)).toEqual([]);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
 });

@@ -1999,9 +1999,17 @@ export class StudioServer implements StudioServerHandling {
         if (validated.preflightToken === undefined) {
             const preflight = await this.outcomeLibraryGenerateService.estimate(this.currentContext.projectRoot, validated);
             if (preflight.status !== "ok" || preflight.requiresBounded) {
-                this.sendJson(res, 409, {error: preflight.status === "ok"
-                    ? "This request needs explicit sampled or bounded coverage before it can execute."
-                    : preflight.error, preflight});
+                this.sendJson(res, 409, {
+                    // `requiresBounded` is the shared preflight's typed
+                    // exact-cap outcome.  Keep that DTO intact so both
+                    // retained start routes give the client the same bounded
+                    // coverage recovery as the CLI, rather than a generic
+                    // transport conflict.
+                    error: preflight.status === "ok"
+                        ? "This outcome space exceeds the exact-generation cap. Select sampled or bounded coverage with a sample size and deterministic seed."
+                        : preflight.error,
+                    preflight,
+                });
                 return;
             }
             validated = {...validated, preflightToken: preflight.preflightToken};
@@ -2016,7 +2024,10 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (binding?.requiresBounded) {
-            this.sendJson(res, 409, {error: "This request needs explicit sampled or bounded coverage before it can execute."});
+            this.sendJson(res, 409, {
+                error: "This outcome space exceeds the exact-generation cap. Select sampled or bounded coverage with a sample size and deterministic seed.",
+                preflight: {status: "ok", requiresBounded: true},
+            });
             return;
         }
         // Reject drift before allocating a lifecycle record.  The token is a

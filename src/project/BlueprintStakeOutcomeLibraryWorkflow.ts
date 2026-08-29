@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 import vm from "vm";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
@@ -186,6 +187,12 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         });
         const boundDestination = preparedRequest.preflight.destination?.path;
         if (boundDestination === undefined) throw new Error("Managed Outcome Library generation requires a bound output destination.");
+        // The shared destination policy explicitly permits a pre-existing
+        // empty directory.  It is user-owned, even though this invocation may
+        // later atomically publish files into it.  Remember that ownership so
+        // rollback never turns a harmless cancelled/failed build into a
+        // destructive removal of the user's chosen destination.
+        const destinationExistedBeforeInvocation = fs.existsSync(boundDestination);
         const preflight = outcomeGenerationPreflight(preparedRequest.preflight);
         reportArtifactBuildProgress(options, {status: "preflight", preflight});
         assertArtifactBuildNotCancelled(options);
@@ -216,7 +223,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         } catch (error) {
             // A generated bundle is not a managed Project until registerAndOpen commits the registry record.
             // Do not leave a complete-looking orphan behind when registry I/O or cancellation fails.
-            await fs.promises.rm(boundDestination, {recursive: true, force: true}).catch(() => undefined);
+            await this.cleanupFailedDestination(boundDestination, destinationExistedBeforeInvocation);
             if (options?.signal?.aborted) {
                 reportArtifactBuildProgress(options, {status: "cancelled", preflight});
                 if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
@@ -335,6 +342,28 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         const errors = result.issues.filter((issue) => issue.severity === "error");
         if (errors.length > 0 || result.manifest === undefined) {
             throw new Error(`Could not build Outcome Library from Blueprint "${blueprintPath}": ${errors.map((issue) => issue.message).join("; ")}`);
+        }
+    }
+
+    /** Remove only this invocation's publication while retaining an empty user-owned destination. */
+    private async cleanupFailedDestination(destination: string, existedBeforeInvocation: boolean): Promise<void> {
+        if (!existedBeforeInvocation) {
+            await fs.promises.rm(destination, {recursive: true, force: true}).catch(() => undefined);
+            return;
+        }
+        // OutcomeLibraryBundleWriter publishes atomically, so a cancellation
+        // before publication leaves the original directory untouched.  After
+        // publication, its manifest lists every invocation-owned file; remove
+        // exactly those files and retain the pre-existing directory itself.
+        try {
+            const manifestPath = path.join(destination, "manifest.json");
+            const manifest = JSON.parse(await fs.promises.readFile(manifestPath, "utf-8")) as {files?: unknown};
+            const files = Array.isArray(manifest.files) ? manifest.files.filter((file): file is string => typeof file === "string") : [];
+            await Promise.all(files.map((file) => fs.promises.rm(path.join(destination, file), {force: true})));
+            await fs.promises.rm(manifestPath, {force: true});
+        } catch {
+            // No manifest means publication did not complete. Staging is owned
+            // and cleaned by the writer; the original empty destination stays.
         }
     }
 

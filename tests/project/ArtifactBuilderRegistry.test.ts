@@ -526,10 +526,24 @@ describe("ArtifactBuilderRegistry", () => {
                     maxExactOutcomeSpaceSize: "321", compatibilityPolicyVersion: "explicit-v1",
                 });
                 expect(explicitPlan.steps.map((step) => step.kind)).not.toContain("reuseManagedOutcomeLibrary");
+                await expect(registry.executePlan(explicitPlan, source, explicitOut)).resolves.toMatchObject({outputPath: explicitOut});
 
+                const reusedExplicitPlan = await registry.preparePlan(source, "outcomeLibrary", {
+                    destinationPath: path.join(workDir, "explicit-republish"),
+                    outcomeLibraryGeneration: {
+                        sampled: {sampleSize: BigInt(7), seed: "explicit-policy-seed"},
+                        maxExactOutcomeSpaceSize: BigInt(321), compatibilityPolicyVersion: "explicit-v1",
+                    },
+                });
+                expect(reusedExplicitPlan.steps.map((step) => step.kind)).toContain("reuseManagedOutcomeLibrary");
+                expect(reusedExplicitPlan.source.configurationProvenance).toEqual(explicitPlan.source.configurationProvenance);
+
+                const explicitManifestBeforeDrift = fs.readFileSync(path.join(explicitOut, "manifest.json"), "utf8");
                 writeBlueprint("2.0.0");
                 await expect(registry.executePlan(explicitPlan, source, explicitOut)).rejects.toThrow(/source configuration or generation provenance changed/i);
-                expect(fs.existsSync(explicitOut)).toBe(false);
+                // A stale prepared request is rejected before it can replace
+                // an already-compatible explicit publication.
+                expect(fs.readFileSync(path.join(explicitOut, "manifest.json"), "utf8")).toBe(explicitManifestBeforeDrift);
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }
