@@ -6,6 +6,7 @@ import {
     GamePackageGenerator,
     generateExactWeightedOutcomeLibrary,
     generateSampledWeightedOutcomeLibrary,
+    generateWeightedOutcomeLibrary,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleWriter,
     PokieGame,
@@ -52,6 +53,30 @@ describe("generateExactWeightedOutcomeLibrary", () => {
             requiresSampledOptIn: false,
             expectedRawWork: BigInt(4),
         });
+    });
+
+    it("executes the canonical domain request identically to the legacy sampled adapter", async () => {
+        const game = buildFixtureGame();
+        const request = {
+            libraryId: "canonical-sample",
+            game,
+            pokieVersion: "test",
+            generation: "sampled" as const,
+            sample: {sampleSize: BigInt(4), seed: "canonical-seed"},
+        };
+
+        const [canonical, legacy] = await Promise.all([
+            generateWeightedOutcomeLibrary(request),
+            generateSampledWeightedOutcomeLibrary({
+                libraryId: request.libraryId,
+                game,
+                pokieVersion: request.pokieVersion,
+                sampled: request.sample,
+            }),
+        ]);
+
+        expect(canonical.library).toEqual(legacy.library);
+        expect({...canonical.diagnostics, generatedAt: "normalized"}).toEqual({...legacy.diagnostics, generatedAt: "normalized"});
     });
 
     it("fails closed for a game that never implemented createExactEnumerationSession", () => {

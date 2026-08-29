@@ -919,11 +919,30 @@ export async function runDeployment(
 // own doc comment. `maxOutcomeSpaceSize` is a decimal string (same bigint-safe convention as the CLI's own
 // --max-outcome-space-size), never a plain `number` -- a raw reel-stop combination count routinely exceeds
 // Number.MAX_SAFE_INTEGER.
-export async function estimateOutcomeLibraryGeneration(fetchImpl: FetchLike, mode?: string, maxOutcomeSpaceSize?: string): Promise<StudioOutcomeLibraryGenerateEstimateView> {
+export type OutcomeLibraryGenerationPreflightOptions = {
+    mode?: string;
+    maxOutcomeSpaceSize?: string;
+    generation?: "default" | "exact" | "sampled" | "bounded";
+    sample?: {sampleSize: string; seed: string};
+    // Compatibility aliases accepted by the server for saved pre-PC-09
+    // requests. New callers should use generation/sample.
+    sampled?: {sampleSize: string; seed: string};
+    bounded?: {sampleSize: string; seed: string};
+};
+
+export function estimateOutcomeLibraryGeneration(fetchImpl: FetchLike, options?: OutcomeLibraryGenerationPreflightOptions): Promise<StudioOutcomeLibraryGenerateEstimateView>;
+/** @deprecated Pass one OutcomeLibraryGenerationPreflightOptions object instead. */
+export function estimateOutcomeLibraryGeneration(fetchImpl: FetchLike, mode?: string, maxOutcomeSpaceSize?: string): Promise<StudioOutcomeLibraryGenerateEstimateView>;
+export async function estimateOutcomeLibraryGeneration(
+    fetchImpl: FetchLike,
+    optionsOrMode: OutcomeLibraryGenerationPreflightOptions | string | undefined,
+    legacyMaxOutcomeSpaceSize?: string,
+): Promise<StudioOutcomeLibraryGenerateEstimateView> {
+    const options = typeof optionsOrMode === "string" ? {mode: optionsOrMode, maxOutcomeSpaceSize: legacyMaxOutcomeSpaceSize} : optionsOrMode ?? {};
     const response = await fetchImpl("/api/project/outcome-libraries/generate/estimate", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({mode, maxOutcomeSpaceSize}),
+        body: JSON.stringify(options),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to estimate the outcome library generation"));
@@ -940,6 +959,8 @@ export type OutcomeLibraryGenerateRequestOptions = {
     configHash?: string;
     libraryId?: string;
     maxOutcomeSpaceSize?: string;
+    generation?: "default" | "exact" | "sampled" | "bounded";
+    sample?: {sampleSize: string; seed: string};
     bounded?: {sampleSize: string; seed: string};
     sampled?: {sampleSize: string; seed: string};
     outDir?: string;

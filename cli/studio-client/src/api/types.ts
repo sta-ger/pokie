@@ -1020,6 +1020,8 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           requiresBounded: boolean;
           expectedRawWork: number | string;
           warnings: string[];
+          sampleSize?: number | string;
+          seed?: string;
           plan: StudioArtifactConversionPlan;
       }
     | {status: "unsupported"; error: string; plan: StudioArtifactConversionPlan}

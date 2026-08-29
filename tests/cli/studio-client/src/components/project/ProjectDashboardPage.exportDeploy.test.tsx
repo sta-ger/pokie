@@ -782,8 +782,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         expect(generationRequest).toEqual({
             mode: "base",
+            generation: "bounded",
             maxOutcomeSpaceSize: "20000000",
-            bounded: {sampleSize: "10000", seed: "studio-bounded-coverage"},
+            sample: {sampleSize: "10000", seed: "studio-bounded-coverage"},
         });
         expect(await screen.findByText(/Generated 10,000 outcomes for mode "base" using bounded-coverage \(0\.0021% of the raw space\) \(RTP 95\.00%\) into outcomelibrary\./)).toBeInTheDocument();
 

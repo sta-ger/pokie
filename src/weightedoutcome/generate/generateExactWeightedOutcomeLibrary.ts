@@ -22,6 +22,7 @@ import type {ExactEnumerationCheckpoint} from "./WeightedOutcomeLibraryGeneratio
 import {WeightedOutcomeLibraryGenerationError} from "./WeightedOutcomeLibraryGenerationError.js";
 import {
     adaptLegacyOutcomeLibraryGenerationRequest,
+    type OutcomeLibraryGenerationRequest,
     prepareOutcomeLibraryGeneration,
 } from "./OutcomeLibraryGenerationRequest.js";
 
@@ -119,6 +120,38 @@ export type GenerateExactWeightedOutcomeLibraryResult = {
     readonly library: WeightedOutcomeLibrary;
     readonly diagnostics: OutcomeLibraryGeneratorDiagnostics;
 };
+
+/**
+ * Executes the public domain request without making callers choose legacy
+ * `exact`/`bounded`/`sampled` option names. CLI, Studio, and managed builders
+ * may keep accepting their historical syntax, but must translate it to this
+ * request before crossing the domain boundary.
+ */
+export function generateWeightedOutcomeLibrary(
+    request: OutcomeLibraryGenerationRequest,
+): Promise<GenerateExactWeightedOutcomeLibraryResult> {
+    const prepared = prepareOutcomeLibraryGeneration(request);
+    return generateExactWeightedOutcomeLibrary({
+        libraryId: prepared.libraryId,
+        game: prepared.game,
+        pokieVersion: prepared.pokieVersion,
+        ...(prepared.configHash === undefined ? {} : {configHash: prepared.configHash}),
+        ...(prepared.mode === undefined ? {} : {betMode: prepared.mode}),
+        ...(prepared.selectBetMode === undefined ? {} : {selectBetMode: prepared.selectBetMode}),
+        ...(prepared.stake === undefined ? {} : {stake: prepared.stake}),
+        maxOutcomeSpaceSize: prepared.maxExactOutcomeSpaceSize,
+        ...(prepared.generation === "exact" ? {exact: true} : {}),
+        ...(prepared.generation === "sampled" ? {sampled: prepared.sample!} : {}),
+        ...(prepared.generation === "bounded" ? {bounded: prepared.sample!} : {}),
+        ...(prepared.resumeFrom === undefined ? {} : {resumeFrom: prepared.resumeFrom}),
+        ...(prepared.signal === undefined ? {} : {signal: prepared.signal}),
+        ...(prepared.onProgress === undefined ? {} : {onProgress: prepared.onProgress}),
+        ...(prepared.artifactValidator === undefined ? {} : {artifactValidator: prepared.artifactValidator}),
+        ...(prepared.now === undefined ? {} : {now: prepared.now}),
+        ...(prepared.heapUsedLimitBytes === undefined ? {} : {heapUsedLimitBytes: prepared.heapUsedLimitBytes}),
+        ...(prepared.getHeapUsedBytes === undefined ? {} : {getHeapUsedBytes: prepared.getHeapUsedBytes}),
+    });
+}
 
 type PreparedGeneration = {
     readonly strategy: OutcomeLibraryGenerationStrategy;

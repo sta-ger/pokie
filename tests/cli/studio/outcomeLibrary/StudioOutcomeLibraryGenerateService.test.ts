@@ -143,6 +143,16 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(result).toMatchObject({status: "ok", strategy: "bounded-coverage", requiresBounded: true});
         });
 
+        it("uses the same explicit sampled request for Studio preflight and execution", async () => {
+            const sampled = {sampleSize: BigInt(2), seed: "shared-request-seed"};
+            const svc = service();
+            const estimate = await svc.estimate(projectRoot, {generation: "sampled", sample: sampled});
+            const generated = await svc.generate(projectRoot, {generation: "sampled", sample: sampled});
+
+            expect(estimate).toMatchObject({status: "ok", strategy: "bounded-coverage", requiresBounded: false, expectedRawWork: 2, sampleSize: 2, seed: "shared-request-seed"});
+            expect(generated).toMatchObject({status: "ok", generator: {strategy: "bounded-coverage", seed: "shared-request-seed"}});
+        });
+
         it("reports unsupported for a game that never opted into exact enumeration", async () => {
             const result = await service(POKIE_VERSION, buildUnsupportedFixtureGame()).estimate(projectRoot, {});
             expect(result.status).toBe("unsupported");

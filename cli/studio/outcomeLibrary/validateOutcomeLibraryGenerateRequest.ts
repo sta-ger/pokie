@@ -1,3 +1,9 @@
+import {
+    type OutcomeLibraryGenerationMode,
+    type OutcomeLibraryGenerationSample,
+    parsePositiveOutcomeLibraryGenerationDecimal,
+} from "pokie";
+
 export type OutcomeLibraryGenerateBoundedInput = {sampleSize?: unknown; seed?: unknown};
 export type OutcomeLibraryGenerateRequestInput = {
     mode?: unknown;
@@ -5,6 +11,11 @@ export type OutcomeLibraryGenerateRequestInput = {
     configHash?: unknown;
     libraryId?: unknown;
     maxOutcomeSpaceSize?: unknown;
+    // `generation`/`sample` are the domain vocabulary.  The two named sample
+    // forms remain accepted solely as compatibility aliases for saved Studio
+    // requests and the original CLI-shaped HTTP payload.
+    generation?: unknown;
+    sample?: OutcomeLibraryGenerateBoundedInput;
     sampled?: OutcomeLibraryGenerateBoundedInput;
     bounded?: OutcomeLibraryGenerateBoundedInput;
     outDir?: unknown;
@@ -16,6 +27,8 @@ export type ValidatedOutcomeLibraryGenerateRequest = {
     readonly configHash?: string;
     readonly libraryId?: string;
     readonly maxOutcomeSpaceSize?: bigint;
+    readonly generation?: OutcomeLibraryGenerationMode;
+    readonly sample?: OutcomeLibraryGenerationSample;
     readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
     readonly bounded?: {readonly sampleSize: bigint; readonly seed: string};
     readonly outDir?: string;
@@ -25,11 +38,17 @@ function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0;
 }
 
-function validateSample(input: OutcomeLibraryGenerateBoundedInput | undefined, field: "bounded" | "sampled"): {sampleSize: bigint; seed: string} | undefined {
+export function validateOutcomeLibraryGenerationSample(input: OutcomeLibraryGenerateBoundedInput | undefined, field: string): OutcomeLibraryGenerationSample | undefined {
     if (input === undefined) return undefined;
     if (typeof input !== "object" || input === null) throw new Error(`"${field}" must be an object with "sampleSize" and "seed" when present.`);
     if (!isNonEmptyString(input.seed)) throw new Error(`"${field}.seed" must be a non-empty string.`);
     return {sampleSize: parsePositiveOutcomeLibraryGenerationDecimal(input.sampleSize, `${field}.sampleSize`), seed: input.seed};
+}
+
+function validateGeneration(value: unknown): OutcomeLibraryGenerationMode | undefined {
+    if (value === undefined) return undefined;
+    if (value === "default" || value === "exact" || value === "sampled" || value === "bounded") return value;
+    throw new Error('"generation" must be "default", "exact", "sampled", or "bounded" when present.');
 }
 
 // The Studio Generate step's own request shape -- deliberately mirrors "pokie outcomelibrary generate"'s
@@ -56,9 +75,25 @@ export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGener
         throw new Error('"outDir" must be a non-empty string when present.');
     }
 
-    const bounded = validateSample(input.bounded, "bounded");
-    const sampled = validateSample(input.sampled, "sampled");
-    if (bounded !== undefined && sampled !== undefined) throw new Error('"bounded" and "sampled" cannot be combined.');
+    const bounded = validateOutcomeLibraryGenerationSample(input.bounded, "bounded");
+    const sampled = validateOutcomeLibraryGenerationSample(input.sampled, "sampled");
+    const sample = validateOutcomeLibraryGenerationSample(input.sample, "sample");
+    if ([bounded, sampled, sample].filter((entry) => entry !== undefined).length > 1) throw new Error('"sample", "bounded", and "sampled" cannot be combined.');
+    const requestedGeneration = validateGeneration(input.generation);
+    let compatibilityGeneration: OutcomeLibraryGenerationMode | undefined;
+    if (sampled !== undefined) compatibilityGeneration = "sampled";
+    else if (bounded !== undefined) compatibilityGeneration = "bounded";
+    if (requestedGeneration !== undefined && compatibilityGeneration !== undefined && requestedGeneration !== compatibilityGeneration) {
+        throw new Error('"generation" cannot conflict with legacy "bounded" or "sampled" input.');
+    }
+    const generation = requestedGeneration ?? compatibilityGeneration ?? "default";
+    const canonicalSample = sample ?? sampled ?? bounded;
+    if ((generation === "sampled" || generation === "bounded") && canonicalSample === undefined) {
+        throw new Error(`"generation" ${generation} requires a "sample" with "sampleSize" and "seed".`);
+    }
+    if ((generation === "default" || generation === "exact") && canonicalSample !== undefined) {
+        throw new Error(`"generation" ${generation} cannot be combined with sampled coverage.`);
+    }
 
     return {
         ...(input.mode !== undefined ? {mode: input.mode as string} : {}),
@@ -66,9 +101,12 @@ export function validateOutcomeLibraryGenerateRequest(input: OutcomeLibraryGener
         ...(input.configHash !== undefined ? {configHash: input.configHash as string} : {}),
         ...(input.libraryId !== undefined ? {libraryId: input.libraryId as string} : {}),
         ...(input.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: parsePositiveOutcomeLibraryGenerationDecimal(input.maxOutcomeSpaceSize, "maxOutcomeSpaceSize")} : {}),
+        generation,
+        ...(canonicalSample !== undefined ? {sample: canonicalSample} : {}),
+        // Keep these aliases in the validated view while callers migrate. The
+        // service itself consumes only generation/sample below.
         ...(bounded !== undefined ? {bounded} : {}),
         ...(sampled !== undefined ? {sampled} : {}),
         ...(input.outDir !== undefined ? {outDir: input.outDir as string} : {}),
     };
 }
-import {parsePositiveOutcomeLibraryGenerationDecimal} from "pokie";

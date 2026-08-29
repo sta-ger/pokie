@@ -18,6 +18,10 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           readonly strategy: OutcomeLibraryGenerationStrategy;
           readonly expectedRawWork: number | string;
           readonly warnings: readonly string[];
+          // The exact deterministic sample execution will use when this is a
+          // sampled/bounded request. Kept decimal-safe for browser clients.
+          readonly sampleSize?: number | string;
+          readonly seed?: string;
           // True whenever the raw space exceeds maxOutcomeSpaceSize and no --bounded-equivalent options
           // were supplied -- the same "requires --bounded --sample-size --seed" signal the CLI reports,
           // surfaced here before the caller ever commits to a real generate() run.

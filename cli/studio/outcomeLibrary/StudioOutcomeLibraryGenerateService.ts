@@ -1,5 +1,4 @@
 import {
-    GenerateExactWeightedOutcomeLibraryOptions,
     GenerateExactWeightedOutcomeLibraryResult,
     loadPokieGame,
     OutcomeLibraryBundleManifest,
@@ -9,12 +8,13 @@ import {
     OutcomeLibraryBundleWriter,
     OutcomeLibraryBundleWriting,
     OutcomeSpaceEstimate,
+    OutcomeLibraryGenerationRequest,
     PokieGame,
     WeightedOutcomeLibraryGenerationError,
     ArtifactConversionPlanner,
     describeArtifactConversionPlanDiagnostic,
     estimateExactOutcomeSpaceSize,
-    generateExactWeightedOutcomeLibrary,
+    generateWeightedOutcomeLibrary,
     preflightOutcomeLibraryGenerationFromEstimate,
 } from "pokie";
 import fs from "fs";
@@ -39,6 +39,20 @@ function formatBigIntSafely(value: bigint): number | string {
 
 function toNumberApprox(value: number | string): number {
     return typeof value === "number" ? value : Number(value);
+}
+
+// Service methods remain callable by existing in-process users that supplied
+// the pre-PC-09 validated shape directly. HTTP validation always fills the
+// canonical fields; this adapter is deliberately the one compatibility seam.
+function resolveGeneration(request: {generation?: "default" | "exact" | "sampled" | "bounded"; sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}}): "default" | "exact" | "sampled" | "bounded" {
+    if (request.generation !== undefined) return request.generation;
+    if (request.sampled !== undefined) return "sampled";
+    if (request.bounded !== undefined) return "bounded";
+    return "default";
+}
+
+function resolveSample(request: {sample?: {sampleSize: bigint; seed: string}; sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}}): {sampleSize: bigint; seed: string} | undefined {
+    return request.sample ?? request.sampled ?? request.bounded;
 }
 
 type OtherModesResult = {readonly status: "ok"; readonly modes: readonly OutcomeLibraryBundleModeInput<string>[]} | {readonly status: "error"; readonly message: string};
@@ -73,7 +87,7 @@ export class StudioOutcomeLibraryGenerateService {
     private readonly pokieVersion: string;
     private readonly loadGame: typeof loadPokieGame;
     private readonly estimateSpace: (game: PokieGame) => OutcomeSpaceEstimate;
-    private readonly generateLibrary: (options: GenerateExactWeightedOutcomeLibraryOptions) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
+    private readonly generateLibrary: (request: OutcomeLibraryGenerationRequest) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
     private readonly writer: OutcomeLibraryBundleWriting<string>;
     private readonly bundleReader: OutcomeLibraryBundleReading<string>;
     private readonly realpath: (resolvedPath: string) => string;
@@ -89,7 +103,7 @@ export class StudioOutcomeLibraryGenerateService {
         pokieVersion: string,
         loadGame: typeof loadPokieGame = loadPokieGame,
         estimateSpace: (game: PokieGame) => OutcomeSpaceEstimate = estimateExactOutcomeSpaceSize,
-        generateLibrary: (options: GenerateExactWeightedOutcomeLibraryOptions) => Promise<GenerateExactWeightedOutcomeLibraryResult> = generateExactWeightedOutcomeLibrary,
+        generateLibrary: (request: OutcomeLibraryGenerationRequest) => Promise<GenerateExactWeightedOutcomeLibraryResult> = generateWeightedOutcomeLibrary,
         writer: OutcomeLibraryBundleWriting<string> = new OutcomeLibraryBundleWriter<string>(pokieVersion),
         bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
         realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
@@ -151,8 +165,12 @@ export class StudioOutcomeLibraryGenerateService {
             throw error;
         }
 
+        const generation = resolveGeneration(request);
+        const sample = resolveSample(request);
         const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, {
+            generation,
             ...(request.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: request.maxOutcomeSpaceSize}),
+            ...(sample === undefined ? {} : {sample}),
         });
 
         return {
@@ -167,6 +185,7 @@ export class StudioOutcomeLibraryGenerateService {
             requiresBounded: preflight.requiresSampledOptIn,
             expectedRawWork: formatBigIntSafely(preflight.expectedRawWork),
             warnings: preflight.warnings,
+            ...(preflight.sample === undefined ? {} : {sampleSize: formatBigIntSafely(preflight.sample.sampleSize), seed: preflight.sample.seed}),
             plan,
         };
     }
@@ -179,9 +198,11 @@ export class StudioOutcomeLibraryGenerateService {
     public async generate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest): Promise<StudioOutcomeLibraryGenerateResultView> {
         const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
         const modeName = request.mode ?? "base";
-        const requestedGeneration = request.bounded === undefined && request.sampled === undefined
-            ? {generationSemantics: "exact" as const}
-            : {generationSemantics: "boundedSample" as const, sampleCount: (request.sampled ?? request.bounded)!.sampleSize, sampleSeed: (request.sampled ?? request.bounded)!.seed};
+        const generation = resolveGeneration(request);
+        const sample = resolveSample(request);
+        const requestedGeneration = generation === "sampled" || generation === "bounded"
+            ? {generationSemantics: "boundedSample" as const, sampleCount: sample!.sampleSize, sampleSeed: sample!.seed}
+            : {generationSemantics: "exact" as const};
         // The requested bundle directory is part of the prepared decision, not a
         // writer-local default.  In particular this keeps an occupied or aliased
         // destination from being silently treated as a mode-update after a preview
@@ -203,8 +224,8 @@ export class StudioOutcomeLibraryGenerateService {
             "outcomeLibrary",
             resolvedOutDir.resolvedPath,
             requestedGeneration.generationSemantics,
-            (request.sampled ?? request.bounded)?.sampleSize,
-            (request.sampled ?? request.bounded)?.seed,
+            sample?.sampleSize,
+            sample?.seed,
         );
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
@@ -259,11 +280,11 @@ export class StudioOutcomeLibraryGenerateService {
                         generated = await this.generateLibrary({
                             libraryId, game, pokieVersion: this.pokieVersion,
                             ...(configHash !== undefined ? {configHash} : {}),
-                            ...(request.mode !== undefined ? {betMode: request.mode} : {}),
+                            ...(request.mode !== undefined ? {mode: request.mode} : {}),
                             ...(request.stake !== undefined ? {stake: request.stake} : {}),
-                            ...(request.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: request.maxOutcomeSpaceSize} : {}),
-                            ...(request.bounded !== undefined ? {bounded: request.bounded} : {}),
-                            ...(request.sampled !== undefined ? {sampled: request.sampled} : {}),
+                            generation,
+                            ...(request.maxOutcomeSpaceSize !== undefined ? {maxExactOutcomeSpaceSize: request.maxOutcomeSpaceSize} : {}),
+                            ...(sample === undefined ? {} : {sample}),
                         });
                     } catch (error) {
                         if (error instanceof WeightedOutcomeLibraryGenerationError) {

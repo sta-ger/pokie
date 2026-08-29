@@ -3,6 +3,7 @@ import {Badge, Button, Checkbox, Group, List, Text, TextInput} from "@mantine/co
 import {
     cancelArtifactBuild,
     checkNativePickerAvailability,
+    estimateOutcomeLibraryGeneration,
     exportStakeEngine,
     generateOutcomeLibrary,
     getArtifactBuild,
@@ -21,6 +22,7 @@ import type {
     StudioArtifactTargetType,
     StudioArtifactTargetView,
     StudioOutcomeLibraryGenerateResultView,
+    StudioOutcomeLibraryGenerateEstimateView,
     StudioProjectCapability,
     StudioStakeEngineExportView,
 } from "../../api/types";
@@ -110,6 +112,11 @@ type OutcomeLibraryRunView =
     | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>}
     | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
+type OutcomeLibraryPreflightView =
+    | {status: "loading"}
+    | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>}
+    | {status: "error"};
+
 type StaticExportRunView =
     | {status: "idle"}
     | {status: "running"}
@@ -197,6 +204,7 @@ function TargetCard({
     card,
     defaultModeName,
     outcomeLibraryRun,
+    outcomeLibraryPreflight,
     onGenerateOutcomeLibrary,
     outcomeLibraryGenerationOptions,
     onOutcomeLibraryGenerationOptionsChange,
@@ -220,6 +228,7 @@ function TargetCard({
     card: ExportDeployTargetCard;
     defaultModeName: string;
     outcomeLibraryRun: OutcomeLibraryRunView;
+    outcomeLibraryPreflight: OutcomeLibraryPreflightView;
     onGenerateOutcomeLibrary: () => void;
     outcomeLibraryGenerationOptions: OutcomeLibraryGenerationOptions;
     onOutcomeLibraryGenerationOptionsChange: (options: OutcomeLibraryGenerationOptions) => void;
@@ -330,7 +339,24 @@ function TargetCard({
                             />
                         </Group>
                     )}
-                    <Button size="xs" mt="sm" onClick={onGenerateOutcomeLibrary} loading={outcomeLibraryRun.status === "running"}>
+                    <Text size="sm" mt="sm" fw={600}>Generation preflight</Text>
+                    {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
+                    {outcomeLibraryPreflight.status === "ok" && (
+                        <Text size="sm" c={outcomeLibraryPreflight.result.requiresBounded ? "orange" : "dimmed"}>
+                            {outcomeLibraryPreflight.result.strategy === "exact" ? "Exact enumeration" : "Bounded coverage"}: {String(outcomeLibraryPreflight.result.totalOutcomeSpaceSize)} raw combinations; expected work {String(outcomeLibraryPreflight.result.expectedRawWork)}.
+                            {outcomeLibraryPreflight.result.warnings.map((warning) => ` ${warning}`).join("")}
+                        </Text>
+                    )}
+                    {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && !outcomeLibraryGenerationOptions.bounded && (
+                        <Text size="sm" c="orange">Choose bounded coverage with a sample size and seed, or raise the exact limit before generating.</Text>
+                    )}
+                    <Button
+                        size="xs"
+                        mt="sm"
+                        onClick={onGenerateOutcomeLibrary}
+                        loading={outcomeLibraryRun.status === "running"}
+                        disabled={outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && !outcomeLibraryGenerationOptions.bounded}
+                    >
                         Generate {outcomeLibraryGenerationOptions.bounded ? "bounded-coverage" : "exact"} outcome library ({defaultModeName})
                     </Button>
                     {outcomeLibraryRun.status === "running" && (
@@ -694,6 +720,29 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         sampleSize: DEFAULT_BOUNDED_SAMPLE_SIZE,
         seed: DEFAULT_BOUNDED_SEED,
     });
+    const [outcomeLibraryPreflight, setOutcomeLibraryPreflight] = useState<OutcomeLibraryPreflightView>({status: "loading"});
+    useEffect(() => {
+        let cancelled = false;
+        const generation = outcomeLibraryGenerationOptions.bounded ? "bounded" as const : "default" as const;
+        estimateOutcomeLibraryGeneration(fetchImpl, {
+            mode: defaultModeName,
+            generation,
+            maxOutcomeSpaceSize: outcomeLibraryGenerationOptions.maxOutcomeSpaceSize,
+            ...(outcomeLibraryGenerationOptions.bounded ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}} : {}),
+        })
+            .then((result) => {
+                if (!cancelled) setOutcomeLibraryPreflight(result.status === "ok" ? {status: "ok", result} : {status: "error"});
+            })
+            // A pre-PC-09 Studio server has no full-request estimate endpoint.
+            // Keep its existing generate action usable while making the new
+            // endpoint authoritative whenever it is available.
+            .catch(() => {
+                if (!cancelled) setOutcomeLibraryPreflight({status: "error"});
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [defaultModeName, fetchImpl, outcomeLibraryGenerationOptions]);
 
     const [staticExportRun, setStaticExportRun] = useState<StaticExportRunView>({status: "idle"});
     const staticExportGuard = useDoubleSubmitGuard();
@@ -832,9 +881,10 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         setOutcomeLibraryRun({status: "running"});
         generateOutcomeLibrary(fetchImpl, {
             mode: defaultModeName,
+            generation: outcomeLibraryGenerationOptions.bounded ? "bounded" : "default",
             maxOutcomeSpaceSize: outcomeLibraryGenerationOptions.maxOutcomeSpaceSize,
             ...(outcomeLibraryGenerationOptions.bounded
-                ? {bounded: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}}
+                ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}}
                 : {}),
         })
             .then((view) => {
@@ -1022,6 +1072,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                                             card={card}
                                             defaultModeName={defaultModeName}
                                             outcomeLibraryRun={outcomeLibraryRun}
+                                            outcomeLibraryPreflight={outcomeLibraryPreflight}
                                             onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
                                             outcomeLibraryGenerationOptions={outcomeLibraryGenerationOptions}
                                             onOutcomeLibraryGenerationOptionsChange={setOutcomeLibraryGenerationOptions}
