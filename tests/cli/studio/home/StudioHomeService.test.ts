@@ -92,6 +92,16 @@ describe("StudioHomeService", () => {
             expect(dashboard).toEqual({status: "error", projectRoot: path.resolve(tmpDir), error: "not a pokie game package"});
             expect(await repository.list()).toEqual([]);
         });
+
+        it("does not record a project when its owning Home request has been superseded", async () => {
+            const repository = new InMemoryRecentProjectsRepository();
+            const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+            const service = new StudioHomeService("1.2.1", repository, () => Promise.resolve(createFakeGame(manifest)));
+
+            await expect(service.openProject(tmpDir, {isCurrent: () => false})).rejects.toThrow("Runtime preparation was cancelled");
+
+            expect(await repository.list()).toEqual([]);
+        });
     });
 
     describe("resolveDefaultProjectDirectory", () => {

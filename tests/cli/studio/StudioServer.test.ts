@@ -66,6 +66,7 @@ import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
 const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
 const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
 const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
+type PendingGameLoad = (game: PokieGame) => void;
 
 function restoreEnv(name: string, value: string | undefined): void {
     if (value === undefined) {
@@ -455,6 +456,107 @@ describe("StudioServer", () => {
             manifest,
         });
         expect(loadGame).toHaveBeenCalledWith("./sample-slot");
+    });
+
+    it("publishes only the latest overlapping Home open and records only that project", async () => {
+        const firstManifest: PokieGameManifest = {id: "first", name: "First", version: "1.0.0"};
+        const secondManifest: PokieGameManifest = {id: "second", name: "Second", version: "1.0.0"};
+        const completeLoads = new Map<string, PendingGameLoad>();
+        loadGame.mockImplementation((projectRoot: string) => new Promise<PokieGame>((resolve) => {
+            completeLoads.set(projectRoot, resolve);
+        }));
+
+        const firstOpen = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./first"});
+        for (let attempt = 0; attempt < 20 && !completeLoads.has("./first"); attempt++) {
+            await flushMacrotask();
+        }
+        expect(completeLoads.has("./first")).toBe(true);
+
+        const secondOpen = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./second"});
+        for (let attempt = 0; attempt < 20 && !completeLoads.has("./second"); attempt++) {
+            await flushMacrotask();
+        }
+        expect(completeLoads.has("./second")).toBe(true);
+        completeLoads.get("./second")?.(createFakeGame(secondManifest));
+
+        expect(await secondOpen).toEqual({
+            status: 200,
+            body: {
+                context: {mode: "project", projectRoot: path.resolve("./second")},
+                manifest: secondManifest,
+            },
+        });
+
+        completeLoads.get("./first")?.(createFakeGame(firstManifest));
+        expect(await firstOpen).toEqual({status: 409, body: {error: "Project opening was superseded by a newer request."}});
+        expect((await get(`${baseUrl}/api/context`)).body).toEqual({mode: "project", projectRoot: path.resolve("./second")});
+        expect((await get(`${baseUrl}/api/project/context`)).body).toMatchObject({status: "loaded", game: secondManifest});
+        expect(await get(`${baseUrl}/api/home/recent-projects`)).toMatchObject({
+            body: [expect.objectContaining({projectRoot: path.resolve("./second"), name: "Second"})],
+        });
+    });
+
+    it("lets a Home open supersede a pending direct-entry dashboard load", async () => {
+        const directManifest: PokieGameManifest = {id: "direct", name: "Direct", version: "1.0.0"};
+        const homeManifest: PokieGameManifest = {id: "home", name: "Home", version: "1.0.0"};
+        const completeLoads = new Map<string, PendingGameLoad>();
+        loadGame.mockImplementation((projectRoot: string) => new Promise<PokieGame>((resolve) => {
+            completeLoads.set(projectRoot, resolve);
+        }));
+        const homeService = new StudioHomeService("1.0.0", undefined, loadGame);
+        const directServer = new StudioServer({
+            pokieVersion: "1.0.0",
+            host: "127.0.0.1",
+            port: 0,
+            studioRoot,
+            homeService,
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
+            loadGame,
+            initialContext: {mode: "project", projectRoot: "./direct"},
+        });
+        const address = await directServer.start();
+        const directBaseUrl = `http://${address.host}:${address.port}`;
+        try {
+            for (let attempt = 0; attempt < 20 && !completeLoads.has("./direct"); attempt++) {
+                await flushMacrotask();
+            }
+            expect(completeLoads.has("./direct")).toBe(true);
+
+            const homeOpen = post(`${directBaseUrl}/api/home/projects/open`, {projectRoot: "./home"});
+            for (let attempt = 0; attempt < 20 && !completeLoads.has("./home"); attempt++) {
+                await flushMacrotask();
+            }
+            expect(completeLoads.has("./home")).toBe(true);
+            completeLoads.get("./home")?.(createFakeGame(homeManifest));
+            expect((await homeOpen).status).toBe(200);
+
+            completeLoads.get("./direct")?.(createFakeGame(directManifest));
+            await flushMacrotask();
+            expect((await get(`${directBaseUrl}/api/context`)).body).toEqual({mode: "project", projectRoot: path.resolve("./home")});
+            expect((await get(`${directBaseUrl}/api/project/context`)).body).toMatchObject({status: "loaded", game: homeManifest});
+        } finally {
+            await directServer.stop();
+        }
+    });
+
+    it("does not publish or remember a Home open superseded by project close", async () => {
+        const manifest: PokieGameManifest = {id: "late", name: "Late", version: "1.0.0"};
+        const completeLoads = new Map<string, PendingGameLoad>();
+        loadGame.mockImplementation(() => new Promise<PokieGame>((resolve) => {
+            completeLoads.set("./late", resolve);
+        }));
+
+        const opening = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./late"});
+        for (let attempt = 0; attempt < 20 && !completeLoads.has("./late"); attempt++) {
+            await flushMacrotask();
+        }
+        expect(completeLoads.has("./late")).toBe(true);
+        expect(await post(`${baseUrl}/api/projects/close`)).toEqual({status: 200, body: {context: {mode: "home"}}});
+
+        completeLoads.get("./late")?.(createFakeGame(manifest));
+        expect(await opening).toEqual({status: 409, body: {error: "Project opening was superseded by a newer request."}});
+        expect((await get(`${baseUrl}/api/context`)).body).toEqual({mode: "home"});
+        expect((await get(`${baseUrl}/api/home/recent-projects`)).body).toEqual([]);
     });
 
     it("returns 400 for a projectRoot that fails to load", async () => {

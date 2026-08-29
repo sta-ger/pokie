@@ -508,7 +508,10 @@ export class StudioServer implements StudioServerHandling {
     private startProjectDashboardLoad(projectRoot: string): void {
         const preparation = this.beginRuntimePreparation();
         this.projectDashboard = {status: "loading", projectRoot};
-        loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation, undefined, undefined, {signal: preparation.controller.signal})
+        loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation, undefined, undefined, {
+            signal: preparation.controller.signal,
+            isCurrent: () => this.isCurrentRuntimePreparation(preparation),
+        })
             .then((dashboard) => {
                 if (this.isCurrentRuntimePreparation(preparation) && this.currentContext.mode === "project" && this.currentContext.projectRoot === projectRoot) {
                     this.projectDashboard = dashboard;
@@ -1160,13 +1163,16 @@ export class StudioServer implements StudioServerHandling {
         // into its own canonical-reader-backed dashboard, while a PAR workbook opens as its own
         // exchange-only artifact (see ProjectDashboardContext's own doc comment); neither carries a
         // `game` manifest to report back.
-        // Play joins the current project's lifecycle rather than superseding a concurrent dashboard
-        // refresh for that same project. StudioPlayService has its own request generation for two
-        // competing Play requests; this controller is only invalidated by a project switch/shutdown.
-        const preparation = this.runtimePreparation ?? this.beginRuntimePreparation();
+        // Every Home intent owns a generation, including an open of the same path.  In particular it
+        // must supersede a direct-entry dashboard load and an earlier Home request; sharing the prior
+        // controller would let the older handler publish after the newer one completed.
+        const preparation = this.beginRuntimePreparation();
         let dashboard: ProjectDashboardContext;
         try {
-            dashboard = await this.homeService.openProject(validated.projectRoot, {signal: preparation.controller.signal});
+            dashboard = await this.homeService.openProject(validated.projectRoot, {
+                signal: preparation.controller.signal,
+                isCurrent: () => this.isCurrentRuntimePreparation(preparation),
+            });
         } catch (error) {
             if (!this.isCurrentRuntimePreparation(preparation)) {
                 this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
@@ -1193,6 +1199,22 @@ export class StudioServer implements StudioServerHandling {
         // Reset only now that the new project's dashboard has actually loaded — a *failed* open never
         // strands the previous project's Play session prematurely. Same reasoning as the
         // /api/projects/close branch's own call.
+        //
+        // HomeService made its recent-project commit under this same generation guard.  Check again
+        // before every remaining observable commit because registry I/O yields to a competing Home
+        // request, and a late request must never reset/play-switch/publish over the newer project.
+        if (!this.isCurrentRuntimePreparation(preparation)) {
+            this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
+            return;
+        }
+        await this.projectRegistrationService.recordOpened(
+            dashboard.projectRoot,
+            dashboard.status === "loaded" ? dashboard.game.name : path.basename(dashboard.projectRoot),
+        );
+        if (!this.isCurrentRuntimePreparation(preparation)) {
+            this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
+            return;
+        }
         this.playService.reset();
         // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
         // project being left.
@@ -1204,13 +1226,6 @@ export class StudioServer implements StudioServerHandling {
         // doc comment).
         this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
         this.projectDashboard = dashboard;
-        // Opening is a first-class Project lifecycle event, not merely a recent-project hint.  Record it
-        // only after the dashboard was successfully loaded, preserving a managed entry's origin while
-        // making an ad-hoc Open as Project durable and most-recent in the same registry Home renders.
-        await this.projectRegistrationService.recordOpened(
-            dashboard.projectRoot,
-            dashboard.status === "loaded" ? dashboard.game.name : path.basename(dashboard.projectRoot),
-        );
         this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.status === "loaded" ? dashboard.game : undefined});
     }
 

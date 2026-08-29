@@ -39,7 +39,11 @@ const defaultResolveOutcomeSourceProject: OutcomeSourceProjectResolving = async 
 // runnable-compatible workbooks go through the shared runtime planner below.
 export type ArtifactProjectResolving = (projectRoot: string) => Promise<PokieProject | undefined>;
 
-export type ProjectDashboardLoadOptions = {readonly signal?: AbortSignal};
+// `isCurrent` belongs to Studio's request-generation owner.  An AbortSignal stops the
+// materializer itself, while this second guard protects the small completion windows around
+// collaborators that cannot observe a signal (for example a location description finishing at
+// the same time as a project switch).
+export type ProjectDashboardLoadOptions = {readonly signal?: AbortSignal; readonly isCurrent?: () => boolean};
 
 const defaultResolveArtifactProject: ArtifactProjectResolving = () => Promise.resolve(undefined);
 
@@ -75,7 +79,7 @@ export async function loadProjectDashboardContext(
     resolveArtifactProject: ArtifactProjectResolving = defaultResolveArtifactProject,
     options: ProjectDashboardLoadOptions = {},
 ): Promise<ProjectDashboardContext> {
-    assertDashboardLoadNotCancelled(options.signal);
+    assertDashboardLoadCurrent(options);
     const resolvedRoot = path.resolve(projectRoot);
 
     // Checked first, before ever touching resolveRuntimePackageRoot/loadGame: an "outcomeLibrary"/
@@ -85,9 +89,10 @@ export async function loadProjectDashboardContext(
     // unresolvable), so every existing tsPackage/blueprint/wasm caller falls straight through
     // to the unchanged path below.
     const outcomeSource = await resolveOutcomeSourceProject(projectRoot).catch(() => undefined);
-    assertDashboardLoadNotCancelled(options.signal);
+    assertDashboardLoadCurrent(options);
     if (outcomeSource !== undefined) {
         const identity = await describeLocation(projectRoot).catch(() => undefined);
+        assertDashboardLoadCurrent(options);
         return {
             status: "outcome-source",
             projectRoot: resolvedRoot,
@@ -99,9 +104,10 @@ export async function loadProjectDashboardContext(
 
     // Keep any truly non-runnable artifact visible without claiming it loaded.
     const artifact = await resolveArtifactProject(projectRoot).catch(() => undefined);
-    assertDashboardLoadNotCancelled(options.signal);
+    assertDashboardLoadCurrent(options);
     if (artifact !== undefined) {
         const identity = await describeLocation(projectRoot).catch(() => undefined);
+        assertDashboardLoadCurrent(options);
         return {
             status: "artifact",
             projectRoot: resolvedRoot,
@@ -115,10 +121,11 @@ export async function loadProjectDashboardContext(
             ? await resolveRuntimePackageRoot(projectRoot)
             : await resolveRuntimePackageRoot(projectRoot, {signal: options.signal});
         try {
-            assertDashboardLoadNotCancelled(options.signal);
+            assertDashboardLoadCurrent(options);
             const game = await loadGame(resolution.runtimePath);
-            assertDashboardLoadNotCancelled(options.signal);
+            assertDashboardLoadCurrent(options);
             const identity = await describeLocation(projectRoot).catch(() => undefined);
+            assertDashboardLoadCurrent(options);
             return {
                 status: "loaded",
                 projectRoot: resolvedRoot,
@@ -140,8 +147,8 @@ export async function loadProjectDashboardContext(
     }
 }
 
-function assertDashboardLoadNotCancelled(signal: AbortSignal | undefined): void {
-    if (signal?.aborted) {
+function assertDashboardLoadCurrent(options: ProjectDashboardLoadOptions): void {
+    if (options.signal?.aborted || options.isCurrent?.() === false) {
         throw new Error("Runtime preparation was cancelled before a runnable game was available.");
     }
 }
