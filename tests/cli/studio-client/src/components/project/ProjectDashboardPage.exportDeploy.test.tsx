@@ -89,6 +89,27 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(initialPreflightRequest).toEqual({mode: "base", generation: "default"});
     });
 
+    it("renders classified invalid preflight recovery and retains the server diagnostic", async () => {
+        const user = userEvent.setup();
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/generate/estimate": () => ({
+                ok: false,
+                status: 400,
+                body: {status: "invalid", error: '"maxOutcomeSpaceSize" must be a positive integer.'},
+            }),
+        };
+
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        expect(await screen.findByText(/generation request is invalid/i)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Show Preflight diagnostic"})).toBeInTheDocument();
+        expect(screen.getByText('"maxOutcomeSpaceSize" must be a positive integer.')).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Generate exact outcome library (base)"})).toBeDisabled();
+    });
+
     it("keeps an exchange-only PAR workbook on the Build/Export path and shows its native file preflight", async () => {
         const user = userEvent.setup();
         const routes = {

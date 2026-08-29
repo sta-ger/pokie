@@ -949,7 +949,19 @@ export async function estimateOutcomeLibraryGeneration(
         body: JSON.stringify(options),
     });
     if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to estimate the outcome library generation"));
+        // Outcome Library preflight rejects are intentionally classified by
+        // Studio even though their HTTP status is non-2xx.  Returning the DTO
+        // lets the card present domain recovery and retain its diagnostics.
+        try {
+            const result = await response.json() as unknown;
+            if (typeof result === "object" && result !== null) {
+                const view = result as {status?: unknown; error?: unknown};
+                if (view.status === "invalid" || view.status === "unsupported" || view.status === "conflict" || view.status === "generation-error" || view.status === "load-error") return result as StudioOutcomeLibraryGenerateEstimateView;
+            }
+        } catch {
+            // A malformed error response falls through to the HTTP fallback.
+        }
+        throw new Error(`Failed to estimate the outcome library generation (HTTP ${response.status}).`);
     }
     return (await response.json()) as StudioOutcomeLibraryGenerateEstimateView;
 }

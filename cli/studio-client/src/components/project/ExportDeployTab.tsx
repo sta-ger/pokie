@@ -120,7 +120,7 @@ type OutcomeLibraryRunView =
     | {status: "running"; job: StudioOutcomeLibraryGenerateJobView}
     | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>}
     | {status: "cancelled"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "cancelled"}>}
-    | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
+    | {status: "error"; message: string; diagnostic?: string; plan?: StudioArtifactConversionPlan};
 
 type OutcomeLibraryPreflightView =
     | {status: "loading"}
@@ -139,9 +139,8 @@ function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateR
 }
 
 function describePreflightError(view: Exclude<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>): string {
-    if (view.status === "unsupported") return describeOutcomeLibraryGenerationTerminalOutcome({status: "unsupported"});
-    if (view.status === "conflict") return describeOutcomeLibraryGenerationTerminalOutcome({status: "conflict"});
-    return describeOutcomeLibraryGenerationTerminalOutcome({status: "load-error"});
+    if (view.status === "invalid") return "This generation request is invalid. Correct the settings below, then refresh the preflight.";
+    return describeOutcomeLibraryGenerationTerminalOutcome(view);
 }
 
 function generationStrategyLabel(generation: OutcomeLibraryGenerationOptions["generation"]): string {
@@ -409,7 +408,12 @@ function TargetCard({
                     )}
                     <Text size="sm" mt="sm" fw={600}>Generation preflight</Text>
                     {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
-                    {outcomeLibraryPreflight.status === "error" && <Text size="sm" c="red">{outcomeLibraryPreflight.result === undefined ? outcomeLibraryPreflight.message ?? "Preflight could not be prepared." : describePreflightError(outcomeLibraryPreflight.result)} Refresh the preflight after resolving this issue.</Text>}
+                    {outcomeLibraryPreflight.status === "error" && (
+                        <>
+                            <Text size="sm" c="red">{outcomeLibraryPreflight.result === undefined ? outcomeLibraryPreflight.message ?? "Preflight could not be prepared." : describePreflightError(outcomeLibraryPreflight.result)} Refresh the preflight after resolving this issue.</Text>
+                            {outcomeLibraryPreflight.result !== undefined && <AdvancedDisclosure label="Preflight diagnostic"><Text size="sm">{outcomeLibraryPreflight.result.error}</Text></AdvancedDisclosure>}
+                        </>
+                    )}
                     {outcomeLibraryPreflight.status === "ok" && (
                         <Text size="sm" c={outcomeLibraryPreflight.result.requiresBounded ? "orange" : "dimmed"}>
                             {outcomeLibraryPreflight.result.strategy === "exact" ? "Exact enumeration" : "Bounded coverage"}: {String(outcomeLibraryPreflight.result.totalOutcomeSpaceSize)} raw combinations; expected work {String(outcomeLibraryPreflight.result.expectedRawWork)}.
@@ -437,6 +441,7 @@ function TargetCard({
                     {outcomeLibraryRun.status === "error" && (
                         <>
                             <ErrorState message={outcomeLibraryRun.message} />
+                            {outcomeLibraryRun.diagnostic !== undefined && <AdvancedDisclosure label="Generation diagnostic"><Text size="sm">{outcomeLibraryRun.diagnostic}</Text></AdvancedDisclosure>}
                             <PlannerSummary plan={outcomeLibraryRun.plan} />
                         </>
                     )}
@@ -1029,7 +1034,8 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                     // server's classified preflight status here so this path
                     // has the same recovery as a terminal lifecycle result.
                     ? describeOutcomeLibraryGenerationTerminalOutcome({status: error.outcomeStatus})
-                    : describeProjectActionError("The outcome library generation", errorMessage(error))});
+                    : describeProjectActionError("The outcome library generation", errorMessage(error)),
+                ...(error instanceof OutcomeLibraryGenerationStartError ? {diagnostic: error.message} : {})});
             });
     }
 
@@ -1048,7 +1054,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                 } else if (job.status === "cancelled" && job.result?.status === "cancelled") {
                     setOutcomeLibraryRun({status: "cancelled", result: job.result});
                 } else if (job.result !== undefined && job.result.status !== "ok") {
-                    setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(job.result), plan: job.result.plan});
+                    setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(job.result), ...("error" in job.result ? {diagnostic: job.result.error} : {}), plan: job.result.plan});
                 } else {
                     setOutcomeLibraryRun({status: "error", message: "Outcome library generation ended without a result."});
                 }

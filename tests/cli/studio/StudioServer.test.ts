@@ -456,6 +456,12 @@ describe("StudioServer", () => {
         expect(estimate.status).toBe(200);
         expect(estimate.body).toMatchObject({status: "ok", preflightToken: "http-token-1", strategy: "exact"});
 
+        // Transport validation is a preflight outcome too.  It must retain a
+        // stable status and diagnostic for the client recovery model instead
+        // of falling back to the server's generic `{error}` envelope.
+        expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/estimate`, {maxOutcomeSpaceSize: "0"}))
+            .toMatchObject({status: 400, body: {status: "invalid", error: expect.stringMatching(/positive integer/i)}});
+
         // A caller cannot turn a bounded-required preflight into an executable
         // job simply by presenting its token.  This must match the no-token
         // compatibility route's eligibility rule.

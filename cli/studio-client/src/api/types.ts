@@ -1030,9 +1030,14 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           };
           preflightToken: string;
       }
-    | {status: "unsupported"; error: string; plan: StudioArtifactConversionPlan}
-    | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
-    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
+    // Transport validation happens before the service can resolve a project
+    // plan.  Keep it in this same classified union so callers never have to
+    // turn a preflight failure back into an untyped HTTP exception.
+    | {status: "invalid"; error: string; plan?: StudioArtifactConversionPlan}
+    | {status: "unsupported"; error: string; plan?: StudioArtifactConversionPlan}
+    | {status: "conflict"; error: string; plan?: StudioArtifactConversionPlan}
+    | {status: "generation-error"; error: string; code?: string; plan?: StudioArtifactConversionPlan}
+    | {status: "load-error"; error: string; plan?: StudioArtifactConversionPlan};
 
 // OutcomeLibraryGeneratorDiagnostics, embedded verbatim -- see its own doc comment
 // (src/weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.ts).

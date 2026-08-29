@@ -242,7 +242,15 @@ export class StudioOutcomeLibraryGenerateService {
             return {result: {status: "conflict", error: "The persisted checkpoint request identity no longer matches its immutable binding.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")}};
         }
         const preflight = await this.estimate(projectRoot, request);
-        if (preflight.status !== "ok") return {result: preflight};
+        if (preflight.status !== "ok") {
+            // A persisted checkpoint was created from an already validated
+            // request, so a newly invalid transport shape is necessarily a
+            // binding drift rather than a new client-side validation prompt.
+            if (preflight.status === "invalid" || preflight.status === "generation-error") {
+                return {result: {status: "conflict", error: preflight.error, plan: preflight.plan ?? createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")}};
+            }
+            return {result: {...preflight, plan: preflight.plan ?? createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")}};
+        }
         const current = this.preflightSnapshots.get(preflight.preflightToken);
         if (current === undefined || current.requestKey !== binding.requestKey || current.gameId !== binding.gameId || current.gameVersion !== binding.gameVersion || current.configHash !== binding.configHash || current.destination !== binding.destination) {
             return {result: {status: "conflict", error: "The source, configuration, destination, or generation strategy changed since this checkpoint was created. Refresh the project and start a new generation.", plan: preflight.plan}};

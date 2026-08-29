@@ -8,6 +8,7 @@ import {
     createPlaySession,
     exportParSheet,
     cancelOutcomeLibraryGeneration,
+    estimateOutcomeLibraryGeneration,
     FetchLike,
     generateRandomBlueprint,
     getContext,
@@ -120,6 +121,17 @@ describe("studio-client apiClient", () => {
 
             await expect(startOutcomeLibraryGeneration(fetchImpl, {generation: "exact", preflightToken: "unsupported"}))
                 .rejects.toMatchObject({outcomeStatus: "unsupported", message: "This game cannot enumerate outcomes."});
+        });
+
+        it("returns a typed invalid preflight response with its server diagnostic", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 400,
+                body: {status: "invalid", error: '"maxOutcomeSpaceSize" must be a positive integer.'},
+            }));
+
+            await expect(estimateOutcomeLibraryGeneration(fetchImpl, {maxOutcomeSpaceSize: "0"}))
+                .resolves.toEqual({status: "invalid", error: '"maxOutcomeSpaceSize" must be a positive integer.'});
         });
     });
 

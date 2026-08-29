@@ -64,6 +64,7 @@ import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioNativePickerService} from "./home/StudioNativePickerService.js";
 import {validateNativeBrowseRequest, NativeBrowseRequestInput} from "./home/validateNativeBrowseRequest.js";
 import {StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
+import type {StudioOutcomeLibraryGenerateEstimateView} from "./outcomeLibrary/StudioOutcomeLibraryGenerateEstimateView.js";
 import {StudioOutcomeLibraryGenerateJobService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateJobService.js";
 import {
     validateOutcomeLibraryGenerateEstimateRequest,
@@ -1961,7 +1962,8 @@ export class StudioServer implements StudioServerHandling {
 
     private async handleEstimateOutcomeLibraryGeneration(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
-            this.sendJson(res, 409, {error: "No active project."});
+            const result: StudioOutcomeLibraryGenerateEstimateView = {status: "conflict", error: "No active project."};
+            this.sendJson(res, 409, result);
             return;
         }
 
@@ -1970,7 +1972,8 @@ export class StudioServer implements StudioServerHandling {
         try {
             validated = validateOutcomeLibraryGenerateEstimateRequest((body ?? {}) as OutcomeLibraryGenerateEstimateRequestInput);
         } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            const result: StudioOutcomeLibraryGenerateEstimateView = {status: "invalid", error: error instanceof Error ? error.message : String(error)};
+            this.sendJson(res, 400, result);
             return;
         }
 

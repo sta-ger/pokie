@@ -39,6 +39,10 @@ export type StudioOutcomeLibraryGenerateEstimateView =
     // The loaded package doesn't implement createExactEnumerationSession at all -- there is no exact
     // outcome space to estimate (see WeightedOutcomeLibraryGenerationError's own
     // "weighted-outcome-library-generation-unsupported" code).
-    | {readonly status: "unsupported"; readonly error: string; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "conflict"; readonly error: string; readonly plan: ArtifactConversionPlan}
-    | {readonly status: "load-error"; readonly error: string; readonly plan: ArtifactConversionPlan};
+    // Request parsing can fail before a project plan exists.  It is still a
+    // domain-classified preflight outcome, not an unstructured HTTP error.
+    | {readonly status: "invalid"; readonly error: string; readonly plan?: ArtifactConversionPlan}
+    | {readonly status: "unsupported"; readonly error: string; readonly plan?: ArtifactConversionPlan}
+    | {readonly status: "conflict"; readonly error: string; readonly plan?: ArtifactConversionPlan}
+    | {readonly status: "generation-error"; readonly error: string; readonly code?: string; readonly plan?: ArtifactConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan?: ArtifactConversionPlan};
