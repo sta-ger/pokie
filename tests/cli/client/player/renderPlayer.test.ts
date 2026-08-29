@@ -398,7 +398,7 @@ describe("canonical Player source reachability", () => {
         expect(fixtureEntry).toContain("initializeUi(");
         expect(fixtureEntry).toContain("createFixtureSession");
         expect(fixtureGame).toContain('FIXTURE_SEED = "fixture-round"');
-        expect(fixtureGame).toContain("new VideoSlotSession(");
+        expect(fixtureGame).toContain("new SwfgSession(");
         expect(fixtureGame).toContain("new SymbolsCombinationsGenerator(");
         for (const legacyRenderer of [
             "renderReelsGrid(",

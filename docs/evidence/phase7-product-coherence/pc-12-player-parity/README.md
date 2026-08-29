@@ -5,6 +5,10 @@ Studio entry point and the real `pokie-examples` fixture page, drives their visi
 only `[data-pokie-player="canonical-v1"]` before comparing the canonical player contract.
 
 Run it with `PC_12_STUDIO_PROJECT` pointing at the deterministic same-game fixture package and
-`POKIE_EXAMPLES_PATH` pointing at the companion checkout.  Its `current-run/` output records the fixture
-identity and seed, viewport dimensions, cropped desktop/mobile screenshots, checksums, comparison result,
-and a browser transcript.  The runner always removes its temporary Chromium profile and child processes.
+`POKIE_EXAMPLES_PATH` pointing at the companion checkout.  The fixture must expose the real `Win` and
+`Free games` scenarios. Its uncommitted `current-run/` output records the fixture identity and seed,
+viewport dimensions, cropped desktop/mobile screenshots, checksums, pixel-difference result, DOM/semantic,
+computed-style/layout and overflow comparisons, plus the browser transcript. The workflow also records the
+hover/highlight restoration, selectable controls, feature result, Inspector disclosure and Studio recovery
+checks. The runner always removes its temporary Chromium profile and child processes, including failures and
+cancellation; only this README is retained as the campaign's evidence convention.

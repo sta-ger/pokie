@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import {spawn} from "node:child_process";
 import {createHash} from "node:crypto";
 import {mkdir, mkdtemp, rm, writeFile} from "node:fs/promises";
+import {inflateSync} from "node:zlib";
 import {dirname, resolve} from "node:path";
 import {tmpdir} from "node:os";
 import {fileURLToPath} from "node:url";
@@ -19,14 +20,101 @@ import WebSocket from "ws";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const canonicalPlayerSelector = '[data-pokie-player="canonical-v1"]';
 
+// Keep this list deliberately limited to the shared player.  Studio's page chrome and the examples'
+// Bootstrap shell are allowed to differ, but a change to any of these values is a visible player
+// regression (and not merely a different serialisation of the same round).
+export const canonicalPlayerComparisonKeys = [
+    "cells", "wins", "features", "totals", "paytable", "controls", "hover", "styles", "layout", "overflow",
+];
+
 export function comparePlayerRegions(studio, examples) {
     const differing = [];
-    for (const key of ["cells", "wins", "features", "totals", "paytable", "controls", "hover", "overflow"]) {
+    for (const key of canonicalPlayerComparisonKeys) {
         if (JSON.stringify(studio[key]) !== JSON.stringify(examples[key])) differing.push(key);
     }
     if (differing.length > 0) {
         throw new Error(`Canonical player parity diverged: ${differing.join(", ")}`);
     }
+}
+
+function readPngRgba(bytes) {
+    const signature = "89504e470d0a1a0a";
+    assert.equal(bytes.subarray(0, 8).toString("hex"), signature, "capture must be a PNG");
+    let offset = 8;
+    let width;
+    let height;
+    let bitDepth;
+    let colorType;
+    const data = [];
+    while (offset < bytes.length) {
+        const length = bytes.readUInt32BE(offset);
+        const type = bytes.subarray(offset + 4, offset + 8).toString("ascii");
+        const chunk = bytes.subarray(offset + 8, offset + 8 + length);
+        offset += length + 12;
+        if (type === "IHDR") {
+            width = chunk.readUInt32BE(0);
+            height = chunk.readUInt32BE(4);
+            bitDepth = chunk[8];
+            colorType = chunk[9];
+        } else if (type === "IDAT") {
+            data.push(chunk);
+        } else if (type === "IEND") {
+            break;
+        }
+    }
+    assert.equal(bitDepth, 8, "only 8-bit Chromium screenshots are supported");
+    assert.ok(colorType === 2 || colorType === 6, "only RGB/RGBA Chromium screenshots are supported");
+    assert.ok(width !== undefined && height !== undefined, "PNG header is required");
+    const bytesPerPixel = colorType === 6 ? 4 : 3;
+    const stride = width * bytesPerPixel;
+    const encoded = inflateSync(Buffer.concat(data));
+    const rgba = Buffer.alloc(stride * height);
+    let source = 0;
+    for (let row = 0; row < height; row++) {
+        const filter = encoded[source++];
+        const destination = row * stride;
+        for (let column = 0; column < stride; column++) {
+            const value = encoded[source++];
+            const left = column >= bytesPerPixel ? rgba[destination + column - bytesPerPixel] : 0;
+            const above = row > 0 ? rgba[destination + column - stride] : 0;
+            const upperLeft = row > 0 && column >= bytesPerPixel ? rgba[destination + column - stride - bytesPerPixel] : 0;
+            if (filter === 0) rgba[destination + column] = value;
+            if (filter === 1) rgba[destination + column] = (value + left) & 255;
+            if (filter === 2) rgba[destination + column] = (value + above) & 255;
+            if (filter === 3) rgba[destination + column] = (value + Math.floor((left + above) / 2)) & 255;
+            if (filter === 4) {
+                const predictor = left + above - upperLeft;
+                const leftDistance = Math.abs(predictor - left);
+                const aboveDistance = Math.abs(predictor - above);
+                const upperLeftDistance = Math.abs(predictor - upperLeft);
+                rgba[destination + column] = (value + (leftDistance <= aboveDistance && leftDistance <= upperLeftDistance ? left : aboveDistance <= upperLeftDistance ? above : upperLeft)) & 255;
+            }
+        }
+    }
+    return {width, height, rgba, bytesPerPixel};
+}
+
+/**
+ * Rejects a material rendered-pixel change.  A small tolerance keeps harmless Chromium anti-aliasing
+ * noise out of the signal, while dimensions, broad colour changes and rearranged player sections fail.
+ */
+export function comparePlayerScreenshots(studioBytes, examplesBytes) {
+    const studio = readPngRgba(studioBytes);
+    const examples = readPngRgba(examplesBytes);
+    assert.equal(studio.width, examples.width, "Canonical player screenshot widths diverged");
+    assert.equal(studio.height, examples.height, "Canonical player screenshot heights diverged");
+    assert.equal(studio.bytesPerPixel, examples.bytesPerPixel, "Canonical player screenshot colour formats diverged");
+    let changedPixels = 0;
+    let totalDifference = 0;
+    for (let offset = 0; offset < studio.rgba.length; offset += studio.bytesPerPixel) {
+        const difference = Math.abs(studio.rgba[offset] - examples.rgba[offset]) + Math.abs(studio.rgba[offset + 1] - examples.rgba[offset + 1]) + Math.abs(studio.rgba[offset + 2] - examples.rgba[offset + 2]);
+        totalDifference += difference;
+        if (difference > 18) changedPixels++;
+    }
+    const changedRatio = changedPixels / (studio.width * studio.height);
+    const meanDifference = totalDifference / (studio.width * studio.height * 3);
+    assert.ok(changedRatio <= 0.02 && meanDifference <= 3, `Canonical player screenshot diverged (changed=${changedRatio.toFixed(4)}, mean=${meanDifference.toFixed(2)})`);
+    return {width: studio.width, height: studio.height, changedRatio, meanDifference};
 }
 
 function checksum(value) {
@@ -89,20 +177,33 @@ function playerSnapshotExpression() {
         const player = document.querySelector(${JSON.stringify(canonicalPlayerSelector)});
         if (!player) return undefined;
         const text = (selector) => [...player.querySelectorAll(selector)].map((node) => node.textContent?.trim() ?? "");
+        const box = (node) => { if (!node) return undefined; const rect = node.getBoundingClientRect(); return {width: Math.round(rect.width), height: Math.round(rect.height)}; };
+        const style = (node) => { if (!node) return undefined; const computed = getComputedStyle(node); return {display: computed.display, color: computed.color, backgroundColor: computed.backgroundColor, fontSize: computed.fontSize, fontWeight: computed.fontWeight, overflowX: computed.overflowX}; };
         const cells = [...player.querySelectorAll("[data-cell]")].map((cell) => ({
             id: cell.dataset.cell,
             symbol: cell.textContent?.trim() ?? "",
             color: getComputedStyle(cell).backgroundColor,
+            box: box(cell),
         }));
         const controls = [...player.querySelectorAll("button")].map((button) => ({
             label: button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "",
             disabled: button.disabled,
             pressed: button.getAttribute("aria-pressed"),
+            role: button.getAttribute("role") ?? "button",
         }));
         return {
             cells, wins: text(".player-wins-list button"), features: text(".player-features"),
             totals: text(".player-round-totals dd"), paytable: text(".player-paytable tr"), controls,
             hover: text(".player-highlight-button"),
+            styles: {
+                player: style(player), grid: style(player.querySelector(".player-grid")),
+                controls: style(player.querySelector(".player-bet-options, .player-mode-options") ?? player),
+            },
+            layout: {
+                player: box(player), grid: box(player.querySelector(".player-grid")),
+                gridScroll: box(player.querySelector(".pokie-player-grid-scroll")),
+                paytable: box(player.querySelector(".player-paytable")),
+            },
             overflow: player.scrollWidth > player.clientWidth,
         };
     })()`;
@@ -153,12 +254,27 @@ async function main() {
             await cdp.send("Page.navigate", {url});
             await waitFor(async () => (await evaluate("document.readyState")) === "complete", `page ${url}`);
         };
-        const click = async (label) => {
-            const point = await evaluate(`(() => { const node = [...document.querySelectorAll("button,a,[role=button]")].find((item) => item.textContent?.trim() === ${JSON.stringify(label)} && !item.disabled && item.getClientRects().length > 0); if (!node) return; const rect = node.getBoundingClientRect(); return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2}; })()`);
+        const pointFor = async (label, selector = "button,a,[role=button]") => evaluate(`(() => {
+            const node = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) =>
+                (item.textContent?.trim() === ${JSON.stringify(label)} || item.getAttribute("aria-label") === ${JSON.stringify(label)}) &&
+                !item.disabled && item.getClientRects().length > 0,
+            );
+            if (!node) return;
+            const rect = node.getBoundingClientRect();
+            return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+        })()`);
+        const click = async (label, selector) => {
+            const point = await pointFor(label, selector);
             if (point === undefined) throw new Error(`Visible control ${JSON.stringify(label)} was unavailable.`);
             await cdp.send("Input.dispatchMouseEvent", {type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1});
             await cdp.send("Input.dispatchMouseEvent", {type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1});
             note(`CLICK ${label}`);
+        };
+        const hover = async (label, selector) => {
+            const point = await pointFor(label, selector);
+            if (point === undefined) throw new Error(`Visible control ${JSON.stringify(label)} was unavailable for hover.`);
+            await cdp.send("Input.dispatchMouseEvent", {type: "mouseMoved", x: point.x, y: point.y});
+            note(`HOVER ${label}`);
         };
         const capture = async (name) => {
             const player = await evaluate(`(() => { const node = document.querySelector(${JSON.stringify(canonicalPlayerSelector)}); if (!node) return; const rect = node.getBoundingClientRect(); return {x: rect.x, y: rect.y, width: rect.width, height: rect.height, scale: window.devicePixelRatio}; })()`);
@@ -166,37 +282,114 @@ async function main() {
             const image = await cdp.send("Page.captureScreenshot", {format: "png", clip: player});
             const bytes = Buffer.from(image.data, "base64");
             await writeFile(resolve(evidence, `${name}.png`), bytes);
-            return checksum(bytes);
+            return {bytes, checksum: checksum(bytes)};
         };
         const settleAndCapture = async (name) => {
             await waitFor(async () => (await evaluate(playerSnapshotExpression())) !== undefined, `${name} player`);
             const snapshot = await evaluate(playerSnapshotExpression());
-            return {snapshot, checksum: await capture(name)};
+            const screenshot = await capture(name);
+            return {snapshot, ...screenshot};
+        };
+        const assertPlayerInteraction = async (name, {featureLabel, featureMenuLabel} = {}) => {
+            const beforeHover = await evaluate(playerSnapshotExpression());
+            assert.ok(beforeHover.cells.length > 0, `${name} must render real reel cells`);
+            assert.ok(beforeHover.wins.length > 0, `${name} must render a deterministic winning round`);
+            assert.ok(beforeHover.controls.some((control) => control.label.startsWith("Select bet ")), `${name} must expose selectable bets`);
+            const highlight = beforeHover.hover[0];
+            assert.ok(highlight, `${name} must expose a win/line hover control`);
+            await hover(highlight, `${canonicalPlayerSelector} .player-highlight-button`);
+            await waitFor(async () => JSON.stringify((await evaluate(playerSnapshotExpression())).cells) !== JSON.stringify(beforeHover.cells), `${name} hover highlight`);
+            await cdp.send("Input.dispatchMouseEvent", {type: "mouseMoved", x: 0, y: 0});
+            await waitFor(async () => JSON.stringify((await evaluate(playerSnapshotExpression())).cells) === JSON.stringify(beforeHover.cells), `${name} hover restoration`);
+            const selectableBet = beforeHover.controls.find((control) => control.label.startsWith("Select bet ") && !control.disabled);
+            assert.ok(selectableBet, `${name} must have an enabled alternate bet`);
+            await click(selectableBet.label, `${canonicalPlayerSelector} button`);
+            await waitFor(async () => (await evaluate(playerSnapshotExpression())).controls.some((control) => control.label === selectableBet.label && control.disabled), `${name} bet selection`);
+            const afterBet = await evaluate(playerSnapshotExpression());
+            const selectableMode = afterBet.controls.find((control) => control.label.startsWith("Select mode ") && !control.disabled);
+            if (selectableMode !== undefined) {
+                await click(selectableMode.label, `${canonicalPlayerSelector} button`);
+                await waitFor(async () => (await evaluate(playerSnapshotExpression())).controls.some((control) => control.label === selectableMode.label && control.disabled), `${name} mode selection`);
+            }
+            if (featureLabel !== undefined) {
+                if (featureMenuLabel !== undefined) {
+                    await click(featureMenuLabel);
+                }
+                await click(featureLabel);
+                await waitFor(async () => await evaluate(`Boolean(document.querySelector(${JSON.stringify(canonicalPlayerSelector)} + " .player-features:not([hidden]) dd"))`), `${name} feature state`);
+            }
+        };
+        const assertStudioInspectorAndRecovery = async () => {
+            const closed = await evaluate(`(() => { const details = [...document.querySelectorAll("details")].find((item) => item.querySelector("summary")?.textContent?.trim() === "Inspect round artifact"); return details ? {open: details.open, inspector: Boolean(details.querySelector("[data-round-artifact-inspector]"))} : undefined; })()`);
+            assert.deepEqual(closed, {open: false, inspector: false}, "Studio must keep the artifact inspector closed until requested");
+            await click("Inspect round artifact", "summary");
+            await waitFor(async () => await evaluate(`Boolean([...document.querySelectorAll("details")].find((item) => item.querySelector("summary")?.textContent?.trim() === "Inspect round artifact" && item.open))`), "Studio inspector disclosure");
+            assert.equal(await evaluate(`document.body.textContent?.includes("Round detail")`), true, "Studio must mount inspector content only after disclosure");
+            const settled = await evaluate(playerSnapshotExpression());
+            // A transport failure is induced at the public Studio API boundary.  The user still uses
+            // the real Spin control; this isolates recovery/preservation from game randomness.
+            await evaluate(`(() => { const original = window.fetch; window.__pc12RestoreFetch = () => { window.fetch = original; }; window.fetch = (input, init) => String(input).includes("/spin") ? Promise.reject(new Error("Failed to fetch (PC-12 retryable transport failure)")) : original(input, init); })()`);
+            await click("Spin");
+            await waitFor(async () => Boolean(await evaluate(`document.body.textContent?.includes("This spin couldn't reach the Studio server.")`)), "Studio visible failure");
+            assert.deepEqual(await evaluate(playerSnapshotExpression()), settled, "Studio failure must preserve the settled player result");
+            await evaluate("window.__pc12RestoreFetch?.()");
+            await click("Spin");
+            await waitFor(async () => (await evaluate(playerSnapshotExpression())) !== undefined, "Studio retry result");
+            // A reset replaces the prepared session through Studio's public preparation path.  Its
+            // settled player is removed, so a stale preparation cannot republish the old round.
+            await click("Reset Play session");
+            await waitFor(async () => !(await evaluate(`Boolean(document.querySelector(${JSON.stringify(canonicalPlayerSelector)}))`)), "Studio preparation supersession cleanup");
         };
 
-        note(`fixture project=${project}; examples fixture=${examplesUrl}; seed=fixture-round`);
+        note(`fixture project=${project}; examples fixture=${examplesUrl}; seed=fixture-round; round=find-free-games`);
         await navigate(examplesUrl);
         await click("Win");
+        await waitFor(async () => (await evaluate(playerSnapshotExpression()))?.wins.length > 0, "examples winning round");
+        await assertPlayerInteraction("examples", {featureLabel: "Free games", featureMenuLabel: "Scenarios"});
         const exampleDesktop = await settleAndCapture("examples-desktop");
+
         await navigate(`${studioUrl}/#/project/play`);
         await click("New Play session");
-        await click("Spin");
+        await click("Find any win");
+        await waitFor(async () => (await evaluate(playerSnapshotExpression()))?.wins.length > 0, "Studio winning round");
+        await assertPlayerInteraction("Studio");
+        await click("Find free games");
+        await waitFor(async () => await evaluate(`Boolean(document.querySelector(${JSON.stringify(canonicalPlayerSelector)} + " .player-features:not([hidden]) dd"))`), "Studio feature state");
+        await assertStudioInspectorAndRecovery();
+        // Resetting a session removes its round, so obtain the same deterministic featured result again
+        // before capturing the comparable canonical region.
+        await click("Find free games");
         const studioDesktop = await settleAndCapture("studio-desktop");
         comparePlayerRegions(studioDesktop.snapshot, exampleDesktop.snapshot);
+        const desktopVisual = comparePlayerScreenshots(studioDesktop.bytes, exampleDesktop.bytes);
+        note(`COMPARE desktop screenshot changed=${desktopVisual.changedRatio.toFixed(4)} mean=${desktopVisual.meanDifference.toFixed(2)}`);
 
-        for (const [name, url] of [["examples-mobile", examplesUrl], ["studio-mobile", `${studioUrl}/#/project/play`]]) {
-            await cdp.send("Emulation.setDeviceMetricsOverride", {width: 390, height: 844, deviceScaleFactor: 1, mobile: true});
-            await navigate(url);
-            const captureResult = await settleAndCapture(name);
-            if (captureResult.snapshot.overflow) throw new Error(`${name} player overflows its viewport.`);
-            note(`CAPTURE ${name} sha256=${captureResult.checksum}`);
+        await cdp.send("Emulation.setDeviceMetricsOverride", {width: 390, height: 844, deviceScaleFactor: 1, mobile: true});
+        await navigate(examplesUrl);
+        await click("Win");
+        await click("Scenarios");
+        await click("Free games");
+        const exampleMobile = await settleAndCapture("examples-mobile");
+        await navigate(`${studioUrl}/#/project/play`);
+        await click("New Play session");
+        await click("Find free games");
+        const studioMobile = await settleAndCapture("studio-mobile");
+        for (const [name, result] of [["examples-mobile", exampleMobile], ["studio-mobile", studioMobile]]) {
+            if (result.snapshot.overflow) throw new Error(`${name} player overflows its viewport.`);
         }
+        comparePlayerRegions(studioMobile.snapshot, exampleMobile.snapshot);
+        const mobileVisual = comparePlayerScreenshots(studioMobile.bytes, exampleMobile.bytes);
+        note(`COMPARE narrow screenshot changed=${mobileVisual.changedRatio.toFixed(4)} mean=${mobileVisual.meanDifference.toFixed(2)}`);
         await cdp.send("Emulation.clearDeviceMetricsOverride");
         await writeFile(resolve(evidence, "parity.json"), `${JSON.stringify({
-            fixture: {project, seed: "fixture-round"}, browser: {desktop: [1280, 800], narrow: [390, 844]},
-            comparison: "passed", screenshots: {studioDesktop: studioDesktop.checksum, examplesDesktop: exampleDesktop.checksum},
+            fixture: {project, seed: "fixture-round", round: "winning featured round"}, browser: {desktop: [1280, 800], narrow: [390, 844]},
+            comparison: {dom: "passed", computedStyle: "passed", layout: "passed", overflow: "passed", screenshot: {desktop: desktopVisual, narrow: mobileVisual}},
+            screenshots: {
+                studioDesktop: studioDesktop.checksum, examplesDesktop: exampleDesktop.checksum,
+                studioMobile: studioMobile.checksum, examplesMobile: exampleMobile.checksum,
+            },
         }, null, 2)}\n`);
-        note("PASS canonical player DOM, semantics, computed highlight styles and viewport overflow matched.");
+        note("PASS canonical player DOM, semantics, computed styles, layout, screenshots and viewport overflow matched at both viewports.");
     } catch (error) {
         note(`FAILED ${error.stack ?? error}`);
         throw error;
