@@ -280,13 +280,16 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     private restoreCancelledRecord(projectRoot: string, id: string, persisted: PersistedCheckpoint): JobRecord {
+        const request = fromPersistedRequest(persisted.request);
         const record: JobRecord = {
             id,
             projectRoot,
-            request: fromPersistedRequest(persisted.request),
+            request,
             controller: new AbortController(),
             status: "cancelled",
             cancellationRequested: true,
+            completion: Promise.resolve(),
+            destinationKey: this.destinationKey(projectRoot, request),
             progress: {processedRawIndex: persisted.checkpoint.processedRawIndex, progressTotal: persisted.checkpoint.progressTotal},
             result: {
                 status: "cancelled",
@@ -304,6 +307,7 @@ export class StudioOutcomeLibraryGenerateJobService {
     private restoreRejectedResume(projectRoot: string, id: string, request: ValidatedOutcomeLibraryGenerateRequest, error: string, plan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")): StudioOutcomeLibraryGenerateJobView {
         const record: JobRecord = {
             id, projectRoot, request, controller: new AbortController(), status: "failed", cancellationRequested: false,
+            completion: Promise.resolve(), destinationKey: this.destinationKey(projectRoot, request),
             result: {status: "conflict", error, plan},
         };
         this.jobs.set(id, record);
