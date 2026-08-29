@@ -44,4 +44,14 @@ describe("InMemoryRecentProjectsRepository", () => {
         expect(list).toHaveLength(10);
         expect(list[0].projectRoot).toBe("/project-14");
     });
+
+    it("does not add an entry when its prepared Home commit is no longer current", async () => {
+        const repository = new InMemoryRecentProjectsRepository();
+        await repository.add(entry("/existing", "Existing"));
+
+        const committed = await repository.add(entry("/opening", "Opening"), {isCurrent: () => false});
+
+        expect(committed).toBe(false);
+        expect((await repository.list()).map((recent) => recent.projectRoot)).toEqual(["/existing"]);
+    });
 });

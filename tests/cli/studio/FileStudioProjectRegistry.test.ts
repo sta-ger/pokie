@@ -67,6 +67,16 @@ describe("FileStudioProjectRegistry", () => {
         expect(list[0].name).toBe("Game A renamed");
     });
 
+    it("does not replace a pre-existing entry when its prepared Home commit is no longer current", async () => {
+        const registry = new FileStudioProjectRegistry(registryFile);
+        await registry.upsert(entry("/existing", {name: "Existing"}));
+
+        const committed = await registry.replace(entry("/opening", {name: "Opening"}), ["/existing"], {isCurrent: () => false});
+
+        expect(committed).toBe(false);
+        expect(await registry.list()).toEqual([expect.objectContaining({location: "/existing", name: "Existing"})]);
+    });
+
     it("removes an entry by location and persists the removal", async () => {
         const registry = new FileStudioProjectRegistry(registryFile);
         await registry.upsert(entry("/a"));

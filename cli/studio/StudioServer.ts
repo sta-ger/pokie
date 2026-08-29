@@ -1207,10 +1207,23 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
             return;
         }
-        await this.projectRegistrationService.recordOpened(
-            dashboard.projectRoot,
-            dashboard.status === "loaded" ? dashboard.game.name : path.basename(dashboard.projectRoot),
-        );
+        try {
+            await this.projectRegistrationService.recordOpened(
+                dashboard.projectRoot,
+                dashboard.status === "loaded" ? dashboard.game.name : path.basename(dashboard.projectRoot),
+                {
+                    signal: preparation.controller.signal,
+                    isCurrent: () => this.isCurrentRuntimePreparation(preparation),
+                },
+            );
+        } catch (error) {
+            if (!this.isCurrentRuntimePreparation(preparation)) {
+                this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
+                return;
+            }
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
         if (!this.isCurrentRuntimePreparation(preparation)) {
             this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
             return;

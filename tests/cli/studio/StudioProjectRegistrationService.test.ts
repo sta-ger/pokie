@@ -14,6 +14,8 @@ import type {PlatformDirectoryEnvironment} from "../../../cli/paths/PlatformDire
 import {PokiePathResolver} from "../../../cli/paths/PokiePathResolver.js";
 import type {StudioHomeRecentProjectView} from "../../../cli/studio/home/StudioHomeRecentProjectView.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
+import type {StudioProjectRegistry} from "../../../cli/studio/StudioProjectRegistry.js";
+import type {StudioProjectRegistryEntry} from "../../../cli/studio/StudioProjectRegistryEntry.js";
 import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
@@ -338,6 +340,55 @@ describe("StudioProjectRegistrationService", () => {
                 importedFromParSheetPath: "/imports/sample.xlsx",
                 conversionEvidencePath: "/imports/sample.evidence.json",
             })]);
+        });
+
+        it("does not commit a registry entry when superseded during delayed opened-project bookkeeping", async () => {
+            const entries: StudioProjectRegistryEntry[] = [];
+            let replaceStarted = false;
+            let releaseReplace: (() => void) | undefined;
+            const registry: StudioProjectRegistry = {
+                list: () => Promise.resolve([...entries]),
+                upsert: (entry) => {
+                    entries.splice(0, entries.length, entry, ...entries.filter((existing) => existing.location !== entry.location));
+                    return Promise.resolve();
+                },
+                replace: async (entry, replacedLocations, options = {}) => {
+                    replaceStarted = true;
+                    await new Promise<void>((resolve) => {
+                        releaseReplace = () => {
+                            resolve();
+                        };
+                    });
+                    if (options.isCurrent?.() === false) {
+                        return false;
+                    }
+                    const replaced = new Set(replacedLocations);
+                    entries.splice(0, entries.length, entry, ...entries.filter((existing) => !replaced.has(existing.location)));
+                    return true;
+                },
+                remove: (location) => {
+                    entries.splice(0, entries.length, ...entries.filter((entry) => entry.location !== location));
+                    return Promise.resolve();
+                },
+            };
+            const service = new StudioProjectRegistrationService(registry, fakeResolver({"/projects/sample-slot": tsPackageProject("/projects/sample-slot")}));
+            let current = true;
+
+            const recording = service.recordOpened("/projects/sample-slot", "Sample Slot", {isCurrent: () => current});
+            for (let attempt = 0; attempt < 20; attempt++) {
+                if (replaceStarted) {
+                    break;
+                }
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+            expect(replaceStarted).toBe(true);
+            current = false;
+            releaseReplace?.();
+
+            await expect(recording).rejects.toThrow("Runtime preparation was cancelled");
+            expect(entries).toEqual([]);
         });
     });
 

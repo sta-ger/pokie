@@ -3,6 +3,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {InMemoryRecentProjectsRepository} from "../../../../cli/studio/InMemoryRecentProjectsRepository.js";
+import type {RecentProjectEntry} from "../../../../cli/studio/RecentProjectEntry.js";
+import type {RecentProjectsRepository} from "../../../../cli/studio/RecentProjectsRepository.js";
 import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.js";
 
 function createFakeGame(manifest: PokieGameManifest): PokieGame {
@@ -101,6 +103,47 @@ describe("StudioHomeService", () => {
             await expect(service.openProject(tmpDir, {isCurrent: () => false})).rejects.toThrow("Runtime preparation was cancelled");
 
             expect(await repository.list()).toEqual([]);
+        });
+
+        it("does not commit a recent project when superseded during delayed recent-project bookkeeping", async () => {
+            const entries: RecentProjectEntry[] = [];
+            let releaseWrite: (() => void) | undefined;
+            let addStarted = false;
+            const repository: RecentProjectsRepository = {
+                list: () => Promise.resolve([...entries]),
+                add: async (entry, options = {}) => {
+                    addStarted = true;
+                    await new Promise<void>((resolve) => {
+                        releaseWrite = () => {
+                            resolve();
+                        };
+                    });
+                    if (options.isCurrent?.() === false) {
+                        return false;
+                    }
+                    entries.splice(0, entries.length, entry, ...entries.filter((existing) => existing.projectRoot !== entry.projectRoot));
+                    return true;
+                },
+            };
+            const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+            const service = new StudioHomeService("1.2.1", repository, () => Promise.resolve(createFakeGame(manifest)));
+            let current = true;
+
+            const opening = service.openProject(tmpDir, {isCurrent: () => current});
+            for (let attempt = 0; attempt < 20; attempt++) {
+                if (addStarted) {
+                    break;
+                }
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+            expect(addStarted).toBe(true);
+            current = false;
+            releaseWrite?.();
+
+            await expect(opening).rejects.toThrow("Runtime preparation was cancelled");
+            expect(entries).toEqual([]);
         });
     });
 
