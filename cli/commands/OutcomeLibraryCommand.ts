@@ -509,6 +509,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         const onCancel = () => controller.abort();
         this.process.once("SIGINT", onCancel);
 
+        let resolvedStrategy: ResolvedOutcomeLibraryGenerationRequest["preflight"]["strategy"] | undefined;
         try {
             const game = await this.loadGame(packageRoot);
             const request = this.createGenerationRequest(game, packageRoot, options, sampling, controller.signal);
@@ -517,6 +518,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             // strategy. Raw JSON publication consumes this resolved request;
             // it must not reconstruct a subtly different preflight.
             const resolvedRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game), request);
+            resolvedStrategy = resolvedRequest.preflight.strategy;
             const prepared = this.prepareRawGenerationOperation(
                 packageRoot,
                 options,
@@ -529,6 +531,13 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             return 0;
         } catch (error) {
             if (error instanceof WeightedOutcomeLibraryGenerationCancelledError) {
+                if (resolvedStrategy !== "exact") {
+                    console.error(
+                        `Generation of "${packageRoot}" was cancelled after ${error.processedRawIndex} / ${error.progressTotal} raw draws. ` +
+                            "No incomplete library was published; bounded coverage has no exact checkpoint, so retry the same command to start a fresh deterministic sample.",
+                    );
+                    return 130;
+                }
                 if (options.resume === undefined) {
                     console.error(
                         `Generation of "${packageRoot}" was cancelled after ${error.processedRawIndex} / ${error.progressTotal} raw draws, ` +
@@ -653,7 +662,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     if (error === undefined && options.resume !== undefined && this.fileExists(options.resume)) this.removeFile(options.resume);
                 },
                 onTerminalFailure: (error: unknown) => {
-                    if (error instanceof WeightedOutcomeLibraryGenerationCancelledError && options.resume !== undefined) {
+                    if (resolvedRequest.preflight.strategy === "exact" && error instanceof WeightedOutcomeLibraryGenerationCancelledError && options.resume !== undefined) {
                         this.writeFile(options.resume, JSON.stringify(this.serializeCheckpoint(error.checkpoint), null, 4));
                     }
                 },

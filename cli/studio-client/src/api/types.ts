@@ -1075,7 +1075,8 @@ export type StudioOutcomeLibraryGenerateResultView =
           status: "cancelled";
           processedRawIndex: string;
           progressTotal: string;
-          checkpoint: {id: string; processedRawIndex: string; progressTotal: string; sourceEnumerationId: string};
+          /** Present only when an exact enumeration can be safely resumed. */
+          checkpoint?: {id: string; processedRawIndex: string; progressTotal: string; sourceEnumerationId: string};
           recovery: string;
           plan: StudioArtifactConversionPlan;
       }

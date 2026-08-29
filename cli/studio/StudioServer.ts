@@ -2086,12 +2086,24 @@ export class StudioServer implements StudioServerHandling {
         if (action === "cancel") {
             job = this.outcomeLibraryGenerateJobService.cancelForProject(this.currentContext.projectRoot, id);
         } else if (action === "resume") {
-            job = await this.outcomeLibraryGenerateJobService.resumeForProject(this.currentContext.projectRoot, id);
+            try {
+                job = await this.outcomeLibraryGenerateJobService.resumeForProject(this.currentContext.projectRoot, id);
+            } catch (error) {
+                // A resume rebind can race another job's destination ownership.
+                // Preserve the Outcome Library recovery DTO rather than letting
+                // the HTTP boundary turn that actionable conflict into 500.
+                this.sendJson(res, 409, {status: "conflict", error: error instanceof Error ? error.message : String(error)});
+                return;
+            }
         } else {
             job = this.outcomeLibraryGenerateJobService.getStatusForProject(this.currentContext.projectRoot, id);
         }
         if (job === undefined) {
             this.sendJson(res, 404, {error: action === "resume" ? "Outcome library checkpoint not found." : "Outcome library generation job not found."});
+            return;
+        }
+        if (action === "resume" && job.status === "failed" && job.result?.status === "conflict") {
+            this.sendJson(res, 409, {status: "conflict", error: job.result.error, plan: job.result.plan});
             return;
         }
         this.sendJson(res, action === "resume" ? 202 : 200, action === "resume" ? {status: "created", job} : job);

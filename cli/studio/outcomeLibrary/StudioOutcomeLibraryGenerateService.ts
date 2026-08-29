@@ -409,12 +409,15 @@ export class StudioOutcomeLibraryGenerateService {
                         generated = await this.generateLibrary(domainRequest);
                     } catch (error) {
                         if (error instanceof WeightedOutcomeLibraryGenerationCancelledError) {
+                            const resumable = preparedRequest.preflight.strategy === "exact";
                             return {status: "terminal", view: {
                                 status: "cancelled",
                                 processedRawIndex: error.processedRawIndex,
                                 progressTotal: error.progressTotal,
-                                checkpoint: error.checkpoint,
-                                recovery: "Generation was cancelled before publication. Retry with this exact checkpoint while the game configuration is unchanged.",
+                                ...(resumable ? {checkpoint: error.checkpoint} : {}),
+                                recovery: resumable
+                                    ? "Generation was cancelled before publication. Resume this exact checkpoint while the game configuration is unchanged."
+                                    : "Generation was cancelled before publication. Retry the same bounded-coverage request to start a fresh deterministic sample.",
                                 plan,
                             }};
                         }

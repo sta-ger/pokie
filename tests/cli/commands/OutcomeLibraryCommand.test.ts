@@ -643,6 +643,27 @@ describe("OutcomeLibraryCommand", () => {
             expect(errorSpy.mock.calls.flat().join("\n")).toContain("no --resume");
         });
 
+        it("does not write an unusable exact checkpoint when sampled coverage is cancelled with --resume", async () => {
+            const processHandle = new EventEmitter() as unknown as NodeJS.Process;
+            const generate = jest.fn(
+                (options: OutcomeLibraryGenerationRequest) =>
+                    new Promise<GenerateExactWeightedOutcomeLibraryResult>((_resolve, reject) => {
+                        options.signal?.addEventListener("abort", () => {
+                            reject(new WeightedOutcomeLibraryGenerationCancelledError(BigInt(3), BigInt(6), new Map(), "sample-source"));
+                        });
+                        processHandle.emit("SIGINT");
+                    }),
+            );
+            const writeFile = jest.fn();
+            const command = createGenerateCommand({processHandle, generate, writeFile});
+
+            const exitCode = await command.run(["generate", "/project/slot", "--sample", "4", "--seed", "retry-seed", "--resume", "/project/checkpoint.json"]);
+
+            expect(exitCode).toBe(130);
+            expect(writeFile).not.toHaveBeenCalled();
+            expect(errorSpy.mock.calls.flat().join("\n")).toContain("has no exact checkpoint");
+        });
+
         it("reads an existing --resume checkpoint file and threads it into resumeFrom, re-hydrating its bigints", async () => {
             const serialized = {
                 processedRawIndex: "3",

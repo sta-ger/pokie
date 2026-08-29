@@ -18,7 +18,8 @@ export type StudioOutcomeLibraryGenerateJobResultView = Exclude<StudioOutcomeLib
     readonly status: "cancelled";
     readonly processedRawIndex: string;
     readonly progressTotal: string;
-    readonly checkpoint: StudioOutcomeLibraryCheckpointView;
+    /** Present only for a cancelled exact enumeration. */
+    readonly checkpoint?: StudioOutcomeLibraryCheckpointView;
     readonly recovery: string;
     readonly plan: Extract<StudioOutcomeLibraryGenerateResultView, {status: "cancelled"}>["plan"];
 };
@@ -198,6 +199,9 @@ export class StudioOutcomeLibraryGenerateJobService {
         // snapshot, then pass the fresh token through normal generation.
         const rebound = await this.generateService.rebindCheckpointRequest(projectRoot, request, persisted.binding);
         if ("result" in rebound) return this.restoreRejectedResume(projectRoot, id, request, rebound.result.error, rebound.result.plan);
+        if (this.isDestinationActive(projectRoot, rebound.request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR)) {
+            return this.restoreRejectedResume(projectRoot, id, request, "An Outcome Library generation is already active for this resolved destination. Wait for it to finish or cancel it before resuming.");
+        }
         // Reuse the checkpoint identity. A successful resumed publication removes
         // this original file, avoiding an orphan which could be resumed later.
         return this.start(projectRoot, {...rebound.request, resumeFrom: fromPersistedCheckpoint(persisted.checkpoint)}, id);
@@ -213,14 +217,15 @@ export class StudioOutcomeLibraryGenerateJobService {
             },
         });
         if (result.status === "cancelled") {
-            const checkpoint = this.persistCheckpoint(record.projectRoot, record.id, record.request, result.checkpoint);
-            record.result = {
+            const cancelledResult: StudioOutcomeLibraryGenerateJobResultView = {
                 ...result,
                 processedRawIndex: result.processedRawIndex.toString(),
                 progressTotal: result.progressTotal.toString(),
-                checkpoint,
+                ...(result.checkpoint === undefined ? {} : {
+                    checkpoint: this.persistCheckpoint(record.projectRoot, record.id, record.request, result.checkpoint),
+                }),
             };
-            record.status = "cancelled";
+            Object.assign(record, {result: cancelledResult, status: "cancelled" as const});
             return;
         }
         Object.assign(record, {result, status: result.status === "ok" ? "completed" as const : "failed" as const});

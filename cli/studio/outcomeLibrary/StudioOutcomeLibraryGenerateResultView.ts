@@ -40,10 +40,10 @@ export type StudioOutcomeLibraryGenerateResultView =
     | {readonly status: "conflict"; readonly error: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "generation-error"; readonly code: string; readonly error: string; readonly plan: ArtifactConversionPlan}
     // A cancellation is an expected lifecycle result, not a generation error.
-    // The opaque checkpoint is accepted only by the in-process service API;
-    // transport adapters can expose its progress/retry guidance without trying
-    // to JSON-serialize its accumulated grid map.
-    | {readonly status: "cancelled"; readonly processedRawIndex: bigint; readonly progressTotal: bigint; readonly checkpoint: ExactEnumerationCheckpoint; readonly recovery: string; readonly plan: ArtifactConversionPlan}
+    // Only an exact sweep has a safe position/accumulator that may be resumed.
+    // Bounded coverage can be retried with the same request, but must never
+    // expose its partial sample as an ExactEnumerationCheckpoint.
+    | {readonly status: "cancelled"; readonly processedRawIndex: bigint; readonly progressTotal: bigint; readonly checkpoint?: ExactEnumerationCheckpoint; readonly recovery: string; readonly plan: ArtifactConversionPlan}
     // The write itself failed validation (e.g. this mode's provenance doesn't match another mode already
     // in the bundle) -- the generated outcomes were never persisted, mirroring the writer's own "no
     // partial bundle" guarantee.

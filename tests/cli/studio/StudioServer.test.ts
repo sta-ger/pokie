@@ -584,6 +584,23 @@ describe("StudioServer", () => {
         const restartedAddress = await outcomeServer.start();
         outcomeBaseUrl = `http://${restartedAddress.host}:${restartedAddress.port}`;
         expect(await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`)).toMatchObject({status: 200, body: {jobs: [expect.objectContaining({id: cancelledId, status: "cancelled"})]}});
+
+        // Resume rebinding shares the destination owner with ordinary starts.
+        // A collision is an actionable Outcome Library conflict, never an
+        // untyped server exception from job-service start().
+        const active = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {generation: "exact", mode: "cancel", preflightToken: "http-token-4"});
+        const activeId = (active.body as {job: {id: string}}).job.id;
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${cancelledId}/resume`)).toMatchObject({
+            status: 409,
+            body: {status: "conflict", error: expect.stringMatching(/already active/i)},
+        });
+        await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${activeId}/cancel`);
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
         const resumed = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${cancelledId}/resume`);
         expect(resumed).toMatchObject({status: 202, body: {status: "created", job: {id: cancelledId}}});
         await new Promise<void>((resolve) => {

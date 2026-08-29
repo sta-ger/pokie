@@ -86,6 +86,29 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         await jobs.cancelAll();
     });
 
+    it("keeps bounded cancellation retryable without persisting or exposing an exact checkpoint", async () => {
+        const generate = jest.fn((root: string) => ({
+            status: "cancelled" as const,
+            processedRawIndex: BigInt(2),
+            progressTotal: BigInt(5),
+            recovery: "Retry the same bounded request.",
+            plan: createUnresolvedRuntimePlan(root, "outcomeLibrary"),
+        }));
+        const jobs = new StudioOutcomeLibraryGenerateJobService({generate} as unknown as StudioOutcomeLibraryGenerateService);
+
+        const job = jobs.start(projectRoot, {generation: "sampled"});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+
+        expect(jobs.getStatusForProject(projectRoot, job.id)).toMatchObject({
+            status: "cancelled",
+            result: {status: "cancelled", recovery: expect.stringMatching(/Retry/)},
+        });
+        expect(jobs.getStatusForProject(projectRoot, job.id)?.result).not.toHaveProperty("checkpoint");
+        expect(fs.existsSync(path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${job.id}.json`))).toBe(false);
+    });
+
     it("rebinds an immutable checkpoint before resume and removes it after successful publication", async () => {
         const checkpoint: ExactEnumerationCheckpoint = {
             processedRawIndex: BigInt(1), progressTotal: BigInt(6), sourceEnumerationId: "fixture-source", grids: new Map(),

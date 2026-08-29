@@ -464,8 +464,12 @@ function TargetCard({
                     )}
                     {outcomeLibraryRun.status === "cancelled" && (
                         <>
-                            <Text size="sm" c="orange" mt="sm">Generation was cancelled at {outcomeLibraryRun.result.processedRawIndex} / {outcomeLibraryRun.result.progressTotal}. No incomplete library was published. The exact checkpoint is saved safely; resume while the displayed source and configuration remain unchanged.</Text>
-                            <Button size="xs" variant="light" mt="xs" onClick={onResumeOutcomeLibrary}>Resume exact generation</Button>
+                            <Text size="sm" c="orange" mt="sm">
+                                Generation was cancelled at {outcomeLibraryRun.result.processedRawIndex} / {outcomeLibraryRun.result.progressTotal}. No incomplete library was published. {outcomeLibraryRun.result.checkpoint === undefined
+                                    ? "Bounded coverage has no exact checkpoint; retry the same request to start a fresh deterministic sample."
+                                    : "The exact checkpoint is saved safely; resume while the displayed source and configuration remain unchanged."}
+                            </Text>
+                            {outcomeLibraryRun.result.checkpoint !== undefined && <Button size="xs" variant="light" mt="xs" onClick={onResumeOutcomeLibrary}>Resume exact generation</Button>}
                             <PlannerSummary plan={outcomeLibraryRun.result.plan} />
                         </>
                     )}
@@ -823,7 +827,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         listOutcomeLibraryGenerationJobs(fetchImpl)
             .then((jobs) => {
                 if (cancelled) return;
-                const resumable = jobs.find((job) => job.status === "cancelled" && job.result?.status === "cancelled");
+                const resumable = jobs.find((job) => job.status === "cancelled" && job.result?.status === "cancelled" && job.result.checkpoint !== undefined);
                 if (resumable?.result?.status === "cancelled") setOutcomeLibraryRun({status: "cancelled", result: resumable.result});
             })
             .catch(() => {
@@ -1073,7 +1077,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     }
 
     function handleResumeOutcomeLibrary(): void {
-        if (outcomeLibraryRun.status !== "cancelled") return;
+        if (outcomeLibraryRun.status !== "cancelled" || outcomeLibraryRun.result.checkpoint === undefined) return;
         if (!outcomeLibraryGuard.begin()) return;
         resumeOutcomeLibraryGeneration(fetchImpl, outcomeLibraryRun.result.checkpoint.id)
             .then((job) => {
