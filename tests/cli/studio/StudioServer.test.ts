@@ -393,6 +393,112 @@ describe("StudioServer", () => {
         expect(body).toEqual({mode: "home"});
     });
 
+    it("serves the Outcome Library preflight and durable job lifecycle over HTTP, including retained direct POST compatibility", async () => {
+        // This is deliberately an HTTP-level contract test.  The domain service has
+        // its own exhaustive producer tests; here we prove Studio does not expose a
+        // second, synchronous or bigint-unsafe transport path around its lifecycle.
+        await server.stop();
+        const projectRoot = fs.mkdtempSync(path.join(studioRoot, "outcome-library-project-"));
+        const plan = {status: "unavailable", source: {kind: "unknown", capabilities: []}, target: {kind: "outcomeLibrary", capabilities: []}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "none", losses: [], oneWay: false}} as const;
+        let issuedToken = 0;
+        const binding = {
+            requestKey: expect.any(String), gameId: "http-slot", gameVersion: "1.0.0", configHash: "config-http", destination: path.join(projectRoot, "outcomelibrary"),
+        };
+        const outcomeService = {
+            estimate: jest.fn(() => Promise.resolve({
+                status: "ok" as const,
+                game: {id: "http-slot", name: "HTTP Slot", version: "1.0.0"}, reelsNumber: 2, reelsSymbolsNumber: 2, reelSizes: [2, 2],
+                totalOutcomeSpaceSize: 4, maxOutcomeSpaceSize: 20_000_000, strategy: "exact" as const, expectedRawWork: 4, warnings: [], requiresBounded: false,
+                defaults: {compatibilityVersion: "v1", maxExactOutcomeSpaceSize: 20_000_000, boundedSample: {sampleSize: 10_000, seed: "seed"}}, plan, preflightToken: `http-token-${++issuedToken}`,
+            })),
+            getPreflightBinding: jest.fn(() => ({...binding, requestKey: JSON.stringify({generation: "exact"})})),
+            rebindCheckpointRequest: jest.fn((_root: string, request: object) => Promise.resolve({request: {...request, preflightToken: `resume-token-${++issuedToken}`}})),
+            generate: jest.fn(async (root: string, request: {readonly mode?: string; readonly signal?: AbortSignal; readonly resumeFrom?: unknown}) => {
+                if (request.mode === "failure") return {status: "generation-error" as const, code: "weighted-outcome-library-generation-unsupported", error: "Enumeration is unsupported.", plan};
+                if (request.mode === "cancel" && request.resumeFrom === undefined) {
+                    await new Promise<void>((resolve) => {
+                        request.signal?.addEventListener("abort", () => {
+                            resolve();
+                        }, {once: true});
+                    });
+                    return {
+                        status: "cancelled" as const, processedRawIndex: BigInt(2), progressTotal: BigInt(4),
+                        checkpoint: {processedRawIndex: BigInt(2), progressTotal: BigInt(4), sourceEnumerationId: "http-source", grids: new Map()}, recovery: "resume", plan,
+                    };
+                }
+                return {
+                    status: "ok" as const, bundleDir: "outcomelibrary", files: [], warnings: [],
+                    mode: {modeName: "base", libraryId: "http-library", hash: "http-hash", outcomeCount: 1, totalWeight: 1, rtp: 1},
+                    generator: {} as never, coverage: 1, selector: {kind: "bundle" as const, bundleDir: "outcomelibrary", modeName: "base"}, plan,
+                };
+            }),
+        };
+        const createOutcomeLibraryServer = () => new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            homeService: new StudioHomeService("1.0.0"), blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0")),
+            initialContext: {mode: "project", projectRoot}, outcomeLibraryGenerateService: outcomeService as never,
+        });
+        const replaceServer = (nextServer: StudioServer): void => {
+            server = nextServer;
+        };
+        let outcomeServer = createOutcomeLibraryServer();
+        replaceServer(outcomeServer);
+        const address = await outcomeServer.start();
+        let outcomeBaseUrl = `http://${address.host}:${address.port}`;
+
+        const estimate = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/estimate`, {generation: "exact", outDir: "outcomelibrary"});
+        expect(estimate.status).toBe(200);
+        expect(estimate.body).toMatchObject({status: "ok", preflightToken: "http-token-1", strategy: "exact"});
+
+        // The legacy URL still creates the pollable job and obtains its server
+        // binding itself, rather than performing an unbound synchronous run.
+        const created = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate`, {generation: "exact", outDir: "outcomelibrary"});
+        expect(created.status).toBe(202);
+        const jobId = (created.body as {job: {id: string}}).job.id;
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        const completed = await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${jobId}`);
+        expect(completed).toMatchObject({status: 200, body: {id: jobId, status: "completed", result: {status: "ok"}}});
+
+        const failed = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {generation: "exact", mode: "failure"});
+        const failedId = (failed.body as {job: {id: string}}).job.id;
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${failedId}`)).toMatchObject({status: 200, body: {status: "failed", result: {status: "generation-error", code: "weighted-outcome-library-generation-unsupported"}}});
+
+        const cancelled = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`, {generation: "exact", mode: "cancel"});
+        const cancelledId = (cancelled.body as {job: {id: string}}).job.id;
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${cancelledId}/cancel`)).toMatchObject({status: 200});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        const checkpointed = await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${cancelledId}`);
+        expect(checkpointed).toMatchObject({status: 200, body: {status: "cancelled", result: {status: "cancelled", processedRawIndex: "2", checkpoint: {id: cancelledId}}}});
+        expect(fs.existsSync(path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${cancelledId}.json`))).toBe(true);
+
+        // Checkpoint discovery is durable: a new HTTP server gets the same
+        // cancellation recovery record instead of depending on its old job map.
+        await outcomeServer.stop();
+        outcomeServer = createOutcomeLibraryServer();
+        replaceServer(outcomeServer);
+        const restartedAddress = await outcomeServer.start();
+        outcomeBaseUrl = `http://${restartedAddress.host}:${restartedAddress.port}`;
+        expect(await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`)).toMatchObject({status: 200, body: {jobs: [expect.objectContaining({id: cancelledId, status: "cancelled"})]}});
+        const resumed = await post(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${cancelledId}/resume`);
+        expect(resumed).toMatchObject({status: 202, body: {status: "created", job: {id: cancelledId}}});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs/${cancelledId}`)).toMatchObject({status: 200, body: {status: "completed", result: {status: "ok"}}});
+        expect(fs.existsSync(path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${cancelledId}.json`))).toBe(false);
+        expect(outcomeService.rebindCheckpointRequest).toHaveBeenCalled();
+    });
+
     it("reports safe diagnostics on GET /api/studio/diagnostics in home mode", async () => {
         const {status, body} = await get(`${baseUrl}/api/studio/diagnostics`);
 

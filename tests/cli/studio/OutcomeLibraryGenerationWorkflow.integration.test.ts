@@ -45,9 +45,11 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
             "1.3.0", loadPokieGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
             {prepare: () => Promise.resolve(plan)},
         );
-        const preview = await studio.estimate(packageRoot, {generation: "sampled", sample: {sampleSize: BigInt(19), seed: "parity-seed"}});
+        const studioRequest = {libraryId: "parity-lib", generation: "sampled" as const, sample: {sampleSize: BigInt(19), seed: "parity-seed"}, outDir: "studio-library"};
+        const preview = await studio.estimate(packageRoot, studioRequest);
+        if (preview.status !== "ok") throw new Error("Expected sampled Studio preflight.");
         const generated = await studio.generate(packageRoot, {
-            libraryId: "parity-lib", generation: "sampled", sample: {sampleSize: BigInt(19), seed: "parity-seed"}, outDir: "studio-library",
+            ...studioRequest, preflightToken: preview.preflightToken,
         });
         expect(preview).toMatchObject({status: "ok", strategy: "bounded-coverage", expectedRawWork: 19});
         expect(generated).toMatchObject({status: "ok", generator: {strategy: "bounded-coverage", seed: "parity-seed"}});
