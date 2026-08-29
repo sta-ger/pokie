@@ -164,14 +164,29 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
             modes: [expect.objectContaining({modeName: "base", buildStatus: "compatible", hash: generatedResult.mode.hash})],
         });
 
-        // The same server-owned registry must classify sampled provenance
-        // transitions too; otherwise only the exact mode would be protected.
-        const manifestPath = path.join(packageRoot, "studio-library", "manifest.json");
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {configHash?: string; game: {id: string}};
-        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, configHash: "stale-config"}));
-        expect(await studio.registry(packageRoot)).toMatchObject({status: "ok", buildStatus: "stale", modes: [expect.objectContaining({buildStatus: "stale"})]});
-        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, game: {...manifest.game, id: "wrong-game"}}));
-        expect(await studio.registry(packageRoot)).toMatchObject({status: "ok", buildStatus: "wrong", modes: [expect.objectContaining({buildStatus: "wrong"})]});
+        // Exercise compatibility against actual rebuilt packages, never by
+        // altering the generated bundle's declaration of its provenance.
+        const staleBlueprint = path.join(root, "sampled-stale.blueprint.json");
+        const stalePackage = path.join(root, "sampled-stale-package");
+        fs.writeFileSync(staleBlueprint, JSON.stringify({
+            manifest: {id: "parity-slot", name: "Parity Slot", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
+            paytable: {A: {2: 5}}, reelStrips: [["A", "B", "B"], ["A", "B"]], availableBets: [1],
+        }));
+        expect(await new BuildCommand("1.3.0").run([staleBlueprint, "--target", "tsPackage", "--out", stalePackage])).toBe(0);
+        fs.cpSync(path.join(packageRoot, "studio-library"), path.join(stalePackage, "studio-library"), {recursive: true});
+        fs.cpSync(path.join(packageRoot, ".pokie"), path.join(stalePackage, ".pokie"), {recursive: true});
+        expect(await studio.registry(stalePackage)).toMatchObject({status: "ok", buildStatus: "stale", modes: [expect.objectContaining({buildStatus: "stale"})]});
+
+        const wrongBlueprint = path.join(root, "sampled-wrong.blueprint.json");
+        const wrongPackage = path.join(root, "sampled-wrong-package");
+        fs.writeFileSync(wrongBlueprint, JSON.stringify({
+            manifest: {id: "wrong-parity-slot", name: "Parity Slot", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
+            paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
+        }));
+        expect(await new BuildCommand("1.3.0").run([wrongBlueprint, "--target", "tsPackage", "--out", wrongPackage])).toBe(0);
+        fs.cpSync(path.join(packageRoot, "studio-library"), path.join(wrongPackage, "studio-library"), {recursive: true});
+        fs.cpSync(path.join(packageRoot, ".pokie"), path.join(wrongPackage, ".pokie"), {recursive: true});
+        expect(await studio.registry(wrongPackage)).toMatchObject({status: "ok", buildStatus: "wrong", modes: [expect.objectContaining({buildStatus: "wrong"})]});
     });
 
     it("binds an exact real-package preflight and publishes the same canonical library as CLI", async () => {
@@ -221,13 +236,24 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
             modes: [expect.objectContaining({modeName: "base", buildStatus: "compatible", hash: generatedResult.mode.hash})],
         });
 
-        // Registry classification is server-owned and must react immediately to
-        // provenance drift, rather than being reconstructed by a CLI/UI caller.
-        const manifestPath = path.join(packageRoot, "studio-exact", "manifest.json");
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {configHash?: string; game: {id: string}};
-        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, configHash: "stale-config"}));
-        expect(await studio.registry(packageRoot)).toMatchObject({status: "ok", buildStatus: "stale", modes: [expect.objectContaining({buildStatus: "stale"})]});
-        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, game: {...manifest.game, id: "wrong-game"}}));
-        expect(await studio.registry(packageRoot)).toMatchObject({status: "ok", buildStatus: "wrong", modes: [expect.objectContaining({buildStatus: "wrong"})]});
+        // A new Pokie runtime version is a real stale transition too: the
+        // persisted bundle remains untouched while the new Studio service
+        // checks its writer/runtime compatibility contract.
+        const upgradedStudio = new StudioOutcomeLibraryGenerateService(
+            "1.3.1", loadPokieGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            {prepare: () => Promise.resolve(plan)},
+        );
+        expect(await upgradedStudio.registry(packageRoot)).toMatchObject({status: "ok", buildStatus: "stale", modes: [expect.objectContaining({buildStatus: "stale"})]});
+
+        const wrongBlueprint = path.join(root, "exact-wrong.blueprint.json");
+        const wrongPackage = path.join(root, "exact-wrong-package");
+        fs.writeFileSync(wrongBlueprint, JSON.stringify({
+            manifest: {id: "wrong-exact-parity-slot", name: "Exact Parity Slot", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
+            paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
+        }));
+        expect(await new BuildCommand("1.3.0").run([wrongBlueprint, "--target", "tsPackage", "--out", wrongPackage])).toBe(0);
+        fs.cpSync(path.join(packageRoot, "studio-exact"), path.join(wrongPackage, "studio-exact"), {recursive: true});
+        fs.cpSync(path.join(packageRoot, ".pokie"), path.join(wrongPackage, ".pokie"), {recursive: true});
+        expect(await studio.registry(wrongPackage)).toMatchObject({status: "ok", buildStatus: "wrong", modes: [expect.objectContaining({buildStatus: "wrong"})]});
     });
 });
