@@ -17,6 +17,8 @@ export type OutcomeProjectCompatibility = {
     // Exact and direct sampled libraries describe different distributions even when they come from the
     // same game configuration.  They must therefore never be silently reused for one another.
     readonly generation?: string;
+    /** Resolved cap of the named managed policy, part of the reuse key. */
+    readonly maxExactOutcomeSpaceSize?: string;
     /** Named automatic-generation policy used for this managed publication. */
     readonly compatibilityPolicyVersion?: string;
 };
@@ -220,6 +222,7 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
                     gameVersion: compatibility.gameVersion,
                     manifestIdentity: `${compatibility.gameId}@${compatibility.gameVersion}`,
                     ...(generationProvenance(compatibility.generation)),
+                    ...(compatibility.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: compatibility.maxExactOutcomeSpaceSize}),
                     ...(compatibility.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: compatibility.compatibilityPolicyVersion}),
                 },
             };
@@ -289,6 +292,7 @@ function sameCompatibility(left: OutcomeProjectCompatibility, right: OutcomeProj
         left.configHash === right.configHash &&
         left.pokieVersion === right.pokieVersion &&
         (left.generation ?? "exact") === (right.generation ?? "exact") &&
+        left.maxExactOutcomeSpaceSize === right.maxExactOutcomeSpaceSize &&
         left.compatibilityPolicyVersion === right.compatibilityPolicyVersion
     );
 }
@@ -299,7 +303,8 @@ function isRegisteredOutcomeProject(value: unknown): value is RegisteredOutcomeP
     return typeof entry.rootPath === "string" && typeof entry.gameId === "string" &&
         typeof entry.gameVersion === "string" && typeof entry.configHash === "string" &&
         typeof entry.pokieVersion === "string" &&
-        (entry.generation === undefined || typeof entry.generation === "string");
+        (entry.generation === undefined || typeof entry.generation === "string") &&
+        (entry.maxExactOutcomeSpaceSize === undefined || typeof entry.maxExactOutcomeSpaceSize === "string");
 }
 
 function describeRegistryError(error: unknown): string {

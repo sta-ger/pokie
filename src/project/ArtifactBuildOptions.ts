@@ -30,8 +30,8 @@ export type ArtifactBuildOptions = {
     readonly outcomeLibraryGeneration?:
         // An explicit exact request suppresses the managed workflow's safe default bounded-coverage
         // selection for a large raw reel-stop space.
-        | {readonly exact: true; readonly sampled?: never; readonly compatibilityPolicyVersion?: string}
-        | {readonly exact?: never; readonly sampled: {readonly sampleSize: bigint; readonly seed: string}; readonly compatibilityPolicyVersion?: string};
+        | {readonly exact: true; readonly sampled?: never; readonly maxExactOutcomeSpaceSize?: bigint; readonly compatibilityPolicyVersion?: string}
+        | {readonly exact?: never; readonly sampled: {readonly sampleSize: bigint; readonly seed: string}; readonly maxExactOutcomeSpaceSize?: bigint; readonly compatibilityPolicyVersion?: string};
 };
 
 export class ArtifactBuildCancelledError extends Error {

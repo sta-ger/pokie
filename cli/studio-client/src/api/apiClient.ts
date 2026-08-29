@@ -971,6 +971,22 @@ export type OutcomeLibraryGenerateRequestOptions = {
     preflightToken?: string;
 };
 
+/** A server-classified start failure, retained so the UI can use the Outcome Library recovery model. */
+export class OutcomeLibraryGenerationStartError extends Error {
+    constructor(public readonly outcomeStatus: "conflict" | "invalid" | "generation-error", message: string) {
+        super(message);
+        this.name = "OutcomeLibraryGenerationStartError";
+    }
+}
+
+async function throwOutcomeLibraryGenerationStartError(response: {status: number; json(): Promise<unknown>}, fallback: string): Promise<never> {
+    const message = await extractErrorMessage(response, fallback);
+    let outcomeStatus: "conflict" | "invalid" | "generation-error" = "generation-error";
+    if (response.status === 409) outcomeStatus = "conflict";
+    else if (response.status === 400) outcomeStatus = "invalid";
+    throw new OutcomeLibraryGenerationStartError(outcomeStatus, message);
+}
+
 // Compatibility URL for the Outcome Library lifecycle. It starts the same
 // cancellable job as /jobs; terminal diagnostics are obtained by polling it.
 /** @deprecated The retained direct URL now returns the same pollable job as /jobs. */
@@ -981,7 +997,7 @@ export async function generateOutcomeLibrary(fetchImpl: FetchLike, options: Outc
         body: JSON.stringify(options),
     });
     if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to generate the outcome library"));
+        return throwOutcomeLibraryGenerationStartError(response, "Failed to generate the outcome library");
     }
     return ((await response.json()) as {job: StudioOutcomeLibraryGenerateJobView}).job;
 }
@@ -991,7 +1007,7 @@ export async function startOutcomeLibraryGeneration(fetchImpl: FetchLike, option
     const response = await fetchImpl("/api/project/outcome-libraries/generate/jobs", {
         method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(options),
     });
-    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to start the outcome library generation"));
+    if (!response.ok) return throwOutcomeLibraryGenerationStartError(response, "Failed to start the outcome library generation");
     return ((await response.json()) as {job: StudioOutcomeLibraryGenerateJobView}).job;
 }
 

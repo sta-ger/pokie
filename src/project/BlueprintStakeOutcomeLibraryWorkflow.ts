@@ -252,6 +252,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 generation: generation.sampled === undefined
                     ? "exact"
                     : `sample:${generation.sampled.sampleSize}:${generation.sampled.seed}`,
+                ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize.toString()}),
                 ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
             },
         };
@@ -376,8 +377,8 @@ function resolveManagedOutcomeGeneration(
     configHash: string,
     requested: ArtifactBuildOptions["outcomeLibraryGeneration"],
 ): ManagedOutcomeGeneration {
-    if (requested?.sampled !== undefined) return {generation: "sampled", sampled: requested.sampled, ...(requested.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: requested.compatibilityPolicyVersion})};
-    if (requested?.exact) return {generation: "exact", ...(requested.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: requested.compatibilityPolicyVersion})};
+    if (requested?.sampled !== undefined) return {generation: "sampled", sampled: requested.sampled, ...(requested.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: requested.maxExactOutcomeSpaceSize}), ...(requested.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: requested.compatibilityPolicyVersion})};
+    if (requested?.exact) return {generation: "exact", ...(requested.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: requested.maxExactOutcomeSpaceSize}), ...(requested.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: requested.compatibilityPolicyVersion})};
 
     const estimate = estimateExactOutcomeSpaceSize(game);
     if (estimate.totalOutcomeSpaceSize <= MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY.maxExactOutcomeSpaceSize) {

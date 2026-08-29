@@ -2003,6 +2003,19 @@ export class StudioServer implements StudioServerHandling {
             }
             validated = {...validated, preflightToken: preflight.preflightToken};
         }
+        // A supplied token must not be a bypass around the same sampled-opt-in
+        // eligibility enforced for the retained compatibility route.  The
+        // token is a server-owned immutable preflight, so this does not trust
+        // a client assertion about the selected strategy.
+        const binding = this.outcomeLibraryGenerateService.getPreflightBinding(validated.preflightToken);
+        if (binding === undefined) {
+            this.sendJson(res, 409, {error: "The displayed generation preflight has expired. Refresh it before generating."});
+            return;
+        }
+        if (binding?.requiresBounded) {
+            this.sendJson(res, 409, {error: "This request needs explicit sampled or bounded coverage before it can execute."});
+            return;
+        }
         this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.currentContext.projectRoot, validated)});
     }
 

@@ -51,6 +51,8 @@ export type ArtifactConfigurationProvenance = {
     // bundle ineligible for an exact (or differently seeded) request.
     readonly sampleCount?: string;
     readonly sampleSeed?: string;
+    /** Resolved exact cap of a managed compatibility policy. */
+    readonly maxExactOutcomeSpaceSize?: string;
     readonly compatibilityPolicyVersion?: string;
 };
 
@@ -290,6 +292,7 @@ function sameArtifactIdentity(left: ArtifactIdentity, right: ArtifactIdentity): 
         left.configurationProvenance?.generationSemantics === right.configurationProvenance?.generationSemantics &&
         left.configurationProvenance?.sampleCount === right.configurationProvenance?.sampleCount &&
         left.configurationProvenance?.sampleSeed === right.configurationProvenance?.sampleSeed &&
+        left.configurationProvenance?.maxExactOutcomeSpaceSize === right.configurationProvenance?.maxExactOutcomeSpaceSize &&
         left.configurationProvenance?.compatibilityPolicyVersion === right.configurationProvenance?.compatibilityPolicyVersion &&
         left.configurationProvenance?.pokieVersion === right.configurationProvenance?.pokieVersion &&
         left.configurationProvenance?.gameId === right.configurationProvenance?.gameId &&
@@ -334,6 +337,7 @@ export type ArtifactConversionPlanningOptions = {
     readonly generationSemantics?: "exact" | "boundedSample";
     readonly sampleCount?: bigint | string;
     readonly sampleSeed?: string;
+    readonly maxExactOutcomeSpaceSize?: bigint | string;
     readonly compatibilityPolicyVersion?: string;
     readonly pokieVersion?: string;
     /** A registry lookup may offer a managed outcome bundle. It is reusable only when independently verified. */
@@ -363,6 +367,7 @@ export function verifyManagedOutcomeCandidate(
     const expectedSampleCount = options.sampleCount === undefined ? expected.sampleCount : String(options.sampleCount);
     const expectedSampleSeed = options.sampleSeed ?? expected.sampleSeed;
     const expectedCompatibilityPolicyVersion = options.compatibilityPolicyVersion ?? expected.compatibilityPolicyVersion;
+    const expectedMaxExactOutcomeSpaceSize = options.maxExactOutcomeSpaceSize === undefined ? expected.maxExactOutcomeSpaceSize : String(options.maxExactOutcomeSpaceSize);
     const comparisons: readonly [string, string | undefined, string | undefined][] = [
         ["configuration hash", expected.configurationHash, actual.configurationHash],
         ["game id", expected.gameId, actual.gameId],
@@ -372,6 +377,7 @@ export function verifyManagedOutcomeCandidate(
         ["generation semantics", expectedGeneration, actual.generationSemantics],
         ["sample count", expectedSampleCount, actual.sampleCount],
         ["sample seed", expectedSampleSeed, actual.sampleSeed],
+        ["maximum exact outcome space size", expectedMaxExactOutcomeSpaceSize, actual.maxExactOutcomeSpaceSize],
         ["compatibility policy version", expectedCompatibilityPolicyVersion, actual.compatibilityPolicyVersion],
     ];
     const mismatch = comparisons.find(([, wanted, found]) => wanted !== undefined && wanted !== found);
@@ -686,7 +692,7 @@ export class ArtifactConversionPlanner {
 
     public planIdentity(source: ArtifactIdentity, targetKind: ArtifactTargetType, options: ArtifactConversionPlanningOptions = {}): ArtifactConversionPlan {
         const sourceKind = source.kind as ProjectType;
-        const target = this.targetIdentity(targetKind, options.destinationPath, options.generationSemantics, options.sampleCount, options.sampleSeed);
+        const target = this.targetIdentity(targetKind, options.destinationPath, options.generationSemantics, options.sampleCount, options.sampleSeed, options.maxExactOutcomeSpaceSize);
         const preflight = this.preflight(targetKind, sourceKind, options.generationSemantics);
         const unavailable = (code: ArtifactConversionDiagnostic["code"], message: string, recovery: string): ArtifactConversionPlan => ({
             status: "unavailable",
@@ -879,7 +885,7 @@ export class ArtifactConversionPlanner {
         preflight: ArtifactConversionPreflight,
         options: ArtifactConversionPlanningOptions,
     ): ArtifactConversionPlan {
-        const outcome = this.targetIdentity("outcomeLibrary", undefined, options.generationSemantics, options.sampleCount, options.sampleSeed);
+        const outcome = this.targetIdentity("outcomeLibrary", undefined, options.generationSemantics, options.sampleCount, options.sampleSeed, options.maxExactOutcomeSpaceSize);
         // The requested destination belongs to the final Stake publication.
         // An intermediate reused Outcome Library must never be republished to
         // that Stake directory before the selected Stake publish executes.
@@ -950,6 +956,7 @@ export class ArtifactConversionPlanner {
         generationSemantics?: "exact" | "boundedSample",
         sampleCount?: bigint | string,
         sampleSeed?: string,
+        maxExactOutcomeSpaceSize?: bigint | string,
     ): ArtifactTargetIdentity {
         // The target is an output identity, not merely a display label.  A
         // bounded request with a different count or seed must therefore be a
@@ -961,6 +968,7 @@ export class ArtifactConversionPlanner {
                 generationSemantics,
                 ...(sampleCount === undefined ? {} : {sampleCount: String(sampleCount)}),
                 ...(sampleSeed === undefined ? {} : {sampleSeed}),
+                ...(maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: String(maxExactOutcomeSpaceSize)}),
             };
         return {
             kind,

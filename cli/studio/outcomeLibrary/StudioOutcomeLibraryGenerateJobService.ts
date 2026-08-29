@@ -221,6 +221,10 @@ export class StudioOutcomeLibraryGenerateJobService {
                 gameVersion: preflightBinding?.gameVersion ?? "",
                 ...(preflightBinding?.configHash === undefined ? {} : {configHash: preflightBinding.configHash}),
                 destination: preflightBinding?.destination ?? request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR,
+                // Only exact jobs produce resumable checkpoints; a direct
+                // in-process caller without a token is therefore known to
+                // have already passed sampled-opt-in eligibility.
+                requiresBounded: preflightBinding?.requiresBounded ?? false,
             },
             checkpoint: {
                 processedRawIndex: checkpoint.processedRawIndex.toString(), progressTotal: checkpoint.progressTotal.toString(), sourceEnumerationId: checkpoint.sourceEnumerationId,

@@ -69,6 +69,8 @@ export type StudioOutcomeLibraryPreflightBinding = {
     readonly gameVersion: string;
     readonly configHash?: string;
     readonly destination: string;
+    /** Eligibility is immutable alongside the request snapshot. */
+    readonly requiresBounded: boolean;
 };
 
 // The Project Dashboard's Generate step (and Registry panel), built directly on top of the exact same
@@ -198,6 +200,7 @@ export class StudioOutcomeLibraryGenerateService {
         this.preflightSnapshots.set(preflightToken, {
             requestKey: generationRequestKey(request), gameId: game.getManifest().id, gameVersion: game.getManifest().version,
             ...(resolvedConfigHash === undefined ? {} : {configHash: resolvedConfigHash}), destination: boundDestination,
+            requiresBounded: preparedRequest.preflight.requiresSampledOptIn,
         });
         return {
             status: "ok",

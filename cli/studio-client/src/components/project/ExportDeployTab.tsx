@@ -17,6 +17,7 @@ import {
     resumeOutcomeLibraryGeneration,
     startOutcomeLibraryGeneration,
     startArtifactBuild,
+    OutcomeLibraryGenerationStartError,
 } from "../../api/apiClient";
 import type {
     StudioArtifactBuildView,
@@ -1022,7 +1023,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
             })
             .catch((error: unknown) => {
                 outcomeLibraryGuard.end();
-                setOutcomeLibraryRun({status: "error", message: describeProjectActionError("The outcome library generation", errorMessage(error))});
+                setOutcomeLibraryRun({status: "error", message: error instanceof OutcomeLibraryGenerationStartError
+                    ? describeOutcomeLibraryGenerationTerminalOutcome({status: error.outcomeStatus})
+                    : describeProjectActionError("The outcome library generation", errorMessage(error))});
             });
     }
 
