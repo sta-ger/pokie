@@ -474,13 +474,13 @@ describe("PC-05 product-model contract", () => {
             recovery: expect.stringContaining("rolls it back"),
         }));
         expect(matrix).toContain("Studio instead uses the shared transient `studioOutcomeLibrarySelector`");
-        expect(matrix).toContain("`docs/cli.md` Studio API currently (incorrectly) documents `libraryPath`");
+        expect(matrix).toContain("`docs/cli.md` documents the live `librarySelector` deployment request");
         expect(matrix).toContain("PC-05-STUDIO-03");
         expect(productModel).toContain("`OutcomeLibrarySelector`");
         expect(productModel).toContain("This is deliberately not a universal create-only rule");
         expect(productModel).toContain("`docs/cli.md` still documents each");
-        expect(cliDocs).toContain('"libraryPath"');
-        expect(cliDocs).not.toContain('"librarySelector"');
+        expect(cliDocs).toContain('"librarySelector"');
+        expect(cliDocs).toMatch(/supplied modes use the same\s+project-contained `librarySelector` contract as Studio Stake export/);
     });
 
     it("source-backs the opt-in durable FileSessionRepository contract without treating server state as a project or replay artifact", () => {
@@ -956,18 +956,18 @@ describe("PC-05 product-model contract", () => {
             "PC-05-CLI-01": "PC-06 diagnostic sweep",
             "PC-05-CLI-02": "PC-06 diagnostic sweep",
             "PC-05-CLI-03": "PC-15 public CLI/help/docs sweep",
-            "PC-05-STUDIO-01": "PC-16 Studio recovery sweep",
-            "PC-05-STUDIO-02": "PC-11 Studio validation/certification sweep",
+            "PC-05-STUDIO-01": "PC-16 later Studio recovery product sweep; it is not duplicate-capability remediation",
+            "PC-05-STUDIO-02": "PC-11 completed retained certification owner; PC-16 later product-sweep verification of the shipped handoff",
             "PC-05-HANDOFF-01": "PC-09 Outcome Library sweep",
             "PC-05-DUP-01A": "PC-09 Outcome Library sweep",
             "PC-05-DUP-01B": "PC-10 Stake export sweep",
-            "PC-05-STUDIO-03": "PC-10 Stake export sweep; PC-16 Studio deployment/docs-surface sweep",
-            "PC-05-DUP-01C": "PC-11 PAR conversion sweep",
+            "PC-05-STUDIO-03": "PC-11 retained-owner/documentation convergence",
+            "PC-05-DUP-01C": "PC-11 completed retained PAR owner; PC-15 public CLI sweep; PC-16 later Studio product-sweep verification of the retained contract",
             "PC-05-DUP-01D": "PC-15 public CLI/help/docs sweep",
-            "PC-05-DUP-01E": "PC-16 Studio conversion sweep",
+            "PC-05-DUP-01E": "PC-11 completed retained-owner model; PC-16 later Studio product-sweep verification of the retained contract, not duplicate-capability remediation",
             "PC-05-DUP-02": "PC-06 provenance sweep",
             "PC-05-DUP-03A": "PC-06 CLI validation sweep",
-            "PC-05-DUP-03B": "PC-11 Studio validation sweep",
+            "PC-05-DUP-03B": "PC-11 completed Studio validation/certification owner; PC-16 later Studio product-sweep verification of the retained contract",
             "PC-05-DOC-01A": "PC-15 public CLI/help/docs sweep",
             "PC-05-DOC-01B": "PC-13 WASM boundary sweep",
         };
@@ -985,7 +985,7 @@ describe("PC-05 product-model contract", () => {
         expect(closureRow(matrix, "PC-05-DOC-01A")).not.toContain("PC-06");
         expect(closureRow(matrix, "PC-05-DUP-01D")).not.toContain("PC-16");
         expect(closureRow(matrix, "PC-05-DUP-01E")).not.toContain("PC-15");
-        expect(closureRow(matrix, "PC-05-STUDIO-03")).toContain("libraryPath");
+        expect(closureRow(matrix, "PC-05-STUDIO-03")).not.toContain("libraryPath");
         expect(closureRow(matrix, "PC-05-STUDIO-03")).toContain("librarySelector");
         expect(acceptanceOwnershipRow(productModel, "PC-09")).toContain("DUP-01A");
         expect(acceptanceOwnershipRow(productModel, "PC-09")).toContain("HANDOFF-01");
@@ -1011,7 +1011,8 @@ describe("PC-05 product-model contract", () => {
         expect(operationOwner(matrix, "Edit a design")).toContain("No open mismatch");
         expect(operationOwner(matrix, "Build a runnable package")).toContain("PC-07 package build sweep");
         expect(operationOwner(matrix, "Simulate")).toBe("PC-08 runtime/source semantics sweep");
-        expect(operationOwner(matrix, "Deploy an external format")).toContain("PC-16 Studio deployment/docs-surface sweep");
+        expect(operationOwner(matrix, "Deploy an external format")).toContain("PC-11 retained Studio owner");
+        expect(operationOwner(matrix, "Deploy an external format")).toContain("request contract is `librarySelector`, not `libraryPath`");
         expect(operationOwner(matrix, "Generate/inspect reel strips")).toContain("No open mismatch");
         for (const operation of [
             "Create an editable game design",
