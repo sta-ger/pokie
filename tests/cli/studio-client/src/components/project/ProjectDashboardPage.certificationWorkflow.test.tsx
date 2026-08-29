@@ -114,6 +114,8 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         expect(await screen.findByText(/Certification evidence for A v1\.0\.0/)).toBeInTheDocument();
         expect(screen.getByText("sha256:lib-base")).toBeInTheDocument();
         expect(screen.getByText("95.00%")).toBeInTheDocument();
+        expect(screen.getByText("pokie certification verify certification --source ./bundle")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Copy verification command"})).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Continue to Export"}));
         expect(await screen.findByRole("button", {name: "Download manifest.json"})).toBeInTheDocument();

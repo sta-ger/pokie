@@ -312,9 +312,9 @@ for a flow with no order dependency at all (that belongs in tabs) or for a flow 
 The standalone Deployment (`project/DeploymentTab.tsx`), Stake Engine Export (`project/StakeEngineExportTab.tsx`),
 and Outcome Libraries (`project/OutcomeLibrariesTab.tsx`) Steppers this audit originally covered have since been
 removed outright, not just replaced -- every builder they owned is now one of Build/Export's own cards (see
-`ExportDeployTargets.ts`), and their old `/project/deployment`/`/project/stakeEngineExport`/`/project/outcomeLibraries`
-routes no longer resolve to anything special. They're kept out of the table below rather than left in with a
-stale "Kept as Stepper" disposition.
+`ExportDeployTargets.ts`). Their old `/project/deployment`/`/project/stakeEngineExport`/`/project/outcomeLibraries`
+routes redirect to Build/Export with migration guidance; they do not mount an alternate workflow. They're kept
+out of the table below rather than left in with a stale "Kept as Stepper" disposition.
 
 | Workflow | File | Classification | Disposition |
 |---|---|---|---|

@@ -875,28 +875,29 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
     });
 
-    it("falls back to Overview for the removed /project/deployment, /project/stakeEngineExport, and /project/outcomeLibraries routes, never mounting their own old workflows", async () => {
+    it("redirects the removed build-workflow routes to Build/Export with migration guidance, never mounting their old workflows", async () => {
         const deploymentRender = renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/deployment"]});
         await deploymentRender.findByRole("heading", {name: "A"});
-        expect(deploymentRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
-        expect(deploymentRender.queryByText("Deployment has moved into Build/Export")).not.toBeInTheDocument();
+        expect(deploymentRender.getByRole("button", {name: "Build/Export"})).toHaveAttribute("aria-current", "page");
+        expect(deploymentRender.getByText(/Deployment has moved into Build\/Export/)).toBeInTheDocument();
         expect(deploymentRender.queryByRole("button", {name: "Run deployment preflight"})).not.toBeInTheDocument();
         expect(deploymentRender.queryByRole("button", {name: "Deployment"})).not.toBeInTheDocument();
         deploymentRender.unmount();
 
         const stakeEngineExportRender = renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/stakeEngineExport"]});
         await stakeEngineExportRender.findByRole("heading", {name: "A"});
-        expect(stakeEngineExportRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
-        expect(stakeEngineExportRender.queryByText("Stake Engine Export has moved into Build/Export")).not.toBeInTheDocument();
+        expect(stakeEngineExportRender.getByRole("button", {name: "Build/Export"})).toHaveAttribute("aria-current", "page");
+        expect(stakeEngineExportRender.getByText(/Stake Engine Export has moved into Build\/Export/)).toBeInTheDocument();
         expect(stakeEngineExportRender.queryByText("Output directory")).not.toBeInTheDocument();
         expect(stakeEngineExportRender.queryByRole("button", {name: "Stake Engine Export"})).not.toBeInTheDocument();
         stakeEngineExportRender.unmount();
 
         const outcomeLibrariesRender = renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/outcomeLibraries"]});
         await outcomeLibrariesRender.findByRole("heading", {name: "A"});
-        expect(outcomeLibrariesRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
-        expect(outcomeLibrariesRender.queryByText("Outcome Libraries has moved into Build/Export")).not.toBeInTheDocument();
-        expect(outcomeLibrariesRender.queryByLabelText("Mode")).not.toBeInTheDocument();
+        expect(outcomeLibrariesRender.getByRole("button", {name: "Build/Export"})).toHaveAttribute("aria-current", "page");
+        expect(outcomeLibrariesRender.getByText(/Outcome Libraries has moved into Build\/Export/)).toBeInTheDocument();
+        // Build/Export may offer its own mode selector, but the retired Outcome Libraries analysis
+        // workflow never mounts from this route.
         expect(outcomeLibrariesRender.queryByRole("button", {name: "Analysis"})).not.toBeInTheDocument();
     });
 

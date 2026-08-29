@@ -408,6 +408,10 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
         generateOutcomeLibraryOutDir = detectedBundle.path;
     }
     const generateOutcomeLibraryCommand = `pokie outcomelibrary build <config.json> --out ${generateOutcomeLibraryOutDir}`;
+    // Studio owns creation and inspection, while independent verification remains the canonical CLI
+    // verifier. The handoff is tied to the actual source/output of this successful build; source
+    // validation alone never claims to verify an already-written evidence directory.
+    const certificationVerifyCommand = `pokie certification verify ${outDir.trim()} --source ${bundleDir.trim()}`;
 
     function renderValidateStep(): ReactNode {
         if (!validateReachable) {
@@ -683,6 +687,25 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
                             <Text size="sm" mb="sm">
                                 {describeCertificationProvenanceSummary(buildResult.manifest)}
                             </Text>
+                        </PageSection>
+
+                        <PageSection legend="Independent verification">
+                            <Text size="sm" c="dimmed" mb="sm">
+                                To verify this existing evidence bundle against the same source outside Studio, run
+                                this command from the project directory. The source outcome-library bundle must
+                                remain available and unchanged; if it has changed, rebuild the evidence bundle
+                                first.
+                            </Text>
+                            <CodeBlock>{certificationVerifyCommand}</CodeBlock>
+                            <QuickActions>
+                                <CopyButton value={certificationVerifyCommand}>
+                                    {({copied, copy}) => (
+                                        <Button size="xs" variant="default" onClick={copy}>
+                                            {copied ? "Copied" : "Copy verification command"}
+                                        </Button>
+                                    )}
+                                </CopyButton>
+                            </QuickActions>
                         </PageSection>
 
                         <PageSection legend="Per-mode evidence">

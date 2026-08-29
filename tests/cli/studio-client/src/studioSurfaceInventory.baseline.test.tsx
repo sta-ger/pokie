@@ -179,21 +179,27 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
         expect(within(nav).queryByRole("button", {name: "Provably Fair"})).not.toBeInTheDocument();
     });
 
-    it("falls back to Overview for the old Deployment, Stake Engine Export, and Outcome Libraries deep links, same as any other unrecognized tab -- they're not kept alive merely for pre-release compatibility", async () => {
+    it("redirects retired Deployment, Stake Engine Export, and Outcome Libraries deep links to Build/Export with migration guidance, without retaining duplicate workflows", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
         const deploymentRender = renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await deploymentRender.findByRole("heading", {name: "My Slot"});
-        expect(deploymentRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
-        expect(deploymentRender.queryByText("Deployment has moved into Build/Export")).not.toBeInTheDocument();
+        expect(deploymentRender.getByRole("button", {name: "Build/Export"})).toHaveAttribute("aria-current", "page");
+        expect(deploymentRender.getByText(/Deployment has moved into Build\/Export/)).toBeInTheDocument();
         expect(deploymentRender.queryByRole("button", {name: stepperStep("Select target", "Where to publish")})).not.toBeInTheDocument();
         deploymentRender.unmount();
 
         const outcomeLibrariesRender = renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await outcomeLibrariesRender.findByRole("heading", {name: "My Slot"});
-        expect(outcomeLibrariesRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
-        expect(outcomeLibrariesRender.queryByText("Outcome Libraries has moved into Build/Export")).not.toBeInTheDocument();
+        expect(outcomeLibrariesRender.getByRole("button", {name: "Build/Export"})).toHaveAttribute("aria-current", "page");
+        expect(outcomeLibrariesRender.getByText(/Outcome Libraries has moved into Build\/Export/)).toBeInTheDocument();
         expect(outcomeLibrariesRender.queryByRole("button", {name: stepperStep("Select/import", "Choose a library")})).not.toBeInTheDocument();
+        outcomeLibrariesRender.unmount();
+
+        const validateRender = renderRoutedApp({fetchImpl, initialEntries: ["/project/validate"]});
+        await validateRender.findByRole("heading", {name: "My Slot"});
+        expect(validateRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(validateRender.getByText(/Validate is now part of Overview diagnostics/)).toBeInTheDocument();
     });
 
     it("lists Overview, Game Model, Build/Export and Certification for a read-only outcome-library project -- reachable without RUNTIME_EXECUTE_CAPABILITY, but Play/Simulation/Replay/Provably Fair (which need a real draw or live session) stay hidden", async () => {
