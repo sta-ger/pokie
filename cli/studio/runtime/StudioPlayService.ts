@@ -23,6 +23,7 @@ import {
     PreGeneratedRoundReplayDescriptor,
     PreGeneratedOutcomeSourcing,
     ProjectResolving,
+    ProjectTargetMalformedError,
     ProjectTargetResolver,
     resolveGameSessionSerializer,
     resolveOutcomeLibraryModeName,
@@ -41,6 +42,7 @@ import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/derive
 import crypto from "crypto";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {StudioRoundRecorder, type StudioRoundOperation} from "./StudioRoundRecorder.js";
+import {describeRuntimePackageLoadError} from "../../commands/internal/describeLocalRuntimeError.js";
 import type {StudioRuntimeSessionView} from "./StudioRuntimeSessionView.js";
 
 export type StudioPlaySessionResult = {status: "ok"; session: StudioRuntimeSessionView} | {status: "failed"; error: string};
@@ -191,7 +193,7 @@ export class StudioPlayService {
         try {
             project = await this.resolveProject.resolve(projectRoot);
         } catch (error) {
-            return this.fail(error);
+            return this.fail(error, projectRoot);
         }
 
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
@@ -207,7 +209,7 @@ export class StudioPlayService {
                 await resolution.release();
             }
         } catch (error) {
-            return this.fail(error);
+            return this.fail(error, projectRoot);
         }
 
         const manifest = game.getManifest();
@@ -557,7 +559,10 @@ export class StudioPlayService {
         return {status: "ok", session: this.buildOutcomeSourceSessionView(sessionId, active, artifact, replay)};
     }
 
-    private fail(error: unknown): StudioPlaySessionResult {
+    private fail(error: unknown, projectRoot = "the selected project"): StudioPlaySessionResult {
+        if (error instanceof ProjectTargetMalformedError && error.targetType === "parWorkbook") {
+            return {status: "failed", error: describeRuntimePackageLoadError(projectRoot, error).message};
+        }
         return {status: "failed", error: error instanceof Error ? error.message : String(error)};
     }
 

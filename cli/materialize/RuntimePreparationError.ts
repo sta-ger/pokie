@@ -8,7 +8,16 @@ import type {PokieProject, RunnableRuntimePlan} from "pokie";
 export class RuntimePreparationError extends Error {
     public readonly details?: string;
 
-    public constructor(project: PokieProject, plan: RunnableRuntimePlan, cause: unknown) {
+    public constructor(project: PokieProject, plan: RunnableRuntimePlan, cause: unknown);
+    public constructor(message: string);
+    public constructor(projectOrMessage: PokieProject | string, plan?: RunnableRuntimePlan, cause?: unknown) {
+        if (typeof projectOrMessage === "string") {
+            super(projectOrMessage);
+            this.name = "RuntimePreparationError";
+            return;
+        }
+        const project = projectOrMessage;
+        if (plan === undefined) throw new Error("RuntimePreparationError requires a runtime plan.");
         const failedStep = project.type === "parWorkbook" && !isBlueprintMaterializationError(cause)
             ? plan.steps[0]
             : plan.steps[plan.steps.length - 1];
@@ -25,6 +34,16 @@ export class RuntimePreparationError extends Error {
         this.name = "RuntimePreparationError";
         (this as Error & {cause?: unknown}).cause = cause;
         this.details = detailsOf(cause);
+    }
+
+    public static parWorkbookRecognition(rootPath: string, cause: {readonly message: string; readonly stage?: string; readonly recovery?: string}): RuntimePreparationError {
+        const stage = cause.stage ?? "PAR workbook recognition";
+        const recovery = cause.recovery ?? "Restore a compatible PAR workbook, then retry.";
+        return new RuntimePreparationError(
+            `Cannot prepare a runnable runtime from ${JSON.stringify(rootPath)}. ` +
+            "Attempted path: PAR workbook recognition -> PAR workbook import -> blueprint -> tsPackage; " +
+            `planned/reusable stages: none; failed PAR recognition/import stage: ${stage}. ${cause.message} Next: ${recovery}`,
+        );
     }
 }
 

@@ -9,6 +9,7 @@ import {ProjectTargetAmbiguousError} from "./ProjectTargetAmbiguousError.js";
 import type {ProjectResolving} from "./ProjectResolving.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
 import {ProjectTargetUnsupportedError} from "./ProjectTargetUnsupportedError.js";
+import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
 import {StakeAdapterProjectTargetAdapter} from "./StakeAdapterProjectTargetAdapter.js";
 import {TsPackageProjectTargetAdapter} from "./TsPackageProjectTargetAdapter.js";
 import {WasmProjectTargetAdapter, wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
@@ -17,6 +18,7 @@ import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
 import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
 import {computeArtifactInputBindingHash, type ArtifactConfigurationProvenance} from "./ArtifactConversionPlanner.js";
+import {recognizeParWorkbookFile} from "./internal/looksLikeParWorkbookFile.js";
 
 // The one file extension resolve() explicitly rejects rather than silently reporting undefined for — see its
 // ProjectTargetUnsupportedError usage below.
@@ -98,6 +100,29 @@ export class ProjectTargetResolver implements ProjectResolving {
         const matches = await this.recognizeAll(candidateAdapters, resolvedPath);
 
         if (matches.length === 0) {
+            if (stat.isFile() && path.extname(resolvedPath).toLowerCase() === ".xlsx") {
+                const parRecognition = await recognizeParWorkbookFile(resolvedPath);
+                if (parRecognition.status === "unreadable") {
+                    throw new ProjectTargetMalformedError(
+                        `PAR workbook recognition could not read ${JSON.stringify(resolvedPath)} as an XLSX workbook.`,
+                        {
+                            targetType: "parWorkbook",
+                            stage: "PAR workbook recognition",
+                            recovery: "Restore a readable PAR workbook with the required Manifest, Symbols, and Paytable sheets, then retry.",
+                        },
+                    );
+                }
+                if (parRecognition.status === "incomplete") {
+                    throw new ProjectTargetMalformedError(
+                        `PAR workbook recognition found ${JSON.stringify(resolvedPath)} but it is missing required sheet${parRecognition.missingSheets.length === 1 ? "" : "s"}: ${parRecognition.missingSheets.map((sheet) => JSON.stringify(sheet)).join(", ")}.`,
+                        {
+                            targetType: "parWorkbook",
+                            stage: "PAR workbook recognition",
+                            recovery: "Restore the missing required PAR sheets, then retry.",
+                        },
+                    );
+                }
+            }
             if (stat.isFile() && path.extname(resolvedPath).toLowerCase() === WASM_FILE_EXTENSION) {
                 throw new ProjectTargetUnsupportedError(
                     `"${resolvedPath}" is a WASM target, but no compatible PokieWasmComponentManifest sidecar was found at ` +

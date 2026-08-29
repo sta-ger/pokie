@@ -15,6 +15,7 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
 
 type ReplayOptions = {
     packageRoot: string;
@@ -97,7 +98,12 @@ export class ReplayCommand implements CliCommandHandling {
         // all). A path that doesn't resolve to either of those two types -- including one ProjectResolving
         // doesn't recognize as any known project at all -- falls through to the original, unaffected
         // materialize-and-load flow.
-        const project = await this.resolveProject.resolve(options.packageRoot);
+        let project: PokieProject | undefined;
+        try {
+            project = await this.resolveProject.resolve(options.packageRoot);
+        } catch (error) {
+            throw describeRuntimePackageLoadError(options.packageRoot, error);
+        }
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
             await this.runOutcomeSourceReplay(project, options);
             return;

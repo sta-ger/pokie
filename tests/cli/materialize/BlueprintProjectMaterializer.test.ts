@@ -1148,6 +1148,20 @@ describe("createMaterializingRuntimePackageResolver", () => {
         expect(materializer.calls).toEqual([]);
     });
 
+    it("turns a malformed PAR recognition into a path-aware runtime-preparation diagnostic without yielding a runtime", async () => {
+        const materializer = rejectingMaterializer("must not be called for malformed PAR workbooks");
+        const workbookPath = path.join(sourceDir, "incomplete.par.xlsx");
+        fs.writeFileSync(workbookPath, "not a readable workbook");
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {materializer});
+        const loadGame = jest.fn();
+
+        await expect(resolveRuntimePackageRoot(workbookPath).then((resolution) => loadGame(resolution.runtimePath))).rejects.toThrow(
+            /Cannot prepare a runnable runtime[\s\S]*Attempted path: PAR workbook recognition -> PAR workbook import -> blueprint -> tsPackage[\s\S]*failed PAR recognition\/import stage: PAR workbook recognition[\s\S]*Restore a readable PAR workbook/,
+        );
+        expect(materializer.calls).toEqual([]);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
     it.each<[string, PokieProject | undefined]>([
         ["an unresolved passthrough", undefined],
         ["a resolved package passthrough", {type: "tsPackage", rootPath: "/some/existing/package", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage, provenance: "test fixture"} as PokieProject],

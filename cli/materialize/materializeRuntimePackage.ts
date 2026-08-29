@@ -9,6 +9,7 @@ import {
     ProjectMaterializing,
     ProjectResolving,
     ProjectTargetResolver,
+    ProjectTargetMalformedError,
 } from "pokie";
 import {withLinkedLocalPokieRuntime} from "../prepare/PackageCommandRunner.js";
 import {BlueprintProjectMaterializer} from "./BlueprintProjectMaterializer.js";
@@ -165,7 +166,15 @@ export function createMaterializingRuntimePackageResolver(
 
     return async (packageRoot: string, options: RuntimePackageResolutionOptions = {}): Promise<RuntimePackageResolution> => {
         assertRuntimePreparationNotCancelled(options.signal);
-        const project: PokieProject | undefined = await resolveProject.resolve(packageRoot);
+        let project: PokieProject | undefined;
+        try {
+            project = await resolveProject.resolve(packageRoot);
+        } catch (error) {
+            if (error instanceof ProjectTargetMalformedError && error.targetType === "parWorkbook") {
+                throw RuntimePreparationError.parWorkbookRecognition(path.resolve(packageRoot), error);
+            }
+            throw error;
+        }
         // Resolving a project can include filesystem inspection.  Do not let a
         // cancellation that arrives there escape through an otherwise harmless
         // package/passthrough return and start a Studio job afterwards.

@@ -23,6 +23,9 @@ export function describeLocalServerStartError(
 }
 
 export function describeRuntimePackageLoadError(packageRoot: string, error: unknown): Error {
+    if (error instanceof ProjectTargetMalformedError && error.targetType === "parWorkbook") {
+        return RuntimePreparationError.parWorkbookRecognition(packageRoot, error);
+    }
     // Planner/materialization errors already name the attempted runtime path
     // and exact failed stage. Replacing them with package-validation advice is
     // actively misleading for a valid Blueprint or PAR workbook.
@@ -38,3 +41,5 @@ export function describeRuntimePackageLoadError(packageRoot: string, error: unkn
             `Run \`pokie validate ${JSON.stringify(packageRoot)}\` to diagnose the package, then retry.`,
     );
 }
+import {ProjectTargetMalformedError} from "pokie";
+import {RuntimePreparationError} from "../../materialize/RuntimePreparationError.js";
