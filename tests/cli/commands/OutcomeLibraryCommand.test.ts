@@ -3,8 +3,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-    GenerateExactWeightedOutcomeLibraryOptions,
     GenerateExactWeightedOutcomeLibraryResult,
+    OutcomeLibraryGenerationRequest,
     OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleValidateOptions,
     OutcomeLibraryBundleWriteResult,
@@ -323,7 +323,7 @@ describe("OutcomeLibraryCommand", () => {
 
         function createGenerateCommand(overrides: {
             loadGame?: (packageRoot: string) => Promise<PokieGame>;
-            generate?: (options: GenerateExactWeightedOutcomeLibraryOptions) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
+            generate?: (request: OutcomeLibraryGenerationRequest) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
             estimateSpace?: (game: PokieGame) => OutcomeSpaceEstimate;
             writeFile?: (filePath: string, contents: string) => void;
             loadJson?: (filePath: string) => unknown;
@@ -381,7 +381,7 @@ describe("OutcomeLibraryCommand", () => {
                     game: FAKE_GAME,
                     pokieVersion: "1.3.0",
                     configHash: "sha256:abc",
-                    betMode: "base",
+                    mode: "base",
                     stake: 1.5,
                 }),
             );
@@ -503,7 +503,7 @@ describe("OutcomeLibraryCommand", () => {
 
             await command.run(["generate", "/project/slot", "--bounded", "--sample-size", "1000", "--seed", "seed-1"]);
 
-            expect(generate).toHaveBeenCalledWith(expect.objectContaining({bounded: {sampleSize: BigInt(1000), seed: "seed-1"}}));
+            expect(generate).toHaveBeenCalledWith(expect.objectContaining({generation: "bounded", sample: {sampleSize: BigInt(1000), seed: "seed-1"}}));
         });
 
         it("makes direct sampled generation explicit and threads its deterministic count and seed", async () => {
@@ -512,7 +512,7 @@ describe("OutcomeLibraryCommand", () => {
 
             await command.run(["generate", "/project/slot", "--sample", "1000", "--seed", "sample-seed"]);
 
-            expect(generate).toHaveBeenCalledWith(expect.objectContaining({sampled: {sampleSize: BigInt(1000), seed: "sample-seed"}}));
+            expect(generate).toHaveBeenCalledWith(expect.objectContaining({generation: "sampled", sample: {sampleSize: BigInt(1000), seed: "sample-seed"}}));
         });
 
         it("rejects incomplete or conflicting exact/sampled choices before loading a game", async () => {
@@ -549,7 +549,7 @@ describe("OutcomeLibraryCommand", () => {
             // calling this.generate), so this is fully deterministic: no reliance on real timers or
             // microtask ordering to land the signal "mid-sweep".
             const generate = jest.fn(
-                (options: GenerateExactWeightedOutcomeLibraryOptions) =>
+                (options: OutcomeLibraryGenerationRequest) =>
                     new Promise<GenerateExactWeightedOutcomeLibraryResult>((_resolve, reject) => {
                         options.signal?.addEventListener("abort", () => {
                             reject(new WeightedOutcomeLibraryGenerationCancelledError(BigInt(3), BigInt(6), grids, "src-1"));
@@ -579,7 +579,7 @@ describe("OutcomeLibraryCommand", () => {
         it("returns 130 without writing a checkpoint when SIGINT cancels a run with no --resume given", async () => {
             const processHandle = new EventEmitter() as unknown as NodeJS.Process;
             const generate = jest.fn(
-                (options: GenerateExactWeightedOutcomeLibraryOptions) =>
+                (options: OutcomeLibraryGenerationRequest) =>
                     new Promise<GenerateExactWeightedOutcomeLibraryResult>((_resolve, reject) => {
                         options.signal?.addEventListener("abort", () => {
                             reject(new WeightedOutcomeLibraryGenerationCancelledError(BigInt(3), BigInt(6), new Map(), "src-1"));

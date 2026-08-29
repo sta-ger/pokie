@@ -29,7 +29,8 @@ import {ClusterWinCalculator} from "../session/videoslot/wincalculator/ClusterWi
 import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/winevaluation/SelectedEvaluatorGroupWinAggregationPolicy.js";
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
-import {generateExactWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
+import {generateWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
+import {preflightOutcomeLibraryGenerationFromEstimate} from "../weightedoutcome/generate/OutcomeLibraryGenerationRequest.js";
 import {estimateExactOutcomeSpaceSize} from "../weightedoutcome/generate/estimateExactOutcomeSpaceSize.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
@@ -52,6 +53,10 @@ export const DEFAULT_MANAGED_EXACT_OUTCOME_SPACE_SIZE = BigInt(50_000);
 export const DEFAULT_MANAGED_SAMPLED_OUTCOME_COUNT = BigInt(5_000);
 
 export type ManagedOutcomeGeneration = {
+    // This is an explicitly-versioned compatibility policy for managed Project
+    // conversion.  It is translated into the same domain request used by CLI
+    // and Studio; it never changes the generator's global default cap.
+    readonly generation: "exact" | "sampled";
     readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
 };
 
@@ -227,14 +232,15 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         const generated = await Promise.all(
             modes.map(async (mode) => ({
                 mode,
-                generated: await generateExactWeightedOutcomeLibrary({
+                generated: await generateWeightedOutcomeLibrary({
                     libraryId: `${game.getManifest().id}-${mode.id}`,
                     game,
                     pokieVersion: this.pokieVersion,
                     configHash,
-                    ...(declaredModes && declaredModes.length > 0 ? {betMode: mode.id} : {}),
+                    ...(declaredModes && declaredModes.length > 0 ? {mode: mode.id} : {}),
                     selectBetMode: hasRuntimeBetModes,
-                    ...(generation.sampled !== undefined ? {sampled: generation.sampled} : {}),
+                    generation: generation.generation,
+                    ...(generation.sampled !== undefined ? {sample: generation.sampled} : {}),
                     signal: options?.signal,
                     onProgress: (completed, total) => {
                         reportArtifactBuildProgress(options, {status: "running", completed, total, preflight});
@@ -311,12 +317,13 @@ function resolveManagedOutcomeGeneration(
     configHash: string,
     requested: ArtifactBuildOptions["outcomeLibraryGeneration"],
 ): ManagedOutcomeGeneration {
-    if (requested?.sampled !== undefined) return {sampled: requested.sampled};
-    if (requested?.exact) return {};
+    if (requested?.sampled !== undefined) return {generation: "sampled", sampled: requested.sampled};
+    if (requested?.exact) return {generation: "exact"};
 
     const estimate = estimateExactOutcomeSpaceSize(game);
-    if (estimate.totalOutcomeSpaceSize <= DEFAULT_MANAGED_EXACT_OUTCOME_SPACE_SIZE) return {};
+    if (estimate.totalOutcomeSpaceSize <= DEFAULT_MANAGED_EXACT_OUTCOME_SPACE_SIZE) return {generation: "exact"};
     return {
+        generation: "sampled",
         sampled: {
             sampleSize: DEFAULT_MANAGED_SAMPLED_OUTCOME_COUNT,
             // The configuration hash is stable for the same Blueprint/package, so this automatic
@@ -328,15 +335,18 @@ function resolveManagedOutcomeGeneration(
 
 function outcomeGenerationPreflight(game: PokieGame, generation: ManagedOutcomeGeneration): ArtifactBuildPreflight {
     const estimate = estimateExactOutcomeSpaceSize(game);
-    const sampled = generation.sampled;
-    const estimatedItemCount = sampled?.sampleSize ?? estimate.totalOutcomeSpaceSize;
+    const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, {
+        generation: generation.generation,
+        ...(generation.sampled === undefined ? {} : {sample: generation.sampled}),
+    });
+    const estimatedItemCount = preflight.expectedRawWork;
     return {
         estimatedItemCount,
         // A generated outcome record contains a round artifact, so this intentionally conservative estimate is
         // a planning signal only; the precise output size is unknown until grids have been deduplicated.
         estimatedBytes: estimatedItemCount * BigInt(1024),
-        ...(estimatedItemCount > BigInt(10_000) || sampled !== undefined
-            ? {complexityWarning: sampled === undefined
+        ...(estimatedItemCount > BigInt(10_000) || generation.sampled !== undefined
+            ? {complexityWarning: generation.sampled === undefined
                 ? `Exact generation will enumerate ${estimatedItemCount} reel-stop combinations.`
                 : `Large source (${estimate.totalOutcomeSpaceSize} reel-stop combinations): using ${estimatedItemCount} deterministic bounded-coverage draws. Use an explicit exact build only when the full artifact library fits your memory and storage budget.`}
             : {}),

@@ -7,8 +7,8 @@ import {
     assertPreparedArtifactDestinationAvailable,
     computeArtifactInputBindingHash,
     ExactEnumerationCheckpoint,
-    GenerateExactWeightedOutcomeLibraryOptions,
     GenerateExactWeightedOutcomeLibraryResult,
+    OutcomeLibraryGenerationRequest,
     OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleValidating,
     OutcomeLibraryBundleValidator,
@@ -25,7 +25,7 @@ import {
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
     estimateExactOutcomeSpaceSize,
-    generateExactWeightedOutcomeLibrary,
+    generateWeightedOutcomeLibrary,
     loadPokieGame,
     preflightOutcomeLibraryGenerationFromEstimate,
 } from "pokie";
@@ -146,7 +146,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     private readonly streamOutcomes: (filePath: string) => AsyncGenerator<WeightedOutcomeInput>;
     private readonly pokieVersion: string;
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
-    private readonly generate: (options: GenerateExactWeightedOutcomeLibraryOptions) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
+    private readonly generate: (request: OutcomeLibraryGenerationRequest) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
     private readonly estimateSpace: (game: PokieGame) => OutcomeSpaceEstimate;
     private readonly writeFile: (filePath: string, contents: string) => void;
     private readonly fileExists: (filePath: string) => boolean;
@@ -162,8 +162,8 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         streamOutcomes: (filePath: string) => AsyncGenerator<WeightedOutcomeInput> = streamJsonlOutcomes,
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
         generate: (
-            options: GenerateExactWeightedOutcomeLibraryOptions,
-        ) => Promise<GenerateExactWeightedOutcomeLibraryResult> = generateExactWeightedOutcomeLibrary,
+            request: OutcomeLibraryGenerationRequest,
+        ) => Promise<GenerateExactWeightedOutcomeLibraryResult> = generateWeightedOutcomeLibrary,
         estimateSpace: (game: PokieGame) => OutcomeSpaceEstimate = estimateExactOutcomeSpaceSize,
         writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
         fileExists: (filePath: string) => boolean = (filePath) => fs.existsSync(filePath),
@@ -574,22 +574,8 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 currentDestination: () => rawOutput,
                 read: async () => {
                     const game = await this.loadGame(packageRoot);
-                    const manifest = game.getManifest();
                     const resumeFrom = options.resume !== undefined && this.fileExists(options.resume) ? this.readCheckpoint(options.resume) : undefined;
-                    return this.generate({
-                        libraryId: options.libraryId ?? `${manifest.id}${options.mode !== undefined ? `-${options.mode}` : ""}`,
-                        game,
-                        pokieVersion: this.pokieVersion,
-                        ...(options.configHash === undefined ? {} : {configHash: options.configHash}),
-                        ...(options.mode === undefined ? {} : {betMode: options.mode}),
-                        ...(options.stake === undefined ? {} : {stake: options.stake}),
-                        ...(options.maxOutcomeSpaceSize === undefined ? {} : {maxOutcomeSpaceSize: options.maxOutcomeSpaceSize}),
-                        ...(options.exact ? {exact: true} : {}),
-                        ...sampling,
-                        ...(resumeFrom === undefined ? {} : {resumeFrom}),
-                        signal,
-                        ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
-                    });
+                    return this.generate(this.createGenerationRequest(game, options, sampling, signal, resumeFrom));
                 },
                 canPublish: () => rawOutput !== undefined,
                 assertDestinationAvailable: () => {
@@ -700,6 +686,41 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             throw new Error(`--bounded requires both --sample-size and --seed. ${GENERATE_USAGE}`);
         }
         return {bounded: {sampleSize, seed}};
+    }
+
+    /** The CLI grammar is a compatibility adapter; the generator only receives the public domain request. */
+    private createGenerationRequest(
+        game: PokieGame,
+        options: GenerateCliOptions,
+        sampling: {sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}},
+        signal?: AbortSignal,
+        resumeFrom?: ExactEnumerationCheckpoint,
+    ): OutcomeLibraryGenerationRequest {
+        const sample = sampling.sampled ?? sampling.bounded;
+        let generation: OutcomeLibraryGenerationRequest["generation"] = "default";
+        if (options.exact) generation = "exact";
+        else if (sampling.sampled !== undefined) generation = "sampled";
+        else if (sampling.bounded !== undefined) generation = "bounded";
+        // A generated package owns its configuration identity. Honor an
+        // explicit compatibility override, but otherwise record the same
+        // runtime hash Studio uses so equivalent requests have equivalent
+        // artifact and bundle provenance.
+        const configHash = options.configHash ?? game.getConfigHash?.();
+        return {
+            libraryId: options.libraryId ?? `${game.getManifest().id}${options.mode !== undefined ? `-${options.mode}` : ""}`,
+            game,
+            pokieVersion: this.pokieVersion,
+            generation,
+            ...(configHash === undefined ? {} : {configHash}),
+            ...(options.mode === undefined ? {} : {mode: options.mode}),
+            ...(options.stake === undefined ? {} : {stake: options.stake}),
+            ...(options.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: options.maxOutcomeSpaceSize}),
+            ...(sample === undefined ? {} : {sample}),
+            ...(options.out === undefined ? {} : {outputDestination: path.resolve(options.out)}),
+            ...(resumeFrom === undefined ? {} : {resumeFrom}),
+            ...(signal === undefined ? {} : {signal}),
+            ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
+        };
     }
 
     private printGenerateResult(result: GenerateExactWeightedOutcomeLibraryResult, options: GenerateCliOptions): void {
