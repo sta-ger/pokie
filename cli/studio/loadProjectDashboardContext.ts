@@ -1,6 +1,7 @@
 import {loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, type ProjectType} from "pokie";
 import path from "path";
 import {BlueprintMaterializationError} from "../materialize/BlueprintMaterializationError.js";
+import {RuntimePreparationError} from "../materialize/RuntimePreparationError.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
 import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
@@ -124,7 +125,7 @@ export async function loadProjectDashboardContext(
             status: "error",
             projectRoot: resolvedRoot,
             error: error instanceof Error ? error.message : String(error),
-            errorDetail: error instanceof BlueprintMaterializationError ? error.details : undefined,
+            errorDetail: error instanceof BlueprintMaterializationError || error instanceof RuntimePreparationError ? error.details : undefined,
         };
     }
 }

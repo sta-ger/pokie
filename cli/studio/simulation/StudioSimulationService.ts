@@ -22,7 +22,6 @@ import {
 } from "pokie";
 import crypto from "crypto";
 import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
-import {BlueprintMaterializationError} from "../../materialize/BlueprintMaterializationError.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {InMemoryStudioSimulationRepository} from "./InMemoryStudioSimulationRepository.js";
 import type {StudioSimulationJobRecord} from "./StudioSimulationJobRecord.js";
@@ -309,7 +308,8 @@ export class StudioSimulationService {
         try {
             runtime = await this.resolveRuntimePackageRoot(record.projectRoot, {signal: record.abortController.signal});
         } catch (error) {
-            this.fail(record, this.describeRuntimePreparationFailure(error));
+            if (record.abortController.signal.aborted) this.cancelRecord(record);
+            else this.fail(record, this.describeRuntimePreparationFailure(error));
             return;
         }
 
@@ -511,15 +511,14 @@ export class StudioSimulationService {
         this.markTerminal(record);
     }
 
-    // BlueprintMaterializationError.details may contain npm's full stderr. A simulation job only
-    // exposes one primary error line, so keep that technical output out of this surface and tell the
-    // user what they can actually do next. The dashboard-load path can still expose details separately
-    // where it has an expandable diagnostic field.
+    // Retain the familiar immediate recovery line, but append (rather than
+    // replace) the shared planner diagnostic so every Studio adapter exposes
+    // the attempted path and exact failed edge.
     private describeRuntimePreparationFailure(error: unknown): Error {
-        if (error instanceof BlueprintMaterializationError) {
+        if (error instanceof Error && error.name === "BlueprintMaterializationError") {
             return new Error(
-                `Simulation could not prepare a runnable runtime from this Blueprint (${error.phase} step). ` +
-                    "Fix the Blueprint or its local npm setup, then retry the simulation.",
+                "Simulation could not prepare a runnable runtime from this Blueprint. Fix the Blueprint or its local npm setup, then retry the simulation. " +
+                error.message,
             );
         }
         return error instanceof Error ? error : new Error(String(error));

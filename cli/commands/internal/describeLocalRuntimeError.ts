@@ -29,6 +29,7 @@ export function describeRuntimePackageLoadError(packageRoot: string, error: unkn
     if (error instanceof Error && (
         error.name === "UnsupportedProjectOperationError" ||
         error.name === "BlueprintMaterializationError" ||
+        error.name === "RuntimePreparationError" ||
         error.message.startsWith("Cannot prepare a runnable runtime") ||
         error.message.includes("Runtime materialization was cancelled")
     )) return error;

@@ -707,6 +707,39 @@ describe("StudioReplayExecutionService", () => {
         expect(job?.descriptor).toBeUndefined();
     });
 
+    it("cancels while runtime preparation is pending without loading a game or publishing a descriptor", async () => {
+        let preparationStarted = false;
+        const gameLoaded = false;
+        const service = new StudioReplayExecutionService(
+            new InMemoryStudioReplayRepository(),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            (_projectRoot, options) => new Promise<never>((_resolve, reject) => {
+                preparationStarted = true;
+                options?.signal?.addEventListener("abort", () => reject(new Error("preparation aborted")), {once: true});
+            }),
+        );
+
+        const result = service.start("/preparing", {round: 1});
+        if (result.status !== "created") throw new Error("expected job to be created");
+        await flushMacrotask();
+        expect(preparationStarted).toBe(true);
+
+        service.cancel("/preparing", result.job.id);
+        await flushMacrotask();
+
+        const job = service.getStatus("/preparing", result.job.id);
+        expect(job?.status).toBe("cancelled");
+        expect(gameLoaded).toBe(false);
+        expect(job?.descriptor).toBeUndefined();
+    });
+
     it("is idempotent when cancelling an already-terminal replay", async () => {
         const service = new StudioReplayExecutionService(
             new InMemoryStudioReplayRepository(),

@@ -275,14 +275,16 @@ export class StudioServer implements StudioServerHandling {
         // Every default Project execution service loads through the same materializing boundary as
         // Play. This makes a Blueprint save observable on the next simulation/replay/generation
         // instead of letting those paths load an earlier package-shaped interpretation of the path.
-        const loadCurrentProjectGame: typeof loadPokieGame = async (projectRoot) => {
-            const resolution = await this.resolveRuntimePackageRoot(projectRoot);
+        const loadCurrentProjectRuntimeGame = async (projectRoot: string, options: {readonly signal?: AbortSignal} = {}) => {
+            const resolution = await this.resolveRuntimePackageRoot(projectRoot, options);
             try {
+                if (options.signal?.aborted) throw new Error("Runtime preparation was cancelled before a runnable game was available.");
                 return await this.loadGame(resolution.runtimePath);
             } finally {
                 await resolution.release();
             }
         };
+        const loadCurrentProjectGame: typeof loadPokieGame = (projectRoot) => loadCurrentProjectRuntimeGame(projectRoot);
         this.simulationService =
             options.simulationService ??
             new StudioSimulationService(
@@ -301,8 +303,19 @@ export class StudioServer implements StudioServerHandling {
             );
         this.replayService =
             options.replayService ??
-            new StudioReplayExecutionService(undefined, loadCurrentProjectGame, undefined, undefined, undefined, undefined, this.pokieVersion, (record) =>
-                this.recordSimulationSampleReplay(record),
+            // Legacy construction shape: new StudioReplayExecutionService(undefined, loadCurrentProjectGame)
+            // now routes its signal-aware counterpart through the explicit runtime loader below.
+            new StudioReplayExecutionService(
+                undefined,
+                this.loadGame,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                this.pokieVersion,
+                (record) => this.recordSimulationSampleReplay(record),
+                undefined,
+                loadCurrentProjectRuntimeGame,
             );
         this.roundRecorder = options.roundRecorder ?? new StudioRoundRecorder();
         this.playService =

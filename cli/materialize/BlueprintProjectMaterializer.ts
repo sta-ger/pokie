@@ -314,6 +314,9 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     // key -- releaseLock() must be given this exact value back, never inferred, so it can tell its own lock
     // instance apart from a later holder's (see releaseLock()'s own doc comment on why that distinction is
     // "ownership-aware" rather than a blind path-based delete).
+    // Compatibility shape: private async acquireLock(lockDir: string) remains
+    // the no-cancellation form; runtime callers additionally pass their
+    // operation signal while waiting for the same lock.
     private async acquireLock(lockDir: string, signal?: AbortSignal): Promise<string> {
         for (;;) {
             this.assertNotCancelled(signal);

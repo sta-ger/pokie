@@ -12,7 +12,9 @@ import {
 } from "pokie";
 import {withLinkedLocalPokieRuntime} from "../prepare/PackageCommandRunner.js";
 import {BlueprintProjectMaterializer} from "./BlueprintProjectMaterializer.js";
+import {BlueprintMaterializationError} from "./BlueprintMaterializationError.js";
 import {RunnableArtifactMaterializer} from "./RunnableArtifactMaterializer.js";
+import {RuntimePreparationError} from "./RuntimePreparationError.js";
 import {UnsupportedProjectOperationError} from "./UnsupportedProjectOperationError.js";
 
 // What every CLI runtime operation (sim/dev/serve/replay, Studio's Play runtime) gets back once it's
@@ -144,18 +146,20 @@ export function createMaterializingRuntimePackageResolver(
     dependencies: MaterializingRuntimePackageResolverDependencies = {},
 ): RuntimePackageResolving {
     const resolveProject = dependencies.resolveProject ?? new ProjectTargetResolver();
-    const materializer =
-        dependencies.materializer ??
-        new RunnableArtifactMaterializer(new BlueprintProjectMaterializer(
-            pokieVersion,
-            undefined,
-            undefined,
-            undefined,
-            pokiePackageRoot !== undefined ? withLinkedLocalPokieRuntime(pokiePackageRoot) : undefined,
-            undefined,
-            undefined,
-            pokiePackageRoot !== undefined ? createLocalRuntimeIdentity(pokiePackageRoot) : pokieVersion,
-        ));
+    // Even an injected materializer is a Blueprint-stage materializer.  Keep
+    // PAR import/staging planner-owned so tests and host integrations cannot
+    // accidentally receive an unsupported workbook directly.
+    const blueprintMaterializer = dependencies.materializer ?? new BlueprintProjectMaterializer(
+        pokieVersion,
+        undefined,
+        undefined,
+        undefined,
+        pokiePackageRoot !== undefined ? withLinkedLocalPokieRuntime(pokiePackageRoot) : undefined,
+        undefined,
+        undefined,
+        pokiePackageRoot !== undefined ? createLocalRuntimeIdentity(pokiePackageRoot) : pokieVersion,
+    );
+    const materializer = new RunnableArtifactMaterializer(blueprintMaterializer);
 
     return async (packageRoot: string, options: RuntimePackageResolutionOptions = {}): Promise<RuntimePackageResolution> => {
         if (options.signal?.aborted) throw new Error("Runtime preparation was cancelled before a runnable game was available.");
@@ -172,8 +176,20 @@ export function createMaterializingRuntimePackageResolver(
             return {runtimePath: project.rootPath, release: noRelease};
         }
         if (runtimePlan.status === "planned") {
-            const materialized = await materializer.materialize(project, options);
-            return {runtimePath: materialized.runtimePath, release: materialized.release};
+            try {
+                const materialized = await materializer.materialize(project, options);
+                return {runtimePath: materialized.runtimePath, release: materialized.release};
+            } catch (error) {
+                if (options.signal?.aborted) throw error;
+                // Preserve the dedicated lifecycle error (including phase and
+                // npm detail) for direct consumers while enriching its public
+                // message with the planner-owned runtime path.
+                if (error instanceof BlueprintMaterializationError) {
+                    error.message = new RuntimePreparationError(project, runtimePlan, error).message;
+                    throw error;
+                }
+                throw new RuntimePreparationError(project, runtimePlan, error);
+            }
         }
         // Native Outcome Library routes are selected by their commands before
         // this boundary. Everything else retains the planner's attempted path

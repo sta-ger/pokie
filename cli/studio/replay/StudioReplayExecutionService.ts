@@ -37,6 +37,8 @@ import type {ValidatedReplayRequest} from "./validateReplayRequest.js";
 
 const DEFAULT_CHUNK_SIZE = 500;
 
+export type StudioGameLoading = (projectRoot: string, options?: {readonly signal?: AbortSignal}) => ReturnType<typeof loadPokieGame>;
+
 export type StudioReplayStartResult =
     | {status: "created"; job: StudioReplayJobView}
     | {status: "conflict"; activeJobId: string};
@@ -59,6 +61,7 @@ export type GetReplayDownloadResult =
 export class StudioReplayExecutionService {
     private readonly repository: StudioReplayRepository;
     private readonly loadGame: typeof loadPokieGame;
+    private readonly loadRuntimeGame: StudioGameLoading;
     private readonly chunkSize: number;
     private readonly now: () => number;
     private readonly yieldToEventLoop: () => Promise<void>;
@@ -88,9 +91,11 @@ export class StudioReplayExecutionService {
         pokieVersion = "unknown",
         onCompleted: (record: StudioReplayJobRecord) => void = () => undefined,
         outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
+        loadRuntimeGame: StudioGameLoading = (projectRoot) => loadGame(projectRoot),
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
+        this.loadRuntimeGame = loadRuntimeGame;
         this.chunkSize = chunkSize;
         this.now = now;
         this.yieldToEventLoop = yieldToEventLoop;
@@ -246,9 +251,10 @@ export class StudioReplayExecutionService {
 
         let game: PokieGame;
         try {
-            game = await this.loadGame(record.projectRoot);
+            game = await this.loadRuntimeGame(record.projectRoot, {signal: record.abortController.signal});
         } catch (error) {
-            this.fail(record, error);
+            if (record.abortController.signal.aborted) this.cancelRecord(record);
+            else this.fail(record, error);
             return;
         }
 
