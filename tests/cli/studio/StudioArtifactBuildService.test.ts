@@ -2,8 +2,10 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
-import {ArtifactBuildCancelledError, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactBuilderRegistry, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
+import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
+import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 
 function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
@@ -300,6 +302,44 @@ describe("StudioArtifactBuildService", () => {
             expect(fs.existsSync(workbookPath)).toBe(true);
             expect(fs.readdirSync(stakePath)).toEqual([]);
             expect(fs.existsSync(path.join(stakePath, ".pokie", "par-import", "conversion-evidence.json"))).toBe(false);
+            expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+        });
+
+        it.each(["outcomeLibrary", "stakeAdapter"] as const)("removes the Studio Outcome registration when PAR-to-%s is cancelled during promotion", async (target) => {
+            const workbookPath = path.join(workDir, "source.xlsx");
+            const destination = path.join(workDir, target === "outcomeLibrary" ? "cancelled-outcome" : "cancelled-stake");
+            const controller = new AbortController();
+            const projectRegistration = new StudioProjectRegistrationService(new InMemoryStudioProjectRegistry());
+            const managedOutcomes = new ManagedOutcomeProjectService(
+                undefined,
+                async (project) => {
+                    const registered = await projectRegistration.registerManaged(project.rootPath, path.basename(project.rootPath));
+                    if (registered.status !== "ok") throw new Error("Studio registry unavailable");
+                },
+                undefined,
+                (projectRoot) => projectRegistration.remove(projectRoot),
+            );
+            let registrations = 0;
+            const cancellationAfterPromotion = {
+                findCompatible: (...args: Parameters<ManagedOutcomeProjectService["findCompatible"]>) => managedOutcomes.findCompatible(...args),
+                allocateRoot: (...args: Parameters<ManagedOutcomeProjectService["allocateRoot"]>) => managedOutcomes.allocateRoot(...args),
+                release: (...args: Parameters<ManagedOutcomeProjectService["release"]>) => managedOutcomes.release(...args),
+                registerAndOpen: async (...args: Parameters<ManagedOutcomeProjectService["registerAndOpen"]>) => {
+                    registrations++;
+                    const project = await managedOutcomes.registerAndOpen(...args);
+                    if (registrations === 2) controller.abort();
+                    return project;
+                },
+            };
+            const registry = new ArtifactBuilderRegistry("1.3.0", undefined, cancellationAfterPromotion);
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+            fs.mkdirSync(destination);
+            service = new StudioArtifactBuildService("1.3.0", registry);
+
+            await expect(service.build(workbookPath, target, destination, {signal: controller.signal})).resolves.toMatchObject({status: "cancelled"});
+
+            expect(fs.readdirSync(destination)).toEqual([]);
+            expect(await projectRegistration.list()).toEqual([]);
             expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
         });
 

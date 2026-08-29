@@ -89,11 +89,61 @@ describe("ManagedOutcomeProjectService atomic registry writes", () => {
         }));
         await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{...mode, outcomes}], outcomePath);
 
+        const studioRoots = new Set<string>();
         try {
-            const service = new ManagedOutcomeProjectService(undefined, () => Promise.reject(new Error("registration callback failed")));
+            const service = new ManagedOutcomeProjectService(
+                undefined,
+                (project) => {
+                    studioRoots.add(project.rootPath);
+                    return Promise.reject(new Error("registration callback failed"));
+                },
+                undefined,
+                (rootPath) => {
+                    studioRoots.delete(rootPath);
+                    return Promise.resolve();
+                },
+            );
             await expect(service.registerAndOpen(blueprintPath, outcomePath, compatibility)).rejects.toThrow(/registration callback failed/);
             expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+            expect(studioRoots).toEqual(new Set());
             await expect(service.findCompatible(blueprintPath, compatibility)).resolves.toBeUndefined();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("removes the callback-owned registration when a published managed Outcome is released", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-managed-outcome-release-callback-"));
+        const blueprintPath = path.join(workDir, "game.blueprint.json");
+        const outcomePath = path.join(workDir, "outcome");
+        const compatibility = {gameId: "sample-slot", gameVersion: "0.1.0", configHash: "config-hash", pokieVersion: "1.3.0"};
+        fs.writeFileSync(blueprintPath, "{}");
+        const mode = buildOutcomeLibraryBundleModeInput("base", "base");
+        const outcomes = Array.from(mode.outcomes as Iterable<WeightedOutcomeInput<string>>).map((outcome) => ({
+            ...outcome,
+            artifact: {...outcome.artifact, provenance: {...outcome.artifact.provenance, configHash: compatibility.configHash}},
+        }));
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{...mode, outcomes}], outcomePath);
+        const studioRoots = new Set<string>();
+
+        try {
+            const service = new ManagedOutcomeProjectService(
+                undefined,
+                (project) => {
+                    studioRoots.add(project.rootPath);
+                    return Promise.resolve();
+                },
+                undefined,
+                (rootPath) => {
+                    studioRoots.delete(rootPath);
+                    return Promise.resolve();
+                },
+            );
+            await service.registerAndOpen(blueprintPath, outcomePath, compatibility);
+            await service.release(blueprintPath, outcomePath);
+
+            expect(studioRoots).toEqual(new Set());
+            expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }

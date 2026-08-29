@@ -149,11 +149,23 @@ describe("ArtifactBuilderRegistry", () => {
             fs.rmSync(directory, {recursive: true, force: true});
         });
 
-        it.each(["promotion failure", "promotion cancellation"])("rolls back a PAR Outcome publication and preserves a caller-owned empty destination on %s", async (failureMode) => {
+        it.each(["outcomeLibrary", "stakeAdapter"] as const)("removes the managed and Studio registrations when PAR-to-%s promotion is cancelled", async (target) => {
             const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-promotion-"));
             const workbookPath = path.join(directory, "source.xlsx");
-            const destination = path.join(directory, "outcomes");
-            const managedOutcomes = new ManagedOutcomeProjectService();
+            const destination = path.join(directory, target === "outcomeLibrary" ? "outcomes" : "stake");
+            const studioRoots = new Set<string>();
+            const managedOutcomes = new ManagedOutcomeProjectService(
+                undefined,
+                (project) => {
+                    studioRoots.add(project.rootPath);
+                    return Promise.resolve();
+                },
+                undefined,
+                (rootPath) => {
+                    studioRoots.delete(rootPath);
+                    return Promise.resolve();
+                },
+            );
             const controller = new AbortController();
             let registrations = 0;
             const failingPromotionService = {
@@ -162,9 +174,8 @@ describe("ArtifactBuilderRegistry", () => {
                 release: (...args: Parameters<ManagedOutcomeProjectService["release"]>) => managedOutcomes.release(...args),
                 registerAndOpen: async (...args: Parameters<ManagedOutcomeProjectService["registerAndOpen"]>) => {
                     registrations++;
-                    if (registrations === 2 && failureMode === "promotion failure") throw new Error("promotion registration failed");
                     const project = await managedOutcomes.registerAndOpen(...args);
-                    if (registrations === 2 && failureMode === "promotion cancellation") controller.abort();
+                    if (registrations === 2) controller.abort();
                     return project;
                 },
             };
@@ -179,14 +190,13 @@ describe("ArtifactBuilderRegistry", () => {
             fs.mkdirSync(destination);
 
             try {
-                await expect(withPromotionFailure.build("outcomeLibrary", source, destination, {signal: controller.signal})).rejects.toThrow(
-                    failureMode === "promotion failure" ? "promotion registration failed" : /cancelled/i,
-                );
+                await expect(withPromotionFailure.build(target, source, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
                 expect(fs.existsSync(workbookPath)).toBe(true);
                 expect(fs.existsSync(destination)).toBe(true);
                 expect(fs.readdirSync(destination)).toEqual([]);
                 expect(fs.existsSync(path.join(destination, ".pokie", "par-import", "conversion-evidence.json"))).toBe(false);
                 expect(fs.existsSync(path.join(directory, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+                expect(studioRoots).toEqual(new Set());
             } finally {
                 fs.rmSync(directory, {recursive: true, force: true});
             }
