@@ -19,8 +19,12 @@ export type StudioArtifactPreviewView =
           readonly preparedOperationId?: string;
           /** Stake information known before publication. */
           readonly stakePreflight?: {
+              readonly route: "reuse" | "generate" | "publish";
+              readonly selectedPrerequisiteLocation?: string;
               readonly estimatedItemCount?: string;
               readonly estimatedBytes?: string;
+              readonly complexityWarning?: string;
+              readonly unavailableMetrics?: readonly string[];
               readonly warnings: readonly string[];
           };
       }

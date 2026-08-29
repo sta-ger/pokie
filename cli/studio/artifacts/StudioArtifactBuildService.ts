@@ -337,6 +337,7 @@ export class StudioArtifactBuildService {
                 ...(result.importedBlueprintPath !== undefined ? {importedBlueprintPath: result.importedBlueprintPath} : {}),
                 ...(result.conversionEvidencePath !== undefined ? {conversionEvidencePath: result.conversionEvidencePath} : {}),
                 ...(result.stakeManifest !== undefined ? {stakeManifest: result.stakeManifest, stakeFiles: result.stakeFiles ?? []} : {}),
+                ...(operation === undefined ? {} : {stakePrerequisiteProvenance: this.stakePrerequisiteProvenance(operation, result)}),
             };
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
@@ -479,15 +480,58 @@ export class StudioArtifactBuildService {
         return id;
     }
 
-    private stakePreflightView(operation: PreparedStakeProjectionOperation): {readonly warnings: readonly string[]} {
+    private stakePreflightView(operation: PreparedStakeProjectionOperation): {
+        readonly route: "reuse" | "generate" | "publish";
+        readonly selectedPrerequisiteLocation?: string;
+        readonly estimatedItemCount?: string;
+        readonly estimatedBytes?: string;
+        readonly complexityWarning?: string;
+        readonly unavailableMetrics?: readonly string[];
+        readonly warnings: readonly string[];
+    } {
         const warnings: string[] = [];
-        if (operation.plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary")) {
+        if (operation.preflight.route === "reuse") {
             warnings.push("A compatible managed Outcome Library will be reused.");
         }
-        if (operation.plan.steps.some((step) => step.kind === "generateOutcomeLibrary")) {
-            warnings.push("A compatible Outcome Library will be generated before Stake publication; exact item and byte estimates will be recorded by the job preflight.");
+        if (operation.preflight.route === "generate") {
+            warnings.push("A compatible Outcome Library will be generated before Stake publication.");
         }
-        return {warnings};
+        return {
+            route: operation.preflight.route,
+            ...(operation.preflight.selectedPrerequisiteLocation === undefined ? {} : {selectedPrerequisiteLocation: operation.preflight.selectedPrerequisiteLocation}),
+            ...(operation.preflight.estimatedItemCount === undefined ? {} : {estimatedItemCount: operation.preflight.estimatedItemCount.toString()}),
+            ...(operation.preflight.estimatedBytes === undefined ? {} : {estimatedBytes: operation.preflight.estimatedBytes.toString()}),
+            ...(operation.preflight.complexityWarning === undefined ? {} : {complexityWarning: operation.preflight.complexityWarning}),
+            ...(operation.preflight.unavailableMetrics === undefined ? {} : {unavailableMetrics: operation.preflight.unavailableMetrics}),
+            warnings,
+        };
+    }
+
+    private stakePrerequisiteProvenance(
+        operation: PreparedStakeProjectionOperation,
+        result: import("pokie").ArtifactBuildResult,
+    ): NonNullable<Extract<StudioArtifactBuildView, {readonly status: "ok"}>["stakePrerequisiteProvenance"]> {
+        const source = operation.plan.source.configurationProvenance;
+        const ownership = this.managedOutcomeOwnership(result, operation.plan)[0];
+        let disposition: "borrowed" | "owned" | "transient" | "none" = "none";
+        if (operation.preflight.route === "reuse") disposition = "borrowed";
+        else if (operation.preflight.route === "generate") disposition = "owned";
+        return {
+            route: operation.preflight.route,
+            ...(operation.preflight.selectedPrerequisiteLocation === undefined
+                ? {selectedPrerequisiteLocation: ownership?.rootPath ?? result.prerequisiteProjectRoots?.[0]}
+                : {selectedPrerequisiteLocation: operation.preflight.selectedPrerequisiteLocation}),
+            disposition: ownership?.disposition ?? disposition,
+            ...(source?.gameId === undefined ? {} : {sourceGameId: source.gameId}),
+            ...(source?.gameVersion === undefined ? {} : {sourceGameVersion: source.gameVersion}),
+            ...(source?.configurationHash === undefined ? {} : {sourceConfigurationHash: source.configurationHash}),
+            ...(source?.pokieVersion === undefined ? {} : {sourcePokieVersion: source.pokieVersion}),
+            ...(source?.generationSemantics === undefined ? {} : {generationSemantics: source.generationSemantics}),
+            ...(source?.sampleCount === undefined ? {} : {sampleCount: source.sampleCount}),
+            ...(source?.sampleSeed === undefined ? {} : {sampleSeed: source.sampleSeed}),
+            ...(source?.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: source.maxExactOutcomeSpaceSize}),
+            ...(source?.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: source.compatibilityPolicyVersion}),
+        };
     }
 
     private plan(project: PokieProject, target: ArtifactTargetType, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {

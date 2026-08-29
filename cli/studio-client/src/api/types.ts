@@ -1350,6 +1350,7 @@ export type StudioArtifactBuildView =
           preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
           stakeManifest?: StakeEngineManifest;
           stakeFiles?: string[];
+          stakePrerequisiteProvenance?: {route: "reuse" | "generate" | "publish"; selectedPrerequisiteLocation?: string; disposition: "borrowed" | "owned" | "transient" | "none"; sourceGameId?: string; sourceGameVersion?: string; sourceConfigurationHash?: string; sourcePokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; sampleCount?: string; sampleSeed?: string; maxExactOutcomeSpaceSize?: string; compatibilityPolicyVersion?: string};
           importedBlueprintPath?: string;
           conversionEvidencePath?: string;
       }
@@ -1389,7 +1390,7 @@ export type StudioArtifactPreviewView =
           sourceType: StudioProjectType;
           plan: StudioArtifactConversionPlan;
           preparedOperationId?: string;
-          stakePreflight?: {estimatedItemCount?: string; estimatedBytes?: string; warnings: string[]};
+          stakePreflight?: {route: "reuse" | "generate" | "publish"; selectedPrerequisiteLocation?: string; estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string; unavailableMetrics?: string[]; warnings: string[]};
       }
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
     | {

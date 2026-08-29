@@ -25,6 +25,21 @@ export type StudioArtifactBuildView =
           /** Exact Stake publication evidence for the goal-oriented Stake card. */
           readonly stakeManifest?: StakeEngineManifest;
           readonly stakeFiles?: readonly string[];
+          /** Compatibility and ownership facts for the prerequisite selected at preflight. */
+          readonly stakePrerequisiteProvenance?: {
+              readonly route: "reuse" | "generate" | "publish";
+              readonly selectedPrerequisiteLocation?: string;
+              readonly disposition: "borrowed" | "owned" | "transient" | "none";
+              readonly sourceGameId?: string;
+              readonly sourceGameVersion?: string;
+              readonly sourceConfigurationHash?: string;
+              readonly sourcePokieVersion?: string;
+              readonly generationSemantics?: "exact" | "boundedSample";
+              readonly sampleCount?: string;
+              readonly sampleSeed?: string;
+              readonly maxExactOutcomeSpaceSize?: string;
+              readonly compatibilityPolicyVersion?: string;
+          };
       }
     | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}
     | {readonly status: "conflict"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}

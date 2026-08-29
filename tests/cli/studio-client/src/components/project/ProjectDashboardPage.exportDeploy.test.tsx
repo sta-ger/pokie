@@ -663,7 +663,14 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                         status: "ok", target: "stakeAdapter", destination: "/games/stakeengine", destinationKind: "directory",
                         plannedOutputs: ["index.json"], sourceType: "blueprint",
                         preparedOperationId: "stake-preview-1",
-                        stakePreflight: {warnings: ["A compatible Outcome Library will be generated."]},
+                        stakePreflight: {
+                            route: "generate",
+                            estimatedItemCount: "5000",
+                            estimatedBytes: "5120000",
+                            complexityWarning: "Large source",
+                            unavailableMetrics: ["Final Stake byte size is unavailable until the generated Outcome Library is materialized."],
+                            warnings: ["A compatible Outcome Library will be generated."],
+                        },
                         plan: {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "stakeAdapter", capabilities: []}, steps: [{choice: "generate", kind: "generateManagedOutcomeLibrary", output: {kind: "outcomeLibrary"}}], preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false}},
                     }),
                 });
@@ -678,7 +685,12 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                     status: 200,
                     json: () => Promise.resolve({
                         id: "stake-build", target: "stakeAdapter", status: "completed", cancellationRequested: false,
-                        result: {status: "ok", target: "stakeAdapter", outputPath: "/games/stakeengine", outputKind: "directory", sourceType: "blueprint"},
+                        result: {
+                            status: "ok", target: "stakeAdapter", outputPath: "/games/stakeengine", outputKind: "directory", sourceType: "blueprint",
+                            stakeManifest: {schemaVersion: 1, generatedBy: "pokie", pokieVersion: "1.3.0", generatedAt: "2026-01-01", modes: [], files: []},
+                            stakeFiles: ["pokie-manifest.json"],
+                            stakePrerequisiteProvenance: {route: "generate", disposition: "owned", selectedPrerequisiteLocation: "/games/.pokie/outcome", sourceGameId: "sample-slot", sourceGameVersion: "0.1.0", sourceConfigurationHash: "sha256:test", generationSemantics: "boundedSample", sampleCount: "5000", sampleSeed: "seed", compatibilityPolicyVersion: "managed-v1"},
+                        },
                     }),
                 });
             }
@@ -698,7 +710,10 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
 
         expect(buildRequest).toEqual({target: "stakeAdapter", outDir: undefined, preparedOperationId: "stake-preview-1"});
+        expect(within(buildArtifactSection).getByText(/Stake route: generate compatible Outcome Library/)).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByText(/Estimated Stake items: 5000/)).toBeInTheDocument();
         expect(await within(buildArtifactSection).findByText("Built to /games/stakeengine.")).toBeInTheDocument();
+        expect(await within(buildArtifactSection).findByText(/Stake prerequisite: generate \(owned\)/)).toBeInTheDocument();
     });
 
     it("runs the outcome-library generation right here (no hand-off to the Outcome Libraries tab) when its own card is chosen", async () => {

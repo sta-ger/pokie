@@ -1,4 +1,4 @@
-import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import type {ArtifactBuildOptions, ArtifactBuildPreflight} from "./ArtifactBuildOptions.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {ArtifactBuilderRegistry} from "./ArtifactBuilderRegistry.js";
 import {describeArtifactConversionPlanDiagnostic, type ArtifactConversionPlan} from "./ArtifactConversionPlanner.js";
@@ -37,7 +37,16 @@ export type PreparedStakeProjectionOperation = {
     readonly source: PokieProject;
     readonly destinationPath: string;
     readonly plan: ArtifactConversionPlan;
+    /** Read-only user-visible preflight bound to this immutable operation. */
+    readonly preflight: StakeProjectionPreflight;
     readonly options?: Pick<ArtifactBuildOptions, "outcomeLibraryGeneration">;
+};
+
+export type StakeProjectionPreflight = ArtifactBuildPreflight & {
+    readonly route: "reuse" | "generate" | "publish";
+    readonly selectedPrerequisiteLocation?: string;
+    /** Truthful explanations for metrics unavailable before generation finishes. */
+    readonly unavailableMetrics?: readonly string[];
 };
 
 export class StakeProjectionExportService implements StakeProjectionExportServicing {
@@ -64,7 +73,21 @@ export class StakeProjectionExportService implements StakeProjectionExportServic
             : {outcomeLibraryGeneration: options.outcomeLibraryGeneration};
         const plan = await this.prepare(source, destinationPath, preparedOptions);
         if (plan.status === "planned") await this.validate(source, plan);
-        return {source, destinationPath, plan, ...(preparedOptions === undefined ? {} : {options: preparedOptions})};
+        const reused = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
+        const generated = plan.steps.some((step) => step.kind === "generateOutcomeLibrary");
+        const estimate = plan.status === "planned"
+            ? await this.registry.inspectPreparedStakePreflight(source, plan)
+            : {};
+        let route: StakeProjectionPreflight["route"] = "publish";
+        if (reused !== undefined) route = "reuse";
+        else if (generated) route = "generate";
+        const preflight: StakeProjectionPreflight = {
+            ...estimate,
+            route,
+            ...(reused?.output.canonicalLocation === undefined ? {} : {selectedPrerequisiteLocation: reused.output.canonicalLocation}),
+            ...(generated ? {unavailableMetrics: ["Final Stake byte size is unavailable until the generated Outcome Library is materialized."]} : {}),
+        };
+        return {source, destinationPath, plan, preflight, ...(preparedOptions === undefined ? {} : {options: preparedOptions})};
     }
 
     /** Execute the immutable operation prepared for this exact destination. */

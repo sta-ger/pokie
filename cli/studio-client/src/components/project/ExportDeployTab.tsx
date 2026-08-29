@@ -79,6 +79,12 @@ function artifactDestinationTitle(target: StudioArtifactTargetType): string {
     return "Choose an artifact output directory";
 }
 
+function describeStakeRoute(route: "reuse" | "generate" | "publish"): string {
+    if (route === "reuse") return "reuse verified Outcome Library";
+    if (route === "generate") return "generate compatible Outcome Library";
+    return "publish existing Stake source";
+}
+
 const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["outcomeLibrary", "buildArtifact", "remoteDeployment"];
 
 // Every "Configure"/etc-free run below runs against this single project-wide mode name -- the project's
@@ -475,8 +481,12 @@ function TargetCard({
                             <Text size="sm">Status: {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}</Text>
                             {"stakePreflight" in artifactPreview.result && artifactPreview.result.stakePreflight !== undefined && (
                                 <Text size="sm" c="dimmed">
-                                    Stake estimate: {artifactPreview.result.stakePreflight.estimatedItemCount ?? "item count will be measured from the selected library"} item(s)
+                                    Stake route: {describeStakeRoute(artifactPreview.result.stakePreflight.route)}.
+                                    {artifactPreview.result.stakePreflight.selectedPrerequisiteLocation !== undefined && ` Selected prerequisite: ${artifactPreview.result.stakePreflight.selectedPrerequisiteLocation}.`}
+                                    {` Estimated Stake items: ${artifactPreview.result.stakePreflight.estimatedItemCount ?? "unavailable"}`}
                                     {artifactPreview.result.stakePreflight.estimatedBytes !== undefined ? `, ${artifactPreview.result.stakePreflight.estimatedBytes} bytes` : ""}.
+                                    {artifactPreview.result.stakePreflight.complexityWarning !== undefined ? ` Warning: ${artifactPreview.result.stakePreflight.complexityWarning}` : ""}
+                                    {artifactPreview.result.stakePreflight.unavailableMetrics?.length ? ` ${artifactPreview.result.stakePreflight.unavailableMetrics.join(" ")}` : ""}
                                     {artifactPreview.result.stakePreflight.warnings.length > 0 ? ` ${artifactPreview.result.stakePreflight.warnings.join(" ")}` : ""}
                                 </Text>
                             )}
@@ -564,6 +574,16 @@ function TargetCard({
                             {artifactBuildRun.result.stakeManifest !== undefined && (
                                 <Text size="sm" c="dimmed" mt={4}>
                                     Stake manifest: {artifactBuildRun.result.stakeManifest.modes.map((mode) => `${mode.name} (cost ${mode.cost})`).join(", ") || "no modes"}. Files: {artifactBuildRun.result.stakeFiles?.join(", ") || "none"}.
+                                </Text>
+                            )}
+                            {artifactBuildRun.result.stakePrerequisiteProvenance !== undefined && (
+                                <Text size="sm" c="dimmed" mt={4}>
+                                    Stake prerequisite: {artifactBuildRun.result.stakePrerequisiteProvenance.route} ({artifactBuildRun.result.stakePrerequisiteProvenance.disposition}).
+                                    {artifactBuildRun.result.stakePrerequisiteProvenance.selectedPrerequisiteLocation !== undefined && ` Location: ${artifactBuildRun.result.stakePrerequisiteProvenance.selectedPrerequisiteLocation}.`}
+                                    {artifactBuildRun.result.stakePrerequisiteProvenance.sourceGameId !== undefined && ` Source: ${artifactBuildRun.result.stakePrerequisiteProvenance.sourceGameId}@${artifactBuildRun.result.stakePrerequisiteProvenance.sourceGameVersion ?? "unknown"}.`}
+                                    {artifactBuildRun.result.stakePrerequisiteProvenance.sourceConfigurationHash !== undefined && ` Configuration: ${artifactBuildRun.result.stakePrerequisiteProvenance.sourceConfigurationHash}.`}
+                                    {artifactBuildRun.result.stakePrerequisiteProvenance.generationSemantics !== undefined && ` Generation: ${artifactBuildRun.result.stakePrerequisiteProvenance.generationSemantics}${artifactBuildRun.result.stakePrerequisiteProvenance.sampleCount !== undefined ? ` (${artifactBuildRun.result.stakePrerequisiteProvenance.sampleCount}, seed ${artifactBuildRun.result.stakePrerequisiteProvenance.sampleSeed ?? "none"})` : ""}.`}
+                                    {artifactBuildRun.result.stakePrerequisiteProvenance.compatibilityPolicyVersion !== undefined && ` Policy: ${artifactBuildRun.result.stakePrerequisiteProvenance.compatibilityPolicyVersion}.`}
                                 </Text>
                             )}
                             {artifactBuildRun.result.preflight && (

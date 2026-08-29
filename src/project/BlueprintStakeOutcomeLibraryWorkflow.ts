@@ -274,6 +274,22 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         };
     }
 
+    /** The same no-write generation estimate used before materialisation. */
+    public async inspectGenerationPreflight(source: PokieProject, options?: ArtifactBuildOptions): Promise<ArtifactBuildPreflight> {
+        const prepared = await this.prepare(source, options);
+        const request = prepareOutcomeLibraryGeneration({
+            libraryId: prepared.game.getManifest().id,
+            game: prepared.game,
+            pokieVersion: this.pokieVersion,
+            configHash: prepared.configHash,
+            generation: prepared.generation.generation,
+            ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize}),
+            ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
+            ...(prepared.generation.sampled === undefined ? {} : {sample: prepared.generation.sampled}),
+        });
+        return outcomeGenerationPreflight(request.preflight);
+    }
+
     private async generateBundle(
         blueprintPath: string,
         game: PokieGame,

@@ -97,6 +97,41 @@ describe("StudioArtifactBuildService", () => {
                 throw new Error("expected ok");
             }
             expect(result.sourceType).toBe("blueprint");
+            expect(result.stakePreflight).toMatchObject({
+                route: "generate",
+                estimatedItemCount: expect.any(String),
+                estimatedBytes: expect.any(String),
+                unavailableMetrics: [expect.stringContaining("Final Stake byte size")],
+            });
+            expect(result.stakePreflight?.estimatedItemCount).not.toBe("0");
+        });
+
+        it("derives a reuse preview from the verified selected library and returns its provenance after publication", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const firstDestination = path.join(workDir, "first-stake");
+            const first = await service.build(blueprintPath, "stakeAdapter", firstDestination);
+
+            expect(first).toMatchObject({
+                status: "ok",
+                stakePrerequisiteProvenance: {
+                    route: "generate",
+                    disposition: "owned",
+                    sourceGameId: "sample-slot",
+                    sourceGameVersion: "0.1.0",
+                    sourceConfigurationHash: expect.stringMatching(/^sha256:/),
+                },
+            });
+            const preview = await service.preview(blueprintPath, "stakeAdapter", path.join(workDir, "reused-stake"));
+            expect(preview).toMatchObject({
+                status: "ok",
+                stakePreflight: {
+                    route: "reuse",
+                    selectedPrerequisiteLocation: expect.any(String),
+                    estimatedItemCount: expect.any(String),
+                    estimatedBytes: expect.any(String),
+                },
+            });
+            if (preview.status === "ok") expect(preview.stakePreflight?.unavailableMetrics).toBeUndefined();
         });
 
         it("binds a Stake build to the opaque operation prepared by preview", async () => {
