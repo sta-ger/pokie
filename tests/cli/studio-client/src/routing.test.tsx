@@ -197,6 +197,7 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         await screen.findByRole("heading", {name: "A"});
         await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent("/games/a")}/overview`));
         expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByText(/The requested Studio section is no longer available/)).toBeInTheDocument();
     });
 });
 

@@ -167,8 +167,8 @@ function isProjectTab(value: string | undefined): value is ProjectTab {
 
 // Retired routes are not kept as a second set of workflow components. They do remain intelligible
 // bookmarks: each one points at the single retained owner and names the migration rather than silently
-// changing a user's task context. A plain unknown tab still goes to Overview, where it is safe to recover
-// without guessing which operation the old URL meant.
+// changing a user's task context. A plain unknown tab also reaches Overview with an explicit unavailable
+// explanation: a removed/renamed bookmark must not look as though Studio silently accepted its task.
 type LegacyProjectRouteMigration = {destination: ProjectTab; message: string};
 
 function legacyProjectRouteMigration(tab: string | undefined): LegacyProjectRouteMigration | undefined {
@@ -187,7 +187,12 @@ function legacyProjectRouteMigration(tab: string | undefined): LegacyProjectRout
         case "validation":
             return {destination: "overview", message: "Validate is now part of Overview diagnostics. Revalidate there after changing the project."};
         default:
-            return undefined;
+            return tab === undefined
+                ? undefined
+                : {
+                    destination: "overview",
+                    message: "The requested Studio section is no longer available. Overview is open so you can choose a supported workflow for this project.",
+                };
     }
 }
 

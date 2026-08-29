@@ -35,7 +35,7 @@ Legacy `#/project/:tab` first resolves the current project and replaces its hist
 | `stakeEngineExport` | Build/Export | Explains that the Stake Engine artifact card owns export. |
 | `outcomeLibraries` | Overview | Explains that its retired select-existing/inspect/compare task has no Build/Export equivalent; inspect the opened outcome source in Overview or use CLI outcome-source comparison commands. |
 | `validate`, `validation`, obsolete Validate routes | Overview | Explains that validation is now Overview diagnostics and offers revalidation after a change. |
-| unknown removed tab | Overview | Does not guess an equivalent operation; the route is replaced with the safe scoped Overview URL. |
+| unknown removed tab | Overview | Does not guess an equivalent operation; the route is replaced with the safe scoped Overview URL and says the requested section is no longer available. |
 
 No retired component mounts. In particular, Outcome Libraries does **not** redirect to Build/Export: that
 would falsely present generation as equivalent to the retired inspect/compare task.
