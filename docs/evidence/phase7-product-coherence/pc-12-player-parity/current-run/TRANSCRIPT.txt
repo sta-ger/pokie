@@ -1,0 +1,6 @@
+[2026-08-29T23:35:52.010Z] FAILED AssertionError [ERR_ASSERTION]: pokie/client/player must resolve from the isolated candidate install, received file:///home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-ax945x_l/pokie-pc12-5krHsM/pokie-examples/node_modules/pokie/dist/cli/client/player/index.js
+    at assertExactCandidatePlayerExport (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-12-20260829220430/scripts/pc-12-player-parity-browser.mjs:62:12)
+    at prepareExactCandidateConsumer (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-12-20260829220430/scripts/pc-12-player-parity-browser.mjs:201:5)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async runPlayerParityBrowser (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-12-20260829220430/scripts/pc-12-player-parity-browser.mjs:331:25)
+    at async file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-12-9564db2a6d3f9971/current.mjs:24:1
