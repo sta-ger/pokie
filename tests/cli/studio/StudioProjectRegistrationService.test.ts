@@ -884,10 +884,8 @@ describe("Studio Blueprint Project execution freshness", () => {
                 modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}, cost: 1}],
                 outDir: "stakeengine",
             });
-            expect(stakeExport.status).toBe(200);
-            expect(stakeExport.body.status).toBe("load-error");
-            expect(stakeExport.body.error).toContain(configurationAHash);
-            expect(stakeExport.body.error).toContain(configurationBHash);
+            expect(stakeExport.status).toBe(410);
+            expect(stakeExport.body.status).toBe("migration");
 
             const replayAfterSave = await get(`${baseUrl}/api/project/replays/${replayCreated.body.id}`);
             expect(replayAfterSave.body.configHash).toBe(configurationAHash);

@@ -79,7 +79,11 @@ export class StudioArtifactBuildService {
     private readonly stakeProjection: StakeProjectionExportService;
     private readonly resolveProject: ProjectResolving;
     private readonly jobs = new Map<string, StudioArtifactBuildJobRecord>();
+    // A Stake preview is an executable capability decision. Retain the exact
+    // operation server-side so Build never repeats its library lookup.
+    private readonly preparedStakeOperations = new Map<string, PreparedStakeOperationRecord>();
     private nextJobId = 1;
+    private nextPreparedStakeOperationId = 1;
 
     constructor(
         pokieVersion: string,
@@ -139,7 +143,10 @@ export class StudioArtifactBuildService {
         const destinationKind = destinationKindFor(target);
         const plannedOutputs = plannedOutputsFor(target);
 
-        const plan = await this.plan(project, target, destination);
+        const operation = target === "stakeAdapter"
+            ? await this.stakeProjection.prepareOperation(project, destination)
+            : undefined;
+        const plan = operation?.plan ?? await this.plan(project, target, destination);
         if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
         }
@@ -147,7 +154,20 @@ export class StudioArtifactBuildService {
             return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: plan.diagnostic!.message, plan};
         }
 
-        return {status: "ok", target, destination, destinationKind, plannedOutputs, sourceType: project.type, plan};
+        const preparedOperationId = operation === undefined
+            ? undefined
+            : this.retainPreparedStakeOperation(projectRoot, operation);
+        return {
+            status: "ok",
+            target,
+            destination,
+            destinationKind,
+            plannedOutputs,
+            sourceType: project.type,
+            plan,
+            ...(preparedOperationId === undefined ? {} : {preparedOperationId}),
+            ...(operation === undefined ? {} : {stakePreflight: this.stakePreflightView(operation)}),
+        };
     }
 
     /**
@@ -333,22 +353,21 @@ export class StudioArtifactBuildService {
     // every running update rather than waiting for one terminal HTTP response.  Retention is bounded;
     // active jobs are never evicted.
     public start(projectRoot: string, target: ArtifactTargetType, outDir?: string): StudioArtifactBuildJobView {
-        this.trimTerminalJobs();
-        const record: StudioArtifactBuildJobRecord = {
-            id: String(this.nextJobId++),
-            projectRoot,
-            target,
-            status: "queued",
-            cancellationRequested: false,
-            controller: new AbortController(),
-        };
-        this.jobs.set(record.id, record);
-        queueMicrotask(() => {
-            this.run(record, outDir).catch(() => {
-                // run() converts every builder failure into the public terminal result.
-            });
-        });
-        return this.toJobView(record);
+        return this.startOperation(projectRoot, target, outDir);
+    }
+
+    /** Consume a preview-issued operation, rejecting stale or cross-project handles. */
+    public startPreparedStakeProjection(projectRoot: string, preparedOperationId: string): StudioArtifactBuildJobView | undefined {
+        const prepared = this.preparedStakeOperations.get(preparedOperationId);
+        if (prepared === undefined || prepared.projectRoot !== projectRoot) return undefined;
+        this.preparedStakeOperations.delete(preparedOperationId);
+        return this.startOperation(projectRoot, "stakeAdapter", prepared.operation.destinationPath, prepared.operation);
+    }
+
+    /** Returns the destination bound by a preview without exposing its operation. */
+    public preparedStakeProjectionDestination(projectRoot: string, preparedOperationId: string): string | undefined {
+        const prepared = this.preparedStakeOperations.get(preparedOperationId);
+        return prepared?.projectRoot === projectRoot ? prepared.operation.destinationPath : undefined;
     }
 
     public getStatusForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
@@ -384,9 +403,34 @@ export class StudioArtifactBuildService {
         }
     }
 
+    private startOperation(
+        projectRoot: string,
+        target: ArtifactTargetType,
+        outDir?: string,
+        preparedStakeOperation?: PreparedStakeProjectionOperation,
+    ): StudioArtifactBuildJobView {
+        this.trimTerminalJobs();
+        const record: StudioArtifactBuildJobRecord = {
+            id: String(this.nextJobId++),
+            projectRoot,
+            target,
+            status: "queued",
+            cancellationRequested: false,
+            controller: new AbortController(),
+            preparedStakeOperation,
+        };
+        this.jobs.set(record.id, record);
+        queueMicrotask(() => {
+            this.run(record, outDir).catch(() => {
+                // run() converts every builder failure into the public terminal result.
+            });
+        });
+        return this.toJobView(record);
+    }
+
     private async run(record: StudioArtifactBuildJobRecord, outDir: string | undefined): Promise<void> {
         record.status = "running";
-        const result = await this.build(record.projectRoot, record.target, outDir, {
+        const options: ArtifactBuildOptions = {
             signal: record.controller.signal,
             onProgress: (progress) => {
                 const next = toProgressView(progress);
@@ -397,7 +441,10 @@ export class StudioArtifactBuildService {
                     ? {...next, preflight: record.progress.preflight}
                     : next;
             },
-        });
+        };
+        const result = record.preparedStakeOperation === undefined
+            ? await this.build(record.projectRoot, record.target, outDir, options)
+            : await this.executeStakeProjection(record.preparedStakeOperation, options);
         const status = terminalStatusFor(result);
         Object.assign(record, {result, status});
     }
@@ -419,6 +466,28 @@ export class StudioArtifactBuildService {
             const oldest = terminal.shift();
             if (oldest !== undefined) this.jobs.delete(oldest.id);
         }
+    }
+
+    private retainPreparedStakeOperation(projectRoot: string, operation: PreparedStakeProjectionOperation): string {
+        const id = `stake-${this.nextPreparedStakeOperationId++}`;
+        this.preparedStakeOperations.set(id, {projectRoot, operation});
+        while (this.preparedStakeOperations.size > 20) {
+            const oldest = this.preparedStakeOperations.keys().next().value as string | undefined;
+            if (oldest === undefined) break;
+            this.preparedStakeOperations.delete(oldest);
+        }
+        return id;
+    }
+
+    private stakePreflightView(operation: PreparedStakeProjectionOperation): {readonly warnings: readonly string[]} {
+        const warnings: string[] = [];
+        if (operation.plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary")) {
+            warnings.push("A compatible managed Outcome Library will be reused.");
+        }
+        if (operation.plan.steps.some((step) => step.kind === "generateOutcomeLibrary")) {
+            warnings.push("A compatible Outcome Library will be generated before Stake publication; exact item and byte estimates will be recorded by the job preflight.");
+        }
+        return {warnings};
     }
 
     private plan(project: PokieProject, target: ArtifactTargetType, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
@@ -562,8 +631,14 @@ type StudioArtifactBuildJobRecord = {
     status: "queued" | "running" | "completed" | "failed" | "cancelled";
     cancellationRequested: boolean;
     readonly controller: AbortController;
+    readonly preparedStakeOperation?: PreparedStakeProjectionOperation;
     progress?: StudioArtifactBuildProgressView;
     result?: StudioArtifactBuildView;
+};
+
+type PreparedStakeOperationRecord = {
+    readonly projectRoot: string;
+    readonly operation: PreparedStakeProjectionOperation;
 };
 
 function toProgressView(progress: ArtifactBuildProgress): StudioArtifactBuildProgressView {

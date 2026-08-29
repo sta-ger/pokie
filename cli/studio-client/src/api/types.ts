@@ -1256,7 +1256,13 @@ export type StudioStakeEngineExportValidateView =
     // failure.
     | {status: "conflict"; error: string; plan: StudioArtifactConversionPlan}
     | {status: "unavailable"; error: string; plan: StudioArtifactConversionPlan}
-    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
+    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan}
+    | StudioStakeEngineExportMigrationView;
+
+export type StudioStakeEngineExportMigrationView = {
+    status: "migration";
+    message: string;
+};
 
 // Mirrors pokie's own StakeEngineManifest/StakeEngineManifestModeEntry
 // (src/stakeengine/StakeEngineManifest.ts) — every hash/metric here is read verbatim off the export
@@ -1296,7 +1302,8 @@ export type StudioStakeEngineExportView =
     | {status: "unavailable"; error: string; plan: StudioArtifactConversionPlan}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; plan: StudioArtifactConversionPlan}
     | {status: "cancelled"; message: string; plan: StudioArtifactConversionPlan}
-    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan};
+    | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan}
+    | StudioStakeEngineExportMigrationView;
 
 // Mirrors the "pokie" package's own ArtifactTargetType -- the closed vocabulary ArtifactBuilderRegistry
 // (and "pokie build <project> --target <target>") builds toward. Studio-client never imports the pokie
@@ -1381,6 +1388,8 @@ export type StudioArtifactPreviewView =
           plannedOutputs: string[];
           sourceType: StudioProjectType;
           plan: StudioArtifactConversionPlan;
+          preparedOperationId?: string;
+          stakePreflight?: {estimatedItemCount?: string; estimatedBytes?: string; warnings: string[]};
       }
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
     | {

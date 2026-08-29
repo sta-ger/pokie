@@ -46,13 +46,10 @@ describe("describeExportDeployTargetCards", () => {
         expect(outcomeLibraryCard?.locality).toBe("local");
     });
 
-    it("includes the Stake Engine static-export card for a buildable project, even with no registered targets", () => {
+    it("does not duplicate the registry-backed Stake artifact card as a static-export card", () => {
         const cards = describeExportDeployTargetCards([], artifactTargets());
         const stakeCard = cards.find((card) => card.kind === "staticExport");
-        expect(stakeCard).toBeDefined();
-        expect(stakeCard?.id).toBe("stakeengine-export");
-        expect(stakeCard?.deploymentTarget).toBeUndefined();
-        expect(stakeCard?.locality).toBe("local");
+        expect(stakeCard).toBeUndefined();
     });
 
     it("fills the remote-deployment group with a placeholder when no registered target is remote", () => {
@@ -102,13 +99,13 @@ describe("describeExportDeployTargetCards", () => {
 
     it("includes every group when the server has prepared both conversion plans", () => {
         const cards = describeExportDeployTargetCards([], artifactTargets());
-        expect(cards.map((card) => card.kind).sort()).toEqual(["outcomeLibrary", "remoteDeployment", "staticExport"].sort());
+        expect(cards.map((card) => card.kind).sort()).toEqual(["outcomeLibrary", "remoteDeployment"].sort());
     });
 
     it("keeps an unavailable outcome action visible with its server recovery while rendering a prepared Stake action", () => {
         const remoteTarget = target({id: "acme-rgs-v2"});
         const cards = describeExportDeployTargetCards([remoteTarget], artifactTargets(unavailable("outcomeLibrary")));
-        expect(cards.map((card) => card.kind).sort()).toEqual(["outcomeLibrary", "remoteDeployment", "staticExport"].sort());
+        expect(cards.map((card) => card.kind).sort()).toEqual(["outcomeLibrary", "remoteDeployment"].sort());
         expect(cards.find((card) => card.kind === "outcomeLibrary")?.supported).toBe(false);
     });
 
@@ -202,12 +199,12 @@ describe("describeArtifactBuildTargetCards", () => {
 
     it("uses product-facing primary destinations while retaining exact destination and write behavior as advanced detail", () => {
         const cards = describeExportDeployTargetCards([target()], artifactTargets());
-        const stakeCard = cards.find((card) => card.kind === "staticExport");
+        const stakeCard = describeArtifactBuildTargetCards(artifactTargets()).find((card) => card.artifactTarget === "stakeAdapter");
         const remoteCard = cards.find((card) => card.kind === "remoteDeployment" && card.deploymentTarget !== undefined);
 
         expect(stakeCard?.destination).not.toMatch(/index\.json|zstd|CSV|manifest/);
-        expect(stakeCard?.technicalDestination).toMatch(/index\.json.*zstd-compressed books.*pokie-manifest\.json/);
-        expect(stakeCard?.writePublishBehavior).toMatch(/atomic swap/);
+        expect(stakeCard?.technicalDestination).toMatch(/Stake Engine export directory/);
+        expect(stakeCard?.writePublishBehavior).toMatch(/preview reports the resolved destination/);
         expect(remoteCard?.destination).not.toMatch(/runtime adapter/);
         expect(remoteCard?.technicalDestination).toMatch(/runtime adapter/);
     });

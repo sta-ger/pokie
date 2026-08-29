@@ -473,6 +473,13 @@ function TargetCard({
                             <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
                             <Text size="sm">Destination kind: {artifactPreview.result.destinationKind}</Text>
                             <Text size="sm">Status: {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}</Text>
+                            {"stakePreflight" in artifactPreview.result && artifactPreview.result.stakePreflight !== undefined && (
+                                <Text size="sm" c="dimmed">
+                                    Stake estimate: {artifactPreview.result.stakePreflight.estimatedItemCount ?? "item count will be measured from the selected library"} item(s)
+                                    {artifactPreview.result.stakePreflight.estimatedBytes !== undefined ? `, ${artifactPreview.result.stakePreflight.estimatedBytes} bytes` : ""}.
+                                    {artifactPreview.result.stakePreflight.warnings.length > 0 ? ` ${artifactPreview.result.stakePreflight.warnings.join(" ")}` : ""}
+                                </Text>
+                            )}
                             {artifactPreview.result.plan !== undefined && (
                                 <>
                                     <Text size="sm">Plan: {artifactPreview.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}</Text>
@@ -1046,7 +1053,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         if (artifactBuildRuns[target]?.status === "running") {
             return;
         }
-        startArtifactBuild(fetchImpl, target, artifactDestinations[target]?.trim() || undefined)
+        const preview = artifactPreviews[target];
+        const preparedOperationId = preview?.status === "ok" ? preview.result.preparedOperationId : undefined;
+        startArtifactBuild(fetchImpl, target, artifactDestinations[target]?.trim() || undefined, preparedOperationId)
             .then((job) => {
                 setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId: job.id, progress: job.progress, cancellationRequested: false}}));
                 pollArtifactBuild(target, job.id);

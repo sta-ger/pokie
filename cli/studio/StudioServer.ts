@@ -106,10 +106,7 @@ import type {StudioSimulationStatus} from "./simulation/StudioSimulationStatus.j
 import {validateSimulationRequest, SimulationRequestInput} from "./simulation/validateSimulationRequest.js";
 import {StudioStakeEngineExportService} from "./stakeengine/StudioStakeEngineExportService.js";
 import {validateStakeEngineExportRequest, StakeEngineExportRequestInput} from "./stakeengine/validateStakeEngineExportRequest.js";
-import {
-    validateStakeEngineExportValidateRequest,
-    StakeEngineExportValidateRequestInput,
-} from "./stakeengine/validateStakeEngineExportValidateRequest.js";
+import {validateStakeEngineExportValidateRequest, StakeEngineExportValidateRequestInput} from "./stakeengine/validateStakeEngineExportValidateRequest.js";
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioServerHandling} from "./StudioServerHandling.js";
 
@@ -2350,21 +2347,24 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private async handleValidateStakeEngineExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        // Direct Stake routes did not have a durable prepared operation or a
+        // poll/cancel lifecycle. Retire them explicitly instead of accepting
+        // a preflight whose later export could be a different plan.
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-
         const body = await this.readJsonBody(req);
-        let validated;
         try {
-            validated = validateStakeEngineExportValidateRequest((body ?? {}) as StakeEngineExportValidateRequestInput);
+            validateStakeEngineExportValidateRequest((body ?? {}) as StakeEngineExportValidateRequestInput);
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
-
-        this.sendJson(res, 200, await this.stakeEngineExportService.validate(this.currentContext.projectRoot, validated.modes, validated.outDir));
+        this.sendJson(res, 410, {
+            status: "migration",
+            message: "Stake validation moved to /api/project/artifacts/preview. Supply target \"stakeAdapter\" and the final outDir; Build must use the returned preparedOperationId.",
+        });
     }
 
     // A well-formed request that fails at the domain level (an unreadable/malformed library, a
@@ -2375,25 +2375,17 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-
         const body = await this.readJsonBody(req);
-        let validated;
         try {
-            validated = validateStakeEngineExportRequest((body ?? {}) as StakeEngineExportRequestInput);
+            validateStakeEngineExportRequest((body ?? {}) as StakeEngineExportRequestInput);
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
-
-        // A direct Studio export is still a real artifact lifecycle.  Bind an
-        // aborted HTTP request to the registry-owned cancellation signal so a
-        // disconnected client cannot leave generation or publication running.
-        const controller = new AbortController();
-        const abort = () => controller.abort();
-        req.once("aborted", abort);
-        const result = await this.stakeEngineExportService.export(this.currentContext.projectRoot, validated.modes, validated.outDir, validated.overwrite, controller.signal);
-        req.removeListener("aborted", abort);
-        this.sendJson(res, this.statusForStakeEngineExport(result.status), result);
+        this.sendJson(res, 410, {
+            status: "migration",
+            message: "Stake export moved to the pollable artifact job. Preview target \"stakeAdapter\" first, then POST /api/project/artifacts/build with its preparedOperationId.",
+        });
     }
 
     private statusForStakeEngineExport(status: "ok" | "conflict" | "unavailable" | "invalid" | "cancelled" | "load-error"): number {
@@ -2461,6 +2453,24 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (validated.target === "stakeAdapter") {
+            if (validated.preparedOperationId === undefined) {
+                this.sendJson(res, 409, {error: "Stake build requires the preparedOperationId returned by its current preview. Refresh the preflight before building."});
+                return;
+            }
+            const preparedDestination = this.artifactBuildService.preparedStakeProjectionDestination(this.currentContext.projectRoot, validated.preparedOperationId);
+            if (preparedDestination === undefined || (validated.outDir !== undefined && validated.outDir !== preparedDestination)) {
+                this.sendJson(res, 409, {error: "The prepared Stake operation is stale or names a different destination. Refresh the preflight before building."});
+                return;
+            }
+            const job = this.artifactBuildService.startPreparedStakeProjection(this.currentContext.projectRoot, validated.preparedOperationId);
+            if (job === undefined) {
+                this.sendJson(res, 409, {error: "The prepared Stake operation is stale or belongs to another project. Refresh the preflight before building."});
+                return;
+            }
+            this.sendJson(res, 202, {status: "created", job});
+            return;
+        }
         this.sendJson(res, 202, {status: "created", job: this.artifactBuildService.start(this.currentContext.projectRoot, validated.target, validated.outDir)});
     }
 

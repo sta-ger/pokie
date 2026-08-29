@@ -15,6 +15,14 @@ export type StudioArtifactPreviewView =
           readonly plannedOutputs: readonly string[];
           readonly sourceType: ProjectType;
           readonly plan: ArtifactConversionPlan;
+          /** Opaque handle for the exact retained Stake operation. */
+          readonly preparedOperationId?: string;
+          /** Stake information known before publication. */
+          readonly stakePreflight?: {
+              readonly estimatedItemCount?: string;
+              readonly estimatedBytes?: string;
+              readonly warnings: readonly string[];
+          };
       }
     | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string; readonly plan: ArtifactConversionPlan}
     | {

@@ -99,6 +99,24 @@ describe("StudioArtifactBuildService", () => {
             expect(result.sourceType).toBe("blueprint");
         });
 
+        it("binds a Stake build to the opaque operation prepared by preview", async () => {
+            const blueprintPath = writeBlueprintFile();
+
+            const preview = await service.preview(blueprintPath, "stakeAdapter");
+
+            expect(preview.status).toBe("ok");
+            if (preview.status !== "ok" || preview.preparedOperationId === undefined) {
+                throw new Error("expected a retained Stake operation");
+            }
+            expect(preview.plan.steps.some((step) => step.kind === "generateOutcomeLibrary" || step.kind === "reuseManagedOutcomeLibrary")).toBe(true);
+
+            const started = service.startPreparedStakeProjection(blueprintPath, preview.preparedOperationId);
+            expect(started).toMatchObject({target: "stakeAdapter", status: "queued"});
+            // Handles are single-use: retry cannot cause a fresh plan.
+            expect(service.startPreparedStakeProjection(blueprintPath, preview.preparedOperationId)).toBeUndefined();
+            service.cancelForProject(blueprintPath, started!.id);
+        });
+
         it("reports a conflict for a pre-existing non-empty destination, agreeing with what build() itself would report, and never writes to it", async () => {
             const blueprintPath = writeBlueprintFile();
             const destination = path.join(workDir, "tsPackage");

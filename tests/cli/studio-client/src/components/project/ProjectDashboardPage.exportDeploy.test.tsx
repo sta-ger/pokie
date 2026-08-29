@@ -662,6 +662,8 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                     json: () => Promise.resolve({
                         status: "ok", target: "stakeAdapter", destination: "/games/stakeengine", destinationKind: "directory",
                         plannedOutputs: ["index.json"], sourceType: "blueprint",
+                        preparedOperationId: "stake-preview-1",
+                        stakePreflight: {warnings: ["A compatible Outcome Library will be generated."]},
                         plan: {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "stakeAdapter", capabilities: []}, steps: [{choice: "generate", kind: "generateManagedOutcomeLibrary", output: {kind: "outcomeLibrary"}}], preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false}},
                     }),
                 });
@@ -695,7 +697,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(buildArtifactSection).getByText("Plan: generate generateManagedOutcomeLibrary")).toBeInTheDocument();
         await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
 
-        expect(buildRequest).toEqual({target: "stakeAdapter", outDir: undefined});
+        expect(buildRequest).toEqual({target: "stakeAdapter", outDir: undefined, preparedOperationId: "stake-preview-1"});
         expect(await within(buildArtifactSection).findByText("Built to /games/stakeengine.")).toBeInTheDocument();
     });
 
