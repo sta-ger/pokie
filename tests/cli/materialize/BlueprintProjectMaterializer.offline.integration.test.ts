@@ -672,6 +672,88 @@ describe("CLI command coverage (offline end-to-end, through the built CLI execut
             await server.stop();
         }
     });
+
+    it("a compatible PAR workbook reaches generated runtimes through every public CLI and Studio runtime adapter", async () => {
+        // This is deliberately the checked-in workbook rather than a mocked ProjectResolving result or
+        // an injected runtime path.  Every command below receives the PAR file itself, so each route has
+        // to import it into the resolver-owned temporary Blueprint stage and then load the generated
+        // cached runtime before it can produce an observable result.
+        const workbookPath = path.join(sourceDir, "starter.par.xlsx");
+        fs.copyFileSync(path.join(REPO_ROOT, "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+
+        const simOut = path.join(sourceDir, "par-simulation.json");
+        const sim = await runPokieCliToCompletion(pokieJsPath, [
+            "sim",
+            workbookPath,
+            "--rounds",
+            "25",
+            "--workers",
+            "1",
+            "--seed",
+            "par-cli-e2e",
+            "--out",
+            simOut,
+        ]);
+        expect(sim).toMatchObject({exitCode: 0, stderr: ""});
+        expect(JSON.parse(fs.readFileSync(simOut, "utf-8"))).toMatchObject({game: {id: "par-sheet-starter"}, rounds: 25});
+
+        const replayOut = path.join(sourceDir, "par-replay.json");
+        const replay = await runPokieCliToCompletion(pokieJsPath, ["replay", workbookPath, "--round", "3", "--seed", "par-cli-e2e", "--out", replayOut]);
+        expect(replay).toMatchObject({exitCode: 0, stderr: ""});
+        expect(JSON.parse(fs.readFileSync(replayOut, "utf-8"))).toMatchObject({game: {id: "par-sheet-starter"}, round: 3, seed: "par-cli-e2e"});
+
+        const serve = await startPokieCliServer(
+            pokieJsPath,
+            ["serve", workbookPath, "--port", "0"],
+            /POKIE dev server listening on http:\/\/127\.0\.0\.1:(\d+)/,
+        );
+        try {
+            expect((await (await fetch(`${serve.baseUrl}/game`)).json()) as {id: string}).toMatchObject({id: "par-sheet-starter"});
+        } finally {
+            await serve.stop();
+        }
+
+        const dev = await startPokieCliServer(
+            pokieJsPath,
+            ["dev", workbookPath, "--port", "0", "--client-port", "0", "--no-open"],
+            /POKIE dev server listening on http:\/\/127\.0\.0\.1:(\d+)/,
+        );
+        try {
+            expect((await fetch(`${dev.baseUrl}/health`)).status).toBe(200);
+        } finally {
+            await dev.stop();
+        }
+
+        // A bare artifact argument is the same Studio handoff users receive from `pokie <artifact>`.
+        // The dashboard load plus all three runtime actions independently resolve the workbook, which
+        // proves no PAR-only adapter bypass is hiding behind the initial dashboard runtime.
+        const studio = await startPokieCliServer(
+            pokieJsPath,
+            [workbookPath, "--port", "0", "--no-open"],
+            /POKIE Studio listening on http:\/\/127\.0\.0\.1:(\d+)/,
+        );
+        try {
+            const dashboard = await pollProjectDashboard(studio.baseUrl);
+            expect(dashboard).toMatchObject({status: "loaded", projectRoot: path.resolve(workbookPath), game: {id: "par-sheet-starter"}});
+
+            const play = await postJson(`${studio.baseUrl}/api/project/play/session`, {});
+            expect(play.status).toBe(201);
+            const sessionId = (play.body.session as {sessionId: string}).sessionId;
+            expect((await postJson(`${studio.baseUrl}/api/project/play/sessions/${sessionId}/spin`, {})).status).toBe(200);
+
+            const simulation = await postJson(`${studio.baseUrl}/api/project/simulations`, {rounds: 25, seed: "par-studio-e2e"});
+            expect(simulation.status).toBe(202);
+            const completedSimulation = await pollStudioRuntimeJob(`${studio.baseUrl}/api/project/simulations/${simulation.body.id as string}`);
+            expect(completedSimulation).toMatchObject({status: "completed", report: {game: {id: "par-sheet-starter"}, rounds: 25}});
+
+            const replayJob = await postJson(`${studio.baseUrl}/api/project/replays`, {round: 3, seed: "par-studio-e2e"});
+            expect(replayJob.status).toBe(202);
+            const completedReplay = await pollStudioRuntimeJob(`${studio.baseUrl}/api/project/replays/${replayJob.body.id as string}`);
+            expect(completedReplay).toMatchObject({status: "completed", descriptor: {game: {id: "par-sheet-starter"}, round: 3, seed: "par-studio-e2e"}});
+        } finally {
+            await studio.stop();
+        }
+    });
 });
 
 // Polls GET /api/project/context -- the exact route the Project Dashboard itself polls -- until the
@@ -690,6 +772,20 @@ async function pollProjectDashboard(baseUrl: string): Promise<Record<string, unk
         });
     }
     throw new Error(`Timed out waiting for ${baseUrl}/api/project/context to leave "loading".`);
+}
+
+async function pollStudioRuntimeJob(url: string): Promise<Record<string, unknown>> {
+    for (let attempt = 0; attempt < 2000; attempt++) {
+        const response = await fetch(url);
+        const body = (await response.json()) as Record<string, unknown>;
+        if (body.status !== "queued" && body.status !== "running") {
+            return body;
+        }
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+    }
+    throw new Error(`Timed out waiting for ${url} to complete.`);
 }
 
 function restoreEnv(name: string, value: string | undefined): void {
