@@ -7,7 +7,7 @@
       "source_path": "run-artifacts/ui-route-slot.blueprint.json",
       "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
       "produced_path": "run-artifacts/tsPackage",
-      "produced_identity": "sha256:207739b638b72394a3ac119c97f54ee6ce05aa1a4e86372e99c6152192ef4834",
+      "produced_identity": "sha256:836b9562a8c622457393bea9e82a991d34b645c8892f78c35b173f59572a4193",
       "observable_result": "the rendered Studio dashboard opened the real CLI-produced package, emitted a real round artifact, and exported a completed simulation report",
       "execution": {
         "surface": "studio-ui",
@@ -18,7 +18,8 @@
           "Play rendered the generated package's unsupported free-games diagnostic without discarding the active session",
           "the same rendered Play session recovered by spinning a completed real round after the unsupported scenario",
           "Play used the real package runtime and rendered a completed round artifact",
-          "Simulation completed against the same package and exposed its real report download output"
+          "Simulation completed against the same package and exposed its real report download output",
+          "Provably Fair rejected a missing Outcome Library path, then generated and verified a proof against the real generated library"
         ],
         "observations": [
           {
@@ -35,12 +36,55 @@
           },
           {
             "route": "UI /project/:projectRoot/replay (Replay)",
-            "result": "selected the rendered replay workflow after the completed runtime artifacts existed"
+            "result": "selected the persisted Play round and rendered its replay artifact inspector"
+          },
+          {
+            "route": "UI /project/:projectRoot/provablyFair (Provably Fair)",
+            "result": "completed the generated-proof output, error, and recovery workflow against the real Outcome Library"
           }
         ]
       },
       "systemic_classes": [
         "shared-conversion-diagnostic-parity",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-provably-fair-output-error-recovery",
+      "source_path": "run-artifacts/tsPackage/outcomes/bundle",
+      "source_identity": "sha256:afbc040fdfa908ef63c724cb4d4f054393f22bd557383f96e58a0cab4675ba4f",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "the rendered Provably Fair workflow rejected a missing generated-artifact path, recovered with the real Outcome Library, and completed a generated proof verification",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "ProjectDashboardPage / ProvablyFairTab",
+        "assertions": [
+          "the UI returned the Studio endpoint's path-aware error for a missing Outcome Library",
+          "correcting the source path retained the entered seeds and computed the real commitments",
+          "the same rendered workflow generated and verified a proof against the CLI-produced Outcome Library"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/provablyFair (Provably Fair)",
+            "result": "recovered from a missing bundle diagnostic and verified a generated proof against the real Outcome Library"
+          },
+          {
+            "route": "POST /api/project/fairness/configure",
+            "result": "rendered both the path error and the recovered commitment result"
+          },
+          {
+            "route": "POST /api/project/fairness/generate",
+            "result": "rendered the generated real round proof"
+          },
+          {
+            "route": "POST /api/project/fairness/verify",
+            "result": "rendered the verified proof result"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
         "durable-publication-ownership"
       ]
     }

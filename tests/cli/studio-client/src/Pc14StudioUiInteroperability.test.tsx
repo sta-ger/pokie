@@ -46,6 +46,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     let workDir: string;
     let blueprintPath: string;
     let packagePath: string;
+    let outcomeLibraryPath: string;
     let server: StudioServer;
     let fetchImpl: FetchLike;
     let restoreRunnerClock: () => void;
@@ -63,6 +64,8 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         }));
         packagePath = path.join(workDir, "tsPackage");
         expect(await new BuildCommand(POKIE_VERSION).run([blueprintPath, "--target", "tsPackage", "--out", packagePath])).toBe(0);
+        outcomeLibraryPath = path.join(packagePath, "outcomes", "bundle");
+        expect(await new BuildCommand(POKIE_VERSION).run([blueprintPath, "--target", "outcomeLibrary", "--out", outcomeLibraryPath])).toBe(0);
         const home = new StudioHomeService(POKIE_VERSION);
         server = new StudioServer({
             pokieVersion: POKIE_VERSION, host: "127.0.0.1", port: 0, studioRoot,
@@ -77,7 +80,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     });
 
     afterEach(async () => {
-        await server.stop();
+        if (server !== undefined) await server.stop();
         fs.rmSync(studioRoot, {recursive: true, force: true});
         fs.rmSync(workDir, {recursive: true, force: true});
         restoreRunnerClock();
@@ -123,8 +126,8 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // Mantine exposes the step number and description as part of the
         // accessible name ("3 Review See results"), so match the user-facing
         // action instead of assuming the button contains only its label.
-        await screen.findByRole("button", {name: /View results/}, {}, {timeout: 30000});
-        await user.click(screen.getByRole("button", {name: /View results/}));
+        const viewResults = await screen.findByRole("button", {name: /View results/}, {}, {timeout: 30000});
+        await user.click(viewResults);
         expect(screen.getAllByRole("cell", {name: /%/}).length).toBeGreaterThan(0);
         await user.click(screen.getByRole("button", {name: /Export Download report/}));
         await screen.findByRole("link", {name: /Download JSON/i});
@@ -135,6 +138,50 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await screen.findByRole("button", {name: /Round 1/});
         await user.click(screen.getByRole("button", {name: /Round 1/}));
         await screen.findByText("Round inspector");
+
+        await user.click(screen.getByRole("button", {name: "Provably Fair"}));
+        const fairnessBundleInput = screen.getByRole("textbox", {name: "Source outcome-library bundle directory"});
+        await user.type(fairnessBundleInput, "missing-outcome-library");
+        await user.type(screen.getByRole("textbox", {name: "Mode name"}), "base");
+        await user.type(screen.getByRole("textbox", {name: "Server seed"}), "pc14-server-seed");
+        await user.type(screen.getByRole("textbox", {name: "Client seed"}), "pc14-client-seed");
+        await user.click(screen.getByRole("button", {name: "Compute commitments"}));
+        await screen.findByText(/Provably Fair bundle directory/i);
+
+        // The rendered error comes from the same Studio fairness endpoint as
+        // the proof workflow.  Correcting it in place must preserve the
+        // product flow rather than requiring a new page or a hand-authored
+        // proof fixture.
+        await user.clear(fairnessBundleInput);
+        await user.type(fairnessBundleInput, "outcomes/bundle");
+        await user.click(screen.getByRole("button", {name: "Compute commitments"}));
+        await screen.findByText("Server seed commitment (publish first)");
+        await user.click(screen.getByRole("button", {name: "Continue to Generate/inspect proof"}));
+        await user.click(screen.getByRole("button", {name: "Generate round proof"}));
+        await screen.findByText("Revealed round");
+        await user.click(screen.getByRole("button", {name: "Continue to Verify"}));
+        await user.click(screen.getByRole("button", {name: "Verify"}));
+        await screen.findByText("Verified");
+
+        evidence.recordScenario({
+            id: "studio-ui-provably-fair-output-error-recovery",
+            sourcePath: outcomeLibraryPath,
+            result: "the rendered Provably Fair workflow rejected a missing generated-artifact path, recovered with the real Outcome Library, and completed a generated proof verification",
+            surface: "studio-ui",
+            owner: "ProjectDashboardPage / ProvablyFairTab",
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+            assertions: [
+                "the UI returned the Studio endpoint's path-aware error for a missing Outcome Library",
+                "correcting the source path retained the entered seeds and computed the real commitments",
+                "the same rendered workflow generated and verified a proof against the CLI-produced Outcome Library",
+            ],
+            observations: [
+                {route: "UI /project/:projectRoot/provablyFair (Provably Fair)", result: "recovered from a missing bundle diagnostic and verified a generated proof against the real Outcome Library"},
+                {route: "POST /api/project/fairness/configure", result: "rendered both the path error and the recovered commitment result"},
+                {route: "POST /api/project/fairness/generate", result: "rendered the generated real round proof"},
+                {route: "POST /api/project/fairness/verify", result: "rendered the verified proof result"},
+            ],
+        });
 
         evidence.recordScenario({
             id: "studio-ui-blueprint-runtime-workflows",
@@ -151,12 +198,14 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
                 "the same rendered Play session recovered by spinning a completed real round after the unsupported scenario",
                 "Play used the real package runtime and rendered a completed round artifact",
                 "Simulation completed against the same package and exposed its real report download output",
+                "Provably Fair rejected a missing Outcome Library path, then generated and verified a proof against the real generated library",
             ],
             observations: [
                 {route: "UI /project/:projectRoot/exportDeploy (Build/Export)", result: "selected the rendered build/export workflow for the real produced package"},
                 {route: "UI /project/:projectRoot/play (Play)", result: "created a session, rendered an unsupported free-games diagnostic, then recovered by spinning a completed round artifact"},
                 {route: "UI /project/:projectRoot/simulation (Simulation)", result: "ran two rounds, rendered the completed report, and exposed its JSON download"},
                 {route: "UI /project/:projectRoot/replay (Replay)", result: "selected the persisted Play round and rendered its replay artifact inspector"},
+                {route: "UI /project/:projectRoot/provablyFair (Provably Fair)", result: "completed the generated-proof output, error, and recovery workflow against the real Outcome Library"},
             ],
         });
 
