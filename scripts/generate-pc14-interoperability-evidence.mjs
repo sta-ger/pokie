@@ -2,7 +2,7 @@
 // PC-14 evidence is deliberately a by-product of the real artifact runners.
 // Keep the two runners in separate Jest processes: the Studio runner merges
 // the CLI ledger only after its own real operations have completed.
-import {mkdirSync} from "node:fs";
+import {mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync} from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
@@ -12,14 +12,22 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const evidenceDirectory = path.join(repositoryRoot, "docs", "evidence", "phase7-product-coherence", "pc-14-artifact-torture");
 const jestPath = path.join(repositoryRoot, "node_modules", "jest", "bin", "jest.js");
 const temporaryDirectory = path.join(repositoryRoot, "node_modules", ".cache", "pokie-tmp");
+const committedFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "interoperability-result.json"];
+const writeCommittedEvidence = process.argv.includes("--write");
 
 mkdirSync(temporaryDirectory, {recursive: true});
+const runDirectory = mkdtempSync(path.join(temporaryDirectory, "pc14-evidence-"));
 
 const environment = {
     ...process.env,
     TMPDIR: temporaryDirectory,
-    PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR: evidenceDirectory,
-    PC14_INTEROPERABILITY_PERSISTED_RESULT: path.join(evidenceDirectory, "interoperability-result.json"),
+    // The values are public runner inputs.  Artifact identity deliberately
+    // normalises writer timestamps (see ArtifactInteroperabilityRun), while
+    // these fixed values keep any runner-owned identity strings stable.
+    PC14_FIXED_RUNNER_CLOCK: "2024-01-02T03:04:05.000Z",
+    PC14_FIXED_RUNNER_IDENTITY: "pc14-fixed-runner",
+    PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR: runDirectory,
+    PC14_INTEROPERABILITY_PERSISTED_RESULT: path.join(runDirectory, "interoperability-result.json"),
 };
 
 function run(testPath) {
@@ -38,3 +46,20 @@ function run(testPath) {
 run("tests/cli/ArtifactInteroperabilityTorture.integration.test.ts");
 run("tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts");
 run("tests/project/ArtifactInteroperabilityRemediation.contract.test.ts");
+
+try {
+    for (const file of committedFiles) {
+        const fresh = readFileSync(path.join(runDirectory, file));
+        const committedPath = path.join(evidenceDirectory, file);
+        if (writeCommittedEvidence) {
+            writeFileSync(committedPath, fresh);
+            continue;
+        }
+        const committed = readFileSync(committedPath);
+        if (!fresh.equals(committed)) {
+            throw new Error(`PC-14 evidence is not reproducible: fresh ${file} differs from the committed result. Run npm run evidence:pc14-interoperability -- --write and commit all three files.`);
+        }
+    }
+} finally {
+    rmSync(runDirectory, {recursive: true, force: true});
+}

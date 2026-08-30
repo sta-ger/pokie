@@ -6,9 +6,9 @@
       "artifact_kind": "blueprint",
       "operation": "build",
       "source_path": "run-artifacts/source.blueprint.json",
-      "source_identity": "sha256:677e919f98bf8c1f0d4872c72f92cb1b11976f59c8aed675ef54db3e3106c4e9",
+      "source_identity": "sha256:3fdae1136d66fb45a5d462f45d59aaa09499ee14d3ba917ae1ed4e41cd4b0519",
       "produced_path": "run-artifacts/package",
-      "produced_identity": "sha256:d2b08ad4e539fbc564d686a3af93c779d51c5994d28ea61be6655124a47933ae",
+      "produced_identity": "sha256:b9d6469ff03bcb2a1f7e7f51867e42807d0c75dea1c877e5cdc6c82eca8d2aa8",
       "operation_owner": "StudioArtifactBuildService",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -28,9 +28,9 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "export",
       "source_path": "run-artifacts/package/outcomelibrary",
-      "source_identity": "sha256:858ea0bd14e30b984d7a2b3b3aa3aee9409bd0e9d8030a6d57b140dd54de4b98",
+      "source_identity": "sha256:ead8c361584f121fb7296077d0fa1c612d8f6b2af83156207b32080e08d89d6c",
       "produced_path": "run-artifacts/package/stake",
-      "produced_identity": "sha256:692c16d9897df6ea33cf7e87d8cf751e5c798a09e57070a8d0e2c3e18e77729e",
+      "produced_identity": "sha256:fd6da56ac0940450a7b2151b7dfef9957a27de14ead79d7f47b629f883f2e08b",
       "operation_owner": "StudioStakeEngineExportService",
       "systemic_classes": [],
       "status": "supported",
@@ -152,7 +152,7 @@
     {
       "id": "studio-artifact-http-preflight",
       "source_path": "run-artifacts/source.blueprint.json",
-      "source_identity": "sha256:677e919f98bf8c1f0d4872c72f92cb1b11976f59c8aed675ef54db3e3106c4e9",
+      "source_identity": "sha256:3fdae1136d66fb45a5d462f45d59aaa09499ee14d3ba917ae1ed4e41cd4b0519",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "Studio HTTP context, inspection, validation, target discovery, preflight, and build-job creation resolve the same real Blueprint before durable publication completes",
@@ -200,9 +200,9 @@
     {
       "id": "studio-destination-drift",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:d2b08ad4e539fbc564d686a3af93c779d51c5994d28ea61be6655124a47933ae",
+      "source_identity": "sha256:b9d6469ff03bcb2a1f7e7f51867e42807d0c75dea1c877e5cdc6c82eca8d2aa8",
       "produced_path": "run-artifacts/package/outcomelibrary",
-      "produced_identity": "sha256:858ea0bd14e30b984d7a2b3b3aa3aee9409bd0e9d8030a6d57b140dd54de4b98",
+      "produced_identity": "sha256:ead8c361584f121fb7296077d0fa1c612d8f6b2af83156207b32080e08d89d6c",
       "observable_result": "prepared generation reports a conflict after destination occupancy and preserves borrowed.txt",
       "execution": {
         "surface": "studio-api",
@@ -224,7 +224,7 @@
     {
       "id": "studio-generation-cancellation",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:d2b08ad4e539fbc564d686a3af93c779d51c5994d28ea61be6655124a47933ae",
+      "source_identity": "sha256:b9d6469ff03bcb2a1f7e7f51867e42807d0c75dea1c877e5cdc6c82eca8d2aa8",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "cancelled generation leaves no bundle publication and returns the resumable checkpoint",
@@ -248,9 +248,9 @@
     {
       "id": "studio-generation-recovery",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:d2b08ad4e539fbc564d686a3af93c779d51c5994d28ea61be6655124a47933ae",
+      "source_identity": "sha256:b9d6469ff03bcb2a1f7e7f51867e42807d0c75dea1c877e5cdc6c82eca8d2aa8",
       "produced_path": "run-artifacts/package/outcomelibrary",
-      "produced_identity": "sha256:858ea0bd14e30b984d7a2b3b3aa3aee9409bd0e9d8030a6d57b140dd54de4b98",
+      "produced_identity": "sha256:ead8c361584f121fb7296077d0fa1c612d8f6b2af83156207b32080e08d89d6c",
       "observable_result": "the cancellation checkpoint resumes into a published Outcome Library after the conflicting borrowed destination is removed",
       "execution": {
         "surface": "studio-api",

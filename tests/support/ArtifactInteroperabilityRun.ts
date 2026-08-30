@@ -237,12 +237,41 @@ export class ArtifactInteroperabilityRun {
                 return;
             }
             digest.update(`file:${relativePath}:`);
-            digest.update(fs.readFileSync(entryPath));
+            // A number of public writers correctly stamp their durable
+            // payload with their creation time.  That timestamp is not an
+            // artifact identity: it must not make an otherwise identical
+            // PC-14 run appear to have produced a different artifact.  Keep
+            // all other bytes (including source/configuration hashes) in the
+            // identity and normalise only JSON timestamp fields.
+            digest.update(normalizedArtifactBytes(entryPath));
             digest.update("\n");
         };
         visit(artifactPath, ".");
         return `sha256:${digest.digest("hex")}`;
     }
+}
+
+function normalizedArtifactBytes(entryPath: string): Buffer {
+    const bytes = fs.readFileSync(entryPath);
+    if (!entryPath.endsWith(".json")) return bytes;
+    try {
+        return Buffer.from(`${JSON.stringify(normalizeJsonTimestampFields(JSON.parse(bytes.toString("utf-8"))))}\n`);
+    } catch {
+        // A .json suffix is not a promise that a foreign artifact is valid
+        // JSON. Preserve such producer output verbatim.
+        return bytes;
+    }
+}
+
+function normalizeJsonTimestampFields(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(normalizeJsonTimestampFields);
+    if (typeof value !== "object" || value === null) return value;
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+        key,
+        (/(?:^|_)(?:created|generated|updated|started|finished|timestamp)(?:at|_at)?$/i).test(key)
+            ? "<fixed-runner-time>"
+            : normalizeJsonTimestampFields(child),
+    ]));
 }
 
 /**

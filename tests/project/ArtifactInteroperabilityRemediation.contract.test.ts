@@ -88,6 +88,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         const script = fs.readFileSync(scriptPath, "utf-8");
         expect(packageJson.scripts["evidence:pc14-interoperability"]).toBe("node scripts/generate-pc14-interoperability-evidence.mjs");
         expect(script).toContain("PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR");
+        expect(script).toContain("PC14_FIXED_RUNNER_CLOCK");
+        expect(script).toContain("fresh.equals(committed)");
         expect(script).toContain("ArtifactInteroperabilityTorture.integration.test.ts");
         expect(script).toContain("StudioArtifactInteroperabilityTorture.integration.test.ts");
         expect(script).toContain("ArtifactInteroperabilityRemediation.contract.test.ts");
