@@ -139,6 +139,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             "studio-generation-cancellation",
             "studio-destination-drift",
             "studio-generation-recovery",
+            "studio-artifact-http-preflight",
             "studio-wasm-boundary",
         ]));
         for (const audit of result.systemic_class_audits) {
@@ -189,5 +190,9 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 "regression_links": expect.any(Array),
             });
         }
+        const conversionAudit = result.systemic_class_audits.find((audit) => audit.class === "shared conversion diagnostic parity");
+        expect(conversionAudit?.derived_from.studio_routes).toEqual(expect.arrayContaining([
+            "POST /api/project/artifacts/preview",
+        ]));
     });
 });

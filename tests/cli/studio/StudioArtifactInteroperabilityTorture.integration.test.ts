@@ -8,10 +8,13 @@ import {
     type GameBlueprint,
 } from "pokie";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
+import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {StudioOutcomeLibraryGenerateService} from "../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioStakeEngineExportService} from "../../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
+import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {ArtifactInteroperabilityRun, mergeArtifactInteroperabilityRuns} from "../../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
@@ -39,6 +42,55 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         const blueprintPath = path.join(workDir, "source.blueprint.json");
         const packagePath = path.join(workDir, "package");
         fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
+
+        // Exercise the retained Studio HTTP ownership boundary as well as the
+        // services below.  These observations are intentionally limited to
+        // routes actually requested here: the evidence must not turn a
+        // service invocation into a claim that the UI or another API route
+        // was exercised.
+        const studioRoot = path.join(workDir, "studio-client");
+        fs.mkdirSync(studioRoot);
+        fs.writeFileSync(path.join(studioRoot, "index.html"), "<html>Studio</html>");
+        fs.writeFileSync(path.join(studioRoot, "main.js"), "");
+        fs.writeFileSync(path.join(studioRoot, "style.css"), "");
+        const home = new StudioHomeService(POKIE_VERSION);
+        const server = new StudioServer({
+            pokieVersion: POKIE_VERSION,
+            host: "127.0.0.1",
+            port: 0,
+            studioRoot,
+            homeService: home,
+            blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, home),
+            initialContext: {mode: "project", projectRoot: blueprintPath},
+        });
+        const address = await server.start();
+        try {
+            const baseUrl = `http://${address.host}:${address.port}`;
+            const targets = await fetch(`${baseUrl}/api/project/artifacts/targets`);
+            expect(targets.status).toBe(200);
+            expect(await targets.json()).toEqual(expect.arrayContaining([
+                expect.objectContaining({target: "tsPackage", supported: true}),
+            ]));
+            const preview = await fetch(`${baseUrl}/api/project/artifacts/preview`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({target: "tsPackage", outDir: path.join(workDir, "http-package")}),
+            });
+            expect(preview.status).toBe(200);
+            expect(await preview.json()).toMatchObject({status: "ok", target: "tsPackage"});
+            evidence.recordScenario({
+                id: "studio-artifact-http-preflight", sourcePath: blueprintPath,
+                result: "Studio HTTP target discovery and preflight resolve the same real Blueprint before any durable publication",
+                surface: "studio-api", owner: "StudioServer / StudioArtifactBuildService",
+                assertions: ["GET targets lists tsPackage", "POST preview returns an executable tsPackage plan"],
+                observations: [
+                    {route: "GET /api/project/artifacts/targets", result: "returned the supported Blueprint build target"},
+                    {route: "POST /api/project/artifacts/preview", result: "returned the prepared tsPackage operation"},
+                ],
+            });
+        } finally {
+            await server.stop();
+        }
 
         const build = new StudioArtifactBuildService(POKIE_VERSION, undefined, undefined, undefined, undefined, process.cwd());
         await expect(build.build(blueprintPath, "tsPackage", packagePath)).resolves.toMatchObject({status: "ok", outputPath: packagePath});

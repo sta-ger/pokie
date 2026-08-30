@@ -293,7 +293,7 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
         rows: runs.flatMap((run) => run.parsed.rows),
         "scenario_results": runs.flatMap((run) => run.parsed.scenario_results),
         "systemic_class_audits": [
-            {class: "shared conversion diagnostic parity", "derived_from": classify(["blueprint-build", "wasm-boundary", "wasm-outcome"])},
+            {class: "shared conversion diagnostic parity", "derived_from": classify(["blueprint-build", "studio-artifact", "wasm-boundary", "wasm-outcome"])},
             {class: "provenance and freshness binding", "derived_from": classify(["provenance", "replay", "drift", "configuration"])},
             {class: "durable publication ownership", "derived_from": classify(["cancellation", "recovery", "borrowed", "destination"])},
         ],
