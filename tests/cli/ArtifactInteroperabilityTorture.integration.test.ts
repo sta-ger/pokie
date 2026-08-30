@@ -129,11 +129,26 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const registry = new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(process.cwd());
         const build = new BuildCommand(POKIE_VERSION, undefined, undefined, resolver, registry);
         expect(await build.run([blueprintPath, "--target", "tsPackage", "--out", packagePath])).toBe(0);
+        evidence.record({
+            id: "blueprint-build-package", artifactKind: "blueprint", operation: "build", sourcePath: blueprintPath,
+            producedPath: packagePath, owner: "BuildCommand", result: "published",
+            observations: [{surface: "cli", owner: "BuildCommand", result: "exit 0"}],
+        });
         expect(await new OutcomeLibraryCommand(POKIE_VERSION).run([
             "generate", packagePath, "--sample", "8", "--seed", "matrix-generation", "--out", rawLibraryPath, "--format", "json",
         ])).toBe(0);
+        evidence.record({
+            id: "package-generate-raw-outcomes", artifactKind: "tsPackage", operation: "generate", sourcePath: packagePath,
+            producedPath: rawLibraryPath, owner: "OutcomeLibraryCommand", result: "published",
+            observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "exit 0"}],
+        });
         fs.writeFileSync(descriptorPath, JSON.stringify({modes: [{modeName: "base", libraryPath: path.basename(rawLibraryPath)}]}));
         expect(await new OutcomeLibraryCommand(POKIE_VERSION).run(["build", descriptorPath, "--out", bundlePath])).toBe(0);
+        evidence.record({
+            id: "raw-outcomes-build-bundle", artifactKind: "weightedOutcomeLibraryJson", operation: "build", sourcePath: rawLibraryPath,
+            producedPath: bundlePath, owner: "OutcomeLibraryCommand", result: "published",
+            observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "exit 0"}],
+        });
         expect(await new OutcomeSourceCommand().run(["sample", bundlePath, "--mode", "base", "--seed", "matrix-sample"])).toBe(0);
         evidence.record({
             id: "outcome-library-sample", artifactKind: "outcomeLibrary", operation: "sample", sourcePath: bundlePath,
@@ -170,8 +185,20 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         // or a hand-authored fixture as an observed artifact operation.
         const reportPath = path.join(workDir, "matrix-report.md");
         expect(await new ValidateCommand().run([blueprintPath, "--format", "json"])).toBe(0);
+        evidence.record({
+            id: "blueprint-validate", artifactKind: "blueprint", operation: "validate", sourcePath: blueprintPath,
+            owner: "ValidateCommand", result: "valid", observations: [{surface: "cli", owner: "ValidateCommand", result: "exit 0"}],
+        });
         expect(await new ValidateCommand().run([bundlePath, "--deep", "--format", "json"])).toBe(0);
+        evidence.record({
+            id: "outcome-library-validate", artifactKind: "outcomeLibrary", operation: "validate", sourcePath: bundlePath,
+            owner: "ValidateCommand", result: "valid", observations: [{surface: "cli", owner: "ValidateCommand", result: "exit 0"}],
+        });
         expect(await new InspectCommand().run([bundlePath])).toBe(0);
+        evidence.record({
+            id: "outcome-library-inspect", artifactKind: "outcomeLibrary", operation: "inspect", sourcePath: bundlePath,
+            owner: "InspectCommand", result: "recognized", observations: [{surface: "cli", owner: "InspectCommand", result: "exit 0"}],
+        });
         await new ReportCommand().run([bundlePath, "--format", "markdown", "--out", reportPath]);
         const operationObservationPath = path.join(workDir, "pc-14-operation-observations.json");
         const operationObservations = [
@@ -197,16 +224,14 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "outcome-library-report", artifactKind: "outcomeLibrary", operation: "report", sourcePath: bundlePath,
             producedPath: reportPath, owner: "ReportCommand", result: "published", observations: [{surface: "cli", owner: "ReportCommand", result: "exit 0"}],
         });
-        const emittedEvidencePath = path.join(workDir, "pc-14-cli-real-artifact-result.json");
-        evidence.write(emittedEvidencePath);
-        expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
-            expect.objectContaining({id: "outcome-library-simulate", "source_path": "run-artifacts/matrix-bundle", "produced_path": "run-artifacts/matrix-simulation.json"}),
-            expect.objectContaining({id: "outcome-library-replay", "source_path": "run-artifacts/matrix-bundle", "produced_path": "run-artifacts/matrix-replay.json"}),
-        ]));
-
         fs.writeFileSync(certificationConfigPath, JSON.stringify({modes: [{modeName: "base", seed: "matrix-evidence", sampleCount: 4}]}));
         const certification = new CertificationCommand(POKIE_VERSION);
         expect(await certification.run(["build", bundlePath, certificationConfigPath, "--out", certificationPath])).toBe(0);
+        evidence.record({
+            id: "outcome-library-certification", artifactKind: "outcomeLibrary", operation: "certification", sourcePath: bundlePath,
+            producedPath: certificationPath, owner: "CertificationCommand", result: "published",
+            observations: [{surface: "cli", owner: "CertificationCommand", result: "exit 0"}],
+        });
         expect(await certification.run(["verify", certificationPath, "--source", bundlePath])).toBe(0);
         const certificationManifest = JSON.parse(fs.readFileSync(path.join(certificationPath, "manifest.json"), "utf-8")) as {
             game: {id: string; version: string}; sourceBundleManifestHash: string; modes: {libraryId: string; libraryHash: string}[];
@@ -221,9 +246,22 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(await fairness.run(["commit", seedCommitmentPath, "--client-seed", "matrix-client", "--nonce", "1", "--source", bundlePath, "--mode", "base", "--out", commitmentPath])).toBe(0);
         expect(await fairness.run(["reveal", commitmentPath, "--server-seed", seedPath, "--source", bundlePath, "--out", proofPath])).toBe(0);
         expect(await fairness.run(["verify", proofPath, "--commitment", commitmentPath, "--source", bundlePath])).toBe(0);
+        evidence.record({
+            id: "outcome-library-fairness", artifactKind: "outcomeLibrary", operation: "fairness", sourcePath: bundlePath,
+            producedPath: proofPath, owner: "FairnessCommand", result: "verified",
+            observations: [{surface: "cli", owner: "FairnessCommand", result: "exit 0"}],
+        });
         const proof = JSON.parse(fs.readFileSync(proofPath, "utf-8")) as {libraryId: string; libraryHash: string; modeName: string; indexHash: string};
         expect(proof).toMatchObject({libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash, modeName: "base"});
         expect(proof.indexHash).toMatch(/^sha256:/);
+        const emittedEvidencePath = path.join(workDir, "pc-14-cli-real-artifact-result.json");
+        evidence.write(emittedEvidencePath);
+        expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
+            expect.objectContaining({id: "blueprint-build-package", "source_path": "run-artifacts/matrix.blueprint.json", "produced_path": "run-artifacts/matrix-package"}),
+            expect.objectContaining({id: "outcome-library-simulate", "source_path": "run-artifacts/matrix-bundle", "produced_path": "run-artifacts/matrix-simulation.json"}),
+            expect.objectContaining({id: "outcome-library-certification", "produced_path": "run-artifacts/matrix-certification"}),
+            expect.objectContaining({id: "outcome-library-fairness", "produced_path": "run-artifacts/matrix-proof.json"}),
+        ]));
 
         const generatedBlueprintPath = path.join(workDir, "generated.blueprint.json");
         const generatedWorkbookPath = path.join(workDir, "generated.par.xlsx");
