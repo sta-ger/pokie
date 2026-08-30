@@ -116,7 +116,12 @@ export class StakeEngineImporter<T extends string | number = string> implements 
                 const built = this.buildMode(context, modeFiles);
                 buildIssues.push(...built.issues);
                 if (built.library !== undefined) {
-                    builtModes.push({modeName: indexMode.name, cost: indexMode.cost, library: built.library});
+                    builtModes.push({
+                        modeName: indexMode.name,
+                        cost: indexMode.cost,
+                        library: built.library,
+                        ...(manifestMode.generator === undefined ? {} : {generator: manifestMode.generator}),
+                    });
                 }
             }
 

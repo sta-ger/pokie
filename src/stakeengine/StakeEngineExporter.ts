@@ -295,6 +295,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             libraryHash: computeWeightedOutcomeLibraryHash(mode.library),
             events: `books_${mode.modeName}.jsonl.zst`,
             weights: `lookup_${mode.modeName}.csv`,
+            ...(mode.generator === undefined ? {} : {generator: mode.generator}),
         };
 
         return {

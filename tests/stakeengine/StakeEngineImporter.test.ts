@@ -11,7 +11,7 @@ import {
     StakeEngineManifest,
     WeightedOutcomeLibrary,
 } from "pokie";
-import {buildSingleOutcomeStakeEngineLibrary, buildStakeEngineTestLibrary} from "./StakeEngineTestFixtures.js";
+import {buildSingleOutcomeStakeEngineLibrary, buildStakeEngineTestLibrary, stakeEngineTestProvenance} from "./StakeEngineTestFixtures.js";
 
 function readBooksLines(filePath: string): {id: number; events: unknown[]; payoutMultiplier: number}[] {
     return zlib
@@ -120,6 +120,33 @@ describe("StakeEngineImporter", () => {
             modes: manifest.modes.map((mode) => ({...mode, libraryHash: undefined})),
         });
         expect(stripVolatileFields(reExportedManifest)).toEqual(stripVolatileFields(originalManifest));
+    });
+
+    it("retains generated-library semantics through the Stake import and re-export boundary", async () => {
+        const library = buildStakeEngineTestLibrary({libraryId: "generated-lib", betMode: "base", stake: 1});
+        const generator = {
+            algorithm: "enumerate-reel-stops-v1",
+            strategy: "bounded-coverage" as const,
+            totalOutcomeSpaceSize: "10000",
+            sampledRawCount: "128",
+            seed: "retained-seed",
+            pokieVersion: "1.3.0",
+            game: stakeEngineTestProvenance.game,
+            configHash: "sha256:generated-config",
+            maxExactOutcomeSpaceSize: "256",
+            compatibilityPolicyVersion: "pc14",
+            generatedAt: "2024-01-02T03:04:05.000Z",
+        };
+        const exporter = new StakeEngineExporter("1.3.0");
+        await exporter.exportToDirectory([{modeName: "base", cost: 1, library, generator}], outDir);
+
+        const imported = await new StakeEngineImporter().importFromDirectory(outDir);
+        expect(imported.issues.some((issue) => issue.severity === "error")).toBe(false);
+        expect(imported.modes).toEqual([expect.objectContaining({modeName: "base", generator})]);
+
+        await exporter.exportToDirectory(imported.modes, importedOutDir);
+        const reexported = JSON.parse(fs.readFileSync(path.join(importedOutDir, "pokie-manifest.json"), "utf-8")) as StakeEngineManifest;
+        expect(reexported.modes).toEqual([expect.objectContaining({name: "base", generator})]);
     });
 
     it("computes sourceProvenance as the exact SHA-256 of every raw file it read, before any parsing/decompression", async () => {

@@ -1,4 +1,5 @@
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
+import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
 import {resolveSafeStakeEngineFilePath} from "./internal/resolveSafeStakeEngineFilePath.js";
 import type {StakeEngineImportBookLineResult, StakeEngineImportBundle, StakeEngineImportModeFiles} from "./StakeEngineImportBundle.js";
@@ -18,6 +19,23 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isFinitePositiveNumber(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isGenerationDiagnostics(value: unknown): value is OutcomeLibraryGeneratorDiagnostics {
+    if (typeof value !== "object" || value === null) return false;
+    const candidate = value as Record<string, unknown>;
+    const game = candidate.game;
+    return isNonEmptyString(candidate.algorithm) &&
+        (candidate.strategy === "exact" || candidate.strategy === "bounded-coverage") &&
+        (typeof candidate.totalOutcomeSpaceSize === "number" || isNonEmptyString(candidate.totalOutcomeSpaceSize)) &&
+        (typeof candidate.sampledRawCount === "number" || isNonEmptyString(candidate.sampledRawCount)) &&
+        isNonEmptyString(candidate.pokieVersion) &&
+        (typeof candidate.maxExactOutcomeSpaceSize === "number" || isNonEmptyString(candidate.maxExactOutcomeSpaceSize)) &&
+        isNonEmptyString(candidate.generatedAt) &&
+        typeof game === "object" && game !== null &&
+        isNonEmptyString((game as Record<string, unknown>).id) &&
+        isNonEmptyString((game as Record<string, unknown>).name) &&
+        isNonEmptyString((game as Record<string, unknown>).version);
 }
 
 function isSafeNonNegativeInteger(value: unknown): value is number {
@@ -661,6 +679,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 libraryHash?: unknown;
                 events?: unknown;
                 weights?: unknown;
+                generator?: unknown;
             };
 
             if (!this.validateModeName("pokie-manifest.json", mode.name, position, seenNames, issues)) {
@@ -729,6 +748,9 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             }
             const eventsOk = this.validateModeFilename(stakeDir, modeName, "events", mode.events, seenFiles, issues);
             const weightsOk = this.validateModeFilename(stakeDir, modeName, "weights", mode.weights, seenFiles, issues);
+            if (mode.generator !== undefined && !isGenerationDiagnostics(mode.generator)) {
+                modeFieldInvalid("generator", "must be a persisted Outcome Library generation diagnostic when present");
+            }
             if (!eventsOk || !weightsOk) {
                 sawError = true;
             }
@@ -753,6 +775,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                     libraryHash: mode.libraryHash,
                     events: mode.events as string,
                     weights: mode.weights as string,
+                    ...(mode.generator === undefined ? {} : {generator: mode.generator as OutcomeLibraryGeneratorDiagnostics}),
                 });
             }
         });

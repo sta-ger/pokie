@@ -86,12 +86,22 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const sourceManifest = JSON.parse(fs.readFileSync(path.join(libraryPath, "manifest.json"), "utf-8"));
         const importedManifest = JSON.parse(fs.readFileSync(path.join(importedLibraryPath, "manifest.json"), "utf-8"));
         const stakeManifest = JSON.parse(fs.readFileSync(path.join(stakePath, "pokie-manifest.json"), "utf-8"));
+        const reexportedStakeManifest = JSON.parse(fs.readFileSync(path.join(reexportedStakePath, "pokie-manifest.json"), "utf-8"));
         const sourceProvenance = JSON.parse(fs.readFileSync(path.join(importedLibraryPath, "source-provenance.json"), "utf-8"));
         expect(importedManifest).toMatchObject({
             game: sourceManifest.game,
             configHash: sourceManifest.configHash,
             pokieVersion: sourceManifest.pokieVersion,
         });
+        expect(stakeManifest.modes).toEqual(expect.arrayContaining([
+            expect.objectContaining({name: "base", generator: sourceManifest.modes[0].generator}),
+        ]));
+        expect(importedManifest.modes).toEqual(expect.arrayContaining([
+            expect.objectContaining({modeName: "base", generator: sourceManifest.modes[0].generator}),
+        ]));
+        expect(reexportedStakeManifest.modes).toEqual(expect.arrayContaining([
+            expect.objectContaining({name: "base", generator: sourceManifest.modes[0].generator}),
+        ]));
         expect(sourceProvenance).toMatchObject({
             manifestHash: expect.stringMatching(/^sha256:/),
             indexHash: expect.stringMatching(/^sha256:/),
@@ -680,6 +690,49 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             systemicClasses: ["shared-conversion-diagnostic-parity"],
             assertions: ["SimCommand throws the resolved shared WASM operation diagnostic"],
             observations: [{route: "pokie sim", result: "public CLI returned the shared diagnostic recovery"}],
+        });
+
+        // A descriptor build binds both the durable descriptor and the raw
+        // library it names.  They are distinct freshness boundaries: a
+        // descriptor edit must not be hidden by an unchanged raw file, and a
+        // raw-source edit must not be hidden by an unchanged descriptor.
+        // Exercise the same prepared operation used by ExportCommand rather
+        // than modelling either failure as a synthetic JSON fixture.
+        const descriptorDriftCommand = new OutcomeLibraryCommand(POKIE_VERSION);
+        const descriptorDriftOut = path.join(workDir, "matrix-descriptor-drift-bundle");
+        const descriptorDriftPrepared = descriptorDriftCommand.prepareDescriptorBuildOperation(descriptorPath, descriptorDriftOut);
+        fs.appendFileSync(descriptorPath, "\n");
+        await expect(new ArtifactConversionPlanner().executeConversionPlan(
+            descriptorDriftPrepared.plan,
+            descriptorDriftPrepared.execution,
+        )).rejects.toThrow(/source artifact bytes changed|source.*changed|fresh preflight/i);
+        expect(fs.existsSync(descriptorDriftOut)).toBe(false);
+        evidence.recordScenario({
+            id: "descriptor-drift", sourcePath: descriptorPath,
+            result: "prepared Outcome Library publication rejects a changed bundle descriptor before creating its destination",
+            surface: "library", owner: "OutcomeLibraryCommand.prepareDescriptorBuildOperation",
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+            assertions: ["descriptor byte binding rejects execution", "no bundle destination is published"],
+            observations: [{route: "OutcomeLibraryCommand.prepareDescriptorBuildOperation", result: "descriptor drift rejected before publication"}],
+        });
+
+        const rawDriftDescriptorPath = path.join(workDir, "matrix-raw-drift-bundle.json");
+        fs.writeFileSync(rawDriftDescriptorPath, JSON.stringify({modes: [{modeName: "base", libraryPath: path.basename(rawLibraryPath)}]}));
+        const rawDriftOut = path.join(workDir, "matrix-raw-source-drift-bundle");
+        const rawDriftPrepared = descriptorDriftCommand.prepareDescriptorBuildOperation(rawDriftDescriptorPath, rawDriftOut);
+        fs.appendFileSync(rawLibraryPath, "\n");
+        await expect(new ArtifactConversionPlanner().executeConversionPlan(
+            rawDriftPrepared.plan,
+            rawDriftPrepared.execution,
+        )).rejects.toThrow(/source artifact bytes changed|source.*changed|fresh preflight/i);
+        expect(fs.existsSync(rawDriftOut)).toBe(false);
+        evidence.recordScenario({
+            id: "raw-source-drift", sourcePath: rawLibraryPath,
+            result: "prepared Outcome Library publication rejects changed generated raw-library bytes before creating its destination",
+            surface: "library", owner: "OutcomeLibraryCommand.prepareDescriptorBuildOperation",
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+            assertions: ["raw source byte binding rejects execution", "no bundle destination is published"],
+            observations: [{route: "OutcomeLibraryCommand.prepareDescriptorBuildOperation", result: "raw source drift rejected before publication"}],
         });
         evidence.write(emittedEvidencePath);
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([

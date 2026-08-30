@@ -1,4 +1,5 @@
 import type {PokieGameManifest} from "../gamepackage/PokieGameManifest.js";
+import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js";
 
 // Tracks this type's own shape (not the pokie package version) — same convention as
 // WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION/ROUND_ARTIFACT_SCHEMA_VERSION/GAME_BLUEPRINT_SCHEMA_VERSION.
@@ -14,6 +15,8 @@ export type StakeEngineManifestModeEntry = {
     readonly libraryHash: string;
     readonly events: string;
     readonly weights: string;
+    /** Original Outcome Library generation semantics, when the source bundle recorded them. */
+    readonly generator?: OutcomeLibraryGeneratorDiagnostics;
 };
 
 // POKIE's own provenance for a "pokie stakeengine export" run, written to "pokie-manifest.json" alongside
