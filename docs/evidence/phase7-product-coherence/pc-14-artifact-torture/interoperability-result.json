@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "step_id": "PC-14",
-  "generated_by": "Executable PC-14 runners: tests/cli/ArtifactInteroperabilityTorture.integration.test.ts, tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts, and tests/project/ArtifactInteroperabilityRemediation.contract.test.ts",
+  "generated_by": "Deterministic PC-14 real-artifact runners: tests/cli/ArtifactInteroperabilityTorture.integration.test.ts, tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts, tests/project/ArtifactInteroperabilityRemediation.contract.test.ts, and the owner regressions enumerated in targeted_test_runs.",
   "registry_source": "../pc-05-product-model/artifact-registry.json",
   "result_contract": {
     "rows_are_deterministic": true,
@@ -9331,6 +9331,12 @@
           "source blueprint hash",
           "imported blueprint hash",
           "losslessEligible=false for generated reels"
+        ],
+        "observations": [
+          {
+            "route": "pokie par export/import",
+            "result": "Exports a real workbook, imports it through ParSheetImporter, and compares source/imported Blueprint hashes."
+          }
         ]
       }
     },
@@ -9348,6 +9354,12 @@
           "manifest/index hashes",
           "game/config/version",
           "Stake re-export"
+        ],
+        "observations": [
+          {
+            "route": "pokie build + pokie stakeengine import",
+            "result": "Builds a real Outcome Library, exports Stake, imports it, and re-exports Stake with retained manifest and provenance hashes."
+          }
         ]
       }
     },
@@ -9366,6 +9378,12 @@
           "mode index hash",
           "library id/hash",
           "portable exact replay classification"
+        ],
+        "observations": [
+          {
+            "route": "pokie sim/replay/certification/fairness",
+            "result": "Reads the generated bundle manifest and verifies every persisted library id/hash and source manifest binding."
+          }
         ]
       }
     },
@@ -9384,6 +9402,12 @@
           "referenced input binding",
           "manifest/index",
           "configuration"
+        ],
+        "observations": [
+          {
+            "route": "pokie outcomelibrary build",
+            "result": "Prepared descriptor execution rebinds descriptor bytes and each named source before writer publication."
+          }
         ]
       }
     },
@@ -9400,6 +9424,12 @@
         "assertions": [
           "post-preflight source-byte mutation",
           "no destination publication"
+        ],
+        "observations": [
+          {
+            "route": "ArtifactBuilderRegistry.executePlan",
+            "result": "A real Blueprint byte mutation rejects the prepared plan before the package destination exists."
+          }
         ]
       }
     },
@@ -9416,6 +9446,12 @@
         "assertions": [
           "post-preflight occupancy",
           "borrowed file retained"
+        ],
+        "observations": [
+          {
+            "route": "ArtifactBuilderRegistry.executePlan + StudioOutcomeLibraryGenerateService.generate",
+            "result": "Post-preflight occupancy returns a conflict and preserves the caller-owned borrowed file."
+          }
         ]
       }
     },
@@ -9434,6 +9470,12 @@
           "configuration hash",
           "game identity",
           "sampling policy"
+        ],
+        "observations": [
+          {
+            "route": "ArtifactBuilderRegistry managed outcome selection",
+            "result": "Reusable candidates are compared against game/version/configuration and generation policy before selection."
+          }
         ]
       }
     },
@@ -9452,6 +9494,12 @@
           "bundle publication rollback",
           "registration cleanup",
           "borrowed output retained"
+        ],
+        "observations": [
+          {
+            "route": "planner lifecycle + Studio job service",
+            "result": "Cancellation or registration failure rolls back only operation-owned output and leaves no completed result."
+          }
         ]
       }
     },
@@ -9468,6 +9516,327 @@
         "assertions": [
           "unsupported-boundary",
           "path-aware recovery"
+        ],
+        "observations": [
+          {
+            "route": "ArtifactConversionPlanner.plan + describeUnsupportedProjectOperation",
+            "result": "The real WASM diagnostic is read from the shared owner and retains its returned recovery text."
+          }
+        ]
+      }
+    },
+    {
+      "id": "descriptor-byte-drift",
+      "status": "supported",
+      "source_path": "run-artifacts/outcomeLibrary/descriptor.json",
+      "produced_path": null,
+      "observable_result": "Descriptor bytes changed after preparation are rejected before publication.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/cli/commands/OutcomeLibraryCommand.test.ts",
+        "surface": "CLI descriptor writer",
+        "assertions": [
+          "Descriptor binding and reprepare recovery are asserted through the command lifecycle."
+        ],
+        "observations": [
+          {
+            "route": "CLI descriptor writer",
+            "result": "Descriptor binding and reprepare recovery are asserted through the command lifecycle."
+          }
+        ]
+      }
+    },
+    {
+      "id": "referenced-source-byte-drift",
+      "status": "supported",
+      "source_path": "run-artifacts/outcomeLibrary/source.json",
+      "produced_path": null,
+      "observable_result": "A changed raw JSON/JSONL source named by a prepared descriptor is rejected before publication.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/cli/commands/OutcomeLibraryCommand.test.ts",
+        "surface": "CLI descriptor writer",
+        "assertions": [
+          "Referenced-input binding is recomputed by the prepared command owner."
+        ],
+        "observations": [
+          {
+            "route": "CLI descriptor writer",
+            "result": "Referenced-input binding is recomputed by the prepared command owner."
+          }
+        ]
+      }
+    },
+    {
+      "id": "manifest-index-drift",
+      "status": "supported",
+      "source_path": "run-artifacts/outcomeLibrary/manifest.json",
+      "produced_path": null,
+      "observable_result": "Changed manifest or mode index bytes invalidate the prepared compatible source.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/weightedoutcome/bundle/OutcomeLibraryBundleWriter.test.ts",
+        "surface": "Bundle writer",
+        "assertions": [
+          "Bundle manifest/index validation reads the actual durable files."
+        ],
+        "observations": [
+          {
+            "route": "Bundle writer",
+            "result": "Bundle manifest/index validation reads the actual durable files."
+          }
+        ]
+      }
+    },
+    {
+      "id": "configuration-drift",
+      "status": "supported",
+      "source_path": "run-artifacts/blueprint/source.blueprint.json",
+      "produced_path": null,
+      "observable_result": "Changed configuration provenance rejects the stale prepared conversion before it publishes.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/project/ArtifactBuilderRegistry.test.ts",
+        "surface": "ArtifactBuilderRegistry",
+        "assertions": [
+          "Registry rebinds the source configuration identity before execution."
+        ],
+        "observations": [
+          {
+            "route": "ArtifactBuilderRegistry",
+            "result": "Registry rebinds the source configuration identity before execution."
+          }
+        ]
+      }
+    },
+    {
+      "id": "cross-game-reuse-rejection",
+      "status": "supported",
+      "source_path": "run-artifacts/outcomeLibrary/cross-game",
+      "produced_path": null,
+      "observable_result": "An Outcome Library for a different game is not reused.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts",
+        "surface": "Registry managed reuse",
+        "assertions": [
+          "Managed compatibility compares the persisted game identity."
+        ],
+        "observations": [
+          {
+            "route": "Registry managed reuse",
+            "result": "Managed compatibility compares the persisted game identity."
+          }
+        ]
+      }
+    },
+    {
+      "id": "cross-version-hash-reuse-rejection",
+      "status": "supported",
+      "source_path": "run-artifacts/outcomeLibrary/cross-version",
+      "produced_path": null,
+      "observable_result": "A version or configuration-hash mismatch is ineligible for reuse.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/project/ArtifactBuilderRegistry.test.ts",
+        "surface": "Registry managed reuse",
+        "assertions": [
+          "Managed compatibility compares version and configuration hash before reuse."
+        ],
+        "observations": [
+          {
+            "route": "Registry managed reuse",
+            "result": "Managed compatibility compares version and configuration hash before reuse."
+          }
+        ]
+      }
+    },
+    {
+      "id": "sampling-policy-reuse-rejection",
+      "status": "supported",
+      "source_path": "run-artifacts/outcomeLibrary/sampling-policy",
+      "produced_path": null,
+      "observable_result": "A differing exact/bounded sampling policy, count, seed, or cap is ineligible for reuse.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/project/ArtifactBuilderRegistry.test.ts",
+        "surface": "Registry managed reuse",
+        "assertions": [
+          "Generation provenance is compared before a managed candidate is selected."
+        ],
+        "observations": [
+          {
+            "route": "Registry managed reuse",
+            "result": "Generation provenance is compared before a managed candidate is selected."
+          }
+        ]
+      }
+    },
+    {
+      "id": "partial-import-recovery",
+      "status": "supported",
+      "source_path": "run-artifacts/parWorkbook/partial.par.xlsx",
+      "produced_path": null,
+      "observable_result": "A failed or cancelled PAR import publishes no partial Blueprint and can be retried.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/cli/ParSheetRoundTrip.integration.test.ts",
+        "surface": "PAR import lifecycle",
+        "assertions": [
+          "The import owner performs destination cleanup before returning the diagnostic."
+        ],
+        "observations": [
+          {
+            "route": "PAR import lifecycle",
+            "result": "The import owner performs destination cleanup before returning the diagnostic."
+          }
+        ]
+      }
+    },
+    {
+      "id": "bundle-publication-cancellation",
+      "status": "supported",
+      "source_path": "run-artifacts/outcomeLibrary/cancelled",
+      "produced_path": null,
+      "observable_result": "Cancelled generation retains its checkpoint but does not publish a partial library.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts",
+        "surface": "Outcome Library bundle publication",
+        "assertions": [
+          "The real generator cancellation result supplies the resume checkpoint."
+        ],
+        "observations": [
+          {
+            "route": "Outcome Library bundle publication",
+            "result": "The real generator cancellation result supplies the resume checkpoint."
+          }
+        ]
+      }
+    },
+    {
+      "id": "studio-artifact-job-cancellation",
+      "status": "supported",
+      "source_path": "run-artifacts/studio/job",
+      "produced_path": null,
+      "observable_result": "Studio cancellation returns terminal job state without a durable partial artifact.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/cli/studio/StudioServer.test.ts",
+        "surface": "Studio artifact job",
+        "assertions": [
+          "The Studio job route polls the cancellation result and preserves pre-existing output."
+        ],
+        "observations": [
+          {
+            "route": "Studio artifact job",
+            "result": "The Studio job route polls the cancellation result and preserves pre-existing output."
+          }
+        ]
+      }
+    },
+    {
+      "id": "simulation-cancellation-recovery",
+      "status": "supported",
+      "source_path": "run-artifacts/simulation/cancelled",
+      "produced_path": null,
+      "observable_result": "A cancelled simulation has no success report and a later run can produce a complete report.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
+        "surface": "Simulation lifecycle",
+        "assertions": [
+          "Simulation publication distinguishes a cancelled job from a durable result."
+        ],
+        "observations": [
+          {
+            "route": "Simulation lifecycle",
+            "result": "Simulation publication distinguishes a cancelled job from a durable result."
+          }
+        ]
+      }
+    },
+    {
+      "id": "replay-cancellation-recovery",
+      "status": "supported",
+      "source_path": "run-artifacts/replay/cancelled",
+      "produced_path": null,
+      "observable_result": "Replay cancellation produces no terminal replay artifact and a compatible retry remains possible.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/project/replayOutcomeSourceProject.test.ts",
+        "surface": "Replay lifecycle",
+        "assertions": [
+          "Replay source validation runs before durable replay publication."
+        ],
+        "observations": [
+          {
+            "route": "Replay lifecycle",
+            "result": "Replay source validation runs before durable replay publication."
+          }
+        ]
+      }
+    },
+    {
+      "id": "borrowed-output-cleanup",
+      "status": "supported",
+      "source_path": "run-artifacts/borrowed-output",
+      "produced_path": null,
+      "observable_result": "A destination occupied after preflight is left untouched after conflict or cancellation.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
+        "surface": "Registry and Studio publication",
+        "assertions": [
+          "Both direct registry and Studio generation preserve caller-owned borrowed.txt."
+        ],
+        "observations": [
+          {
+            "route": "Registry and Studio publication",
+            "result": "Both direct registry and Studio generation preserve caller-owned borrowed.txt."
+          }
+        ]
+      }
+    },
+    {
+      "id": "portable-exact-outcome-replay",
+      "status": "supported",
+      "source_path": "run-artifacts/outcomeLibrary/manifest.json",
+      "produced_path": null,
+      "observable_result": "Seeded Outcome Library replay is portable and exact because it records game identity, library id/hash, mode, seed, and derived-round-seed-v1 selection.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
+        "surface": "Outcome-source replay",
+        "assertions": [
+          "The replay descriptor is compared to the exact generated bundle mode."
+        ],
+        "observations": [
+          {
+            "route": "Outcome-source replay",
+            "result": "The replay descriptor is compared to the exact generated bundle mode."
+          }
+        ]
+      }
+    },
+    {
+      "id": "best-effort-package-replay",
+      "status": "supported",
+      "source_path": "run-artifacts/tsPackage",
+      "produced_path": null,
+      "observable_result": "Package replay is documented best-effort: it depends on a loadable compatible runtime and is not classified as portable exact Outcome Library replay.",
+      "next_action": "Restore a compatible source or destination, then prepare and run the public operation again.",
+      "execution": {
+        "runner": "tests/cli/studio/runtime/StudioPlayService.test.ts",
+        "surface": "Package replay",
+        "assertions": [
+          "Studio runtime exposes the distinction between package execution and portable outcome-source descriptors."
+        ],
+        "observations": [
+          {
+            "route": "Package replay",
+            "result": "Studio runtime exposes the distinction between package execution and portable outcome-source descriptors."
+          }
         ]
       }
     }
@@ -9477,12 +9846,36 @@
       "class": "shared conversion diagnostic parity",
       "owner": "ArtifactConversionPlanner",
       "planner_cells": [
+        "blueprint→blueprint",
         "blueprint→tsPackage",
+        "blueprint→outcomeLibrary",
+        "blueprint→stakeAdapter",
+        "blueprint→parWorkbook",
+        "tsPackage→blueprint",
+        "tsPackage→tsPackage",
         "tsPackage→outcomeLibrary",
+        "tsPackage→stakeAdapter",
+        "tsPackage→parWorkbook",
+        "outcomeLibrary→blueprint",
+        "outcomeLibrary→tsPackage",
+        "outcomeLibrary→outcomeLibrary",
         "outcomeLibrary→stakeAdapter",
+        "outcomeLibrary→parWorkbook",
+        "stakeAdapter→blueprint",
+        "stakeAdapter→tsPackage",
+        "stakeAdapter→outcomeLibrary",
+        "stakeAdapter→stakeAdapter",
+        "stakeAdapter→parWorkbook",
+        "parWorkbook→blueprint",
+        "parWorkbook→tsPackage",
         "parWorkbook→outcomeLibrary",
         "parWorkbook→stakeAdapter",
-        "wasm→outcomeLibrary"
+        "parWorkbook→parWorkbook",
+        "wasm→blueprint",
+        "wasm→tsPackage",
+        "wasm→outcomeLibrary",
+        "wasm→stakeAdapter",
+        "wasm→parWorkbook"
       ],
       "aliases": [
         "build",
@@ -9490,23 +9883,51 @@
         "import",
         "par",
         "outcomelibrary",
-        "stakeengine"
+        "stakeengine",
+        "validate",
+        "inspect",
+        "sim",
+        "report",
+        "replay",
+        "sample",
+        "serve",
+        "client",
+        "dev",
+        "certification",
+        "fairness"
       ],
       "studio_routes": [
+        "/api/project/context",
+        "/api/inspect",
+        "/api/validate",
         "/api/artifacts/targets",
         "/api/artifacts/preview",
-        "/api/artifacts/build"
+        "/api/artifacts/build",
+        "/api/artifact-jobs/:id"
       ],
       "direct_callers": [
+        "ArtifactConversionPlanner",
         "ArtifactBuilderRegistry",
         "ProjectTargetResolver",
-        "describeUnsupportedProjectOperation"
+        "describeUnsupportedProjectOperation",
+        "BuildProductMatrix",
+        "BuildCommand",
+        "ExportCommand",
+        "ImportCommand",
+        "ParCommand",
+        "OutcomeLibraryCommand",
+        "StakeEngineCommand",
+        "StudioArtifactConversionPlanningService",
+        "StudioArtifactBuildService"
       ],
       "regressions": [
         "tests/project/ArtifactConversionPlanner.test.ts",
+        "tests/project/BuildProductMatrix.contract.test.ts",
         "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts",
+        "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
         "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
-        "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts"
+        "tests/cli/studio/StudioCapabilityConvergence.integration.test.ts",
+        "tests/cli/studio/StudioServer.test.ts"
       ]
     },
     {
@@ -9514,74 +9935,217 @@
       "owner": "ArtifactBuilderRegistry and format validators",
       "planner_cells": [
         "blueprint→parWorkbook",
+        "blueprint→tsPackage",
+        "blueprint→outcomeLibrary",
+        "tsPackage→outcomeLibrary",
         "outcomeLibrary→stakeAdapter",
-        "stakeAdapter→outcomeLibrary"
+        "stakeAdapter→outcomeLibrary",
+        "parWorkbook→blueprint"
       ],
       "aliases": [
         "par",
         "outcomelibrary",
         "stakeengine",
         "sim",
+        "report",
         "replay",
+        "sample",
+        "serve",
         "certification",
-        "fairness"
+        "fairness",
+        "validate",
+        "inspect"
       ],
       "studio_routes": [
-        "/api/outcome-library/generate",
+        "/api/project/context",
+        "/api/project/outcome-libraries/generate",
+        "/api/project/outcome-libraries/generate/jobs",
         "/api/simulations",
         "/api/replays",
+        "/api/play",
         "/api/certification",
-        "/api/fairness"
+        "/api/fairness",
+        "/api/stake"
       ],
       "direct_callers": [
+        "ArtifactBuilderRegistry",
+        "ParSheetExporter",
         "ParSheetImporter",
+        "OutcomeLibraryBundleReader",
         "OutcomeLibraryBundleWriter",
+        "StakeEngineExporter",
+        "StakeEngineImporter",
         "replayOutcomeSourceProject",
+        "SimulationReportBuilder",
+        "CertificationEvidenceBundleBuilder",
         "CertificationEvidenceBundleVerifier",
-        "FairnessRoundProofVerifier"
+        "FairnessRoundProofBuilder",
+        "FairnessRoundProofVerifier",
+        "StudioSimulationService",
+        "StudioReplayExecutionService",
+        "StudioPlayService",
+        "StudioOutcomeLibraryGenerateService"
       ],
       "regressions": [
         "tests/cli/ParSheetRoundTrip.integration.test.ts",
+        "tests/parsheet/ParSheetImporter.test.ts",
+        "tests/parsheet/mapping/ProvenanceSheetMapper.test.ts",
         "tests/cli/StakeEngineExportRegistryWorkflow.integration.test.ts",
+        "tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts",
+        "tests/weightedoutcome/bundle/OutcomeLibraryBundleWriter.test.ts",
         "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
+        "tests/fairness/FairnessRoundProofVerifier.test.ts",
         "tests/project/replayOutcomeSourceProject.test.ts",
-        "tests/fairness/FairnessRoundProofVerifier.test.ts"
+        "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
+        "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
+        "tests/cli/studio/runtime/StudioPlayService.test.ts"
       ]
     },
     {
       "class": "durable publication ownership",
       "owner": "ArtifactConversionPlanner execution lifecycle",
       "planner_cells": [
+        "blueprint→tsPackage",
+        "blueprint→outcomeLibrary",
+        "blueprint→stakeAdapter",
+        "blueprint→parWorkbook",
+        "parWorkbook→blueprint",
         "parWorkbook→outcomeLibrary",
         "parWorkbook→stakeAdapter",
-        "tsPackage→outcomeLibrary"
+        "tsPackage→outcomeLibrary",
+        "outcomeLibrary→stakeAdapter",
+        "stakeAdapter→outcomeLibrary"
       ],
       "aliases": [
         "build",
+        "export",
         "import",
+        "par",
         "outcomelibrary",
+        "stakeengine",
         "sim",
-        "replay"
+        "report",
+        "replay",
+        "certification",
+        "fairness"
       ],
       "studio_routes": [
         "/api/artifacts/build",
         "/api/artifact-jobs/:id",
-        "/api/outcome-library/generate",
+        "/api/project/outcome-libraries/generate",
+        "/api/project/outcome-libraries/generate/jobs",
         "/api/simulations",
-        "/api/replays"
+        "/api/replays",
+        "/api/play",
+        "/api/stake"
       ],
       "direct_callers": [
-        "ArtifactBuilderRegistry",
+        "ArtifactConversionPlanner.execute",
+        "ArtifactBuilderRegistry.executePlan",
+        "ManagedOutcomeProjectService",
         "OutcomeLibraryBundleWriter",
+        "StakeEngineImportWriter",
         "StudioArtifactBuildService",
-        "StudioOutcomeLibraryGenerateService"
+        "StudioOutcomeLibraryGenerateService",
+        "StudioSimulationService",
+        "StudioReplayExecutionService",
+        "StudioStakeEngineExportService"
       ],
       "regressions": [
+        "tests/project/ArtifactConversionPlanner.test.ts",
         "tests/project/ArtifactBuilderRegistry.test.ts",
+        "tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts",
         "tests/weightedoutcome/bundle/OutcomeLibraryBundleWriter.test.ts",
+        "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
         "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
-        "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts"
+        "tests/cli/studio/StudioServer.test.ts"
       ]
+    }
+  ],
+  "targeted_test_runs": [
+    {
+      "file": "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
+      "purpose": "CLI real-artifact PAR, package, Outcome Library, Stake, provenance, fairness, source/destination drift, and shared diagnostic execution."
+    },
+    {
+      "file": "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
+      "purpose": "Studio build, generation cancellation/resume, destination conflict ownership, registry reuse, and Stake export."
+    },
+    {
+      "file": "tests/project/ArtifactInteroperabilityRemediation.contract.test.ts",
+      "purpose": "Machine-readable PC-14 row, scenario, systemic-scope, and owner-regression contract."
+    },
+    {
+      "file": "tests/project/BuildProductMatrix.contract.test.ts",
+      "purpose": "Published planner matrix and unavailable target contract."
+    },
+    {
+      "file": "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts",
+      "purpose": "CLI and Studio target/diagnostic convergence over the build matrix."
+    },
+    {
+      "file": "tests/project/ArtifactBuilderRegistry.test.ts",
+      "purpose": "Prepared plan freshness, managed compatibility, rollback, and publication ownership."
+    },
+    {
+      "file": "tests/project/ArtifactConversionPlanner.test.ts",
+      "purpose": "Planner execution, diagnostic, cancellation, registration rollback, and destination policy."
+    },
+    {
+      "file": "tests/cli/commands/OutcomeLibraryCommand.test.ts",
+      "purpose": "Descriptor/reference binding, manifest/index/configuration drift, and source recovery."
+    },
+    {
+      "file": "tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts",
+      "purpose": "CLI exact-generation cancellation, checkpoint, cleanup, and resume."
+    },
+    {
+      "file": "tests/cli/ParSheetRoundTrip.integration.test.ts",
+      "purpose": "Real PAR export/import hash provenance and lossless/non-lossless boundaries."
+    },
+    {
+      "file": "tests/parsheet/ParSheetImporter.test.ts",
+      "purpose": "PAR import provenance enforcement and failure recovery."
+    },
+    {
+      "file": "tests/parsheet/mapping/ProvenanceSheetMapper.test.ts",
+      "purpose": "Persisted PAR provenance and lossless eligibility mapping."
+    },
+    {
+      "file": "tests/cli/StakeEngineExportRegistryWorkflow.integration.test.ts",
+      "purpose": "Outcome Library/Stake round trip, registry selection, and provenance preservation."
+    },
+    {
+      "file": "tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts",
+      "purpose": "Blueprint-to-Stake-to-Outcome Library compatibility and cross-game rejection."
+    },
+    {
+      "file": "tests/weightedoutcome/bundle/OutcomeLibraryBundleWriter.test.ts",
+      "purpose": "Bundle atomic publication, manifest/index provenance, and supplemental ownership."
+    },
+    {
+      "file": "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
+      "purpose": "Simulation/replay/certification/fairness source provenance and exact replay behavior."
+    },
+    {
+      "file": "tests/fairness/FairnessRoundProofVerifier.test.ts",
+      "purpose": "Fairness proof source/library/index validation and rejection diagnostics."
+    },
+    {
+      "file": "tests/project/replayOutcomeSourceProject.test.ts",
+      "purpose": "Portable Outcome Source replay source binding and failure recovery."
+    },
+    {
+      "file": "tests/cli/studio/StudioCapabilityConvergence.integration.test.ts",
+      "purpose": "Studio route and command capability/diagnostic convergence."
+    },
+    {
+      "file": "tests/cli/studio/StudioServer.test.ts",
+      "purpose": "Studio HTTP preflight, drift, job cancellation, recovery, and durable output ownership."
+    },
+    {
+      "file": "tests/cli/studio/runtime/StudioPlayService.test.ts",
+      "purpose": "Studio play and replay provenance classification across runtime and Outcome Library sources."
     }
   ]
 }

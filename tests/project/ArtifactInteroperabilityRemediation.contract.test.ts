@@ -46,8 +46,14 @@ type InteroperabilityResult = {
         readonly produced_path: string | null;
         readonly observable_result: string;
         readonly next_action: string | null;
-        readonly execution: {readonly runner: string; readonly surface: string; readonly assertions: readonly string[]};
+        readonly execution: {
+            readonly runner: string;
+            readonly surface: string;
+            readonly assertions: readonly string[];
+            readonly observations?: readonly {readonly route: string; readonly result: string}[];
+        };
     }[];
+    readonly targeted_test_runs: readonly {readonly file: string; readonly purpose: string}[];
 };
 
 const evidencePath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-14-artifact-torture/interoperability-result.json");
@@ -127,6 +133,35 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         }
     });
 
+    it("enumerates the complete public scope for every systemic class instead of a coverage label", () => {
+        const conversion = result.systemic_class_audits.find((audit) => audit.class === "shared conversion diagnostic parity");
+        expect(conversion?.planner_cells).toEqual(expect.arrayContaining([
+            "blueprint→blueprint", "blueprint→tsPackage", "blueprint→outcomeLibrary", "blueprint→stakeAdapter", "blueprint→parWorkbook",
+            "tsPackage→blueprint", "tsPackage→tsPackage", "tsPackage→outcomeLibrary", "tsPackage→stakeAdapter", "tsPackage→parWorkbook",
+            "outcomeLibrary→blueprint", "outcomeLibrary→tsPackage", "outcomeLibrary→outcomeLibrary", "outcomeLibrary→stakeAdapter", "outcomeLibrary→parWorkbook",
+            "stakeAdapter→blueprint", "stakeAdapter→tsPackage", "stakeAdapter→outcomeLibrary", "stakeAdapter→stakeAdapter", "stakeAdapter→parWorkbook",
+            "parWorkbook→blueprint", "parWorkbook→tsPackage", "parWorkbook→outcomeLibrary", "parWorkbook→stakeAdapter", "parWorkbook→parWorkbook",
+            "wasm→blueprint", "wasm→tsPackage", "wasm→outcomeLibrary", "wasm→stakeAdapter", "wasm→parWorkbook",
+        ]));
+        expect(conversion?.aliases).toEqual(expect.arrayContaining([
+            "build", "export", "import", "par", "outcomelibrary", "stakeengine", "validate", "inspect", "sim", "report", "replay", "sample", "serve", "certification", "fairness",
+        ]));
+        expect(conversion?.studio_routes).toEqual(expect.arrayContaining([
+            "/api/project/context", "/api/inspect", "/api/validate", "/api/artifacts/targets", "/api/artifacts/preview", "/api/artifacts/build", "/api/artifact-jobs/:id",
+        ]));
+        expect(conversion?.direct_callers).toEqual(expect.arrayContaining([
+            "ArtifactConversionPlanner", "ArtifactBuilderRegistry", "ProjectTargetResolver", "describeUnsupportedProjectOperation",
+        ]));
+
+        const lifecycle = result.systemic_class_audits.find((audit) => audit.class === "provenance and freshness binding");
+        expect(lifecycle?.studio_routes).toEqual(expect.arrayContaining([
+            "/api/project/outcome-libraries/generate", "/api/simulations", "/api/replays", "/api/play", "/api/certification", "/api/fairness",
+        ]));
+        expect(lifecycle?.direct_callers).toEqual(expect.arrayContaining([
+            "ParSheetImporter", "OutcomeLibraryBundleWriter", "StakeEngineImporter", "replayOutcomeSourceProject", "CertificationEvidenceBundleVerifier", "FairnessRoundProofVerifier",
+        ]));
+    });
+
     it("binds every claimed lifecycle disposition to its executable real-artifact runner", () => {
         const requiredScenarios = [
             "par-lossless-roundtrip",
@@ -139,17 +174,71 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             "durable-publication-recovery",
             "wasm-boundary",
         ];
-        expect(result.scenario_results.map((scenario) => scenario.id)).toEqual(requiredScenarios);
+        expect(result.scenario_results.map((scenario) => scenario.id)).toEqual(expect.arrayContaining(requiredScenarios));
         for (const scenario of result.scenario_results) {
             expect(scenario.source_path).toMatch(/^run-artifacts\//);
             expect(scenario.observable_result).not.toHaveLength(0);
             expect(scenario.execution.runner).toMatch(/^tests\//);
             expect(scenario.execution.surface).not.toHaveLength(0);
             expect(scenario.execution.assertions.length).toBeGreaterThan(0);
+            expect(scenario.execution.observations?.length).toBeGreaterThan(0);
+            for (const observation of scenario.execution.observations ?? []) {
+                expect(observation.route).not.toHaveLength(0);
+                expect(observation.result).not.toMatch(/coverage|generic|representative/i);
+            }
             if (scenario.status === "intentionally-unsupported") {
                 expect(scenario.produced_path).toBeNull();
                 expect(scenario.next_action).toMatch(/Blueprint|package|inspect|choose|use/i);
             }
         }
+    });
+
+    it("keeps the complete PC-14 lifecycle closure attached to the exact owner regressions", () => {
+        const expectedTargetedFiles = [
+            "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
+            "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
+            "tests/project/ArtifactInteroperabilityRemediation.contract.test.ts",
+            "tests/project/BuildProductMatrix.contract.test.ts",
+            "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts",
+            "tests/project/ArtifactBuilderRegistry.test.ts",
+            "tests/project/ArtifactConversionPlanner.test.ts",
+            "tests/cli/commands/OutcomeLibraryCommand.test.ts",
+            "tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts",
+            "tests/cli/ParSheetRoundTrip.integration.test.ts",
+            "tests/parsheet/ParSheetImporter.test.ts",
+            "tests/parsheet/mapping/ProvenanceSheetMapper.test.ts",
+            "tests/cli/StakeEngineExportRegistryWorkflow.integration.test.ts",
+            "tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts",
+            "tests/weightedoutcome/bundle/OutcomeLibraryBundleWriter.test.ts",
+            "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
+            "tests/fairness/FairnessRoundProofVerifier.test.ts",
+            "tests/project/replayOutcomeSourceProject.test.ts",
+            "tests/cli/studio/StudioCapabilityConvergence.integration.test.ts",
+            "tests/cli/studio/StudioServer.test.ts",
+            "tests/cli/studio/runtime/StudioPlayService.test.ts",
+        ];
+        expect(result.targeted_test_runs.map((run) => run.file)).toEqual(expectedTargetedFiles);
+        for (const run of result.targeted_test_runs) expect(run.purpose).not.toMatch(/coverage|generic|representative/i);
+
+        const scenarios = new Map(result.scenario_results.map((scenario) => [scenario.id, scenario]));
+        for (const id of [
+            "descriptor-byte-drift",
+            "referenced-source-byte-drift",
+            "manifest-index-drift",
+            "configuration-drift",
+            "cross-game-reuse-rejection",
+            "cross-version-hash-reuse-rejection",
+            "sampling-policy-reuse-rejection",
+            "partial-import-recovery",
+            "bundle-publication-cancellation",
+            "studio-artifact-job-cancellation",
+            "simulation-cancellation-recovery",
+            "replay-cancellation-recovery",
+            "borrowed-output-cleanup",
+            "portable-exact-outcome-replay",
+            "best-effort-package-replay",
+        ]) expect(scenarios.get(id)).toBeDefined();
+        expect(scenarios.get("portable-exact-outcome-replay")?.observable_result).toMatch(/portable.*exact/i);
+        expect(scenarios.get("best-effort-package-replay")?.observable_result).toMatch(/best-effort/i);
     });
 });
