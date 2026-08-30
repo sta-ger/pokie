@@ -372,9 +372,19 @@ export class StudioArtifactBuildService {
     }
 
     /** Consume a preview-issued operation, rejecting stale or cross-project handles. */
-    public startPreparedStakeProjection(projectRoot: string, preparedOperationId: string): StudioArtifactBuildJobView | undefined {
+    public async startPreparedStakeProjection(projectRoot: string, preparedOperationId: string): Promise<StudioArtifactBuildJobView | undefined> {
         const prepared = this.preparedStakeOperations.get(preparedOperationId);
         if (prepared === undefined || prepared.projectRoot !== projectRoot) return undefined;
+
+        // A prepared Stake operation is only a preflight snapshot. Re-resolve
+        // immediately before allocating its job so a package path replaced by
+        // an inspection-only component cannot consume the retained operation.
+        try {
+            const current = await this.resolveProject.resolve(projectRoot);
+            if (current === undefined || current.type === "wasm") return undefined;
+        } catch {
+            return undefined;
+        }
         this.preparedStakeOperations.delete(preparedOperationId);
         return this.startOperation(projectRoot, "stakeAdapter", prepared.operation.destinationPath, prepared.operation);
     }

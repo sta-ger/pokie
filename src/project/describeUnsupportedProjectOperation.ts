@@ -12,6 +12,7 @@ const OPERATION_NAMES: Readonly<Record<string, string>> = {
     build: "build a POKIE game package",
     sim: "simulate game rounds",
     replay: "replay a game round",
+    play: "play a game round",
     validate: "validate the game",
     edit: "edit the Game Blueprint",
     inspect: "inspect the game package",

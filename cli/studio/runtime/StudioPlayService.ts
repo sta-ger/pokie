@@ -8,6 +8,7 @@ import {
     isTransactionalWalletPort,
     loadPokieGame,
     OUTCOME_SOURCE_SAMPLE_OPERATION,
+    PLAY_OPERATION,
     GameWithFreeGamesSessionHandling,
     OutcomeLibraryBundleOutcomeSource,
     OutcomeLibraryBundleReader,
@@ -208,6 +209,10 @@ export class StudioPlayService {
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
             return this.newOutcomeSourceSession(project, seed, modeName, assertCurrent);
         }
+        const diagnostic = project === undefined ? undefined : describeUnsupportedProjectOperation(project, PLAY_OPERATION);
+        if (diagnostic !== undefined) {
+            return {status: "failed", error: diagnostic.message};
+        }
 
         let game: PokieGame;
         try {
@@ -280,6 +285,8 @@ export class StudioPlayService {
         if (this.active === undefined || sessionId !== this.currentSessionId) {
             return {status: "not-found"};
         }
+        const currentWasmError = await this.invalidateCurrentWasmSession();
+        if (currentWasmError !== undefined) return {status: "error", error: currentWasmError};
         const active = this.active;
         const actualOperation = operation ?? "spin";
 
@@ -412,6 +419,25 @@ export class StudioPlayService {
         this.sessionGeneration++;
         this.active = undefined;
         this.currentSessionId = undefined;
+    }
+
+    // A Play session is a snapshot of an executable package, not permission
+    // to keep executing it after its current path has become a component.
+    // Re-resolve only `.wasm` paths so ordinary package-session spins retain
+    // their existing no-I/O hot path.
+    private async invalidateCurrentWasmSession(): Promise<string | undefined> {
+        const active = this.active;
+        if (active === undefined || !active.projectRoot.toLowerCase().endsWith(".wasm")) return undefined;
+        try {
+            const project = await this.resolveProject.resolve(active.projectRoot);
+            if (project?.type !== "wasm") return undefined;
+            const diagnostic = describeUnsupportedProjectOperation(project, PLAY_OPERATION);
+            this.reset();
+            return diagnostic?.message ?? "POKIE Studio Play is unavailable for this POKIE WASM component.";
+        } catch (error) {
+            this.reset();
+            return error instanceof Error ? error.message : String(error);
+        }
     }
 
     private supportsSymbolWinSearch(session: GameSessionHandling): boolean {

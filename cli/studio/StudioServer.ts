@@ -33,7 +33,9 @@ import {
     FAIRNESS_VERIFY_OPERATION,
     OUTCOME_LIBRARY_GENERATE_OPERATION,
     OUTCOME_SOURCE_SAMPLE_OPERATION,
+    PLAY_OPERATION,
     REPLAY_OPERATION,
+    STAKE_ENGINE_EXPORT_OPERATION,
     SIM_OPERATION,
     STUDIO_OPERATION,
     VALIDATE_OPERATION,
@@ -1809,15 +1811,18 @@ export class StudioServer implements StudioServerHandling {
             const project = await new ProjectTargetResolver().resolve(this.currentContext.projectRoot);
             if (project?.type === "wasm") {
                 const diagnostic = describeUnsupportedProjectOperation(project, operation);
+                this.playService.reset();
                 this.sendJson(res, 409, {error: diagnostic?.message ?? describeUnavailableWasmComponent()});
                 return true;
             }
             // A current `.wasm` path which no longer resolves is still never a
             // package fallback, even if the file disappeared between opening
             // it and this request.
+            this.playService.reset();
             this.sendJson(res, 409, {error: describeUnavailableWasmComponent()});
             return true;
         } catch (error) {
+            this.playService.reset();
             this.sendJson(res, 409, {error: error instanceof Error ? error.message : String(error)});
             return true;
         }
@@ -2483,6 +2488,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, STAKE_ENGINE_EXPORT_OPERATION)) return;
         const body = await this.readJsonBody(req);
         try {
             validateStakeEngineExportValidateRequest((body ?? {}) as StakeEngineExportValidateRequestInput);
@@ -2504,6 +2510,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, STAKE_ENGINE_EXPORT_OPERATION)) return;
         const body = await this.readJsonBody(req);
         try {
             validateStakeEngineExportRequest((body ?? {}) as StakeEngineExportRequestInput);
@@ -2595,7 +2602,7 @@ export class StudioServer implements StudioServerHandling {
                 this.sendJson(res, 409, {error: "The prepared Stake operation is stale or names a different destination. Refresh the preflight before building."});
                 return;
             }
-            const job = this.artifactBuildService.startPreparedStakeProjection(this.currentContext.projectRoot, validated.preparedOperationId);
+            const job = await this.artifactBuildService.startPreparedStakeProjection(this.currentContext.projectRoot, validated.preparedOperationId);
             if (job === undefined) {
                 this.sendJson(res, 409, {error: "The prepared Stake operation is stale or belongs to another project. Refresh the preflight before building."});
                 return;
@@ -2834,6 +2841,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, REPLAY_OPERATION)) return;
 
         const body = await this.readJsonBody(req);
         if (typeof body !== "object" || body === null) {
@@ -2994,6 +3002,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
 
         const body = await this.readJsonBody(req);
         let validated;
@@ -3023,6 +3032,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
 
         const body = await this.readJsonBody(req);
         let validated;
@@ -3050,6 +3060,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
 
         const result = await this.playService.findAnyWin(sessionId);
         if (result.status === "ok") {
@@ -3068,6 +3079,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
 
         const body = await this.readJsonBody(req);
         let validated;
@@ -3095,6 +3107,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
 
         const result = await this.playService.findFreeGames(sessionId);
         if (result.status === "ok") {

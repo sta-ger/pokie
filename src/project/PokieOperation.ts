@@ -22,6 +22,10 @@ export type PokieOperation = string;
 export const BUILD_OPERATION: PokieOperation = "build";
 export const SIM_OPERATION: PokieOperation = "sim";
 export const REPLAY_OPERATION: PokieOperation = "replay";
+// Studio Play drives a live round just like the CLI simulation/replay paths,
+// but names its own user action so an inspection-only component explains the
+// unavailable Play control rather than a different runtime surface.
+export const PLAY_OPERATION: PokieOperation = "play";
 export const VALIDATE_OPERATION: PokieOperation = "validate";
 // Interactively edits an existing Blueprint Project's own canonical GameBlueprint (see "pokie edit") --
 // requires BLUEPRINT_BUILD_CAPABILITY, the same single capability BUILD_OPERATION requires, since
@@ -102,6 +106,7 @@ export const OPERATION_REQUIRED_CAPABILITY: Readonly<Record<PokieOperation, Proj
     [EDIT_OPERATION]: BLUEPRINT_BUILD_CAPABILITY,
     [SIM_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
     [REPLAY_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
+    [PLAY_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
     [VALIDATE_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
     [INSPECT_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
     [SERVE_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,

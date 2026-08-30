@@ -170,11 +170,28 @@ describe("StudioArtifactBuildService", () => {
             }
             expect(preview.plan.steps.some((step) => step.kind === "generateOutcomeLibrary" || step.kind === "reuseManagedOutcomeLibrary")).toBe(true);
 
-            const started = service.startPreparedStakeProjection(blueprintPath, preview.preparedOperationId);
+            const started = await service.startPreparedStakeProjection(blueprintPath, preview.preparedOperationId);
             expect(started).toMatchObject({target: "stakeAdapter", status: "queued"});
             // Handles are single-use: retry cannot cause a fresh plan.
-            expect(service.startPreparedStakeProjection(blueprintPath, preview.preparedOperationId)).toBeUndefined();
+            await expect(service.startPreparedStakeProjection(blueprintPath, preview.preparedOperationId)).resolves.toBeUndefined();
             service.cancelForProject(blueprintPath, started!.id);
+        });
+
+        it("rejects a prepared Stake operation when its source becomes a WASM component", async () => {
+            const packagePath = writeBlueprintFile();
+            const resolve = jest.fn()
+                .mockResolvedValueOnce({rootPath: packagePath, type: "blueprint", capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "fixture"})
+                .mockResolvedValueOnce({rootPath: packagePath, type: "wasm", capabilities: PROJECT_TYPE_CAPABILITIES.wasm, provenance: "replacement component"});
+            service = new StudioArtifactBuildService("1.3.0", undefined, {resolve});
+
+            const preview = await service.preview(packagePath, "stakeAdapter", path.join(workDir, "replaced-stake"));
+            expect(preview.status).toBe("ok");
+            if (preview.status !== "ok" || preview.preparedOperationId === undefined) {
+                throw new Error("expected a retained Stake operation");
+            }
+
+            await expect(service.startPreparedStakeProjection(packagePath, preview.preparedOperationId)).resolves.toBeUndefined();
+            expect(fs.existsSync(path.join(workDir, "replaced-stake"))).toBe(false);
         });
 
         it("reports a conflict for a pre-existing non-empty destination, agreeing with what build() itself would report, and never writes to it", async () => {
