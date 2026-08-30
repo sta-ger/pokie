@@ -4,6 +4,7 @@ import {
     ArtifactConversionPlanner,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
     BUILD_PRODUCT_MATRIX_TARGETS,
+    describeUnavailableArtifactOperation,
     PROJECT_TYPE_CAPABILITIES,
     type PokieProject,
 } from "../../src/index.js";
@@ -18,7 +19,7 @@ type InteroperabilityRow = {
     readonly observable_result: string;
     readonly reason?: string;
     readonly next_action?: string;
-    readonly diagnostic?: {readonly shared_owner: string; readonly code: string; readonly recovery: string};
+    readonly diagnostic?: {readonly shared_owner: string; readonly code: string; readonly recovery: string; readonly message?: string};
     readonly execution?: {
         readonly runner: string;
         readonly operation: string;
@@ -94,8 +95,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 expect(row.status).toBe("intentionally-unsupported");
                 expect(row.reason).toContain(row.source_path);
                 expect(row.next_action).toBeDefined();
-                expect(row.diagnostic).toMatchObject({code: "unsupported-boundary", recovery: row.next_action});
-                expect(row.diagnostic?.shared_owner).toMatch(/ArtifactConversionPlanner|describeUnsupportedProjectOperation/);
+                expect(row.diagnostic).toMatchObject({code: "unsupported-artifact-operation", recovery: row.next_action});
+                expect(row.diagnostic?.shared_owner).toMatch(/ArtifactConversionPlanner|describeUnsupportedProjectOperation|ArtifactOperationDiagnostic/);
             }
         }
     });
@@ -113,6 +114,20 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         const wasm = planner.plan(project("wasm"), "outcomeLibrary");
         expect(wasm).toMatchObject({status: "unavailable", diagnostic: {code: "unsupported-boundary"}});
         expect(wasm.diagnostic?.recovery).toMatch(/Blueprint|package/i);
+    });
+
+    it("executes the concrete shared diagnostic retained for every unavailable artifact-operation row", () => {
+        for (const row of result.rows.filter((entry) => entry.status === "intentionally-unsupported")) {
+            const diagnostic = describeUnavailableArtifactOperation(row.artifact_kind, row.operation, row.source_path);
+            expect(diagnostic).toBeDefined();
+            expect(row.diagnostic?.shared_owner).toBe(diagnostic?.sharedOwner);
+            expect(row.diagnostic).toMatchObject({
+                code: diagnostic?.code,
+                recovery: diagnostic?.recovery,
+                message: diagnostic?.message,
+            });
+            expect(row.reason).toContain(diagnostic?.message ?? "");
+        }
     });
 
     it("documents class-level ownership rather than command-local exceptions", () => {

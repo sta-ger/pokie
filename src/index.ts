@@ -247,6 +247,7 @@ export * from "./project/ArtifactBuildTargetDescriptor.js";
 export * from "./project/ArtifactBuilder.js";
 export * from "./project/ArtifactBuilderRegistry.js";
 export * from "./project/ArtifactConversionPlanner.js";
+export * from "./project/ArtifactOperationDiagnostic.js";
 export * from "./project/ArtifactDestinationCheck.js";
 export * from "./project/ArtifactTargetType.js";
 export * from "./project/BlueprintArtifactBuilder.js";
