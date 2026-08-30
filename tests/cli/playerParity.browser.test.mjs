@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {spawnSync} from "node:child_process";
+import {mkdtemp, readFile, readdir, rm} from "node:fs/promises";
 import {resolve} from "node:path";
+import {tmpdir} from "node:os";
 import {deflateSync} from "node:zlib";
 import {test} from "@jest/globals";
 import {
@@ -115,3 +117,43 @@ test("PC-12 browser parity invokes its executable runner before browser setup", 
     assert.equal(execution.status, 1);
     assert.match(execution.stderr, /PC_12_STUDIO_PROJECT must name the deterministic same-game fixture package/);
 });
+
+test("PC-12 browser parity executes Studio and an isolated exact-consumer browser workflow, then cleans its staging", async () => {
+    const runnerStaging = await mkdtemp(resolve(tmpdir(), "pokie-pc12-browser-test-"));
+    const evidence = resolve(runnerStaging, "evidence");
+    const studioProject = resolve(process.cwd(), "tests/cli/fixtures/playable-game-with-free-games");
+    const supersedingProject = resolve(process.cwd(), "tests/cli/fixtures/playable-game-with-free-games-superseding");
+    const examplesRoot = "/home/stager/Work/sta-ger/pokie-examples";
+
+    try {
+        const execution = spawnSync(process.execPath, [resolve(process.cwd(), "scripts/pc-12-player-parity-browser.mjs")], {
+            cwd: process.cwd(),
+            encoding: "utf8",
+            timeout: 300_000,
+            env: {
+                ...process.env,
+                PC_12_STUDIO_PROJECT: studioProject,
+                PC_12_SUPERSEDING_PROJECT: supersedingProject,
+                POKIE_EXAMPLES_PATH: examplesRoot,
+                PC_12_EVIDENCE_DIR: evidence,
+                PC_12_TEMP_DIR: runnerStaging,
+            },
+        });
+
+        expect(execution.error).toBeUndefined();
+        if (execution.status !== 0) {
+            const transcript = await readFile(resolve(evidence, "TRANSCRIPT.txt"), "utf8").catch(() => "(runner transcript unavailable)");
+            throw new Error(`Parity runner failed with ${execution.status}:\n${execution.stdout}\n${execution.stderr}\n${transcript}`);
+        }
+        const parity = JSON.parse(await readFile(resolve(evidence, "parity.json"), "utf8"));
+        expect(parity).toEqual(expect.objectContaining({
+            fixture: expect.objectContaining({id: pc12FixtureId, seed: pc12FixtureSeed}),
+            comparison: expect.objectContaining({dom: "passed", computedStyle: "passed", layout: "passed", overflow: "passed"}),
+        }));
+        await expect(readFile(resolve(evidence, "studio-desktop.png"))).resolves.toBeInstanceOf(Buffer);
+        await expect(readFile(resolve(evidence, "examples-mobile.png"))).resolves.toBeInstanceOf(Buffer);
+        expect((await readdir(runnerStaging)).filter((entry) => entry.startsWith("pokie-pc12-"))).toEqual([]);
+    } finally {
+        await rm(runnerStaging, {recursive: true, force: true});
+    }
+}, 330_000);

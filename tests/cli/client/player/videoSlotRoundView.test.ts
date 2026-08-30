@@ -128,7 +128,7 @@ describe("deriveWinHighlightsFromRoundArtifactWins", () => {
             {
                 id: "line:w1",
                 kind: "line",
-                label: "line: cherry, win: 12.5",
+                label: "Line: w1, win: 12.5",
                 winAmount: 12.5,
                 positions: [[0, 0], [1, 0]],
                 paylinePositions: [[0, 0], [1, 0], [2, 0]],
@@ -155,6 +155,29 @@ describe("deriveWinHighlightsFromRoundArtifactWins", () => {
 
         expect(highlight.positions).toEqual(winningPositions);
         expect(highlight.positions).not.toBe(winningPositions);
+    });
+
+    it("uses the same standard labels, kind spelling, identity and positions as an equivalent VideoSlot wire round", () => {
+        const fromWire = deriveWinHighlights({
+            reelsSymbols: [["A"], ["S"], ["C"]],
+            winningLines: {"4": {lineId: "4", symbolId: "A", definition: [0, 1, 0], symbolsPositions: [0, 1], winAmount: 12}},
+            winningScatters: {S: {symbolId: "S", symbolsPositions: [[1, 0]], winAmount: 5}},
+            winningClusters: {clusterA: {symbolId: "C", symbolsPositions: [[2, 0], [2, 1]], winAmount: 7}},
+            winningValues: {V: {symbolId: "V", symbolsPositions: [[0, 0]], winAmount: 9}},
+            winningWays: {W: {symbolId: "W", symbolsPositions: [[1, 1]], winAmount: 11}},
+        });
+        const fromArtifact = deriveWinHighlightsFromRoundArtifactWins(
+            [
+                {type: "line", id: "4", symbolId: "A", winAmount: 12, winningPositions: [[0, 0], [1, 1]], metadata: {definition: [0, 1, 0]}},
+                {type: "scatter", id: "S", symbolId: "S", winAmount: 5, winningPositions: [[1, 0]], metadata: {}},
+                {type: "cluster", id: "clusterA", symbolId: "C", winAmount: 7, winningPositions: [[2, 0], [2, 1]], metadata: {}},
+                {type: "value", id: "V", symbolId: "V", winAmount: 9, winningPositions: [[0, 0]], metadata: {}},
+                {type: "ways", id: "W", symbolId: "W", winAmount: 11, winningPositions: [[1, 1]], metadata: {}},
+            ],
+            3,
+        );
+
+        expect(fromArtifact).toEqual(fromWire);
     });
 });
 

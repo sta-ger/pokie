@@ -239,7 +239,12 @@ async function devtoolsJson(url) {
 }
 
 async function connect(devtoolsUrl) {
-    const target = await devtoolsJson(`${devtoolsUrl}/json/new?${encodeURIComponent("about:blank")}`);
+    // Recent Chromium versions reject GET /json/new. Chromium already has the about:blank tab
+    // supplied at launch, so attach to that ordinary page target instead of relying on the
+    // deprecated target-creation endpoint.
+    const targets = await devtoolsJson(`${devtoolsUrl}/json/list`);
+    const target = targets.find((candidate) => candidate.type === "page" && candidate.webSocketDebuggerUrl !== undefined);
+    assert.ok(target, "Chromium must expose a debuggable page target");
     const socket = new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((resolveOpen, rejectOpen) => {
         socket.once("open", resolveOpen);
@@ -247,10 +252,16 @@ async function connect(devtoolsUrl) {
     });
     let sequence = 0;
     const pending = new Map();
+    const events = [];
     socket.on("message", (raw) => {
         const response = JSON.parse(raw.toString());
         const request = pending.get(response.id);
-        if (request === undefined) return;
+        if (request === undefined) {
+            if (response.method === "Runtime.exceptionThrown" || response.method === "Runtime.consoleAPICalled") {
+                events.push(response.params);
+            }
+            return;
+        }
         pending.delete(response.id);
         response.error === undefined ? request.resolve(response.result) : request.reject(new Error(JSON.stringify(response.error)));
     });
@@ -261,7 +272,7 @@ async function connect(devtoolsUrl) {
     });
     await send("Page.enable");
     await send("Runtime.enable");
-    return {send, close: () => socket.close()};
+    return {send, events, close: () => socket.close()};
 }
 
 function playerSnapshotExpression() {
@@ -341,7 +352,9 @@ export async function runPlayerParityBrowser() {
     const examplesSourceRoot = resolve(process.env.POKIE_EXAMPLES_PATH ?? "../pokie-examples");
     const fixture = await validatePc12FixtureContract(project, supersedingProject, examplesSourceRoot);
     const evidence = resolve(process.env.PC_12_EVIDENCE_DIR ?? "docs/evidence/phase7-product-coherence/pc-12-player-parity/current-run");
-    const profile = await mkdtemp(resolve(tmpdir(), "pokie-pc12-"));
+    // The optional parent is useful to the focused executable regression: it can prove this
+    // runner removes its own browser/consumer staging without retaining the test's evidence root.
+    const profile = await mkdtemp(resolve(process.env.PC_12_TEMP_DIR ?? tmpdir(), "pokie-pc12-"));
     const studioPort = 32192;
     const examplesPort = 51792;
     const devtoolsPort = 9229;
@@ -355,6 +368,11 @@ export async function runPlayerParityBrowser() {
     let exactConsumer;
     const transcript = [];
     const note = (message) => transcript.push(`[${new Date().toISOString()}] ${message}`);
+    const captureChildOutput = (name, child) => {
+        child.stdout?.on("data", (chunk) => note(`${name} stdout: ${String(chunk).trim()}`));
+        child.stderr?.on("data", (chunk) => note(`${name} stderr: ${String(chunk).trim()}`));
+        child.on("exit", (code, signal) => note(`${name} exited code=${code} signal=${signal}`));
+    };
     let normalizedPlayerWidth = 600;
 
     try {
@@ -362,7 +380,11 @@ export async function runPlayerParityBrowser() {
         exactConsumer = await prepareExactCandidateConsumer(examplesSourceRoot, profile);
         note(`EXACT CANDIDATE export=${exactConsumer.resolvedExport}; archive=${exactConsumer.candidateArchive}`);
         studio = spawn(process.execPath, studioLaunchArguments(project, studioPort), {cwd: root, stdio: "pipe"});
-        examples = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(examplesPort)], {cwd: exactConsumer.consumerRoot, stdio: "pipe"});
+        // Run the installed consumer's Vite entrypoint directly. This is the same public
+        // development server used by its npm script, without inheriting a package-manager shell.
+        examples = spawn(process.execPath, [resolve(exactConsumer.consumerRoot, "node_modules", "vite", "bin", "vite.js"), "--host", "127.0.0.1", "--port", String(examplesPort)], {cwd: exactConsumer.consumerRoot, stdio: "pipe"});
+        captureChildOutput("Studio", studio);
+        captureChildOutput("examples", examples);
         await waitFor(async () => {
             try { return (await fetch(`${studioUrl}/api/context`)).ok; } catch { return false; }
         }, "Studio public API");
@@ -381,6 +403,9 @@ export async function runPlayerParityBrowser() {
         const evaluate = async (expression) => (await cdp.send("Runtime.evaluate", {expression, returnByValue: true, awaitPromise: true})).result.value;
         const navigate = async (url) => {
             await cdp.send("Page.navigate", {url});
+            // A freshly attached about:blank target is already "complete". Wait for the new
+            // document's URL first, otherwise the first examples interaction races the navigation.
+            await waitFor(async () => (await evaluate("window.location.href")) === url, `navigation ${url}`);
             await waitFor(async () => (await evaluate("document.readyState")) === "complete", `page ${url}`);
         };
         const setViewport = async (viewport) => {
@@ -400,6 +425,13 @@ export async function runPlayerParityBrowser() {
             return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
         })()`);
         const click = async (label, selector) => {
+            try {
+                await waitFor(async () => (await pointFor(label, selector)) !== undefined, `visible control ${label}`, 15000);
+            } catch (error) {
+                const pageText = await evaluate("document.body.textContent?.trim() ?? ''");
+                const pageHtml = await evaluate("document.documentElement.outerHTML.slice(0, 2000)");
+                throw new Error(`${error.message}; page text: ${pageText}; page HTML: ${pageHtml}; browser events: ${JSON.stringify(cdp.events)}`);
+            }
             const point = await pointFor(label, selector);
             if (point === undefined) throw new Error(`Visible control ${JSON.stringify(label)} was unavailable.`);
             await cdp.send("Input.dispatchMouseEvent", {type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1});
@@ -414,6 +446,7 @@ export async function runPlayerParityBrowser() {
             note(`FILL ${selector}=${value}`);
         };
         const hover = async (label, selector) => {
+            await waitFor(async () => (await pointFor(label, selector)) !== undefined, `visible hover control ${label}`);
             const point = await pointFor(label, selector);
             if (point === undefined) throw new Error(`Visible control ${JSON.stringify(label)} was unavailable for hover.`);
             await cdp.send("Input.dispatchMouseEvent", {type: "mouseMoved", x: point.x, y: point.y});
@@ -507,10 +540,17 @@ export async function runPlayerParityBrowser() {
             await evaluate(`(() => {
                 const original = window.fetch;
                 window.__pc12PreparationStarted = false;
+                window.__pc12DelayedPreparationRequestCount = 0;
                 window.__pc12RestorePreparationFetch = () => { window.fetch = original; };
                 window.fetch = (input, init) => {
-                    if (String(input).includes("/api/project/play/session")) {
+                    const requestUrl = input instanceof Request ? input.url : String(input);
+                    const requestMethod = init?.method ?? (input instanceof Request ? input.method : "GET");
+                    const isPreparation = new URL(requestUrl, window.location.href).pathname === "/api/project/play/session" && requestMethod.toUpperCase() === "POST";
+                    // Delay exactly the original reset preparation.  The replacement project's
+                    // public New Play session uses this same endpoint and must be allowed through.
+                    if (isPreparation && window.__pc12DelayedPreparationRequestCount === 0) {
                         window.__pc12PreparationStarted = true;
+                        window.__pc12DelayedPreparationRequestCount += 1;
                         return original(input, init).then(async (response) => {
                             const payload = await response.clone().json();
                             window.__pc12PreparedSessionId = payload.session?.sessionId;
@@ -534,6 +574,7 @@ export async function runPlayerParityBrowser() {
             const switched = await evaluate(playerSnapshotExpression());
             assert.equal(switched.wins.length, 0, "A superseding project must not publish the old session round");
             assert.equal(switched.features.length, 0, "A superseding project must not publish the old feature result");
+            assert.equal(await evaluate("window.__pc12DelayedPreparationRequestCount"), 1, "Only the original pending preparation request may be delayed");
             const staleSession = await fetch(`${studioUrl}/api/project/play/sessions/${encodeURIComponent(preparedSessionId)}/spin`, {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
