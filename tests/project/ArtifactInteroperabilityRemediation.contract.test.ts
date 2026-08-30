@@ -75,6 +75,17 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         }
     });
 
+    it("has a reproducible runner-owned regeneration entry point", () => {
+        const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
+        const packageJson = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf-8")) as {readonly scripts: Record<string, string>};
+        const script = fs.readFileSync(scriptPath, "utf-8");
+        expect(packageJson.scripts["evidence:pc14-interoperability"]).toBe("node scripts/generate-pc14-interoperability-evidence.mjs");
+        expect(script).toContain("PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR");
+        expect(script).toContain("ArtifactInteroperabilityTorture.integration.test.ts");
+        expect(script).toContain("StudioArtifactInteroperabilityTorture.integration.test.ts");
+        expect(script).toContain("ArtifactInteroperabilityRemediation.contract.test.ts");
+    });
+
     it("keeps actual artifact identities, owners, and only exercised observations", () => {
         for (const row of result.rows) {
             expect(row.source_path).toMatch(/^run-artifacts\//);
