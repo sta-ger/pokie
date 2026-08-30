@@ -275,6 +275,32 @@ describe("ReplayCommand runtime package materialization boundary", () => {
         }
     });
 
+    it.each([
+        ["missing", undefined, /no compatible PokieWasmComponentManifest sidecar.*Add a valid compatible sidecar.*never loads or executes/i],
+        ["malformed", "{", /sidecar.*malformed.*not valid JSON.*Repair the malformed sidecar.*never loads or executes/i],
+        ["incompatible", JSON.stringify({schemaVersion: "2.0.0", component: {id: "runtime-boundary", version: "1.0.0"}, serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"}, host: {rng: "pokie.rng.v1", services: []}, capabilities: []}), /not compatible with this POKIE build.*Update the incompatible sidecar.*never loads or executes/i],
+    ])("preserves the %s WASM sidecar diagnostic without runtime preparation", async (_kind, sidecar, expectedDiagnostic) => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-wasm-boundary-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const descriptorPath = path.join(workDir, "replay.json");
+        fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+        if (sidecar !== undefined) fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, sidecar);
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const writeFile = jest.fn();
+        const resolveRuntimePackageRoot = jest.fn(() => Promise.resolve({runtimePath: "must-not-resolve", release: () => Promise.resolve()}));
+        const command = new ReplayCommand(loadGame, writeFile, undefined, resolveRuntimePackageRoot);
+
+        try {
+            await expect(command.run([wasmPath, "--round", "1", "--out", descriptorPath])).rejects.toThrow(expectedDiagnostic);
+            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+            expect(loadGame).not.toHaveBeenCalled();
+            expect(writeFile).not.toHaveBeenCalled();
+            expect(fs.existsSync(descriptorPath)).toBe(false);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("resolves the raw packageRoot once and replays against the resolved runtime path instead", async () => {
         const rawPackageRoot = "/blueprints/raw-game.json";
         const resolvedRuntimePath = "/materialized/raw-game";

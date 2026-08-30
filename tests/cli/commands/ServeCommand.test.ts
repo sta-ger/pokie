@@ -247,6 +247,30 @@ describe("ServeCommand runtime package materialization boundary", () => {
         }
     });
 
+    it.each([
+        ["missing", undefined, /no compatible PokieWasmComponentManifest sidecar.*Add a valid compatible sidecar.*never loads or executes/i],
+        ["malformed", "{", /sidecar.*malformed.*not valid JSON.*Repair the malformed sidecar.*never loads or executes/i],
+        ["incompatible", JSON.stringify({schemaVersion: "2.0.0", component: {id: "runtime-boundary", version: "1.0.0"}, serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"}, host: {rng: "pokie.rng.v1", services: []}, capabilities: []}), /not compatible with this POKIE build.*Update the incompatible sidecar.*never loads or executes/i],
+    ])("preserves the %s WASM sidecar diagnostic without runtime preparation", async (_kind, sidecar, expectedDiagnostic) => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-serve-wasm-boundary-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+        if (sidecar !== undefined) fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, sidecar);
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const resolveRuntimePackageRoot = jest.fn(() => Promise.resolve({runtimePath: "must-not-resolve", release: () => Promise.resolve()}));
+        const server = createStubServer({host: "127.0.0.1", port: 0});
+        const command = new ServeCommand(loadGame, () => server, resolveRuntimePackageRoot);
+
+        try {
+            await expect(command.run([wasmPath])).rejects.toThrow(expectedDiagnostic);
+            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+            expect(loadGame).not.toHaveBeenCalled();
+            expect(server.startCalls).toBe(0);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("resolves the raw packageRoot once and loads the resolved runtime path instead", async () => {
         const rawPackageRoot = "/blueprints/raw-game.json";
         const resolvedRuntimePath = "/materialized/raw-game";

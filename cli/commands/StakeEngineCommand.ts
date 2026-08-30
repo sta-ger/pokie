@@ -31,6 +31,8 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     PROJECT_TYPE_CAPABILITIES,
+    describeUnsupportedProjectOperation,
+    STAKE_ENGINE_IMPORT_OPERATION,
     ValidationIssue,
     WeightedOutcomeLibrary,
 } from "pokie";
@@ -557,6 +559,10 @@ export class StakeEngineCommand implements CliCommandHandling {
             };
         }
         if (project.type === "stakeAdapter") return project;
+        if (project.type === "wasm") {
+            const diagnostic = describeUnsupportedProjectOperation(project, STAKE_ENGINE_IMPORT_OPERATION);
+            if (diagnostic !== undefined) throw new Error(diagnostic.message);
+        }
         throw new Error(`"${stakeDir}" is not a recognized POKIE-produced Stake Engine export with pokie-manifest.json.`);
     }
 

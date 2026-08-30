@@ -125,4 +125,27 @@ describe("ImportCommand", () => {
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
+
+    it("rejects a compatible WASM component with the inspection-only PAR import diagnostic before publishing", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-import-command-wasm-boundary-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const outputPath = path.join(workDir, "imported.blueprint.json");
+        fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({
+            schemaVersion: "1.0.0",
+            component: {id: "import-boundary", version: "1.0.0"},
+            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+            host: {rng: "pokie.rng.v1", services: []},
+            capabilities: [],
+        }));
+
+        try {
+            await expect(new ImportCommand("1.3.0").run([wasmPath, "--out", outputPath])).rejects.toThrow(
+                /cannot import a PAR workbook.*never loads or executes.*inspect a compatible component/i,
+            );
+            expect(fs.existsSync(outputPath)).toBe(false);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
 });

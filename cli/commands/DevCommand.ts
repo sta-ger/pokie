@@ -1,5 +1,7 @@
 import {Command} from "commander";
 import {
+    DEV_OPERATION,
+    describeUnsupportedProjectOperation,
     loadPokieGame,
     PokieClientServer,
     PokieClientServerHandling,
@@ -8,9 +10,12 @@ import {
     PokieDevServerHandling,
     PokieDevServerOptions,
     PokieGame,
+    ProjectResolving,
+    ProjectTargetResolver,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolution, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
+import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {openBrowser} from "../openBrowser.js";
 import {waitForHealth} from "../waitForHealth.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -67,6 +72,7 @@ export class DevCommand implements CliCommandHandling {
     // passthrough so every existing caller/test keeps behaving exactly as before this boundary existed;
     // cli/pokie.ts wires the real, materializing one in.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
+    private readonly resolveProject: ProjectResolving;
 
     constructor(
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
@@ -76,6 +82,7 @@ export class DevCommand implements CliCommandHandling {
         ) => new PokieDevServer(game, options),
         dependencies: DevCommandDependencies = {},
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
     ) {
         this.loadGame = loadGame;
         this.createApiServer = createApiServer;
@@ -88,6 +95,7 @@ export class DevCommand implements CliCommandHandling {
         this.process = dependencies.process ?? process;
         this.pokieVersion = dependencies.pokieVersion ?? "unknown";
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
+        this.resolveProject = resolveProject;
     }
 
     public getName(): string {
@@ -111,6 +119,16 @@ export class DevCommand implements CliCommandHandling {
                 return;
             }
             throw error;
+        }
+        let project;
+        try {
+            project = await this.resolveProject.resolve(options.packageRoot);
+        } catch (error) {
+            throw describeRuntimePackageLoadError(options.packageRoot, error);
+        }
+        if (project?.type === "wasm") {
+            const diagnostic = describeUnsupportedProjectOperation(project, DEV_OPERATION);
+            if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
         }
         const game = await this.loadRuntimeGame(options.packageRoot);
 

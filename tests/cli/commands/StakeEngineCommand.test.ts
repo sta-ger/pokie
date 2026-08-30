@@ -9,6 +9,9 @@ import {
     StakeEngineImportWriting,
     ValidationIssue,
 } from "pokie";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import {StakeEngineCommand} from "../../../cli/commands/StakeEngineCommand.js";
 
 const CONFIG_PATH = "/project/stake-config.json";
@@ -141,6 +144,34 @@ describe("StakeEngineCommand", () => {
         const command = new StakeEngineCommand("1.3.0");
 
         await expect(command.run(["bogus"])).rejects.toThrow(/Usage: pokie stakeengine export/);
+    });
+
+    it("rejects a compatible WASM component with the inspection-only Stake import diagnostic before reading or writing", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stake-import-wasm-boundary-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const outputPath = path.join(workDir, "imported");
+        fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({
+            schemaVersion: "1.0.0",
+            component: {id: "stake-import-boundary", version: "1.0.0"},
+            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+            host: {rng: "pokie.rng.v1", services: []},
+            capabilities: [],
+        }));
+        const importer = createStubImporter(successImportResult);
+        const writer = createStubImportWriter();
+        const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, writer);
+
+        try {
+            await expect(command.run(["import", wasmPath, "--out", outputPath])).rejects.toThrow(
+                /cannot import a Stake Engine export.*never loads or executes.*inspect a compatible component/i,
+            );
+            expect(importer.calledWith).toBeUndefined();
+            expect(writer.calledWith).toBeUndefined();
+            expect(fs.existsSync(outputPath)).toBe(false);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     describe("export", () => {
