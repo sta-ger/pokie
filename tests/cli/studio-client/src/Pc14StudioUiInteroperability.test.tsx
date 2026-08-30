@@ -361,7 +361,10 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.type(gameName, "PC-14 Edited Studio Blueprint");
         await user.click(screen.getByRole("button", {name: /Show advanced options/}));
         const savedBlueprintPath = path.join(workDir, "studio-ui-edited.blueprint.json");
-        const saveBlueprintInput = screen.getByRole("textbox", {name: "Save to path"});
+        // Mantine mounts the guided editor's advanced fields through an
+        // animated Collapse.  The disclosure state changes synchronously,
+        // while the accessible field becomes available on the next render.
+        const saveBlueprintInput = await screen.findByRole("textbox", {name: "Save to path"});
         await user.type(saveBlueprintInput, savedBlueprintPath);
         await user.click(screen.getByRole("button", {name: "Save"}));
         await screen.findByText(`Saved to "${savedBlueprintPath}".`);
