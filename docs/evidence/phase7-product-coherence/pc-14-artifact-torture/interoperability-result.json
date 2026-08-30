@@ -10,7 +10,7 @@
   "runner_inputs": [
     {
       "file": "cli-real-artifact-result.json",
-      "sha256": "sha256:890677a7a85acf322b26bab32d2b580927bc92db52a4d172b5c320bfb6854980",
+      "sha256": "sha256:4f258741e2ada6943b7b819f2e232a432f40d07fb40bc557acea9e5c49973f6d",
       "rows": 72,
       "scenarios": 15
     },
@@ -315,7 +315,7 @@
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
       "produced_path": "run-artifacts/matrix-edge-blueprint-parWorkbook",
-      "produced_identity": "sha256:15f0f92fb78bdfa98c6b2c64682e53da0e2e40af6705043ef65e6b2e486d50cc",
+      "produced_identity": "sha256:9194f42c2ab59b2355f4ad7bf01373fada44f2a82aad1930e7d6837ededa4393",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -547,7 +547,7 @@
       "source_path": "run-artifacts/matrix.par.xlsx",
       "source_identity": "sha256:95868490c4249a79d13e2768d1f8ec4bb382bbc09ac0fa4eb4f799f99a8ebea3",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-parWorkbook",
-      "produced_identity": "sha256:bbd99518377fa6e20bc67c5d31e79dc91bbaffdd8ac772f45c512771e5b47df5",
+      "produced_identity": "sha256:604ec2e1fb75881a602abdf1f2584f6494ad90811603e5f73791960015564183",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"

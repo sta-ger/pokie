@@ -321,6 +321,31 @@ export class ArtifactInteroperabilityRun {
             while (cursor < value.length && (/[A-Za-z0-9]/).test(String.fromCharCode(value[cursor]!))) cursor += 1;
             index = value.indexOf(prefix, cursor);
         }
+        if (chunks.length === 0) return this.normaliseRunnerTemporarySuffix(value);
+        chunks.push(value.subarray(cursor));
+        return this.normaliseRunnerTemporarySuffix(Buffer.concat(chunks));
+    }
+
+    /**
+     * ExcelJS compresses a workbook before this identity helper observes it,
+     * then this method sees the uncompressed XML part.  Some registry
+     * conversions retain a sibling runner's source path there, so its parent
+     * directory need not be the ledger's parent.  The mkdtemp suffix alone is
+     * transport metadata; retain the rest of the path and normalise just that
+     * volatile segment without decoding arbitrary artifact bytes as UTF-8.
+     */
+    private normaliseRunnerTemporarySuffix(value: Buffer): Buffer {
+        const prefix = Buffer.from("pokie-artifact-torture-");
+        const replacement = Buffer.from("pokie-artifact-torture-<pc14-run-root>");
+        const chunks: Buffer[] = [];
+        let cursor = 0;
+        let index = value.indexOf(prefix, cursor);
+        while (index !== -1) {
+            chunks.push(value.subarray(cursor, index), replacement);
+            cursor = index + prefix.length;
+            while (cursor < value.length && (/[A-Za-z0-9]/).test(String.fromCharCode(value[cursor]!))) cursor += 1;
+            index = value.indexOf(prefix, cursor);
+        }
         if (chunks.length === 0) return value;
         chunks.push(value.subarray(cursor));
         return Buffer.concat(chunks);
@@ -336,9 +361,18 @@ export class ArtifactInteroperabilityRun {
      */
     private normaliseArtifactIdentity(entryPath: string, value: Buffer): Buffer {
         const rooted = this.normaliseRunnerRoot(value);
-        if (entryPath.endsWith(".xlsx")) return this.normaliseZipArtifact(rooted);
+        // Registry destinations are deliberately extension-agnostic: the
+        // `parWorkbook` target can therefore be a valid XLSX file whose
+        // destination has no `.xlsx` suffix.  Inspect the ZIP signature as
+        // well as the filename, otherwise those real workbooks bypass the
+        // PAR transport-metadata normalisation used by the runner identity.
+        if (entryPath.endsWith(".xlsx") || this.isZipArtifact(rooted)) return this.normaliseZipArtifact(rooted);
         if (!entryPath.endsWith(".json")) return rooted;
         return Buffer.from(rooted.toString("utf-8").replace(/("sessionId"\s*:\s*)"[^"]*"/g, "$1\"<pc14-runtime-session>\""));
+    }
+
+    private isZipArtifact(value: Buffer): boolean {
+        return value.length >= 4 && value.readUInt32LE(0) === 0x04034b50;
     }
 
     private normaliseZipArtifact(value: Buffer): Buffer {
