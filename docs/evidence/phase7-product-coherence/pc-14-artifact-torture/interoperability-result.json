@@ -22,9 +22,9 @@
     },
     {
       "file": "studio-ui-real-artifact-result.json",
-      "sha256": "sha256:9195f94534948635db16e32cb310b786dcd8d72acdd3146bc22cee6c13c7e84e",
+      "sha256": "sha256:6e04905d2db9e9231b82a2d36dd0d60e5f6db9bf60c9d52bc517841c5a2bd589",
       "rows": 0,
-      "scenarios": 2
+      "scenarios": 3
     }
   ],
   "rows": [
@@ -2664,7 +2664,7 @@
       "source_path": "run-artifacts/ui-route-slot.blueprint.json",
       "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
       "produced_path": "run-artifacts/tsPackage",
-      "produced_identity": "sha256:836b9562a8c622457393bea9e82a991d34b645c8892f78c35b173f59572a4193",
+      "produced_identity": "sha256:16ef7c43858938a7741c8182f42abd45328b311efe333c5ab29e66f1e0ccc16c",
       "observable_result": "the rendered Studio dashboard opened the real CLI-produced package, emitted a real round artifact, and exported a completed simulation report",
       "execution": {
         "surface": "studio-ui",
@@ -2707,9 +2707,52 @@
       ]
     },
     {
+      "id": "studio-ui-outcome-source-certification-output-error-recovery",
+      "source_path": "run-artifacts/tsPackage/outcomes/bundle",
+      "source_identity": "sha256:a06d094e0408ce9b1741c1e128b368dcaa91e2a2add8b3a70c52ed92b9e852c8",
+      "produced_path": "run-artifacts/tsPackage/outcomes/bundle/certification",
+      "produced_identity": "sha256:bc749efbef3234270f4f407b9bd433924f28efd1b2f216e16f0a9700126e0ef2",
+      "observable_result": "the rendered Outcome Source drew a recorded real outcome, while Certification rejected a missing source, recovered with the opened Outcome Library, and published inspectable certification evidence",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "OutcomeSourceOverview / CertificationTab",
+        "assertions": [
+          "Outcome Source drew a deterministic real outcome from the opened generated library",
+          "Certification rendered the missing-source diagnostic before any evidence publication",
+          "correcting the source to the opened native library enabled validation, evidence publication, inspection, and export"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/overview (Outcome Source)",
+            "result": "drew and rendered a real round artifact from the generated Outcome Library"
+          },
+          {
+            "route": "POST /api/project/outcome-source/sample",
+            "result": "returned the recorded seeded Outcome Library draw"
+          },
+          {
+            "route": "UI /project/:projectRoot/certification (Certification)",
+            "result": "completed source error, validation recovery, build, inspection, and export workflow"
+          },
+          {
+            "route": "POST /api/project/certification/validate-source",
+            "result": "returned both the missing-path error and the recovered native-bundle validation"
+          },
+          {
+            "route": "POST /api/project/certification/build",
+            "result": "published the real certification evidence bundle consumed by the rendered inspector"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    },
+    {
       "id": "studio-ui-provably-fair-output-error-recovery",
       "source_path": "run-artifacts/tsPackage/outcomes/bundle",
-      "source_identity": "sha256:afbc040fdfa908ef63c724cb4d4f054393f22bd557383f96e58a0cab4675ba4f",
+      "source_identity": "sha256:a06d094e0408ce9b1741c1e128b368dcaa91e2a2add8b3a70c52ed92b9e852c8",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "the rendered Provably Fair workflow rejected a missing generated-artifact path, recovered with the real Outcome Library, and completed a generated proof verification",
@@ -7202,6 +7245,7 @@
           "raw-source-drift",
           "stake-outcome-library-round-trip",
           "studio-managed-reuse-compatibility",
+          "studio-ui-outcome-source-certification-output-error-recovery",
           "studio-ui-provably-fair-output-error-recovery"
         ],
         "runner_outputs": [
@@ -7250,11 +7294,16 @@
           "StudioOutcomeLibraryGenerateService.registry"
         ],
         "studio_routes": [
+          "POST /api/project/certification/build",
+          "POST /api/project/certification/validate-source",
           "POST /api/project/fairness/configure",
           "POST /api/project/fairness/generate",
-          "POST /api/project/fairness/verify"
+          "POST /api/project/fairness/verify",
+          "POST /api/project/outcome-source/sample"
         ],
         "studio_ui_routes": [
+          "UI /project/:projectRoot/certification (Certification)",
+          "UI /project/:projectRoot/overview (Outcome Source)",
           "UI /project/:projectRoot/provablyFair (Provably Fair)"
         ],
         "studio_service_callers": [
@@ -7305,6 +7354,7 @@
           "studio-managed-reuse-compatibility",
           "studio-outcome-library-registry-index",
           "studio-outcome-library-selector-deployment",
+          "studio-ui-outcome-source-certification-output-error-recovery",
           "studio-ui-provably-fair-output-error-recovery"
         ]
       }
@@ -7335,6 +7385,7 @@
           "studio-generation-recovery",
           "studio-simulation-replay-cancellation",
           "studio-ui-blueprint-runtime-workflows",
+          "studio-ui-outcome-source-certification-output-error-recovery",
           "studio-ui-provably-fair-output-error-recovery"
         ],
         "runner_outputs": [
@@ -7367,14 +7418,19 @@
           "POST /api/project/artifacts/build",
           "POST /api/project/artifacts/build/:id/cancel",
           "POST /api/project/artifacts/preview",
+          "POST /api/project/certification/build",
+          "POST /api/project/certification/validate-source",
           "POST /api/project/fairness/configure",
           "POST /api/project/fairness/generate",
           "POST /api/project/fairness/verify",
+          "POST /api/project/outcome-source/sample",
           "POST /api/project/replays",
           "POST /api/project/simulations"
         ],
         "studio_ui_routes": [
+          "UI /project/:projectRoot/certification (Certification)",
           "UI /project/:projectRoot/exportDeploy (Build/Export)",
+          "UI /project/:projectRoot/overview (Outcome Source)",
           "UI /project/:projectRoot/play (Play)",
           "UI /project/:projectRoot/provablyFair (Provably Fair)",
           "UI /project/:projectRoot/replay (Replay)",
@@ -7413,6 +7469,7 @@
           "studio-simulation-replay-cancellation",
           "studio-symbol-artwork-materialize",
           "studio-ui-blueprint-runtime-workflows",
+          "studio-ui-outcome-source-certification-output-error-recovery",
           "studio-ui-provably-fair-output-error-recovery"
         ]
       }

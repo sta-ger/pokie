@@ -50,9 +50,12 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     let server: StudioServer;
     let fetchImpl: FetchLike;
     let restoreRunnerClock: () => void;
+    let packageServerStopped = false;
+    const additionalServers: StudioServer[] = [];
 
     beforeEach(async () => {
         restoreRunnerClock = installPc14FixedRunnerClock();
+        packageServerStopped = false;
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-ui-assets-"));
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-ui-artifacts-"));
         writeStudioAssets(studioRoot);
@@ -80,7 +83,8 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     });
 
     afterEach(async () => {
-        if (server !== undefined) await server.stop();
+        if (server !== undefined && !packageServerStopped) await server.stop();
+        for (const additionalServer of additionalServers.splice(0)) await additionalServer.stop();
         fs.rmSync(studioRoot, {recursive: true, force: true});
         fs.rmSync(workDir, {recursive: true, force: true});
         restoreRunnerClock();
@@ -89,7 +93,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     it("drives real rendered output workflows over a produced package", async () => {
         const user = userEvent.setup();
         const evidence = new ArtifactInteroperabilityRun(workDir);
-        renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(packagePath)}/overview`]});
+        const packageApp = renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(packagePath)}/overview`]});
 
         await screen.findByRole("heading", {name: "UI Route Slot"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
@@ -162,6 +166,81 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.click(screen.getByRole("button", {name: "Continue to Verify"}));
         await user.click(screen.getByRole("button", {name: "Verify"}));
         await screen.findByText("Verified");
+
+        // Outcome Source and Certification are deliberately capability-gated
+        // to a native Outcome Library.  Reopen the real library as its own
+        // Studio project rather than claiming that the runtime-package tabs
+        // exercised those separate product surfaces.
+        packageApp.unmount();
+        await server.stop();
+        packageServerStopped = true;
+        fs.mkdirSync(path.join(outcomeLibraryPath, "certification"));
+        const outcomeLibraryHome = new StudioHomeService(POKIE_VERSION);
+        const outcomeLibraryServer = new StudioServer({
+            pokieVersion: POKIE_VERSION, host: "127.0.0.1", port: 0, studioRoot,
+            homeService: outcomeLibraryHome,
+            blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, outcomeLibraryHome),
+            loadGame: createStudioGameLoader(process.cwd()),
+            resolveRuntimePackageRoot: passthroughRuntimePackageResolver,
+            initialContext: {mode: "project", projectRoot: outcomeLibraryPath},
+        });
+        additionalServers.push(outcomeLibraryServer);
+        const outcomeLibraryAddress = await outcomeLibraryServer.start();
+        const outcomeLibraryFetch = createServerFetch(`http://${outcomeLibraryAddress.host}:${outcomeLibraryAddress.port}`);
+        renderRoutedApp({fetchImpl: outcomeLibraryFetch, initialEntries: [`/project/${encodeURIComponent(outcomeLibraryPath)}/overview`]});
+
+        await screen.findByRole("heading", {name: "Outcome Source"});
+        await user.type(screen.getByRole("textbox", {name: "Seed (optional)"}), "pc14-outcome-source-seed");
+        await user.click(screen.getByRole("button", {name: "Draw an outcome"}));
+        await screen.findByText(/Drew outcome/);
+
+        await user.click(screen.getByRole("button", {name: "Certification"}));
+        const certificationBundleInput = screen.getByRole("textbox", {name: "Source outcome-library bundle directory"});
+        await user.type(certificationBundleInput, "missing-outcome-library");
+        await user.click(screen.getByRole("button", {name: "Continue to Validate"}));
+        await user.click(screen.getByRole("button", {name: "Validate source bundle"}));
+        await screen.findByText("Failed");
+        await user.click(screen.getByText("Select/configure"));
+        const recoveredCertificationBundleInput = screen.getByRole("textbox", {name: "Source outcome-library bundle directory"});
+        await user.clear(recoveredCertificationBundleInput);
+        await user.type(recoveredCertificationBundleInput, ".");
+        await user.clear(screen.getByRole("textbox", {name: "Mode name"}));
+        await user.type(screen.getByRole("textbox", {name: "Mode name"}), "base");
+        await user.type(screen.getByRole("textbox", {name: "Seed"}), "pc14-certification-seed");
+        await user.click(screen.getByRole("button", {name: "Continue to Validate"}));
+        await user.click(screen.getByRole("button", {name: "Validate source bundle"}));
+        await screen.findByText("Clean");
+        await user.click(screen.getByRole("button", {name: "Continue to Build bundle"}));
+        await user.clear(screen.getByRole("textbox", {name: "Output directory"}));
+        await user.type(screen.getByRole("textbox", {name: "Output directory"}), "certification");
+        await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        await screen.findByText("Continue to Inspect");
+        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
+        await screen.findByText("Per-mode evidence");
+        await user.click(screen.getByRole("button", {name: "Continue to Export"}));
+        await screen.findByText("Output directory");
+
+        evidence.recordScenario({
+            id: "studio-ui-outcome-source-certification-output-error-recovery",
+            sourcePath: outcomeLibraryPath,
+            producedPath: path.join(outcomeLibraryPath, "certification"),
+            result: "the rendered Outcome Source drew a recorded real outcome, while Certification rejected a missing source, recovered with the opened Outcome Library, and published inspectable certification evidence",
+            surface: "studio-ui",
+            owner: "OutcomeSourceOverview / CertificationTab",
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+            assertions: [
+                "Outcome Source drew a deterministic real outcome from the opened generated library",
+                "Certification rendered the missing-source diagnostic before any evidence publication",
+                "correcting the source to the opened native library enabled validation, evidence publication, inspection, and export",
+            ],
+            observations: [
+                {route: "UI /project/:projectRoot/overview (Outcome Source)", result: "drew and rendered a real round artifact from the generated Outcome Library"},
+                {route: "POST /api/project/outcome-source/sample", result: "returned the recorded seeded Outcome Library draw"},
+                {route: "UI /project/:projectRoot/certification (Certification)", result: "completed source error, validation recovery, build, inspection, and export workflow"},
+                {route: "POST /api/project/certification/validate-source", result: "returned both the missing-path error and the recovered native-bundle validation"},
+                {route: "POST /api/project/certification/build", result: "published the real certification evidence bundle consumed by the rendered inspector"},
+            ],
+        });
 
         evidence.recordScenario({
             id: "studio-ui-provably-fair-output-error-recovery",
