@@ -40,7 +40,7 @@ describe("CanonicalPlayerView", () => {
         expect(within(player).getByText("Total win").nextElementSibling).toHaveTextContent("10.00");
         expect(within(player).getByText("Free games").nextElementSibling).toHaveTextContent("3");
 
-        const win = within(player).getByRole("button", {name: "line: cherry, win: 10"});
+        const win = within(player).getByRole("button", {name: "Line: line-1, win: 10"});
         fireEvent.mouseEnter(win);
         expect((within(player.querySelector(".player-grid") as HTMLElement).getAllByText("cherry")[0] as HTMLElement).style.backgroundColor).toBe("rgb(0, 255, 0)");
         fireEvent.mouseLeave(win);

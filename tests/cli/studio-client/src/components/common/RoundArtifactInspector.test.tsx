@@ -381,7 +381,7 @@ describe("Cross-surface round presentation parity", () => {
         // inspector is not mounted until the reader explicitly opens it, so it cannot duplicate the
         // primary grid or make provenance/JSON the first thing a player sees.
         expect(within(viaSummary.container).getByText("R0P0")).toBeTruthy();
-        expect(within(viaSummary.container).getByRole("button", {name: "line: cherry, win: 12.5"})).toBeTruthy();
+        expect(within(viaSummary.container).getByRole("button", {name: "Line: w1, win: 12.5"})).toBeTruthy();
         expect(within(viaSummary.container).getByText("Inspect round artifact")).toBeTruthy();
         expect(within(viaSummary.container).queryByText("Full artifact")).toBeNull();
     });
@@ -494,7 +494,7 @@ describe("PaylineOverlay / WinningPositionsOverlay / PaytableView (via RoundArti
         const lemonCell = within(screenGrid).getByText("lemon") as HTMLElement;
         expect(lemonCell.style.backgroundColor).toBe("");
 
-        const winButton = within(container).getByRole("button", {name: "line: cherry, win: 5"});
+        const winButton = within(container).getByRole("button", {name: "Line: w1, win: 5"});
         fireEvent.mouseEnter(winButton);
 
         // On hover, the win's own full configured path traces across all three reels: green for the
@@ -525,7 +525,7 @@ describe("PaylineOverlay / WinningPositionsOverlay / PaytableView (via RoundArti
             expect((within(screenGrid).getByText(text) as HTMLElement).style.backgroundColor).toBe("");
         }
 
-        const winButton = within(container).getByRole("button", {name: "ways: cherry, win: 3"});
+        const winButton = within(container).getByRole("button", {name: "Way: cherry, win: 3"});
         fireEvent.mouseEnter(winButton);
 
         expect((within(screenGrid).getByText("R0P0") as HTMLElement).style.backgroundColor).not.toBe("");
@@ -603,7 +603,7 @@ describe("PaylineOverlay / WinningPositionsOverlay / PaytableView (via RoundArti
         for (const {container} of [direct, viaSummary]) {
             const screenGrid = container.querySelector(".player-grid") as HTMLElement;
             const cherryCells = within(screenGrid).getAllByText("cherry");
-            const winButton = within(container).getByRole("button", {name: "line: cherry, win: 12.5"});
+            const winButton = within(container).getByRole("button", {name: "Line: w1, win: 12.5"});
             fireEvent.mouseEnter(winButton);
             // "cherry" wins at both reel 0 and reel 1 -- both on the payline's own traced path.
             for (const cherryCell of cherryCells) {

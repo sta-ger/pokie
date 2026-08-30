@@ -681,7 +681,7 @@ describe("canonical player parity: Play renders the same fixture round Replay/Ou
             // Hovering the win's own hover-list entry (renderWinHighlightsList) traces its full
             // configured payline: green for the two cells that actually won, grey for the third reel's
             // own row-0 cell that's on the path but never won.
-            const winButton = within(container).getByRole("button", {name: "line: cherry, win: 12.5"});
+            const winButton = within(container).getByRole("button", {name: "Line: w1, win: 12.5"});
             fireEvent.mouseEnter(winButton);
             for (const cell of cherryCells) {
                 expect((cell as HTMLElement).style.backgroundColor).toBe("rgb(0, 255, 0)");

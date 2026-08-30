@@ -83,7 +83,7 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
         // A/B/C table and its actual post-spin balance must therefore render beside the canonical grid.
         // The player owns the readable win/payline affordances.  The structured artifact win table
         // stays behind "Inspect round artifact" instead of being a second, always-visible player view.
-        expect(screen.getByRole("button", {name: "line: A, win: 5"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Line: 1, win: 5"})).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Line: 1"})).toBeInTheDocument();
         expect(screen.getAllByText("A").length).toBeGreaterThan(0);
         const totals = container.querySelector(".player-round-totals") as HTMLElement;

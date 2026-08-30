@@ -4,8 +4,10 @@
  * fixture-slot page, then crops the shared [data-pokie-player] region before comparing it.  The host
  * shells are allowed to differ; the mounted player contract is not.
  *
- * Run after building POKIE, with two deterministic fixture package roots.  The second one is opened
- * while a Play preparation is pending, so this verifies Studio's real project-switch boundary:
+ * Run with two deterministic fixture package roots. The runner packs the candidate through its normal
+ * prepack lifecycle, so its isolated consumer always loads this source candidate's current public
+ * browser/player exports. The second project is opened while a Play preparation is pending, so this
+ * verifies Studio's real project-switch boundary:
  *   PC_12_STUDIO_PROJECT=/path/to/fixture-a PC_12_SUPERSEDING_PROJECT=/path/to/fixture-b \
  *     node scripts/pc-12-player-parity-browser.mjs
  */
@@ -216,7 +218,10 @@ async function runCommand(command, args, options) {
 }
 
 async function prepareExactCandidateConsumer(examplesRoot, staging) {
-    const packed = JSON.parse(await runCommand("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", staging], {cwd: root}));
+    // Do not suppress prepack: the isolated consumer must exercise the exact current candidate, not
+    // whatever generated dist/ happened to exist before this workflow started. `npm pack` is the
+    // package boundary an external consumer receives, and prepack refreshes its browser exports.
+    const packed = JSON.parse(await runCommand("npm", ["pack", "--json", "--pack-destination", staging], {cwd: root}));
     const candidateArchive = resolve(staging, packed[0].filename);
     const consumerRoot = resolve(staging, "pokie-examples");
     await cp(examplesRoot, consumerRoot, {
