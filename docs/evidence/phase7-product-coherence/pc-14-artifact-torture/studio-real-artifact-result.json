@@ -1,0 +1,180 @@
+{
+  "schema_version": 2,
+  "rows": [
+    {
+      "id": "studio-blueprint-build",
+      "artifact_kind": "blueprint",
+      "operation": "build",
+      "source_path": "run-artifacts/source.blueprint.json",
+      "source_identity": "sha256:677e919f98bf8c1f0d4872c72f92cb1b11976f59c8aed675ef54db3e3106c4e9",
+      "produced_path": "run-artifacts/package",
+      "produced_identity": "sha256:e00e9f9b327d7714352e847d17a732d4f6e19075d3c5d2f7c791856cdabe48cf",
+      "operation_owner": "StudioArtifactBuildService",
+      "status": "supported",
+      "observable_result": "published",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioArtifactBuildService",
+          "result": "status ok"
+        }
+      ]
+    },
+    {
+      "id": "studio-outcome-library-stake-export",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "export",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:2d53c42f9d12eb4df50d7d999ad60453890dc86c7058ac0b70eb8be2699cec04",
+      "produced_path": "run-artifacts/package/stake",
+      "produced_identity": "sha256:2565a246cdaf0718a91cf4977781d941295ee84a238daa5bc40d102971967d49",
+      "operation_owner": "StudioStakeEngineExportService",
+      "status": "supported",
+      "observable_result": "published",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioStakeEngineExportService",
+          "result": "status ok"
+        }
+      ]
+    },
+    {
+      "id": "studio-wasm-outcome-source-replay",
+      "artifact_kind": "wasmComponent",
+      "operation": "replay",
+      "source_path": "run-artifacts/studio-component.wasm",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StudioReplayExecutionService / ArtifactOperationDiagnostic",
+      "status": "intentionally-unsupported",
+      "observable_result": "This POKIE WASM component cannot replay a pre-generated outcome. POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary. Next: inspect a compatible component with `pokie inspect <path>`, repair or add its compatible sidecar when needed, or Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
+      "diagnostic": {
+        "code": "unsupported-project-operation",
+        "recovery": "Inspect the compatible manifest or use the original Blueprint or POKIE game package where runnable or convertible source is required."
+      },
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioReplayExecutionService.start",
+          "result": "returned the resolved shared diagnostic"
+        }
+      ]
+    },
+    {
+      "id": "studio-wasm-outcome-source-simulate",
+      "artifact_kind": "wasmComponent",
+      "operation": "simulate",
+      "source_path": "run-artifacts/studio-component.wasm",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StudioSimulationService / ArtifactOperationDiagnostic",
+      "status": "intentionally-unsupported",
+      "observable_result": "This POKIE WASM component cannot simulate pre-generated outcomes. POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary. Next: inspect a compatible component with `pokie inspect <path>`, repair or add its compatible sidecar when needed, or Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
+      "diagnostic": {
+        "code": "unsupported-project-operation",
+        "recovery": "Inspect the compatible manifest or use the original Blueprint or POKIE game package where runnable or convertible source is required."
+      },
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioSimulationService.start",
+          "result": "returned the resolved shared diagnostic"
+        }
+      ]
+    }
+  ],
+  "scenario_results": [
+    {
+      "id": "studio-destination-drift",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:e00e9f9b327d7714352e847d17a732d4f6e19075d3c5d2f7c791856cdabe48cf",
+      "produced_path": "run-artifacts/package/outcomelibrary",
+      "produced_identity": "sha256:2d53c42f9d12eb4df50d7d999ad60453890dc86c7058ac0b70eb8be2699cec04",
+      "observable_result": "prepared generation reports a conflict after destination occupancy and preserves borrowed.txt",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioOutcomeLibraryGenerateService",
+        "assertions": [
+          "occupied borrowed.txt remains after the conflict"
+        ],
+        "observations": [
+          {
+            "route": "StudioOutcomeLibraryGenerateService.generate",
+            "result": "Studio preflight destination conflict returned"
+          }
+        ]
+      }
+    },
+    {
+      "id": "studio-generation-cancellation",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:e00e9f9b327d7714352e847d17a732d4f6e19075d3c5d2f7c791856cdabe48cf",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "cancelled generation leaves no bundle publication and returns the resumable checkpoint",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioOutcomeLibraryGenerateService",
+        "assertions": [
+          "cancelled generation returns a checkpoint and no bundle directory"
+        ],
+        "observations": [
+          {
+            "route": "StudioOutcomeLibraryGenerateService.generate",
+            "result": "Studio generation returned cancelled"
+          }
+        ]
+      }
+    },
+    {
+      "id": "studio-generation-recovery",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:e00e9f9b327d7714352e847d17a732d4f6e19075d3c5d2f7c791856cdabe48cf",
+      "produced_path": "run-artifacts/package/outcomelibrary",
+      "produced_identity": "sha256:2d53c42f9d12eb4df50d7d999ad60453890dc86c7058ac0b70eb8be2699cec04",
+      "observable_result": "the cancellation checkpoint resumes into a published Outcome Library after the conflicting borrowed destination is removed",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioOutcomeLibraryGenerateService",
+        "assertions": [
+          "resumed generation returns ok and publishes its bundle"
+        ],
+        "observations": [
+          {
+            "route": "StudioOutcomeLibraryGenerateService.generate",
+            "result": "Studio generation recovered from checkpoint"
+          }
+        ]
+      }
+    },
+    {
+      "id": "studio-wasm-boundary",
+      "source_path": "run-artifacts/studio-component.wasm",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "Studio simulation and replay reject the resolved WASM component before creating a job, retaining the shared diagnostic recovery",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioSimulationService / StudioReplayExecutionService",
+        "assertions": [
+          "neither Studio route creates a job for the unavailable component",
+          "both routes return the shared diagnostic message"
+        ],
+        "observations": [
+          {
+            "route": "POST /api/project/simulations",
+            "result": "Studio simulation service returned unsupported"
+          },
+          {
+            "route": "POST /api/project/replays",
+            "result": "Studio replay service returned unsupported"
+          }
+        ]
+      }
+    }
+  ]
+}

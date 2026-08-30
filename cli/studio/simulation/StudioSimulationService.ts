@@ -135,8 +135,12 @@ export class StudioSimulationService {
         // guard. A resolved component, or an actual unresolved WASM file, has
         // no runnable branch. A package directory named `game.wasm` remains a
         // normal project and must not be rejected from its pathname alone.
-        if (isWasmComponentFile(projectRoot) || outcomeSourceProject?.type === "wasm") {
-            return {status: "unsupported", message: describeWasmLifecycleBoundary(outcomeSourceProject?.type === "wasm" ? outcomeSourceProject.rootPath : projectRoot, "simulate game rounds")};
+        if (outcomeSourceProject?.type === "wasm") {
+            const diagnostic = describeUnavailableArtifactOperation(outcomeSourceProject, OUTCOME_SOURCE_SIMULATE_OPERATION);
+            return {status: "unsupported", message: diagnostic?.message ?? describeWasmLifecycleBoundary(outcomeSourceProject.rootPath, "simulate game rounds")};
+        }
+        if (isWasmComponentFile(projectRoot)) {
+            return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "simulate game rounds")};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {

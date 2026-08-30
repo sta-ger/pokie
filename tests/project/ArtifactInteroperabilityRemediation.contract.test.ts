@@ -1,4 +1,5 @@
 import fs from "fs";
+import crypto from "crypto";
 import path from "path";
 import {
     ArtifactConversionPlanner,
@@ -54,6 +55,14 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         ]);
         expect(result.rows).toHaveLength(result.runner_inputs.reduce((count, input) => count + input.rows, 0));
         expect(result.scenario_results).toHaveLength(result.runner_inputs.reduce((count, input) => count + input.scenarios, 0));
+        for (const input of result.runner_inputs) {
+            const runnerPath = path.join(path.dirname(evidencePath), input.file);
+            const runnerText = fs.readFileSync(runnerPath, "utf-8");
+            expect(input.sha256).toBe(`sha256:${crypto.createHash("sha256").update(runnerText).digest("hex")}`);
+            const emitted = JSON.parse(runnerText) as {readonly rows: readonly unknown[]; readonly scenario_results: readonly unknown[]};
+            expect(emitted.rows).toHaveLength(input.rows);
+            expect(emitted.scenario_results).toHaveLength(input.scenarios);
+        }
     });
 
     it("keeps actual artifact identities, owners, and only exercised observations", () => {
@@ -79,6 +88,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             "wasm-outcome-source-simulate",
             "studio-blueprint-build",
             "studio-outcome-library-stake-export",
+            "studio-wasm-outcome-source-simulate",
+            "studio-wasm-outcome-source-replay",
         ]));
     });
 
@@ -100,6 +111,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             "studio-generation-cancellation",
             "studio-destination-drift",
             "studio-generation-recovery",
+            "studio-wasm-boundary",
         ]));
         for (const audit of result.systemic_class_audits) {
             expect(audit.derived_from.operation_rows.length + audit.derived_from.lifecycle_outcomes.length).toBeGreaterThan(0);

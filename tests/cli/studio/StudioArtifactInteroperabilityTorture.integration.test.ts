@@ -1,9 +1,16 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {type GameBlueprint} from "pokie";
+import {
+    describeUnavailableArtifactOperation,
+    POKIE_WASM_CONTRACT_VERSION,
+    ProjectTargetResolver,
+    type GameBlueprint,
+} from "pokie";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {StudioOutcomeLibraryGenerateService} from "../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
+import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
+import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioStakeEngineExportService} from "../../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
 import {ArtifactInteroperabilityRun, mergeArtifactInteroperabilityRuns} from "../../support/ArtifactInteroperabilityRun.js";
 
@@ -109,6 +116,54 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             id: "studio-outcome-library-stake-export", artifactKind: "outcomeLibrary", operation: "export", sourcePath: path.join(packagePath, mode.bundleDir),
             producedPath: stakePath, owner: "StudioStakeEngineExportService", result: "published", observations: [{surface: "studio-api", owner: "StudioStakeEngineExportService", result: "status ok"}],
         });
+
+        // Studio receives the already-resolved project from its dashboard
+        // context.  Exercise that exact public-service branch with a real
+        // component and prove it retains the same shared operation diagnostic
+        // as the CLI instead of manufacturing a Studio-only explanation.
+        const wasmPath = path.join(workDir, "studio-component.wasm");
+        fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({
+            schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+            component: {id: "studio-component", version: "1.0.0"},
+            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+            host: {rng: "pokie.rng.v1", services: []},
+            capabilities: [],
+        }));
+        const wasmProject = await new ProjectTargetResolver().resolve(wasmPath);
+        if (wasmProject === undefined || wasmProject.type !== "wasm") throw new Error("Expected the real Studio WASM component to resolve.");
+        const simulationDiagnostic = describeUnavailableArtifactOperation(wasmProject, "outcomeSource.simulate");
+        if (simulationDiagnostic === undefined) throw new Error("Expected the shared Studio simulation diagnostic.");
+        expect(new StudioSimulationService().start(wasmPath, {rounds: 1}, wasmProject)).toEqual({
+            status: "unsupported", message: simulationDiagnostic.message,
+        });
+        const replayDiagnostic = describeUnavailableArtifactOperation(wasmProject, "outcomeSource.replay");
+        if (replayDiagnostic === undefined) throw new Error("Expected the shared Studio replay diagnostic.");
+        expect(new StudioReplayExecutionService().start(wasmPath, {round: 1}, wasmProject)).toEqual({
+            status: "unsupported", message: replayDiagnostic.message,
+        });
+        evidence.recordUnavailable({
+            id: "studio-wasm-outcome-source-simulate", artifactKind: "wasmComponent", operation: "simulate", sourcePath: wasmPath,
+            owner: "StudioSimulationService / ArtifactOperationDiagnostic",
+            diagnostic: {code: simulationDiagnostic.code, message: simulationDiagnostic.message, recovery: simulationDiagnostic.recovery},
+            observations: [{surface: "studio-api", owner: "StudioSimulationService.start", result: "returned the resolved shared diagnostic"}],
+        });
+        evidence.recordUnavailable({
+            id: "studio-wasm-outcome-source-replay", artifactKind: "wasmComponent", operation: "replay", sourcePath: wasmPath,
+            owner: "StudioReplayExecutionService / ArtifactOperationDiagnostic",
+            diagnostic: {code: replayDiagnostic.code, message: replayDiagnostic.message, recovery: replayDiagnostic.recovery},
+            observations: [{surface: "studio-api", owner: "StudioReplayExecutionService.start", result: "returned the resolved shared diagnostic"}],
+        });
+        evidence.recordScenario({
+            id: "studio-wasm-boundary", sourcePath: wasmPath,
+            result: "Studio simulation and replay reject the resolved WASM component before creating a job, retaining the shared diagnostic recovery",
+            surface: "studio-api", owner: "StudioSimulationService / StudioReplayExecutionService",
+            assertions: ["neither Studio route creates a job for the unavailable component", "both routes return the shared diagnostic message"],
+            observations: [
+                {route: "POST /api/project/simulations", result: "Studio simulation service returned unsupported"},
+                {route: "POST /api/project/replays", result: "Studio replay service returned unsupported"},
+            ],
+        });
         const evidenceDirectory = process.env.PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR;
         if (evidenceDirectory !== undefined) fs.mkdirSync(evidenceDirectory, {recursive: true});
         const emittedEvidencePath = evidenceDirectory === undefined
@@ -118,11 +173,14 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
             expect.objectContaining({id: "studio-blueprint-build", "source_path": "run-artifacts/source.blueprint.json", "produced_path": "run-artifacts/package"}),
             expect.objectContaining({id: "studio-outcome-library-stake-export", "produced_path": "run-artifacts/package/stake"}),
+            expect.objectContaining({id: "studio-wasm-outcome-source-simulate", status: "intentionally-unsupported"}),
+            expect.objectContaining({id: "studio-wasm-outcome-source-replay", status: "intentionally-unsupported"}),
         ]));
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {"scenario_results": {id: string; "produced_path": string | null}[]}).scenario_results).toEqual(expect.arrayContaining([
             expect.objectContaining({id: "studio-generation-cancellation", "produced_path": null}),
             expect.objectContaining({id: "studio-destination-drift", "produced_path": "run-artifacts/package/outcomelibrary"}),
             expect.objectContaining({id: "studio-generation-recovery", "produced_path": "run-artifacts/package/outcomelibrary"}),
+            expect.objectContaining({id: "studio-wasm-boundary", "source_path": "run-artifacts/studio-component.wasm"}),
         ]));
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: {"source_identity": string; "produced_identity": string | null}[]}).rows).toEqual(expect.arrayContaining([
             expect.objectContaining({"source_identity": expect.stringMatching(/^sha256:/), "produced_identity": expect.stringMatching(/^sha256:/)}),
