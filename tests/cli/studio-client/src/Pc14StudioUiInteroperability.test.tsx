@@ -8,6 +8,7 @@ import {passthroughRuntimePackageResolver} from "../../../../cli/materialize/mat
 import {StudioBlueprintService} from "../../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {BuildCommand} from "../../../../cli/commands/BuildCommand.js";
 import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.js";
+import {createStudioGameLoader} from "../../../../cli/studio/loadStudioGame.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
 import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js";
 import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, mergeArtifactInteroperabilityRuns} from "../../../support/ArtifactInteroperabilityRun.js";
@@ -67,7 +68,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             pokieVersion: POKIE_VERSION, host: "127.0.0.1", port: 0, studioRoot,
             homeService: home,
             blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, home),
-            loadGame: () => Promise.resolve({getManifest: () => ({id: "ui-route-slot", name: "UI Route Slot", version: "1.0.0"})}) as never,
+            loadGame: createStudioGameLoader(process.cwd()),
             resolveRuntimePackageRoot: passthroughRuntimePackageResolver,
             initialContext: {mode: "project", projectRoot: packagePath},
         });
@@ -82,7 +83,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         restoreRunnerClock();
     });
 
-    it("drives the rendered dashboard over a real produced package and retains the UI route observation", async () => {
+    it("drives real rendered output workflows over a produced package", async () => {
         const user = userEvent.setup();
         const evidence = new ArtifactInteroperabilityRun(workDir);
         renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(packagePath)}/overview`]});
@@ -92,33 +93,53 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         const buildSection = await screen.findByText("Build artifact");
         expect(buildSection.closest("fieldset")).not.toBeNull();
 
-        // These tabs are selected through the real rendered navigation, not
-        // inferred from the server route table.  Their API work remains owned
-        // by the already-running StudioServer above; this record therefore
-        // distinguishes browser navigation from the Studio API runner.
-        for (const tab of ["Play", "Simulation", "Replay"] as const) {
-            await user.click(screen.getByRole("button", {name: tab}));
-            await waitFor(() => expect(screen.getByRole("button", {name: tab})).toHaveAttribute("aria-current", "page"));
-        }
+        // These are browser-driven workflows over StudioServer's actual
+        // runtime package.  The test used to select tabs only, which could
+        // not distinguish working product actions from merely reachable UI.
+        await user.click(screen.getByRole("button", {name: "Play"}));
+        await screen.findByRole("button", {name: "New Play session"});
+        await user.click(screen.getByRole("button", {name: "New Play session"}));
+        await screen.findByRole("button", {name: "Spin"});
+
+        // An ordinary Spin is a full user-visible product operation, not a
+        // route-table assertion: it uses the package's real runtime and emits
+        // the durable round artifact consumed by the Replay surface.
+        await user.click(screen.getByRole("button", {name: "Spin"}));
+        await screen.findByText(/Round complete/i);
+
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        const rounds = screen.getByRole("textbox", {name: "Rounds"});
+        await user.clear(rounds);
+        await user.type(rounds, "2");
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        await screen.findByRole("button", {name: "View results"}, {}, {timeout: 30000});
+        await user.click(screen.getByRole("button", {name: "View results"}));
+        expect(screen.getAllByRole("cell", {name: /%/}).length).toBeGreaterThan(0);
+        await user.click(screen.getByRole("button", {name: /Export Download report/}));
+        await screen.findByRole("link", {name: /Download JSON/i});
+
+        await user.click(screen.getByRole("button", {name: "Replay"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Replay"})).toHaveAttribute("aria-current", "page"));
 
         evidence.recordScenario({
-            id: "studio-ui-blueprint-workflow-navigation",
+            id: "studio-ui-blueprint-runtime-workflows",
             sourcePath: blueprintPath,
             producedPath: packagePath,
-            result: "the rendered Studio dashboard opened the real CLI-produced package and selected its retained Build/Export, Play, Simulation, and Replay workflows",
+            result: "the rendered Studio dashboard opened the real CLI-produced package, emitted a real round artifact, and exported a completed simulation report",
             surface: "studio-ui",
             owner: "ProjectDashboardPage / ExportDeployTab / PlayTab / SimulationTab / ReplayTab",
             systemicClasses: ["shared-conversion-diagnostic-parity", "durable-publication-ownership"],
             assertions: [
                 "the rendered Build/Export tab exposed the real package's server-owned artifact surface",
                 "the UI opened the CLI-produced package rather than a hand-authored browser fixture",
-                "the rendered navigation selected every runtime workflow applicable to a Blueprint",
+                "Play used the real package runtime and rendered a completed round artifact",
+                "Simulation completed against the same package and exposed its real report download output",
             ],
             observations: [
                 {route: "UI /project/:projectRoot/exportDeploy (Build/Export)", result: "selected the rendered build/export workflow for the real produced package"},
-                {route: "UI /project/:projectRoot/play (Play)", result: "selected the rendered live-session workflow"},
-                {route: "UI /project/:projectRoot/simulation (Simulation)", result: "selected the rendered simulation workflow"},
-                {route: "UI /project/:projectRoot/replay (Replay)", result: "selected the rendered replay workflow"},
+                {route: "UI /project/:projectRoot/play (Play)", result: "created a session and spun a completed round artifact"},
+                {route: "UI /project/:projectRoot/simulation (Simulation)", result: "ran two rounds, rendered the completed report, and exposed its JSON download"},
+                {route: "UI /project/:projectRoot/replay (Replay)", result: "selected the rendered replay workflow after the completed runtime artifacts existed"},
             ],
         });
 
@@ -128,7 +149,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             : path.join(evidenceDirectory, "studio-ui-real-artifact-result.json");
         evidence.write(emittedPath);
         const emittedText = fs.readFileSync(emittedPath, "utf8");
-        expect(emittedText).toContain('"id": "studio-ui-blueprint-workflow-navigation"');
+        expect(emittedText).toContain('"id": "studio-ui-blueprint-runtime-workflows"');
         expect(emittedText).toContain('"produced_path": "run-artifacts/tsPackage"');
         const persistedResultPath = process.env.PC14_INTEROPERABILITY_PERSISTED_RESULT;
         if (persistedResultPath !== undefined && evidenceDirectory !== undefined) {

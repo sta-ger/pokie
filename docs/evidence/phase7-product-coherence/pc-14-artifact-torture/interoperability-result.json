@@ -16,13 +16,13 @@
     },
     {
       "file": "studio-real-artifact-result.json",
-      "sha256": "sha256:3405a12709b372679eea89876b8c9e9c3b8adf817dd960c3b4aeef42832f9437",
+      "sha256": "sha256:af0a0bad1f4cbd77e711317ac72c239a882cd4644705983f6aa911af300ff192",
       "rows": 15,
       "scenarios": 8
     },
     {
       "file": "studio-ui-real-artifact-result.json",
-      "sha256": "sha256:6c152dfa3dc2d7192493a0f1ca33826f718ebd5bb890ec1c52e64957a2d4d1f0",
+      "sha256": "sha256:5dc53437252a0952490c0cfae3b6abe35c66bce4f3f09dbd675bf66e55b1d553",
       "rows": 0,
       "scenarios": 1
     }
@@ -1903,7 +1903,7 @@
       "operation": "import",
       "source_path": "run-artifacts/symbol.png",
       "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
-      "produced_path": "run-artifacts/assets/symbols/symbol-1788105880043-i.png",
+      "produced_path": "run-artifacts/assets/symbols/symbol-1704164645000-i.png",
       "produced_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
       "systemic_classes": [
@@ -2660,19 +2660,20 @@
       ]
     },
     {
-      "id": "studio-ui-blueprint-workflow-navigation",
+      "id": "studio-ui-blueprint-runtime-workflows",
       "source_path": "run-artifacts/ui-route-slot.blueprint.json",
       "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
       "produced_path": "run-artifacts/tsPackage",
       "produced_identity": "sha256:207739b638b72394a3ac119c97f54ee6ce05aa1a4e86372e99c6152192ef4834",
-      "observable_result": "the rendered Studio dashboard opened the real CLI-produced package and selected its retained Build/Export, Play, Simulation, and Replay workflows",
+      "observable_result": "the rendered Studio dashboard opened the real CLI-produced package, emitted a real round artifact, and exported a completed simulation report",
       "execution": {
         "surface": "studio-ui",
         "owner": "ProjectDashboardPage / ExportDeployTab / PlayTab / SimulationTab / ReplayTab",
         "assertions": [
           "the rendered Build/Export tab exposed the real package's server-owned artifact surface",
           "the UI opened the CLI-produced package rather than a hand-authored browser fixture",
-          "the rendered navigation selected every runtime workflow applicable to a Blueprint"
+          "Play used the real package runtime and rendered a completed round artifact",
+          "Simulation completed against the same package and exposed its real report download output"
         ],
         "observations": [
           {
@@ -2681,15 +2682,15 @@
           },
           {
             "route": "UI /project/:projectRoot/play (Play)",
-            "result": "selected the rendered live-session workflow"
+            "result": "created a session and spun a completed round artifact"
           },
           {
             "route": "UI /project/:projectRoot/simulation (Simulation)",
-            "result": "selected the rendered simulation workflow"
+            "result": "ran two rounds, rendered the completed report, and exposed its JSON download"
           },
           {
             "route": "UI /project/:projectRoot/replay (Replay)",
-            "result": "selected the rendered replay workflow"
+            "result": "selected the rendered replay workflow after the completed runtime artifacts existed"
           }
         ]
       },
@@ -6862,7 +6863,7 @@
         ],
         "lifecycle_outcomes": [
           "studio-artifact-http-preflight",
-          "studio-ui-blueprint-workflow-navigation",
+          "studio-ui-blueprint-runtime-workflows",
           "studio-wasm-boundary",
           "wasm-boundary"
         ],
@@ -7252,7 +7253,7 @@
           "simulation-report-set-mode-diagnostic",
           "studio-artifact-http-preflight",
           "studio-blueprint-build",
-          "studio-ui-blueprint-workflow-navigation",
+          "studio-ui-blueprint-runtime-workflows",
           "studio-wasm-boundary",
           "studio-wasm-outcome-source-replay",
           "studio-wasm-outcome-source-simulate",
@@ -7429,7 +7430,7 @@
           "studio-generation-cancellation",
           "studio-generation-recovery",
           "studio-simulation-replay-cancellation",
-          "studio-ui-blueprint-workflow-navigation"
+          "studio-ui-blueprint-runtime-workflows"
         ],
         "runner_outputs": [
           "cli-real-artifact-result.json",
@@ -7502,7 +7503,7 @@
           "studio-project-registry-reopen",
           "studio-simulation-replay-cancellation",
           "studio-symbol-artwork-materialize",
-          "studio-ui-blueprint-workflow-navigation"
+          "studio-ui-blueprint-runtime-workflows"
         ]
       }
     }

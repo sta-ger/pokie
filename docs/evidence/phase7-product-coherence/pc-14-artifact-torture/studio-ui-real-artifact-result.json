@@ -3,19 +3,20 @@
   "rows": [],
   "scenario_results": [
     {
-      "id": "studio-ui-blueprint-workflow-navigation",
+      "id": "studio-ui-blueprint-runtime-workflows",
       "source_path": "run-artifacts/ui-route-slot.blueprint.json",
       "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
       "produced_path": "run-artifacts/tsPackage",
       "produced_identity": "sha256:207739b638b72394a3ac119c97f54ee6ce05aa1a4e86372e99c6152192ef4834",
-      "observable_result": "the rendered Studio dashboard opened the real CLI-produced package and selected its retained Build/Export, Play, Simulation, and Replay workflows",
+      "observable_result": "the rendered Studio dashboard opened the real CLI-produced package, emitted a real round artifact, and exported a completed simulation report",
       "execution": {
         "surface": "studio-ui",
         "owner": "ProjectDashboardPage / ExportDeployTab / PlayTab / SimulationTab / ReplayTab",
         "assertions": [
           "the rendered Build/Export tab exposed the real package's server-owned artifact surface",
           "the UI opened the CLI-produced package rather than a hand-authored browser fixture",
-          "the rendered navigation selected every runtime workflow applicable to a Blueprint"
+          "Play used the real package runtime and rendered a completed round artifact",
+          "Simulation completed against the same package and exposed its real report download output"
         ],
         "observations": [
           {
@@ -24,15 +25,15 @@
           },
           {
             "route": "UI /project/:projectRoot/play (Play)",
-            "result": "selected the rendered live-session workflow"
+            "result": "created a session and spun a completed round artifact"
           },
           {
             "route": "UI /project/:projectRoot/simulation (Simulation)",
-            "result": "selected the rendered simulation workflow"
+            "result": "ran two rounds, rendered the completed report, and exposed its JSON download"
           },
           {
             "route": "UI /project/:projectRoot/replay (Replay)",
-            "result": "selected the rendered replay workflow"
+            "result": "selected the rendered replay workflow after the completed runtime artifacts existed"
           }
         ]
       },
