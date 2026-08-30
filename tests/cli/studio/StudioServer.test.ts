@@ -3100,7 +3100,9 @@ describe("StudioServer", () => {
         });
 
         afterEach(async () => {
-            await projectServer?.stop();
+            const serverToStop = projectServer;
+            projectServer = undefined;
+            await serverToStop?.stop();
             fs.rmSync(projectStudioRoot, {recursive: true, force: true});
         });
 
