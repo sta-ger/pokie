@@ -3,6 +3,49 @@
   "rows": [],
   "scenario_results": [
     {
+      "id": "studio-ui-blueprint-par-output-error-recovery",
+      "source_path": "run-artifacts/studio-ui-edited.blueprint.json",
+      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "produced_path": "run-artifacts/studio-ui-edited.par.xlsx",
+      "produced_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "observable_result": "the rendered Design Game editor saved an edited Blueprint, preserved an occupied caller-owned PAR destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "BlueprintEditorPage / ParSheetImportExportPanel",
+        "assertions": [
+          "editing the rendered Blueprint changed the persisted game name before save",
+          "PAR export rejected an occupied caller-owned file without altering its bytes",
+          "correcting the destination published a real workbook which the rendered PAR importer diagnosed and previewed"
+        ],
+        "observations": [
+          {
+            "route": "UI /home/design (Blueprint editor)",
+            "result": "edited and saved a real Blueprint through Studio's home API"
+          },
+          {
+            "route": "POST /api/home/blueprints/save",
+            "result": "persisted the edited Blueprint at the selected path"
+          },
+          {
+            "route": "UI /home/design (PAR Sheet Import / Export)",
+            "result": "rendered occupied-destination recovery, workbook publication, and import/preview"
+          },
+          {
+            "route": "POST /api/home/blueprints/par-export",
+            "result": "returned the occupied-file error then wrote the recovered workbook"
+          },
+          {
+            "route": "POST /api/home/blueprints/par-import",
+            "result": "read the UI-produced workbook into the canonical Blueprint model"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    },
+    {
       "id": "studio-ui-blueprint-runtime-workflows",
       "source_path": "run-artifacts/ui-route-slot.blueprint.json",
       "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",

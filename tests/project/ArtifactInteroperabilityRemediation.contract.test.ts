@@ -225,6 +225,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             "studio-simulation-replay-cancellation",
             "studio-wasm-boundary",
             "studio-ui-blueprint-runtime-workflows",
+            "studio-ui-blueprint-par-output-error-recovery",
         ]));
         for (const audit of result.systemic_class_audits) {
             expect(audit.derived_from.operation_rows.length + audit.derived_from.lifecycle_outcomes.length).toBeGreaterThan(0);

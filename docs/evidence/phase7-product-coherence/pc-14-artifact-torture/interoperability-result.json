@@ -22,9 +22,9 @@
     },
     {
       "file": "studio-ui-real-artifact-result.json",
-      "sha256": "sha256:67ff370248ad85f6f6a575dfc74d2e3cdc7184dbfa2d733e9dfa02584f1b4d2c",
+      "sha256": "sha256:e03e535a703167393a378bb14119e9d8a199090be8b592f799c120e943d3bfab",
       "rows": 0,
-      "scenarios": 4
+      "scenarios": 5
     }
   ],
   "rows": [
@@ -2657,6 +2657,49 @@
       },
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
+      ]
+    },
+    {
+      "id": "studio-ui-blueprint-par-output-error-recovery",
+      "source_path": "run-artifacts/studio-ui-edited.blueprint.json",
+      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "produced_path": "run-artifacts/studio-ui-edited.par.xlsx",
+      "produced_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "observable_result": "the rendered Design Game editor saved an edited Blueprint, preserved an occupied caller-owned PAR destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "BlueprintEditorPage / ParSheetImportExportPanel",
+        "assertions": [
+          "editing the rendered Blueprint changed the persisted game name before save",
+          "PAR export rejected an occupied caller-owned file without altering its bytes",
+          "correcting the destination published a real workbook which the rendered PAR importer diagnosed and previewed"
+        ],
+        "observations": [
+          {
+            "route": "UI /home/design (Blueprint editor)",
+            "result": "edited and saved a real Blueprint through Studio's home API"
+          },
+          {
+            "route": "POST /api/home/blueprints/save",
+            "result": "persisted the edited Blueprint at the selected path"
+          },
+          {
+            "route": "UI /home/design (PAR Sheet Import / Export)",
+            "result": "rendered occupied-destination recovery, workbook publication, and import/preview"
+          },
+          {
+            "route": "POST /api/home/blueprints/par-export",
+            "result": "returned the occupied-file error then wrote the recovered workbook"
+          },
+          {
+            "route": "POST /api/home/blueprints/par-import",
+            "result": "read the UI-produced workbook into the canonical Blueprint model"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
       ]
     },
     {
@@ -7280,6 +7323,7 @@
           "raw-source-drift",
           "stake-outcome-library-round-trip",
           "studio-managed-reuse-compatibility",
+          "studio-ui-blueprint-par-output-error-recovery",
           "studio-ui-outcome-source-certification-output-error-recovery",
           "studio-ui-provably-fair-output-error-recovery",
           "studio-ui-stake-output-error-recovery"
@@ -7330,6 +7374,9 @@
           "StudioOutcomeLibraryGenerateService.registry"
         ],
         "studio_routes": [
+          "POST /api/home/blueprints/par-export",
+          "POST /api/home/blueprints/par-import",
+          "POST /api/home/blueprints/save",
           "POST /api/project/artifacts/build",
           "POST /api/project/artifacts/preview",
           "POST /api/project/certification/build",
@@ -7340,6 +7387,8 @@
           "POST /api/project/outcome-source/sample"
         ],
         "studio_ui_routes": [
+          "UI /home/design (Blueprint editor)",
+          "UI /home/design (PAR Sheet Import / Export)",
           "UI /project/:projectRoot/certification (Certification)",
           "UI /project/:projectRoot/exportDeploy (Stake Engine export)",
           "UI /project/:projectRoot/overview (Outcome Source)",
@@ -7393,6 +7442,7 @@
           "studio-managed-reuse-compatibility",
           "studio-outcome-library-registry-index",
           "studio-outcome-library-selector-deployment",
+          "studio-ui-blueprint-par-output-error-recovery",
           "studio-ui-outcome-source-certification-output-error-recovery",
           "studio-ui-provably-fair-output-error-recovery",
           "studio-ui-stake-output-error-recovery"
@@ -7424,6 +7474,7 @@
           "studio-generation-cancellation",
           "studio-generation-recovery",
           "studio-simulation-replay-cancellation",
+          "studio-ui-blueprint-par-output-error-recovery",
           "studio-ui-blueprint-runtime-workflows",
           "studio-ui-outcome-source-certification-output-error-recovery",
           "studio-ui-provably-fair-output-error-recovery",
@@ -7456,6 +7507,9 @@
           "StudioProjectRegistrationService.registerExternal"
         ],
         "studio_routes": [
+          "POST /api/home/blueprints/par-export",
+          "POST /api/home/blueprints/par-import",
+          "POST /api/home/blueprints/save",
           "POST /api/project/artifacts/build",
           "POST /api/project/artifacts/build/:id/cancel",
           "POST /api/project/artifacts/preview",
@@ -7469,6 +7523,8 @@
           "POST /api/project/simulations"
         ],
         "studio_ui_routes": [
+          "UI /home/design (Blueprint editor)",
+          "UI /home/design (PAR Sheet Import / Export)",
           "UI /project/:projectRoot/certification (Certification)",
           "UI /project/:projectRoot/exportDeploy (Build/Export)",
           "UI /project/:projectRoot/exportDeploy (Stake Engine export)",
@@ -7510,6 +7566,7 @@
           "studio-project-registry-reopen",
           "studio-simulation-replay-cancellation",
           "studio-symbol-artwork-materialize",
+          "studio-ui-blueprint-par-output-error-recovery",
           "studio-ui-blueprint-runtime-workflows",
           "studio-ui-outcome-source-certification-output-error-recovery",
           "studio-ui-provably-fair-output-error-recovery",
