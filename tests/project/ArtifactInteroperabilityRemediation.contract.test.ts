@@ -4,7 +4,6 @@ import {
     ArtifactConversionPlanner,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
     BUILD_PRODUCT_MATRIX_TARGETS,
-    describeUnavailableArtifactOperation,
     PROJECT_TYPE_CAPABILITIES,
     type PokieProject,
 } from "../../src/index.js";
@@ -122,20 +121,6 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         const wasm = planner.plan(project("wasm"), "outcomeLibrary");
         expect(wasm).toMatchObject({status: "unavailable", diagnostic: {code: "unsupported-boundary"}});
         expect(wasm.diagnostic?.recovery).toMatch(/Blueprint|package/i);
-    });
-
-    it("executes the concrete shared diagnostic retained for every unavailable artifact-operation row", () => {
-        for (const row of result.rows.filter((entry) => entry.status === "intentionally-unsupported")) {
-            const diagnostic = describeUnavailableArtifactOperation(row.artifact_kind, row.operation, row.source_path);
-            expect(diagnostic).toBeDefined();
-            expect(row.diagnostic?.shared_owner).toBe(diagnostic?.sharedOwner);
-            expect(row.diagnostic).toMatchObject({
-                code: diagnostic?.code,
-                recovery: diagnostic?.recovery,
-                message: diagnostic?.message,
-            });
-            expect(row.reason).toContain(diagnostic?.message ?? "");
-        }
     });
 
     it("documents class-level ownership rather than command-local exceptions", () => {

@@ -3,7 +3,7 @@ import {
     captureInitialPokieSessionState,
     captureRoundPokieSessionState,
     captureScreen,
-    describeUnsupportedProjectOperation,
+    describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
     isWasmComponentFile,
     GameSessionHandling,
@@ -392,7 +392,7 @@ export class StudioReplayExecutionService {
     // actually-resolved value, mirroring StudioSimulationService.runOutcomeSourceSampling's own reasoning
     // -- every terminal job/list entry carries the real mode this run replayed against.
     private async runOutcomeSourceReplay(record: StudioReplayJobRecord, project: PokieProject): Promise<void> {
-        const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_SOURCE_REPLAY_OPERATION);
+        const diagnostic = describeUnavailableArtifactOperation(project, OUTCOME_SOURCE_REPLAY_OPERATION);
         if (diagnostic !== undefined) {
             this.fail(record, new Error(diagnostic.message));
             return;

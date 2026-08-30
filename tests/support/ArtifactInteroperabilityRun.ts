@@ -16,6 +16,25 @@ export type ArtifactInteroperabilityRunRow = {
     readonly owner: string;
     readonly result: string;
     readonly observations: readonly ArtifactInteroperabilityObservation[];
+    readonly status?: "supported" | "intentionally-unsupported";
+    readonly diagnostic?: {
+        readonly code: string;
+        readonly recovery: string;
+    };
+};
+
+export type ArtifactInteroperabilityUnavailableRow = {
+    readonly id: string;
+    readonly artifactKind: string;
+    readonly operation: string;
+    readonly sourcePath: string;
+    readonly owner: string;
+    readonly diagnostic: {
+        readonly code: string;
+        readonly message: string;
+        readonly recovery?: string;
+    };
+    readonly observations: readonly ArtifactInteroperabilityObservation[];
 };
 
 /**
@@ -40,6 +59,32 @@ export class ArtifactInteroperabilityRun {
         this.rows.push(row);
     }
 
+    /**
+     * Retain an unavailable boundary only after its real source has been
+     * resolved and the public owner has returned its diagnostic.  In
+     * particular, this intentionally does not accept an artifact-kind string
+     * and manufacture a diagnostic: doing so would turn the evidence ledger
+     * into an assertion about a route that was never exercised.
+     */
+    public recordUnavailable(row: ArtifactInteroperabilityUnavailableRow): void {
+        this.assertExists(row.sourcePath, "source");
+        if (row.diagnostic.code.length === 0 || row.diagnostic.message.length === 0 || row.diagnostic.recovery === undefined || row.diagnostic.recovery.length === 0) {
+            throw new Error(`${row.id} has no concrete public diagnostic and recovery.`);
+        }
+        if (row.observations.length === 0) throw new Error(`${row.id} has no exercised public observation.`);
+        this.rows.push({
+            id: row.id,
+            artifactKind: row.artifactKind,
+            operation: row.operation,
+            sourcePath: row.sourcePath,
+            owner: row.owner,
+            result: row.diagnostic.message,
+            observations: row.observations,
+            status: "intentionally-unsupported",
+            diagnostic: {code: row.diagnostic.code, recovery: row.diagnostic.recovery},
+        });
+    }
+
     public write(outputPath: string): void {
         const rows = [...this.rows]
             .sort((left, right) => left.id.localeCompare(right.id))
@@ -50,7 +95,9 @@ export class ArtifactInteroperabilityRun {
                 "source_path": this.redact(row.sourcePath),
                 "produced_path": row.producedPath === undefined ? null : this.redact(row.producedPath),
                 "operation_owner": row.owner,
+                status: row.status ?? "supported",
                 "observable_result": row.result,
+                ...(row.diagnostic === undefined ? {} : {diagnostic: {...row.diagnostic}}),
                 observations: row.observations.map((observation) => ({...observation})),
             }));
         fs.writeFileSync(outputPath, `${JSON.stringify({"schema_version": 1, rows}, null, 2)}\n`);

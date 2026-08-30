@@ -1,44 +1,33 @@
+import {describeUnsupportedProjectOperation} from "./describeUnsupportedProjectOperation.js";
+import type {PokieOperation} from "./PokieOperation.js";
+import type {PokieProject} from "./PokieProject.js";
+import type {UnsupportedProjectOperationDiagnostic} from "./UnsupportedProjectOperationDiagnostic.js";
 
 /**
- * The interoperability report is deliberately an operation matrix, while
- * ProjectTargetResolver only resolves six project roots.  Keep the negative
- * half of that matrix in one domain owner so CLI, Studio, and the evidence
- * runner do not each manufacture a different explanation for a durable
- * companion that is not an operation input.
+ * The diagnostic retained by an artifact-facing caller after it has resolved
+ * the real project it was asked to operate on. It intentionally takes a
+ * PokieProject, never an artifact-kind label or arbitrary path, so a caller
+ * cannot claim an unavailable boundary without exercising its public resolver.
  */
-export type ArtifactOperationDiagnostic = {
-    readonly artifactKind: string;
-    readonly operation: string;
-    readonly sourcePath: string;
-    readonly code: "unsupported-artifact-operation" | "unsupported-project-operation";
-    readonly message: string;
-    readonly recovery: string;
+export type ArtifactOperationDiagnostic = UnsupportedProjectOperationDiagnostic & {
+    readonly code: "unsupported-project-operation";
     readonly sharedOwner: "ArtifactOperationDiagnostic";
 };
 
 /**
- * Returns the exact shared diagnostic for an unavailable artifact-operation
- * pair.  A result is intentionally unavailable only when this owner returns
- * one; callers must execute the actual owner rather than retain a prose
- * approximation in evidence.
+ * Gives CLI and Studio artifact routes the capability diagnostic for their
+ * already-resolved source. Capability policy remains owned by
+ * describeUnsupportedProjectOperation; this adapter records the artifact
+ * operation that reached that policy.
  */
 export function describeUnavailableArtifactOperation(
-    artifactKind: string,
-    operation: string,
-    sourcePath: string,
+    project: PokieProject,
+    operation: PokieOperation,
 ): ArtifactOperationDiagnostic | undefined {
-    // A registry companion (or a project artifact in an operation with no
-    // consuming owner) cannot become an input merely because it is durable.
-    // This boundary is explicit rather than falling through to an unrelated
-    // project parser or a command-local generic error.
-    const recovery = `Use the producing workflow recorded for ${artifactKind}, or choose an operation that accepts ${sourcePath} as its input.`;
-    return {
-        artifactKind,
-        operation,
-        sourcePath,
-        code: "unsupported-artifact-operation",
-        message: `${sourcePath} is not an input to the ${operation} operation for ${artifactKind}. Next: ${recovery}`,
-        recovery,
+    const diagnostic = describeUnsupportedProjectOperation(project, operation);
+    return diagnostic === undefined ? undefined : {
+        ...diagnostic,
+        code: "unsupported-project-operation",
         sharedOwner: "ArtifactOperationDiagnostic",
     };
 }

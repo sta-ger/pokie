@@ -5,10 +5,9 @@ import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
     computeBlueprintHash,
-    describeUnsupportedProjectOperation,
-    PROJECT_TYPE_CAPABILITIES,
+    describeUnavailableArtifactOperation,
+    POKIE_WASM_CONTRACT_VERSION,
     type GameBlueprint,
-    type PokieProject,
     ProjectTargetResolver,
 } from "pokie";
 import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";
@@ -292,11 +291,21 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         await expect(registry.executePlan(destinationPlan, freshSource, occupiedDestination)).rejects.toThrow(/destination changed|stale or invalid/i);
         expect(fs.readFileSync(path.join(occupiedDestination, "borrowed.txt"), "utf-8")).toBe("keep");
 
-        const wasm: PokieProject = {type: "wasm", rootPath: path.join(workDir, "matrix.wasm"), provenance: "matrix", capabilities: PROJECT_TYPE_CAPABILITIES.wasm};
+        const wasmPath = path.join(workDir, "matrix.wasm");
+        fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({
+            schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+            component: {id: "matrix-component", version: "1.0.0"},
+            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+            host: {rng: "pokie.rng.v1", services: []},
+            capabilities: [],
+        }));
+        const wasm = await resolver.resolve(wasmPath);
+        if (wasm === undefined || wasm.type !== "wasm") throw new Error("Expected the produced WASM component to resolve.");
         const planner = new ArtifactConversionPlanner();
         const unavailable = planner.plan(wasm, "outcomeLibrary");
         expect(unavailable).toMatchObject({status: "unavailable", diagnostic: {code: "unsupported-boundary"}});
-        const operationDiagnostic = describeUnsupportedProjectOperation(wasm, "outcomeSource.simulate");
+        const operationDiagnostic = describeUnavailableArtifactOperation(wasm, "outcomeSource.simulate");
         // This is the concrete diagnostic record an unavailable CLI or Studio
         // route retains.  `recovery` is structured by the shared owner; it is
         // not reconstructed from a command-specific error string.
@@ -306,5 +315,21 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             recovery: "Inspect the compatible manifest or use the original Blueprint or POKIE game package where runnable or convertible source is required.",
         });
         expect(operationDiagnostic?.message).toContain("Next:");
+        if (operationDiagnostic?.recovery === undefined) throw new Error("Expected the public WASM diagnostic to include recovery.");
+        evidence.recordUnavailable({
+            id: "wasm-outcome-source-simulate", artifactKind: "wasmComponent", operation: "simulate", sourcePath: wasmPath,
+            owner: "describeUnsupportedProjectOperation", diagnostic: {
+                code: "unsupported-project-operation", message: operationDiagnostic?.message ?? "",
+                recovery: operationDiagnostic.recovery,
+            },
+            observations: [{surface: "library", owner: "describeUnsupportedProjectOperation", result: "resolved WASM diagnostic"}],
+        });
+        evidence.write(emittedEvidencePath);
+        expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                id: "wasm-outcome-source-simulate", status: "intentionally-unsupported", "source_path": "run-artifacts/matrix.wasm",
+                diagnostic: expect.objectContaining({code: "unsupported-project-operation"}),
+            }),
+        ]));
     });
 });
