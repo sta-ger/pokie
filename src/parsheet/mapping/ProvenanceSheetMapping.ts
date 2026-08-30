@@ -14,5 +14,5 @@ export interface ProvenanceSheetMapping {
 
     fromRows(rows: SheetGrid): {value: ParSheetProvenance; issues: ValidationIssue[]};
 
-    toRows(blueprint: GameBlueprint, pokieVersion: string, exportedAt: Date, sourcePath: string | undefined): SheetGrid;
+    toRows(blueprint: GameBlueprint, pokieVersion: string, exportedAt: Date, sourcePath: string | undefined, losslessEligible?: boolean): SheetGrid;
 }

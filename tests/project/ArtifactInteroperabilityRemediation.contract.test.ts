@@ -24,6 +24,15 @@ type InteroperabilityResult = {
     readonly excluded_internal_state: readonly {readonly artifact_kind: string}[];
     readonly rows: readonly InteroperabilityRow[];
     readonly systemic_class_audits: readonly {readonly class: string; readonly owner: string; readonly scope: readonly string[]}[];
+    readonly scenario_results: readonly {
+        readonly id: string;
+        readonly status: "supported" | "intentionally-unsupported";
+        readonly source_path: string;
+        readonly produced_path: string | null;
+        readonly observable_result: string;
+        readonly next_action: string | null;
+        readonly execution: {readonly runner: string; readonly surface: string; readonly assertions: readonly string[]};
+    }[];
 };
 
 const evidencePath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-14-artifact-torture/interoperability-result.json");
@@ -85,5 +94,28 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             expect.objectContaining({class: "durable publication ownership"}),
         ]));
         for (const audit of result.systemic_class_audits) expect(audit.scope.length).toBeGreaterThan(1);
+    });
+
+    it("binds every claimed lifecycle disposition to its executable real-artifact runner", () => {
+        const requiredScenarios = [
+            "par-lossless-roundtrip",
+            "stake-library-roundtrip",
+            "prepared-source-drift",
+            "prepared-destination-drift",
+            "stale-managed-library-reuse",
+            "wasm-boundary",
+        ];
+        expect(result.scenario_results.map((scenario) => scenario.id)).toEqual(requiredScenarios);
+        for (const scenario of result.scenario_results) {
+            expect(scenario.source_path).toMatch(/^run-artifacts\//);
+            expect(scenario.observable_result).not.toHaveLength(0);
+            expect(scenario.execution.runner).toMatch(/^tests\//);
+            expect(scenario.execution.surface).not.toHaveLength(0);
+            expect(scenario.execution.assertions.length).toBeGreaterThan(0);
+            if (scenario.status === "intentionally-unsupported") {
+                expect(scenario.produced_path).toBeNull();
+                expect(scenario.next_action).toMatch(/Blueprint|package|inspect|choose|use/i);
+            }
+        }
     });
 });

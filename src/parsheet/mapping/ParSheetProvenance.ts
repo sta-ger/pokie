@@ -6,4 +6,6 @@ export type ParSheetProvenance = {
     exportedAt?: string;
     source?: string;
     blueprintHash?: string;
+    /** A literal workbook can preserve the materialized model while losing its authored reel source. */
+    losslessEligible?: boolean;
 };

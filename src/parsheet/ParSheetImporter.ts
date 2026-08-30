@@ -224,6 +224,7 @@ export class ParSheetImporter implements ParSheetImporting {
         const importedBlueprintHash = computeBlueprintHash(blueprint);
         const provenanceHashMatches = provenance?.blueprintHash === importedBlueprintHash;
         const losslessEligible = provenanceHashMatches &&
+            provenance?.losslessEligible !== false &&
             !issues.some((issue) => issue.severity === "error") &&
             !facts.some((fact) => fact.kind === "ignored" || fact.kind === "formulaMaterialized" || fact.kind === "inferredOrDefaulted");
         return {blueprint, provenance, issues, conversionEvidence: {metaSheet, facts, losslessEligible, importedBlueprintHash, provenanceHashMatches}};

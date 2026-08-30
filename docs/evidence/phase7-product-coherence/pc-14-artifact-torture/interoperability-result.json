@@ -1,10 +1,12 @@
 {
   "schema_version": 1,
   "step_id": "PC-14",
-  "generated_by": "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts and tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
+  "generated_by": "Executable PC-14 runners: tests/cli/ArtifactInteroperabilityTorture.integration.test.ts, tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts, and tests/project/ArtifactInteroperabilityRemediation.contract.test.ts",
   "registry_source": "../pc-05-product-model/artifact-registry.json",
   "result_contract": {
     "rows_are_deterministic": true,
+    "execution_mode": "Each supported scenario is created from a fresh temporary real artifact root by a public CLI, Studio service, or root-library operation. Paths below are deterministic redactions of that temporary root; they are not fixtures.",
+    "unsupported_mode": "Unavailable planner cells are observed by ArtifactConversionPlanner; unavailable runtime/operation cells are observed through describeUnsupportedProjectOperation and retain its concrete recovery message.",
     "statuses": [
       "supported",
       "intentionally-unsupported",
@@ -6011,7 +6013,8 @@
       "source_path": "run-artifacts/blueprint/source.blueprint.json",
       "produced_path": "run-artifacts/parWorkbook/source.par.xlsx",
       "observable_result": "PAR provenance source and imported Blueprint hashes match; generated-reel materialization is explicitly non-lossless.",
-      "next_action": null
+      "next_action": null,
+      "execution": {"runner": "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts", "surface": "CLI + ParSheetExporter/Importer", "assertions": ["lossless hash match", "generated reel losslessEligible=false"]}
     },
     {
       "id": "stake-library-roundtrip",
@@ -6019,7 +6022,8 @@
       "source_path": "run-artifacts/outcomeLibrary/manifest.json",
       "produced_path": "run-artifacts/stakeAdapter/pokie-manifest.json",
       "observable_result": "Outcome Library to Stake to imported Outcome Library to Stake retains identity and provenance fields.",
-      "next_action": null
+      "next_action": null,
+      "execution": {"runner": "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts", "surface": "CLI + ArtifactBuilderRegistry", "assertions": ["game/config/version provenance", "Stake re-export"]}
     },
     {
       "id": "prepared-source-drift",
@@ -6027,7 +6031,8 @@
       "source_path": "run-artifacts/blueprint/source.blueprint.json",
       "produced_path": null,
       "observable_result": "Changed source binding is rejected before publication; existing destination remains owned by its caller.",
-      "next_action": "Prepare the conversion again after changing the source."
+      "next_action": "Prepare the conversion again after changing the source.",
+      "execution": {"runner": "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts", "surface": "ArtifactBuilderRegistry", "assertions": ["post-preflight source-byte mutation", "no destination publication"]}
     },
     {
       "id": "prepared-destination-drift",
@@ -6035,7 +6040,8 @@
       "source_path": "run-artifacts/outcomeLibrary",
       "produced_path": null,
       "observable_result": "Changed destination is rejected before publication; no borrowed artifact is deleted.",
-      "next_action": "Prepare the conversion again with the final destination."
+      "next_action": "Prepare the conversion again with the final destination.",
+      "execution": {"runner": "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts and tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts", "surface": "CLI registry + Studio generation", "assertions": ["post-preflight occupancy", "borrowed file retained"]}
     },
     {
       "id": "stale-managed-library-reuse",
@@ -6043,7 +6049,8 @@
       "source_path": "run-artifacts/outcomeLibrary/stale",
       "produced_path": null,
       "observable_result": "Version, configuration hash, game identity and sampling-policy mismatches are ineligible for reuse.",
-      "next_action": "Regenerate a compatible Outcome Library for the current source."
+      "next_action": "Regenerate a compatible Outcome Library for the current source.",
+      "execution": {"runner": "tests/project/ArtifactBuilderRegistry.test.ts", "surface": "ArtifactBuilderRegistry", "assertions": ["version", "configuration hash", "sampling policy", "managed reuse selection"]}
     },
     {
       "id": "wasm-boundary",
@@ -6051,7 +6058,8 @@
       "source_path": "run-artifacts/wasmComponent",
       "produced_path": null,
       "observable_result": "WASM remains metadata-only and is not advertised as a producer or runtime.",
-      "next_action": "Use the original Blueprint or POKIE package."
+      "next_action": "Use the original Blueprint or POKIE package.",
+      "execution": {"runner": "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts", "surface": "ArtifactConversionPlanner + shared operation diagnostic", "assertions": ["unsupported-boundary", "path-aware recovery"]}
     }
   ],
   "systemic_class_audits": [

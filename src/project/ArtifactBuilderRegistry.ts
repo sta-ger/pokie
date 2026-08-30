@@ -268,6 +268,20 @@ export class ArtifactBuilderRegistry {
                 },
             };
         }
+        // Package and PAR plans already bind their consumed source bytes at
+        // preflight. Bind a Blueprint's bytes for its direct package/workbook
+        // publications too: otherwise a caller could edit the Blueprint after
+        // preview and execute an old plan against a new model. Outcome/Stake
+        // take the more detailed managed-generation provenance path below.
+        if (source.type === "blueprint" && target !== "outcomeLibrary" && target !== "stakeAdapter") {
+            plannedSource = {
+                ...source,
+                configurationProvenance: {
+                    ...source.configurationProvenance,
+                    configurationHash: computeArtifactInputBindingHash([source.rootPath]),
+                },
+            };
+        }
         if ((source.type === "blueprint" || source.type === "tsPackage") && (target === "outcomeLibrary" || target === "stakeAdapter")) {
             // Studio's bound preflight carries the resolved strategy as the
             // planner-level contract, while BuildCommand carries the legacy

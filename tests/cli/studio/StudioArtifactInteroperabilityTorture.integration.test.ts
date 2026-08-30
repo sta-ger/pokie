@@ -35,8 +35,32 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         await expect(build.build(blueprintPath, "tsPackage", packagePath)).resolves.toMatchObject({status: "ok", outputPath: packagePath});
 
         const generator = new StudioOutcomeLibraryGenerateService(POKIE_VERSION);
-        const generated = await generator.generate(packagePath, {mode: "base", stake: 1});
+        // The service owns the durable bundle publication boundary. A cancelled
+        // real generation leaves no bundle behind, and its checkpoint resumes
+        // into the same public package rather than an in-memory substitute.
+        const controller = new AbortController();
+        controller.abort();
+        const cancelled = await generator.generate(packagePath, {mode: "base", stake: 1, signal: controller.signal});
+        if (cancelled.status !== "cancelled") throw new Error("Expected a resumable Studio generation cancellation.");
+        expect(fs.existsSync(path.join(packagePath, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR))).toBe(false);
+
+        // A preview binds its destination. Occupying it after preflight must
+        // reject before publication and preserve the caller-owned file.
+        const occupiedOutDir = StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
+        const preflight = await generator.estimate(packagePath, {mode: "base", stake: 1});
+        expect(preflight.status).toBe("ok");
+        if (preflight.status !== "ok") throw new Error("Expected an executable Studio generation preflight.");
+        fs.mkdirSync(path.join(packagePath, occupiedOutDir));
+        fs.writeFileSync(path.join(packagePath, occupiedOutDir, "borrowed.txt"), "keep");
+        await expect(generator.generate(packagePath, {mode: "base", stake: 1, preflightToken: preflight.preflightToken})).resolves.toMatchObject({
+            status: "conflict",
+            error: expect.stringMatching(/destination|preflight|changed|already exists/i),
+        });
+        expect(fs.readFileSync(path.join(packagePath, occupiedOutDir, "borrowed.txt"), "utf-8")).toBe("keep");
+        fs.rmSync(path.join(packagePath, occupiedOutDir), {recursive: true});
+        const generated = await generator.generate(packagePath, {mode: "base", stake: 1, resumeFrom: cancelled.checkpoint});
         expect(generated.status).toBe("ok");
+
         const registry = await generator.registry(packagePath);
         expect(registry).toMatchObject({status: "ok"});
         if (registry.status !== "ok" || registry.buildStatus === "missing") throw new Error("Expected Studio Outcome Library registry to be available.");
