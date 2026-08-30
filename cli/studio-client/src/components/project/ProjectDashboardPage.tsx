@@ -316,7 +316,7 @@ function describeProjectName(header: ProjectHeaderView): string {
 // workflow. It comes from GET /api/project/inspect, whose server branch reads
 // the canonical sidecar reader only; this component intentionally has no
 // binary URL, loader, or execution control.
-function WasmManifestInspection({summary}: {summary: string}) {
+function WasmManifestInspection({projectRoot, summary}: {projectRoot: string; summary: string}) {
     const fetchImpl = useStudioApi();
     const [inspection, setInspection] = useState<GamePackageInspectionReport>();
     const [error, setError] = useState<string>();
@@ -334,7 +334,12 @@ function WasmManifestInspection({summary}: {summary: string}) {
         return () => {
             active = false;
         };
-    }, [fetchImpl]);
+    // The API's inspection is scoped to Studio's current project rather than
+    // carrying a path in its URL.  Re-read it when that current component
+    // changes; otherwise switching directly between two WASM components
+    // would retain the first component's declared metadata in this mounted
+    // overview panel.
+    }, [fetchImpl, projectRoot]);
 
     if (error !== undefined) return <ErrorState message={error} />;
     if (inspection === undefined) return <LoadingState label="Reading declared WASM manifest…" />;
@@ -1026,7 +1031,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                             )}
                             {activeTab === "overview" && header.status === "artifact" && (
                                 header.type === "wasm"
-                                    ? <WasmManifestInspection summary={header.wasmPresentation.inspectionSummary} />
+                                    ? <WasmManifestInspection projectRoot={header.projectRoot} summary={header.wasmPresentation.inspectionSummary} />
                                     : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
                             {activeTab === "gameModel" && (
