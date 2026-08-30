@@ -28,12 +28,22 @@ type InteroperabilityResult = {
     readonly runner_inputs: readonly {readonly file: string; readonly sha256: string; readonly rows: number; readonly scenarios: number}[];
     readonly rows: readonly EmittedRecord[];
     readonly scenario_results: readonly EmittedRecord[];
+    readonly planner_cells?: readonly {
+        readonly source_path: string;
+        readonly source_identity: string;
+        readonly source_type: string;
+        readonly target: string;
+        readonly status: string;
+        readonly diagnostic?: {readonly code: string; readonly recovery: string};
+    }[];
     readonly systemic_class_audits: readonly {
         readonly class: string;
         readonly derived_from: {
             readonly operation_rows: readonly string[];
             readonly lifecycle_outcomes: readonly string[];
             readonly runner_outputs: readonly string[];
+            readonly planner_cells: readonly unknown[];
+            readonly regression_links: readonly string[];
         };
     }[];
 };
@@ -133,5 +143,28 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             }
         }
         expect(planner.plan(project("wasm"), "outcomeLibrary")).toMatchObject({status: "unavailable", diagnostic: {code: "unsupported-boundary"}});
+    });
+
+    it("derives the complete planner audit from real produced or imported sources", () => {
+        const cells = result.runner_inputs.flatMap((input) => {
+            const runnerPath = path.join(path.dirname(evidencePath), input.file);
+            return (JSON.parse(fs.readFileSync(runnerPath, "utf-8")) as InteroperabilityResult)["planner_cells"] ?? [];
+        });
+        expect(cells).toHaveLength(BUILD_PRODUCT_MATRIX_SOURCE_TYPES.length * BUILD_PRODUCT_MATRIX_TARGETS.length);
+        for (const source of BUILD_PRODUCT_MATRIX_SOURCE_TYPES) {
+            for (const target of BUILD_PRODUCT_MATRIX_TARGETS) {
+                const cell = cells.find((candidate) => candidate["source_type"] === source && candidate.target === target);
+                expect(cell).toMatchObject({"source_path": expect.stringMatching(/^run-artifacts\//), "source_identity": expect.stringMatching(/^sha256:/)});
+                const plan = new ArtifactConversionPlanner().plan(project(source), target);
+                expect(cell?.status).toBe(plan.status);
+                if (plan.status !== "planned") expect(cell?.diagnostic).toMatchObject({code: plan.diagnostic?.code, recovery: plan.diagnostic?.recovery});
+            }
+        }
+        for (const audit of result.systemic_class_audits) {
+            expect(audit.derived_from).toMatchObject({
+                "planner_cells": expect.arrayContaining(cells),
+                "regression_links": expect.any(Array),
+            });
+        }
     });
 });

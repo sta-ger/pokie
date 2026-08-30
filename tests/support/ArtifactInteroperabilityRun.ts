@@ -38,6 +38,17 @@ export type ArtifactInteroperabilityUnavailableRow = {
     readonly observations: readonly ArtifactInteroperabilityObservation[];
 };
 
+/** A planner cell is retained only after the runner has resolved the source
+ * artifact it names.  This makes the complete product matrix an observed
+ * direct-library result, rather than an evidence-only list of type strings. */
+export type ArtifactInteroperabilityPlannerCell = {
+    readonly sourcePath: string;
+    readonly sourceType: string;
+    readonly target: string;
+    readonly status: "planned" | "unavailable" | "conflict";
+    readonly diagnostic?: {readonly code: string; readonly recovery: string};
+};
+
 /** A lifecycle outcome is recorded by the runner at the point its assertion
  * completes.  It deliberately carries real source/output paths just like an
  * operation row, so a scenario cannot be represented by prose alone. */
@@ -64,6 +75,7 @@ export type ArtifactInteroperabilityScenario = {
 export class ArtifactInteroperabilityRun {
     private readonly rows: ArtifactInteroperabilityRunRow[] = [];
     private readonly scenarios: ArtifactInteroperabilityScenario[] = [];
+    private readonly plannerCells: ArtifactInteroperabilityPlannerCell[] = [];
     private readonly rootPath: string;
 
     public constructor(rootPath: string) {
@@ -101,6 +113,16 @@ export class ArtifactInteroperabilityRun {
             status: "intentionally-unsupported",
             diagnostic: {code: row.diagnostic.code, recovery: row.diagnostic.recovery},
         });
+    }
+
+    public recordPlannerCells(cells: readonly ArtifactInteroperabilityPlannerCell[]): void {
+        for (const cell of cells) {
+            this.assertExists(cell.sourcePath, "source");
+            if (cell.status !== "planned" && (cell.diagnostic === undefined || cell.diagnostic.recovery.length === 0)) {
+                throw new Error(`${cell.sourceType}:${cell.target} has no concrete planner diagnostic.`);
+            }
+            this.plannerCells.push(cell);
+        }
     }
 
     public recordScenario(scenario: ArtifactInteroperabilityScenario): void {
@@ -145,7 +167,17 @@ export class ArtifactInteroperabilityRun {
                     observations: scenario.observations.map((observation) => ({...observation})),
                 },
             }));
-        fs.writeFileSync(outputPath, `${JSON.stringify({"schema_version": 2, rows, "scenario_results": scenarios}, null, 2)}\n`);
+        const plannerCells = [...this.plannerCells]
+            .sort((left, right) => `${left.sourceType}:${left.target}`.localeCompare(`${right.sourceType}:${right.target}`))
+            .map((cell) => ({
+                "source_path": this.redact(cell.sourcePath),
+                "source_identity": this.identity(cell.sourcePath),
+                "source_type": cell.sourceType,
+                target: cell.target,
+                status: cell.status,
+                ...(cell.diagnostic === undefined ? {} : {diagnostic: {...cell.diagnostic}}),
+            }));
+        fs.writeFileSync(outputPath, `${JSON.stringify({"schema_version": 2, rows, "scenario_results": scenarios, "planner_cells": plannerCells}, null, 2)}\n`);
     }
 
     private assertExists(artifactPath: string, role: "source" | "output"): void {
@@ -197,7 +229,7 @@ export class ArtifactInteroperabilityRun {
 export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[], outputPath: string): void {
     const runs = inputPaths.map((inputPath) => {
         const raw = fs.readFileSync(inputPath, "utf-8");
-        const parsed = JSON.parse(raw) as {readonly rows: unknown[]; readonly scenario_results: unknown[]};
+        const parsed = JSON.parse(raw) as {readonly rows: unknown[]; readonly scenario_results: unknown[]; readonly planner_cells?: unknown[]};
         return {inputPath, raw, parsed};
     });
     const classify = (fragments: readonly string[]) => ({
@@ -213,6 +245,24 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
             const records = [...run.parsed.rows, ...run.parsed.scenario_results];
             return records.some((record) => isMatchingRecord(record, fragments));
         }).map((run) => path.basename(run.inputPath)).sort(),
+        "planner_cells": runs.flatMap((run) => run.parsed.planner_cells ?? []),
+        "operation_owners": runs.flatMap((run) => run.parsed.rows)
+            .filter((row) => isMatchingRecord(row, fragments))
+            .map(recordOwner).filter((owner): owner is string => owner !== undefined)
+            .filter((owner, index, owners) => owners.indexOf(owner) === index).sort(),
+        "studio_routes": runs.flatMap((run) => run.parsed.scenario_results)
+            .filter((scenario) => isMatchingRecord(scenario, fragments))
+            .flatMap(recordRoutes).filter((route) => route.startsWith("POST /api/"))
+            .filter((route, index, routes) => routes.indexOf(route) === index).sort(),
+        "direct_library_callers": runs.flatMap((run) => run.parsed.rows)
+            .filter((row) => isMatchingRecord(row, fragments))
+            .flatMap(recordObservations)
+            .filter((observation) => observation.surface === "library")
+            .map((observation) => observation.owner)
+            .filter((owner, index, owners) => owners.indexOf(owner) === index).sort(),
+        "regression_links": runs.flatMap((run) => [...run.parsed.rows, ...run.parsed.scenario_results])
+            .filter((record) => isMatchingRecord(record, fragments))
+            .map(recordId).sort(),
     });
     fs.writeFileSync(outputPath, `${JSON.stringify({
         "schema_version": 3,
@@ -237,6 +287,36 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
             {class: "durable publication ownership", "derived_from": classify(["cancellation", "recovery", "borrowed", "destination"])},
         ],
     }, null, 2)}\n`);
+}
+
+function recordOwner(record: unknown): string | undefined {
+    if (typeof record !== "object" || record === null || !("operation_owner" in record)) return undefined;
+    const owner = (record as {readonly operation_owner: unknown}).operation_owner;
+    return typeof owner === "string" ? owner : undefined;
+}
+
+function recordObservations(record: unknown): readonly {readonly surface: string; readonly owner: string}[] {
+    if (typeof record !== "object" || record === null || !("observations" in record)) return [];
+    const observations = (record as {readonly observations: unknown}).observations;
+    if (!Array.isArray(observations)) return [];
+    return observations.filter((observation): observation is {readonly surface: string; readonly owner: string} =>
+        typeof observation === "object" && observation !== null &&
+        "surface" in observation && typeof observation.surface === "string" &&
+        "owner" in observation && typeof observation.owner === "string",
+    );
+}
+
+function recordRoutes(record: unknown): readonly string[] {
+    if (typeof record !== "object" || record === null || !("execution" in record)) return [];
+    const execution = (record as {readonly execution: unknown}).execution;
+    if (typeof execution !== "object" || execution === null || !("observations" in execution)) return [];
+    const observations = (execution as {readonly observations: unknown}).observations;
+    if (!Array.isArray(observations)) return [];
+    return observations.flatMap((observation) =>
+        typeof observation === "object" && observation !== null && "route" in observation && typeof observation.route === "string"
+            ? [observation.route]
+            : [],
+    );
 }
 
 function isMatchingRecord(record: unknown, fragments: readonly string[]): record is {readonly id: string} {

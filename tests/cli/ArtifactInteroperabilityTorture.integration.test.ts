@@ -4,6 +4,7 @@ import path from "path";
 import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
+    BUILD_PRODUCT_MATRIX_TARGETS,
     computeBlueprintHash,
     describeUnavailableArtifactOperation,
     POKIE_WASM_CONTRACT_VERSION,
@@ -110,10 +111,14 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             reelStrips: [["A", "A", "B"], ["A", "B"]],
         };
         const blueprintPath = path.join(workDir, "matrix.blueprint.json");
+        const workbookPath = path.join(workDir, "matrix.par.xlsx");
+        const importedBlueprintPath = path.join(workDir, "matrix-imported.blueprint.json");
         const packagePath = path.join(workDir, "matrix-package");
         const rawLibraryPath = path.join(workDir, "matrix-library.json");
         const descriptorPath = path.join(workDir, "matrix-bundle.json");
         const bundlePath = path.join(workDir, "matrix-bundle");
+        const stakePath = path.join(workDir, "matrix-stake");
+        const importedStakeLibraryPath = path.join(workDir, "matrix-stake-imported-library");
         const simulationPath = path.join(workDir, "matrix-simulation.json");
         const replayPath = path.join(workDir, "matrix-replay.json");
         const certificationConfigPath = path.join(workDir, "matrix-certification.json");
@@ -124,6 +129,29 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const proofPath = path.join(workDir, "matrix-proof.json");
         fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
 
+        // The workbook and imported Blueprint are both real public artifacts.
+        // Keep them in the same emitted run as the package chain so the PAR
+        // cells are not inferred from a separate unit fixture.
+        expect(await new ParCommand(POKIE_VERSION).run(["export", blueprintPath, "--out", workbookPath])).toBe(0);
+        evidence.record({
+            id: "blueprint-export-par", artifactKind: "blueprint", operation: "export", sourcePath: blueprintPath,
+            producedPath: workbookPath, owner: "ParCommand", result: "published",
+            observations: [{surface: "cli", owner: "ParCommand", result: "export exit 0"}],
+        });
+        expect(await new ParCommand(POKIE_VERSION).run(["import", workbookPath, "--out", importedBlueprintPath])).toBe(0);
+        const parConversion = JSON.parse(fs.readFileSync(`${importedBlueprintPath}.conversion-evidence.json`, "utf-8"));
+        expect(parConversion).toMatchObject({
+            provenance: {blueprintHash: computeBlueprintHash(blueprint)},
+            importedBlueprintHash: computeBlueprintHash(blueprint),
+            provenanceHashMatches: true,
+            losslessEligible: true,
+        });
+        evidence.record({
+            id: "par-import-blueprint", artifactKind: "parWorkbook", operation: "import", sourcePath: workbookPath,
+            producedPath: importedBlueprintPath, owner: "ParCommand", result: "lossless Blueprint published",
+            observations: [{surface: "cli", owner: "ParCommand", result: "import exit 0 with matching provenance hash"}],
+        });
+
         const resolver = new ProjectTargetResolver();
         const registry = new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(process.cwd());
         const build = new BuildCommand(POKIE_VERSION, undefined, undefined, resolver, registry);
@@ -132,6 +160,15 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "blueprint-build-package", artifactKind: "blueprint", operation: "build", sourcePath: blueprintPath,
             producedPath: packagePath, owner: "BuildCommand", result: "published",
             observations: [{surface: "cli", owner: "BuildCommand", result: "exit 0"}],
+        });
+        const sourceProject = await resolver.resolve(importedBlueprintPath);
+        if (sourceProject === undefined) throw new Error("Expected the imported Blueprint to resolve for the direct-library preflight.");
+        const directPlan = await registry.preparePlan(sourceProject, "tsPackage", {destinationPath: path.join(workDir, "direct-library-package")});
+        expect(directPlan.status).toBe("planned");
+        evidence.record({
+            id: "blueprint-plan-package", artifactKind: "blueprint", operation: "build-preflight", sourcePath: importedBlueprintPath,
+            owner: "ArtifactBuilderRegistry.preparePlan", result: "planned for a fresh package destination",
+            observations: [{surface: "library", owner: "ArtifactBuilderRegistry.preparePlan", result: "planned"}],
         });
         expect(await new OutcomeLibraryCommand(POKIE_VERSION).run([
             "generate", packagePath, "--sample", "8", "--seed", "matrix-generation", "--out", rawLibraryPath, "--format", "json",
@@ -147,6 +184,35 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "raw-outcomes-build-bundle", artifactKind: "weightedOutcomeLibraryJson", operation: "build", sourcePath: rawLibraryPath,
             producedPath: bundlePath, owner: "OutcomeLibraryCommand", result: "published",
             observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "exit 0"}],
+        });
+        expect(await build.run([bundlePath, "--target", "stakeAdapter", "--out", stakePath])).toBe(0);
+        evidence.record({
+            id: "outcome-library-export-stake", artifactKind: "outcomeLibrary", operation: "export", sourcePath: bundlePath,
+            producedPath: stakePath, owner: "BuildCommand / ArtifactBuilderRegistry", result: "Stake Engine export published",
+            observations: [
+                {surface: "cli", owner: "BuildCommand", result: "exit 0"},
+                {surface: "library", owner: "ArtifactBuilderRegistry", result: "executed registry conversion"},
+            ],
+        });
+        expect(await new StakeEngineCommand(POKIE_VERSION).run(["import", stakePath, "--out", importedStakeLibraryPath])).toBe(0);
+        const stakeManifest = JSON.parse(fs.readFileSync(path.join(stakePath, "pokie-manifest.json"), "utf-8"));
+        const importedStakeManifest = JSON.parse(fs.readFileSync(path.join(importedStakeLibraryPath, "manifest.json"), "utf-8"));
+        expect(importedStakeManifest).toMatchObject({
+            game: stakeManifest.game,
+            configHash: stakeManifest.configHash,
+            pokieVersion: stakeManifest.pokieVersion,
+        });
+        evidence.record({
+            id: "stake-import-outcome-library", artifactKind: "stakeAdapter", operation: "import", sourcePath: stakePath,
+            producedPath: importedStakeLibraryPath, owner: "StakeEngineCommand", result: "Outcome Library published with matching Stake provenance",
+            observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 with matching game/config/version"}],
+        });
+        evidence.recordScenario({
+            id: "stake-outcome-library-round-trip", sourcePath: bundlePath, producedPath: importedStakeLibraryPath,
+            result: "Outcome Library to Stake export and public Stake import retain game, configuration hash, and POKIE version",
+            surface: "cli", owner: "BuildCommand / StakeEngineCommand",
+            assertions: ["imported library manifest matches the exported Stake manifest identity"],
+            observations: [{route: "pokie build --target stakeAdapter / pokie stakeengine import", result: "round trip completed with matching provenance"}],
         });
         expect(await new OutcomeSourceCommand().run(["sample", bundlePath, "--mode", "base", "--seed", "matrix-sample"])).toBe(0);
         evidence.record({
@@ -363,6 +429,27 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         });
         expect(operationDiagnostic?.message).toContain("Next:");
         if (operationDiagnostic?.recovery === undefined) throw new Error("Expected the public WASM diagnostic to include recovery.");
+        const plannerSources = [
+            {path: blueprintPath, project: await resolver.resolve(blueprintPath)},
+            {path: packagePath, project: await resolver.resolve(packagePath)},
+            {path: bundlePath, project: await resolver.resolve(bundlePath)},
+            {path: stakePath, project: await resolver.resolve(stakePath)},
+            {path: workbookPath, project: await resolver.resolve(workbookPath)},
+            {path: wasmPath, project: wasm},
+        ];
+        if (plannerSources.some((entry) => entry.project === undefined)) throw new Error("Expected every produced PC-05 artifact to resolve before planning its matrix cells.");
+        evidence.recordPlannerCells(plannerSources.flatMap(({path: sourcePath, project}) =>
+            BUILD_PRODUCT_MATRIX_TARGETS.map((target) => {
+                const plan = planner.plan(project!, target);
+                return {
+                    sourcePath,
+                    sourceType: project!.type,
+                    target,
+                    status: plan.status,
+                    ...(plan.diagnostic === undefined ? {} : {diagnostic: {code: plan.diagnostic.code, recovery: plan.diagnostic.recovery}}),
+                };
+            }),
+        ));
         // Exercise the CLI owner too.  The emitted ledger must never promote a
         // library-only diagnostic into a CLI observation without taking this
         // real public route through the same resolved WASM artifact.
