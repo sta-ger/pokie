@@ -133,11 +133,13 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const rawLibraryPath = path.join(workDir, "matrix-library.json");
         const descriptorPath = path.join(workDir, "matrix-bundle.json");
         const bundlePath = path.join(workDir, "matrix-bundle");
+        const generatedBundlePath = path.join(workDir, "matrix-generated-bundle");
         const stakePath = path.join(workDir, "matrix-stake");
         const stakeDescriptorPath = path.join(workDir, "matrix-stake-export.json");
         const stakeAnalysisPath = path.join(workDir, "matrix-stake-analysis.json");
         const stakeComparisonPath = path.join(workDir, "matrix-stake-comparison.json");
         const importedStakeLibraryPath = path.join(workDir, "matrix-stake-imported-library");
+        const reexportedStakePath = path.join(workDir, "matrix-stake-reexported");
         const simulationPath = path.join(workDir, "matrix-simulation.json");
         const comparisonSimulationPath = path.join(workDir, "matrix-comparison-simulation.json");
         const packageSimulationPath = path.join(workDir, "matrix-package-simulation.json");
@@ -233,9 +235,18 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "build exit 0 wrote the referenced canonical JSONL"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
-        expect(await build.run([bundlePath, "--target", "stakeAdapter", "--out", stakePath])).toBe(0);
+        // The raw-output bundle above deliberately has no generator
+        // diagnostics. Produce the Stake round trip from the public package
+        // conversion instead, whose writer persists the exact generation
+        // strategy and policy selected for the real artifact.
+        expect(await build.run([packagePath, "--target", "outcomeLibrary", "--out", generatedBundlePath])).toBe(0);
+        const generatedBundleManifest = JSON.parse(fs.readFileSync(path.join(generatedBundlePath, "manifest.json"), "utf-8"));
+        expect(generatedBundleManifest.modes).toEqual(expect.arrayContaining([
+            expect.objectContaining({generator: expect.objectContaining({strategy: expect.any(String)})}),
+        ]));
+        expect(await build.run([generatedBundlePath, "--target", "stakeAdapter", "--out", stakePath])).toBe(0);
         evidence.record({
-            id: "outcome-library-export-stake", artifactKind: "outcomeLibrary", operation: "export", sourcePath: bundlePath,
+            id: "outcome-library-export-stake", artifactKind: "outcomeLibrary", operation: "export", sourcePath: generatedBundlePath,
             producedPath: stakePath, owner: "BuildCommand / ArtifactBuilderRegistry", result: "Stake Engine export published",
             observations: [
                 {surface: "cli", owner: "BuildCommand", result: "exit 0"},
@@ -301,13 +312,47 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 wrote source-provenance.json"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
+        // A re-exportable import configuration is not itself a round trip.
+        // Run the normal public build command against the imported library and
+        // compare the second Stake manifest with both sides of the first
+        // exchange.  This makes the retained generation policy and original
+        // source provenance an observable property of the re-exported
+        // artifact, rather than an assertion about an intermediate config.
+        expect(await build.run([importedStakeLibraryPath, "--target", "stakeAdapter", "--out", reexportedStakePath])).toBe(0);
+        const reexportedStakeManifest = JSON.parse(fs.readFileSync(path.join(reexportedStakePath, "pokie-manifest.json"), "utf-8"));
+        const importedSourceProvenance = JSON.parse(fs.readFileSync(importProvenancePath, "utf-8"));
+        expect(reexportedStakeManifest).toMatchObject({
+            game: stakeManifest.game,
+            configHash: stakeManifest.configHash,
+            pokieVersion: stakeManifest.pokieVersion,
+            modes: stakeManifest.modes.map((mode: {name: string; libraryId: string; generator: unknown}) => expect.objectContaining({
+                name: mode.name,
+                libraryId: mode.libraryId,
+                generator: mode.generator,
+            })),
+        });
+        expect(importedSourceProvenance).toMatchObject({
+            manifestHash: expect.stringMatching(/^sha256:/),
+            indexHash: expect.stringMatching(/^sha256:/),
+            modes: expect.arrayContaining([expect.objectContaining({modeName: "base", csvHash: expect.stringMatching(/^sha256:/), booksHash: expect.stringMatching(/^sha256:/)})]),
+        });
+        evidence.record({
+            id: "stake-import-reexport-stake", artifactKind: "stakeImportReExportConfig", operation: "re-export", sourcePath: importConfigPath,
+            producedPath: reexportedStakePath, owner: "BuildCommand / ArtifactBuilderRegistry", result: "public Stake re-export retained game identity, configuration hash, POKIE version, generation semantics, and imported source provenance",
+            observations: [
+                {surface: "cli", owner: "BuildCommand", result: "build imported Outcome Library --target stakeAdapter exit 0"},
+                {surface: "library", owner: "ArtifactBuilderRegistry", result: "re-exported Stake manifest retained the original generation semantics"},
+                {surface: "library", owner: "StakeEngineCommand", result: "imported source-provenance manifest/index/mode hashes remained available to the re-export path"},
+            ],
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+        });
         evidence.recordScenario({
-            id: "stake-outcome-library-round-trip", sourcePath: bundlePath, producedPath: importedStakeLibraryPath,
-            result: "Outcome Library to Stake export and public Stake import retain game, configuration hash, and POKIE version",
+            id: "stake-outcome-library-round-trip", sourcePath: generatedBundlePath, producedPath: reexportedStakePath,
+            result: "Outcome Library to Stake export, public import, and public re-export retain game identity, configuration hash, POKIE version, generation semantics, and source provenance",
             surface: "cli", owner: "BuildCommand / StakeEngineCommand",
             systemicClasses: ["provenance-and-freshness-binding"],
-            assertions: ["imported library manifest matches the exported Stake manifest identity"],
-            observations: [{route: "pokie build --target stakeAdapter / pokie stakeengine import", result: "round trip completed with matching provenance"}],
+            assertions: ["imported library manifest matches the exported Stake manifest identity", "re-exported Stake manifest preserves each imported generation descriptor", "imported source provenance retains manifest, index, and mode hashes through the re-export boundary"],
+            observations: [{route: "pokie build --target stakeAdapter / pokie stakeengine import / pokie build --target stakeAdapter", result: "complete public round trip completed with matching identity, generation, and source provenance"}],
         });
         // A pre-existing interrupted import destination is externally owned:
         // the public import must reject it without deleting its bytes.  Once

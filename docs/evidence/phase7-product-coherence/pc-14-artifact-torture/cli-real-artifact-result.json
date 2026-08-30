@@ -1005,7 +1005,7 @@
       "id": "outcome-library-export-stake",
       "artifact_kind": "outcomeLibrary",
       "operation": "export",
-      "source_path": "run-artifacts/matrix-bundle",
+      "source_path": "run-artifacts/matrix-generated-bundle",
       "source_identity": "sha256:afbc040fdfa908ef63c724cb4d4f054393f22bd557383f96e58a0cab4675ba4f",
       "produced_path": "run-artifacts/matrix-stake",
       "produced_identity": "sha256:845f608fa53f68b3b28532037d1fc494bbc4475bd740f23def1e5f2d739ae326",
@@ -1535,6 +1535,39 @@
       ]
     },
     {
+      "id": "stake-import-reexport-stake",
+      "artifact_kind": "stakeImportReExportConfig",
+      "operation": "re-export",
+      "source_path": "run-artifacts/matrix-stake-imported-library/config.json",
+      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "produced_path": "run-artifacts/matrix-stake-reexported",
+      "produced_identity": "sha256:845f608fa53f68b3b28532037d1fc494bbc4475bd740f23def1e5f2d739ae326",
+      "operation_owner": "BuildCommand / ArtifactBuilderRegistry",
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "public Stake re-export retained game identity, configuration hash, POKIE version, generation semantics, and imported source provenance",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "BuildCommand",
+          "result": "build imported Outcome Library --target stakeAdapter exit 0"
+        },
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry",
+          "result": "re-exported Stake manifest retained the original generation semantics"
+        },
+        {
+          "surface": "library",
+          "owner": "StakeEngineCommand",
+          "result": "imported source-provenance manifest/index/mode hashes remained available to the re-export path"
+        }
+      ]
+    },
+    {
       "id": "stake-import-source-provenance",
       "artifact_kind": "stakeImportSourceProvenance",
       "operation": "inspect",
@@ -1944,21 +1977,23 @@
     },
     {
       "id": "stake-outcome-library-round-trip",
-      "source_path": "run-artifacts/matrix-bundle",
+      "source_path": "run-artifacts/matrix-generated-bundle",
       "source_identity": "sha256:afbc040fdfa908ef63c724cb4d4f054393f22bd557383f96e58a0cab4675ba4f",
-      "produced_path": "run-artifacts/matrix-stake-imported-library",
-      "produced_identity": "sha256:9af56a07bba123ab63b330ae9484dc087f6a21c1d479f5e8b347537675415eac",
-      "observable_result": "Outcome Library to Stake export and public Stake import retain game, configuration hash, and POKIE version",
+      "produced_path": "run-artifacts/matrix-stake-reexported",
+      "produced_identity": "sha256:845f608fa53f68b3b28532037d1fc494bbc4475bd740f23def1e5f2d739ae326",
+      "observable_result": "Outcome Library to Stake export, public import, and public re-export retain game identity, configuration hash, POKIE version, generation semantics, and source provenance",
       "execution": {
         "surface": "cli",
         "owner": "BuildCommand / StakeEngineCommand",
         "assertions": [
-          "imported library manifest matches the exported Stake manifest identity"
+          "imported library manifest matches the exported Stake manifest identity",
+          "re-exported Stake manifest preserves each imported generation descriptor",
+          "imported source provenance retains manifest, index, and mode hashes through the re-export boundary"
         ],
         "observations": [
           {
-            "route": "pokie build --target stakeAdapter / pokie stakeengine import",
-            "result": "round trip completed with matching provenance"
+            "route": "pokie build --target stakeAdapter / pokie stakeengine import / pokie build --target stakeAdapter",
+            "result": "complete public round trip completed with matching identity, generation, and source provenance"
           }
         ]
       },
