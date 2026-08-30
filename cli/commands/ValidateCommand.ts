@@ -6,11 +6,15 @@ import {
     PokieGamePackageValidating,
     PokieGamePackageValidationReport,
     PokieGamePackageValidator,
+    ProjectTargetMalformedError,
     ProjectResolving,
+    ProjectTargetUnsupportedError,
     ProjectTargetResolver,
     StakeEngineImporter,
     StakeEngineImporting,
     ValidationIssue,
+    describeWasmRecovery,
+    describeWasmUnsupportedOperation,
 } from "pokie";
 import fs from "fs";
 import path from "path";
@@ -19,7 +23,7 @@ import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../mat
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type ValidateFormat = "summary" | "json";
-type ValidateProjectKind = "blueprint" | "outcome-library" | "stake-engine" | "package" | "unknown";
+type ValidateProjectKind = "blueprint" | "outcome-library" | "stake-engine" | "package" | "wasm" | "unknown";
 type ValidateDiagnostic = Required<Pick<ValidationIssue, "code" | "severity" | "message" | "path" | "suggestion">> &
     Pick<ValidationIssue, "details">;
 
@@ -143,7 +147,18 @@ export class ValidateCommand implements CliCommandHandling {
             return this.validateOutcomeLibrary(packageRoot, deep);
         }
 
-        const project = await this.resolveProject.resolve(packageRoot);
+        let project;
+        try {
+            project = await this.resolveProject.resolve(packageRoot);
+        } catch (error) {
+            if (this.isWasmPath(packageRoot) && this.isWasmResolutionFailure(error)) {
+                return this.wasmValidationFailure(packageRoot, error.message);
+            }
+            throw error;
+        }
+        if (project?.type === "wasm") {
+            return this.wasmValidationFailure(packageRoot, describeWasmUnsupportedOperation("validate WASM game logic"));
+        }
         if (project?.type === "outcomeLibrary") {
             return this.validateOutcomeLibrary(packageRoot, deep);
         }
@@ -151,6 +166,24 @@ export class ValidateCommand implements CliCommandHandling {
             return this.validateBlueprint(packageRoot);
         }
         return this.validatePackage(packageRoot);
+    }
+
+    private isWasmPath(projectPath: string): boolean {
+        return path.extname(projectPath).toLowerCase() === ".wasm";
+    }
+
+    private isWasmResolutionFailure(error: unknown): error is ProjectTargetMalformedError | ProjectTargetUnsupportedError {
+        return (error instanceof ProjectTargetMalformedError || error instanceof ProjectTargetUnsupportedError) && error.targetType === "wasm";
+    }
+
+    private wasmValidationFailure(wasmPath: string, message: string): ValidateReport {
+        return this.failedReport(
+            wasmPath,
+            "wasm",
+            "wasm-component-validation-unavailable",
+            message,
+            describeWasmRecovery(),
+        );
     }
 
     private isBlueprintFile(projectPath: string): boolean {

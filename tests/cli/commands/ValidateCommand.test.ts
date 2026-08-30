@@ -33,6 +33,8 @@ const invalidReport: PokieGamePackageValidationReport = {
     suggestions: ["Export an object implementing PokieGame as the entry module's default export."],
 };
 
+const WASM_BINARY = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+
 async function writeOutcomeLibraryBundle(bundleDir: string): Promise<void> {
     await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "validate-test-library")], bundleDir);
 }
@@ -496,6 +498,50 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(printed).toContain("pokie-package-unavailable");
         expect(printed).toContain("Check package.json");
         expect(printed).not.toContain("ENOENT");
+    });
+
+    it.each([
+        ["compatible", JSON.stringify({
+            schemaVersion: "1.0.0",
+            component: {id: "sample-component", version: "0.1.0"},
+            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+            host: {rng: "pokie.rng.v1", services: []},
+            capabilities: [],
+        }), "cannot validate WASM game logic"],
+        ["missing", undefined, "no compatible PokieWasmComponentManifest sidecar"],
+        ["malformed", "{ not JSON", "sidecar at"],
+        ["incompatible", JSON.stringify({
+            schemaVersion: "2.0.0",
+            component: {id: "sample-component", version: "0.1.0"},
+            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+            host: {rng: "pokie.rng.v1", services: []},
+            capabilities: [],
+        }), "not compatible with this POKIE build"],
+    ])("fails closed for a %s WASM component without package validation", async (_fixtureKind, sidecar, expectedDiagnostic) => {
+        const wasmPath = path.join(outDir, `${_fixtureKind}.wasm`);
+        fs.writeFileSync(wasmPath, WASM_BINARY);
+        if (sidecar !== undefined) {
+            fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, sidecar);
+        }
+        const validator = createStubValidator(validReport);
+        const resolveRuntimePackageRoot = jest.fn(() => Promise.resolve({runtimePath: "should-not-resolve", release: () => Promise.resolve()}));
+        const command = new ValidateCommand(validator, undefined, resolveRuntimePackageRoot);
+
+        expect(await command.run([wasmPath, "--format", "json"])).toBe(1);
+
+        const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
+            valid: boolean;
+            project: {kind: string; path: string};
+            errors: Array<{code: string; message: string; suggestion: string}>;
+        };
+        expect(report).toMatchObject({valid: false, project: {kind: "wasm", path: wasmPath}});
+        expect(report.errors).toEqual([expect.objectContaining({
+            code: "wasm-component-validation-unavailable",
+            message: expect.stringContaining(expectedDiagnostic),
+            suggestion: expect.stringContaining("original Blueprint or POKIE game package"),
+        })]);
+        expect(validator.calledWith).toBeUndefined();
+        expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
     });
 });
 

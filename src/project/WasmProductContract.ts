@@ -9,7 +9,7 @@ export const WASM_PRODUCT_CONTRACT = {
     capabilities: [WASM_MANIFEST_READ_CAPABILITY] as readonly ProjectCapability[],
     inspectionPurpose: "A compatible WebAssembly component whose declared manifest identity, serialization identifiers, host bindings, and capabilities POKIE can inspect.",
     inspectionBoundary: "POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary.",
-    inspectAction: {label: "Inspect this component", command: "pokie inspect <path>"},
+    manifestActionLabel: "Inspect declared manifest",
     originalSourceRecovery: "Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
 } as const;
 
@@ -75,7 +75,7 @@ export function wasmProductContractView(): WasmProductContractView {
         label: WASM_PRODUCT_CONTRACT.studioLabel,
         manifestCapability: WASM_MANIFEST_READ_CAPABILITY,
         manifestCapabilityLabel: "Inspect declared WASM component metadata",
-        inspectActionLabel: WASM_PRODUCT_CONTRACT.inspectAction.label,
+        inspectActionLabel: WASM_PRODUCT_CONTRACT.manifestActionLabel,
         inspectionSummary: `${WASM_PRODUCT_CONTRACT.inspectionPurpose} ${WASM_PRODUCT_CONTRACT.inspectionBoundary} ${WASM_PRODUCT_CONTRACT.originalSourceRecovery}`,
     };
 }

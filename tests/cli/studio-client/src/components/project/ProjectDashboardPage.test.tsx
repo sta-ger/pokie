@@ -32,7 +32,7 @@ describe("ProjectDashboardPage", () => {
             label: "WASM component (inspection-only)",
             manifestCapability: "wasm.manifest.read",
             manifestCapabilityLabel: "Inspect declared WASM component metadata",
-            inspectActionLabel: "Inspect this component",
+            inspectActionLabel: "Inspect declared manifest",
             inspectionSummary: "POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary.",
         };
         const {fetchImpl} = createRoutedFakeFetch({

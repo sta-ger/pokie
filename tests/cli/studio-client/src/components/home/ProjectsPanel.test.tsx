@@ -106,7 +106,7 @@ describe("ProjectsPanel: Import Project", () => {
                         label: "WASM component (inspection-only)",
                         manifestCapability: "wasm.manifest.read",
                         manifestCapabilityLabel: "Inspect declared WASM component metadata",
-                        inspectActionLabel: "Inspect this component",
+                        inspectActionLabel: "Inspect declared manifest",
                         inspectionSummary: "inspection-only",
                     },
                 }],
@@ -125,7 +125,7 @@ describe("ProjectsPanel: Import Project", () => {
             label: "WASM component (inspection-only)",
             manifestCapability: "wasm.manifest.read",
             manifestCapabilityLabel: "Inspect declared WASM component metadata",
-            inspectActionLabel: "Inspect this component",
+            inspectActionLabel: "Inspect declared manifest",
             inspectionSummary: "POKIE reads compatible component metadata only.",
         };
         const {fetchImpl} = createRoutedFakeFetch({
@@ -159,7 +159,7 @@ describe("ProjectsPanel: Import Project", () => {
             label: "WASM component (inspection-only)",
             manifestCapability: "wasm.manifest.read",
             manifestCapabilityLabel: "Inspect declared WASM component metadata",
-            inspectActionLabel: "Inspect this component",
+            inspectActionLabel: "Inspect declared manifest",
             inspectionSummary: "POKIE reads compatible component metadata only.",
         };
         const location = "/games/component.wasm";

@@ -133,7 +133,7 @@ describe("describeProjectHeader", () => {
             label: "WASM component (inspection-only)",
             manifestCapability: "wasm.manifest.read",
             manifestCapabilityLabel: "Inspect declared WASM component metadata",
-            inspectActionLabel: "Inspect this component",
+            inspectActionLabel: "Inspect declared manifest",
             inspectionSummary: "POKIE reads compatible component metadata only.",
         };
 

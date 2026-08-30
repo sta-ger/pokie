@@ -69,7 +69,10 @@ const PROJECT_PRESENTATIONS: Readonly<Record<ProjectType, ProjectPresentation>> 
     wasm: {
         kind: WASM_PRODUCT_CONTRACT.kind,
         purpose: WASM_PRODUCT_CONTRACT.inspectionPurpose,
-        nextActions: [WASM_PRODUCT_CONTRACT.inspectAction],
+        // `pokie inspect` is the operation currently rendering this presentation.
+        // A WASM component has no further CLI action after its manifest has been
+        // read, so do not send users back through a self-referential command.
+        nextActions: [],
         prerequisites: [
             `${WASM_PRODUCT_CONTRACT.inspectionBoundary} It cannot build, run, simulate, or validate WASM game logic; it also cannot replay or serve it.`,
             WASM_PRODUCT_CONTRACT.originalSourceRecovery,
