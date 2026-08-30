@@ -15,6 +15,7 @@ import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioRep
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioStakeEngineExportService} from "../../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, mergeArtifactInteroperabilityRuns} from "../../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
@@ -203,6 +204,36 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         const mode = registry.modes.find((entry) => entry.modeName === "base");
         expect(mode).toMatchObject({buildStatus: "compatible"});
         if (mode === undefined || mode.bundleDir === undefined) throw new Error("Expected a compatible generated Outcome Library mode.");
+
+        // Compatibility is a property of the generated artifact *and* its
+        // current runnable owner. Rebuild independent packages and copy the
+        // real managed bundle/index into them, rather than editing provenance
+        // fields in place. This exercises the same registry classification a
+        // reopened Studio project uses for config/hash, game, and runtime
+        // version boundaries.
+        const buildPackage = async (name: string, manifest: GameBlueprint["manifest"], pay: number): Promise<string> => {
+            const sourcePath = path.join(workDir, `${name}.blueprint.json`);
+            const targetPath = path.join(workDir, name);
+            fs.writeFileSync(sourcePath, JSON.stringify({...blueprint, manifest, paytable: {A: {2: pay}}}));
+            expect(await new BuildCommand(POKIE_VERSION).run([sourcePath, "--target", "tsPackage", "--out", targetPath])).toBe(0);
+            fs.cpSync(path.join(packagePath, mode.bundleDir!), path.join(targetPath, mode.bundleDir!), {recursive: true});
+            fs.cpSync(path.join(packagePath, ".pokie"), path.join(targetPath, ".pokie"), {recursive: true});
+            return targetPath;
+        };
+        const stalePackage = await buildPackage("stale-package", blueprint.manifest, 4);
+        const wrongGamePackage = await buildPackage("wrong-game-package", {...blueprint.manifest, id: "other-studio-artifact-torture"}, 3);
+        expect(await generator.registry(stalePackage)).toMatchObject({status: "ok", buildStatus: "stale", modes: [expect.objectContaining({buildStatus: "stale"})]});
+        expect(await generator.registry(wrongGamePackage)).toMatchObject({status: "ok", buildStatus: "wrong", modes: [expect.objectContaining({buildStatus: "wrong"})]});
+        const upgradedGenerator = new StudioOutcomeLibraryGenerateService("1.3.1");
+        expect(await upgradedGenerator.registry(packagePath)).toMatchObject({status: "ok", buildStatus: "stale", modes: [expect.objectContaining({buildStatus: "stale"})]});
+        evidence.recordScenario({
+            id: "studio-managed-reuse-compatibility", sourcePath: path.join(packagePath, mode.bundleDir),
+            result: "Studio registry reuses only the matching managed library and classifies copied real libraries as stale for configuration/hash or POKIE-version drift and wrong for cross-game drift",
+            surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService.registry",
+            systemicClasses: ["provenance-and-freshness-binding"],
+            assertions: ["same package registry is compatible", "changed configuration is stale", "changed game id is wrong", "new POKIE version is stale"],
+            observations: [{route: "StudioOutcomeLibraryGenerateService.registry", result: "real copied managed bundles were classified compatible, stale, wrong, and stale"}],
+        });
 
         const stake = await new StudioStakeEngineExportService(POKIE_VERSION).export(
             packagePath,

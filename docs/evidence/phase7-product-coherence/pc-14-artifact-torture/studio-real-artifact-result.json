@@ -274,6 +274,33 @@
       ]
     },
     {
+      "id": "studio-managed-reuse-compatibility",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:ead8c361584f121fb7296077d0fa1c612d8f6b2af83156207b32080e08d89d6c",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "Studio registry reuses only the matching managed library and classifies copied real libraries as stale for configuration/hash or POKIE-version drift and wrong for cross-game drift",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioOutcomeLibraryGenerateService.registry",
+        "assertions": [
+          "same package registry is compatible",
+          "changed configuration is stale",
+          "changed game id is wrong",
+          "new POKIE version is stale"
+        ],
+        "observations": [
+          {
+            "route": "StudioOutcomeLibraryGenerateService.registry",
+            "result": "real copied managed bundles were classified compatible, stale, wrong, and stale"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ]
+    },
+    {
       "id": "studio-simulation-replay-cancellation",
       "source_path": "run-artifacts/package",
       "source_identity": "sha256:b9d6469ff03bcb2a1f7e7f51867e42807d0c75dea1c877e5cdc6c82eca8d2aa8",

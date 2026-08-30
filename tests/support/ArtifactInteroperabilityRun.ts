@@ -382,6 +382,32 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
             .filter((record) => hasSystemicClass(record, systemicClass))
             .map(recordId).sort(),
     });
+    // PC-05 is the product inventory, whereas the individual runner files
+    // are evidence of a particular execution.  Keep both facts in the final
+    // result.  In particular, do not silently drop an inventory item just
+    // because a runner did not reach it: that would make a small build matrix
+    // look like the complete interoperability surface again.
+    const registry = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json"), "utf-8")) as {
+        readonly artifact_kinds: readonly {readonly id: string; readonly created_by?: readonly string[]; readonly recognized_by?: readonly string[]; readonly runs_by?: readonly string[]; readonly validates_by?: readonly string[]; readonly reports_by?: readonly string[]; readonly replays_by?: readonly string[]}[];
+    };
+    const allRecords = runs.flatMap((run) => [...run.parsed.rows, ...run.parsed.scenario_results]);
+    const registryCoverage = registry.artifact_kinds.map((artifact) => {
+        const recordIds = allRecords.filter((record) => recordArtifactKind(record) === artifact.id).map(recordId).sort();
+        const internalOnly = artifact.id === "blueprintRuntimeMaterializationCache" || artifact.id === "blueprintRuntimeMaterializationMarker";
+        let disposition: "executed" | "not-executed" | "excluded-internal-cache-state" = "not-executed";
+        if (internalOnly) disposition = "excluded-internal-cache-state";
+        else if (recordIds.length > 0) disposition = "executed";
+        return {
+            "artifact_kind": artifact.id,
+            disposition,
+            "public_owners": [
+                ...(artifact.created_by ?? []), ...(artifact.recognized_by ?? []), ...(artifact.runs_by ?? []),
+                ...(artifact.validates_by ?? []), ...(artifact.reports_by ?? []), ...(artifact.replays_by ?? []),
+            ].filter((owner, index, owners) => owners.indexOf(owner) === index).sort(),
+            "executed_regressions": recordIds,
+            ...(internalOnly ? {exclusion: "Machine-local materialization cache/marker is not a user artifact or public-operation claim."} : {}),
+        };
+    });
     fs.writeFileSync(outputPath, `${JSON.stringify({
         "schema_version": 3,
         "step_id": "PC-14",
@@ -399,6 +425,9 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
         })),
         rows: runs.flatMap((run) => run.parsed.rows),
         "scenario_results": runs.flatMap((run) => run.parsed.scenario_results),
+        // This is derived from the checked-in PC-05 registry at refresh time,
+        // not maintained beside the result as a second hand-authored census.
+        "registry_artifact_coverage": registryCoverage,
         "systemic_class_audits": [
             {class: "shared conversion diagnostic parity", "derived_from": classify("shared-conversion-diagnostic-parity")},
             {class: "provenance and freshness binding", "derived_from": classify("provenance-and-freshness-binding")},
@@ -411,6 +440,12 @@ function recordOwner(record: unknown): string | undefined {
     if (typeof record !== "object" || record === null || !("operation_owner" in record)) return undefined;
     const owner = (record as {readonly operation_owner: unknown}).operation_owner;
     return typeof owner === "string" ? owner : undefined;
+}
+
+function recordArtifactKind(record: unknown): string | undefined {
+    if (typeof record !== "object" || record === null || !("artifact_kind" in record)) return undefined;
+    const artifactKind = (record as {readonly artifact_kind: unknown}).artifact_kind;
+    return typeof artifactKind === "string" ? artifactKind : undefined;
 }
 
 function recordAlias(record: unknown): readonly string[] {

@@ -10,15 +10,15 @@
   "runner_inputs": [
     {
       "file": "cli-real-artifact-result.json",
-      "sha256": "sha256:b57d024c402e993a453f77eb80feaa39f59284f1880156390cc6bd7c4de2de70",
+      "sha256": "sha256:2a9d3129b6cabfdfac917c83465f4f3c0b14956eb9c35032987ac9997170081d",
       "rows": 59,
       "scenarios": 14
     },
     {
       "file": "studio-real-artifact-result.json",
-      "sha256": "sha256:9e047472a5094e66b8ab1049d88d9248c0b892d3fcd7ffc23ac424eb2313c298",
+      "sha256": "sha256:4a988198071fb67239008edcf34313d435f199ad7ee103654d25f4178f4d3324",
       "rows": 6,
-      "scenarios": 6
+      "scenarios": 7
     }
   ],
   "rows": [
@@ -49,7 +49,7 @@
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:3337c40843eeda59674b217dea72cad47870dbfc1a4396d8cdd6280c37641d7d",
       "produced_path": "run-artifacts/matrix.par.xlsx",
-      "produced_identity": "sha256:04279f0d12731fdb4d42c49ac938fcdae5779e064ac9e690337cff2795117150",
+      "produced_identity": "sha256:4388d5942b90178c334678662398f8ff0a84bf952c5f95ea1344df35d5e02c81",
       "operation_owner": "ParCommand",
       "systemic_classes": [],
       "status": "supported",
@@ -107,7 +107,7 @@
       "artifact_kind": "validationReport",
       "operation": "inspect",
       "source_path": "run-artifacts/matrix-validation.json",
-      "source_identity": "sha256:c68e1f38dcd44eddea495ca569165bf205e98af6c92e7651d14e0ec589b080c9",
+      "source_identity": "sha256:21601067074dbdfd3e9c9377b44d6057b2bb067d991bb8451ff7ea4a047dd8f4",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ValidateCommand",
@@ -149,7 +149,7 @@
       "artifact_kind": "certificationEvidenceBundle",
       "operation": "verify",
       "source_path": "run-artifacts/matrix-certification",
-      "source_identity": "sha256:ce94d979bdd938199b6230176f01d5f118e921212fd4b77a2bf18d0dd713796a",
+      "source_identity": "sha256:44ee4d673072b2bcd2e78bfadfab6f01c37d85914d0bdb20bd50f801e5e4e309",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "CertificationCommand",
@@ -287,7 +287,7 @@
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:3337c40843eeda59674b217dea72cad47870dbfc1a4396d8cdd6280c37641d7d",
       "produced_path": "run-artifacts/matrix-edge-blueprint-parWorkbook",
-      "produced_identity": "sha256:924f9fc45e0310111d8a9def7f4d43babf2d49f8291e144d34c0bce7111edb51",
+      "produced_identity": "sha256:51d07f4c8abbf2dcc5538312fee58c3ca38ed58728436d68037636ddaf7672f7",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -473,7 +473,7 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:blueprint",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:04279f0d12731fdb4d42c49ac938fcdae5779e064ac9e690337cff2795117150",
+      "source_identity": "sha256:4388d5942b90178c334678662398f8ff0a84bf952c5f95ea1344df35d5e02c81",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-blueprint",
       "produced_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
@@ -495,9 +495,9 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:outcomeLibrary",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:04279f0d12731fdb4d42c49ac938fcdae5779e064ac9e690337cff2795117150",
+      "source_identity": "sha256:4388d5942b90178c334678662398f8ff0a84bf952c5f95ea1344df35d5e02c81",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-outcomeLibrary",
-      "produced_identity": "sha256:f885a1945666113692655486d2cd7e834313afefaf38061d7c91d51599e08b14",
+      "produced_identity": "sha256:bde5bc4ef196268d9bc1ce1e8d0688aa98447c2bb7accf70b409e1dbfb55f5e9",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -517,9 +517,9 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:parWorkbook",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:04279f0d12731fdb4d42c49ac938fcdae5779e064ac9e690337cff2795117150",
+      "source_identity": "sha256:4388d5942b90178c334678662398f8ff0a84bf952c5f95ea1344df35d5e02c81",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-parWorkbook",
-      "produced_identity": "sha256:bc28eb67a879ed645b5018f3471a5187ab1f1c71c03fe17fec76eef5a0c18102",
+      "produced_identity": "sha256:4f93482898bbd6a6bb45b3400981bec5cbecf19a28117fbf08ecb9f22d18a98a",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -539,9 +539,9 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:stakeAdapter",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:04279f0d12731fdb4d42c49ac938fcdae5779e064ac9e690337cff2795117150",
+      "source_identity": "sha256:4388d5942b90178c334678662398f8ff0a84bf952c5f95ea1344df35d5e02c81",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-stakeAdapter",
-      "produced_identity": "sha256:8b2ada032971fc2860a0ecbd141839e83cb54788ef426ffac53e49261f31ccb9",
+      "produced_identity": "sha256:6daa48cba309d348d775ebba6ec7895ef3eca63a7dca4e298f1ef232f553ab94",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -561,9 +561,9 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:tsPackage",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:04279f0d12731fdb4d42c49ac938fcdae5779e064ac9e690337cff2795117150",
+      "source_identity": "sha256:4388d5942b90178c334678662398f8ff0a84bf952c5f95ea1344df35d5e02c81",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-tsPackage",
-      "produced_identity": "sha256:1636e6579b93b4e5ef792ffb6d007c92f3d92a8793032966d9c10cc6250b11ad",
+      "produced_identity": "sha256:22fb13457278716c673fad9b15b98d4b330650c311757da20d1ce4e9a3813d47",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -963,7 +963,7 @@
       "source_path": "run-artifacts/matrix-bundle",
       "source_identity": "sha256:06812481de95b99df8c8c1dbf0b650addf617a6aef3f1b91394cf72608b75207",
       "produced_path": "run-artifacts/matrix-certification",
-      "produced_identity": "sha256:ce94d979bdd938199b6230176f01d5f118e921212fd4b77a2bf18d0dd713796a",
+      "produced_identity": "sha256:44ee4d673072b2bcd2e78bfadfab6f01c37d85914d0bdb20bd50f801e5e4e309",
       "operation_owner": "CertificationCommand",
       "systemic_classes": [
         "provenance-and-freshness-binding"
@@ -1074,7 +1074,7 @@
       "source_path": "run-artifacts/matrix-bundle",
       "source_identity": "sha256:06812481de95b99df8c8c1dbf0b650addf617a6aef3f1b91394cf72608b75207",
       "produced_path": "run-artifacts/matrix-report.md",
-      "produced_identity": "sha256:7ea5c0438386de0fe96c4f879e0af267cc7b4bd29af4af168e25bea24f10efcf",
+      "produced_identity": "sha256:87bb86e6ccf118dbf860edaf807f27a9705f7e75bab87b66cdafe3b5c47a3d00",
       "operation_owner": "ReportCommand",
       "systemic_classes": [],
       "status": "supported",
@@ -1174,7 +1174,7 @@
       "artifact_kind": "parWorkbook",
       "operation": "import",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:04279f0d12731fdb4d42c49ac938fcdae5779e064ac9e690337cff2795117150",
+      "source_identity": "sha256:4388d5942b90178c334678662398f8ff0a84bf952c5f95ea1344df35d5e02c81",
       "produced_path": "run-artifacts/matrix-imported.blueprint.json",
       "produced_identity": "sha256:5ff5be80aee731c8c74b23e1fbbcd8c664fbf392ddf38dbb11b0e9a7d8414e57",
       "operation_owner": "ParCommand",
@@ -1655,7 +1655,7 @@
       "source_path": "run-artifacts/generated.blueprint.json",
       "source_identity": "sha256:3d92cad64b0adcd8ba5919d23669f3b36f0ecf20fdec588b61181d4c832b41b8",
       "produced_path": "run-artifacts/generated.par.xlsx",
-      "produced_identity": "sha256:0044cef5f807d4ac45e76e1f5168e3635e2f0c89ccd114b3ac29ff0628a43469",
+      "produced_identity": "sha256:709338541118a01fb461daadefc46de6f1268a03926dd3a609fc8271a387aea2",
       "observable_result": "generated reel provenance is retained but the imported PAR evidence marks the round trip non-lossless",
       "execution": {
         "surface": "cli",
@@ -1729,7 +1729,7 @@
       "source_path": "run-artifacts/matrix-package",
       "source_identity": "sha256:f03e13b6d50bee351e91dc616f551f48e54f3574e7f1ccc7871495c8fa8fcc9e",
       "produced_path": "run-artifacts/matrix-package-replay.json",
-      "produced_identity": "sha256:a5b02ed02b94046e3ccc23bf6bfc382904e3361aec05584b3bb5770632f939c8",
+      "produced_identity": "sha256:9727b1be91459b3a9eff9fb86c49cf259bb97fb603732549196b0e37220bed37",
       "observable_result": "generated package replay has no Outcome Library identity and remains documented best-effort replay",
       "execution": {
         "surface": "cli",
@@ -1751,7 +1751,7 @@
     {
       "id": "par-source-drift",
       "source_path": "run-artifacts/matrix-par-source-drift.xlsx",
-      "source_identity": "sha256:d0ddaddd34eb8bec40eced8388e3a4bbaf0befb4f548d54f53ed34e94f1050bb",
+      "source_identity": "sha256:5d8bf41bcc93fd4ab6ab2554293966ca4d5a6bcacb5cccff291048a38ce0bd92",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "prepared PAR conversion rejects mutated workbook bytes before package publication",
@@ -1996,6 +1996,33 @@
       ]
     },
     {
+      "id": "studio-managed-reuse-compatibility",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:ead8c361584f121fb7296077d0fa1c612d8f6b2af83156207b32080e08d89d6c",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "Studio registry reuses only the matching managed library and classifies copied real libraries as stale for configuration/hash or POKIE-version drift and wrong for cross-game drift",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioOutcomeLibraryGenerateService.registry",
+        "assertions": [
+          "same package registry is compatible",
+          "changed configuration is stale",
+          "changed game id is wrong",
+          "new POKIE version is stale"
+        ],
+        "observations": [
+          {
+            "route": "StudioOutcomeLibraryGenerateService.registry",
+            "result": "real copied managed bundles were classified compatible, stale, wrong, and stale"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ]
+    },
+    {
       "id": "studio-simulation-replay-cancellation",
       "source_path": "run-artifacts/package",
       "source_identity": "sha256:b9d6469ff03bcb2a1f7e7f51867e42807d0c75dea1c877e5cdc6c82eca8d2aa8",
@@ -2068,6 +2095,678 @@
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ]
+    }
+  ],
+  "registry_artifact_coverage": [
+    {
+      "artifact_kind": "blueprint",
+      "disposition": "executed",
+      "public_owners": [
+        "GameBlueprintValidator",
+        "ProjectTargetResolver",
+        "cli:create",
+        "cli:create --out",
+        "cli:create without --out",
+        "cli:edit --out",
+        "cli:edit without --out",
+        "cli:import --out for an XLSX source",
+        "cli:import XLSX without --out",
+        "cli:inspect",
+        "cli:par import --out",
+        "cli:par import without --out",
+        "cli:reel generate --apply without --out",
+        "cli:reel generate --materialize without --out",
+        "cli:reel generate --out",
+        "cli:validate",
+        "studio:blueprint-check",
+        "studio:blueprint-save",
+        "studio:design-create",
+        "studio:par-import",
+        "studio:project-registration"
+      ],
+      "executed_regressions": [
+        "blueprint-build-package",
+        "blueprint-export-par",
+        "blueprint-plan-package",
+        "blueprint-validate",
+        "matrix-blueprint-blueprint-build",
+        "matrix-blueprint-outcomeLibrary-build",
+        "matrix-blueprint-parWorkbook-build",
+        "matrix-blueprint-stakeAdapter-build",
+        "matrix-blueprint-tsPackage-build",
+        "studio-blueprint-build"
+      ]
+    },
+    {
+      "artifact_kind": "studioSymbolArtworkPng",
+      "disposition": "not-executed",
+      "public_owners": [
+        "StudioBlueprintService:getSymbolArtwork",
+        "StudioBlueprintService:importSymbolArtwork PNG signature/size check",
+        "StudioBlueprintService:resolveSymbolArtwork",
+        "StudioBlueprintService:resolveSymbolArtwork declared-reference/path/PNG check",
+        "cli:client player renderPlayer artworkUrlForSymbol callback (shared renderer; no endpoint or declared-reference consumer)",
+        "studio:blueprint-save-managed/materializeSymbolArtwork",
+        "studio:blueprint-save/materializeSymbolArtwork",
+        "studio:blueprint-symbol-artwork-import (temporary staging)",
+        "studio:editor SymbolPresentation",
+        "studio:player CanonicalPlayerView (Studio adapter resolves declared references and supplies URLs)"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "tsPackage",
+      "disposition": "executed",
+      "public_owners": [
+        "ArtifactBuilderRegistry:build(tsPackage)",
+        "ProjectTargetResolver",
+        "cli:build",
+        "cli:build --target tsPackage --out",
+        "cli:build --target tsPackage without --out",
+        "cli:client",
+        "cli:dev",
+        "cli:init",
+        "cli:inspect",
+        "cli:replay",
+        "cli:serve",
+        "cli:sim",
+        "cli:validate",
+        "loadPokieGame",
+        "studio:artifact-build",
+        "studio:play",
+        "studio:project-registration",
+        "studio:replay",
+        "studio:simulation"
+      ],
+      "executed_regressions": [
+        "matrix-tsPackage-blueprint-build",
+        "matrix-tsPackage-outcomeLibrary-build",
+        "matrix-tsPackage-parWorkbook-build",
+        "matrix-tsPackage-stakeAdapter-build",
+        "matrix-tsPackage-tsPackage-build",
+        "package-generate-raw-outcomes"
+      ]
+    },
+    {
+      "artifact_kind": "blueprintRuntimeMaterializationCache",
+      "disposition": "excluded-internal-cache-state",
+      "public_owners": [
+        "BlueprintProjectMaterializer:isReady",
+        "BlueprintProjectMaterializer:isReady marker/cacheKey check",
+        "BlueprintProjectMaterializer:materialize",
+        "BlueprintProjectMaterializer:materializeUnderLock",
+        "GameBlueprintValidator before generation",
+        "PokieGamePackageValidator before cache publication",
+        "createMaterializingRuntimePackageResolver",
+        "createMaterializingRuntimePackageResolver for Blueprint runtime operations"
+      ],
+      "executed_regressions": [],
+      "exclusion": "Machine-local materialization cache/marker is not a user artifact or public-operation claim."
+    },
+    {
+      "artifact_kind": "blueprintRuntimeMaterializationMarker",
+      "disposition": "excluded-internal-cache-state",
+      "public_owners": [
+        "BlueprintProjectMaterializer:isReady",
+        "BlueprintProjectMaterializer:isReady JSON/cacheKey check",
+        "BlueprintProjectMaterializer:markReady after generate/install/verify"
+      ],
+      "executed_regressions": [],
+      "exclusion": "Machine-local materialization cache/marker is not a user artifact or public-operation claim."
+    },
+    {
+      "artifact_kind": "weightedOutcomeLibraryJson",
+      "disposition": "executed",
+      "public_owners": [
+        "OutcomeLibraryBundleWriter input",
+        "OutcomeLibraryBundleWriter while materializing a bundle",
+        "OutcomeLibraryCommand:loadDescriptor libraryPath",
+        "StakeEngineCommand:loadDescriptor libraryPath",
+        "StakeEngineExporter descriptor loading",
+        "cli:export --to outcomes",
+        "cli:generate --out",
+        "cli:outcomelibrary build",
+        "cli:outcomelibrary generate --out"
+      ],
+      "executed_regressions": [
+        "raw-outcomes-build-bundle"
+      ]
+    },
+    {
+      "artifact_kind": "outcomeLibraryBundleDescriptor",
+      "disposition": "not-executed",
+      "public_owners": [
+        "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
+        "OutcomeLibraryBundleWriter",
+        "OutcomeLibraryCommand:executeBuild",
+        "OutcomeLibraryCommand:loadDescriptor",
+        "OutcomeLibraryCommand:loadDescriptor shape/exclusive-source validation",
+        "OutcomeLibraryCommand:validateBuildSource provenance validation",
+        "user-authored Outcome Library bundle config (POKIE does not create this descriptor)"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "canonicalOutcomeJsonl",
+      "disposition": "executed",
+      "public_owners": [
+        "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
+        "OutcomeLibraryBundleWriteValidator",
+        "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
+        "OutcomeLibraryCommand:loadDescriptor outcomesPath",
+        "OutcomeLibraryCommand:readStreamedOutcomes",
+        "OutcomeLibraryCommand:readStreamedOutcomes JSONL parsing",
+        "OutcomeLibraryCommand:streamOutcomes",
+        "OutcomeLibraryCommand:validateCrossModeProvenance",
+        "WeightedOutcomeLibraryValidator",
+        "user/external canonical outcome-stream producer"
+      ],
+      "executed_regressions": [
+        "bundle-canonical-outcomes"
+      ]
+    },
+    {
+      "artifact_kind": "outcomeLibraryGenerationCheckpoint",
+      "disposition": "not-executed",
+      "public_owners": [
+        "OutcomeLibraryCommand:readCheckpoint",
+        "cli:generate --resume",
+        "cli:generate --resume on cancellation",
+        "cli:outcomelibrary generate --resume",
+        "cli:outcomelibrary generate --resume on cancellation"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "outcomeLibrary",
+      "disposition": "executed",
+      "public_owners": [
+        "ArtifactBuilderRegistry:build(outcomeLibrary)",
+        "OutcomeLibraryBundleReader",
+        "ProjectTargetResolver",
+        "cli:build --target outcomeLibrary",
+        "cli:build --target outcomeLibrary --out",
+        "cli:build --target outcomeLibrary without --out",
+        "cli:export --to outcomes --out",
+        "cli:export --to outcomes without --out",
+        "cli:import --out",
+        "cli:import Stake without --out",
+        "cli:inspect",
+        "cli:outcomelibrary build",
+        "cli:outcomelibrary-validate",
+        "cli:replay",
+        "cli:sample",
+        "cli:serve",
+        "cli:sim",
+        "cli:validate --deep",
+        "studio:outcome-library-generate",
+        "studio:outcome-library-registry",
+        "studio:outcome-source-sample",
+        "studio:replay",
+        "studio:simulation"
+      ],
+      "executed_regressions": [
+        "matrix-outcomeLibrary-blueprint-build",
+        "matrix-outcomeLibrary-outcomeLibrary-build",
+        "matrix-outcomeLibrary-parWorkbook-build",
+        "matrix-outcomeLibrary-stakeAdapter-build",
+        "matrix-outcomeLibrary-tsPackage-build",
+        "outcome-library-certification",
+        "outcome-library-export-stake",
+        "outcome-library-fairness",
+        "outcome-library-inspect",
+        "outcome-library-replay",
+        "outcome-library-report",
+        "outcome-library-sample",
+        "outcome-library-simulate",
+        "outcome-library-validate",
+        "studio-outcome-library-stake-export"
+      ]
+    },
+    {
+      "artifact_kind": "stakeEngineExportDescriptor",
+      "disposition": "not-executed",
+      "public_owners": [
+        "ExportCommand --to adapter delegation to StakeEngineCommand.export",
+        "OutcomeLibraryBundleReader for bundleDir",
+        "StakeEngineCommand:loadDescriptor",
+        "StakeEngineCommand:loadDescriptor shape/exclusive-source validation",
+        "StakeEngineCommand:runExport",
+        "StakeEngineCommand:validateExportSource",
+        "StakeEngineExportValidator",
+        "user-authored Stake Engine export config (POKIE does not create the generic descriptor)"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "stakeAdapter",
+      "disposition": "executed",
+      "public_owners": [
+        "ArtifactBuilderRegistry:build(stakeAdapter)",
+        "ProjectTargetResolver",
+        "StakeEngineExportValidator",
+        "StakeEngineOutcomeSourceReader",
+        "StakeEngineStandaloneValidator",
+        "cli:build",
+        "cli:build --target stakeAdapter --out",
+        "cli:build --target stakeAdapter without --out",
+        "cli:diff",
+        "cli:export --to adapter --out",
+        "cli:export --to adapter without --out",
+        "cli:inspect",
+        "cli:report",
+        "cli:validate",
+        "studio:project-registration",
+        "studio:stake-export",
+        "studio:stake-export-validate"
+      ],
+      "executed_regressions": [
+        "matrix-stakeAdapter-blueprint-build",
+        "matrix-stakeAdapter-outcomeLibrary-build",
+        "matrix-stakeAdapter-parWorkbook-build",
+        "matrix-stakeAdapter-stakeAdapter-build",
+        "matrix-stakeAdapter-tsPackage-build",
+        "stake-import-outcome-library"
+      ]
+    },
+    {
+      "artifact_kind": "parWorkbook",
+      "disposition": "executed",
+      "public_owners": [
+        "ArtifactBuilderRegistry:build(parWorkbook)",
+        "ParSheetImporter during import",
+        "ProjectTargetResolver",
+        "cli:build --target parWorkbook --out",
+        "cli:build --target parWorkbook without --out",
+        "cli:export --to workbook --out",
+        "cli:export --to workbook without --out",
+        "cli:inspect",
+        "cli:par export --out",
+        "cli:par export without --out",
+        "studio:par-export",
+        "studio:project-registration"
+      ],
+      "executed_regressions": [
+        "matrix-parWorkbook-blueprint-build",
+        "matrix-parWorkbook-outcomeLibrary-build",
+        "matrix-parWorkbook-parWorkbook-build",
+        "matrix-parWorkbook-stakeAdapter-build",
+        "matrix-parWorkbook-tsPackage-build",
+        "par-import-blueprint"
+      ]
+    },
+    {
+      "artifact_kind": "wasmComponent",
+      "disposition": "executed",
+      "public_owners": [
+        "PokieWasmComponentManifestValidator",
+        "WasmProjectTargetAdapter",
+        "assessWasmComponentCompatibility",
+        "cli:inspect",
+        "studio:project-registration"
+      ],
+      "executed_regressions": [
+        "studio-wasm-outcome-source-replay",
+        "studio-wasm-outcome-source-simulate",
+        "studio-wasm-replay",
+        "studio-wasm-simulate",
+        "wasm-outcome-source-replay",
+        "wasm-outcome-source-simulate"
+      ]
+    },
+    {
+      "artifact_kind": "roundArtifact",
+      "disposition": "not-executed",
+      "public_owners": [
+        "RoundArtifactValidator",
+        "StudioRoundRecorder",
+        "cli:replay",
+        "runtime session recording",
+        "studio:play",
+        "studio:replay",
+        "studio:replay-session-source",
+        "studio:simulation"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "runtimeSession",
+      "disposition": "not-executed",
+      "public_owners": [
+        "PokieDevServer",
+        "StudioRoundRecorder",
+        "cli:dev",
+        "cli:serve",
+        "studio:play",
+        "studio:replay-session-source"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "fileSessionRepositoryRecord",
+      "disposition": "not-executed",
+      "public_owners": [
+        "FileSessionRepository:load/loadVersioned",
+        "FileSessionRepository:readRecord JSON/version-envelope recognition",
+        "PokieDevServer unknown-session 404 mapping",
+        "PokieDevServer:GET /sessions/:id",
+        "PokieDevServer:POST /sessions via configured FileSessionRepository.save",
+        "SpinCommandHandler cache-miss session reconstruction after restart",
+        "SpinCommandHandler:POST /sessions/:id/spin via configured FileSessionRepository.save/saveVersioned",
+        "VersionedSessionRepository optimistic-version check"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "simulationReport",
+      "disposition": "executed",
+      "public_owners": [
+        "cli:diff",
+        "cli:report",
+        "cli:report --format json --out for a SimulationReport",
+        "cli:sim --out",
+        "simulation report parser in cli:report/diff",
+        "studio:replay simulation source",
+        "studio:simulation",
+        "studio:simulation-report-list"
+      ],
+      "executed_regressions": [
+        "simulation-report-inspect"
+      ]
+    },
+    {
+      "artifact_kind": "simulationReportSet",
+      "disposition": "not-executed",
+      "public_owners": [
+        "cli:diff",
+        "cli:report",
+        "cli:report --format json --out for a SimulationReportSet",
+        "cli:sim --mode all",
+        "cli:sim --mode all --out",
+        "simulation report-set parser in cli:report/diff"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "validationReport",
+      "disposition": "executed",
+      "public_owners": [
+        "cli:validate --out",
+        "user/automation JSON consumer"
+      ],
+      "executed_regressions": [
+        "blueprint-validation-report"
+      ]
+    },
+    {
+      "artifact_kind": "simulationComparisonReport",
+      "disposition": "not-executed",
+      "public_owners": [
+        "cli:diff --out",
+        "user/automation JSON consumer"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "outcomeSourceComparisonReport",
+      "disposition": "not-executed",
+      "public_owners": [
+        "cli:diff --out for outcome sources",
+        "cli:outcomesource diff --out",
+        "user/automation JSON consumer"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "stakeEngineAnalysisReport",
+      "disposition": "not-executed",
+      "public_owners": [
+        "cli:stakeengine analyze --out",
+        "user/automation JSON consumer"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "stakeEngineComparisonReport",
+      "disposition": "not-executed",
+      "public_owners": [
+        "cli:stakeengine diff --out",
+        "user/automation JSON consumer"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "outcomeSourceAnalysisReport",
+      "disposition": "not-executed",
+      "public_owners": [
+        "cli:report --out for outcome sources",
+        "user/automation presentation consumer"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "renderedReport",
+      "disposition": "not-executed",
+      "public_owners": [
+        "HtmlSimulationReportRenderer",
+        "MarkdownSimulationReportRenderer",
+        "cli:report",
+        "cli:report --out for simulation reports",
+        "user/download consumer"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "runtimeReplayDescriptor",
+      "disposition": "executed",
+      "public_owners": [
+        "RoundArtifactValidator where recorded result is present",
+        "cli:replay",
+        "cli:replay --out",
+        "replay descriptor validation",
+        "runtime session recording",
+        "studio:replay",
+        "studio:replay-artifact-inspect"
+      ],
+      "executed_regressions": [
+        "replay-descriptor-round-artifact"
+      ]
+    },
+    {
+      "artifact_kind": "stakeImportReExportConfig",
+      "disposition": "executed",
+      "public_owners": [
+        "StakeEngineCommand export descriptor validation",
+        "StakeEngineCommand:export",
+        "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
+        "StakeEngineImportWriter",
+        "cli:import",
+        "cli:stakeengine import"
+      ],
+      "executed_regressions": [
+        "stake-import-reexport-config"
+      ]
+    },
+    {
+      "artifact_kind": "stakeImportSourceProvenance",
+      "disposition": "executed",
+      "public_owners": [
+        "StakeEngineImportWriter",
+        "cli:import",
+        "cli:stakeengine import",
+        "import-result inspection"
+      ],
+      "executed_regressions": [
+        "stake-import-source-provenance"
+      ]
+    },
+    {
+      "artifact_kind": "certificationEvidenceBundle",
+      "disposition": "executed",
+      "public_owners": [
+        "CertificationEvidenceBundleValidator",
+        "CertificationEvidenceBundleVerifier",
+        "cli:certification build",
+        "cli:certification build --out",
+        "cli:certification build without --out",
+        "cli:certification verify",
+        "studio:certification-build"
+      ],
+      "executed_regressions": [
+        "certification-evidence-bundle"
+      ]
+    },
+    {
+      "artifact_kind": "certificationBuildDescriptor",
+      "disposition": "not-executed",
+      "public_owners": [
+        "CertificationCommand:checkOutcomeLibrarySource",
+        "CertificationCommand:executeBuild",
+        "CertificationCommand:loadDescriptor",
+        "CertificationCommand:loadDescriptor modes[] shape validation",
+        "CertificationEvidenceBundleBuilder:buildFromBundle",
+        "cli:certification build",
+        "studio:certification-build request supplies equivalent mode samples",
+        "user-authored certification build config (POKIE does not create this descriptor)"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "fairnessServerSeedCommitment",
+      "disposition": "executed",
+      "public_owners": [
+        "FairnessServerSeedCommitmentValidator",
+        "cli:fairness commit",
+        "cli:fairness seed-commit",
+        "cli:fairness seed-commit --out",
+        "computeFairnessCommitment",
+        "studio:fairness-configure"
+      ],
+      "executed_regressions": [
+        "fairness-server-seed-commitment"
+      ]
+    },
+    {
+      "artifact_kind": "fairnessCommitment",
+      "disposition": "executed",
+      "public_owners": [
+        "FairnessCommitmentValidator",
+        "cli:fairness commit",
+        "cli:fairness commit --out",
+        "cli:fairness reveal",
+        "cli:fairness verify",
+        "studio:fairness-configure",
+        "studio:fairness-generate",
+        "studio:fairness-verify"
+      ],
+      "executed_regressions": [
+        "fairness-round-commitment"
+      ]
+    },
+    {
+      "artifact_kind": "fairnessProof",
+      "disposition": "executed",
+      "public_owners": [
+        "FairnessRoundProofValidator",
+        "FairnessRoundProofVerifier",
+        "cli:fairness reveal",
+        "cli:fairness reveal --out",
+        "cli:fairness verify",
+        "studio:fairness-generate",
+        "studio:fairness-verify"
+      ],
+      "executed_regressions": [
+        "fairness-round-proof"
+      ]
+    },
+    {
+      "artifact_kind": "studioOutcomeLibrarySelector",
+      "disposition": "not-executed",
+      "public_owners": [
+        "OutcomeLibraryBundleReader",
+        "StakeEngineImporter",
+        "Studio browser/request author (POKIE does not persist this selector)",
+        "StudioDeploymentService",
+        "StudioStakeEngineExportService",
+        "loadOutcomeLibraryFromSelector",
+        "loadWeightedOutcomeLibraryFromProjectFile JSON parse/containment",
+        "validateOutcomeLibrarySelector",
+        "validateOutcomeLibrarySelector request-shape validation"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "externalDeploymentArtifact",
+      "disposition": "not-executed",
+      "public_owners": [
+        "ExternalArtifactValidator and built-in deployment validators",
+        "ExternalDeploymentService",
+        "studio:deployment-run",
+        "target-defined validator"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "managedOutcomeProjectsRegistry",
+      "disposition": "not-executed",
+      "public_owners": [
+        "ArtifactBuilderRegistry managed Outcome Library reuse",
+        "ManagedOutcomeProjectService:findCompatible",
+        "ManagedOutcomeProjectService:findCompatible legacy adoption",
+        "ManagedOutcomeProjectService:registerAndOpen",
+        "OutcomeLibraryBundleReader manifest read",
+        "OutcomeProjectCompatibility exact comparison",
+        "ProjectTargetResolver",
+        "cli/stake export managed-library lifecycle",
+        "studio:managed-outcome-library lifecycle"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "studioOutcomeLibraryRegistryIndex",
+      "disposition": "not-executed",
+      "public_owners": [
+        "OutcomeLibraryBundleReader manifest read",
+        "Studio Outcome Library Registry panel after restart",
+        "StudioOutcomeLibraryGenerateService:isDirectory",
+        "StudioOutcomeLibraryGenerateService:readRegistryIndex",
+        "StudioOutcomeLibraryGenerateService:recordDiscoveredBundleDir after successful generate",
+        "StudioOutcomeLibraryGenerateService:registry",
+        "resolveProjectDirectory containment/realpath check"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "studioProjectRegistryEntry",
+      "disposition": "not-executed",
+      "public_owners": [
+        "FileStudioProjectRegistry JSON-array read",
+        "FileStudioProjectRegistry:list/read",
+        "FileStudioProjectRegistry:upsert atomically writes projects.json",
+        "ProjectTargetResolver at registration/open/relocate",
+        "Studio Projects dashboard after restart",
+        "StudioProjectRegistrationService:canonicalize realpath/absolute fallback",
+        "StudioProjectRegistrationService:list",
+        "StudioProjectRegistrationService:list fresh exists status",
+        "StudioProjectRegistrationService:recordOpened/remove/relocate",
+        "StudioProjectRegistrationService:registerManaged/registerExternal/recordOpened/relocate",
+        "StudioServer Projects create/register/open/relocate flows"
+      ],
+      "executed_regressions": []
+    },
+    {
+      "artifact_kind": "preparationStateMarker",
+      "disposition": "not-executed",
+      "public_owners": [
+        "GamePackagePreparer phase ordering",
+        "GamePackagePreparer:prepare after dependencies/build",
+        "GamePackagePreparer:prepare phase resume",
+        "GamePackagePreparer:runCreatePhase",
+        "GamePackagePreparer:runCreatePhase retry",
+        "PreparationStateStore JSON parse as PreparationState",
+        "PreparationStateStore:readPreparationState"
+      ],
+      "executed_regressions": []
     }
   ],
   "systemic_class_audits": [
@@ -2211,35 +2910,35 @@
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:04279f0d12731fdb4d42c49ac938fcdae5779e064ac9e690337cff2795117150",
+            "source_identity": "sha256:4388d5942b90178c334678662398f8ff0a84bf952c5f95ea1344df35d5e02c81",
             "source_type": "parWorkbook",
             "target": "blueprint",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:04279f0d12731fdb4d42c49ac938fcdae5779e064ac9e690337cff2795117150",
+            "source_identity": "sha256:4388d5942b90178c334678662398f8ff0a84bf952c5f95ea1344df35d5e02c81",
             "source_type": "parWorkbook",
             "target": "outcomeLibrary",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:04279f0d12731fdb4d42c49ac938fcdae5779e064ac9e690337cff2795117150",
+            "source_identity": "sha256:4388d5942b90178c334678662398f8ff0a84bf952c5f95ea1344df35d5e02c81",
             "source_type": "parWorkbook",
             "target": "parWorkbook",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:04279f0d12731fdb4d42c49ac938fcdae5779e064ac9e690337cff2795117150",
+            "source_identity": "sha256:4388d5942b90178c334678662398f8ff0a84bf952c5f95ea1344df35d5e02c81",
             "source_type": "parWorkbook",
             "target": "stakeAdapter",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:04279f0d12731fdb4d42c49ac938fcdae5779e064ac9e690337cff2795117150",
+            "source_identity": "sha256:4388d5942b90178c334678662398f8ff0a84bf952c5f95ea1344df35d5e02c81",
             "source_type": "parWorkbook",
             "target": "tsPackage",
             "status": "planned"
@@ -2534,10 +3233,12 @@
           "par-source-drift",
           "portable-exact-outcome-replay",
           "raw-source-drift",
-          "stake-outcome-library-round-trip"
+          "stake-outcome-library-round-trip",
+          "studio-managed-reuse-compatibility"
         ],
         "runner_outputs": [
-          "cli-real-artifact-result.json"
+          "cli-real-artifact-result.json",
+          "studio-real-artifact-result.json"
         ],
         "planner_cells": [],
         "aliases": [
@@ -2566,7 +3267,9 @@
         ],
         "studio_routes": [],
         "studio_ui_routes": [],
-        "studio_service_callers": [],
+        "studio_service_callers": [
+          "StudioOutcomeLibraryGenerateService.registry"
+        ],
         "direct_library_callers": [
           "ArtifactBuilderRegistry",
           "ArtifactBuilderRegistry.executePlan",
@@ -2596,7 +3299,8 @@
           "simulation-report-inspect",
           "stake-import-reexport-config",
           "stake-import-source-provenance",
-          "stake-outcome-library-round-trip"
+          "stake-outcome-library-round-trip",
+          "studio-managed-reuse-compatibility"
         ]
       }
     },

@@ -30,6 +30,13 @@ type InteroperabilityResult = {
     readonly runner_inputs: readonly {readonly file: string; readonly sha256: string; readonly rows: number; readonly scenarios: number}[];
     readonly rows: readonly EmittedRecord[];
     readonly scenario_results: readonly EmittedRecord[];
+    readonly registry_artifact_coverage: readonly {
+        readonly artifact_kind: string;
+        readonly disposition: "executed" | "not-executed" | "excluded-internal-cache-state";
+        readonly public_owners: readonly string[];
+        readonly executed_regressions: readonly string[];
+        readonly exclusion?: string;
+    }[];
     readonly planner_cells?: readonly {
         readonly source_path: string;
         readonly source_identity: string;
@@ -183,6 +190,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             "studio-generation-cancellation",
             "studio-destination-drift",
             "studio-generation-recovery",
+            "studio-managed-reuse-compatibility",
             "studio-artifact-http-preflight",
             "studio-simulation-replay-cancellation",
             "studio-wasm-boundary",
@@ -243,5 +251,24 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(conversionAudit?.derived_from.studio_routes).toEqual(expect.arrayContaining([
             "POST /api/project/artifacts/preview",
         ]));
+    });
+
+    it("retains the complete PC-05 registry census and explicitly excludes only internal cache state", () => {
+        const registryPath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json");
+        const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as {readonly artifact_kinds: readonly {readonly id: string}[]};
+        expect(result.registry_artifact_coverage.map((entry) => entry.artifact_kind).sort())
+            .toEqual(registry.artifact_kinds.map((artifact) => artifact.id).sort());
+        for (const entry of result.registry_artifact_coverage) {
+            if (entry.disposition === "excluded-internal-cache-state") {
+                expect(entry.artifact_kind).toMatch(/^blueprintRuntimeMaterialization(?:Cache|Marker)$/);
+                expect(entry.exclusion).toMatch(/Machine-local materialization cache/);
+                continue;
+            }
+            expect(entry.public_owners.length).toBeGreaterThan(0);
+            // `not-executed` remains deliberately visible until a runner
+            // records a real owner result; an absent record must never be
+            // converted into a synthetic supported row.
+            if (entry.disposition === "executed") expect(entry.executed_regressions.length).toBeGreaterThan(0);
+        }
     });
 });
