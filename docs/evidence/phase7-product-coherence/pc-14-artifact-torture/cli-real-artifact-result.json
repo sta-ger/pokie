@@ -28,7 +28,7 @@
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:3337c40843eeda59674b217dea72cad47870dbfc1a4396d8cdd6280c37641d7d",
       "produced_path": "run-artifacts/matrix.par.xlsx",
-      "produced_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "produced_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "operation_owner": "ParCommand",
       "systemic_classes": [],
       "status": "supported",
@@ -86,7 +86,7 @@
       "artifact_kind": "validationReport",
       "operation": "inspect",
       "source_path": "run-artifacts/matrix-validation.json",
-      "source_identity": "sha256:5a26e9ccad25dd0629156c1c0d892d7f0a04e95573b8377b758dfc7db7fc4f2b",
+      "source_identity": "sha256:2eb66ccd7c707069904c81888d2c2dc7cb5956db4cad1aff9fa91ddc5c877763",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ValidateCommand",
@@ -130,7 +130,7 @@
       "source_path": "run-artifacts/matrix-certification.json",
       "source_identity": "sha256:bbe4fb5f277430aa6fdf210b0571b1b7e9fdb660d55a45e4a68561236777993e",
       "produced_path": "run-artifacts/matrix-certification",
-      "produced_identity": "sha256:a04f9419959fe91e58980e3fc31206dc0cec2acd15889bd67e9250d2defaefaf",
+      "produced_identity": "sha256:ea2eaccc9b7ca6bb4b170a65d8b2382eac75502007fb32a50633314d48b85c3f",
       "operation_owner": "CertificationCommand",
       "systemic_classes": [
         "provenance-and-freshness-binding"
@@ -150,7 +150,7 @@
       "artifact_kind": "certificationEvidenceBundle",
       "operation": "verify",
       "source_path": "run-artifacts/matrix-certification",
-      "source_identity": "sha256:a04f9419959fe91e58980e3fc31206dc0cec2acd15889bd67e9250d2defaefaf",
+      "source_identity": "sha256:ea2eaccc9b7ca6bb4b170a65d8b2382eac75502007fb32a50633314d48b85c3f",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "CertificationCommand",
@@ -288,7 +288,7 @@
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:3337c40843eeda59674b217dea72cad47870dbfc1a4396d8cdd6280c37641d7d",
       "produced_path": "run-artifacts/matrix-edge-blueprint-parWorkbook",
-      "produced_identity": "sha256:bde79071bb13dbbcd8ee7d215685a8fe48f7df812d9e98b84afbfb33758bdb60",
+      "produced_identity": "sha256:a14577aad3a0a94f01def2af165aaf0f5763a53a55b86e33682567e37f3113ed",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -474,7 +474,7 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:blueprint",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-blueprint",
       "produced_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
@@ -496,9 +496,9 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:outcomeLibrary",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-outcomeLibrary",
-      "produced_identity": "sha256:055bfd6c71466c7bbb68514ee8ca8c199911a62e900501d404a2ef8364bab571",
+      "produced_identity": "sha256:dc0dbab4ee42ccf3c89b4432b26dc2e044e7f618b7a96b2832a40854896d6854",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -518,9 +518,9 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:parWorkbook",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-parWorkbook",
-      "produced_identity": "sha256:7cfe82578b246a53be5ca31a779379633e74e84f0c2ae5c7e75002c94e6eabe0",
+      "produced_identity": "sha256:c4740de2dffdb7a7f46712fdbeab78c08851b7eca5c4d8fa5bdba578ee87716c",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -540,9 +540,9 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:stakeAdapter",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-stakeAdapter",
-      "produced_identity": "sha256:b169b06e510cd883ce34e6f8d44bea97f09003802de334d1ab09b918985d8c82",
+      "produced_identity": "sha256:704d2740678c4a7882628c1c0c2aeeca01a4fdfbf8e1f5062eabdd115d79cc3c",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -562,9 +562,9 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:tsPackage",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-tsPackage",
-      "produced_identity": "sha256:33c6ca3041e698738757fbf18526a0b0d1617033abd28246f9849a837fd4da39",
+      "produced_identity": "sha256:24604be1fd75e84fbb982e1e2c622a6bf49b4ab50885cd4a8542c4cff3fd5ad3",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -986,7 +986,7 @@
       "source_path": "run-artifacts/matrix-bundle",
       "source_identity": "sha256:06812481de95b99df8c8c1dbf0b650addf617a6aef3f1b91394cf72608b75207",
       "produced_path": "run-artifacts/matrix-certification",
-      "produced_identity": "sha256:a04f9419959fe91e58980e3fc31206dc0cec2acd15889bd67e9250d2defaefaf",
+      "produced_identity": "sha256:ea2eaccc9b7ca6bb4b170a65d8b2382eac75502007fb32a50633314d48b85c3f",
       "operation_owner": "CertificationCommand",
       "systemic_classes": [
         "provenance-and-freshness-binding"
@@ -1119,7 +1119,7 @@
       "source_path": "run-artifacts/matrix-bundle",
       "source_identity": "sha256:06812481de95b99df8c8c1dbf0b650addf617a6aef3f1b91394cf72608b75207",
       "produced_path": "run-artifacts/matrix-report.md",
-      "produced_identity": "sha256:4c2541a21bd21ce3b5b437997e174a2ee91fac4ebecdea507c1cccc7efe251b6",
+      "produced_identity": "sha256:ee4f0b63b1cc972c8b9619ff07021ccec12d737ad05054a5418e2278984de465",
       "operation_owner": "ReportCommand",
       "systemic_classes": [],
       "status": "supported",
@@ -1199,7 +1199,7 @@
       "artifact_kind": "outcomeSourceAnalysisReport",
       "operation": "report",
       "source_path": "run-artifacts/matrix-report.md",
-      "source_identity": "sha256:4c2541a21bd21ce3b5b437997e174a2ee91fac4ebecdea507c1cccc7efe251b6",
+      "source_identity": "sha256:ee4f0b63b1cc972c8b9619ff07021ccec12d737ad05054a5418e2278984de465",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReportCommand",
@@ -1219,7 +1219,7 @@
       "artifact_kind": "outcomeSourceComparisonReport",
       "operation": "diff",
       "source_path": "run-artifacts/matrix-outcome-diff.json",
-      "source_identity": "sha256:8c9c5069aeda20eee0b865d47fb1ff81e0ee88e2e5ca8dab16d5a4e161a82722",
+      "source_identity": "sha256:edbc844de0b04c6f72f3d0a936eee6233a1ce70b8766288c583ba52b660b7240",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "DiffCommand",
@@ -1259,7 +1259,7 @@
       "artifact_kind": "parWorkbook",
       "operation": "import",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "produced_path": "run-artifacts/matrix-imported.blueprint.json",
       "produced_identity": "sha256:5ff5be80aee731c8c74b23e1fbbcd8c664fbf392ddf38dbb11b0e9a7d8414e57",
       "operation_owner": "ParCommand",
@@ -1299,7 +1299,7 @@
       "artifact_kind": "renderedReport",
       "operation": "render",
       "source_path": "run-artifacts/matrix-rendered-report.html",
-      "source_identity": "sha256:a5c528c6e28d76db9fcd01fdf8f8c7cd5d8321b8a371375f381665e3adb49008",
+      "source_identity": "sha256:0307575119c0d84cd0e4bc71123da783eaf1aa58a2b56253ca8ac8eec0544517",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReportCommand",
@@ -1383,7 +1383,7 @@
       "artifact_kind": "simulationReport",
       "operation": "report",
       "source_path": "run-artifacts/matrix-package-simulation.json",
-      "source_identity": "sha256:7d453f9b56505d32c4681f223940ccbfaa9d7292dda169eeecb0d1d18166be94",
+      "source_identity": "sha256:b043f3506b8dcaf9a751ac79e121d8befce88b8b866ea016d2aa247f3950bec1",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReportCommand",
@@ -1401,11 +1401,37 @@
       ]
     },
     {
+      "id": "simulation-report-set-mode-diagnostic",
+      "artifact_kind": "simulationReportSet",
+      "operation": "simulate",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:f03e13b6d50bee351e91dc616f551f48e54f3574e7f1ccc7871495c8fa8fcc9e",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "SimCommand",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
+      "status": "intentionally-unsupported",
+      "observable_result": "The real generated package has no declared getBetModes() contract for --mode all.",
+      "diagnostic": {
+        "code": "missing-capability",
+        "recovery": "Use a package that declares bet modes before requesting a per-mode simulation report set."
+      },
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "SimCommand",
+          "result": "sim --mode all returned its concrete missing getBetModes diagnostic"
+        }
+      ]
+    },
+    {
       "id": "stake-engine-analysis-report",
       "artifact_kind": "stakeEngineAnalysisReport",
       "operation": "analyze",
       "source_path": "run-artifacts/matrix-stake-analysis.json",
-      "source_identity": "sha256:1a9a42c487247397139fa9a3bdac108b2de0c4c64753b59ad54b3b77bfda5797",
+      "source_identity": "sha256:0832ff3963d0ca437cbc9885135fd35738292a85387b062ba4c4ad5eb8e9b863",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
@@ -1425,7 +1451,7 @@
       "artifact_kind": "stakeEngineComparisonReport",
       "operation": "diff",
       "source_path": "run-artifacts/matrix-stake-comparison.json",
-      "source_identity": "sha256:3d0164f81651ebc735eb29cefd9ac0200cea8956289e5164bb8c3f00705d07bf",
+      "source_identity": "sha256:8083c45088ec99cf8669b85f949dae15afa7575190483177c6f8f76d10c2373d",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
@@ -1718,7 +1744,7 @@
       "source_path": "run-artifacts/generated.blueprint.json",
       "source_identity": "sha256:3d92cad64b0adcd8ba5919d23669f3b36f0ecf20fdec588b61181d4c832b41b8",
       "produced_path": "run-artifacts/generated.par.xlsx",
-      "produced_identity": "sha256:8037377c0a43f1d719ddbc741f95b302f2d5668d8e689537887d789d3e09dabe",
+      "produced_identity": "sha256:df8448ef50aa691f2198be7779c815a323c2ea8254a966bc7d3b59f35d08f981",
       "observable_result": "generated reel provenance is retained but the imported PAR evidence marks the round trip non-lossless",
       "execution": {
         "surface": "cli",
@@ -1792,7 +1818,7 @@
       "source_path": "run-artifacts/matrix-package",
       "source_identity": "sha256:f03e13b6d50bee351e91dc616f551f48e54f3574e7f1ccc7871495c8fa8fcc9e",
       "produced_path": "run-artifacts/matrix-package-replay.json",
-      "produced_identity": "sha256:f60e8d3f04d84f68cb8bdb86fed39f98f89292dc13620887c247b18f06a71863",
+      "produced_identity": "sha256:7df20377d71e71f0107a9fb8c2e6924aaf3f8ed9494d4e1528f9adbd49e1c23c",
       "observable_result": "generated package replay has no Outcome Library identity and remains documented best-effort replay",
       "execution": {
         "surface": "cli",
@@ -1814,7 +1840,7 @@
     {
       "id": "par-source-drift",
       "source_path": "run-artifacts/matrix-par-source-drift.xlsx",
-      "source_identity": "sha256:540415cc3c75f134d84b95ced272d070ad862e31e39a5311b02ffbe9fe0f1480",
+      "source_identity": "sha256:d017da5f6dd9fa29058b86450ea22c4d695390d187f9d01695a3b8339e1ed000",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "prepared PAR conversion rejects mutated workbook bytes before package publication",
@@ -2024,35 +2050,35 @@
     },
     {
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "source_type": "parWorkbook",
       "target": "blueprint",
       "status": "planned"
     },
     {
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "source_type": "parWorkbook",
       "target": "outcomeLibrary",
       "status": "planned"
     },
     {
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "source_type": "parWorkbook",
       "target": "parWorkbook",
       "status": "planned"
     },
     {
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "source_type": "parWorkbook",
       "target": "stakeAdapter",
       "status": "planned"
     },
     {
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "source_type": "parWorkbook",
       "target": "tsPackage",
       "status": "planned"

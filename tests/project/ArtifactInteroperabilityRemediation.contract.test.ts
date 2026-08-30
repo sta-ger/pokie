@@ -265,10 +265,12 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 continue;
             }
             expect(entry.public_owners.length).toBeGreaterThan(0);
-            // `not-executed` remains deliberately visible until a runner
-            // records a real owner result; an absent record must never be
-            // converted into a synthetic supported row.
-            if (entry.disposition === "executed") expect(entry.executed_regressions.length).toBeGreaterThan(0);
+            // PC-14 closes only when every public PC-05 artifact has an
+            // emitted owner result.  A live/non-portable companion may retain
+            // an unavailable diagnostic, but it cannot remain an unexecuted
+            // inventory assertion.
+            expect(entry.disposition).toBe("executed");
+            expect(entry.executed_regressions.length).toBeGreaterThan(0);
         }
     });
 });

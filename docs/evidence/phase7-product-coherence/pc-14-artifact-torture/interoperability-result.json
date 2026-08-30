@@ -10,14 +10,14 @@
   "runner_inputs": [
     {
       "file": "cli-real-artifact-result.json",
-      "sha256": "sha256:ab565ac08fca381a931a4cd342b222b3affd7a3647ac40d25a35da69468fcf55",
-      "rows": 70,
+      "sha256": "sha256:63dce140124f9f3e846db04d5ba53178dc830c99955ef3518a77434866cba8c7",
+      "rows": 71,
       "scenarios": 14
     },
     {
       "file": "studio-real-artifact-result.json",
-      "sha256": "sha256:a8b0219f1353a4b16058ef3628ae382f2f2f9a94b582a6927e490ce3f8f4e047",
-      "rows": 7,
+      "sha256": "sha256:9662acd7b05d531c9bc93ffe087782f15847e32fa4e1088639a6d671572364d7",
+      "rows": 15,
       "scenarios": 7
     }
   ],
@@ -49,7 +49,7 @@
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:3337c40843eeda59674b217dea72cad47870dbfc1a4396d8cdd6280c37641d7d",
       "produced_path": "run-artifacts/matrix.par.xlsx",
-      "produced_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "produced_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "operation_owner": "ParCommand",
       "systemic_classes": [],
       "status": "supported",
@@ -107,7 +107,7 @@
       "artifact_kind": "validationReport",
       "operation": "inspect",
       "source_path": "run-artifacts/matrix-validation.json",
-      "source_identity": "sha256:5a26e9ccad25dd0629156c1c0d892d7f0a04e95573b8377b758dfc7db7fc4f2b",
+      "source_identity": "sha256:2eb66ccd7c707069904c81888d2c2dc7cb5956db4cad1aff9fa91ddc5c877763",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ValidateCommand",
@@ -151,7 +151,7 @@
       "source_path": "run-artifacts/matrix-certification.json",
       "source_identity": "sha256:bbe4fb5f277430aa6fdf210b0571b1b7e9fdb660d55a45e4a68561236777993e",
       "produced_path": "run-artifacts/matrix-certification",
-      "produced_identity": "sha256:a04f9419959fe91e58980e3fc31206dc0cec2acd15889bd67e9250d2defaefaf",
+      "produced_identity": "sha256:ea2eaccc9b7ca6bb4b170a65d8b2382eac75502007fb32a50633314d48b85c3f",
       "operation_owner": "CertificationCommand",
       "systemic_classes": [
         "provenance-and-freshness-binding"
@@ -171,7 +171,7 @@
       "artifact_kind": "certificationEvidenceBundle",
       "operation": "verify",
       "source_path": "run-artifacts/matrix-certification",
-      "source_identity": "sha256:a04f9419959fe91e58980e3fc31206dc0cec2acd15889bd67e9250d2defaefaf",
+      "source_identity": "sha256:ea2eaccc9b7ca6bb4b170a65d8b2382eac75502007fb32a50633314d48b85c3f",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "CertificationCommand",
@@ -309,7 +309,7 @@
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:3337c40843eeda59674b217dea72cad47870dbfc1a4396d8cdd6280c37641d7d",
       "produced_path": "run-artifacts/matrix-edge-blueprint-parWorkbook",
-      "produced_identity": "sha256:bde79071bb13dbbcd8ee7d215685a8fe48f7df812d9e98b84afbfb33758bdb60",
+      "produced_identity": "sha256:a14577aad3a0a94f01def2af165aaf0f5763a53a55b86e33682567e37f3113ed",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -495,7 +495,7 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:blueprint",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-blueprint",
       "produced_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
@@ -517,9 +517,9 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:outcomeLibrary",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-outcomeLibrary",
-      "produced_identity": "sha256:055bfd6c71466c7bbb68514ee8ca8c199911a62e900501d404a2ef8364bab571",
+      "produced_identity": "sha256:dc0dbab4ee42ccf3c89b4432b26dc2e044e7f618b7a96b2832a40854896d6854",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -539,9 +539,9 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:parWorkbook",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-parWorkbook",
-      "produced_identity": "sha256:7cfe82578b246a53be5ca31a779379633e74e84f0c2ae5c7e75002c94e6eabe0",
+      "produced_identity": "sha256:c4740de2dffdb7a7f46712fdbeab78c08851b7eca5c4d8fa5bdba578ee87716c",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -561,9 +561,9 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:stakeAdapter",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-stakeAdapter",
-      "produced_identity": "sha256:b169b06e510cd883ce34e6f8d44bea97f09003802de334d1ab09b918985d8c82",
+      "produced_identity": "sha256:704d2740678c4a7882628c1c0c2aeeca01a4fdfbf8e1f5062eabdd115d79cc3c",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -583,9 +583,9 @@
       "artifact_kind": "parWorkbook",
       "operation": "build:tsPackage",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-tsPackage",
-      "produced_identity": "sha256:33c6ca3041e698738757fbf18526a0b0d1617033abd28246f9849a837fd4da39",
+      "produced_identity": "sha256:24604be1fd75e84fbb982e1e2c622a6bf49b4ab50885cd4a8542c4cff3fd5ad3",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -1007,7 +1007,7 @@
       "source_path": "run-artifacts/matrix-bundle",
       "source_identity": "sha256:06812481de95b99df8c8c1dbf0b650addf617a6aef3f1b91394cf72608b75207",
       "produced_path": "run-artifacts/matrix-certification",
-      "produced_identity": "sha256:a04f9419959fe91e58980e3fc31206dc0cec2acd15889bd67e9250d2defaefaf",
+      "produced_identity": "sha256:ea2eaccc9b7ca6bb4b170a65d8b2382eac75502007fb32a50633314d48b85c3f",
       "operation_owner": "CertificationCommand",
       "systemic_classes": [
         "provenance-and-freshness-binding"
@@ -1140,7 +1140,7 @@
       "source_path": "run-artifacts/matrix-bundle",
       "source_identity": "sha256:06812481de95b99df8c8c1dbf0b650addf617a6aef3f1b91394cf72608b75207",
       "produced_path": "run-artifacts/matrix-report.md",
-      "produced_identity": "sha256:4c2541a21bd21ce3b5b437997e174a2ee91fac4ebecdea507c1cccc7efe251b6",
+      "produced_identity": "sha256:ee4f0b63b1cc972c8b9619ff07021ccec12d737ad05054a5418e2278984de465",
       "operation_owner": "ReportCommand",
       "systemic_classes": [],
       "status": "supported",
@@ -1220,7 +1220,7 @@
       "artifact_kind": "outcomeSourceAnalysisReport",
       "operation": "report",
       "source_path": "run-artifacts/matrix-report.md",
-      "source_identity": "sha256:4c2541a21bd21ce3b5b437997e174a2ee91fac4ebecdea507c1cccc7efe251b6",
+      "source_identity": "sha256:ee4f0b63b1cc972c8b9619ff07021ccec12d737ad05054a5418e2278984de465",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReportCommand",
@@ -1240,7 +1240,7 @@
       "artifact_kind": "outcomeSourceComparisonReport",
       "operation": "diff",
       "source_path": "run-artifacts/matrix-outcome-diff.json",
-      "source_identity": "sha256:8c9c5069aeda20eee0b865d47fb1ff81e0ee88e2e5ca8dab16d5a4e161a82722",
+      "source_identity": "sha256:edbc844de0b04c6f72f3d0a936eee6233a1ce70b8766288c583ba52b660b7240",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "DiffCommand",
@@ -1280,7 +1280,7 @@
       "artifact_kind": "parWorkbook",
       "operation": "import",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+      "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
       "produced_path": "run-artifacts/matrix-imported.blueprint.json",
       "produced_identity": "sha256:5ff5be80aee731c8c74b23e1fbbcd8c664fbf392ddf38dbb11b0e9a7d8414e57",
       "operation_owner": "ParCommand",
@@ -1320,7 +1320,7 @@
       "artifact_kind": "renderedReport",
       "operation": "render",
       "source_path": "run-artifacts/matrix-rendered-report.html",
-      "source_identity": "sha256:a5c528c6e28d76db9fcd01fdf8f8c7cd5d8321b8a371375f381665e3adb49008",
+      "source_identity": "sha256:0307575119c0d84cd0e4bc71123da783eaf1aa58a2b56253ca8ac8eec0544517",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReportCommand",
@@ -1404,7 +1404,7 @@
       "artifact_kind": "simulationReport",
       "operation": "report",
       "source_path": "run-artifacts/matrix-package-simulation.json",
-      "source_identity": "sha256:7d453f9b56505d32c4681f223940ccbfaa9d7292dda169eeecb0d1d18166be94",
+      "source_identity": "sha256:b043f3506b8dcaf9a751ac79e121d8befce88b8b866ea016d2aa247f3950bec1",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReportCommand",
@@ -1422,11 +1422,37 @@
       ]
     },
     {
+      "id": "simulation-report-set-mode-diagnostic",
+      "artifact_kind": "simulationReportSet",
+      "operation": "simulate",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:f03e13b6d50bee351e91dc616f551f48e54f3574e7f1ccc7871495c8fa8fcc9e",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "SimCommand",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
+      "status": "intentionally-unsupported",
+      "observable_result": "The real generated package has no declared getBetModes() contract for --mode all.",
+      "diagnostic": {
+        "code": "missing-capability",
+        "recovery": "Use a package that declares bet modes before requesting a per-mode simulation report set."
+      },
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "SimCommand",
+          "result": "sim --mode all returned its concrete missing getBetModes diagnostic"
+        }
+      ]
+    },
+    {
       "id": "stake-engine-analysis-report",
       "artifact_kind": "stakeEngineAnalysisReport",
       "operation": "analyze",
       "source_path": "run-artifacts/matrix-stake-analysis.json",
-      "source_identity": "sha256:1a9a42c487247397139fa9a3bdac108b2de0c4c64753b59ad54b3b77bfda5797",
+      "source_identity": "sha256:0832ff3963d0ca437cbc9885135fd35738292a85387b062ba4c4ad5eb8e9b863",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
@@ -1446,7 +1472,7 @@
       "artifact_kind": "stakeEngineComparisonReport",
       "operation": "diff",
       "source_path": "run-artifacts/matrix-stake-comparison.json",
-      "source_identity": "sha256:3d0164f81651ebc735eb29cefd9ac0200cea8956289e5164bb8c3f00705d07bf",
+      "source_identity": "sha256:8083c45088ec99cf8669b85f949dae15afa7575190483177c6f8f76d10c2373d",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
@@ -1610,13 +1636,102 @@
       ]
     },
     {
+      "id": "file-session-record-recovery",
+      "artifact_kind": "fileSessionRepositoryRecord",
+      "operation": "import",
+      "source_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
+      "source_identity": "sha256:ff6e77b3878ec32d9031c0cb0ad922668ac4b06a7039bf6a3570e1a7359b86f3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "FileSessionRepository.load",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "a reconstructed repository recovered the persisted versioned runtime-session record",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "FileSessionRepository.load",
+          "result": "reloaded the exact persisted session state"
+        }
+      ]
+    },
+    {
+      "id": "managed-outcome-project-registry-reuse",
+      "artifact_kind": "managedOutcomeProjectsRegistry",
+      "operation": "reuse",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:ead8c361584f121fb7296077d0fa1c612d8f6b2af83156207b32080e08d89d6c",
+      "produced_path": "run-artifacts/.pokie/managed-outcome-projects.json",
+      "produced_identity": "sha256:02d76d2a4edcacbfadce6a5f6df54fffcc68321facda190a0ae57fd883b1de5b",
+      "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "the compatible produced Outcome Library was durably registered and reopened through the shared managed registry",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ManagedOutcomeProjectService.findCompatible",
+          "result": "returned the exact compatible bundle"
+        }
+      ]
+    },
+    {
+      "id": "package-preparation-marker-recovery",
+      "artifact_kind": "preparationStateMarker",
+      "operation": "recover",
+      "source_path": "run-artifacts/preparation/interrupted-package",
+      "source_identity": "sha256:1c7f6600f15ff05d2e7f32927504953afa749fbbb07a072a49fbff2d873c84c2",
+      "produced_path": "run-artifacts/preparation/interrupted-package/.pokie-prepare-state.json",
+      "produced_identity": "sha256:070daf4f99328cc305bda1196dd8af087bb038a38fee4818ca323d07ee9f1acd",
+      "operation_owner": "GamePackagePreparer.prepare",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "an interrupted public package preparation retained its durable retry marker rather than reporting a partial success",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "GamePackagePreparer.prepare",
+          "result": "returned the actionable dependency retry failure with marker retained"
+        }
+      ]
+    },
+    {
+      "id": "runtime-session-file-export",
+      "artifact_kind": "runtimeSession",
+      "operation": "export",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:e63755dc2acf700587255420ab7b8133ee411aad2723abbccb8186247bf4cdd8",
+      "produced_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
+      "produced_identity": "sha256:ff6e77b3878ec32d9031c0cb0ad922668ac4b06a7039bf6a3570e1a7359b86f3",
+      "operation_owner": "FileSessionRepository.save",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "a real runtime-session state was captured through the durable server-session repository",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "FileSessionRepository.save",
+          "result": "saved the live-session snapshot"
+        }
+      ]
+    },
+    {
       "id": "studio-blueprint-build",
       "artifact_kind": "blueprint",
       "operation": "build",
       "source_path": "run-artifacts/source.blueprint.json",
-      "source_identity": "sha256:3fdae1136d66fb45a5d462f45d59aaa09499ee14d3ba917ae1ed4e41cd4b0519",
+      "source_identity": "sha256:d9d172dabb18764e7eb2d316677a542fd9232399744d0c5e991d99a2c115c17d",
       "produced_path": "run-artifacts/package",
-      "produced_identity": "sha256:b9d6469ff03bcb2a1f7e7f51867e42807d0c75dea1c877e5cdc6c82eca8d2aa8",
+      "produced_identity": "sha256:e63755dc2acf700587255420ab7b8133ee411aad2723abbccb8186247bf4cdd8",
       "operation_owner": "StudioArtifactBuildService",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -1628,6 +1743,28 @@
           "surface": "studio-api",
           "owner": "StudioArtifactBuildService",
           "result": "status ok"
+        }
+      ]
+    },
+    {
+      "id": "studio-external-deployment-publication",
+      "artifact_kind": "externalDeploymentArtifact",
+      "operation": "deploy",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:ead8c361584f121fb7296077d0fa1c612d8f6b2af83156207b32080e08d89d6c",
+      "produced_path": "run-artifacts/package/deployment/local-json-example",
+      "produced_identity": "sha256:0841369392e284576931ac8d4441e4602c6c3ace38c4a8dabfc78b698535449f",
+      "operation_owner": "StudioDeploymentService.run",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio's local deployment target published and validated an external deployment artifact from the selected compatible library",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioDeploymentService.run",
+          "result": "completed target-defined deployment publication"
         }
       ]
     },
@@ -1654,6 +1791,28 @@
       ]
     },
     {
+      "id": "studio-outcome-library-selector-deployment",
+      "artifact_kind": "studioOutcomeLibrarySelector",
+      "operation": "export",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:ead8c361584f121fb7296077d0fa1c612d8f6b2af83156207b32080e08d89d6c",
+      "produced_path": "run-artifacts/package/deployment/local-json-example",
+      "produced_identity": "sha256:0841369392e284576931ac8d4441e4602c6c3ace38c4a8dabfc78b698535449f",
+      "operation_owner": "StudioDeploymentService.run",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Studio resolved the current compatible bundle selector before deployment publication",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioDeploymentService.run",
+          "result": "resolved the verified bundle selector for base mode"
+        }
+      ]
+    },
+    {
       "id": "studio-outcome-library-stake-export",
       "artifact_kind": "outcomeLibrary",
       "operation": "export",
@@ -1670,6 +1829,50 @@
           "surface": "studio-api",
           "owner": "StudioStakeEngineExportService",
           "result": "status ok"
+        }
+      ]
+    },
+    {
+      "id": "studio-project-registry-reopen",
+      "artifact_kind": "studioProjectRegistryEntry",
+      "operation": "import",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:e63755dc2acf700587255420ab7b8133ee411aad2723abbccb8186247bf4cdd8",
+      "produced_path": "run-artifacts/studio-app-data/projects.json",
+      "produced_identity": "sha256:0b31328c258a6a8bb1b34e66908d1427f584e19523901c6b8a2e12ee8b4937bd",
+      "operation_owner": "StudioProjectRegistrationService.registerExternal",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio registered the produced package and a new registry service reopened its persisted project entry",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioProjectRegistrationService.list",
+          "result": "listed the persisted package registration after reconstruction"
+        }
+      ]
+    },
+    {
+      "id": "studio-symbol-artwork-materialize",
+      "artifact_kind": "studioSymbolArtworkPng",
+      "operation": "import",
+      "source_path": "run-artifacts/symbol.png",
+      "source_identity": "sha256:016777d7225e2367021e5af254179097e153ffe29d61ce49af3453e63e324c27",
+      "produced_path": "run-artifacts/assets/symbols/symbol-1704164645000-sgmkpe.png",
+      "produced_identity": "sha256:016777d7225e2367021e5af254179097e153ffe29d61ce49af3453e63e324c27",
+      "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio staged a selected PNG and materialized the declared project-relative artwork companion",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioBlueprintService.resolveSymbolArtwork",
+          "result": "resolved the persisted declared PNG"
         }
       ]
     },
@@ -1907,7 +2110,7 @@
       "source_path": "run-artifacts/generated.blueprint.json",
       "source_identity": "sha256:3d92cad64b0adcd8ba5919d23669f3b36f0ecf20fdec588b61181d4c832b41b8",
       "produced_path": "run-artifacts/generated.par.xlsx",
-      "produced_identity": "sha256:8037377c0a43f1d719ddbc741f95b302f2d5668d8e689537887d789d3e09dabe",
+      "produced_identity": "sha256:df8448ef50aa691f2198be7779c815a323c2ea8254a966bc7d3b59f35d08f981",
       "observable_result": "generated reel provenance is retained but the imported PAR evidence marks the round trip non-lossless",
       "execution": {
         "surface": "cli",
@@ -1981,7 +2184,7 @@
       "source_path": "run-artifacts/matrix-package",
       "source_identity": "sha256:f03e13b6d50bee351e91dc616f551f48e54f3574e7f1ccc7871495c8fa8fcc9e",
       "produced_path": "run-artifacts/matrix-package-replay.json",
-      "produced_identity": "sha256:f60e8d3f04d84f68cb8bdb86fed39f98f89292dc13620887c247b18f06a71863",
+      "produced_identity": "sha256:7df20377d71e71f0107a9fb8c2e6924aaf3f8ed9494d4e1528f9adbd49e1c23c",
       "observable_result": "generated package replay has no Outcome Library identity and remains documented best-effort replay",
       "execution": {
         "surface": "cli",
@@ -2003,7 +2206,7 @@
     {
       "id": "par-source-drift",
       "source_path": "run-artifacts/matrix-par-source-drift.xlsx",
-      "source_identity": "sha256:540415cc3c75f134d84b95ced272d070ad862e31e39a5311b02ffbe9fe0f1480",
+      "source_identity": "sha256:d017da5f6dd9fa29058b86450ea22c4d695390d187f9d01695a3b8339e1ed000",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "prepared PAR conversion rejects mutated workbook bytes before package publication",
@@ -2126,7 +2329,7 @@
     {
       "id": "studio-artifact-http-preflight",
       "source_path": "run-artifacts/source.blueprint.json",
-      "source_identity": "sha256:3fdae1136d66fb45a5d462f45d59aaa09499ee14d3ba917ae1ed4e41cd4b0519",
+      "source_identity": "sha256:d9d172dabb18764e7eb2d316677a542fd9232399744d0c5e991d99a2c115c17d",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "Studio HTTP context, inspection, validation, target discovery, preflight, build-job polling, and terminal result resolve the same real Blueprint before publication",
@@ -2178,7 +2381,7 @@
     {
       "id": "studio-destination-drift",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:b9d6469ff03bcb2a1f7e7f51867e42807d0c75dea1c877e5cdc6c82eca8d2aa8",
+      "source_identity": "sha256:e63755dc2acf700587255420ab7b8133ee411aad2723abbccb8186247bf4cdd8",
       "produced_path": "run-artifacts/package/outcomelibrary",
       "produced_identity": "sha256:ead8c361584f121fb7296077d0fa1c612d8f6b2af83156207b32080e08d89d6c",
       "observable_result": "prepared generation reports a conflict after destination occupancy and preserves borrowed.txt",
@@ -2202,7 +2405,7 @@
     {
       "id": "studio-generation-cancellation",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:b9d6469ff03bcb2a1f7e7f51867e42807d0c75dea1c877e5cdc6c82eca8d2aa8",
+      "source_identity": "sha256:e63755dc2acf700587255420ab7b8133ee411aad2723abbccb8186247bf4cdd8",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "cancelled generation leaves no bundle publication and returns the resumable checkpoint",
@@ -2226,7 +2429,7 @@
     {
       "id": "studio-generation-recovery",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:b9d6469ff03bcb2a1f7e7f51867e42807d0c75dea1c877e5cdc6c82eca8d2aa8",
+      "source_identity": "sha256:e63755dc2acf700587255420ab7b8133ee411aad2723abbccb8186247bf4cdd8",
       "produced_path": "run-artifacts/package/outcomelibrary",
       "produced_identity": "sha256:ead8c361584f121fb7296077d0fa1c612d8f6b2af83156207b32080e08d89d6c",
       "observable_result": "the cancellation checkpoint resumes into a published Outcome Library after the conflicting borrowed destination is removed",
@@ -2277,7 +2480,7 @@
     {
       "id": "studio-simulation-replay-cancellation",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:b9d6469ff03bcb2a1f7e7f51867e42807d0c75dea1c877e5cdc6c82eca8d2aa8",
+      "source_identity": "sha256:e63755dc2acf700587255420ab7b8133ee411aad2723abbccb8186247bf4cdd8",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "Studio HTTP cancellation transitions real simulation and replay jobs to terminal cancelled states without retaining a report or replay descriptor",
@@ -2391,7 +2594,7 @@
     },
     {
       "artifact_kind": "studioSymbolArtworkPng",
-      "disposition": "not-executed",
+      "disposition": "executed",
       "public_owners": [
         "StudioBlueprintService:getSymbolArtwork",
         "StudioBlueprintService:importSymbolArtwork PNG signature/size check",
@@ -2404,7 +2607,9 @@
         "studio:editor SymbolPresentation",
         "studio:player CanonicalPlayerView (Studio adapter resolves declared references and supplies URLs)"
       ],
-      "executed_regressions": []
+      "executed_regressions": [
+        "studio-symbol-artwork-materialize"
+      ]
     },
     {
       "artifact_kind": "tsPackage",
@@ -2691,7 +2896,7 @@
     },
     {
       "artifact_kind": "runtimeSession",
-      "disposition": "not-executed",
+      "disposition": "executed",
       "public_owners": [
         "PokieDevServer",
         "StudioRoundRecorder",
@@ -2700,11 +2905,13 @@
         "studio:play",
         "studio:replay-session-source"
       ],
-      "executed_regressions": []
+      "executed_regressions": [
+        "runtime-session-file-export"
+      ]
     },
     {
       "artifact_kind": "fileSessionRepositoryRecord",
-      "disposition": "not-executed",
+      "disposition": "executed",
       "public_owners": [
         "FileSessionRepository:load/loadVersioned",
         "FileSessionRepository:readRecord JSON/version-envelope recognition",
@@ -2715,7 +2922,9 @@
         "SpinCommandHandler:POST /sessions/:id/spin via configured FileSessionRepository.save/saveVersioned",
         "VersionedSessionRepository optimistic-version check"
       ],
-      "executed_regressions": []
+      "executed_regressions": [
+        "file-session-record-recovery"
+      ]
     },
     {
       "artifact_kind": "simulationReport",
@@ -2736,7 +2945,7 @@
     },
     {
       "artifact_kind": "simulationReportSet",
-      "disposition": "not-executed",
+      "disposition": "executed",
       "public_owners": [
         "cli:diff",
         "cli:report",
@@ -2745,7 +2954,9 @@
         "cli:sim --mode all --out",
         "simulation report-set parser in cli:report/diff"
       ],
-      "executed_regressions": []
+      "executed_regressions": [
+        "simulation-report-set-mode-diagnostic"
+      ]
     },
     {
       "artifact_kind": "validationReport",
@@ -2955,7 +3166,7 @@
     },
     {
       "artifact_kind": "studioOutcomeLibrarySelector",
-      "disposition": "not-executed",
+      "disposition": "executed",
       "public_owners": [
         "OutcomeLibraryBundleReader",
         "StakeEngineImporter",
@@ -2967,22 +3178,26 @@
         "validateOutcomeLibrarySelector",
         "validateOutcomeLibrarySelector request-shape validation"
       ],
-      "executed_regressions": []
+      "executed_regressions": [
+        "studio-outcome-library-selector-deployment"
+      ]
     },
     {
       "artifact_kind": "externalDeploymentArtifact",
-      "disposition": "not-executed",
+      "disposition": "executed",
       "public_owners": [
         "ExternalArtifactValidator and built-in deployment validators",
         "ExternalDeploymentService",
         "studio:deployment-run",
         "target-defined validator"
       ],
-      "executed_regressions": []
+      "executed_regressions": [
+        "studio-external-deployment-publication"
+      ]
     },
     {
       "artifact_kind": "managedOutcomeProjectsRegistry",
-      "disposition": "not-executed",
+      "disposition": "executed",
       "public_owners": [
         "ArtifactBuilderRegistry managed Outcome Library reuse",
         "ManagedOutcomeProjectService:findCompatible",
@@ -2994,7 +3209,9 @@
         "cli/stake export managed-library lifecycle",
         "studio:managed-outcome-library lifecycle"
       ],
-      "executed_regressions": []
+      "executed_regressions": [
+        "managed-outcome-project-registry-reuse"
+      ]
     },
     {
       "artifact_kind": "studioOutcomeLibraryRegistryIndex",
@@ -3014,7 +3231,7 @@
     },
     {
       "artifact_kind": "studioProjectRegistryEntry",
-      "disposition": "not-executed",
+      "disposition": "executed",
       "public_owners": [
         "FileStudioProjectRegistry JSON-array read",
         "FileStudioProjectRegistry:list/read",
@@ -3028,11 +3245,13 @@
         "StudioProjectRegistrationService:registerManaged/registerExternal/recordOpened/relocate",
         "StudioServer Projects create/register/open/relocate flows"
       ],
-      "executed_regressions": []
+      "executed_regressions": [
+        "studio-project-registry-reopen"
+      ]
     },
     {
       "artifact_kind": "preparationStateMarker",
-      "disposition": "not-executed",
+      "disposition": "executed",
       "public_owners": [
         "GamePackagePreparer phase ordering",
         "GamePackagePreparer:prepare after dependencies/build",
@@ -3042,7 +3261,9 @@
         "PreparationStateStore JSON parse as PreparationState",
         "PreparationStateStore:readPreparationState"
       ],
-      "executed_regressions": []
+      "executed_regressions": [
+        "package-preparation-marker-recovery"
+      ]
     }
   ],
   "systemic_class_audits": [
@@ -3080,6 +3301,7 @@
           "matrix-wasm-parWorkbook-build",
           "matrix-wasm-stakeAdapter-build",
           "matrix-wasm-tsPackage-build",
+          "simulation-report-set-mode-diagnostic",
           "studio-blueprint-build",
           "studio-wasm-outcome-source-replay",
           "studio-wasm-outcome-source-simulate",
@@ -3186,35 +3408,35 @@
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+            "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
             "source_type": "parWorkbook",
             "target": "blueprint",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+            "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
             "source_type": "parWorkbook",
             "target": "outcomeLibrary",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+            "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
             "source_type": "parWorkbook",
             "target": "parWorkbook",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+            "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
             "source_type": "parWorkbook",
             "target": "stakeAdapter",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:53198237a45fd7eeeba997b1683439d28b8cae1afe8f877a34e5ea9c0d31af80",
+            "source_identity": "sha256:86efdcc575266ba7f4b61ff819d79a53714f41b56f5dc9b6545e51ba0f9eb6ab",
             "source_type": "parWorkbook",
             "target": "tsPackage",
             "status": "planned"
@@ -3390,6 +3612,7 @@
           "parWorkbook:build:parWorkbook",
           "parWorkbook:build:stakeAdapter",
           "parWorkbook:build:tsPackage",
+          "simulationReportSet:simulate",
           "stakeAdapter:build:blueprint",
           "stakeAdapter:build:outcomeLibrary",
           "stakeAdapter:build:parWorkbook",
@@ -3412,6 +3635,7 @@
           "ArtifactBuilderRegistry.executePlan",
           "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
           "ReplayCommand / ArtifactOperationDiagnostic",
+          "SimCommand",
           "SimCommand / ArtifactOperationDiagnostic",
           "StudioArtifactBuildService",
           "StudioReplayExecutionService / ArtifactOperationDiagnostic",
@@ -3467,6 +3691,7 @@
           "matrix-wasm-parWorkbook-build",
           "matrix-wasm-stakeAdapter-build",
           "matrix-wasm-tsPackage-build",
+          "simulation-report-set-mode-diagnostic",
           "studio-artifact-http-preflight",
           "studio-blueprint-build",
           "studio-wasm-boundary",
@@ -3490,6 +3715,8 @@
           "fairness-round-commitment",
           "fairness-round-proof",
           "fairness-server-seed-commitment",
+          "file-session-record-recovery",
+          "managed-outcome-project-registry-reuse",
           "outcome-library-bundle-descriptor-build",
           "outcome-library-certification",
           "outcome-library-fairness",
@@ -3501,7 +3728,8 @@
           "stake-export-descriptor",
           "stake-import-reexport-config",
           "stake-import-source-provenance",
-          "studio-outcome-library-registry-index"
+          "studio-outcome-library-registry-index",
+          "studio-outcome-library-selector-deployment"
         ],
         "lifecycle_outcomes": [
           "configuration-drift",
@@ -3529,6 +3757,8 @@
           "fairnessCommitment:reveal",
           "fairnessProof:verify",
           "fairnessServerSeedCommitment:commit",
+          "fileSessionRepositoryRecord:import",
+          "managedOutcomeProjectsRegistry:reuse",
           "outcomeLibrary:certification",
           "outcomeLibrary:fairness",
           "outcomeLibrary:replay",
@@ -3540,11 +3770,14 @@
           "stakeEngineExportDescriptor:export",
           "stakeImportReExportConfig:export",
           "stakeImportSourceProvenance:inspect",
-          "studioOutcomeLibraryRegistryIndex:inspect"
+          "studioOutcomeLibraryRegistryIndex:inspect",
+          "studioOutcomeLibrarySelector:export"
         ],
         "operation_owners": [
           "CertificationCommand",
           "FairnessCommand",
+          "FileSessionRepository.load",
+          "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
           "OutcomeLibraryCommand",
           "OutcomeLibraryCommand / OutcomeLibraryBundleWriter",
           "ReplayCommand",
@@ -3552,6 +3785,7 @@
           "ReportCommand",
           "SimCommand",
           "StakeEngineCommand",
+          "StudioDeploymentService.run",
           "StudioOutcomeLibraryGenerateService.registry"
         ],
         "studio_routes": [],
@@ -3562,6 +3796,8 @@
         "direct_library_callers": [
           "ArtifactBuilderRegistry",
           "ArtifactBuilderRegistry.executePlan",
+          "FileSessionRepository.load",
+          "ManagedOutcomeProjectService.findCompatible",
           "OutcomeLibraryCommand.prepareDescriptorBuildOperation"
         ],
         "regression_links": [
@@ -3574,8 +3810,10 @@
           "fairness-round-commitment",
           "fairness-round-proof",
           "fairness-server-seed-commitment",
+          "file-session-record-recovery",
           "generated-reel-non-lossless",
           "index-drift",
+          "managed-outcome-project-registry-reuse",
           "manifest-drift",
           "outcome-library-bundle-descriptor-build",
           "outcome-library-certification",
@@ -3594,7 +3832,8 @@
           "stake-import-source-provenance",
           "stake-outcome-library-round-trip",
           "studio-managed-reuse-compatibility",
-          "studio-outcome-library-registry-index"
+          "studio-outcome-library-registry-index",
+          "studio-outcome-library-selector-deployment"
         ]
       }
     },
@@ -3602,7 +3841,13 @@
       "class": "durable publication ownership",
       "derived_from": {
         "operation_rows": [
-          "outcome-library-generation-checkpoint-resume"
+          "managed-outcome-project-registry-reuse",
+          "outcome-library-generation-checkpoint-resume",
+          "package-preparation-marker-recovery",
+          "runtime-session-file-export",
+          "studio-external-deployment-publication",
+          "studio-project-registry-reopen",
+          "studio-symbol-artwork-materialize"
         ],
         "lifecycle_outcomes": [
           "borrowed-output-cleanup",
@@ -3620,10 +3865,22 @@
         ],
         "planner_cells": [],
         "aliases": [
-          "outcomeLibraryGenerationCheckpoint:resume"
+          "externalDeploymentArtifact:deploy",
+          "managedOutcomeProjectsRegistry:reuse",
+          "outcomeLibraryGenerationCheckpoint:resume",
+          "preparationStateMarker:recover",
+          "runtimeSession:export",
+          "studioProjectRegistryEntry:import",
+          "studioSymbolArtworkPng:import"
         ],
         "operation_owners": [
-          "OutcomeLibraryCommand"
+          "FileSessionRepository.save",
+          "GamePackagePreparer.prepare",
+          "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
+          "OutcomeLibraryCommand",
+          "StudioBlueprintService.importSymbolArtwork/save",
+          "StudioDeploymentService.run",
+          "StudioProjectRegistrationService.registerExternal"
         ],
         "studio_routes": [
           "POST /api/project/replays",
@@ -3636,18 +3893,26 @@
         ],
         "direct_library_callers": [
           "ArtifactBuilderRegistry",
+          "FileSessionRepository.save",
+          "ManagedOutcomeProjectService.findCompatible",
           "OutcomeLibraryCommand.prepareDescriptorBuildOperation"
         ],
         "regression_links": [
           "borrowed-output-cleanup",
           "cli-generation-cancellation-recovery",
           "descriptor-drift",
+          "managed-outcome-project-registry-reuse",
           "outcome-library-generation-checkpoint-resume",
+          "package-preparation-marker-recovery",
           "raw-source-drift",
+          "runtime-session-file-export",
           "studio-destination-drift",
+          "studio-external-deployment-publication",
           "studio-generation-cancellation",
           "studio-generation-recovery",
-          "studio-simulation-replay-cancellation"
+          "studio-project-registry-reopen",
+          "studio-simulation-replay-cancellation",
+          "studio-symbol-artwork-materialize"
         ]
       }
     }

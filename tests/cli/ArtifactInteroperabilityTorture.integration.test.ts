@@ -307,6 +307,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         await new SimCommand().run([bundlePath, "--mode", "base", "--rounds", "5", "--seed", "matrix-sim-comparison", "--out", comparisonSimulationPath]);
         await new SimCommand().run([packagePath, "--rounds", "4", "--seed", "matrix-package-sim", "--out", packageSimulationPath]);
         await new SimCommand().run([packagePath, "--rounds", "5", "--seed", "matrix-package-sim-comparison", "--out", packageComparisonSimulationPath]);
+        await expect(new SimCommand().run([packagePath, "--mode", "all", "--rounds", "2", "--seed", "matrix-all-modes"])).rejects.toThrow(/requires the game package to declare its bet modes via getBetModes/);
         await new ReplayCommand().run([bundlePath, "--mode", "base", "--round", "1", "--seed", "matrix-replay", "--out", replayPath]);
         expect(fs.existsSync(simulationPath)).toBe(true);
         expect(fs.existsSync(comparisonSimulationPath)).toBe(true);
@@ -459,6 +460,16 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             owner: "ReportCommand", result: "the real simulation output was consumed by the report owner",
             observations: [{surface: "cli", owner: "ReportCommand", result: "simulation report was rendered"}],
             systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.recordUnavailable({
+            id: "simulation-report-set-mode-diagnostic", artifactKind: "simulationReportSet", operation: "simulate", sourcePath: packagePath,
+            owner: "SimCommand", diagnostic: {
+                code: "missing-capability",
+                message: "The real generated package has no declared getBetModes() contract for --mode all.",
+                recovery: "Use a package that declares bet modes before requesting a per-mode simulation report set.",
+            },
+            observations: [{surface: "cli", owner: "SimCommand", result: "sim --mode all returned its concrete missing getBetModes diagnostic"}],
+            systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
         evidence.record({
             id: "replay-descriptor-round-artifact", artifactKind: "runtimeReplayDescriptor", operation: "inspect", sourcePath: replayPath,

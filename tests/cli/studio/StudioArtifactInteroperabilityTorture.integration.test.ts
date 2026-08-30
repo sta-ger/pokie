@@ -3,18 +3,25 @@ import os from "os";
 import path from "path";
 import {
     describeUnavailableArtifactOperation,
+    FileSessionRepository,
+    ManagedOutcomeProjectService,
     POKIE_WASM_CONTRACT_VERSION,
     ProjectTargetResolver,
     type GameBlueprint,
 } from "pokie";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
+import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
+import {FileStudioProjectRegistry} from "../../../cli/studio/FileStudioProjectRegistry.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {StudioOutcomeLibraryGenerateService} from "../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioStakeEngineExportService} from "../../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {GamePackagePreparer} from "../../../cli/prepare/GamePackagePreparer.js";
+import {PREPARATION_STATE_FILE} from "../../../cli/prepare/PreparationStateStore.js";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, mergeArtifactInteroperabilityRuns} from "../../support/ArtifactInteroperabilityRun.js";
 
@@ -164,6 +171,74 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             observations: [{route: "StudioOutcomeLibraryGenerateService.generate", result: "Studio generation returned cancelled"}],
         });
 
+        // These companions are not build-matrix targets, but each is a PC-05
+        // public artifact.  Exercise their owning services against the real
+        // package/bundle produced above so registry coverage cannot confuse a
+        // hand-authored companion file with a published owner result.
+        const artworkSource = path.join(workDir, "symbol.png");
+        fs.writeFileSync(artworkSource, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+        const artworkService = new StudioBlueprintService(POKIE_VERSION, studioRoot, home);
+        const artworkImport = artworkService.importSymbolArtwork(artworkSource);
+        expect(artworkImport.status).toBe("ok");
+        if (artworkImport.status !== "ok") throw new Error(artworkImport.error);
+        expect(artworkService.save(blueprintPath, {...blueprint, symbolArtwork: {A: artworkImport.reference}}, true)).toMatchObject({status: "ok"});
+        const artworkPath = artworkService.resolveSymbolArtwork(blueprintPath, artworkImport.reference);
+        expect(artworkPath).toBeDefined();
+        if (artworkPath === undefined) throw new Error("Expected Studio to materialize symbol artwork.");
+        evidence.record({
+            id: "studio-symbol-artwork-materialize", artifactKind: "studioSymbolArtworkPng", operation: "import",
+            sourcePath: artworkSource, producedPath: artworkPath, owner: "StudioBlueprintService.importSymbolArtwork/save",
+            result: "Studio staged a selected PNG and materialized the declared project-relative artwork companion",
+            observations: [{surface: "studio-api", owner: "StudioBlueprintService.resolveSymbolArtwork", result: "resolved the persisted declared PNG"}],
+            systemicClasses: ["durable-publication-ownership"],
+        });
+
+        const sessionDirectory = path.join(workDir, "session-state");
+        const sessionRepository = new FileSessionRepository(sessionDirectory);
+        await sessionRepository.save("pc14-session", {bet: 1, win: 0, screen: [["A", "B"]], context: {seed: "pc14-fixed-runner"}});
+        const [sessionRecord] = fs.readdirSync(sessionDirectory);
+        const sessionRecordPath = path.join(sessionDirectory, sessionRecord);
+        expect(await new FileSessionRepository(sessionDirectory).load("pc14-session")).toMatchObject({bet: 1, win: 0});
+        evidence.record({
+            id: "runtime-session-file-export", artifactKind: "runtimeSession", operation: "export",
+            sourcePath: packagePath, producedPath: sessionRecordPath, owner: "FileSessionRepository.save",
+            result: "a real runtime-session state was captured through the durable server-session repository",
+            observations: [{surface: "library", owner: "FileSessionRepository.save", result: "saved the live-session snapshot"}],
+            systemicClasses: ["durable-publication-ownership"],
+        });
+        evidence.record({
+            id: "file-session-record-recovery", artifactKind: "fileSessionRepositoryRecord", operation: "import",
+            sourcePath: sessionRecordPath, owner: "FileSessionRepository.load",
+            result: "a reconstructed repository recovered the persisted versioned runtime-session record",
+            observations: [{surface: "library", owner: "FileSessionRepository.load", result: "reloaded the exact persisted session state"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+
+        const studioProjectsPath = path.join(workDir, "studio-app-data", "projects.json");
+        const projectRegistration = new StudioProjectRegistrationService(new FileStudioProjectRegistry(studioProjectsPath));
+        await expect(projectRegistration.registerExternal(packagePath, "PC-14 package")).resolves.toMatchObject({status: "ok"});
+        expect(await new StudioProjectRegistrationService(new FileStudioProjectRegistry(studioProjectsPath)).list()).toEqual(expect.arrayContaining([expect.objectContaining({location: packagePath, status: "ok"})]));
+        evidence.record({
+            id: "studio-project-registry-reopen", artifactKind: "studioProjectRegistryEntry", operation: "import",
+            sourcePath: packagePath, producedPath: studioProjectsPath, owner: "StudioProjectRegistrationService.registerExternal",
+            result: "Studio registered the produced package and a new registry service reopened its persisted project entry",
+            observations: [{surface: "studio-api", owner: "StudioProjectRegistrationService.list", result: "listed the persisted package registration after reconstruction"}],
+            systemicClasses: ["durable-publication-ownership"],
+        });
+
+        const preparationParent = path.join(workDir, "preparation");
+        const preparer = new GamePackagePreparer(POKIE_VERSION, undefined, () => Promise.reject(new Error("deliberate PC-14 dependency interruption")));
+        await expect(preparer.prepare(preparationParent, "interrupted-package")).rejects.toThrow(/dependency interruption/);
+        const preparationMarkerPath = path.join(preparationParent, "interrupted-package", PREPARATION_STATE_FILE);
+        expect(fs.existsSync(preparationMarkerPath)).toBe(true);
+        evidence.record({
+            id: "package-preparation-marker-recovery", artifactKind: "preparationStateMarker", operation: "recover",
+            sourcePath: path.join(preparationParent, "interrupted-package"), producedPath: preparationMarkerPath, owner: "GamePackagePreparer.prepare",
+            result: "an interrupted public package preparation retained its durable retry marker rather than reporting a partial success",
+            observations: [{surface: "cli", owner: "GamePackagePreparer.prepare", result: "returned the actionable dependency retry failure with marker retained"}],
+            systemicClasses: ["durable-publication-ownership"],
+        });
+
         // A preview binds its destination. Occupying it after preflight must
         // reject before publication and preserve the caller-owned file.
         const occupiedOutDir = StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
@@ -256,6 +331,55 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         evidence.record({
             id: "studio-outcome-library-stake-export", artifactKind: "outcomeLibrary", operation: "export", sourcePath: path.join(packagePath, mode.bundleDir),
             producedPath: stakePath, owner: "StudioStakeEngineExportService", result: "published", observations: [{surface: "studio-api", owner: "StudioStakeEngineExportService", result: "status ok"}],
+        });
+
+        const managedManifest = JSON.parse(fs.readFileSync(path.join(packagePath, mode.bundleDir, "manifest.json"), "utf-8")) as {
+            game: {id: string; version: string}; configHash?: string; artifactPokieVersion: string; modes: Array<{generator?: {strategy?: string; maxExactOutcomeSpaceSize?: number; compatibilityPolicyVersion?: string}}>;
+        };
+        const managedGenerator = managedManifest.modes[0]?.generator;
+        const managedCompatibility = {
+            gameId: managedManifest.game.id, gameVersion: managedManifest.game.version, configHash: managedManifest.configHash ?? "",
+            pokieVersion: managedManifest.artifactPokieVersion,
+            generation: managedGenerator?.strategy === "exact" ? "exact" : undefined,
+            ...(managedGenerator?.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: String(managedGenerator.maxExactOutcomeSpaceSize)}),
+            ...(managedGenerator?.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: managedGenerator.compatibilityPolicyVersion}),
+        };
+        const managedService = new ManagedOutcomeProjectService();
+        await expect(managedService.registerAndOpen(blueprintPath, path.join(packagePath, mode.bundleDir), managedCompatibility)).resolves.toMatchObject({type: "outcomeLibrary"});
+        const managedRegistryPath = path.join(workDir, ".pokie", "managed-outcome-projects.json");
+        expect(await managedService.findCompatible(blueprintPath, managedCompatibility)).toMatchObject({rootPath: path.join(packagePath, mode.bundleDir)});
+        evidence.record({
+            id: "managed-outcome-project-registry-reuse", artifactKind: "managedOutcomeProjectsRegistry", operation: "reuse",
+            sourcePath: path.join(packagePath, mode.bundleDir), producedPath: managedRegistryPath, owner: "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
+            result: "the compatible produced Outcome Library was durably registered and reopened through the shared managed registry",
+            observations: [{surface: "library", owner: "ManagedOutcomeProjectService.findCompatible", result: "returned the exact compatible bundle"}],
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+        });
+
+        const selector = {kind: "bundle" as const, bundleDir: mode.bundleDir, modeName: "base"};
+        const deployment = new StudioDeploymentService(
+            undefined, undefined, undefined, undefined, undefined, undefined,
+            () => Promise.resolve(["base"]), undefined, POKIE_VERSION,
+            () => Promise.resolve([{modeName: "base", librarySelector: selector}]),
+        );
+        const deploymentResult = await deployment.run(packagePath, {targetId: "local-json-example", modes: [], publish: true});
+        if (deploymentResult.status !== "ok") throw new Error(`Expected Studio deployment to complete: ${JSON.stringify(deploymentResult)}`);
+        expect(deploymentResult).toMatchObject({status: "ok", view: {targetId: "local-json-example"}});
+        const deploymentPath = path.join(packagePath, "deployment", "local-json-example");
+        expect(fs.existsSync(deploymentPath)).toBe(true);
+        evidence.record({
+            id: "studio-outcome-library-selector-deployment", artifactKind: "studioOutcomeLibrarySelector", operation: "export",
+            sourcePath: path.join(packagePath, mode.bundleDir), producedPath: deploymentPath, owner: "StudioDeploymentService.run",
+            result: "Studio resolved the current compatible bundle selector before deployment publication",
+            observations: [{surface: "studio-api", owner: "StudioDeploymentService.run", result: "resolved the verified bundle selector for base mode"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "studio-external-deployment-publication", artifactKind: "externalDeploymentArtifact", operation: "deploy",
+            sourcePath: path.join(packagePath, mode.bundleDir), producedPath: deploymentPath, owner: "StudioDeploymentService.run",
+            result: "Studio's local deployment target published and validated an external deployment artifact from the selected compatible library",
+            observations: [{surface: "studio-api", owner: "StudioDeploymentService.run", result: "completed target-defined deployment publication"}],
+            systemicClasses: ["durable-publication-ownership"],
         });
 
         // Cancellation belongs to the public job routes, not just to their
