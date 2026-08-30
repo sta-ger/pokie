@@ -8,8 +8,8 @@ import {OutcomeLibraryCommand} from "./OutcomeLibraryCommand.js";
 export class GenerateCommand implements CliCommandHandling {
     private readonly outcomeLibrary: OutcomeLibraryCommand;
 
-    constructor(pokieVersion: string) {
-        this.outcomeLibrary = new OutcomeLibraryCommand(pokieVersion);
+    constructor(pokieVersion: string, outcomeLibrary: OutcomeLibraryCommand = new OutcomeLibraryCommand(pokieVersion)) {
+        this.outcomeLibrary = outcomeLibrary;
     }
 
     public getName(): string {

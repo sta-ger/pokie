@@ -272,8 +272,11 @@ function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendin
 }
 
 describe("StudioReplayExecutionService", () => {
-    it("rejects a WASM project before creating a queued replay job", () => {
-        const wasmPath = "/projects/component.wasm";
+    it("rejects every real WASM sidecar state before creating a queued replay job", () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-replay-wasm-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const sidecar = `${wasmPath}.pokie-wasm.json`;
+        fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
         const repository = new InMemoryStudioReplayRepository();
         const loadGame = jest.fn();
         const service = new StudioReplayExecutionService(repository, loadGame);
@@ -283,12 +286,28 @@ describe("StudioReplayExecutionService", () => {
             capabilities: PROJECT_TYPE_CAPABILITIES.wasm,
             provenance: "test WASM component",
         } as PokieProject;
-
-        const result = service.start(wasmPath, {round: 1, seed: "seed"}, wasmProject);
-
-        expect(result).toMatchObject({status: "unsupported", message: expect.stringContaining("no compatible PokieWasmComponentManifest sidecar")});
-        expect(repository.listActive()).toEqual([]);
-        expect(loadGame).not.toHaveBeenCalled();
+        const compatible = {
+            schemaVersion: "1.0.0", component: {id: "fixture", version: "1.0.0"},
+            serialization: {session: "session", play: "play", state: "state"}, host: {rng: "rng", services: []}, capabilities: [],
+        };
+        try {
+            const cases: readonly [string | undefined, RegExp][] = [
+                [JSON.stringify(compatible), /cannot replay a game round/],
+                [undefined, /no compatible PokieWasmComponentManifest sidecar/],
+                ["{", /sidecar at/],
+                [JSON.stringify({...compatible, schemaVersion: "2.0.0"}), /not compatible with this POKIE build/],
+            ];
+            for (const [contents, expected] of cases) {
+                if (contents === undefined) fs.rmSync(sidecar, {force: true});
+                else fs.writeFileSync(sidecar, contents);
+                const result = service.start(wasmPath, {round: 1, seed: "seed"}, wasmProject);
+                expect(result).toMatchObject({status: "unsupported", message: expect.stringMatching(expected)});
+                expect(repository.listActive()).toEqual([]);
+            }
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 

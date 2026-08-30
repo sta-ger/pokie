@@ -25,7 +25,14 @@ import {
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     BUILD_OPERATION,
+    CERTIFICATION_BUILD_OPERATION,
+    CERTIFICATION_VALIDATE_OPERATION,
+    DEPLOYMENT_TARGETS_OPERATION,
+    FAIRNESS_CONFIGURE_OPERATION,
+    FAIRNESS_GENERATE_OPERATION,
+    FAIRNESS_VERIFY_OPERATION,
     OUTCOME_LIBRARY_GENERATE_OPERATION,
+    OUTCOME_SOURCE_SAMPLE_OPERATION,
     REPLAY_OPERATION,
     SIM_OPERATION,
     STUDIO_OPERATION,
@@ -840,7 +847,7 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "GET" && url.pathname === "/api/project/deployment/targets") {
-            this.handleListDeploymentTargets(res);
+            await this.handleListDeploymentTargets(res);
             return;
         }
 
@@ -1943,11 +1950,12 @@ export class StudioServer implements StudioServerHandling {
         };
     }
 
-    private handleListDeploymentTargets(res: ServerResponse): void {
+    private async handleListDeploymentTargets(res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, DEPLOYMENT_TARGETS_OPERATION)) return;
         this.sendJson(res, 200, this.deploymentService.listTargets(this.currentContext.projectRoot));
     }
 
@@ -2226,7 +2234,12 @@ export class StudioServer implements StudioServerHandling {
     // failed HTTP request" reasoning as GET /api/project/validate -- the unsupported-capability outcome
     // is carried in the response body's own `supported` field, not an HTTP error status.
     private async handleOutcomeSourceSample(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        if (this.currentContext.mode !== "project" || this.projectDashboard?.status !== "outcome-source") {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active outcome-source project."});
+            return;
+        }
+        if (await this.rejectCurrentWasmOperation(res, OUTCOME_SOURCE_SAMPLE_OPERATION)) return;
+        if (this.projectDashboard?.status !== "outcome-source") {
             this.sendJson(res, 409, {error: "No active outcome-source project."});
             return;
         }
@@ -2368,6 +2381,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, CERTIFICATION_VALIDATE_OPERATION)) return;
 
         const body = await this.readJsonBody(req);
         let validated;
@@ -2386,6 +2400,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, CERTIFICATION_BUILD_OPERATION)) return;
 
         const body = await this.readJsonBody(req);
         let validated;
@@ -2408,6 +2423,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, FAIRNESS_CONFIGURE_OPERATION)) return;
 
         const body = await this.readJsonBody(req);
         let validated;
@@ -2426,6 +2442,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, FAIRNESS_GENERATE_OPERATION)) return;
 
         const body = await this.readJsonBody(req);
         let validated;
@@ -2444,6 +2461,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, FAIRNESS_VERIFY_OPERATION)) return;
 
         const body = await this.readJsonBody(req);
         let validated;

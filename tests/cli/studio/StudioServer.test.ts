@@ -48,7 +48,9 @@ import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {createRecommendedBlueprint} from "../../../cli/studio-client/src/domain/blueprintEditorState.js";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
+import {StudioCertificationService} from "../../../cli/studio/certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
+import {StudioFairnessService} from "../../../cli/studio/fairness/StudioFairnessService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {InMemoryRecentProjectsRepository} from "../../../cli/studio/InMemoryRecentProjectsRepository.js";
 import {StudioNativePickerService} from "../../../cli/studio/home/StudioNativePickerService.js";
@@ -3934,6 +3936,14 @@ describe("StudioServer", () => {
                     capabilities: [],
                 }));
                 const loadGame = jest.fn();
+                const listTargets = jest.fn(() => []);
+                const validateSourceBundle = jest.fn();
+                const buildCertification = jest.fn();
+                const configureFairness = jest.fn();
+                const generateFairnessProof = jest.fn();
+                const verifyFairnessProof = jest.fn();
+                const estimateOutcomeLibrary = jest.fn();
+                const registryOutcomeLibrary = jest.fn();
                 const homeService = new StudioHomeService("1.0.0");
                 wasmServer = new StudioServer({
                     pokieVersion: "1.0.0",
@@ -3944,6 +3954,17 @@ describe("StudioServer", () => {
                     blueprintService: new StudioBlueprintService("1.0.0", wasmStudioRoot, homeService),
                     initialContext: {mode: "project", projectRoot: wasmFile},
                     loadGame,
+                    deploymentService: {listTargets} as unknown as StudioDeploymentService,
+                    certificationService: {validateSourceBundle, build: buildCertification} as unknown as StudioCertificationService,
+                    fairnessService: {
+                        configure: configureFairness,
+                        generateProof: generateFairnessProof,
+                        verify: verifyFairnessProof,
+                    } as unknown as StudioFairnessService,
+                    outcomeLibraryGenerateService: {
+                        estimate: estimateOutcomeLibrary,
+                        registry: registryOutcomeLibrary,
+                    } as unknown as StudioOutcomeLibraryGenerateService,
                 });
                 const address = await wasmServer.start();
                 const baseUrl = `http://${address.host}:${address.port}`;
@@ -3952,25 +3973,114 @@ describe("StudioServer", () => {
                     post(`${baseUrl}/api/project/artifacts/build`, {target: "tsPackage"}),
                     post(`${baseUrl}/api/project/simulations`, {rounds: 1}),
                     post(`${baseUrl}/api/project/replays`, {round: 1, seed: "seed"}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/estimate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs/checkpoint/resume`, {}),
+                    get(`${baseUrl}/api/project/outcome-libraries/registry`),
+                    get(`${baseUrl}/api/project/deployment/targets`),
                     get(`${baseUrl}/api/project/deployment/build-modes`),
                     post(`${baseUrl}/api/project/deployment/runs`, {}),
+                    post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base"}),
+                    post(`${baseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"}),
+                    post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "certification", modes: []}),
+                    post(`${baseUrl}/api/project/fairness/configure`, {bundleDir: "bundle", modeName: "base", serverSeed: "s", clientSeed: "c", nonce: 0}),
+                    post(`${baseUrl}/api/project/fairness/generate`, {bundleDir: "bundle", commitment: {}, serverSeed: "s"}),
+                    post(`${baseUrl}/api/project/fairness/verify`, {proof: {}}),
                 ])) {
                     expect(response).toMatchObject({status: 409, body: {error: expect.stringContaining("POKIE WASM component")}});
                     expect((response.body as {error: string}).error).toContain("inspect a compatible component");
                 }
                 expect(loadGame).not.toHaveBeenCalled();
+                expect(listTargets).not.toHaveBeenCalled();
+                expect(validateSourceBundle).not.toHaveBeenCalled();
+                expect(buildCertification).not.toHaveBeenCalled();
+                expect(configureFairness).not.toHaveBeenCalled();
+                expect(generateFairnessProof).not.toHaveBeenCalled();
+                expect(verifyFairnessProof).not.toHaveBeenCalled();
+                expect(estimateOutcomeLibrary).not.toHaveBeenCalled();
+                expect(registryOutcomeLibrary).not.toHaveBeenCalled();
 
                 fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, "{");
                 for (const stale of await Promise.all([
                     post(`${baseUrl}/api/project/artifacts/build`, {target: "tsPackage"}),
                     post(`${baseUrl}/api/project/simulations`, {rounds: 1}),
                     post(`${baseUrl}/api/project/replays`, {round: 1, seed: "seed"}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/estimate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs/checkpoint/resume`, {}),
+                    get(`${baseUrl}/api/project/outcome-libraries/registry`),
+                    get(`${baseUrl}/api/project/deployment/targets`),
                     get(`${baseUrl}/api/project/deployment/build-modes`),
                     post(`${baseUrl}/api/project/deployment/runs`, {}),
+                    post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base"}),
+                    post(`${baseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"}),
+                    post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "certification", modes: []}),
+                    post(`${baseUrl}/api/project/fairness/configure`, {bundleDir: "bundle", modeName: "base", serverSeed: "s", clientSeed: "c", nonce: 0}),
+                    post(`${baseUrl}/api/project/fairness/generate`, {bundleDir: "bundle", commitment: {}, serverSeed: "s"}),
+                    post(`${baseUrl}/api/project/fairness/verify`, {proof: {}}),
                 ])) {
                     expect(stale).toMatchObject({status: 409, body: {error: expect.stringContaining("not valid JSON")}});
                 }
                 expect(loadGame).not.toHaveBeenCalled();
+                expect(listTargets).not.toHaveBeenCalled();
+                expect(validateSourceBundle).not.toHaveBeenCalled();
+                expect(buildCertification).not.toHaveBeenCalled();
+                expect(configureFairness).not.toHaveBeenCalled();
+                expect(generateFairnessProof).not.toHaveBeenCalled();
+                expect(verifyFairnessProof).not.toHaveBeenCalled();
+                expect(estimateOutcomeLibrary).not.toHaveBeenCalled();
+                expect(registryOutcomeLibrary).not.toHaveBeenCalled();
+
+                fs.rmSync(`${wasmFile}.pokie-wasm.json`);
+                for (const missing of await Promise.all([
+                    get(`${baseUrl}/api/project/deployment/targets`),
+                    post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base"}),
+                    post(`${baseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"}),
+                    post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "certification", modes: []}),
+                    post(`${baseUrl}/api/project/fairness/configure`, {bundleDir: "bundle", modeName: "base", serverSeed: "s", clientSeed: "c", nonce: 0}),
+                    post(`${baseUrl}/api/project/fairness/generate`, {bundleDir: "bundle", commitment: {}, serverSeed: "s"}),
+                    post(`${baseUrl}/api/project/fairness/verify`, {proof: {}}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/estimate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs/checkpoint/resume`, {}),
+                    get(`${baseUrl}/api/project/outcome-libraries/registry`),
+                ])) {
+                    expect(missing).toMatchObject({status: 409, body: {error: expect.stringContaining("no compatible PokieWasmComponentManifest sidecar")}});
+                }
+
+                fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({
+                    schemaVersion: "2.0.0",
+                    component: {id: "component", version: "1.0.0"},
+                    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                    host: {rng: "pokie.rng.v1", services: []}, capabilities: [],
+                }));
+                for (const incompatible of await Promise.all([
+                    get(`${baseUrl}/api/project/deployment/targets`),
+                    post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base"}),
+                    post(`${baseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"}),
+                    post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "certification", modes: []}),
+                    post(`${baseUrl}/api/project/fairness/configure`, {bundleDir: "bundle", modeName: "base", serverSeed: "s", clientSeed: "c", nonce: 0}),
+                    post(`${baseUrl}/api/project/fairness/generate`, {bundleDir: "bundle", commitment: {}, serverSeed: "s"}),
+                    post(`${baseUrl}/api/project/fairness/verify`, {proof: {}}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/estimate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs/checkpoint/resume`, {}),
+                    get(`${baseUrl}/api/project/outcome-libraries/registry`),
+                ])) {
+                    expect(incompatible).toMatchObject({status: 409, body: {error: expect.stringContaining("not compatible with this POKIE build")}});
+                }
+                expect(listTargets).not.toHaveBeenCalled();
+                expect(validateSourceBundle).not.toHaveBeenCalled();
+                expect(buildCertification).not.toHaveBeenCalled();
+                expect(configureFairness).not.toHaveBeenCalled();
+                expect(generateFairnessProof).not.toHaveBeenCalled();
+                expect(verifyFairnessProof).not.toHaveBeenCalled();
+                expect(estimateOutcomeLibrary).not.toHaveBeenCalled();
+                expect(registryOutcomeLibrary).not.toHaveBeenCalled();
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }

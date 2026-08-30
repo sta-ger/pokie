@@ -40,6 +40,11 @@ const OPERATION_NAMES: Readonly<Record<string, string>> = {
     "outcomeSource.diff": "compare outcome sources",
     "certification.build": "build certification evidence",
     "certification.verify": "verify certification evidence",
+    "deployment.targets": "list deployment targets",
+    "certification.validate": "validate certification source data",
+    "fairness.configure": "configure a Provably Fair round",
+    "fairness.generate": "generate a Provably Fair proof",
+    "fairness.verify": "verify a Provably Fair proof",
 };
 
 // Checks whether `project` can perform `operation` and, if not, explains why — the single place this

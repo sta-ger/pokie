@@ -83,6 +83,15 @@ export const OUTCOME_SOURCE_DIFF_OPERATION: PokieOperation = "outcomeSource.diff
 // a live package's runtime.
 export const CERTIFICATION_BUILD_OPERATION: PokieOperation = "certification.build";
 export const CERTIFICATION_VERIFY_OPERATION: PokieOperation = "certification.verify";
+// Studio's project-scoped support workflows have their own operation ids so a
+// component rejection says what the caller attempted, rather than borrowing a
+// generic build/runtime label.  They all consume project-relative Outcome
+// Library data and therefore require the same read capability as certification.
+export const DEPLOYMENT_TARGETS_OPERATION: PokieOperation = "deployment.targets";
+export const CERTIFICATION_VALIDATE_OPERATION: PokieOperation = "certification.validate";
+export const FAIRNESS_CONFIGURE_OPERATION: PokieOperation = "fairness.configure";
+export const FAIRNESS_GENERATE_OPERATION: PokieOperation = "fairness.generate";
+export const FAIRNESS_VERIFY_OPERATION: PokieOperation = "fairness.verify";
 
 // Which single ProjectCapability each known PokieOperation requires — the one place
 // describeUnsupportedProjectOperation reads from to decide whether a resolved PokieProject can perform a
@@ -120,4 +129,9 @@ export const OPERATION_REQUIRED_CAPABILITY: Readonly<Record<PokieOperation, Proj
     [OUTCOME_SOURCE_DIFF_OPERATION]: OUTCOME_SOURCE_READ_CAPABILITY,
     [CERTIFICATION_BUILD_OPERATION]: OUTCOME_LIBRARY_READ_CAPABILITY,
     [CERTIFICATION_VERIFY_OPERATION]: OUTCOME_LIBRARY_READ_CAPABILITY,
+    [DEPLOYMENT_TARGETS_OPERATION]: OUTCOME_LIBRARY_READ_CAPABILITY,
+    [CERTIFICATION_VALIDATE_OPERATION]: OUTCOME_LIBRARY_READ_CAPABILITY,
+    [FAIRNESS_CONFIGURE_OPERATION]: OUTCOME_LIBRARY_READ_CAPABILITY,
+    [FAIRNESS_GENERATE_OPERATION]: OUTCOME_LIBRARY_READ_CAPABILITY,
+    [FAIRNESS_VERIFY_OPERATION]: OUTCOME_LIBRARY_READ_CAPABILITY,
 };

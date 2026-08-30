@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import type {ExactEnumerationCheckpoint} from "pokie";
+import {describeWasmLifecycleBoundary, type ExactEnumerationCheckpoint} from "pokie";
 import {createUnresolvedRuntimePlan} from "../../../../cli/studio/artifacts/createExternalArtifactConversionPlan.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateResultView.js";
 import {StudioOutcomeLibraryGenerateJobService} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateJobService.js";
@@ -18,16 +18,32 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         fs.rmSync(projectRoot, {recursive: true, force: true});
     });
 
-    it("rejects a WASM start before reserving a job or calling generation", () => {
+    it("rejects every real WASM sidecar state before reserving or resuming a job", async () => {
         const wasmPath = path.join(projectRoot, "component.wasm");
+        const sidecar = `${wasmPath}.pokie-wasm.json`;
         fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+        const compatible = {
+            schemaVersion: "1.0.0", component: {id: "fixture", version: "1.0.0"},
+            serialization: {session: "session", play: "play", state: "state"}, host: {rng: "rng", services: []}, capabilities: [],
+        };
         const generate = jest.fn();
         const jobs = new StudioOutcomeLibraryGenerateJobService({
             generate,
-            wasmBoundaryDiagnostic: () => "WASM inspection-only diagnostic",
+            wasmBoundaryDiagnostic: (projectPath: string) => describeWasmLifecycleBoundary(projectPath, "generate an Outcome Library"),
         } as unknown as StudioOutcomeLibraryGenerateService);
-        expect(() => jobs.start(wasmPath, {})).toThrow("WASM inspection-only diagnostic");
-        expect(jobs.listForProject(wasmPath)).toEqual([]);
+        const cases: readonly [string | undefined, RegExp][] = [
+            [JSON.stringify(compatible), /cannot generate an Outcome Library/],
+            [undefined, /no compatible PokieWasmComponentManifest sidecar/],
+            ["{", /sidecar at/],
+            [JSON.stringify({...compatible, schemaVersion: "2.0.0"}), /not compatible with this POKIE build/],
+        ];
+        for (const [contents, expected] of cases) {
+            if (contents === undefined) fs.rmSync(sidecar, {force: true});
+            else fs.writeFileSync(sidecar, contents);
+            expect(() => jobs.start(wasmPath, {})).toThrow(expected);
+            await expect(jobs.resumeForProject(wasmPath, "checkpoint")).rejects.toThrow(expected);
+            expect(jobs.listForProject(wasmPath)).toEqual([]);
+        }
         expect(generate).not.toHaveBeenCalled();
     });
 
