@@ -126,7 +126,7 @@ test("PC-12 browser parity's executable fixture preflight binds Studio and examp
 
 test("PC-12 browser parity compares canonical screenshots as pixels, with an anti-aliasing tolerance", () => {
     const matching = png(2, 1, Buffer.from([255, 255, 0, 255, 0, 255, 0, 255]));
-    assert.deepEqual(comparePlayerScreenshots(matching, matching), {width: 2, height: 1, changedRatio: 0, meanDifference: 0});
+    assert.deepEqual(comparePlayerScreenshots(matching, matching), {width: 2, height: 1, hostHeightDelta: 0, changedRatio: 0, meanDifference: 0});
 
     const divergent = png(2, 1, Buffer.from([0, 0, 255, 255, 0, 255, 0, 255]));
     assert.throws(() => comparePlayerScreenshots(matching, divergent), /screenshot diverged/);

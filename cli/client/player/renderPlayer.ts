@@ -21,6 +21,11 @@ export const PLAYER_PRESENTATION_STYLE_ID = "pokie-canonical-player-presentation
 
 const PLAYER_PRESENTATION_CSS = `
 .pokie-player { max-width: 100%; min-width: 0; color: #212529; font-family: system-ui, sans-serif; line-height: normal; }
+.pokie-player h2 { margin: 0 0 .5rem; font-size: 1rem; font-weight: 700; line-height: normal; }
+.pokie-player dl { margin: 0 0 1rem; }
+.pokie-player dt { font-weight: 700; }
+.pokie-player dd { margin: 0; }
+.pokie-player details { margin-bottom: 1rem; }
 .pokie-player-grid-scroll { max-width: 100%; overflow-x: auto; }
 .player-grid { border-collapse: collapse; margin-bottom: 1rem; max-width: 100%; }
 .player-reel { vertical-align: top; padding: 0; }
@@ -497,6 +502,13 @@ export function renderBetInfo(el: HTMLElement, availableBets: number[], currentB
 // invented single "base" choice). Clicking a mode other than the round's own current one calls
 // onSelectMode(modeId), wired the same way onSelectBet is -- see renderBetInfo above.
 export function renderModeInfo(el: HTMLElement, availableModeIds: string[], currentModeId: string | undefined, onSelectMode: (modeId: string) => void): void {
+    // A generic RoundArtifact can name its implicit engine mode (for example "base") even when
+    // its session never exposed a bet-mode selector. That diagnostic/default must not create a
+    // player-facing affordance on Studio that a VideoSlot wire consumer cannot render.
+    if (availableModeIds.length === 0) {
+        clearChildren(el);
+        return;
+    }
     renderOptionsRow(
         el,
         "player-mode",
