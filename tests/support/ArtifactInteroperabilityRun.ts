@@ -187,3 +187,66 @@ export class ArtifactInteroperabilityRun {
         return `sha256:${digest.digest("hex")}`;
     }
 }
+
+/**
+ * Combines the independently executed CLI and Studio ledgers without adding
+ * a synthetic matrix row.  The merger only copies records the runners have
+ * already persisted, which keeps the checked-in PC-14 result tied to actual
+ * operations rather than a second manually maintained assertion list.
+ */
+export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[], outputPath: string): void {
+    const runs = inputPaths.map((inputPath) => {
+        const raw = fs.readFileSync(inputPath, "utf-8");
+        const parsed = JSON.parse(raw) as {readonly rows: unknown[]; readonly scenario_results: unknown[]};
+        return {inputPath, raw, parsed};
+    });
+    const classify = (fragments: readonly string[]) => ({
+        "operation_rows": runs.flatMap((run) => run.parsed.rows)
+            .filter((row) => isMatchingRecord(row, fragments))
+            .map((row) => recordId(row))
+            .sort(),
+        "lifecycle_outcomes": runs.flatMap((run) => run.parsed.scenario_results)
+            .filter((scenario) => isMatchingRecord(scenario, fragments))
+            .map((scenario) => recordId(scenario))
+            .sort(),
+        "runner_outputs": runs.filter((run) => {
+            const records = [...run.parsed.rows, ...run.parsed.scenario_results];
+            return records.some((record) => isMatchingRecord(record, fragments));
+        }).map((run) => path.basename(run.inputPath)).sort(),
+    });
+    fs.writeFileSync(outputPath, `${JSON.stringify({
+        "schema_version": 3,
+        "step_id": "PC-14",
+        "generated_by": "ArtifactInteroperabilityRun.mergeArtifactInteroperabilityRuns",
+        "result_contract": {
+            emission: "This result contains only records emitted after real CLI and Studio artifact operations complete; it has no inferred matrix rows.",
+            "path_redaction": "run-artifacts paths are deterministic redactions of fresh runner roots and retain SHA-256 identities.",
+            "unsupported_boundaries": "An unavailable boundary is retained only after its resolved public owner returns a diagnostic and recovery.",
+        },
+        "runner_inputs": runs.map((run) => ({
+            file: path.basename(run.inputPath),
+            sha256: `sha256:${crypto.createHash("sha256").update(run.raw).digest("hex")}`,
+            rows: run.parsed.rows.length,
+            scenarios: run.parsed.scenario_results.length,
+        })),
+        rows: runs.flatMap((run) => run.parsed.rows),
+        "scenario_results": runs.flatMap((run) => run.parsed.scenario_results),
+        "systemic_class_audits": [
+            {class: "shared conversion diagnostic parity", "derived_from": classify(["blueprint-build", "wasm-boundary", "wasm-outcome"])},
+            {class: "provenance and freshness binding", "derived_from": classify(["provenance", "replay", "drift", "configuration"])},
+            {class: "durable publication ownership", "derived_from": classify(["cancellation", "recovery", "borrowed", "destination"])},
+        ],
+    }, null, 2)}\n`);
+}
+
+function isMatchingRecord(record: unknown, fragments: readonly string[]): record is {readonly id: string} {
+    if (typeof record !== "object" || record === null || !("id" in record)) return false;
+    const candidate = record as {readonly id: unknown};
+    const id = candidate.id;
+    return typeof id === "string" && fragments.some((fragment) => id.includes(fragment));
+}
+
+function recordId(record: unknown): string {
+    if (typeof record !== "object" || record === null || !("id" in record) || typeof record.id !== "string") throw new Error("PC-14 runner emitted a record without an id.");
+    return record.id;
+}

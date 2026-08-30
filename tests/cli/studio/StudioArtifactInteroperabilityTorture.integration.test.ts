@@ -5,7 +5,7 @@ import {type GameBlueprint} from "pokie";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {StudioOutcomeLibraryGenerateService} from "../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {StudioStakeEngineExportService} from "../../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
-import {ArtifactInteroperabilityRun} from "../../support/ArtifactInteroperabilityRun.js";
+import {ArtifactInteroperabilityRun, mergeArtifactInteroperabilityRuns} from "../../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
 
@@ -109,7 +109,11 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             id: "studio-outcome-library-stake-export", artifactKind: "outcomeLibrary", operation: "export", sourcePath: path.join(packagePath, mode.bundleDir),
             producedPath: stakePath, owner: "StudioStakeEngineExportService", result: "published", observations: [{surface: "studio-api", owner: "StudioStakeEngineExportService", result: "status ok"}],
         });
-        const emittedEvidencePath = path.join(workDir, "pc-14-studio-real-artifact-result.json");
+        const evidenceDirectory = process.env.PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR;
+        if (evidenceDirectory !== undefined) fs.mkdirSync(evidenceDirectory, {recursive: true});
+        const emittedEvidencePath = evidenceDirectory === undefined
+            ? path.join(workDir, "pc-14-studio-real-artifact-result.json")
+            : path.join(evidenceDirectory, "studio-real-artifact-result.json");
         evidence.write(emittedEvidencePath);
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
             expect.objectContaining({id: "studio-blueprint-build", "source_path": "run-artifacts/source.blueprint.json", "produced_path": "run-artifacts/package"}),
@@ -123,5 +127,10 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: {"source_identity": string; "produced_identity": string | null}[]}).rows).toEqual(expect.arrayContaining([
             expect.objectContaining({"source_identity": expect.stringMatching(/^sha256:/), "produced_identity": expect.stringMatching(/^sha256:/)}),
         ]));
+        const persistedResultPath = process.env.PC14_INTEROPERABILITY_PERSISTED_RESULT;
+        const cliEvidencePath = evidenceDirectory === undefined ? undefined : path.join(evidenceDirectory, "cli-real-artifact-result.json");
+        if (persistedResultPath !== undefined && cliEvidencePath !== undefined && fs.existsSync(cliEvidencePath)) {
+            mergeArtifactInteroperabilityRuns([cliEvidencePath, emittedEvidencePath], persistedResultPath);
+        }
     });
 });

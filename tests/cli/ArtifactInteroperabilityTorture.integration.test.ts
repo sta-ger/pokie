@@ -267,7 +267,16 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             assertions: ["replay stores the source library hash and selection algorithm"],
             observations: [{route: "pokie replay", result: "public replay output is portable and exact"}],
         });
-        const emittedEvidencePath = path.join(workDir, "pc-14-cli-real-artifact-result.json");
+        // PC-14's checked-in result is deliberately emitted by this runner,
+        // not maintained as a second hand-written matrix.  Normal test runs
+        // keep their result in the temporary root; the evidence refresh
+        // command supplies the destination below and commits that exact
+        // redacted execution record.
+        const evidenceDirectory = process.env.PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR;
+        if (evidenceDirectory !== undefined) fs.mkdirSync(evidenceDirectory, {recursive: true});
+        const emittedEvidencePath = evidenceDirectory === undefined
+            ? path.join(workDir, "pc-14-cli-real-artifact-result.json")
+            : path.join(evidenceDirectory, "cli-real-artifact-result.json");
         evidence.write(emittedEvidencePath);
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
             expect.objectContaining({id: "blueprint-build-package", "source_path": "run-artifacts/matrix.blueprint.json", "produced_path": "run-artifacts/matrix-package"}),
