@@ -209,6 +209,15 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const planner = new ArtifactConversionPlanner();
         const unavailable = planner.plan(wasm, "outcomeLibrary");
         expect(unavailable).toMatchObject({status: "unavailable", diagnostic: {code: "unsupported-boundary"}});
-        expect(describeUnsupportedProjectOperation(wasm, "outcomeSource.simulate")?.message).toContain("Next:");
+        const operationDiagnostic = describeUnsupportedProjectOperation(wasm, "outcomeSource.simulate");
+        // This is the concrete diagnostic record an unavailable CLI or Studio
+        // route retains.  `recovery` is structured by the shared owner; it is
+        // not reconstructed from a command-specific error string.
+        expect(operationDiagnostic).toMatchObject({
+            detectedType: "wasm",
+            operation: "outcomeSource.simulate",
+            recovery: "Inspect the compatible manifest or use the original Blueprint or POKIE game package where runnable or convertible source is required.",
+        });
+        expect(operationDiagnostic?.message).toContain("Next:");
     });
 });

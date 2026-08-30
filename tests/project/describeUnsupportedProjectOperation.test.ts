@@ -46,6 +46,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: SIM_OPERATION,
             missingCapability: "runtime.execute",
             alternatives: ["tsPackage"],
+            recovery: expect.stringContaining('Run "pokie inspect <path>"'),
             message: expect.stringContaining("POKIE game package"),
         });
         expect(diagnostic?.message).toContain('Run "pokie inspect <path>"');
@@ -67,6 +68,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: WASM_EXPORT_OPERATION,
             missingCapability: "wasm.export",
             alternatives: [],
+            recovery: expect.stringContaining('Run "pokie inspect <path>"'),
             message: expect.stringContaining("POKIE cannot build a WASM component for any project yet."),
         });
     });
@@ -97,6 +99,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: OUTCOME_SOURCE_SAMPLE_OPERATION,
             missingCapability: "outcomeSource.sample",
             alternatives: ["outcomeLibrary"],
+            recovery: expect.stringContaining('Run "pokie inspect <path>"'),
             message: expect.stringContaining("Outcome Library"),
         });
 
@@ -106,6 +109,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: OUTCOME_SOURCE_SIMULATE_OPERATION,
             missingCapability: "outcomeSource.sample",
             alternatives: ["outcomeLibrary"],
+            recovery: expect.stringContaining('Run "pokie inspect <path>"'),
             message: expect.stringContaining("Outcome Library"),
         });
 
@@ -115,6 +119,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: OUTCOME_SOURCE_SERVE_OPERATION,
             missingCapability: "outcomeSource.sample",
             alternatives: ["outcomeLibrary"],
+            recovery: expect.stringContaining('Run "pokie inspect <path>"'),
             message: expect.stringContaining("Outcome Library"),
         });
     });
@@ -134,6 +139,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: OUTCOME_SOURCE_DIFF_OPERATION,
             missingCapability: "outcomeSource.read",
             alternatives: ["outcomeLibrary", "stakeAdapter"],
+            recovery: expect.stringContaining('Run "pokie inspect <path>"'),
             message: expect.stringContaining("Outcome Library or Stake Engine export"),
         });
     });
@@ -147,6 +153,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: WASM_INSPECT_OPERATION,
             missingCapability: "wasm.manifest.read",
             alternatives: ["wasm"],
+            recovery: expect.stringContaining('Run "pokie inspect <path>"'),
             message: expect.stringContaining("POKIE WASM component"),
         });
     });
@@ -160,6 +167,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: WASM_PACKAGING_PREFLIGHT_OPERATION,
             missingCapability: "runtime.execute",
             alternatives: ["tsPackage"],
+            recovery: expect.stringContaining("original Blueprint or POKIE game package"),
             message: expect.stringContaining("POKIE game package"),
         });
     });
@@ -174,6 +182,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: CERTIFICATION_BUILD_OPERATION,
             missingCapability: "outcomeLibrary.read",
             alternatives: ["outcomeLibrary"],
+            recovery: expect.stringContaining('Run "pokie inspect <path>"'),
             message: expect.stringContaining("Outcome Library"),
         });
 
