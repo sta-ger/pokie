@@ -29,6 +29,32 @@ describe("ArtifactConversionPlanner", () => {
         }
     });
 
+    it("can exclude one concrete runtime cache without excluding executable dependencies", () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-artifact-binding-cache-"));
+        const runtime = path.join(directory, "runtime");
+        const packageRoot = path.join(directory, "package");
+        const cache = path.join(runtime, "node_modules", ".cache");
+        const executableDependency = path.join(runtime, "node_modules", "dependency", "index.js");
+        try {
+            fs.mkdirSync(cache, {recursive: true});
+            fs.mkdirSync(path.dirname(executableDependency), {recursive: true});
+            fs.mkdirSync(path.join(packageRoot, "node_modules"), {recursive: true});
+            fs.writeFileSync(path.join(packageRoot, "index.js"), "export default 1;");
+            fs.writeFileSync(executableDependency, "module.exports = 1;");
+            fs.writeFileSync(path.join(cache, "jest"), "first");
+            fs.symlinkSync(runtime, path.join(packageRoot, "node_modules", "pokie"), "dir");
+            const options = {ignoredDirectoryPaths: [path.join(packageRoot, "node_modules", "pokie", "node_modules", ".cache")]};
+            const prepared = computeArtifactInputBindingHash([packageRoot], options);
+
+            fs.writeFileSync(path.join(cache, "jest"), "second");
+            expect(computeArtifactInputBindingHash([packageRoot], options)).toBe(prepared);
+            fs.writeFileSync(executableDependency, "module.exports = 2;");
+            expect(computeArtifactInputBindingHash([packageRoot], options)).not.toBe(prepared);
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
     it("models raw generated JSON as a non-bundle file publication", () => {
         const source = resolveArtifactIdentity(project("tsPackage"));
         const plan = planner.planRawOutcomeLibraryJsonPublication(source, "/exports/generated-outcomes.json");

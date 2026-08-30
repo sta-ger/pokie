@@ -78,11 +78,28 @@ export function computeArtifactConfigurationHash(contents: string | Buffer): str
  */
 export function computeArtifactInputBindingHash(
     inputPaths: readonly string[],
-    options: {readonly ignoredDirectoryNames?: readonly string[]} = {},
+    options: {
+        /** Ignore only these exact directory paths (including their contents). */
+        readonly ignoredDirectoryPaths?: readonly string[];
+        /** @deprecated Exact paths are safer for prepared executable inputs. */
+        readonly ignoredDirectoryNames?: readonly string[];
+    } = {},
 ): string {
     const hash = crypto.createHash("sha256");
     const seen = new Set<string>();
     const ignoredDirectoryNames = new Set(options.ignoredDirectoryNames);
+    // Resolve symlinks here as well as while visiting.  Generated packages
+    // link their local `pokie` dependency to a live runtime, so the configured
+    // cache path must still identify that one directory after traversal reaches
+    // the link target.
+    const ignoredDirectoryPaths = new Set((options.ignoredDirectoryPaths ?? []).flatMap((directory) => {
+        const resolved = path.resolve(directory);
+        try {
+            return [resolved, fs.realpathSync(resolved)];
+        } catch {
+            return [resolved];
+        }
+    }));
     const visit = (inputPath: string): void => {
         const resolved = path.resolve(inputPath);
         if (seen.has(resolved)) return;
@@ -94,6 +111,10 @@ export function computeArtifactInputBindingHash(
                 hash.update(`symlink:${fs.readlinkSync(resolved)}\0`);
                 visit(fs.realpathSync(resolved));
             } else if (stat.isDirectory()) {
+                if (ignoredDirectoryPaths.has(resolved)) {
+                    hash.update("ignored-directory-path\0");
+                    return;
+                }
                 hash.update("directory\0");
                 for (const entry of fs.readdirSync(resolved).sort()) {
                     if (ignoredDirectoryNames.has(entry)) {
