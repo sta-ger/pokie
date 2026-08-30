@@ -253,6 +253,16 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const proof = JSON.parse(fs.readFileSync(proofPath, "utf-8")) as {libraryId: string; libraryHash: string; modeName: string; indexHash: string};
         expect(proof).toMatchObject({libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash, modeName: "base"});
         expect(proof.indexHash).toMatch(/^sha256:/);
+        evidence.recordScenario({
+            id: "exact-source-provenance", sourcePath: bundlePath, producedPath: proofPath,
+            result: "simulation, replay, certification, and fairness retain the generated bundle game, library id, and library hash",
+            surface: "cli", owner: "SimCommand / ReplayCommand / CertificationCommand / FairnessCommand",
+        });
+        evidence.recordScenario({
+            id: "portable-exact-outcome-replay", sourcePath: bundlePath, producedPath: replayPath,
+            result: "seeded outcome-library replay records the source library hash and derived-round-seed-v1 selection algorithm",
+            surface: "cli", owner: "ReplayCommand",
+        });
         const emittedEvidencePath = path.join(workDir, "pc-14-cli-real-artifact-result.json");
         evidence.write(emittedEvidencePath);
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
@@ -273,6 +283,11 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(await new ParCommand(POKIE_VERSION).run(["import", generatedWorkbookPath, "--out", path.join(workDir, "generated-import.blueprint.json")])).toBe(0);
         const generatedEvidence = JSON.parse(fs.readFileSync(path.join(workDir, "generated-import.blueprint.json.conversion-evidence.json"), "utf-8"));
         expect(generatedEvidence.losslessEligible).toBe(false);
+        evidence.recordScenario({
+            id: "generated-reel-non-lossless", sourcePath: generatedBlueprintPath, producedPath: generatedWorkbookPath,
+            result: "generated reel provenance is retained but the imported PAR evidence marks the round trip non-lossless",
+            surface: "cli", owner: "ParCommand",
+        });
 
         const source = await resolver.resolve(blueprintPath);
         if (source === undefined) throw new Error("Expected the generated Blueprint to resolve.");
@@ -281,6 +296,11 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         fs.writeFileSync(blueprintPath, JSON.stringify({...blueprint, manifest: {...blueprint.manifest, version: "2.0.0"}}));
         await expect(registry.executePlan(stalePlan, source, staleDestination)).rejects.toThrow(/source configuration.*changed|recognized source changed/i);
         expect(fs.existsSync(staleDestination)).toBe(false);
+        evidence.recordScenario({
+            id: "configuration-drift", sourcePath: blueprintPath,
+            result: "prepared package publication rejects the changed source before creating its destination",
+            surface: "library", owner: "ArtifactBuilderRegistry",
+        });
 
         const occupiedDestination = path.join(workDir, "occupied-package");
         const freshSource = await resolver.resolve(blueprintPath);
@@ -290,6 +310,11 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         fs.writeFileSync(path.join(occupiedDestination, "borrowed.txt"), "keep");
         await expect(registry.executePlan(destinationPlan, freshSource, occupiedDestination)).rejects.toThrow(/destination changed|stale or invalid/i);
         expect(fs.readFileSync(path.join(occupiedDestination, "borrowed.txt"), "utf-8")).toBe("keep");
+        evidence.recordScenario({
+            id: "borrowed-output-cleanup", sourcePath: blueprintPath, producedPath: occupiedDestination,
+            result: "destination drift rejects publication and preserves the caller-owned borrowed.txt",
+            surface: "library", owner: "ArtifactBuilderRegistry",
+        });
 
         const wasmPath = path.join(workDir, "matrix.wasm");
         fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
@@ -316,13 +341,32 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         });
         expect(operationDiagnostic?.message).toContain("Next:");
         if (operationDiagnostic?.recovery === undefined) throw new Error("Expected the public WASM diagnostic to include recovery.");
+        // Exercise the CLI owner too.  The emitted ledger must never promote a
+        // library-only diagnostic into a CLI observation without taking this
+        // real public route through the same resolved WASM artifact.
+        await expect(new SimCommand().run([wasmPath, "--rounds", "1"])).rejects.toMatchObject({
+            name: "UnsupportedProjectOperationError",
+            diagnostic: expect.objectContaining({
+                detectedType: "wasm",
+                operation: "sim",
+                recovery: operationDiagnostic.recovery,
+            }),
+        });
         evidence.recordUnavailable({
             id: "wasm-outcome-source-simulate", artifactKind: "wasmComponent", operation: "simulate", sourcePath: wasmPath,
-            owner: "describeUnsupportedProjectOperation", diagnostic: {
+            owner: "SimCommand / ArtifactOperationDiagnostic", diagnostic: {
                 code: "unsupported-project-operation", message: operationDiagnostic?.message ?? "",
                 recovery: operationDiagnostic.recovery,
             },
-            observations: [{surface: "library", owner: "describeUnsupportedProjectOperation", result: "resolved WASM diagnostic"}],
+            observations: [
+                {surface: "library", owner: "ArtifactOperationDiagnostic", result: "resolved WASM diagnostic"},
+                {surface: "cli", owner: "SimCommand", result: "rejected the same resolved WASM operation diagnostic"},
+            ],
+        });
+        evidence.recordScenario({
+            id: "wasm-boundary", sourcePath: wasmPath,
+            result: "the public simulation command rejects the resolved WASM component with the shared diagnostic and recovery",
+            surface: "cli", owner: "SimCommand / ArtifactOperationDiagnostic",
         });
         evidence.write(emittedEvidencePath);
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
@@ -330,6 +374,11 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 id: "wasm-outcome-source-simulate", status: "intentionally-unsupported", "source_path": "run-artifacts/matrix.wasm",
                 diagnostic: expect.objectContaining({code: "unsupported-project-operation"}),
             }),
+        ]));
+        expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {"scenario_results": {id: string; "source_path": string}[]}).scenario_results).toEqual(expect.arrayContaining([
+            expect.objectContaining({id: "configuration-drift", "source_path": "run-artifacts/matrix.blueprint.json"}),
+            expect.objectContaining({id: "borrowed-output-cleanup", "source_path": "run-artifacts/matrix.blueprint.json"}),
+            expect.objectContaining({id: "wasm-boundary", "source_path": "run-artifacts/matrix.wasm"}),
         ]));
     });
 });

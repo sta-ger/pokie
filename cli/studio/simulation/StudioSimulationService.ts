@@ -1,5 +1,5 @@
 import {
-    describeUnsupportedProjectOperation,
+    describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
     isWasmComponentFile,
     loadPokieGame,
@@ -401,7 +401,7 @@ export class StudioSimulationService {
     // terminal job/report/listing carries the real mode this run sampled, never just "whatever the caller
     // happened to ask for".
     private async runOutcomeSourceSampling(record: StudioSimulationJobRecord, project: PokieProject): Promise<void> {
-        const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_SOURCE_SIMULATE_OPERATION);
+        const diagnostic = describeUnavailableArtifactOperation(project, OUTCOME_SOURCE_SIMULATE_OPERATION);
         if (diagnostic !== undefined) {
             this.fail(record, new Error(diagnostic.message));
             return;

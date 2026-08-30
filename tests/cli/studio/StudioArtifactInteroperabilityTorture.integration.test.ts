@@ -49,6 +49,11 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         const cancelled = await generator.generate(packagePath, {mode: "base", stake: 1, signal: controller.signal});
         if (cancelled.status !== "cancelled") throw new Error("Expected a resumable Studio generation cancellation.");
         expect(fs.existsSync(path.join(packagePath, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR))).toBe(false);
+        evidence.recordScenario({
+            id: "studio-generation-cancellation", sourcePath: packagePath,
+            result: "cancelled generation leaves no bundle publication and returns the resumable checkpoint",
+            surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService",
+        });
 
         // A preview binds its destination. Occupying it after preflight must
         // reject before publication and preserve the caller-owned file.
@@ -63,9 +68,20 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             error: expect.stringMatching(/destination|preflight|changed|already exists/i),
         });
         expect(fs.readFileSync(path.join(packagePath, occupiedOutDir, "borrowed.txt"), "utf-8")).toBe("keep");
+        evidence.recordScenario({
+            id: "studio-destination-drift", sourcePath: packagePath, producedPath: path.join(packagePath, occupiedOutDir),
+            result: "prepared generation reports a conflict after destination occupancy and preserves borrowed.txt",
+            surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService",
+        });
         fs.rmSync(path.join(packagePath, occupiedOutDir), {recursive: true});
         const generated = await generator.generate(packagePath, {mode: "base", stake: 1, resumeFrom: cancelled.checkpoint});
         expect(generated.status).toBe("ok");
+        evidence.recordScenario({
+            id: "studio-generation-recovery", sourcePath: packagePath,
+            producedPath: path.join(packagePath, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR),
+            result: "the cancellation checkpoint resumes into a published Outcome Library after the conflicting borrowed destination is removed",
+            surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService",
+        });
 
         const registry = await generator.registry(packagePath);
         expect(registry).toMatchObject({status: "ok"});
@@ -92,6 +108,11 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
             expect.objectContaining({id: "studio-blueprint-build", "source_path": "run-artifacts/source.blueprint.json", "produced_path": "run-artifacts/package"}),
             expect.objectContaining({id: "studio-outcome-library-stake-export", "produced_path": "run-artifacts/package/stake"}),
+        ]));
+        expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {"scenario_results": {id: string; "produced_path": string | null}[]}).scenario_results).toEqual(expect.arrayContaining([
+            expect.objectContaining({id: "studio-generation-cancellation", "produced_path": null}),
+            expect.objectContaining({id: "studio-destination-drift", "produced_path": "run-artifacts/package/outcomelibrary"}),
+            expect.objectContaining({id: "studio-generation-recovery", "produced_path": "run-artifacts/package/outcomelibrary"}),
         ]));
     });
 });

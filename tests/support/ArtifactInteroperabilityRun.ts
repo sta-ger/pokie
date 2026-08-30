@@ -37,6 +37,18 @@ export type ArtifactInteroperabilityUnavailableRow = {
     readonly observations: readonly ArtifactInteroperabilityObservation[];
 };
 
+/** A lifecycle outcome is recorded by the runner at the point its assertion
+ * completes.  It deliberately carries real source/output paths just like an
+ * operation row, so a scenario cannot be represented by prose alone. */
+export type ArtifactInteroperabilityScenario = {
+    readonly id: string;
+    readonly sourcePath: string;
+    readonly producedPath?: string;
+    readonly result: string;
+    readonly surface: "cli" | "studio-api" | "studio-ui" | "library";
+    readonly owner: string;
+};
+
 /**
  * The PC-14 runners use this ledger rather than a hand-written matrix row.
  * Recording is deliberately post-condition based: an operation cannot appear
@@ -46,6 +58,7 @@ export type ArtifactInteroperabilityUnavailableRow = {
  */
 export class ArtifactInteroperabilityRun {
     private readonly rows: ArtifactInteroperabilityRunRow[] = [];
+    private readonly scenarios: ArtifactInteroperabilityScenario[] = [];
     private readonly rootPath: string;
 
     public constructor(rootPath: string) {
@@ -85,6 +98,13 @@ export class ArtifactInteroperabilityRun {
         });
     }
 
+    public recordScenario(scenario: ArtifactInteroperabilityScenario): void {
+        this.assertExists(scenario.sourcePath, "source");
+        if (scenario.producedPath !== undefined) this.assertExists(scenario.producedPath, "output");
+        if (scenario.result.length === 0) throw new Error(`${scenario.id} has no observed lifecycle result.`);
+        this.scenarios.push(scenario);
+    }
+
     public write(outputPath: string): void {
         const rows = [...this.rows]
             .sort((left, right) => left.id.localeCompare(right.id))
@@ -100,7 +120,16 @@ export class ArtifactInteroperabilityRun {
                 ...(row.diagnostic === undefined ? {} : {diagnostic: {...row.diagnostic}}),
                 observations: row.observations.map((observation) => ({...observation})),
             }));
-        fs.writeFileSync(outputPath, `${JSON.stringify({"schema_version": 1, rows}, null, 2)}\n`);
+        const scenarios = [...this.scenarios]
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((scenario) => ({
+                id: scenario.id,
+                "source_path": this.redact(scenario.sourcePath),
+                "produced_path": scenario.producedPath === undefined ? null : this.redact(scenario.producedPath),
+                "observable_result": scenario.result,
+                observation: {surface: scenario.surface, owner: scenario.owner},
+            }));
+        fs.writeFileSync(outputPath, `${JSON.stringify({"schema_version": 2, rows, "scenario_results": scenarios}, null, 2)}\n`);
     }
 
     private assertExists(artifactPath: string, role: "source" | "output"): void {
