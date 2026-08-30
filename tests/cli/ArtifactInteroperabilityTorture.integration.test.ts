@@ -1,4 +1,5 @@
 import fs from "fs";
+import {EventEmitter} from "events";
 import os from "os";
 import path from "path";
 import {
@@ -121,6 +122,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const importedStakeLibraryPath = path.join(workDir, "matrix-stake-imported-library");
         const simulationPath = path.join(workDir, "matrix-simulation.json");
         const replayPath = path.join(workDir, "matrix-replay.json");
+        const packageReplayPath = path.join(workDir, "matrix-package-replay.json");
         const certificationConfigPath = path.join(workDir, "matrix-certification.json");
         const certificationPath = path.join(workDir, "matrix-certification");
         const seedPath = path.join(workDir, "matrix-server-seed.txt");
@@ -243,6 +245,13 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(replay).toMatchObject({game: bundleManifest.game, outcomeSource: {
             libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash, selectionAlgorithm: "derived-round-seed-v1",
         }});
+        // Keep the other public replay class in the same execution record.
+        // A generated package can record a useful round artifact, but it has
+        // no immutable Outcome Library identity and must never be advertised
+        // as the portable/exact outcome-source replay above.
+        await new ReplayCommand().run([packagePath, "--round", "1", "--out", packageReplayPath]);
+        const packageReplay = JSON.parse(fs.readFileSync(packageReplayPath, "utf-8")) as {outcomeSource?: unknown};
+        expect(packageReplay.outcomeSource).toBeUndefined();
 
         // Keep an operation-level record produced by the public owners.  This
         // is intentionally written only after each command has completed: it
@@ -332,6 +341,62 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             surface: "cli", owner: "ReplayCommand",
             assertions: ["replay stores the source library hash and selection algorithm"],
             observations: [{route: "pokie replay", result: "public replay output is portable and exact"}],
+        });
+        evidence.recordScenario({
+            id: "package-replay-best-effort-classification", sourcePath: packagePath, producedPath: packageReplayPath,
+            result: "generated package replay has no Outcome Library identity and remains documented best-effort replay",
+            surface: "cli", owner: "ReplayCommand",
+            assertions: ["package replay descriptor omits outcomeSource provenance"],
+            observations: [{route: "pokie replay", result: "public package replay completed without portable outcome-source identity"}],
+        });
+
+        // This is an actual CLI cancellation/recovery boundary, rather than a
+        // scenario copied from the workflow suite.  The package is produced
+        // by BuildCommand, SIGINT is observed at the generator's real
+        // progress checkpoint, and resume consumes that persisted checkpoint.
+        const cancellationBlueprintPath = path.join(workDir, "matrix-cancellation.blueprint.json");
+        const cancellationPackagePath = path.join(workDir, "matrix-cancellation-package");
+        const cancellationOutputPath = path.join(workDir, "matrix-cancellation-library.json");
+        const cancellationCheckpointPath = path.join(workDir, "matrix-cancellation-checkpoint.json");
+        const cancellationStrip = (offset: number): string[] => Array.from({length: 20}, (_unused, index) => ((index + offset) % 3 === 0 ? "A" : "B"));
+        fs.writeFileSync(cancellationBlueprintPath, JSON.stringify({
+            manifest: {id: "matrix-cancellation", name: "Matrix Cancellation", version: "1.0.0"},
+            reels: 3, rows: 1, symbols: ["A", "B"], paytable: {A: {3: 5}},
+            reelStrips: [cancellationStrip(0), cancellationStrip(1), cancellationStrip(2)],
+        } satisfies GameBlueprint));
+        expect(await build.run([cancellationBlueprintPath, "--target", "tsPackage", "--out", cancellationPackagePath])).toBe(0);
+        const cancellationProcess = new EventEmitter() as unknown as NodeJS.Process;
+        let cancellationObserved = false;
+        (console.error as jest.Mock).mockImplementation((message: unknown) => {
+            if (!cancellationObserved && typeof message === "string" && message.includes("progress")) {
+                cancellationObserved = true;
+                cancellationProcess.emit("SIGINT");
+            }
+        });
+        const cancellingCommand = new OutcomeLibraryCommand(
+            POKIE_VERSION, undefined, undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, cancellationProcess,
+        );
+        expect(await cancellingCommand.run([
+            "generate", cancellationPackagePath, "--out", cancellationOutputPath,
+            "--resume", cancellationCheckpointPath, "--progress",
+        ])).toBe(130);
+        expect(cancellationObserved).toBe(true);
+        expect(fs.existsSync(cancellationOutputPath)).toBe(false);
+        expect(fs.existsSync(cancellationCheckpointPath)).toBe(true);
+        (console.error as jest.Mock).mockImplementation(() => undefined);
+        expect(await new OutcomeLibraryCommand(POKIE_VERSION).run([
+            "generate", cancellationPackagePath, "--out", cancellationOutputPath,
+            "--resume", cancellationCheckpointPath,
+        ])).toBe(0);
+        expect(fs.existsSync(cancellationOutputPath)).toBe(true);
+        expect(fs.existsSync(cancellationCheckpointPath)).toBe(false);
+        evidence.recordScenario({
+            id: "cli-generation-cancellation-recovery", sourcePath: cancellationPackagePath, producedPath: cancellationOutputPath,
+            result: "SIGINT cancellation leaves no partial raw library, then the saved checkpoint resumes into a published library and is removed",
+            surface: "cli", owner: "OutcomeLibraryCommand",
+            assertions: ["cancelled command returns 130 with no output and a checkpoint", "resume publishes output and removes stale checkpoint"],
+            observations: [{route: "pokie outcomelibrary generate --resume", result: "public CLI cancellation and recovery completed"}],
         });
         // PC-14's checked-in result is deliberately emitted by this runner,
         // not maintained as a second hand-written matrix.  Normal test runs

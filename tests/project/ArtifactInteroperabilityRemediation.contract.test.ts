@@ -130,6 +130,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(result.scenario_results.map((scenario) => scenario.id)).toEqual(expect.arrayContaining([
             "exact-source-provenance",
             "portable-exact-outcome-replay",
+            "package-replay-best-effort-classification",
+            "cli-generation-cancellation-recovery",
             "generated-reel-non-lossless",
             "configuration-drift",
             "borrowed-output-cleanup",
