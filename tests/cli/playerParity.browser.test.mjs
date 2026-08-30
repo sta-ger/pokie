@@ -10,7 +10,12 @@ import {
     comparePlayerRegions,
     comparePlayerScreenshots,
     exactCandidateConsumerManifest,
+    desktopViewport,
+    narrowViewport,
+    pc12FixtureId,
+    pc12FixtureSeed,
     studioLaunchArguments,
+    validatePc12FixtureContract,
 } from "../../scripts/pc-12-player-parity-browser.mjs";
 
 const region = {
@@ -72,6 +77,24 @@ test("PC-12 browser parity launches Studio through the public implicit-project f
         ["dist/cli/pokie.js", "/fixtures/same-game", "--no-open", "--host", "127.0.0.1", "--port", "32192"],
     );
     assert.equal(studioLaunchArguments("/fixtures/same-game", 32192).includes("studio"), false);
+});
+
+test("PC-12 browser parity's executable fixture preflight binds Studio and examples to one seeded free-games game", async () => {
+    const studioProject = resolve(process.cwd(), "tests/cli/fixtures/playable-game-with-free-games");
+    const supersedingProject = resolve(process.cwd(), "tests/cli/fixtures/playable-game-with-free-games-superseding");
+    const examplesRoot = "/home/stager/Work/sta-ger/pokie-examples";
+    const fixture = await validatePc12FixtureContract(studioProject, supersedingProject, examplesRoot);
+    expect(fixture).toEqual(expect.objectContaining({fixtureId: pc12FixtureId, seed: pc12FixtureSeed, project: studioProject, supersedingProject}));
+    expect(desktopViewport).toEqual({width: 1280, height: 800});
+    expect(narrowViewport).toEqual({width: 390, height: 844});
+
+    const execution = spawnSync(process.execPath, [resolve(process.cwd(), "scripts/pc-12-player-parity-browser.mjs"), "--fixture-preflight"], {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: {...process.env, PC_12_STUDIO_PROJECT: studioProject, PC_12_SUPERSEDING_PROJECT: supersedingProject, POKIE_EXAMPLES_PATH: examplesRoot},
+    });
+    expect(execution.status).toBe(0);
+    expect(JSON.parse(execution.stdout)).toEqual(expect.objectContaining({status: "ok", fixture: expect.objectContaining({fixtureId: pc12FixtureId, seed: pc12FixtureSeed})}));
 });
 
 test("PC-12 browser parity compares canonical screenshots as pixels, with an anti-aliasing tolerance", () => {

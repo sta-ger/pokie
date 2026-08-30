@@ -398,9 +398,8 @@ describe("canonical Player source reachability", () => {
         expect(fixturePage).toContain('src="/src/fixture-slot.ts"');
         expect(fixtureEntry).toContain("initializeUi(");
         expect(fixtureEntry).toContain("createFixtureSession");
-        expect(fixtureGame).toContain('FIXTURE_SEED = "fixture-round"');
-        expect(fixtureGame).toContain("new SwfgSession(");
-        expect(fixtureGame).toContain("new SymbolsCombinationsGenerator(");
+        expect(fixtureGame).toContain("FIXTURE_SEED = PC_12_FEATURED_ROUND_SEED");
+        expect(fixtureGame).toContain("createPc12FreeGamesFixtureSession(FIXTURE_SEED)");
         for (const legacyRenderer of [
             "renderReelsGrid(",
             "applyPersistentHighlights(",

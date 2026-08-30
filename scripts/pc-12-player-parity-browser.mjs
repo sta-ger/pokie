@@ -21,12 +21,32 @@ import WebSocket from "ws";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const canonicalPlayerSelector = '[data-pokie-player="canonical-v1"]';
+export const pc12FixtureSeed = "fixture-round";
+export const pc12FixtureId = "pc-12-free-games-fixture";
+export const desktopViewport = {width: 1280, height: 800};
+export const narrowViewport = {width: 390, height: 844};
 
 // Studio is launched through POKIE's public implicit-project form.  `studio` is an internal
 // dispatcher name, not a user-facing subcommand, so including it here makes an exact packed
 // candidate exit before its server can start.
 export function studioLaunchArguments(project, port) {
     return ["dist/cli/pokie.js", project, "--no-open", "--host", "127.0.0.1", "--port", String(port)];
+}
+
+export async function validatePc12FixtureContract(project, supersedingProject, examplesRoot) {
+    const [manifest, studioEntry, examplesEntry] = await Promise.all([
+        readFile(resolve(project, "package.json"), "utf8").then(JSON.parse),
+        readFile(resolve(project, "index.js"), "utf8"),
+        readFile(resolve(examplesRoot, "src/games/fixture-slot/index.ts"), "utf8"),
+    ]);
+    assert.equal(manifest.name, "playable-game-with-free-games", "Studio must use PC-12's deterministic free-games fixture package");
+    assert.notEqual(resolve(project), resolve(supersedingProject), "The project-switch fixture root must be distinct");
+    assert.match(studioEntry, /createPc12FreeGamesFixtureSession/, "Studio fixture must use the shared PC-12 free-games factory");
+    assert.match(studioEntry, /PC_12_FEATURED_ROUND_SEED/, "Studio fixture must default to the shared featured-round seed");
+    assert.match(examplesEntry, /createPc12FreeGamesFixtureSession/, "Examples must use the shared PC-12 free-games factory");
+    assert.match(examplesEntry, /PC_12_FEATURED_ROUND_SEED/, "Examples must use the shared featured-round seed");
+    assert.match(examplesEntry, /FIXTURE_SEED = PC_12_FEATURED_ROUND_SEED/, "Examples must expose the same seeded fixture identity");
+    return {fixtureId: pc12FixtureId, seed: pc12FixtureSeed, project: resolve(project), supersedingProject: resolve(supersedingProject)};
 }
 
 // Keep this list deliberately limited to the shared player.  Studio's page chrome and the examples'
@@ -319,6 +339,7 @@ export async function runPlayerParityBrowser() {
         throw new Error("PC_12_SUPERSEDING_PROJECT must differ from PC_12_STUDIO_PROJECT.");
     }
     const examplesSourceRoot = resolve(process.env.POKIE_EXAMPLES_PATH ?? "../pokie-examples");
+    const fixture = await validatePc12FixtureContract(project, supersedingProject, examplesSourceRoot);
     const evidence = resolve(process.env.PC_12_EVIDENCE_DIR ?? "docs/evidence/phase7-product-coherence/pc-12-player-parity/current-run");
     const profile = await mkdtemp(resolve(tmpdir(), "pokie-pc12-"));
     const studioPort = 32192;
@@ -362,6 +383,13 @@ export async function runPlayerParityBrowser() {
             await cdp.send("Page.navigate", {url});
             await waitFor(async () => (await evaluate("document.readyState")) === "complete", `page ${url}`);
         };
+        const setViewport = async (viewport) => {
+            await cdp.send("Emulation.setDeviceMetricsOverride", {...viewport, deviceScaleFactor: 1, mobile: viewport.width <= 480});
+            const actual = await evaluate("({width: window.innerWidth, height: window.innerHeight})");
+            assert.deepEqual(actual, viewport, `Browser must exercise the requested ${viewport.width}x${viewport.height} viewport`);
+            note(`VIEWPORT requested=${viewport.width}x${viewport.height} actual=${actual.width}x${actual.height}`);
+            return actual;
+        };
         const pointFor = async (label, selector = "button,a,[role=button]") => evaluate(`(() => {
             const node = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) =>
                 (item.textContent?.trim() === ${JSON.stringify(label)} || item.getAttribute("aria-label") === ${JSON.stringify(label)}) &&
@@ -378,6 +406,13 @@ export async function runPlayerParityBrowser() {
             await cdp.send("Input.dispatchMouseEvent", {type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1});
             note(`CLICK ${label}`);
         };
+        const fill = async (selector, value) => {
+            const found = await evaluate(`(() => { const input = document.querySelector(${JSON.stringify(selector)}); if (!input || input.getClientRects().length === 0) return false; input.focus(); return true; })()`);
+            if (!found) throw new Error(`Visible field ${JSON.stringify(selector)} was unavailable.`);
+            await cdp.send("Input.insertText", {text: value});
+            assert.equal(await evaluate(`document.querySelector(${JSON.stringify(selector)})?.value`), value, `Field ${selector} must receive its explicit fixture value`);
+            note(`FILL ${selector}=${value}`);
+        };
         const hover = async (label, selector) => {
             const point = await pointFor(label, selector);
             if (point === undefined) throw new Error(`Visible control ${JSON.stringify(label)} was unavailable for hover.`);
@@ -390,7 +425,8 @@ export async function runPlayerParityBrowser() {
             const image = await cdp.send("Page.captureScreenshot", {format: "png", clip: player});
             const bytes = Buffer.from(image.data, "base64");
             await writeFile(resolve(evidence, `${name}.png`), bytes);
-            return {bytes, checksum: checksum(bytes)};
+            const viewport = await evaluate("({width: window.innerWidth, height: window.innerHeight})");
+            return {bytes, checksum: checksum(bytes), viewport};
         };
         const settleAndCapture = async (name) => {
             await waitFor(async () => (await evaluate(playerSnapshotExpression())) !== undefined, `${name} player`);
@@ -517,15 +553,31 @@ export async function runPlayerParityBrowser() {
             }, "return to deterministic fixture project");
         };
 
-        note(`fixture project=${project}; examples fixture=${examplesUrl}; seed=fixture-round; round=find-free-games`);
+        const startSeededStudioSession = async (label = "New Play session") => {
+            await click("Show advanced details (seed)");
+            await fill('input[type="text"]', fixture.seed);
+            await click(label);
+        };
+
+        await setViewport(desktopViewport);
+        note(`fixture id=${fixture.fixtureId}; project=${fixture.project}; examples fixture=${examplesUrl}; seed=${fixture.seed}; round=find-free-games`);
         await navigate(examplesUrl);
         await click("Win");
         await waitFor(async () => (await evaluate(playerSnapshotExpression()))?.wins.length > 0, "examples winning round");
         await assertPlayerInteraction("examples", {featureLabel: "Free games", featureMenuLabel: "Scenarios"});
+        // Bet/mode affordances are exercised above. Reload before the comparable featured round so
+        // both hosts begin their feature search from the identical seeded initial session.
+        await navigate(examplesUrl);
+        await click("Scenarios");
+        await click("Free games");
+        await waitFor(async () => {
+            const snapshot = await evaluate(playerSnapshotExpression());
+            return snapshot?.features.length > 0 && snapshot.wins.length > 0;
+        }, "examples deterministic featured round");
         const exampleDesktop = await settleAndCapture("examples-desktop");
 
         await navigate(`${studioUrl}/#/project/play`);
-        await click("New Play session");
+        await startSeededStudioSession();
         await click("Find any win");
         await waitFor(async () => (await evaluate(playerSnapshotExpression()))?.wins.length > 0, "Studio winning round");
         await assertPlayerInteraction("Studio");
@@ -533,7 +585,7 @@ export async function runPlayerParityBrowser() {
         await waitFor(async () => await evaluate(`Boolean(document.querySelector(${JSON.stringify(canonicalPlayerSelector)} + " .player-features:not([hidden]) dd"))`), "Studio feature state");
         await assertStudioInspectorAndRecovery();
         await assertStudioPreparationProjectSwitch();
-        await click("New Play session");
+        await startSeededStudioSession();
         // Project switching gives us a pre-spin player, so obtain the deterministic featured result again
         // before capturing the comparable canonical region.
         await click("Find free games");
@@ -542,15 +594,18 @@ export async function runPlayerParityBrowser() {
         const desktopVisual = comparePlayerScreenshots(studioDesktop.bytes, exampleDesktop.bytes);
         note(`COMPARE desktop screenshot changed=${desktopVisual.changedRatio.toFixed(4)} mean=${desktopVisual.meanDifference.toFixed(2)}`);
 
-        await cdp.send("Emulation.setDeviceMetricsOverride", {width: 390, height: 844, deviceScaleFactor: 1, mobile: true});
+        await setViewport(narrowViewport);
         normalizedPlayerWidth = 320;
         await navigate(examplesUrl);
-        await click("Win");
         await click("Scenarios");
         await click("Free games");
+        await waitFor(async () => {
+            const snapshot = await evaluate(playerSnapshotExpression());
+            return snapshot?.features.length > 0 && snapshot.wins.length > 0;
+        }, "examples narrow deterministic featured round");
         const exampleMobile = await settleAndCapture("examples-mobile");
         await navigate(`${studioUrl}/#/project/play`);
-        await click("New Play session");
+        await startSeededStudioSession();
         await click("Find free games");
         const studioMobile = await settleAndCapture("studio-mobile");
         for (const [name, result] of [["examples-mobile", exampleMobile], ["studio-mobile", studioMobile]]) {
@@ -561,7 +616,7 @@ export async function runPlayerParityBrowser() {
         note(`COMPARE narrow screenshot changed=${mobileVisual.changedRatio.toFixed(4)} mean=${mobileVisual.meanDifference.toFixed(2)}`);
         await cdp.send("Emulation.clearDeviceMetricsOverride");
         await writeFile(resolve(evidence, "parity.json"), `${JSON.stringify({
-            fixture: {project, seed: "fixture-round", round: "winning featured round", exactConsumer: exactConsumer.resolvedExport}, browser: {desktop: [1280, 800], narrow: [390, 844]},
+            fixture: {id: fixture.fixtureId, project: fixture.project, seed: fixture.seed, round: "winning featured round", exactConsumer: exactConsumer.resolvedExport}, browser: {desktop: studioDesktop.viewport, narrow: studioMobile.viewport},
             comparison: {dom: "passed", computedStyle: "passed", layout: "passed", overflow: "passed", screenshot: {desktop: desktopVisual, narrow: mobileVisual}},
             screenshots: {
                 studioDesktop: studioDesktop.checksum, examplesDesktop: exampleDesktop.checksum,
@@ -583,7 +638,16 @@ export async function runPlayerParityBrowser() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-    runPlayerParityBrowser().catch((error) => {
+    const execute = process.argv.includes("--fixture-preflight")
+        ? async () => {
+            const project = process.env.PC_12_STUDIO_PROJECT;
+            const supersedingProject = process.env.PC_12_SUPERSEDING_PROJECT;
+            if (!project || !supersedingProject) throw new Error("PC_12_STUDIO_PROJECT and PC_12_SUPERSEDING_PROJECT must name the deterministic fixture roots.");
+            const fixture = await validatePc12FixtureContract(project, supersedingProject, resolve(process.env.POKIE_EXAMPLES_PATH ?? "../pokie-examples"));
+            process.stdout.write(`${JSON.stringify({status: "ok", fixture})}\n`);
+        }
+        : runPlayerParityBrowser;
+    execute().catch((error) => {
         process.stderr.write(`${error.stack ?? error}\n`);
         process.exitCode = 1;
     });
