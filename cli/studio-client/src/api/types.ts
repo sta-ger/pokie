@@ -103,15 +103,15 @@ export type ProjectDashboardContext =
     | {
           status: "artifact";
           projectRoot: string;
-          project: {type: StudioProjectType; rootPath: string; capabilities: StudioProjectCapability[]; provenance: string};
+          project: {type: Exclude<StudioProjectType, "wasm">; rootPath: string; capabilities: StudioProjectCapability[]; provenance: string};
           origin?: StudioProjectOrigin;
-          wasmPresentation?: {
-              label: string;
-              manifestCapability: StudioProjectCapability;
-              manifestCapabilityLabel: string;
-              inspectActionLabel: string;
-              inspectionSummary: string;
-          };
+      }
+    | {
+          status: "artifact";
+          projectRoot: string;
+          project: {type: "wasm"; rootPath: string; capabilities: StudioProjectCapability[]; provenance: string};
+          origin?: StudioProjectOrigin;
+          wasmPresentation: StudioWasmPresentation;
       }
     // `errorDetail` -- a failed Blueprint materialization's own raw npm diagnostic, kept separate from
     // `error`'s already-curated human message (see the server's own ProjectDashboardContext doc comment) --
@@ -249,24 +249,27 @@ export type StudioProjectOrigin = "managed" | "external";
 
 export type StudioProjectStatus = "ok" | "missing" | "unavailable";
 
+// The Studio server transports this view from WASM_PRODUCT_CONTRACT.  Keeping
+// it a required part of every WASM DTO prevents a client label/action fallback
+// from quietly redefining the inspection-only product boundary.
+export type StudioWasmPresentation = {
+    label: string;
+    manifestCapability: StudioProjectCapability;
+    manifestCapabilityLabel: string;
+    inspectActionLabel: string;
+    inspectionSummary: string;
+};
+
 // GET /api/home/projects/registry's own row shape -- see cli/studio/StudioProjectRegistryView.ts's own
 // doc comment. `status` is computed fresh at read time, never persisted.
-export type StudioProjectRegistryView = {
+type StudioProjectRegistryViewBase = {
     location: string;
     name: string;
-    type: StudioProjectType;
     capabilities: StudioProjectCapability[];
     origin: StudioProjectOrigin;
     lastOpenedAt: string;
     status: StudioProjectStatus;
     unavailableReason?: string;
-    wasmPresentation?: {
-        label: string;
-        manifestCapability: StudioProjectCapability;
-        manifestCapabilityLabel: string;
-        inspectActionLabel: string;
-        inspectionSummary: string;
-    };
     // The .xlsx PAR sheet workbook this project's own managed Blueprint was originally Applied and
     // first-saved from -- see cli/studio/StudioProjectRegistryEntry.ts's own doc comment. Undefined for
     // every project that didn't come from that flow.
@@ -276,17 +279,23 @@ export type StudioProjectRegistryView = {
     conversionEvidencePath?: string;
 };
 
+export type StudioProjectRegistryView =
+    | (StudioProjectRegistryViewBase & {type: Exclude<StudioProjectType, "wasm">})
+    | (StudioProjectRegistryViewBase & {type: "wasm"; wasmPresentation: StudioWasmPresentation});
+
 // POST /api/home/projects/registry/preview's own DTO — see
 // cli/studio/StudioProjectImportPreviewResult.ts's own doc comment. Never the result of anything being
 // registered -- purely a read-only "detect" step.
+type StudioRecognizedProjectImportPreview = {
+    status: "recognized";
+    location: string;
+    capabilities: StudioProjectCapability[];
+    suggestedName: string;
+};
+
 export type StudioProjectImportPreviewResult =
-    | {
-          status: "recognized";
-          location: string;
-          type: StudioProjectType;
-          capabilities: StudioProjectCapability[];
-          suggestedName: string;
-      }
+    | (StudioRecognizedProjectImportPreview & {type: Exclude<StudioProjectType, "wasm">})
+    | (StudioRecognizedProjectImportPreview & {type: "wasm"; wasmPresentation: StudioWasmPresentation})
     | {status: "unrecognized"; path: string};
 
 // POST /api/home/projects/registry/register's own DTO — see

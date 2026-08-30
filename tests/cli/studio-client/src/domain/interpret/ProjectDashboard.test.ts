@@ -117,6 +117,32 @@ describe("describeProjectHeader", () => {
             origin: undefined,
         });
     });
+
+    it("carries the server-provided WASM presentation into the inspection-only dashboard", () => {
+        const wasmPresentation = {
+            label: "WASM component (inspection-only)",
+            manifestCapability: "wasm.manifest.read",
+            manifestCapabilityLabel: "Inspect declared WASM component metadata",
+            inspectActionLabel: "Inspect this component",
+            inspectionSummary: "POKIE reads compatible component metadata only.",
+        };
+
+        expect(
+            describeProjectHeader({
+                status: "artifact",
+                projectRoot: "/a/component.wasm",
+                project: {type: "wasm", rootPath: "/a/component.wasm", capabilities: ["wasm.manifest.read"], provenance: "compatible sidecar"},
+                wasmPresentation,
+            }),
+        ).toEqual({
+            status: "artifact",
+            projectRoot: "/a/component.wasm",
+            type: "wasm",
+            capabilities: ["wasm.manifest.read"],
+            origin: undefined,
+            wasmPresentation,
+        });
+    });
 });
 
 describe("describeValidationSummary", () => {

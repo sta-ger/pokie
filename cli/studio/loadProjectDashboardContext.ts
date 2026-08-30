@@ -112,12 +112,20 @@ export async function loadProjectDashboardContext(
     if (artifact !== undefined) {
         const identity = await describeLocation(projectRoot).catch(() => undefined);
         assertDashboardLoadCurrent(options);
+        if (artifact.type === "wasm") {
+            return {
+                status: "artifact",
+                projectRoot: resolvedRoot,
+                project: artifact,
+                origin: identity?.origin,
+                wasmPresentation: wasmProductContractView(),
+            };
+        }
         return {
             status: "artifact",
             projectRoot: resolvedRoot,
             project: artifact,
             origin: identity?.origin,
-            ...(artifact.type === "wasm" ? {wasmPresentation: wasmProductContractView()} : {}),
         };
     }
 

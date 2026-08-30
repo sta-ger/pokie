@@ -5,6 +5,7 @@ import type {
     StudioProjectCapability,
     StudioProjectOrigin,
     StudioProjectType,
+    StudioWasmPresentation,
 } from "../../api/types";
 
 // Pure view-model transforms for the Project Dashboard — mirrors cli/client/interpretResponse.ts's
@@ -41,11 +42,27 @@ export type ProjectHeaderView =
     | {
           status: "artifact";
           projectRoot: string;
-          type: StudioProjectType;
+          type: Exclude<StudioProjectType, "wasm">;
           capabilities: StudioProjectCapability[];
           origin?: StudioProjectOrigin;
-          wasmPresentation?: Extract<ProjectDashboardContext, {status: "artifact"}>["wasmPresentation"];
+      }
+    | {
+          status: "artifact";
+          projectRoot: string;
+          type: "wasm";
+          capabilities: StudioProjectCapability[];
+          origin?: StudioProjectOrigin;
+          wasmPresentation: StudioWasmPresentation;
       };
+
+type WasmArtifactContext = Extract<ProjectDashboardContext, {status: "artifact"}> & {
+    project: {type: "wasm"; rootPath: string; capabilities: StudioProjectCapability[]; provenance: string};
+    wasmPresentation: StudioWasmPresentation;
+};
+
+function isWasmArtifactContext(context: Extract<ProjectDashboardContext, {status: "artifact"}>): context is WasmArtifactContext {
+    return context.project.type === "wasm";
+}
 
 const PROJECT_OPEN_FAILURE_MESSAGE =
     "We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.";
@@ -86,13 +103,22 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
         };
     }
     if (context.status === "artifact") {
+        if (isWasmArtifactContext(context)) {
+            return {
+                status: "artifact",
+                projectRoot: context.projectRoot,
+                type: "wasm",
+                capabilities: context.project.capabilities,
+                origin: context.origin,
+                wasmPresentation: context.wasmPresentation,
+            };
+        }
         return {
             status: "artifact",
             projectRoot: context.projectRoot,
             type: context.project.type,
             capabilities: context.project.capabilities,
             origin: context.origin,
-            wasmPresentation: context.wasmPresentation,
         };
     }
     return {
@@ -157,14 +183,19 @@ export const STAKE_ADAPTER_EXCHANGE_CAPABILITY: StudioProjectCapability = "stake
 // destination, but it cannot be loaded as a game or treated as a canonical outcome source.
 export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: StudioProjectCapability = "parWorkbook.exchange";
 
-export const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
+export const PROJECT_TYPE_LABEL: Record<Exclude<StudioProjectType, "wasm">, string> = {
     blueprint: "Game design",
     tsPackage: "Playable game",
     outcomeLibrary: "Game data library",
     stakeAdapter: "Game export",
-    wasm: "wasm",
     parWorkbook: "PAR spreadsheet",
 };
+
+export function describeProjectType(type: Exclude<StudioProjectType, "wasm">): string;
+export function describeProjectType(type: "wasm", wasmPresentation: StudioWasmPresentation): string;
+export function describeProjectType(type: StudioProjectType, wasmPresentation?: StudioWasmPresentation): string {
+    return type === "wasm" ? wasmPresentation!.label : PROJECT_TYPE_LABEL[type];
+}
 
 const CAPABILITY_LABEL: Record<string, string> = {
     "blueprint.build": "Edit and build this game",

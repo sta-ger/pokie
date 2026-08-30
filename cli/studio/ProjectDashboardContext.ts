@@ -47,9 +47,15 @@ export type ProjectDashboardContext =
     | {
           status: "artifact";
           projectRoot: string;
-          project: PokieProject;
+          project: Exclude<PokieProject, {type: "wasm"}>;
           origin?: StudioProjectOrigin;
-          wasmPresentation?: WasmProductContractView;
+      }
+    | {
+          status: "artifact";
+          projectRoot: string;
+          project: Extract<PokieProject, {type: "wasm"}>;
+          origin?: StudioProjectOrigin;
+          wasmPresentation: WasmProductContractView;
       }
     // `errorDetail` carries a failure's own raw technical diagnostic text, kept separate from `error`'s
     // plain-English summary -- currently only populated from a BlueprintMaterializationError's own

@@ -2,7 +2,7 @@ import {Button, Table, Text} from "@mantine/core";
 import type {StudioProjectOrigin} from "../../api/types";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
-    PROJECT_TYPE_LABEL,
+    describeProjectType,
     RUNTIME_EXECUTE_CAPABILITY,
     type ProjectHeaderView,
     type ProjectValidationView,
@@ -93,7 +93,7 @@ export function OverviewTab({
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Game format</Table.Th>
-                        <Table.Td>{header.type ? PROJECT_TYPE_LABEL[header.type] : "Unknown"}</Table.Td>
+                        <Table.Td>{header.type ? describeProjectType(header.type as Exclude<typeof header.type, "wasm">) : "Unknown"}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Added to Studio</Table.Th>

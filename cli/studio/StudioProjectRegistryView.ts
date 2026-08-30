@@ -10,10 +10,13 @@ export type StudioProjectStatus = "ok" | "missing" | "unavailable";
 // StudioProjectRegistryEntry plus its freshly-computed `status`, the read model a Home "Projects" surface
 // would render directly (name, type, origin, location for "show in folder", last-opened, status, and
 // capabilities as the project's own capability summary).
-export type StudioProjectRegistryView = StudioProjectRegistryEntry & {
+type StudioProjectRegistryViewBase = Omit<StudioProjectRegistryEntry, "type"> & {
     readonly status: StudioProjectStatus;
     // Computed on every list, never persisted: a stale sidecar must retain the
     // resolver's actionable reason rather than being flattened to "unavailable".
     readonly unavailableReason?: string;
-    readonly wasmPresentation?: WasmProductContractView;
 };
+
+export type StudioProjectRegistryView =
+    | (StudioProjectRegistryViewBase & {readonly type: Exclude<StudioProjectRegistryEntry["type"], "wasm">})
+    | (StudioProjectRegistryViewBase & {readonly type: "wasm"; readonly wasmPresentation: WasmProductContractView});

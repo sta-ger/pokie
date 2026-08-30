@@ -43,6 +43,17 @@ export function createDefaultStudioProjectRegistrationService(
 // fact, not resolution itself.
 const FILE_PROJECT_TYPES: ReadonlySet<ProjectType> = new Set(["blueprint", "parWorkbook", "wasm"]);
 
+function registryView(
+    entry: StudioProjectRegistryEntry,
+    status: StudioProjectRegistryView["status"],
+    unavailableReason?: string,
+): StudioProjectRegistryView {
+    if (entry.type === "wasm") {
+        return {...entry, type: "wasm", status, unavailableReason, wasmPresentation: wasmProductContractView()};
+    }
+    return {...entry, type: entry.type as Exclude<ProjectType, "wasm">, status, ...(unavailableReason === undefined ? {} : {unavailableReason})};
+}
+
 // Owns the registration lifecycle for both halves of "Persist managed and registered Studio Projects":
 //   - registerManaged: a project POKIE itself just created/built (Create/Init/Build from Home), living
 //     under the platform "POKIE Projects" convention — see PokiePathResolver.resolveIndependentProjectDirectory.
@@ -78,35 +89,21 @@ export class StudioProjectRegistrationService {
         const canonicalEntries = await Promise.all(entries.map(async (entry) => ({entry, location: await this.canonicalize(entry.location)})));
         const seenLocations = new Set<string>();
         const refreshed = await Promise.all(canonicalEntries.map(async ({entry, location}) => {
-            if (entry.type !== "wasm") return {...entry, location, status: this.pathExists(location) ? "ok" as const : "missing" as const};
-            if (!this.pathExists(location)) return {...entry, location, status: "missing" as const, wasmPresentation: wasmProductContractView()};
+            if (entry.type !== "wasm") return registryView({...entry, location}, this.pathExists(location) ? "ok" : "missing");
+            if (!this.pathExists(location)) return registryView({...entry, location}, "missing");
             try {
                 const resolved = await this.resolveRecognizedProject(location);
                 if (resolved === undefined) {
-                    return {
-                        ...entry,
-                        location,
-                        status: "unavailable" as const,
-                        unavailableReason: describeUnavailableWasmComponent(),
-                        wasmPresentation: wasmProductContractView(),
-                    };
+                    return registryView({...entry, location}, "unavailable", describeUnavailableWasmComponent());
                 }
-                return {
+                return registryView({
                     ...entry,
                     location: resolved.location,
                     type: resolved.project.type,
                     capabilities: resolved.project.capabilities,
-                    status: "ok" as const,
-                    wasmPresentation: wasmProductContractView(),
-                };
+                }, "ok");
             } catch (error) {
-                return {
-                    ...entry,
-                    location,
-                    status: "unavailable" as const,
-                    unavailableReason: error instanceof Error ? error.message : String(error),
-                    wasmPresentation: wasmProductContractView(),
-                };
+                return registryView({...entry, location}, "unavailable", error instanceof Error ? error.message : String(error));
             }
         }));
         return refreshed.flatMap((entry) => {
@@ -169,7 +166,7 @@ export class StudioProjectRegistrationService {
             this.assertRecordOpenedCurrent({...options, isCurrent: () => false});
         }
         this.assertRecordOpenedCurrent(options);
-        return {status: "ok", entry: {...entry, status: "ok"}};
+        return {status: "ok", entry: registryView(entry, "ok")};
     }
 
     public async remove(location: string): Promise<void> {
@@ -203,7 +200,7 @@ export class StudioProjectRegistrationService {
             lastOpenedAt: new Date().toISOString(),
         };
         await this.replace(entry, [...oldEntries, ...destinationEntries]);
-        return {status: "ok", entry: {...entry, status: "ok"}};
+        return {status: "ok", entry: registryView(entry, "ok")};
     }
 
     // The Import Project flow's own "detect" step — resolves `location` exactly like registerExternal
@@ -217,13 +214,16 @@ export class StudioProjectRegistrationService {
         if (resolved === undefined) {
             return {status: "unrecognized", path: await this.canonicalize(location)};
         }
-        return {
-            status: "recognized",
+        const preview = {
+            status: "recognized" as const,
             location: resolved.location,
             type: resolved.project.type,
             capabilities: resolved.project.capabilities,
             suggestedName: defaultProjectName(resolved.location, resolved.project.type),
         };
+        return resolved.project.type === "wasm"
+            ? {...preview, type: "wasm", wasmPresentation: wasmProductContractView()}
+            : {...preview, type: resolved.project.type as Exclude<ProjectType, "wasm">};
     }
 
     // A one-time, best-effort sync of Home's own recent-projects list (see
@@ -312,7 +312,7 @@ export class StudioProjectRegistrationService {
             conversionEvidencePath,
         };
         await this.replace(entry, await this.entriesAt(resolved.location));
-        return {status: "ok", entry: {...entry, status: "ok"}};
+        return {status: "ok", entry: registryView(entry, "ok")};
     }
 
     // ProjectTargetResolver intentionally preserves the spelling it was given.  The registry cannot:

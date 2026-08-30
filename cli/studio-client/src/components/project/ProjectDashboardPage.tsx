@@ -23,7 +23,7 @@ import {
     OUTCOME_LIBRARY_READ_CAPABILITY,
     OUTCOME_SOURCE_SAMPLE_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
-    PROJECT_TYPE_LABEL,
+    describeProjectType,
     RUNTIME_EXECUTE_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     type ProjectHeaderView,
@@ -303,10 +303,10 @@ function describeProjectName(header: ProjectHeaderView): string {
         return header.name;
     }
     if (header.status === "outcome-source") {
-        return PROJECT_TYPE_LABEL[header.type];
+        return describeProjectType(header.type as Exclude<typeof header.type, "wasm">);
     }
     if (header.status === "artifact") {
-        return PROJECT_TYPE_LABEL[header.type];
+        return header.type === "wasm" ? describeProjectType(header.type, header.wasmPresentation) : describeProjectType(header.type);
     }
     return "Project";
 }
@@ -976,8 +976,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                             )}
                             {activeTab === "overview" && header.status === "artifact" && (
                                 header.type === "wasm"
-                                    ? <Text>{header.wasmPresentation?.inspectionSummary}</Text>
-                                    : <Text>This {PROJECT_TYPE_LABEL[header.type].toLowerCase()} can be republished from Build/Export.</Text>
+                                    ? <Text>{header.wasmPresentation.inspectionSummary}</Text>
+                                    : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
                             {activeTab === "gameModel" && (
                             // GameModelTab owns all of its own fetch state locally (no page-level hook),
