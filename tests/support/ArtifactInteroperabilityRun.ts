@@ -298,6 +298,29 @@ export class ArtifactInteroperabilityRun {
             cursor = index + root.length;
             index = value.indexOf(root, cursor);
         }
+        if (chunks.length === 0) return this.normaliseRunnerTemporaryDirectory(value);
+        chunks.push(value.subarray(cursor));
+        return this.normaliseRunnerTemporaryDirectory(Buffer.concat(chunks));
+    }
+
+    /**
+     * A registry conversion can retain a PAR source path that was resolved by
+     * a neighbouring real-artifact runner rather than by this ledger's own
+     * root.  The only varying portion is the mkdtemp suffix; it is transport
+     * location, just like this.rootPath above, and is never artifact content.
+     */
+    private normaliseRunnerTemporaryDirectory(value: Buffer): Buffer {
+        const prefix = Buffer.from(`${path.dirname(this.rootPath)}${path.sep}pokie-artifact-torture-`);
+        const replacement = Buffer.from("<pc14-run-root>");
+        const chunks: Buffer[] = [];
+        let cursor = 0;
+        let index = value.indexOf(prefix, cursor);
+        while (index !== -1) {
+            chunks.push(value.subarray(cursor, index), replacement);
+            cursor = index + prefix.length;
+            while (cursor < value.length && (/[A-Za-z0-9]/).test(String.fromCharCode(value[cursor]!))) cursor += 1;
+            index = value.indexOf(prefix, cursor);
+        }
         if (chunks.length === 0) return value;
         chunks.push(value.subarray(cursor));
         return Buffer.concat(chunks);
