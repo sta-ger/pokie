@@ -150,15 +150,18 @@ describe("PC-14 artifact interoperability remediation contract", () => {
     });
 
     it("keeps actual artifact identities, owners, and only exercised observations", () => {
+        const identities = new Set<string>();
         for (const row of result.rows) {
             expect(row.source_path).toMatch(/^run-artifacts\//);
             expect(row.source_identity).toMatch(/^sha256:/);
+            identities.add(row.source_identity);
             expect(row.observable_result).not.toHaveLength(0);
             expect(row.observations).toBeDefined();
             expect(row.observations).not.toHaveLength(0);
             if (row.produced_path !== null) {
                 expect(row.produced_path).toMatch(/^run-artifacts\//);
                 expect(row.produced_identity).toMatch(/^sha256:/);
+                if (row.produced_identity !== null) identities.add(row.produced_identity);
             }
             // Planner-owned conversion boundaries retain their native
             // conversion diagnostic, while command and Studio operation
@@ -170,6 +173,14 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 recovery: expect.any(String),
             });
         }
+        for (const scenario of result.scenario_results) {
+            identities.add(scenario.source_identity);
+            if (scenario.produced_identity !== null) identities.add(scenario.produced_identity);
+        }
+        // The runner's identity must bind the emitted content, not merely a
+        // directory shape. The real PC-14 chain contains many independently
+        // generated files with the same layout but distinct bytes.
+        expect(identities.size).toBeGreaterThan(60);
         expect(result.rows.map((row) => row.id)).toEqual(expect.arrayContaining([
             "blueprint-build-package",
             "package-generate-raw-outcomes",

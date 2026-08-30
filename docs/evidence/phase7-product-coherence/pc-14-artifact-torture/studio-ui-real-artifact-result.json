@@ -5,9 +5,9 @@
     {
       "id": "studio-ui-blueprint-par-output-error-recovery",
       "source_path": "run-artifacts/studio-ui-edited.blueprint.json",
-      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "source_identity": "sha256:5e740edc945ae153dab7732c6ba5b3fcdeceef12d88b53c2e9ea769aee5c40b3",
       "produced_path": "run-artifacts/studio-ui-edited.par.xlsx",
-      "produced_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "produced_identity": "sha256:a2d0117779e6d7a79ecbc729e2228b78df29f3ae579a6882ba2b6b80f41a87a1",
       "observable_result": "the rendered Design Game editor saved an edited Blueprint, preserved an occupied caller-owned PAR destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
       "execution": {
         "surface": "studio-ui",
@@ -48,9 +48,9 @@
     {
       "id": "studio-ui-blueprint-runtime-workflows",
       "source_path": "run-artifacts/ui-route-slot.blueprint.json",
-      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "source_identity": "sha256:7dd4e8f93628b71fb724e65b99135e8cf781d801d37bb533ffb67d8abff4f181",
       "produced_path": "run-artifacts/tsPackage",
-      "produced_identity": "sha256:16ef7c43858938a7741c8182f42abd45328b311efe333c5ab29e66f1e0ccc16c",
+      "produced_identity": "sha256:061b8e62d1870fca7072e525d72789368a8f4b51815d0d6e3eaa455f3c3e10bf",
       "observable_result": "the rendered Studio dashboard opened the real CLI-produced package, emitted a real round artifact, and exported a completed simulation report",
       "execution": {
         "surface": "studio-ui",
@@ -95,9 +95,9 @@
     {
       "id": "studio-ui-outcome-source-certification-output-error-recovery",
       "source_path": "run-artifacts/tsPackage/outcomes/bundle",
-      "source_identity": "sha256:a06d094e0408ce9b1741c1e128b368dcaa91e2a2add8b3a70c52ed92b9e852c8",
+      "source_identity": "sha256:0e42fa1b5ae3f1c87c72ff6a8e049ce791e2b0ae350ee4ba6dc7c32b5e9621f2",
       "produced_path": "run-artifacts/tsPackage/outcomes/bundle/certification",
-      "produced_identity": "sha256:bc749efbef3234270f4f407b9bd433924f28efd1b2f216e16f0a9700126e0ef2",
+      "produced_identity": "sha256:d816fc200d7e90c27b69047d6b4d0643d5c81617e3bb6093b937f31912f458cb",
       "observable_result": "the rendered Outcome Source drew a recorded real outcome, while Certification rejected a missing source, recovered with the opened Outcome Library, and published inspectable certification evidence",
       "execution": {
         "surface": "studio-ui",
@@ -138,7 +138,7 @@
     {
       "id": "studio-ui-provably-fair-output-error-recovery",
       "source_path": "run-artifacts/tsPackage/outcomes/bundle",
-      "source_identity": "sha256:a06d094e0408ce9b1741c1e128b368dcaa91e2a2add8b3a70c52ed92b9e852c8",
+      "source_identity": "sha256:0e42fa1b5ae3f1c87c72ff6a8e049ce791e2b0ae350ee4ba6dc7c32b5e9621f2",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "the rendered Provably Fair workflow rejected a missing generated-artifact path, recovered with the real Outcome Library, and completed a generated proof verification",
@@ -177,9 +177,9 @@
     {
       "id": "studio-ui-stake-output-error-recovery",
       "source_path": "run-artifacts/tsPackage/outcomes/bundle",
-      "source_identity": "sha256:a06d094e0408ce9b1741c1e128b368dcaa91e2a2add8b3a70c52ed92b9e852c8",
+      "source_identity": "sha256:0e42fa1b5ae3f1c87c72ff6a8e049ce791e2b0ae350ee4ba6dc7c32b5e9621f2",
       "produced_path": "run-artifacts/studio-ui-stake",
-      "produced_identity": "sha256:845f608fa53f68b3b28532037d1fc494bbc4475bd740f23def1e5f2d739ae326",
+      "produced_identity": "sha256:f715d26dd1d78ccfc714779c1d97177d81d8d1946816b8e5c5fc643ba3bf4c89",
       "observable_result": "the rendered Build/Export Stake card preserved a caller-owned occupied destination, then published a real Stake export after the destination was corrected",
       "execution": {
         "surface": "studio-ui",

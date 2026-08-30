@@ -273,18 +273,33 @@ export class ArtifactInteroperabilityRun {
                 return;
             }
             digest.update(`file:${relativePath}:`);
-            // This identity is intentionally structural.  Public artifact
-            // writers retain timestamps, random publication IDs and absolute
-            // temporary paths; the separate operation assertions verify the
-            // actual content and consumers before a row is emitted.  Hashing
-            // layout here makes the committed, clean-process evidence a true
-            // byte-for-byte comparison without mistaking transport metadata
-            // for a different artifact operation.
-            digest.update(Buffer.alloc(0));
+            // Hash the real bytes as well as the artifact layout.  A runner
+            // root is deliberately random, and some public writers retain it
+            // in otherwise portable metadata; normalise only that path before
+            // hashing so the evidence can be regenerated in a clean process
+            // without reducing every same-shaped artifact to one identity.
+            digest.update(this.normaliseRunnerRoot(fs.readFileSync(entryPath)));
             digest.update("\n");
         };
         visit(artifactPath, ".");
         return `sha256:${digest.digest("hex")}`;
+    }
+
+    private normaliseRunnerRoot(value: Buffer): Buffer {
+        const root = Buffer.from(this.rootPath);
+        if (root.length === 0) return value;
+        const replacement = Buffer.from("<pc14-run-root>");
+        const chunks: Buffer[] = [];
+        let cursor = 0;
+        let index = value.indexOf(root, cursor);
+        while (index !== -1) {
+            chunks.push(value.subarray(cursor, index), replacement);
+            cursor = index + root.length;
+            index = value.indexOf(root, cursor);
+        }
+        if (chunks.length === 0) return value;
+        chunks.push(value.subarray(cursor));
+        return Buffer.concat(chunks);
     }
 
     private redactEmbeddedRunnerRoot(value: string): string {

@@ -6,7 +6,7 @@
       "artifact_kind": "fileSessionRepositoryRecord",
       "operation": "import",
       "source_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
-      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "source_identity": "sha256:59a8a55f57980d4a9cccbe69d35946fc7d0aed1d8970d90ea0edf50402747f50",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "FileSessionRepository.load",
@@ -28,9 +28,9 @@
       "artifact_kind": "managedOutcomeProjectsRegistry",
       "operation": "reuse",
       "source_path": "run-artifacts/package/outcomelibrary",
-      "source_identity": "sha256:afbc040fdfa908ef63c724cb4d4f054393f22bd557383f96e58a0cab4675ba4f",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "produced_path": "run-artifacts/.pokie/managed-outcome-projects.json",
-      "produced_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "produced_identity": "sha256:2cd4f8cb706bc491565f380e89bd7e22b87cc0895f2964861b68c86fe82cf6da",
       "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
       "systemic_classes": [
         "provenance-and-freshness-binding",
@@ -51,9 +51,9 @@
       "artifact_kind": "preparationStateMarker",
       "operation": "recover",
       "source_path": "run-artifacts/preparation/interrupted-package",
-      "source_identity": "sha256:c3410b6092b5d9f56de28d53a10c0094fe78a44fd48358b8c38d160d1815bcef",
+      "source_identity": "sha256:c16ec95fad555120ed5bdb40393c7ac65ff05bbcbda09f984b7e76afe1e9bc1e",
       "produced_path": "run-artifacts/preparation/interrupted-package/.pokie-prepare-state.json",
-      "produced_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "produced_identity": "sha256:8ef794895094198a29524a53ea57971383115880383b232ebb4db41958c00b56",
       "operation_owner": "GamePackagePreparer.prepare",
       "systemic_classes": [
         "durable-publication-ownership"
@@ -73,9 +73,9 @@
       "artifact_kind": "runtimeSession",
       "operation": "export",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:1be93d9e763f652cbcdb3b10c46d3f3988ea0af73786a3458b13438921b43f18",
+      "source_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
       "produced_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
-      "produced_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "produced_identity": "sha256:59a8a55f57980d4a9cccbe69d35946fc7d0aed1d8970d90ea0edf50402747f50",
       "operation_owner": "FileSessionRepository.save",
       "systemic_classes": [
         "durable-publication-ownership"
@@ -95,9 +95,9 @@
       "artifact_kind": "blueprint",
       "operation": "build",
       "source_path": "run-artifacts/source.blueprint.json",
-      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "source_identity": "sha256:d39612600e6cbc73489e4ad637ae6de54ebf51818a759bc53c5dd49f34e09d95",
       "produced_path": "run-artifacts/package",
-      "produced_identity": "sha256:1be93d9e763f652cbcdb3b10c46d3f3988ea0af73786a3458b13438921b43f18",
+      "produced_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
       "operation_owner": "StudioArtifactBuildService",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -117,9 +117,9 @@
       "artifact_kind": "externalDeploymentArtifact",
       "operation": "deploy",
       "source_path": "run-artifacts/package/outcomelibrary",
-      "source_identity": "sha256:afbc040fdfa908ef63c724cb4d4f054393f22bd557383f96e58a0cab4675ba4f",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "produced_path": "run-artifacts/package/deployment/local-json-example",
-      "produced_identity": "sha256:8340359fb0c3007479a2a88b1ebcc2c42d0fce65fcdfe08bc3ed13042aa83d9c",
+      "produced_identity": "sha256:d0d6157d55f36628b391b44c395cf537390636b16119eae7db1f00e6bfb87721",
       "operation_owner": "StudioDeploymentService.run",
       "systemic_classes": [
         "durable-publication-ownership"
@@ -139,7 +139,7 @@
       "artifact_kind": "studioOutcomeLibraryRegistryIndex",
       "operation": "inspect",
       "source_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
-      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "source_identity": "sha256:336e050759aa716685eb12baa33826f43e2180f98200810be2b0fe75db30e9c4",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StudioOutcomeLibraryGenerateService.registry",
@@ -161,9 +161,9 @@
       "artifact_kind": "studioOutcomeLibrarySelector",
       "operation": "export",
       "source_path": "run-artifacts/package/outcomelibrary",
-      "source_identity": "sha256:afbc040fdfa908ef63c724cb4d4f054393f22bd557383f96e58a0cab4675ba4f",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "produced_path": "run-artifacts/package/deployment/local-json-example",
-      "produced_identity": "sha256:8340359fb0c3007479a2a88b1ebcc2c42d0fce65fcdfe08bc3ed13042aa83d9c",
+      "produced_identity": "sha256:d0d6157d55f36628b391b44c395cf537390636b16119eae7db1f00e6bfb87721",
       "operation_owner": "StudioDeploymentService.run",
       "systemic_classes": [
         "provenance-and-freshness-binding"
@@ -183,9 +183,9 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "export",
       "source_path": "run-artifacts/package/outcomelibrary",
-      "source_identity": "sha256:afbc040fdfa908ef63c724cb4d4f054393f22bd557383f96e58a0cab4675ba4f",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "produced_path": "run-artifacts/package/stake",
-      "produced_identity": "sha256:845f608fa53f68b3b28532037d1fc494bbc4475bd740f23def1e5f2d739ae326",
+      "produced_identity": "sha256:0f18b5f4e0f574690407a2a592bebc0677204ef986ee9c25fff31921c2ecb862",
       "operation_owner": "StudioStakeEngineExportService",
       "systemic_classes": [],
       "status": "supported",
@@ -203,9 +203,9 @@
       "artifact_kind": "studioProjectRegistryEntry",
       "operation": "import",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:1be93d9e763f652cbcdb3b10c46d3f3988ea0af73786a3458b13438921b43f18",
+      "source_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
       "produced_path": "run-artifacts/studio-app-data/projects.json",
-      "produced_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "produced_identity": "sha256:021f8a28d09b5f1a5e1bca92bd7424f697ce6e64973b6569d644d6b17250815b",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
       "systemic_classes": [
         "durable-publication-ownership"
@@ -225,9 +225,9 @@
       "artifact_kind": "studioSymbolArtworkPng",
       "operation": "import",
       "source_path": "run-artifacts/symbol.png",
-      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "source_identity": "sha256:016777d7225e2367021e5af254179097e153ffe29d61ce49af3453e63e324c27",
       "produced_path": "run-artifacts/assets/symbols/symbol-1704164645000-i.png",
-      "produced_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "produced_identity": "sha256:016777d7225e2367021e5af254179097e153ffe29d61ce49af3453e63e324c27",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
       "systemic_classes": [
         "durable-publication-ownership"
@@ -247,7 +247,7 @@
       "artifact_kind": "wasmComponent",
       "operation": "replay",
       "source_path": "run-artifacts/studio-component.wasm",
-      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StudioReplayExecutionService / ArtifactOperationDiagnostic",
@@ -273,7 +273,7 @@
       "artifact_kind": "wasmComponent",
       "operation": "simulate",
       "source_path": "run-artifacts/studio-component.wasm",
-      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StudioSimulationService / ArtifactOperationDiagnostic",
@@ -299,7 +299,7 @@
       "artifact_kind": "wasmComponent",
       "operation": "replay",
       "source_path": "run-artifacts/studio-component.wasm",
-      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StudioServer / ArtifactOperationDiagnostic",
@@ -325,7 +325,7 @@
       "artifact_kind": "wasmComponent",
       "operation": "simulate",
       "source_path": "run-artifacts/studio-component.wasm",
-      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StudioServer / ArtifactOperationDiagnostic",
@@ -351,9 +351,9 @@
     {
       "id": "managed-reuse-sampling-policy-incompatibility",
       "source_path": "run-artifacts/package/outcomelibrary",
-      "source_identity": "sha256:afbc040fdfa908ef63c724cb4d4f054393f22bd557383f96e58a0cab4675ba4f",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "produced_path": "run-artifacts/.pokie/managed-outcome-projects.json",
-      "produced_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "produced_identity": "sha256:2cd4f8cb706bc491565f380e89bd7e22b87cc0895f2964861b68c86fe82cf6da",
       "observable_result": "the durable managed Outcome Library registry rejects reuse when the requested sampling policy differs, while retaining the compatible borrowed registration",
       "execution": {
         "surface": "library",
@@ -377,7 +377,7 @@
     {
       "id": "studio-artifact-http-preflight",
       "source_path": "run-artifacts/source.blueprint.json",
-      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "source_identity": "sha256:d39612600e6cbc73489e4ad637ae6de54ebf51818a759bc53c5dd49f34e09d95",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "Studio HTTP context, inspection, validation, target discovery, preflight, polling, cancellation cleanup, and restart resolve the same real Blueprint before publication",
@@ -440,9 +440,9 @@
     {
       "id": "studio-destination-drift",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:1be93d9e763f652cbcdb3b10c46d3f3988ea0af73786a3458b13438921b43f18",
+      "source_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
       "produced_path": "run-artifacts/package/outcomelibrary",
-      "produced_identity": "sha256:afbc040fdfa908ef63c724cb4d4f054393f22bd557383f96e58a0cab4675ba4f",
+      "produced_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "observable_result": "prepared generation reports a conflict after destination occupancy and preserves borrowed.txt",
       "execution": {
         "surface": "studio-api",
@@ -464,7 +464,7 @@
     {
       "id": "studio-generation-cancellation",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:1be93d9e763f652cbcdb3b10c46d3f3988ea0af73786a3458b13438921b43f18",
+      "source_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "cancelled generation leaves no bundle publication and returns the resumable checkpoint",
@@ -488,9 +488,9 @@
     {
       "id": "studio-generation-recovery",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:1be93d9e763f652cbcdb3b10c46d3f3988ea0af73786a3458b13438921b43f18",
+      "source_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
       "produced_path": "run-artifacts/package/outcomelibrary",
-      "produced_identity": "sha256:afbc040fdfa908ef63c724cb4d4f054393f22bd557383f96e58a0cab4675ba4f",
+      "produced_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "observable_result": "the cancellation checkpoint resumes into a published Outcome Library after the conflicting borrowed destination is removed",
       "execution": {
         "surface": "studio-api",
@@ -512,7 +512,7 @@
     {
       "id": "studio-managed-reuse-compatibility",
       "source_path": "run-artifacts/package/outcomelibrary",
-      "source_identity": "sha256:afbc040fdfa908ef63c724cb4d4f054393f22bd557383f96e58a0cab4675ba4f",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "Studio registry reuses only the matching managed library and classifies copied real libraries as stale for configuration/hash or POKIE-version drift and wrong for cross-game drift",
@@ -539,7 +539,7 @@
     {
       "id": "studio-simulation-replay-cancellation",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:1be93d9e763f652cbcdb3b10c46d3f3988ea0af73786a3458b13438921b43f18",
+      "source_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "Studio HTTP cancellation transitions real simulation and replay jobs to terminal cancelled states without retaining a report or replay descriptor",
@@ -584,7 +584,7 @@
     {
       "id": "studio-wasm-boundary",
       "source_path": "run-artifacts/studio-component.wasm",
-      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "Studio HTTP simulation/replay and direct outcome-source services reject the resolved WASM component before creating a job, each retaining its concrete shared diagnostic recovery",
