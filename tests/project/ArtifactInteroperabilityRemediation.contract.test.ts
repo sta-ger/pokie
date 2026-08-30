@@ -77,6 +77,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(result.runner_inputs).toEqual([
             expect.objectContaining({file: "cli-real-artifact-result.json", sha256: expect.stringMatching(/^sha256:/), rows: expect.any(Number), scenarios: expect.any(Number)}),
             expect.objectContaining({file: "studio-real-artifact-result.json", sha256: expect.stringMatching(/^sha256:/), rows: expect.any(Number), scenarios: expect.any(Number)}),
+            expect.objectContaining({file: "studio-ui-real-artifact-result.json", sha256: expect.stringMatching(/^sha256:/), rows: expect.any(Number), scenarios: expect.any(Number)}),
         ]);
         expect(result.rows).toHaveLength(result.runner_inputs.reduce((count, input) => count + input.rows, 0));
         expect(result.scenario_results).toHaveLength(result.runner_inputs.reduce((count, input) => count + input.scenarios, 0));
@@ -100,6 +101,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(script).toContain("fresh.equals(committed)");
         expect(script).toContain("ArtifactInteroperabilityTorture.integration.test.ts");
         expect(script).toContain("StudioArtifactInteroperabilityTorture.integration.test.ts");
+        expect(script).toContain("Pc14StudioUiInteroperability.test.tsx");
         expect(script).toContain("ArtifactInteroperabilityRemediation.contract.test.ts");
     });
 
@@ -194,6 +196,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             "studio-artifact-http-preflight",
             "studio-simulation-replay-cancellation",
             "studio-wasm-boundary",
+            "studio-ui-blueprint-workflow-navigation",
         ]));
         for (const audit of result.systemic_class_audits) {
             expect(audit.derived_from.operation_rows.length + audit.derived_from.lifecycle_outcomes.length).toBeGreaterThan(0);
@@ -250,6 +253,12 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         const conversionAudit = result.systemic_class_audits.find((audit) => audit.class === "shared conversion diagnostic parity");
         expect(conversionAudit?.derived_from.studio_routes).toEqual(expect.arrayContaining([
             "POST /api/project/artifacts/preview",
+        ]));
+        expect(conversionAudit?.derived_from.studio_ui_routes).toEqual(expect.arrayContaining([
+            "UI /project/:projectRoot/exportDeploy (Build/Export)",
+            "UI /project/:projectRoot/play (Play)",
+            "UI /project/:projectRoot/simulation (Simulation)",
+            "UI /project/:projectRoot/replay (Replay)",
         ]));
     });
 

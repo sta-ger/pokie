@@ -12,7 +12,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const evidenceDirectory = path.join(repositoryRoot, "docs", "evidence", "phase7-product-coherence", "pc-14-artifact-torture");
 const jestPath = path.join(repositoryRoot, "node_modules", "jest", "bin", "jest.js");
 const temporaryDirectory = path.join(repositoryRoot, "node_modules", ".cache", "pokie-tmp");
-const committedFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "interoperability-result.json"];
+const committedFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"];
 const writeCommittedEvidence = process.argv.includes("--write");
 
 mkdirSync(temporaryDirectory, {recursive: true});
@@ -45,6 +45,7 @@ function run(testPath) {
 
 run("tests/cli/ArtifactInteroperabilityTorture.integration.test.ts");
 run("tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts");
+run("tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx");
 run("tests/project/ArtifactInteroperabilityRemediation.contract.test.ts");
 
 try {

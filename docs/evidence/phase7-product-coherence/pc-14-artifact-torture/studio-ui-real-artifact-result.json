@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "rows": [],
+  "scenario_results": [
+    {
+      "id": "studio-ui-blueprint-workflow-navigation",
+      "source_path": "run-artifacts/ui-route-slot.blueprint.json",
+      "source_identity": "sha256:b41a746e771370036d0e9658e7fb1578f14999ed0d85776b9ff2d3f407dcc6fe",
+      "produced_path": "run-artifacts/tsPackage",
+      "produced_identity": "sha256:23e1ca0678b6ed39c1ea64ed30ff03d93c29c47f040291e85bacfd09bcf45d7d",
+      "observable_result": "the rendered Studio dashboard opened the real CLI-produced package and selected its retained Build/Export, Play, Simulation, and Replay workflows",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "ProjectDashboardPage / ExportDeployTab / PlayTab / SimulationTab / ReplayTab",
+        "assertions": [
+          "the rendered Build/Export tab exposed the real package's server-owned artifact surface",
+          "the UI opened the CLI-produced package rather than a hand-authored browser fixture",
+          "the rendered navigation selected every runtime workflow applicable to a Blueprint"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/exportDeploy (Build/Export)",
+            "result": "selected the rendered build/export workflow for the real produced package"
+          },
+          {
+            "route": "UI /project/:projectRoot/play (Play)",
+            "result": "selected the rendered live-session workflow"
+          },
+          {
+            "route": "UI /project/:projectRoot/simulation (Simulation)",
+            "result": "selected the rendered simulation workflow"
+          },
+          {
+            "route": "UI /project/:projectRoot/replay (Replay)",
+            "result": "selected the rendered replay workflow"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity",
+        "durable-publication-ownership"
+      ]
+    }
+  ],
+  "planner_cells": []
+}

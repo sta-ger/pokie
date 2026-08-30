@@ -19,6 +19,12 @@
       "sha256": "sha256:9662acd7b05d531c9bc93ffe087782f15847e32fa4e1088639a6d671572364d7",
       "rows": 15,
       "scenarios": 7
+    },
+    {
+      "file": "studio-ui-real-artifact-result.json",
+      "sha256": "sha256:d5a278c6e425202ba1cb689e568649d6b3f0a0a84c016f0bde4c546c264f3165",
+      "rows": 0,
+      "scenarios": 1
     }
   ],
   "rows": [
@@ -2550,6 +2556,30 @@
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ]
+    },
+    {
+      "id": "studio-ui-blueprint-workflow-navigation",
+      "source_path": "run-artifacts/ui-route-slot.blueprint.json",
+      "source_identity": "sha256:b41a746e771370036d0e9658e7fb1578f14999ed0d85776b9ff2d3f407dcc6fe",
+      "produced_path": "run-artifacts/tsPackage",
+      "produced_identity": "sha256:23e1ca0678b6ed39c1ea64ed30ff03d93c29c47f040291e85bacfd09bcf45d7d",
+      "observable_result": "the rendered Studio dashboard opened the real CLI-produced package and selected its retained Build/Export, Play, Simulation, and Replay workflows",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "ProjectDashboardPage / ExportDeployTab / PlayTab / SimulationTab / ReplayTab",
+        "assertions": [
+          "the rendered Build/Export tab exposed the real package's server-owned artifact surface",
+          "the UI opened the CLI-produced package rather than a hand-authored browser fixture",
+          "the rendered navigation selected every runtime workflow applicable to a Blueprint"
+        ],
+        "observations": [
+          {"route": "UI /project/:projectRoot/exportDeploy (Build/Export)", "result": "selected the rendered build/export workflow for the real produced package"},
+          {"route": "UI /project/:projectRoot/play (Play)", "result": "selected the rendered live-session workflow"},
+          {"route": "UI /project/:projectRoot/simulation (Simulation)", "result": "selected the rendered simulation workflow"},
+          {"route": "UI /project/:projectRoot/replay (Replay)", "result": "selected the rendered replay workflow"}
+        ]
+      },
+      "systemic_classes": ["shared-conversion-diagnostic-parity", "durable-publication-ownership"]
     }
   ],
   "registry_artifact_coverage": [
@@ -3312,12 +3342,14 @@
         ],
         "lifecycle_outcomes": [
           "studio-artifact-http-preflight",
+          "studio-ui-blueprint-workflow-navigation",
           "studio-wasm-boundary",
           "wasm-boundary"
         ],
         "runner_outputs": [
           "cli-real-artifact-result.json",
-          "studio-real-artifact-result.json"
+          "studio-real-artifact-result.json",
+          "studio-ui-real-artifact-result.json"
         ],
         "planner_cells": [
           {
@@ -3648,7 +3680,12 @@
           "POST /api/project/replays",
           "POST /api/project/simulations"
         ],
-        "studio_ui_routes": [],
+        "studio_ui_routes": [
+          "UI /project/:projectRoot/exportDeploy (Build/Export)",
+          "UI /project/:projectRoot/play (Play)",
+          "UI /project/:projectRoot/replay (Replay)",
+          "UI /project/:projectRoot/simulation (Simulation)"
+        ],
         "studio_service_callers": [
           "StudioServer / StudioArtifactBuildService",
           "StudioSimulationService / StudioReplayExecutionService"
@@ -3694,6 +3731,7 @@
           "simulation-report-set-mode-diagnostic",
           "studio-artifact-http-preflight",
           "studio-blueprint-build",
+          "studio-ui-blueprint-workflow-navigation",
           "studio-wasm-boundary",
           "studio-wasm-outcome-source-replay",
           "studio-wasm-outcome-source-simulate",
@@ -3857,11 +3895,13 @@
           "studio-destination-drift",
           "studio-generation-cancellation",
           "studio-generation-recovery",
-          "studio-simulation-replay-cancellation"
+          "studio-simulation-replay-cancellation",
+          "studio-ui-blueprint-workflow-navigation"
         ],
         "runner_outputs": [
           "cli-real-artifact-result.json",
-          "studio-real-artifact-result.json"
+          "studio-real-artifact-result.json",
+          "studio-ui-real-artifact-result.json"
         ],
         "planner_cells": [],
         "aliases": [
@@ -3886,7 +3926,12 @@
           "POST /api/project/replays",
           "POST /api/project/simulations"
         ],
-        "studio_ui_routes": [],
+        "studio_ui_routes": [
+          "UI /project/:projectRoot/exportDeploy (Build/Export)",
+          "UI /project/:projectRoot/play (Play)",
+          "UI /project/:projectRoot/replay (Replay)",
+          "UI /project/:projectRoot/simulation (Simulation)"
+        ],
         "studio_service_callers": [
           "StudioOutcomeLibraryGenerateService",
           "StudioServer / StudioSimulationService / StudioReplayExecutionService"
@@ -3912,7 +3957,8 @@
           "studio-generation-recovery",
           "studio-project-registry-reopen",
           "studio-simulation-replay-cancellation",
-          "studio-symbol-artwork-materialize"
+          "studio-symbol-artwork-materialize",
+          "studio-ui-blueprint-workflow-navigation"
         ]
       }
     }
