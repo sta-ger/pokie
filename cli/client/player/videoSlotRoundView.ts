@@ -103,6 +103,41 @@ export function highlightHoverColor(kind: WinHighlightKind): string {
     return HIGHLIGHT_HOVER_COLOR[kind] ?? highlightPersistentColor(kind);
 }
 
+// VideoSlot's wire response calls this win kind "way", while the corresponding
+// WinComponent/RoundArtifact uses "ways".  Player presentation has one public
+// vocabulary, so normalize that transport-only spelling before it reaches the
+// renderer (and, consequently, its DOM/data attributes and highlight colours).
+export function canonicalWinKind(kind: WinHighlightKind): WinHighlightKind {
+    return kind === "ways" ? "way" : kind;
+}
+
+// Both public shapes below describe wins already calculated by the same game.
+// Keeping their standard labels here prevents the Studio RoundArtifact adapter
+// and the VideoSlot wire adapter from independently choosing visible semantics.
+// Unknown game-defined types intentionally retain the generic representation.
+export function canonicalWinLabel(
+    kind: WinHighlightKind,
+    id: string,
+    symbolId: string | number,
+    winAmount: number,
+    positions: readonly (readonly number[])[],
+): string {
+    switch (canonicalWinKind(kind)) {
+        case "line":
+            return `Line: ${id}, win: ${winAmount}`;
+        case "scatter":
+            return `Scatter: ${symbolId}, win: ${winAmount}`;
+        case "cluster":
+            return `Cluster: ${symbolId} x${positions.length}, win: ${winAmount}`;
+        case "value":
+            return `Value: ${symbolId}, win: ${winAmount}`;
+        case "way":
+            return `Way: ${symbolId}, win: ${winAmount}`;
+        default:
+            return `${kind}: ${symbolId}, win: ${winAmount}`;
+    }
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
     return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
@@ -118,16 +153,16 @@ function asPositions(value: unknown): number[][] {
 function derivePositionalHighlights(
     kind: string,
     record: unknown,
-    describe: (symbolId: string, winAmount: number, positions: number[][]) => string,
 ): WinHighlight[] {
-    return Object.entries(asRecord(record)).map(([symbolId, raw]) => {
+    return Object.entries(asRecord(record)).map(([id, raw]) => {
         const win = asRecord(raw);
         const winAmount = typeof win.winAmount === "number" ? win.winAmount : 0;
         const positions = asPositions(win.symbolsPositions);
+        const symbolId = typeof win.symbolId === "string" || typeof win.symbolId === "number" ? win.symbolId : id;
         return {
-            id: `${kind}:${symbolId}`,
+            id: `${kind}:${id}`,
             kind,
-            label: describe(symbolId, winAmount, positions),
+            label: canonicalWinLabel(kind, id, symbolId, winAmount, positions),
             winAmount,
             positions,
         };
@@ -142,10 +177,11 @@ export function deriveWinHighlights(response: VideoSlotRoundResponse): WinHighli
         const definition = asNumberArray(win.definition);
         const symbolsPositions = asNumberArray(win.symbolsPositions);
         const winAmount = typeof win.winAmount === "number" ? win.winAmount : 0;
+        const id = typeof win.lineId === "string" || typeof win.lineId === "number" ? String(win.lineId) : lineId;
         return {
-            id: `line:${lineId}`,
+            id: `line:${id}`,
             kind: "line",
-            label: `Line: ${lineId}, win: ${winAmount}`,
+            label: canonicalWinLabel("line", id, typeof win.symbolId === "string" || typeof win.symbolId === "number" ? win.symbolId : id, winAmount, symbolsPositions.map((reelIndex) => [reelIndex, definition[reelIndex] ?? 0])),
             winAmount,
             positions: symbolsPositions.map((reelIndex) => [reelIndex, definition[reelIndex] ?? 0]),
             paylinePositions: definition.map((row, reelIndex) => [reelIndex, row]),
@@ -154,14 +190,10 @@ export function deriveWinHighlights(response: VideoSlotRoundResponse): WinHighli
 
     return [
         ...lineHighlights,
-        ...derivePositionalHighlights("scatter", response.winningScatters, (id, win) => `Scatter: ${id}, win: ${win}`),
-        ...derivePositionalHighlights(
-            "cluster",
-            response.winningClusters,
-            (id, win, positions) => `Cluster: ${id} x${positions.length}, win: ${win}`,
-        ),
-        ...derivePositionalHighlights("value", response.winningValues, (id, win) => `Value: ${id}, win: ${win}`),
-        ...derivePositionalHighlights("way", response.winningWays, (id, win) => `Way: ${id}, win: ${win}`),
+        ...derivePositionalHighlights("scatter", response.winningScatters),
+        ...derivePositionalHighlights("cluster", response.winningClusters),
+        ...derivePositionalHighlights("value", response.winningValues),
+        ...derivePositionalHighlights("way", response.winningWays),
     ];
 }
 
@@ -210,12 +242,14 @@ function resolveRoundArtifactLineDefinition(win: GenericRoundArtifactWin, reelCo
 export function deriveWinHighlightsFromRoundArtifactWins(wins: readonly GenericRoundArtifactWin[], reelCount: number): WinHighlight[] {
     return wins.map((win) => {
         const definition = resolveRoundArtifactLineDefinition(win, reelCount);
+        const kind = canonicalWinKind(win.type);
+        const positions = win.winningPositions.map((position) => [...position]);
         return {
-            id: `${win.type}:${win.id}`,
-            kind: win.type,
-            label: `${win.type}: ${String(win.symbolId)}, win: ${win.winAmount}`,
+            id: `${kind}:${win.id}`,
+            kind,
+            label: canonicalWinLabel(kind, win.id, win.symbolId, win.winAmount, positions),
             winAmount: win.winAmount,
-            positions: win.winningPositions.map((position) => [...position]),
+            positions,
             ...(definition ? {paylinePositions: definition.map((row, reelIndex) => [reelIndex, row])} : {}),
         };
     });

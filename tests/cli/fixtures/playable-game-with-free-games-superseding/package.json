@@ -1,0 +1,10 @@
+{
+    "name": "playable-game-with-free-games-superseding",
+  "version": "1.0.0",
+  "dependencies": {
+    "pokie": "file:../../../.."
+  },
+  "pokie": {
+        "entry": "./index.js"
+    }
+}

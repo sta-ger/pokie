@@ -242,7 +242,7 @@ export default {
             cacheDirectory: jestCacheDirectory,
             testEnvironment: "node",
             moduleFileExtensions: ["mjs", "js"],
-            testMatch: ["<rootDir>/tests/scripts/**/*.test.mjs"],
+            testMatch: ["<rootDir>/tests/scripts/**/*.test.mjs", "<rootDir>/tests/cli/playerParity.browser.test.mjs"],
         },
         {
             displayName: "pokie-examples",

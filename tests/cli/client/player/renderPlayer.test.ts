@@ -7,6 +7,7 @@ import * as canonicalPlayer from "../../../../cli/client/player/index.js";
 import {
     applyPersistentHighlights,
     clearConnectionError,
+    createPlayerRoundElements,
     renderBetInfo,
     renderConnectionError,
     renderFeatureCounters,
@@ -17,6 +18,7 @@ import {
     renderReelsGrid,
     renderWinHighlightsList,
     renderWinsSection,
+    PLAYER_PRESENTATION_STYLE_ID,
 } from "../../../../cli/client/player/renderPlayer.js";
 import {
     deriveAvailableBetModeIds,
@@ -225,6 +227,29 @@ describe("renderBetInfo / renderModeInfo", () => {
 });
 
 describe("renderPlayerRound", () => {
+    it("owns the complete player section order in one reusable mount contract", () => {
+        const root = document.createElement("section");
+        root.appendChild(document.createElement("p"));
+        const elements = createPlayerRoundElements(root);
+
+        expect(root.classList.contains("pokie-player")).toBe(true);
+        expect(root.getAttribute("data-pokie-player")).toBe("canonical-v1");
+        expect(root.getAttribute("aria-label")).toBe("Game player");
+        expect(Array.from(root.children).map((element) => element.className)).toEqual([
+            "player-bet-info",
+            "player-mode-info",
+            "pokie-player-grid-scroll",
+            "player-round-totals",
+            "player-features",
+            "player-wins",
+            "player-lines-details",
+            "player-paytable-details",
+        ]);
+        expect(elements.gridContainer.closest(".pokie-player-grid-scroll")).not.toBeNull();
+        expect(elements.paytableBody.closest(".player-paytable-details")).not.toBeNull();
+        expect(root.querySelector("p")).toBeNull();
+    });
+
     function createElements() {
         return {
             credits: document.createElement("div"),
@@ -295,6 +320,45 @@ describe("renderPlayerRound", () => {
         expect(elements.payoutMultiplier.textContent).toBe("—");
         expect(elements.gridContainer.querySelector('[data-cell="0:0"]')?.textContent).toBe("B");
     });
+
+    it("hides empty payline and paytable disclosures after a later plain round", () => {
+        const root = document.createElement("section");
+        const elements = createPlayerRoundElements(root);
+
+        renderPlayerRound(elements, {
+            reelsSymbols: [["A"]],
+            highlights: [],
+            lines: [{lineId: "0", definition: [0]}],
+            paytable: {multipliers: [3], rows: [{symbolId: "A", amounts: [1]}]},
+        });
+        expect(elements.linesDetails?.hidden).toBe(false);
+        expect(elements.paytableDetails?.hidden).toBe(false);
+
+        renderPlayerRound(elements, {reelsSymbols: [["B"]], highlights: []});
+
+        expect(elements.linesDetails?.hidden).toBe(true);
+        expect(elements.paytableDetails?.hidden).toBe(true);
+        expect(elements.linesList.children).toHaveLength(0);
+        expect(elements.paytableBody.children).toHaveLength(0);
+    });
+
+    it("installs the shared responsive presentation stylesheet and exposes selected controls to assistive technology", () => {
+        const elements = createElements();
+        renderPlayerRound(elements, {
+            reelsSymbols: [["A"]],
+            highlights: [],
+            availableBets: [1, 2],
+            currentBet: 1,
+            availableModeIds: ["base", "ante"],
+            currentModeId: "base",
+        });
+
+        expect(document.getElementById(PLAYER_PRESENTATION_STYLE_ID)?.textContent).toContain("@media (max-width: 480px)");
+        expect(document.getElementById(PLAYER_PRESENTATION_STYLE_ID)?.textContent).toContain("font-family: system-ui");
+        expect(elements.betInfo.querySelector("button")?.getAttribute("aria-pressed")).toBe("true");
+        expect((elements.betInfo.querySelector("button") as HTMLButtonElement).disabled).toBe(true);
+        expect(elements.modeInfo.querySelector("button")?.getAttribute("aria-label")).toBe("Select mode base");
+    });
 });
 
 describe("canonical Player source reachability", () => {
@@ -306,8 +370,10 @@ describe("canonical Player source reachability", () => {
         );
 
         expect(devClient).toContain('from "./player/index.js"');
+        expect(devClient).toContain("createPlayerRoundElements(");
         expect(devClient).toContain("renderPlayerRound(");
         expect(studio).toContain('from "../../../../client/player"');
+        expect(studio).toContain("createPlayerRoundElements(");
         expect(studio).toContain("renderPlayerRound(");
         expect(studio).not.toContain('from "../../../../client/player/renderPlayer"');
     });
@@ -320,7 +386,10 @@ describe("canonical Player source reachability", () => {
         const examplesIndex = readFileSync(resolve(pokieExamplesRoot, "index.html"), "utf8");
 
         expect(examplesUi).toContain('from "pokie/client/player"');
+        expect(examplesUi).toContain("createPlayerRoundElements(");
         expect(examplesUi).toContain("renderPlayerRound(");
+        expect(examplesUi).toContain("onSelectBet:");
+        expect(examplesUi).toContain("onSelectMode:");
         // The public examples index exposes a real navigation control to the fixture page; that
         // page boots the normal initializeUi() Player workflow, whose rendered Play control runs a
         // genuine seeded VideoSlotSession.  This intentionally proves source reachability through
@@ -329,9 +398,8 @@ describe("canonical Player source reachability", () => {
         expect(fixturePage).toContain('src="/src/fixture-slot.ts"');
         expect(fixtureEntry).toContain("initializeUi(");
         expect(fixtureEntry).toContain("createFixtureSession");
-        expect(fixtureGame).toContain('FIXTURE_SEED = "fixture-round"');
-        expect(fixtureGame).toContain("new VideoSlotSession(");
-        expect(fixtureGame).toContain("new SymbolsCombinationsGenerator(");
+        expect(fixtureGame).toContain("FIXTURE_SEED = PC_12_FEATURED_ROUND_SEED");
+        expect(fixtureGame).toContain("createPc12FreeGamesFixtureSession(FIXTURE_SEED)");
         for (const legacyRenderer of [
             "renderReelsGrid(",
             "applyPersistentHighlights(",

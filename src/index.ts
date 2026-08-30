@@ -91,6 +91,7 @@ export * from "./fairness/computeFairnessCommitmentHash.js";
 export * from "./fairness/computeFairnessIndexHash.js";
 export * from "./fairness/computeFairnessRoundProofHash.js";
 export * from "./fairness/computeFairnessServerSeedCommitment.js";
+export * from "./fixtures/Pc12FreeGamesFixture.js";
 export * from "./gamepackage/BetMode.js";
 export * from "./gamepackage/PackageJsonLike.js";
 export * from "./gamepackage/PokieGame.js";

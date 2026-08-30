@@ -9,8 +9,6 @@ import {CodeBlock} from "./CodeBlock";
 import {GameScreenView} from "./GameScreenView";
 import {PageSection} from "./PageSection";
 import {RoundArtifactInspector} from "./RoundArtifactInspector";
-import {RoundWinsTable} from "./RoundWinsTable";
-import {FeatureStateView} from "./FeatureStateView";
 import {describeRoundPresentation} from "./roundPresentation";
 
 function formatFieldValue(value: unknown): string {
@@ -37,7 +35,25 @@ function formatFieldValue(value: unknown): string {
 // a generic "Additional round data" table for whatever extra public fields the game's own serializer
 // returned -- see extractAdditionalRoundFields's own doc comment) only when no artifact was captured
 // (debug mode off, or a non-video-slot session that never builds one).
-export function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
+export function RoundSummary({
+    session,
+    selectedBet,
+    selectedBetMode,
+    availableBets,
+    availableModeIds,
+    onSelectBet,
+    onSelectBetMode,
+}: {
+    session: StudioRuntimeSessionView;
+    selectedBet?: number;
+    selectedBetMode?: string;
+    // Play owns the live session choices. They remain available after a round's artifact is captured,
+    // even for serializers whose captured state omits its initial payload.
+    availableBets?: number[];
+    availableModeIds?: string[];
+    onSelectBet?: (bet: number) => void;
+    onSelectBetMode?: (modeId: string) => void;
+}) {
     const [artifactInspectorOpen, setArtifactInspectorOpen] = useState(false);
     if (session.debug?.artifact) {
         const artifact = describeRoundArtifact(session.debug.artifact);
@@ -67,14 +83,18 @@ export function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
                     paytable={presentation.paytable}
                     featureCounters={presentation.featureCounters}
                     lines={presentation.lines}
-                    availableBets={presentation.availableBets}
-                    currentBet={presentation.currentBet ?? artifact.stake}
-                    availableModeIds={presentation.availableModeIds}
-                    currentModeId={presentation.currentModeId}
+                    availableBets={availableBets ?? presentation.availableBets}
+                    currentBet={selectedBet ?? presentation.currentBet ?? artifact.stake}
+                    onSelectBet={onSelectBet}
+                    availableModeIds={availableModeIds ?? presentation.availableModeIds}
+                    currentModeId={selectedBetMode ?? presentation.currentModeId}
+                    onSelectMode={onSelectBetMode}
                 />
-                <FeatureStateView events={artifact.featureEvents ?? []} />
-                <RoundWinsTable wins={artifact.wins} stake={artifact.stake} />
 
+                {/* Structured win rows, state snapshots and raw feature payloads are inspection data,
+                    not a second player screen.  Keep them behind this explicit disclosure; the
+                    canonical player above already owns the player-facing win/highlight, payline and
+                    feature-counter presentation. */}
                 <details onToggle={(event) => setArtifactInspectorOpen(event.currentTarget.open)}>
                     <summary>Inspect round artifact</summary>
                     {artifactInspectorOpen && (

@@ -81,9 +81,15 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
         // Static player data comes from the captured session's initial payload -- the same serializer
         // payload the generated client uses -- not from the round's winning lines.  The fixture's full
         // A/B/C table and its actual post-spin balance must therefore render beside the canonical grid.
-        expect(screen.getByText("line")).toBeInTheDocument();
+        // The player owns the readable win/payline affordances.  The structured artifact win table
+        // stays behind "Inspect round artifact" instead of being a second, always-visible player view.
+        expect(screen.getByRole("button", {name: "Line: 1, win: 5"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Line: 1"})).toBeInTheDocument();
         expect(screen.getAllByText("A").length).toBeGreaterThan(0);
-        expect(screen.getByText(/5\.00.*5\.00x stake/)).toBeInTheDocument();
+        const totals = container.querySelector(".player-round-totals") as HTMLElement;
+        expect(totals).not.toBeNull();
+        expect(totals.textContent).toContain("Total win5.00");
+        expect(totals.textContent).toContain("Payout multiplier5.00");
         expect(screen.getAllByText("Symbol").length).toBeGreaterThan(1);
         expect(screen.getAllByText("B").length).toBeGreaterThan(0);
         expect(screen.getByText("Credits")).toBeInTheDocument();
@@ -117,7 +123,7 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
             </MantineProvider>,
         );
 
-        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("2.00");
+        expect(screen.getByText("Bet: 2")).toBeInTheDocument();
     });
 
     it("keeps a completed round and Play controls visible after a failed reset", () => {
@@ -148,7 +154,6 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
 
         expect(screen.getByText("This session couldn't be completed. Try again. If it continues, start a new session and retry.")).toBeInTheDocument();
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
-        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
         expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
         expect(screen.getByRole("button", {name: "Find any win"})).toBeEnabled();
         expect(screen.getByRole("button", {name: "Reset Play session"})).toBeEnabled();
@@ -182,7 +187,6 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
 
         expect(screen.getByRole("status")).toHaveTextContent("Spinning…");
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
-        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
     });
 
     it("keeps initial session creation in its loading state without a prior round", () => {

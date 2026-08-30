@@ -10,6 +10,8 @@ import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RoundSummary} from "../common/RoundSummary";
+import {GameScreenView} from "../common/GameScreenView";
+import {describeRuntimeScreen} from "../../domain/interpret/Runtime";
 
 // Studio's own -- and only -- game mode: Play never starts a server, never shows a host/port/server URL,
 // and is never represented as a product POKIE game server/RGS workflow. "New session"/"Reset" both
@@ -167,36 +169,39 @@ export function PlayTab({
         activeSession !== undefined && (activeSession.debug?.artifact !== undefined || activeSession.debug?.artifactUnavailableReason !== undefined)
             ? activeSession
             : undefined;
+    let roundResult: ReactNode;
+    if (playedRound !== undefined) {
+        roundResult = (
+            <RoundSummary
+                session={playedRound}
+                selectedBet={selectedBet === null ? undefined : Number(selectedBet)}
+                selectedBetMode={selectedBetMode ?? undefined}
+                availableBets={availableBets}
+                availableModeIds={availableBetModes}
+                onSelectBet={(bet) => setSelectedBet(String(bet))}
+                onSelectBetMode={setSelectedBetMode}
+            />
+        );
+    } else if (activeSession !== undefined) {
+        roundResult = (
+            <GameScreenView
+                screen={describeRuntimeScreen(activeSession.screen) ?? []}
+                credits={activeSession.credits}
+                availableBets={availableBets}
+                currentBet={currentBet}
+                onSelectBet={(bet) => setSelectedBet(String(bet))}
+                availableModeIds={availableBetModes}
+                currentModeId={currentBetMode}
+                onSelectMode={setSelectedBetMode}
+            />
+        );
+    } else {
+        roundResult = <EmptyState message="No round played yet -- Spin to play." />;
+    }
 
     return (
         <div>
             <PageSection legend="Play">
-                {availableBets.length > 0 && (
-                    <Select
-                        aria-label="Bet"
-                        label="Bet"
-                        description="Available bets come from this session's game model."
-                        data={availableBets.map((bet) => ({value: String(bet), label: bet.toFixed(2)}))}
-                        value={selectedBet}
-                        onChange={setSelectedBet}
-                        allowDeselect={false}
-                        mb="sm"
-                        style={{maxWidth: 240}}
-                    />
-                )}
-                {availableBetModes.length > 0 && (
-                    <Select
-                        aria-label="Bet mode"
-                        label="Bet mode"
-                        description="A buy-feature mode applies to this spin only; after a successful purchase, the returned session shows its persistent mode."
-                        data={availableBetModes}
-                        value={selectedBetMode}
-                        onChange={setSelectedBetMode}
-                        allowDeselect={false}
-                        mb="sm"
-                        style={{maxWidth: 320}}
-                    />
-                )}
                 <QuickActions>
                     <Button loading={loading} onClick={() => onSpin(selectedBet === null ? undefined : Number(selectedBet), selectedBetMode ?? undefined)}>
                         Spin
@@ -257,7 +262,7 @@ export function PlayTab({
             {errorNotice}
 
             {loading && <LoadingState label="Spinning…" />}
-            {(!loading || playedRound !== undefined) && (playedRound === undefined ? <EmptyState message="No round played yet -- Spin to play." /> : <RoundSummary session={playedRound} />)}
+            {(!loading || playedRound !== undefined) && roundResult}
         </div>
     );
 }

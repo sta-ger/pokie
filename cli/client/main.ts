@@ -4,8 +4,10 @@ import {renderRawJson, renderRoundView, renderStages, renderStatus, wireSpinButt
 import {extractKnownRoundView, extractStages} from "./interpretResponse.js";
 import {
     clearConnectionError,
+    createPlayerRoundElements,
     renderConnectionError,
     renderPlayerRound,
+    type PlayerRoundElements,
 } from "./player/index.js";
 import {
     deriveAvailableBetModeIds,
@@ -46,15 +48,7 @@ type Elements = {
     stageScreen: HTMLElement;
     stageRawJson: HTMLElement;
     playerSection: HTMLElement;
-    playerGridContainer: HTMLElement;
-    playerBetInfo: HTMLElement;
-    playerModeInfo: HTMLElement;
-    playerFeatures: HTMLElement;
-    playerWinsSection: HTMLElement;
-    playerWinsList: HTMLElement;
-    playerLinesList: HTMLElement;
-    playerPaytableHead: HTMLElement;
-    playerPaytableBody: HTMLElement;
+    playerElements: PlayerRoundElements;
     connectionError: HTMLElement;
     connectionErrorMessage: HTMLElement;
     connectionErrorDetail: HTMLElement;
@@ -126,15 +120,7 @@ function queryElements(): Elements {
         stageScreen: requireElement("stage-screen"),
         stageRawJson: requireElement("stage-raw-json"),
         playerSection: requireElement("player-section"),
-        playerGridContainer: requireElement("player-grid-container"),
-        playerBetInfo: requireElement("player-bet-info"),
-        playerModeInfo: requireElement("player-mode-info"),
-        playerFeatures: requireElement("player-features"),
-        playerWinsSection: requireElement("player-wins-section"),
-        playerWinsList: requireElement("player-wins-list"),
-        playerLinesList: requireElement("player-lines-list"),
-        playerPaytableHead: requireElement("player-paytable-head"),
-        playerPaytableBody: requireElement("player-paytable-body"),
+        playerElements: createPlayerRoundElements(requireElement("player-section")),
         connectionError: requireElement("connection-error"),
         connectionErrorMessage: requireElement("connection-error-message"),
         connectionErrorDetail: requireElement("connection-error-detail"),
@@ -198,20 +184,7 @@ function renderVideoSlotRound(
     const totalWin = typeof response.totalWin === "number" ? response.totalWin : undefined;
     const bet = typeof response.bet === "number" ? response.bet : selectedBet;
     renderPlayerRound(
-        {
-            credits: elements.credits,
-            totalWin: elements.win,
-            payoutMultiplier: elements.payoutMultiplier,
-            gridContainer: elements.playerGridContainer,
-            winsSection: elements.playerWinsSection,
-            winsList: elements.playerWinsList,
-            linesList: elements.playerLinesList,
-            features: elements.playerFeatures,
-            betInfo: elements.playerBetInfo,
-            modeInfo: elements.playerModeInfo,
-            paytableHead: elements.playerPaytableHead,
-            paytableBody: elements.playerPaytableBody,
-        },
+        elements.playerElements,
         {
             credits,
             totalWin,
@@ -253,20 +226,7 @@ function render(
         renderVideoSlotRound(elements, response, staticView, selectedBet, onSelectBet, selectedMode, onSelectMode, roundView.credits);
     } else {
         renderPlayerRound(
-            {
-                credits: elements.credits,
-                totalWin: elements.win,
-                payoutMultiplier: elements.payoutMultiplier,
-                gridContainer: elements.playerGridContainer,
-                winsSection: elements.playerWinsSection,
-                winsList: elements.playerWinsList,
-                linesList: elements.playerLinesList,
-                features: elements.playerFeatures,
-                betInfo: elements.playerBetInfo,
-                modeInfo: elements.playerModeInfo,
-                paytableHead: elements.playerPaytableHead,
-                paytableBody: elements.playerPaytableBody,
-            },
+            elements.playerElements,
             {
                 credits: roundView.credits,
                 totalWin: roundView.win,

@@ -49,7 +49,9 @@ describe("Responsive / no-horizontal-page-overflow primitives", () => {
             />,
         );
         const cell = screen.getByText(LONG_UNBROKEN_TEXT);
-        expect(cell.closest(".mantine-ScrollArea-root")).not.toBeNull();
+        // The canonical DOM contract owns its own scroll region so every host (including package
+        // consumers outside Mantine) gets the same narrow-width behavior.
+        expect(cell.closest(".pokie-player-grid-scroll")).not.toBeNull();
         expect((cell as HTMLElement).style.backgroundColor).not.toBe("");
     });
 

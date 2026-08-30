@@ -176,11 +176,10 @@ describe("ProjectDashboardPage - Play", () => {
 
         expect(await screen.findByRole("status")).toHaveTextContent("Spinning…");
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
-        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
 
         resolveReset?.({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor({sessionId: "sess-2"})})});
 
-        await screen.findByText(/No round played yet/);
+        await screen.findByLabelText("Game player");
         expect(screen.queryByText(/You won 15\.00/)).toBeNull();
     }, 30000);
 
@@ -212,7 +211,7 @@ describe("ProjectDashboardPage - Play", () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
-            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor({bet: 5, win: 0})}}),
+            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor({bet: 5, availableBets: [5, 10], win: 0})}}),
             "/api/project/play/sessions/sess-1/spin": () => ({
                 ok: true,
                 status: 200,
@@ -237,10 +236,9 @@ describe("ProjectDashboardPage - Play", () => {
         await waitFor(() => expect(screen.getByText("cherry")).toBeInTheDocument());
         expect(screen.getByText("seven")).toBeInTheDocument();
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
-        // The same horizontal-scroll containment every other screen-rendering surface relies on -- proves
-        // this mounts the shared canonical player grid (CanonicalPlayerView), not a bespoke
-        // narrow-unfriendly table.
-        expect(screen.getByText("cherry").closest(".mantine-ScrollArea-root")).not.toBeNull();
+        // The canonical DOM contract itself owns horizontal-scroll containment, so all hosts get the
+        // same narrow-width behavior without relying on a Studio-only Mantine wrapper.
+        expect(screen.getByText("cherry").closest(".pokie-player-grid-scroll")).not.toBeNull();
         // A cell rendered through the canonical player's own renderReelsGrid is addressable by its own
         // [reelIndex, rowIndex] data-cell id -- the literal DOM output of cli/client/player's own
         // rendering, not a Mantine <Table> cell.
@@ -276,10 +274,8 @@ describe("ProjectDashboardPage - Play", () => {
         await goToPlayTab(user);
         await user.click(await screen.findByRole("button", {name: "New Play session"}));
 
-        await user.click(await screen.findByRole("combobox", {name: "Bet"}));
-        fireEvent.click(screen.getByRole("option", {name: "5.00", hidden: true}));
-        await user.click(screen.getByRole("combobox", {name: "Bet mode"}));
-        fireEvent.click(screen.getByRole("option", {name: "buyFeature", hidden: true}));
+        await user.click(await screen.findByRole("button", {name: "Select bet 5"}));
+        await user.click(screen.getByRole("button", {name: "Select mode buyFeature"}));
         await user.click(screen.getByRole("button", {name: "Spin"}));
 
         await waitFor(() => expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-1/spin")).toBe(true));
@@ -321,7 +317,7 @@ describe("ProjectDashboardPage - Play", () => {
 
         await user.click(screen.getByRole("button", {name: "Reset Play session"}));
 
-        await waitFor(() => expect(screen.getByText(/No round played yet/)).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByLabelText("Game player")).toBeInTheDocument());
         expect(createCalls).toBe(2);
     }, 30000);
 
@@ -366,13 +362,12 @@ describe("ProjectDashboardPage - Play", () => {
 
         expect(await screen.findByText("This session couldn't be completed. Try again. If it continues, start a new session and retry.")).toBeInTheDocument();
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
-        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("5.00");
         expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
         expect(screen.getByRole("button", {name: "Find any win"})).toBeEnabled();
 
         await user.click(screen.getByRole("button", {name: "Reset Play session"}));
 
-        await screen.findByText(/No round played yet/);
+        await screen.findByLabelText("Game player");
         expect(screen.queryByText(/You won 15\.00/)).toBeNull();
         await user.click(screen.getByRole("button", {name: "Spin"}));
         await waitFor(() => expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-3/spin")).toBe(true));
@@ -510,9 +505,10 @@ describe("ProjectDashboardPage - Play", () => {
         await user.click(await screen.findByRole("button", {name: "New Play session"}));
         await user.click(await screen.findByRole("button", {name: "Find free games"}));
 
-        // The round returned by find-free-games renders through the exact same RoundArtifactInspector
-        // chain a plain Spin's RoundArtifact does -- its own real "freeGamesTriggered" feature event shows
-        // up as genuine rendered proof, never a client-computed/simulated indicator.
+        // Feature payloads are inspector data, deliberately separate from the player-facing game
+        // window. Opening the real round inspector proves the scenario's authoritative artifact -- not
+        // a client-computed/simulated indicator -- contains and renders its feature event.
+        await user.click(await screen.findByText("Inspect round artifact"));
         await waitFor(() => expect(screen.getAllByText("freeGamesTriggered").length).toBeGreaterThan(0));
         expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-1/find-free-games")).toBe(true);
     }, 30000);
@@ -637,7 +633,7 @@ describe("canonical player parity: Play renders the same fixture round Replay/Ou
                 status: 200,
                 body: {
                     status: "ok",
-                    session: sessionFor({credits: 1012.5, bet: 5, win: 12.5, screen: artifact.screen as string[][], debug: {artifact}}),
+                    session: sessionFor({credits: 1012.5, bet: 5, availableBets: [5, 10], win: 12.5, screen: artifact.screen as string[][], debug: {artifact}}),
                 },
             }),
         });
@@ -646,7 +642,20 @@ describe("canonical player parity: Play renders the same fixture round Replay/Ou
         await goToPlayTab(user);
         await user.click(await screen.findByRole("button", {name: "New Play session"}));
         await user.click(await screen.findByRole("button", {name: "Spin"}));
-        await waitFor(() => expect(within(routed.container).getByText("12.50 (2.50x stake)")).toBeInTheDocument());
+        await waitFor(() => expect(within(routed.container).getByLabelText("Game player")).toBeInTheDocument());
+
+        // Play's polished surface is the canonical player: it renders the round total and multiplier
+        // as distinct player totals. The per-win "x stake" breakdown belongs to the separate inspector.
+        const playTotals = within(routed.container).getByLabelText("Round totals");
+        expect(within(playTotals).getByText("Total win").nextElementSibling).toHaveTextContent("12.50");
+        expect(within(playTotals).getByText("Payout multiplier").nextElementSibling).toHaveTextContent("2.50");
+        // A completed artifact must retain the same player control affordances as the pre-spin
+        // session. RoundSummary receives those live choices from Play rather than relying on a
+        // debug state snapshot to repeat them.
+        const alternateBet = within(routed.container).getByRole("button", {name: "Select bet 10"});
+        expect(alternateBet).toBeEnabled();
+        await user.click(alternateBet);
+        expect(within(routed.container).getByRole("button", {name: "Select bet 10"})).toBeDisabled();
 
         // Each render mounts into the shared document.body, so every query below is scoped to its own
         // container -- otherwise a text query bound to either render's own result would ambiguously match
@@ -679,7 +688,7 @@ describe("canonical player parity: Play renders the same fixture round Replay/Ou
             // Hovering the win's own hover-list entry (renderWinHighlightsList) traces its full
             // configured payline: green for the two cells that actually won, grey for the third reel's
             // own row-0 cell that's on the path but never won.
-            const winButton = within(container).getByRole("button", {name: "line: cherry, win: 12.5"});
+            const winButton = within(container).getByRole("button", {name: "Line: w1, win: 12.5"});
             fireEvent.mouseEnter(winButton);
             for (const cell of cherryCells) {
                 expect((cell as HTMLElement).style.backgroundColor).toBe("rgb(0, 255, 0)");
@@ -687,6 +696,10 @@ describe("canonical player parity: Play renders the same fixture round Replay/Ou
             expect(lemonCell.style.backgroundColor).toBe("rgb(153, 153, 153)");
             fireEvent.mouseLeave(winButton);
         }
+
+        // The player-facing surface stays compact; opening its real inspector reveals the same
+        // per-win position detail as a direct inspector render.
+        await user.click(within(routed.container).getByText("Inspect round artifact"));
 
         // Same win detail: real symbol, real position count, the same "x stake" unit.
         expect(within(routed.container).getByText("2")).toBeInTheDocument();
