@@ -105,13 +105,19 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
                 }),
             });
             expect(buildStart.status).toBe(202);
-            expect(await buildStart.json()).toMatchObject({status: "created", job: {id: expect.any(String)}});
+            const buildBody = await buildStart.json() as {status: string; job: {id: string; status: string}};
+            expect(buildBody).toMatchObject({status: "created", job: {id: expect.any(String)}});
+            const terminalBuild = await waitForStudioJob(
+                () => fetch(`${baseUrl}/api/project/artifacts/build/${buildBody.job.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+            );
+            expect(terminalBuild).toMatchObject({status: 200, body: {status: "completed", result: {status: "ok", outputPath: path.join(workDir, "http-package")}}});
+            expect(fs.existsSync(path.join(workDir, "http-package"))).toBe(true);
             evidence.recordScenario({
                 id: "studio-artifact-http-preflight", sourcePath: blueprintPath,
-                result: "Studio HTTP context, inspection, validation, target discovery, preflight, and build-job creation resolve the same real Blueprint before durable publication completes",
+                result: "Studio HTTP context, inspection, validation, target discovery, preflight, build-job polling, and terminal result resolve the same real Blueprint before publication",
                 surface: "studio-api", owner: "StudioServer / StudioArtifactBuildService",
                 systemicClasses: ["shared-conversion-diagnostic-parity"],
-                assertions: ["GET context retains the real Blueprint", "GET inspect and validate accept the real Blueprint", "GET targets lists tsPackage", "POST preview returns an executable tsPackage plan", "POST build creates the public pollable job from that real Blueprint"],
+                assertions: ["GET context retains the real Blueprint", "GET inspect and validate accept the real Blueprint", "GET targets lists tsPackage", "POST preview returns an executable tsPackage plan", "POST build creates and GET job reaches the terminal published result"],
                 observations: [
                     {route: "GET /api/project/context", result: "returned the opened Blueprint context"},
                     {route: "GET /api/project/inspect", result: "inspected the opened Blueprint"},
@@ -119,6 +125,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
                     {route: "GET /api/project/artifacts/targets", result: "returned the supported Blueprint build target"},
                     {route: "POST /api/project/artifacts/preview", result: "returned the prepared tsPackage operation"},
                     {route: "POST /api/project/artifacts/build", result: "created the pollable tsPackage build job"},
+                    {route: "GET /api/project/artifacts/build/:id", result: "polled the completed job and observed its published output"},
                 ],
             });
         } finally {
@@ -204,6 +211,76 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         evidence.record({
             id: "studio-outcome-library-stake-export", artifactKind: "outcomeLibrary", operation: "export", sourcePath: path.join(packagePath, mode.bundleDir),
             producedPath: stakePath, owner: "StudioStakeEngineExportService", result: "published", observations: [{surface: "studio-api", owner: "StudioStakeEngineExportService", result: "status ok"}],
+        });
+
+        // Cancellation belongs to the public job routes, not just to their
+        // process-local services.  Start real runnable-package jobs and
+        // cancel them through HTTP before their first durable result can be
+        // observed; the subsequent GET proves a cancelled job exposes neither
+        // a report nor a replay descriptor for download/recovery.
+        const lifecycleHome = new StudioHomeService(POKIE_VERSION);
+        const lifecycleServer = new StudioServer({
+            pokieVersion: POKIE_VERSION,
+            host: "127.0.0.1",
+            port: 0,
+            studioRoot,
+            homeService: lifecycleHome,
+            blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, lifecycleHome),
+            initialContext: {mode: "project", projectRoot: packagePath},
+        });
+        const lifecycleAddress = await lifecycleServer.start();
+        try {
+            const lifecycleBaseUrl = `http://${lifecycleAddress.host}:${lifecycleAddress.port}`;
+            const simulationStart = await fetch(`${lifecycleBaseUrl}/api/project/simulations`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({rounds: 100000, seed: "pc14-cancel-simulation"}),
+            });
+            expect(simulationStart.status).toBe(202);
+            const simulationJob = await simulationStart.json() as {id: string};
+            expect(simulationJob.id).toEqual(expect.any(String));
+            const simulationCancel = await fetch(`${lifecycleBaseUrl}/api/project/simulations/${simulationJob.id}`, {method: "DELETE"});
+            expect(simulationCancel.status).toBe(200);
+            const cancelledSimulation = await waitForStudioJob(
+                () => fetch(`${lifecycleBaseUrl}/api/project/simulations/${simulationJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+            );
+            expect(cancelledSimulation).toMatchObject({status: 200, body: {status: "cancelled"}});
+            const simulationDownload = await fetch(`${lifecycleBaseUrl}/api/project/reports/${simulationJob.id}`);
+            expect(simulationDownload.status).toBe(409);
+
+            const replayStart = await fetch(`${lifecycleBaseUrl}/api/project/replays`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({round: 100000, seed: "pc14-cancel-replay"}),
+            });
+            expect(replayStart.status).toBe(202);
+            const replayJob = await replayStart.json() as {id: string};
+            expect(replayJob.id).toEqual(expect.any(String));
+            const replayCancel = await fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}`, {method: "DELETE"});
+            expect(replayCancel.status).toBe(200);
+            const cancelledReplay = await waitForStudioJob(
+                () => fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+            );
+            expect(cancelledReplay).toMatchObject({status: 200, body: {status: "cancelled"}});
+            const replayDownload = await fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}/download`);
+            expect(replayDownload.status).toBe(409);
+        } finally {
+            await lifecycleServer.stop();
+        }
+        evidence.recordScenario({
+            id: "studio-simulation-replay-cancellation", sourcePath: packagePath,
+            result: "Studio HTTP cancellation transitions real simulation and replay jobs to terminal cancelled states without retaining a report or replay descriptor",
+            surface: "studio-api", owner: "StudioServer / StudioSimulationService / StudioReplayExecutionService",
+            systemicClasses: ["durable-publication-ownership"],
+            assertions: ["DELETE simulation reaches cancelled and report retrieval remains not-ready", "DELETE replay reaches cancelled and replay download remains not-ready"],
+            observations: [
+                {route: "POST /api/project/simulations", result: "created a real package simulation job"},
+                {route: "DELETE /api/project/simulations/:id", result: "cancelled that job"},
+                {route: "GET /api/project/simulations/:id", result: "polled terminal cancelled simulation"},
+                {route: "POST /api/project/replays", result: "created a real package replay job"},
+                {route: "DELETE /api/project/replays/:id", result: "cancelled that job"},
+                {route: "GET /api/project/replays/:id", result: "polled terminal cancelled replay"},
+            ],
         });
 
         // Studio receives the already-resolved project from its dashboard
@@ -341,3 +418,16 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         }
     });
 });
+
+async function waitForStudioJob(
+    get: () => Promise<{readonly status: number; readonly body: {readonly status?: string}}>,
+): Promise<{readonly status: number; readonly body: {readonly status?: string}}> {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+        const result = await get();
+        if (result.body.status === "completed" || result.body.status === "failed" || result.body.status === "cancelled") return result;
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+    }
+    throw new Error("Studio artifact job did not reach a terminal state while exercising its public polling route.");
+}

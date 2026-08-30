@@ -139,6 +139,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const seedCommitmentPath = path.join(workDir, "matrix-seed-commitment.json");
         const commitmentPath = path.join(workDir, "matrix-commitment.json");
         const proofPath = path.join(workDir, "matrix-proof.json");
+        const validationPath = path.join(workDir, "matrix-validation.json");
         fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
 
         // The workbook and imported Blueprint are both real public artifacts.
@@ -197,6 +198,21 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             producedPath: bundlePath, owner: "OutcomeLibraryCommand", result: "published",
             observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "exit 0"}],
         });
+        // These are durable companion files emitted by the public bundle
+        // writer.  Record their actual paths separately: validating the
+        // parent bundle is not evidence that the companions are merely
+        // theoretical registry entries.
+        const bundleManifest = JSON.parse(fs.readFileSync(path.join(bundlePath, "manifest.json"), "utf-8")) as {
+            modes: {outcomesFile: string; indexFile: string}[];
+        };
+        const bundleMode = bundleManifest.modes[0];
+        expect(bundleMode).toBeDefined();
+        evidence.record({
+            id: "bundle-canonical-outcomes", artifactKind: "canonicalOutcomeJsonl", operation: "validate", sourcePath: path.join(bundlePath, bundleMode.outcomesFile),
+            owner: "OutcomeLibraryCommand / OutcomeLibraryBundleWriter", result: "published as the bundle's canonical outcome stream",
+            observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "build exit 0 wrote the referenced canonical JSONL"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
         expect(await build.run([bundlePath, "--target", "stakeAdapter", "--out", stakePath])).toBe(0);
         evidence.record({
             id: "outcome-library-export-stake", artifactKind: "outcomeLibrary", operation: "export", sourcePath: bundlePath,
@@ -219,6 +235,22 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             producedPath: importedStakeLibraryPath, owner: "StakeEngineCommand", result: "Outcome Library published with matching Stake provenance",
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 with matching game/config/version"}],
         });
+        const importConfigPath = path.join(importedStakeLibraryPath, "config.json");
+        const importProvenancePath = path.join(importedStakeLibraryPath, "source-provenance.json");
+        expect(fs.existsSync(importConfigPath)).toBe(true);
+        expect(fs.existsSync(importProvenancePath)).toBe(true);
+        evidence.record({
+            id: "stake-import-reexport-config", artifactKind: "stakeImportReExportConfig", operation: "export", sourcePath: importConfigPath,
+            owner: "StakeEngineCommand", result: "public import emitted a re-exportable Stake configuration",
+            observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 wrote config.json"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "stake-import-source-provenance", artifactKind: "stakeImportSourceProvenance", operation: "inspect", sourcePath: importProvenancePath,
+            owner: "StakeEngineCommand", result: "public import retained source manifest, index, and mode provenance",
+            observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 wrote source-provenance.json"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
         evidence.recordScenario({
             id: "stake-outcome-library-round-trip", sourcePath: bundlePath, producedPath: importedStakeLibraryPath,
             result: "Outcome Library to Stake export and public Stake import retain game, configuration hash, and POKIE version",
@@ -236,7 +268,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         await new ReplayCommand().run([bundlePath, "--mode", "base", "--round", "1", "--seed", "matrix-replay", "--out", replayPath]);
         expect(fs.existsSync(simulationPath)).toBe(true);
         expect(fs.existsSync(replayPath)).toBe(true);
-        const bundleManifest = JSON.parse(fs.readFileSync(path.join(bundlePath, "manifest.json"), "utf-8")) as {
+        const provenanceBundleManifest = JSON.parse(fs.readFileSync(path.join(bundlePath, "manifest.json"), "utf-8")) as {
             game: {id: string; version: string}; modes: {libraryId: string; libraryHash: string}[];
         };
         const simulation = JSON.parse(fs.readFileSync(simulationPath, "utf-8")) as {
@@ -245,15 +277,15 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const replay = JSON.parse(fs.readFileSync(replayPath, "utf-8")) as {
             game: {id: string; version: string}; outcomeSource: {libraryId: string; libraryHash: string; selectionAlgorithm: string};
         };
-        const sourceMode = bundleManifest.modes[0];
+        const sourceMode = provenanceBundleManifest.modes[0];
         // These are the same source binding, not merely artifacts which happen
         // to be generated in one temporary directory.  A seeded outcome-source
         // replay is portable and exact because it records the library hash;
         // package replay remains a separately documented best-effort path.
         expect(simulation).toMatchObject({libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash, lastReplay: {
-            game: bundleManifest.game, libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash,
+            game: provenanceBundleManifest.game, libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash,
         }});
-        expect(replay).toMatchObject({game: bundleManifest.game, outcomeSource: {
+        expect(replay).toMatchObject({game: provenanceBundleManifest.game, outcomeSource: {
             libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash, selectionAlgorithm: "derived-round-seed-v1",
         }});
         // Keep the other public replay class in the same execution record.
@@ -269,10 +301,15 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         // prevents the PC-14 evidence runner from treating a planned command
         // or a hand-authored fixture as an observed artifact operation.
         const reportPath = path.join(workDir, "matrix-report.md");
-        expect(await new ValidateCommand().run([blueprintPath, "--format", "json"])).toBe(0);
+        expect(await new ValidateCommand().run([blueprintPath, "--format", "json", "--out", validationPath])).toBe(0);
         evidence.record({
             id: "blueprint-validate", artifactKind: "blueprint", operation: "validate", sourcePath: blueprintPath,
             owner: "ValidateCommand", result: "valid", observations: [{surface: "cli", owner: "ValidateCommand", result: "exit 0"}],
+        });
+        evidence.record({
+            id: "blueprint-validation-report", artifactKind: "validationReport", operation: "inspect", sourcePath: validationPath,
+            owner: "ValidateCommand", result: "published JSON validation report",
+            observations: [{surface: "cli", owner: "ValidateCommand", result: "validate --out exit 0 wrote the report"}],
         });
         expect(await new ValidateCommand().run([bundlePath, "--deep", "--format", "json"])).toBe(0);
         evidence.record({
@@ -324,7 +361,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const certificationManifest = JSON.parse(fs.readFileSync(path.join(certificationPath, "manifest.json"), "utf-8")) as {
             game: {id: string; version: string}; sourceBundleManifestHash: string; modes: {libraryId: string; libraryHash: string}[];
         };
-        expect(certificationManifest).toMatchObject({game: bundleManifest.game, modes: [{
+        expect(certificationManifest).toMatchObject({game: provenanceBundleManifest.game, modes: [{
             libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash,
         }]});
         expect(certificationManifest.sourceBundleManifestHash).toMatch(/^sha256:/);
@@ -343,6 +380,42 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const proof = JSON.parse(fs.readFileSync(proofPath, "utf-8")) as {libraryId: string; libraryHash: string; modeName: string; indexHash: string};
         expect(proof).toMatchObject({libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash, modeName: "base"});
         expect(proof.indexHash).toMatch(/^sha256:/);
+        evidence.record({
+            id: "simulation-report-inspect", artifactKind: "simulationReport", operation: "report", sourcePath: simulationPath,
+            owner: "ReportCommand", result: "the real simulation output was consumed by the report owner",
+            observations: [{surface: "cli", owner: "ReportCommand", result: "simulation report was rendered"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "replay-descriptor-round-artifact", artifactKind: "runtimeReplayDescriptor", operation: "inspect", sourcePath: replayPath,
+            owner: "ReplayCommand", result: "portable replay descriptor retained exact outcome-source provenance",
+            observations: [{surface: "cli", owner: "ReplayCommand", result: "replay --out wrote the inspected descriptor"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "certification-evidence-bundle", artifactKind: "certificationEvidenceBundle", operation: "verify", sourcePath: certificationPath,
+            owner: "CertificationCommand", result: "verified against the generated Outcome Library",
+            observations: [{surface: "cli", owner: "CertificationCommand", result: "verify exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "fairness-server-seed-commitment", artifactKind: "fairnessServerSeedCommitment", operation: "commit", sourcePath: seedCommitmentPath,
+            producedPath: commitmentPath, owner: "FairnessCommand", result: "generated round commitment from the public server-seed commitment",
+            observations: [{surface: "cli", owner: "FairnessCommand", result: "commit exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "fairness-round-commitment", artifactKind: "fairnessCommitment", operation: "reveal", sourcePath: commitmentPath,
+            producedPath: proofPath, owner: "FairnessCommand", result: "generated and verified fairness proof",
+            observations: [{surface: "cli", owner: "FairnessCommand", result: "reveal and verify exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "fairness-round-proof", artifactKind: "fairnessProof", operation: "verify", sourcePath: proofPath,
+            owner: "FairnessCommand", result: "verified exact bundle/library provenance",
+            observations: [{surface: "cli", owner: "FairnessCommand", result: "verify exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
         evidence.recordScenario({
             id: "exact-source-provenance", sourcePath: bundlePath, producedPath: proofPath,
             result: "simulation, replay, certification, and fairness retain the generated bundle game, library id, and library hash",
