@@ -24,6 +24,10 @@ import {
     replayOutcomeSourceProject,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
+    BUILD_OPERATION,
+    OUTCOME_LIBRARY_GENERATE_OPERATION,
+    REPLAY_OPERATION,
+    SIM_OPERATION,
     STUDIO_OPERATION,
     VALIDATE_OPERATION,
 } from "pokie";
@@ -1781,6 +1785,31 @@ export class StudioServer implements StudioServerHandling {
         }
     }
 
+    // Direct Build/Export and job routes cannot trust the dashboard snapshot:
+    // its component may have been replaced or its sidecar changed after the
+    // project was opened. Resolve the current path for every request, before a
+    // job/service can reserve a destination or reach a package loader.
+    private async rejectCurrentWasmOperation(res: ServerResponse, operation: string): Promise<boolean> {
+        if (this.currentContext.mode !== "project" || !this.isWasmPath(this.currentContext.projectRoot)) return false;
+
+        try {
+            const project = await new ProjectTargetResolver().resolve(this.currentContext.projectRoot);
+            if (project?.type === "wasm") {
+                const diagnostic = describeUnsupportedProjectOperation(project, operation);
+                this.sendJson(res, 409, {error: diagnostic?.message ?? describeUnavailableWasmComponent()});
+                return true;
+            }
+            // A current `.wasm` path which no longer resolves is still never a
+            // package fallback, even if the file disappeared between opening
+            // it and this request.
+            this.sendJson(res, 409, {error: describeUnavailableWasmComponent()});
+            return true;
+        } catch (error) {
+            this.sendJson(res, 409, {error: error instanceof Error ? error.message : String(error)});
+            return true;
+        }
+    }
+
     // Inspect/Validate's own Game Model counterpart -- see buildProjectGameModel's own doc comment for
     // the exact resolved-project-type dispatch (blueprint / outcomeLibrary+stakeAdapter / wasm /
     // tsPackage-default) this delegates to. Always 200: a project whose game model isn't available (a
@@ -1921,6 +1950,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (await this.rejectCurrentWasmOperation(res, BUILD_OPERATION)) return;
         this.sendJson(res, 200, await this.deploymentService.getBuildModes(this.currentContext.projectRoot));
     }
 
@@ -1935,6 +1965,8 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+
+        if (await this.rejectCurrentWasmOperation(res, BUILD_OPERATION)) return;
 
         const body = await this.readJsonBody(req);
         let validated;
@@ -2022,6 +2054,8 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (await this.rejectCurrentWasmOperation(res, OUTCOME_LIBRARY_GENERATE_OPERATION)) return;
+
         const body = await this.readJsonBody(req);
         let validated;
         try {
@@ -2041,6 +2075,9 @@ export class StudioServer implements StudioServerHandling {
             // on the retained direct route.  Keep its recovery classification
             // server-owned instead of making a browser infer one from HTTP.
             this.sendJson(res, 409, {status: "conflict", error: "No active project."});
+            return;
+        }
+        if (await this.rejectCurrentWasmOperation(res, OUTCOME_LIBRARY_GENERATE_OPERATION)) {
             return;
         }
         const body = await this.readJsonBody(req);
@@ -2468,6 +2505,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (await this.rejectCurrentWasmOperation(res, BUILD_OPERATION)) return;
         this.sendJson(res, 200, await this.artifactBuildService.listTargets(this.currentContext.projectRoot));
     }
 
@@ -2481,6 +2519,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (await this.rejectCurrentWasmOperation(res, BUILD_OPERATION)) return;
         const body = await this.readJsonBody(req);
         let validated;
         try {
@@ -2510,6 +2549,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (await this.rejectCurrentWasmOperation(res, BUILD_OPERATION)) return;
         const body = await this.readJsonBody(req);
         let validated;
         try {
@@ -2566,6 +2606,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (await this.rejectCurrentWasmOperation(res, SIM_OPERATION)) return;
         const body = await this.readJsonBody(req);
         let validated;
         try {
@@ -2680,6 +2721,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (await this.rejectCurrentWasmOperation(res, REPLAY_OPERATION)) return;
         const body = await this.readJsonBody(req);
         const outcomeSourceProject = this.projectDashboard?.status === "outcome-source" ? this.projectDashboard.project : undefined;
         const isNativeOutcomeLibrary = outcomeSourceProject?.type === "outcomeLibrary";

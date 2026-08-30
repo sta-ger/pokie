@@ -17,7 +17,9 @@ import {
     OutcomeLibraryBundleWriteValidator,
     OutcomeSpaceEstimate,
     PokieGame,
+    ProjectTargetResolver,
     PROJECT_TYPE_CAPABILITIES,
+    OUTCOME_LIBRARY_GENERATE_OPERATION,
     ValidationIssue,
     WeightedOutcomeInput,
     WeightedOutcomeLibrary,
@@ -29,6 +31,7 @@ import {
     loadPokieGame,
     prepareOutcomeLibraryGenerationFromEstimate,
     resolveOutcomeLibraryGenerationDestination,
+    describeUnsupportedProjectOperation,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -496,6 +499,12 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         // filesystem" discipline every other command's own parseArgs() already follows.
         const sampling = this.buildSampledOptions(options);
 
+        // A component's compatible sidecar authorizes metadata inspection only.
+        // Check it before every initial runtime load; prepareRawGenerationOperation
+        // repeats this check immediately before its rebind load, because the
+        // source can be replaced after this preflight has completed.
+        await this.assertGenerationSourceIsRunnable(packageRoot);
+
         if (options.estimate || options.dryRun) {
             const game = await this.loadGame(packageRoot);
             // Estimate is a real preflight, not a separate planning shortcut:
@@ -617,6 +626,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 currentSource,
                 currentDestination: () => rawOutput,
                 read: async () => {
+                    await this.assertGenerationSourceIsRunnable(packageRoot);
                     const game = await this.loadGame(packageRoot);
                     const resumeFrom = options.resume !== undefined && this.fileExists(options.resume) ? this.readCheckpoint(options.resume) : undefined;
                     // Rebind the live package immediately before generation;
@@ -681,6 +691,23 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 signal,
             },
         };
+    }
+
+    /**
+     * Generation is normally given a package directory, for which the runtime
+     * loader remains the authoritative validation boundary. A `.wasm` input is
+     * different: it must be resolved through the product contract first so a
+     * compatible component, or any sidecar failure, can never reach that
+     * loader. Keeping this narrow also preserves injectable package fixtures
+     * used by the command's ordinary package-generation tests.
+     */
+    private async assertGenerationSourceIsRunnable(packageRoot: string): Promise<void> {
+        if (path.extname(packageRoot).toLowerCase() !== ".wasm") return;
+
+        const project = await new ProjectTargetResolver().resolve(packageRoot);
+        if (project?.type !== "wasm") return;
+        const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_LIBRARY_GENERATE_OPERATION);
+        if (diagnostic !== undefined) throw new Error(diagnostic.message);
     }
 
     // --estimate/--dry-run: the cheap, non-enumerating dry run over estimateExactOutcomeSpaceSize --

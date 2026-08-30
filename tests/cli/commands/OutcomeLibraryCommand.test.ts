@@ -9,6 +9,7 @@ import {
     OutcomeLibraryBundleValidateOptions,
     OutcomeLibraryBundleWriteResult,
     OutcomeSpaceEstimate,
+    POKIE_WASM_CONTRACT_VERSION,
     PokieGame,
     ValidationIssue,
     WeightedOutcomeLibraryGenerationCancelledError,
@@ -390,6 +391,35 @@ describe("OutcomeLibraryCommand", () => {
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain('"algorithm"');
             expect(printed).toContain("pokie-exact-reel-enumeration-v1");
+        });
+
+        it("rejects a real compatible WASM component before estimate, generation, or output publication", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcome-generation-wasm-"));
+            const wasmPath = path.join(workDir, "component.wasm");
+            const loadGame = jest.fn(() => Promise.resolve(FAKE_GAME));
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const writeFile = jest.fn();
+            try {
+                fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+                fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({
+                    schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                    component: {id: "component", version: "1.0.0"},
+                    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                    host: {rng: "pokie.rng.v1", services: []},
+                    capabilities: [],
+                }));
+                const command = createGenerateCommand({loadGame, generate, writeFile});
+
+                await expect(command.run(["generate", wasmPath, "--estimate"])).rejects.toThrow("This POKIE WASM component cannot generate an Outcome Library");
+                await expect(command.run(["generate", wasmPath, "--out", path.join(workDir, "library.json")])).rejects.toThrow("inspect a compatible component");
+
+                expect(loadGame).not.toHaveBeenCalled();
+                expect(generate).not.toHaveBeenCalled();
+                expect(writeFile).not.toHaveBeenCalled();
+                expect(fs.existsSync(path.join(workDir, "library.json"))).toBe(false);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
         });
 
         it("derives a default library id from the game manifest and --mode when --library-id is omitted", async () => {

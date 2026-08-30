@@ -1,4 +1,8 @@
 import {GenerateCommand} from "../../../cli/commands/GenerateCommand.js";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import {POKIE_WASM_CONTRACT_VERSION} from "pokie";
 
 describe("GenerateCommand", () => {
     it("renders public help without its private implementation namespace", async () => {
@@ -26,5 +30,24 @@ describe("GenerateCommand", () => {
         expect(error).toBeInstanceOf(Error);
         expect((error as Error).message).toContain("Usage: pokie generate <packageRoot>");
         expect((error as Error).message).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
+    });
+
+    it("keeps the public alias's inspection-only WASM rejection", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-generate-alias-wasm-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        try {
+            fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+            fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({
+                schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                component: {id: "component", version: "1.0.0"},
+                serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                host: {rng: "pokie.rng.v1", services: []},
+                capabilities: [],
+            }));
+
+            await expect(new GenerateCommand("1.3.0").run([wasmPath, "--estimate"])).rejects.toThrow("This POKIE WASM component cannot generate an Outcome Library");
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 });

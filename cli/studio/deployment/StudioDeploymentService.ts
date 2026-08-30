@@ -166,8 +166,12 @@ export class StudioDeploymentService {
     // Configure UI can never offer a mode run() would go on to reject, and never drifts from it just
     // because the tracked source was edited, moved, or deleted after the last build.
     public async getBuildModes(projectRoot: string): Promise<StudioDeploymentBuildModesView> {
-        const modeIds = await this.resolveBuildModeIds(projectRoot);
-        return modeIds === undefined ? {status: "unavailable"} : {status: "ok", modeIds};
+        try {
+            const modeIds = await this.resolveBuildModeIds(projectRoot);
+            return modeIds === undefined ? {status: "unavailable"} : {status: "ok", modeIds};
+        } catch (error) {
+            return {status: "unavailable", error: error instanceof Error ? error.message : String(error)};
+        }
     }
 
     // Looks the requested target up in the same registry listTargets() itself builds (so "is this
@@ -203,7 +207,16 @@ export class StudioDeploymentService {
             return {status: "target-not-found", plan};
         }
 
-        const buildModeIds = await this.resolveBuildModeIds(projectRoot);
+        let buildModeIds: readonly string[] | undefined;
+        try {
+            buildModeIds = await this.resolveBuildModeIds(projectRoot);
+        } catch (error) {
+            return {
+                status: "invalid-modes",
+                error: error instanceof Error ? error.message : String(error),
+                plan,
+            };
+        }
         if (buildModeIds === undefined) {
             return {status: "invalid-modes", error: describeBuildModesUnavailableForDeployment(), plan};
         }

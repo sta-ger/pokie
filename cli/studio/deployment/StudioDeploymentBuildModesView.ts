@@ -3,4 +3,6 @@
 // comment), never the mutable tracked source blueprint that inspectProject/loadBlueprint expose.
 // "unavailable" covers both "no current build to inspect" and "current build declares no modes" --
 // either way there is nothing real for Configure to pick a mode from.
-export type StudioDeploymentBuildModesView = {readonly status: "ok"; readonly modeIds: readonly string[]} | {readonly status: "unavailable"};
+export type StudioDeploymentBuildModesView =
+    | {readonly status: "ok"; readonly modeIds: readonly string[]}
+    | {readonly status: "unavailable"; readonly error?: string};
