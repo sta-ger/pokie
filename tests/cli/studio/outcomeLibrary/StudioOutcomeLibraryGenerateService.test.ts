@@ -93,6 +93,13 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(loadGame).not.toHaveBeenCalled();
         });
 
+        it("does not classify a package directory named .wasm as a component", () => {
+            const packageDirectory = path.join(projectRoot, "game.wasm");
+            fs.mkdirSync(packageDirectory);
+
+            expect(service().wasmBoundaryDiagnostic(packageDirectory)).toBeUndefined();
+        });
+
         it("does not advertise a planner result when the runtime cannot be loaded", async () => {
             const unavailable: ArtifactConversionPlan = {
                 ...plannedOutcomeLibrary,

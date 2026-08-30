@@ -5,6 +5,7 @@ import {
     InMemoryIdempotencyRepository,
     InMemorySessionRepository,
     InMemoryWallet,
+    isWasmComponentFile,
     isTransactionalWalletPort,
     loadPokieGame,
     OUTCOME_SOURCE_SAMPLE_OPERATION,
@@ -427,7 +428,7 @@ export class StudioPlayService {
     // their existing no-I/O hot path.
     private async invalidateCurrentWasmSession(): Promise<string | undefined> {
         const active = this.active;
-        if (active === undefined || !active.projectRoot.toLowerCase().endsWith(".wasm")) return undefined;
+        if (active === undefined || !isWasmComponentFile(active.projectRoot)) return undefined;
         try {
             const project = await this.resolveProject.resolve(active.projectRoot);
             if (project?.type !== "wasm") return undefined;

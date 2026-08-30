@@ -1,4 +1,4 @@
-import {describeUnavailableWasmComponent, loadPokieGame, ProjectTargetResolver} from "pokie";
+import {describeUnavailableWasmComponent, isWasmComponentFile, loadPokieGame, ProjectTargetResolver} from "pokie";
 import fs from "fs";
 import path from "path";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
@@ -134,14 +134,14 @@ export class StudioHomeService {
         if (!fs.existsSync(projectRoot)) {
             return false;
         }
-        return path.extname(projectRoot).toLowerCase() === ".wasm" || fs.existsSync(path.join(projectRoot, "package.json"));
+        return isWasmComponentFile(projectRoot) || fs.existsSync(path.join(projectRoot, "package.json"));
     }
 
     private async describeRecentProject(entry: {readonly projectRoot: string; readonly name: string; readonly openedAt: string}): Promise<StudioHomeRecentProjectView> {
         if (!this.projectStillExists(entry.projectRoot)) {
             return {...entry, missing: true, availability: "missing"};
         }
-        if (path.extname(entry.projectRoot).toLowerCase() !== ".wasm") {
+        if (!isWasmComponentFile(entry.projectRoot)) {
             return {...entry, missing: false, availability: "available"};
         }
         try {

@@ -309,6 +309,24 @@ describe("StudioReplayExecutionService", () => {
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
+
+    it("keeps a directory named .wasm on the normal replay lifecycle", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-replay-package-suffix-"));
+        const packageDirectory = path.join(workDir, "game.wasm");
+        fs.mkdirSync(packageDirectory);
+        const service = new StudioReplayExecutionService(
+            new InMemoryStudioReplayRepository(),
+            () => Promise.resolve(createSeedAwareFakeGame({id: "sample-slot", name: "Sample Slot", version: "1.0.0"})),
+        );
+        try {
+            const result = service.start(packageDirectory, {round: 1, seed: "seed"});
+            expect(result.status).toBe("created");
+            if (result.status !== "created") throw new Error("expected normal replay job");
+            await expect(waitForTerminal(service, packageDirectory, result.job.id)).resolves.toMatchObject({status: "completed"});
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("returns a queued job immediately, before any round is played (POST never blocks)", () => {

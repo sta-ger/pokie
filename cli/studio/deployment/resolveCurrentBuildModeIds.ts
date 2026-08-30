@@ -2,11 +2,11 @@ import {
     BUILD_OPERATION,
     describeUnavailableWasmComponent,
     describeUnsupportedProjectOperation,
+    isWasmComponentFile,
     loadPokieGame,
     ProjectTargetResolver,
     type PokieGame,
 } from "pokie";
-import path from "path";
 
 // The Deployment Configure step's own "current build" contract, mirrored server-side so a deployment
 // request can be checked against it even when it never went through the Configure UI at all -- but
@@ -32,7 +32,7 @@ export async function resolveCurrentBuildModeIds(
     // touching the runtime loader, so direct Deployment service consumers get
     // the same resolver-specific stale-sidecar diagnostic as Studio's HTTP
     // boundary instead of an erased "no build modes" result.
-    if (path.extname(projectRoot).toLowerCase() === ".wasm") {
+    if (isWasmComponentFile(projectRoot)) {
         const project = await new ProjectTargetResolver().resolve(projectRoot);
         if (project?.type === "wasm") {
             throw new Error(describeUnsupportedProjectOperation(project, BUILD_OPERATION)?.message ?? describeUnavailableWasmComponent());

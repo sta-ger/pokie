@@ -155,6 +155,20 @@ describe("StudioDeploymentService", () => {
         }
     });
 
+    it("loads build modes for a package directory named .wasm", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-deployment-modes-package-suffix-"));
+        const packageDirectory = path.join(workDir, "game.wasm");
+        const loadGame = jest.fn(() => Promise.resolve({getBetModes: () => [{id: "base"}]}));
+        fs.mkdirSync(packageDirectory);
+        fs.writeFileSync(path.join(packageDirectory, "package.json"), JSON.stringify({name: "fixture-package", version: "1.0.0"}));
+        try {
+            await expect(resolveCurrentBuildModeIds(packageDirectory, loadGame as never)).resolves.toEqual(["base"]);
+            expect(loadGame).toHaveBeenCalledWith(packageDirectory);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("requires configured POKIE versioning for direct construction", () => {
         expect(() => new ConfiguredStudioDeploymentService()).toThrow("requires the configured POKIE version");
     });

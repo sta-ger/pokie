@@ -1,4 +1,4 @@
-import {loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, wasmProductContractView, type ProjectType} from "pokie";
+import {isWasmComponentFile, loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, wasmProductContractView, type ProjectType} from "pokie";
 import path from "path";
 import {BlueprintMaterializationError} from "../materialize/BlueprintMaterializationError.js";
 import {RuntimePreparationError} from "../materialize/RuntimePreparationError.js";
@@ -116,7 +116,7 @@ export async function loadProjectDashboardContext(
         artifact = await resolveArtifactProject(projectRoot);
     } catch (error) {
         assertDashboardLoadCurrent(options);
-        if (path.extname(projectRoot).toLowerCase() === ".wasm") {
+        if (isWasmComponentFile(projectRoot)) {
             return {
                 status: "error",
                 projectRoot: resolvedRoot,

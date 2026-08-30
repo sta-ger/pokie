@@ -1,6 +1,7 @@
 import {
     describeUnsupportedProjectOperation,
     describeWasmLifecycleBoundary,
+    isWasmComponentFile,
     loadPokieGame,
     OUTCOME_SOURCE_SIMULATE_OPERATION,
     OutcomeLibraryBundleOutcomeSource,
@@ -131,11 +132,10 @@ export class StudioSimulationService {
     // "run the ordinary ParallelSimulationRunner path" (see run()), exactly as before this parameter existed.
     public start(projectRoot: string, request: ValidatedSimulationRequest, outcomeSourceProject?: PokieProject): StudioSimulationStartResult {
         // This service is also used directly, outside StudioServer's HTTP
-        // guard. A .wasm path has no runnable branch regardless of sidecar
-        // state, so reject before reserving a repository record or scheduling
-        // any work. The server's fresh resolver check retains more specific
-        // stale-sidecar diagnostics for browser callers.
-        if (projectRoot.toLowerCase().endsWith(".wasm") || outcomeSourceProject?.type === "wasm") {
+        // guard. A resolved component, or an actual unresolved WASM file, has
+        // no runnable branch. A package directory named `game.wasm` remains a
+        // normal project and must not be rejected from its pathname alone.
+        if (isWasmComponentFile(projectRoot) || outcomeSourceProject?.type === "wasm") {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(outcomeSourceProject?.type === "wasm" ? outcomeSourceProject.rootPath : projectRoot, "simulate game rounds")};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);

@@ -241,6 +241,14 @@ describe("ProjectTargetResolver", () => {
         await expect(resolver.resolve(wasmFile)).rejects.toThrow(/no compatible PokieWasmComponentManifest sidecar/);
     });
 
+    it("resolves a package directory named .wasm by its directory contents, not its suffix", async () => {
+        const packageDirectory = path.join(workDir, "game.wasm");
+        fs.mkdirSync(packageDirectory);
+        fs.writeFileSync(path.join(packageDirectory, "package.json"), JSON.stringify({name: "fixture-package", version: "1.0.0", pokie: {entry: "./dist/index.js"}}));
+
+        await expect(resolver.resolve(packageDirectory)).resolves.toMatchObject({type: "tsPackage", rootPath: packageDirectory});
+    });
+
     it("resolves a .wasm file with a compatible PokieWasmComponentManifest sidecar as a wasm project, read-only", async () => {
         const wasmFile = path.join(workDir, "game.wasm");
         fs.writeFileSync(wasmFile, WASM_BINARY);

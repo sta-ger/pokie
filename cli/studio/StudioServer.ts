@@ -18,6 +18,7 @@ import {
     readWasmComponentManifest,
     describeUnsupportedProjectOperation,
     describeUnavailableWasmComponent,
+    isWasmComponentFile,
     RoundArtifact,
     RoundArtifactValidator,
     sampleOutcomeSourceProject,
@@ -1788,7 +1789,7 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private isWasmPath(projectRoot: string): boolean {
-        return path.extname(projectRoot).toLowerCase() === ".wasm";
+        return isWasmComponentFile(projectRoot);
     }
 
     private async describeUnresolvedWasm(projectRoot: string): Promise<string> {
@@ -1805,23 +1806,24 @@ export class StudioServer implements StudioServerHandling {
     // project was opened. Resolve the current path for every request, before a
     // job/service can reserve a destination or reach a package loader.
     private async rejectCurrentWasmOperation(res: ServerResponse, operation: string): Promise<boolean> {
-        if (this.currentContext.mode !== "project" || !this.isWasmPath(this.currentContext.projectRoot)) return false;
-
+        if (this.currentContext.mode !== "project") return false;
+        const projectRoot = this.currentContext.projectRoot;
         try {
-            const project = await new ProjectTargetResolver().resolve(this.currentContext.projectRoot);
+            const project = await new ProjectTargetResolver().resolve(projectRoot);
             if (project?.type === "wasm") {
                 const diagnostic = describeUnsupportedProjectOperation(project, operation);
                 this.playService.reset();
                 this.sendJson(res, 409, {error: diagnostic?.message ?? describeUnavailableWasmComponent()});
                 return true;
             }
-            // A current `.wasm` path which no longer resolves is still never a
-            // package fallback, even if the file disappeared between opening
-            // it and this request.
-            this.playService.reset();
-            this.sendJson(res, 409, {error: describeUnavailableWasmComponent()});
-            return true;
+            if (project === undefined && this.isWasmPath(projectRoot)) {
+                this.playService.reset();
+                this.sendJson(res, 409, {error: await this.describeUnresolvedWasm(projectRoot)});
+                return true;
+            }
+            return false;
         } catch (error) {
+            if (!this.isWasmPath(projectRoot)) return false;
             this.playService.reset();
             this.sendJson(res, 409, {error: error instanceof Error ? error.message : String(error)});
             return true;
@@ -2602,12 +2604,16 @@ export class StudioServer implements StudioServerHandling {
                 this.sendJson(res, 409, {error: "The prepared Stake operation is stale or names a different destination. Refresh the preflight before building."});
                 return;
             }
-            const job = await this.artifactBuildService.startPreparedStakeProjection(this.currentContext.projectRoot, validated.preparedOperationId);
-            if (job === undefined) {
+            const start = await this.artifactBuildService.startPreparedStakeProjection(this.currentContext.projectRoot, validated.preparedOperationId);
+            if (start.status === "unsupported") {
+                this.sendJson(res, 409, {error: start.message});
+                return;
+            }
+            if (start.status === "stale") {
                 this.sendJson(res, 409, {error: "The prepared Stake operation is stale or belongs to another project. Refresh the preflight before building."});
                 return;
             }
-            this.sendJson(res, 202, {status: "created", job});
+            this.sendJson(res, 202, {status: "created", job: start.job});
             return;
         }
         const result = this.artifactBuildService.start(this.currentContext.projectRoot, validated.target, validated.outDir);

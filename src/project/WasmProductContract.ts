@@ -17,6 +17,20 @@ export const WASM_PRODUCT_CONTRACT = {
 
 export type WasmSidecarFailure = "missing" | "malformed" | "incompatible";
 
+/**
+ * Distinguishes a WASM *file* from a directory which merely happens to have a
+ * `.wasm` suffix.  Studio lifecycle code combines this with a resolved
+ * `project.type === "wasm"`; pathname spelling alone is never a product
+ * classification.
+ */
+export function isWasmComponentFile(targetPath: string): boolean {
+    try {
+        return fs.statSync(targetPath).isFile() && targetPath.toLowerCase().endsWith(".wasm");
+    } catch {
+        return false;
+    }
+}
+
 // Every public entry point which encounters a WASM component before it can be
 // resolved uses this wording.  Keeping the cause here is important: a missing
 // sidecar is repaired differently from a malformed declaration or an older
@@ -48,23 +62,33 @@ export function describeWasmLifecycleBoundary(wasmPath: string, operation: strin
         raw = fs.readFileSync(sidecarPath, "utf-8");
     } catch (error) {
         if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-            return describeWasmSidecarFailure(wasmPath, sidecarPath, "missing");
+            return describeWasmLifecycleSidecarFailure(wasmPath, sidecarPath, "missing", operation);
         }
-        return describeWasmSidecarFailure(wasmPath, sidecarPath, "malformed", error instanceof Error ? error.message : String(error));
+        return describeWasmLifecycleSidecarFailure(wasmPath, sidecarPath, "malformed", operation, error instanceof Error ? error.message : String(error));
     }
     let manifest: unknown;
     try {
         manifest = JSON.parse(raw);
     } catch {
-        return describeWasmSidecarFailure(wasmPath, sidecarPath, "malformed", "it is not valid JSON");
+        return describeWasmLifecycleSidecarFailure(wasmPath, sidecarPath, "malformed", operation, "it is not valid JSON");
     }
     const compatibility = assessWasmComponentCompatibility(manifest);
     if (!compatibility.compatible) {
         const detail = compatibility.issues.map((issue) => issue.message).join(" ");
         const malformed = compatibility.issues.some((issue) => issue.code.startsWith("wasm-component-manifest-"));
-        return describeWasmSidecarFailure(wasmPath, sidecarPath, malformed ? "malformed" : "incompatible", detail);
+        return describeWasmLifecycleSidecarFailure(wasmPath, sidecarPath, malformed ? "malformed" : "incompatible", operation, detail);
     }
     return describeWasmUnsupportedOperation(operation);
+}
+
+function describeWasmLifecycleSidecarFailure(
+    wasmPath: string,
+    sidecarPath: string,
+    failure: WasmSidecarFailure,
+    operation: string,
+    detail?: string,
+): string {
+    return `This ${WASM_PRODUCT_CONTRACT.kind} cannot ${operation}. ${describeWasmSidecarFailure(wasmPath, sidecarPath, failure, detail)}`;
 }
 
 function wasmSidecarRepair(sidecarPath: string, failure: WasmSidecarFailure): string {

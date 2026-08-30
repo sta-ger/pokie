@@ -19,6 +19,7 @@ import {
     OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
     describeArtifactConversionPlanDiagnostic,
     describeWasmLifecycleBoundary,
+    isWasmComponentFile,
     estimateExactOutcomeSpaceSize,
     generateWeightedOutcomeLibrary,
     prepareOutcomeLibraryGeneration,
@@ -151,7 +152,7 @@ export class StudioOutcomeLibraryGenerateService {
 
     /** Shared no-runtime boundary used before every retained generation phase. */
     public wasmBoundaryDiagnostic(projectRoot: string): string | undefined {
-        return path.extname(projectRoot).toLowerCase() === ".wasm"
+        return isWasmComponentFile(projectRoot)
             ? describeWasmLifecycleBoundary(projectRoot, "generate an Outcome Library")
             : undefined;
     }

@@ -403,6 +403,24 @@ describe("StudioSimulationService", () => {
         }
     });
 
+    it("keeps a directory named .wasm on the normal simulation lifecycle", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-simulation-package-suffix-"));
+        const packageDirectory = path.join(workDir, "game.wasm");
+        fs.mkdirSync(packageDirectory);
+        const service = new StudioSimulationService(
+            new InMemoryStudioSimulationRepository(),
+            () => Promise.resolve(createFakeGame(manifest)),
+        );
+        try {
+            const result = service.start(packageDirectory, {rounds: 1});
+            expect(result.status).toBe("created");
+            if (result.status !== "created") throw new Error("expected normal simulation job");
+            await expect(waitForTerminal(service, result.job.id)).resolves.toMatchObject({status: "completed"});
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("has no breakdown when the session doesn't implement StakeAmountDetermining/getSimulationCategory", async () => {
         const service = new StudioSimulationService(
             new InMemoryStudioSimulationRepository(),

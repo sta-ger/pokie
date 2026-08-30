@@ -62,6 +62,16 @@ describe("StudioArtifactBuildService", () => {
         }
     });
 
+    it("does not classify a package directory named .wasm as an inspection-only component", () => {
+        const packageDirectory = path.join(workDir, "game.wasm");
+        fs.mkdirSync(packageDirectory);
+
+        const result = service.start(packageDirectory, "tsPackage");
+
+        expect(result.status).toBe("created");
+        if (result.status === "created") service.cancelForProject(packageDirectory, result.job.id);
+    });
+
     describe("listTargets", () => {
         it("reports the registry-owned Blueprint artifact targets as supported", async () => {
             const blueprintPath = writeBlueprintFile();
@@ -171,10 +181,11 @@ describe("StudioArtifactBuildService", () => {
             expect(preview.plan.steps.some((step) => step.kind === "generateOutcomeLibrary" || step.kind === "reuseManagedOutcomeLibrary")).toBe(true);
 
             const started = await service.startPreparedStakeProjection(blueprintPath, preview.preparedOperationId);
-            expect(started).toMatchObject({target: "stakeAdapter", status: "queued"});
+            expect(started).toMatchObject({status: "created", job: {target: "stakeAdapter", status: "queued"}});
             // Handles are single-use: retry cannot cause a fresh plan.
-            await expect(service.startPreparedStakeProjection(blueprintPath, preview.preparedOperationId)).resolves.toBeUndefined();
-            service.cancelForProject(blueprintPath, started!.id);
+            await expect(service.startPreparedStakeProjection(blueprintPath, preview.preparedOperationId)).resolves.toEqual({status: "stale"});
+            if (started.status !== "created") throw new Error("expected prepared Stake build to start");
+            service.cancelForProject(blueprintPath, started.job.id);
         });
 
         it("rejects a prepared Stake operation when its source becomes a WASM component", async () => {
@@ -190,7 +201,10 @@ describe("StudioArtifactBuildService", () => {
                 throw new Error("expected a retained Stake operation");
             }
 
-            await expect(service.startPreparedStakeProjection(packagePath, preview.preparedOperationId)).resolves.toBeUndefined();
+            await expect(service.startPreparedStakeProjection(packagePath, preview.preparedOperationId)).resolves.toMatchObject({
+                status: "unsupported",
+                message: expect.stringContaining("cannot build a Stake Engine export"),
+            });
             expect(fs.existsSync(path.join(workDir, "replaced-stake"))).toBe(false);
         });
 
