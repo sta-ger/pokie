@@ -211,7 +211,7 @@ describe("ProjectDashboardPage - Play", () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
-            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor({bet: 5, win: 0})}}),
+            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor({bet: 5, availableBets: [5, 10], win: 0})}}),
             "/api/project/play/sessions/sess-1/spin": () => ({
                 ok: true,
                 status: 200,
@@ -633,7 +633,7 @@ describe("canonical player parity: Play renders the same fixture round Replay/Ou
                 status: 200,
                 body: {
                     status: "ok",
-                    session: sessionFor({credits: 1012.5, bet: 5, win: 12.5, screen: artifact.screen as string[][], debug: {artifact}}),
+                    session: sessionFor({credits: 1012.5, bet: 5, availableBets: [5, 10], win: 12.5, screen: artifact.screen as string[][], debug: {artifact}}),
                 },
             }),
         });
@@ -649,6 +649,13 @@ describe("canonical player parity: Play renders the same fixture round Replay/Ou
         const playTotals = within(routed.container).getByLabelText("Round totals");
         expect(within(playTotals).getByText("Total win").nextElementSibling).toHaveTextContent("12.50");
         expect(within(playTotals).getByText("Payout multiplier").nextElementSibling).toHaveTextContent("2.50");
+        // A completed artifact must retain the same player control affordances as the pre-spin
+        // session. RoundSummary receives those live choices from Play rather than relying on a
+        // debug state snapshot to repeat them.
+        const alternateBet = within(routed.container).getByRole("button", {name: "Select bet 10"});
+        expect(alternateBet).toBeEnabled();
+        await user.click(alternateBet);
+        expect(within(routed.container).getByRole("button", {name: "Select bet 10"})).toBeDisabled();
 
         // Each render mounts into the shared document.body, so every query below is scoped to its own
         // container -- otherwise a text query bound to either render's own result would ambiguously match

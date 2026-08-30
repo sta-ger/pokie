@@ -39,12 +39,18 @@ export function RoundSummary({
     session,
     selectedBet,
     selectedBetMode,
+    availableBets,
+    availableModeIds,
     onSelectBet,
     onSelectBetMode,
 }: {
     session: StudioRuntimeSessionView;
     selectedBet?: number;
     selectedBetMode?: string;
+    // Play owns the live session choices. They remain available after a round's artifact is captured,
+    // even for serializers whose captured state omits its initial payload.
+    availableBets?: number[];
+    availableModeIds?: string[];
     onSelectBet?: (bet: number) => void;
     onSelectBetMode?: (modeId: string) => void;
 }) {
@@ -77,10 +83,10 @@ export function RoundSummary({
                     paytable={presentation.paytable}
                     featureCounters={presentation.featureCounters}
                     lines={presentation.lines}
-                    availableBets={presentation.availableBets}
+                    availableBets={availableBets ?? presentation.availableBets}
                     currentBet={selectedBet ?? presentation.currentBet ?? artifact.stake}
                     onSelectBet={onSelectBet}
-                    availableModeIds={presentation.availableModeIds}
+                    availableModeIds={availableModeIds ?? presentation.availableModeIds}
                     currentModeId={selectedBetMode ?? presentation.currentModeId}
                     onSelectMode={onSelectBetMode}
                 />

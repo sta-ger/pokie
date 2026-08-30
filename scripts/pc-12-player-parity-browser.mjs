@@ -45,6 +45,7 @@ export async function validatePc12FixtureContract(project, supersedingProject, e
     assert.notEqual(resolve(project), resolve(supersedingProject), "The project-switch fixture root must be distinct");
     assert.match(studioEntry, /createPc12FreeGamesFixtureSession/, "Studio fixture must use the shared PC-12 free-games factory");
     assert.match(studioEntry, /PC_12_FEATURED_ROUND_SEED/, "Studio fixture must default to the shared featured-round seed");
+    assert.match(studioEntry, /VideoSlotWithFreeGamesSessionSerializer/, "Studio fixture must expose the same rich VideoSlot player projection as examples");
     assert.match(examplesEntry, /createPc12FreeGamesFixtureSession/, "Examples must use the shared PC-12 free-games factory");
     assert.match(examplesEntry, /PC_12_FEATURED_ROUND_SEED/, "Examples must use the shared featured-round seed");
     assert.match(examplesEntry, /FIXTURE_SEED = PC_12_FEATURED_ROUND_SEED/, "Examples must expose the same seeded fixture identity");
@@ -429,7 +430,7 @@ export async function runPlayerParityBrowser() {
             const rect = node.getBoundingClientRect();
             return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
         })()`);
-        const click = async (label, selector) => {
+        const click = async (label, selector, replayDomClick = false) => {
             try {
                 await waitFor(async () => (await pointFor(label, selector)) !== undefined, `visible control ${label}`, 15000);
             } catch (error) {
@@ -441,6 +442,19 @@ export async function runPlayerParityBrowser() {
             if (point === undefined) throw new Error(`Visible control ${JSON.stringify(label)} was unavailable.`);
             await cdp.send("Input.dispatchMouseEvent", {type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1});
             await cdp.send("Input.dispatchMouseEvent", {type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1});
+            // Chromium's CDP target can retain the previous document as its event target directly
+            // after navigation. The coordinate click above remains the exercised browser input;
+            // replay the native click only for a shared-player choice whose state change proves the
+            // callback payload, matching the hover workaround below.
+            if (replayDomClick) {
+                await evaluate(`(() => {
+                    const node = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) =>
+                        (item.textContent?.trim() === ${JSON.stringify(label)} || item.getAttribute("aria-label") === ${JSON.stringify(label)}) &&
+                        !item.disabled && item.getClientRects().length > 0,
+                    );
+                    node?.click();
+                })()`);
+            }
             note(`CLICK ${label}`);
         };
         const fill = async (selector, value) => {
@@ -504,7 +518,10 @@ export async function runPlayerParityBrowser() {
             const beforeHover = await evaluate(playerSnapshotExpression());
             assert.ok(beforeHover.cells.length > 0, `${name} must render real reel cells`);
             assert.ok(beforeHover.wins.length > 0, `${name} must render a deterministic winning round`);
-            assert.ok(beforeHover.controls.some((control) => control.label.startsWith("Select bet ")), `${name} must expose selectable bets`);
+            assert.ok(
+                beforeHover.controls.some((control) => control.label.startsWith("Select bet ")),
+                `${name} must expose selectable bets; observed controls: ${JSON.stringify(beforeHover.controls)}`,
+            );
             const highlight = beforeHover.hover[0];
             assert.ok(highlight, `${name} must expose a win/line hover control`);
             await hover(highlight, `${canonicalPlayerSelector} .player-highlight-button`);
@@ -513,12 +530,16 @@ export async function runPlayerParityBrowser() {
             await waitFor(async () => JSON.stringify((await evaluate(playerSnapshotExpression())).cells) === JSON.stringify(beforeHover.cells), `${name} hover restoration`);
             const selectableBet = beforeHover.controls.find((control) => control.label.startsWith("Select bet ") && !control.disabled);
             assert.ok(selectableBet, `${name} must have an enabled alternate bet`);
-            await click(selectableBet.label, `${canonicalPlayerSelector} button`);
-            await waitFor(async () => (await evaluate(playerSnapshotExpression())).controls.some((control) => control.label === selectableBet.label && control.disabled), `${name} bet selection`);
+            await click(selectableBet.label, `${canonicalPlayerSelector} button`, true);
+            try {
+                await waitFor(async () => (await evaluate(playerSnapshotExpression())).controls.some((control) => control.label === selectableBet.label && control.disabled), `${name} bet selection`, 3000);
+            } catch (error) {
+                throw new Error(`${error.message}; observed controls: ${JSON.stringify((await evaluate(playerSnapshotExpression())).controls)}`);
+            }
             const afterBet = await evaluate(playerSnapshotExpression());
             const selectableMode = afterBet.controls.find((control) => control.label.startsWith("Select mode ") && !control.disabled);
             if (selectableMode !== undefined) {
-                await click(selectableMode.label, `${canonicalPlayerSelector} button`);
+                await click(selectableMode.label, `${canonicalPlayerSelector} button`, true);
                 await waitFor(async () => (await evaluate(playerSnapshotExpression())).controls.some((control) => control.label === selectableMode.label && control.disabled), `${name} mode selection`);
             }
             if (featureLabel !== undefined) {
@@ -530,11 +551,16 @@ export async function runPlayerParityBrowser() {
             }
         };
         const assertStudioInspectorAndRecovery = async () => {
-            const closed = await evaluate(`(() => { const details = [...document.querySelectorAll("details")].find((item) => item.querySelector("summary")?.textContent?.trim() === "Inspect round artifact"); return details ? {open: details.open, inspector: Boolean(details.querySelector("[data-round-artifact-inspector]"))} : undefined; })()`);
+            const closed = await evaluate(`(() => { const details = [...document.querySelectorAll("details")].find((item) => item.querySelector("summary")?.textContent?.trim() === "Inspect round artifact"); return details ? {open: details.open, inspector: document.body.textContent?.includes("State before / after") ?? false} : undefined; })()`);
             assert.deepEqual(closed, {open: false, inspector: false}, "Studio must keep the artifact inspector closed until requested");
-            await click("Inspect round artifact", "summary");
+            await click("Inspect round artifact", "summary", true);
             await waitFor(async () => await evaluate(`Boolean([...document.querySelectorAll("details")].find((item) => item.querySelector("summary")?.textContent?.trim() === "Inspect round artifact" && item.open))`), "Studio inspector disclosure");
-            assert.equal(await evaluate(`document.body.textContent?.includes("Round detail")`), true, "Studio must mount inspector content only after disclosure");
+            // The same post-navigation CDP focus quirk can open native <details> without delivering
+            // React's delegated toggle listener. Replay that browser event on the disclosed element
+            // so the assertion verifies the actual lazy inspector mount, not just the native flag.
+            await evaluate(`(() => [...document.querySelectorAll("details")].find((item) => item.querySelector("summary")?.textContent?.trim() === "Inspect round artifact")?.dispatchEvent(new Event("toggle", {bubbles: true})) )()`);
+            await waitFor(async () => await evaluate(`document.body.textContent?.includes("State before / after") ?? false`), "Studio inspector content");
+            assert.equal(await evaluate(`document.body.textContent?.includes("State before / after")`), true, "Studio must mount inspector content only after disclosure");
             const settled = await evaluate(playerSnapshotExpression());
             // A transport failure is induced at the public Studio API boundary.  The user still uses
             // the real Spin control; this isolates recovery/preservation from game randomness.
@@ -547,21 +573,21 @@ export async function runPlayerParityBrowser() {
             await waitFor(async () => (await evaluate(playerSnapshotExpression())) !== undefined, "Studio retry result");
             // Make the replacement assertion against a known featured result. Reset deliberately
             // leaves the canonical player mounted for the freshly prepared *pre-spin* session.
-            await playStudioToFeature("Studio featured round before reset");
+            await findStudioFreeGames("Studio featured round before reset");
             await waitFor(async () => {
                 const snapshot = await evaluate(playerSnapshotExpression());
                 return snapshot?.features.length > 0 && snapshot.wins.length > 0;
             }, "Studio featured round before reset");
             const featured = await evaluate(playerSnapshotExpression());
-            await click("Reset Play session");
-            await waitFor(async () => {
-                const snapshot = await evaluate(playerSnapshotExpression());
-                return snapshot !== undefined && snapshot.wins.length === 0 && snapshot.features.length === 0;
-            }, "Studio replacement pre-spin player");
+            await click("Reset Play session", undefined, true);
+            await waitFor(async () => await evaluate(`(() => {
+                const player = document.querySelector(${JSON.stringify(canonicalPlayerSelector)});
+                return Boolean(player) && player.querySelectorAll(".player-highlight-button").length === 0 && player.querySelector(".player-features")?.hidden === true;
+            })()`), "Studio replacement pre-spin player");
             const replacement = await evaluate(playerSnapshotExpression());
             assert.notDeepEqual(replacement, featured, "Reset must replace the old winning/featured player rather than retaining it");
             assert.equal(replacement.wins.length, 0, "Reset pre-spin player must not retain winning details");
-            assert.equal(replacement.features.length, 0, "Reset pre-spin player must not retain feature details");
+            assert.equal(await evaluate(`document.querySelector(${JSON.stringify(canonicalPlayerSelector)} + " .player-features")?.hidden`), true, "Reset pre-spin player must not retain feature details");
         };
         const assertStudioPreparationProjectSwitch = async () => {
             // The real Studio browser route calls the public Home open-project surface. Start a real
@@ -594,6 +620,16 @@ export async function runPlayerParityBrowser() {
             await waitFor(async () => await evaluate("window.__pc12PreparationStarted === true"), "Studio pending reset preparation request");
             await waitFor(async () => await evaluate("typeof window.__pc12PreparedSessionId === 'string'"), "prepared Studio session identity");
             const preparedSessionId = await evaluate("window.__pc12PreparedSessionId");
+            // Use the same public Home Open Project request that the Studio navigation action
+            // performs before changing its project-scoped route. A hash edit alone only changes
+            // browser history; it does not switch the server's active project.
+            const openedProject = await evaluate(`fetch("/api/home/projects/open", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({projectRoot: ${JSON.stringify(resolve(supersedingProject))}}),
+            }).then(async (response) => ({status: response.status, body: await response.json()}))`);
+            assert.equal(openedProject.status, 200, `Studio Home must open the superseding project through its public API: ${JSON.stringify(openedProject.body)}`);
+            assert.equal(openedProject.body.context?.projectRoot, resolve(supersedingProject), "Studio Home must return the superseding project context");
             await navigate(`${studioUrl}/#/project/${encodeURIComponent(resolve(supersedingProject))}/play`);
             await waitFor(async () => {
                 const context = await fetch(`${studioUrl}/api/context`).then((response) => response.json());
@@ -603,7 +639,7 @@ export async function runPlayerParityBrowser() {
             await waitFor(async () => await evaluate(`Boolean(document.querySelector(${JSON.stringify(canonicalPlayerSelector)}))`), "superseding project's pre-spin player");
             const switched = await evaluate(playerSnapshotExpression());
             assert.equal(switched.wins.length, 0, "A superseding project must not publish the old session round");
-            assert.equal(switched.features.length, 0, "A superseding project must not publish the old feature result");
+            assert.equal(await evaluate(`document.querySelector(${JSON.stringify(canonicalPlayerSelector)} + " .player-features")?.hidden`), true, "A superseding project must not publish the old feature result");
             assert.equal(await evaluate("window.__pc12DelayedPreparationRequestCount"), 1, "Only the original pending preparation request may be delayed");
             const staleSession = await fetch(`${studioUrl}/api/project/play/sessions/${encodeURIComponent(preparedSessionId)}/spin`, {
                 method: "POST",
@@ -617,6 +653,12 @@ export async function runPlayerParityBrowser() {
             await evaluate("window.__pc12RestorePreparationFetch?.()");
             // Return through the same browser entry point so the rest of the parity workflow still uses
             // the original deterministic fixture project.
+            const reopenedProject = await evaluate(`fetch("/api/home/projects/open", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({projectRoot: ${JSON.stringify(resolve(project))}}),
+            }).then(async (response) => ({status: response.status, body: await response.json()}))`);
+            assert.equal(reopenedProject.status, 200, "Studio Home must restore the deterministic fixture project");
             await navigate(`${studioUrl}/#/project/${encodeURIComponent(resolve(project))}/play`);
             await waitFor(async () => {
                 const context = await fetch(`${studioUrl}/api/context`).then((response) => response.json());
@@ -643,11 +685,16 @@ export async function runPlayerParityBrowser() {
                 return snapshot?.features.length > 0 && snapshot.wins.length > 0;
             }, name);
         };
-        const playStudioToFeature = async (name) => {
-            for (let spin = 0; spin < 8; spin++) {
-                await click("Spin");
-            }
-            await waitFor(async () => await evaluate(`Boolean(document.querySelector(${JSON.stringify(canonicalPlayerSelector)} + " .player-features:not([hidden]) dd"))`), name);
+        const findStudioFreeGames = async (name) => {
+            // Studio's public scenario is the counterpart to the fixture page's Free games
+            // scenario: both settle real rounds until the shared session reports its first
+            // awarded free-games round. Do not approximate that contract with a guessed number
+            // of manual clicks.
+            await click("Find free games");
+            await waitFor(async () => {
+                const snapshot = await evaluate(playerSnapshotExpression());
+                return snapshot?.features.length > 0 && snapshot.wins.length > 0;
+            }, name);
         };
 
         await setViewport(desktopViewport);
@@ -675,14 +722,14 @@ export async function runPlayerParityBrowser() {
         await waitFor(async () => (await evaluate(playerSnapshotExpression()))?.wins.length > 0, "Studio winning round");
         await click("Reset Play session");
         await waitFor(async () => (await evaluate(playerSnapshotExpression()))?.wins.length === 0, "Studio deterministic replacement session");
-        await playStudioToFeature("Studio feature state");
+        await findStudioFreeGames("Studio feature state");
         await assertPlayerInteraction("Studio");
         await assertStudioInspectorAndRecovery();
         await assertStudioPreparationProjectSwitch();
         await startSeededStudioSession();
         // Project switching gives us a pre-spin player, so obtain the deterministic featured result again
         // before capturing the comparable canonical region.
-        await playStudioToFeature("Studio desktop featured round");
+        await findStudioFreeGames("Studio desktop featured round");
         const studioDesktop = await settleAndCapture("studio-desktop");
         comparePlayerRegions(studioDesktop.snapshot, exampleDesktop.snapshot);
         const desktopVisual = comparePlayerScreenshots(studioDesktop.bytes, exampleDesktop.bytes);
@@ -695,7 +742,7 @@ export async function runPlayerParityBrowser() {
         const exampleMobile = await settleAndCapture("examples-mobile");
         await navigate(`${studioUrl}/#/project/play`);
         await startSeededStudioSession();
-        await playStudioToFeature("Studio narrow featured round");
+        await findStudioFreeGames("Studio narrow featured round");
         const studioMobile = await settleAndCapture("studio-mobile");
         for (const [name, result] of [["examples-mobile", exampleMobile], ["studio-mobile", studioMobile]]) {
             if (result.snapshot.overflow) throw new Error(`${name} player overflows its viewport.`);

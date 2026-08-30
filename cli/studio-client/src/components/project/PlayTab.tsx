@@ -176,6 +176,8 @@ export function PlayTab({
                 session={playedRound}
                 selectedBet={selectedBet === null ? undefined : Number(selectedBet)}
                 selectedBetMode={selectedBetMode ?? undefined}
+                availableBets={availableBets}
+                availableModeIds={availableBetModes}
                 onSelectBet={(bet) => setSelectedBet(String(bet))}
                 onSelectBetMode={setSelectedBetMode}
             />
