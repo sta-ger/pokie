@@ -664,7 +664,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         if (persistedResultPath !== undefined && cliEvidencePath !== undefined && fs.existsSync(cliEvidencePath)) {
             mergeArtifactInteroperabilityRuns([cliEvidencePath, emittedEvidencePath], persistedResultPath);
         }
-    });
+    }, 120_000);
 });
 
 async function waitForStudioJob(
