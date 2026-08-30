@@ -1,4 +1,4 @@
-import type {OutcomeSourceProjectReport, PokieGameManifest, PokieProject, ProjectType} from "pokie";
+import type {OutcomeSourceProjectReport, PokieGameManifest, PokieProject, ProjectType, WasmProductContractView} from "pokie";
 import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
 
 // The Project Dashboard's own read model — richer than StudioContext (which only ever carries
@@ -49,6 +49,7 @@ export type ProjectDashboardContext =
           projectRoot: string;
           project: PokieProject;
           origin?: StudioProjectOrigin;
+          wasmPresentation?: WasmProductContractView;
       }
     // `errorDetail` carries a failure's own raw technical diagnostic text, kept separate from `error`'s
     // plain-English summary -- currently only populated from a BlueprintMaterializationError's own

@@ -105,6 +105,13 @@ export type ProjectDashboardContext =
           projectRoot: string;
           project: {type: StudioProjectType; rootPath: string; capabilities: StudioProjectCapability[]; provenance: string};
           origin?: StudioProjectOrigin;
+          wasmPresentation?: {
+              label: string;
+              manifestCapability: StudioProjectCapability;
+              manifestCapabilityLabel: string;
+              inspectActionLabel: string;
+              inspectionSummary: string;
+          };
       }
     // `errorDetail` -- a failed Blueprint materialization's own raw npm diagnostic, kept separate from
     // `error`'s already-curated human message (see the server's own ProjectDashboardContext doc comment) --
@@ -127,6 +134,7 @@ export type GamePackageInspectionReport = {
     valid: boolean;
     error?: string;
     packageJson?: {name?: string; version?: string; description?: string};
+    wasmManifest?: {component: {id: string; version: string}; schemaVersion: string};
 };
 
 export type ValidationIssue = {
@@ -251,6 +259,14 @@ export type StudioProjectRegistryView = {
     origin: StudioProjectOrigin;
     lastOpenedAt: string;
     status: StudioProjectStatus;
+    unavailableReason?: string;
+    wasmPresentation?: {
+        label: string;
+        manifestCapability: StudioProjectCapability;
+        manifestCapabilityLabel: string;
+        inspectActionLabel: string;
+        inspectionSummary: string;
+    };
     // The .xlsx PAR sheet workbook this project's own managed Blueprint was originally Applied and
     // first-saved from -- see cli/studio/StudioProjectRegistryEntry.ts's own doc comment. Undefined for
     // every project that didn't come from that flow.

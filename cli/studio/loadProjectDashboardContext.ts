@@ -1,4 +1,4 @@
-import {loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, type ProjectType} from "pokie";
+import {loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, wasmProductContractView, type ProjectType} from "pokie";
 import path from "path";
 import {BlueprintMaterializationError} from "../materialize/BlueprintMaterializationError.js";
 import {RuntimePreparationError} from "../materialize/RuntimePreparationError.js";
@@ -117,6 +117,7 @@ export async function loadProjectDashboardContext(
             projectRoot: resolvedRoot,
             project: artifact,
             origin: identity?.origin,
+            ...(artifact.type === "wasm" ? {wasmPresentation: wasmProductContractView()} : {}),
         };
     }
 

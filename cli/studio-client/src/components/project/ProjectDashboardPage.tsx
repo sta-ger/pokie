@@ -976,7 +976,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                             )}
                             {activeTab === "overview" && header.status === "artifact" && (
                                 header.type === "wasm"
-                                    ? <Text>This compatible WASM component is inspection-only. Studio can inspect its declared manifest metadata; it never loads or executes the binary. Use the original Blueprint or POKIE game package for runnable or convertible work.</Text>
+                                    ? <Text>{header.wasmPresentation?.inspectionSummary}</Text>
                                     : <Text>This {PROJECT_TYPE_LABEL[header.type].toLowerCase()} can be republished from Build/Export.</Text>
                             )}
                             {activeTab === "gameModel" && (

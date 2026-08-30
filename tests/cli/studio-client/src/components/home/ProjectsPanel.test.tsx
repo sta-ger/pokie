@@ -87,6 +87,38 @@ describe("ProjectsPanel: Import Project", () => {
         expect(calls.filter((call) => call.url.startsWith("/api/home/projects/registry?"))).toHaveLength(2);
     });
 
+    it("renders the resolver's actionable unavailable WASM reason and never offers an open action", async () => {
+        const reason = "The WASM sidecar is malformed; repair its JSON.";
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [{
+                    location: "/games/component.wasm",
+                    name: "Component",
+                    type: "wasm",
+                    capabilities: ["wasm.manifest.read"],
+                    origin: "external",
+                    lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                    status: "unavailable",
+                    unavailableReason: reason,
+                    wasmPresentation: {
+                        label: "WASM component (inspection-only)",
+                        manifestCapability: "wasm.manifest.read",
+                        manifestCapabilityLabel: "Inspect declared WASM component metadata",
+                        inspectActionLabel: "Inspect this component",
+                        inspectionSummary: "inspection-only",
+                    },
+                }],
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        const row = (await screen.findByText("Component")).closest("tr") as HTMLElement;
+        expect(within(row).getByText(reason)).toBeInTheDocument();
+        expect(within(row).queryByRole("button", {name: /inspect|open/i})).not.toBeInTheDocument();
+    });
+
     it("detects a recognized package, prefills the suggested name, and Register adds it to the list", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({

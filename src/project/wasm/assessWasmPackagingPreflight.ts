@@ -3,6 +3,7 @@ import path from "path";
 import {WASM_PACKAGING_PREFLIGHT_OPERATION} from "../PokieOperation.js";
 import type {PokieProject} from "../PokieProject.js";
 import {describeUnsupportedProjectOperation} from "../describeUnsupportedProjectOperation.js";
+import {describeWasmPackagingPreflightNote} from "../WasmProductContract.js";
 import type {UnsupportedProjectOperationDiagnostic} from "../UnsupportedProjectOperationDiagnostic.js";
 import {scanForBlockingNodeApiUsage} from "./internal/scanForBlockingNodeApiUsage.js";
 import type {WasmPackagingPreflightReport} from "./WasmPackagingPreflightReport.js";
@@ -10,9 +11,6 @@ import type {WasmPackagingPreflightReport} from "./WasmPackagingPreflightReport.
 export type WasmPackagingPreflightResult =
     | {readonly supported: true; readonly report: WasmPackagingPreflightReport}
     | {readonly supported: false; readonly diagnostic: UnsupportedProjectOperationDiagnostic};
-
-const WASM_EXPORT_UNAVAILABLE_NOTE =
-    "POKIE does not currently expose a WASM build or export target; inspect a compatible component with `pokie inspect <path>` instead.";
 
 function readDeclaredDependencies(rootPath: string): readonly string[] {
     try {
@@ -45,7 +43,7 @@ export function assessWasmPackagingPreflight(project: PokieProject): WasmPackagi
             rootPath: project.rootPath,
             blockingApiUsages: scanForBlockingNodeApiUsage(project.rootPath),
             declaredDependencies: readDeclaredDependencies(project.rootPath),
-            notes: [WASM_EXPORT_UNAVAILABLE_NOTE],
+            notes: [describeWasmPackagingPreflightNote()],
         },
     };
 }

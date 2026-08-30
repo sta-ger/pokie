@@ -1,4 +1,4 @@
-import {ProjectTargetResolver, type PokieProject, type ProjectResolving, type ProjectType} from "pokie";
+import {describeUnavailableWasmComponent, ProjectTargetResolver, type PokieProject, type ProjectResolving, type ProjectType, wasmProductContractView} from "pokie";
 import fs from "fs";
 import path from "path";
 import {PokiePathResolver} from "../paths/PokiePathResolver.js";
@@ -79,10 +79,35 @@ export class StudioProjectRegistrationService {
         const seenLocations = new Set<string>();
         const refreshed = await Promise.all(canonicalEntries.map(async ({entry, location}) => {
             if (entry.type !== "wasm") return {...entry, location, status: this.pathExists(location) ? "ok" as const : "missing" as const};
-            if (!this.pathExists(location)) return {...entry, location, status: "missing" as const};
-            const resolved = await this.resolveRecognizedProject(location).catch(() => undefined);
-            if (resolved === undefined) return {...entry, location, status: "unavailable" as const};
-            return {...entry, location: resolved.location, type: resolved.project.type, capabilities: resolved.project.capabilities, status: "ok" as const};
+            if (!this.pathExists(location)) return {...entry, location, status: "missing" as const, wasmPresentation: wasmProductContractView()};
+            try {
+                const resolved = await this.resolveRecognizedProject(location);
+                if (resolved === undefined) {
+                    return {
+                        ...entry,
+                        location,
+                        status: "unavailable" as const,
+                        unavailableReason: describeUnavailableWasmComponent(),
+                        wasmPresentation: wasmProductContractView(),
+                    };
+                }
+                return {
+                    ...entry,
+                    location: resolved.location,
+                    type: resolved.project.type,
+                    capabilities: resolved.project.capabilities,
+                    status: "ok" as const,
+                    wasmPresentation: wasmProductContractView(),
+                };
+            } catch (error) {
+                return {
+                    ...entry,
+                    location,
+                    status: "unavailable" as const,
+                    unavailableReason: error instanceof Error ? error.message : String(error),
+                    wasmPresentation: wasmProductContractView(),
+                };
+            }
         }));
         return refreshed.flatMap((entry) => {
             // Older registry files can contain aliases written before canonical identity was introduced.

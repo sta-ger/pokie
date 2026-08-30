@@ -3695,6 +3695,47 @@ describe("StudioServer", () => {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }
         });
+
+        it("inspects only the compatible sidecar and rejects validation without invoking package APIs", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-boundary-test-"));
+            try {
+                const wasmFile = path.join(workDir, "game.wasm");
+                fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+                fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({
+                    schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                    component: {id: "sample-component", version: "0.1.0"},
+                    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                    host: {rng: "pokie.rng.v1", services: []},
+                    capabilities: [],
+                }));
+                const packageInspect = jest.fn();
+                const packageValidate = jest.fn();
+                const homeService = new StudioHomeService("1.0.0");
+                wasmServer = new StudioServer({
+                    pokieVersion: "1.0.0",
+                    host: "127.0.0.1",
+                    port: 0,
+                    studioRoot: wasmStudioRoot,
+                    homeService,
+                    blueprintService: new StudioBlueprintService("1.0.0", wasmStudioRoot, homeService),
+                    initialContext: {mode: "project", projectRoot: wasmFile},
+                    gamePackageInspector: {inspect: packageInspect},
+                    gamePackageValidator: {validate: packageValidate},
+                });
+                const address = await wasmServer.start();
+                const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+                const inspection = await get(`${projectBaseUrl}/api/project/inspect`);
+                const validation = await get(`${projectBaseUrl}/api/project/validate`);
+
+                expect(inspection).toMatchObject({status: 200, body: {valid: true, wasmManifest: {component: {id: "sample-component", version: "0.1.0"}}}});
+                expect(validation).toMatchObject({status: 409, body: {error: expect.stringContaining("inspect a compatible component")}});
+                expect(packageInspect).not.toHaveBeenCalled();
+                expect(packageValidate).not.toHaveBeenCalled();
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
     });
 
     describe("GET /api/project/gameModel for resolved 'outcomeLibrary'/'stakeAdapter' projects (real fixtures on disk)", () => {

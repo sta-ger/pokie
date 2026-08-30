@@ -262,7 +262,25 @@ describe("StudioProjectRegistrationService", () => {
 
             expect(await service.list()).toEqual([expect.objectContaining({type: "wasm", capabilities: ["wasm.manifest.read"], status: "ok"})]);
             const unavailable = new StudioProjectRegistrationService(registry, fakeResolver({}), () => true);
-            expect(await unavailable.list()).toEqual([expect.objectContaining({status: "unavailable"})]);
+            expect(await unavailable.list()).toEqual([expect.objectContaining({status: "unavailable", unavailableReason: expect.stringContaining("compatible sidecar")})]);
+        });
+
+        it("retains the resolver's specific malformed WASM sidecar reason on an unavailable entry", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            await registry.upsert({
+                location: "/component.wasm",
+                name: "Component",
+                type: "wasm",
+                capabilities: ["wasm.manifest.read"],
+                origin: "external",
+                lastOpenedAt: new Date().toISOString(),
+            });
+            const resolver: ProjectResolving = {resolve: () => Promise.reject(new Error("The WASM sidecar is malformed; repair its JSON."))};
+            const service = new StudioProjectRegistrationService(registry, resolver, () => true);
+
+            expect(await service.list()).toEqual([
+                expect.objectContaining({status: "unavailable", unavailableReason: "The WASM sidecar is malformed; repair its JSON."}),
+            ]);
         });
     });
 

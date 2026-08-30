@@ -1,4 +1,5 @@
-import {buildGameModelProjection, GameBlueprint, GameModelProjection, GamePackageInspectionReport, PokieProject, readWasmComponentManifest} from "pokie";
+import {buildGameModelProjection, describeUnavailableWasmComponent, describeWasmGameModelBoundary, GameBlueprint, GameModelProjection, GamePackageInspectionReport, PokieProject, readWasmComponentManifest} from "pokie";
+import path from "path";
 import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 
 // The collaborators GET /api/project/gameModel's own resolved-project-type dispatch needs to actually
@@ -59,8 +60,15 @@ export async function buildProjectGameModel(
         }
         return buildGameModelProjection(undefined, {
             manifest: {id: manifestRead.manifest.component.id, version: manifestRead.manifest.component.version},
-            reason: "This project is a WASM component -- only its own manifest identity is exposed here; POKIE has no execution backend to introspect its underlying game model.",
+            reason: describeWasmGameModelBoundary(),
         });
+    }
+
+    // A component can become incompatible after Studio has already opened its
+    // path (for example when its sidecar is edited).  Never fall through to a
+    // package reader merely because re-resolution now rejects that WASM path.
+    if (path.extname(projectRoot).toLowerCase() === ".wasm") {
+        return buildGameModelProjection(undefined, {reason: describeUnavailableWasmComponent()});
     }
 
     const inspected = readers.inspectPackage(projectRoot);

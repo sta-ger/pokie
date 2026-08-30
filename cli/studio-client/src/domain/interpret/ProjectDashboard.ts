@@ -44,6 +44,7 @@ export type ProjectHeaderView =
           type: StudioProjectType;
           capabilities: StudioProjectCapability[];
           origin?: StudioProjectOrigin;
+          wasmPresentation?: Extract<ProjectDashboardContext, {status: "artifact"}>["wasmPresentation"];
       };
 
 const PROJECT_OPEN_FAILURE_MESSAGE =
@@ -91,6 +92,7 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
             type: context.project.type,
             capabilities: context.project.capabilities,
             origin: context.origin,
+            wasmPresentation: context.wasmPresentation,
         };
     }
     return {
@@ -160,7 +162,7 @@ export const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
     tsPackage: "Playable game",
     outcomeLibrary: "Game data library",
     stakeAdapter: "Game export",
-    wasm: "WASM component (inspection-only)",
+    wasm: "wasm",
     parWorkbook: "PAR spreadsheet",
 };
 
@@ -170,7 +172,6 @@ const CAPABILITY_LABEL: Record<string, string> = {
     "outcomeLibrary.read": "Use saved game outcomes",
     "stakeAdapter.exchange": "Share this game export",
     "parWorkbook.exchange": "Share this PAR spreadsheet",
-    "wasm.manifest.read": "Inspect declared WASM component metadata",
     "outcomeSource.read": "Review game outcome data",
     "outcomeSource.sample": "Play and replay saved outcomes",
 };

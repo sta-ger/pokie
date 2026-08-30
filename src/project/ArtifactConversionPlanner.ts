@@ -13,7 +13,7 @@ import {
 } from "./ProjectCapability.js";
 import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import type {ProjectType} from "./ProjectType.js";
-import {describeWasmConversionBoundary, describeWasmRuntimeBoundary} from "./WasmProductContract.js";
+import {describeWasmConversionBoundary, describeWasmRecovery, describeWasmRuntimeBoundary, WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
 
 /** A stable description of the input or output of a conversion. */
 export type ArtifactIdentity = {
@@ -315,7 +315,7 @@ export function describeArtifactConversionPlanDiagnostic(plan: ArtifactConversio
     if (diagnostic.code === "unrecognized-source") return diagnostic.message;
     const sourceNames: Readonly<Record<ProjectType, string>> = {
         blueprint: "Game Blueprint", tsPackage: "POKIE game package", outcomeLibrary: "Outcome Library",
-        stakeAdapter: "Stake Engine export", parWorkbook: "PAR workbook", wasm: "POKIE WASM component",
+        stakeAdapter: "Stake Engine export", parWorkbook: "PAR workbook", wasm: WASM_PRODUCT_CONTRACT.kind,
     };
     const targetNames: Readonly<Record<ArtifactTargetType, string>> = {
         blueprint: "Game Blueprint", tsPackage: "POKIE game package", outcomeLibrary: "Outcome Library", stakeAdapter: "Stake Engine export", parWorkbook: "PAR workbook",
@@ -499,7 +499,7 @@ export class ArtifactConversionPlanner {
         } else if (sourceKind === "wasm") {
             detail = describeWasmRuntimeBoundary();
         }
-        return unavailable("unsupported-boundary", detail, "Use the original Blueprint or POKIE package, or choose the artifact's native supported operation.");
+        return unavailable("unsupported-boundary", detail, sourceKind === "wasm" ? describeWasmRecovery() : "Use the original Blueprint or POKIE package, or choose the artifact's native supported operation.");
     }
 
     /**
@@ -731,7 +731,7 @@ export class ArtifactConversionPlanner {
         }
 
         if (sourceKind === "wasm") {
-            return unavailable("unsupported-boundary", describeWasmConversionBoundary(), "Inspect the compatible manifest or use the original Blueprint or POKIE game package.");
+            return unavailable("unsupported-boundary", describeWasmConversionBoundary(), describeWasmRecovery());
         }
         if (sourceKind === "parWorkbook") {
             return this.planParWorkbookSource(source, target, preflight, options);

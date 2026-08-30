@@ -68,21 +68,16 @@ const RUNTIME_OR_ARTIFACT_OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new S
     "parWorkbook",
 ]);
 
-// The server refreshes this capability from the canonical WASM product contract
-// before returning a registry row. The client therefore never treats a stale
-// persisted `type: "wasm"` alone as permission to open an inspection workspace.
-const WASM_MANIFEST_READ_CAPABILITY = "wasm.manifest.read";
-
 function isOpenable(entry: StudioProjectRegistryView): boolean {
     return entry.type === "wasm"
-        ? entry.capabilities.includes(WASM_MANIFEST_READ_CAPABILITY)
+        ? entry.wasmPresentation !== undefined && entry.capabilities.includes(entry.wasmPresentation.manifestCapability)
         : RUNTIME_OR_ARTIFACT_OPENABLE_TYPES.has(entry.type);
 }
 
-function describeAvailability(status: StudioProjectRegistryView["status"]): string {
-    if (status === "ok") return "Available";
-    if (status === "missing") return "Needs attention";
-    return "Unavailable: re-check its POKIE contract";
+function describeAvailability(entry: StudioProjectRegistryView): string {
+    if (entry.status === "ok") return "Available";
+    if (entry.status === "missing") return "Needs attention";
+    return entry.unavailableReason ?? "Unavailable";
 }
 
 const PROJECTS_PER_PAGE = 10;
@@ -411,10 +406,10 @@ export function ProjectsPanel({
                 {renderEntryName(entry)}
                 <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>{entry.location}</Text>
                 <Text className="project-registry-status" size="sm" c={entry.status === "ok" ? "teal" : "orange"}>
-                    {describeAvailability(entry.status)}
+                    {describeAvailability(entry)}
                 </Text>
             </Table.Td>
-            <Table.Td data-label="Type">{PROJECT_TYPE_LABEL[entry.type]}</Table.Td>
+            <Table.Td data-label="Type">{entry.type === "wasm" ? entry.wasmPresentation?.label ?? entry.type : PROJECT_TYPE_LABEL[entry.type]}</Table.Td>
             <Table.Td data-label="Added to Studio">
                 <Group gap={6} wrap="nowrap">
                     <Text component="span">{entry.origin === "managed" ? "Created in Studio" : "Added from your computer"}</Text>
@@ -426,7 +421,7 @@ export function ProjectsPanel({
             <Table.Td className="project-registry-actions" data-label="Actions">
                 <QuickActions>
                     {entry.status === "ok" && isOpenable(entry) && (
-                        <Button variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>{entry.type === "wasm" ? "Inspect" : "Open"}</Button>
+                        <Button variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>{entry.type === "wasm" ? entry.wasmPresentation?.inspectActionLabel ?? "Inspect" : "Open"}</Button>
                     )}
                     {entry.status === "ok" && entry.type === "parWorkbook" && (
                         <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Open in Start a game</Button>

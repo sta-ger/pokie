@@ -16,6 +16,8 @@ import {
     PreGeneratedRoundReplayDescriptor,
     ProjectTargetResolver,
     readWasmComponentManifest,
+    describeUnsupportedProjectOperation,
+    describeUnavailableWasmComponent,
     RoundArtifact,
     RoundArtifactValidator,
     sampleOutcomeSourceProject,
@@ -23,6 +25,7 @@ import {
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     STUDIO_OPERATION,
+    VALIDATE_OPERATION,
 } from "pokie";
 import {deriveDeterministicSeed} from "../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import crypto from "crypto";
@@ -1698,12 +1701,20 @@ export class StudioServer implements StudioServerHandling {
         }
         const projectRoot = this.currentContext.projectRoot;
         const resolved = await this.resolveOpenedProject(projectRoot);
+        if (resolved === undefined && this.isWasmPath(projectRoot)) {
+            this.sendJson(res, 409, {error: await this.describeUnresolvedWasm(projectRoot)});
+            return;
+        }
         if (this.isOpenedBlueprintProject(projectRoot, resolved)) {
             this.sendJson(res, 200, this.inspectBlueprintProject(projectRoot));
             return;
         }
         if (resolved !== undefined && (resolved.type === "outcomeLibrary" || resolved.type === "stakeAdapter")) {
             this.sendJson(res, 200, await this.inspectOutcomeSourceProject(resolved));
+            return;
+        }
+        if (resolved?.type === "wasm") {
+            this.sendJson(res, 200, await this.inspectWasmProject(resolved));
             return;
         }
         this.sendJson(res, 200, this.gamePackageInspector.inspect(projectRoot));
@@ -1716,6 +1727,10 @@ export class StudioServer implements StudioServerHandling {
         }
         const projectRoot = this.currentContext.projectRoot;
         const resolved = await this.resolveOpenedProject(projectRoot);
+        if (resolved === undefined && this.isWasmPath(projectRoot)) {
+            this.sendJson(res, 409, {error: await this.describeUnresolvedWasm(projectRoot)});
+            return;
+        }
         if (this.isOpenedBlueprintProject(projectRoot, resolved)) {
             this.sendJson(res, 200, this.validateBlueprintProject(projectRoot));
             return;
@@ -1724,7 +1739,46 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 200, await this.validateOutcomeSourceProject(resolved));
             return;
         }
+        if (resolved?.type === "wasm") {
+            // Validation is game-logic validation.  A compatible component
+            // only grants manifest inspection, so never hand its path to the
+            // package validator (which could attempt to import it).
+            this.sendJson(res, 409, {error: describeUnsupportedProjectOperation(resolved, VALIDATE_OPERATION)?.message});
+            return;
+        }
         this.sendJson(res, 200, await this.gamePackageValidator.validate(projectRoot));
+    }
+
+    private async inspectWasmProject(project: PokieProject): Promise<GamePackageInspectionReport> {
+        try {
+            const manifestRead = await readWasmComponentManifest(project);
+            if (!manifestRead.supported) {
+                return {packageRoot: project.rootPath, valid: false, error: manifestRead.diagnostic.message};
+            }
+            return {
+                packageRoot: project.rootPath,
+                valid: true,
+                wasmManifest: {
+                    component: manifestRead.manifest.component,
+                    schemaVersion: manifestRead.manifest.schemaVersion,
+                },
+            };
+        } catch (error) {
+            return {packageRoot: project.rootPath, valid: false, error: error instanceof Error ? error.message : String(error)};
+        }
+    }
+
+    private isWasmPath(projectRoot: string): boolean {
+        return path.extname(projectRoot).toLowerCase() === ".wasm";
+    }
+
+    private async describeUnresolvedWasm(projectRoot: string): Promise<string> {
+        try {
+            await new ProjectTargetResolver().resolve(projectRoot);
+            return describeUnavailableWasmComponent();
+        } catch (error) {
+            return error instanceof Error ? error.message : String(error);
+        }
     }
 
     // Inspect/Validate's own Game Model counterpart -- see buildProjectGameModel's own doc comment for
