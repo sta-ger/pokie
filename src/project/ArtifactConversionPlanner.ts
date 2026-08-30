@@ -76,9 +76,13 @@ export function computeArtifactConfigurationHash(contents: string | Buffer): str
  * symlinked inputs are represented explicitly so replacing either state is
  * detected by the operation's final source rebind.
  */
-export function computeArtifactInputBindingHash(inputPaths: readonly string[]): string {
+export function computeArtifactInputBindingHash(
+    inputPaths: readonly string[],
+    options: {readonly ignoredDirectoryNames?: readonly string[]} = {},
+): string {
     const hash = crypto.createHash("sha256");
     const seen = new Set<string>();
+    const ignoredDirectoryNames = new Set(options.ignoredDirectoryNames);
     const visit = (inputPath: string): void => {
         const resolved = path.resolve(inputPath);
         if (seen.has(resolved)) return;
@@ -91,7 +95,13 @@ export function computeArtifactInputBindingHash(inputPaths: readonly string[]): 
                 visit(fs.realpathSync(resolved));
             } else if (stat.isDirectory()) {
                 hash.update("directory\0");
-                for (const entry of fs.readdirSync(resolved).sort()) visit(path.join(resolved, entry));
+                for (const entry of fs.readdirSync(resolved).sort()) {
+                    if (ignoredDirectoryNames.has(entry)) {
+                        hash.update(`ignored-directory:${entry}\0`);
+                        continue;
+                    }
+                    visit(path.join(resolved, entry));
+                }
             } else if (stat.isFile()) {
                 hash.update("file\0");
                 hash.update(fs.readFileSync(resolved));
