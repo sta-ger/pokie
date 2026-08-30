@@ -381,6 +381,7 @@ export function ProjectsPanel({
     const pageEntries = filteredEntries.slice((currentPage - 1) * PROJECTS_PER_PAGE, currentPage * PROJECTS_PER_PAGE);
     const availablePageEntries = pageEntries.filter((entry) => entry.status === "ok");
     const missingPageEntries = pageEntries.filter((entry) => entry.status === "missing");
+    const unavailablePageEntries = pageEntries.filter((entry) => entry.status === "unavailable");
     const missingEntries = entries.filter((entry) => entry.status === "missing");
     const selectedMissingOnPage = missingPageEntries.filter((entry) => selectedMissingLocations.has(entry.location));
     const toggleMissingSelection = (location: string, checked: boolean): void => {
@@ -535,6 +536,12 @@ export function ProjectsPanel({
                                             </Table.Tr>
                                         )}
                                         {missingPageEntries.map(renderEntryRow)}
+                                        {unavailablePageEntries.length > 0 && (
+                                            <Table.Tr className="project-registry-group">
+                                                <Table.Td colSpan={6}><Text fw={600} size="sm">Unavailable projects</Text></Table.Td>
+                                            </Table.Tr>
+                                        )}
+                                        {unavailablePageEntries.map(renderEntryRow)}
                                     </Table.Tbody>
                                 </Table>
                             </Table.ScrollContainer>

@@ -223,7 +223,7 @@ describe("assessWasmPackagingPreflight", () => {
 
         expect(result.supported).toBe(true);
         if (result.supported) {
-            expect(result.report.notes.join(" ")).toMatch(/does not currently expose a WASM build or export target/i);
+            expect(result.report.notes.join(" ")).toMatch(/does not provide a WASM build or export route/i);
             expect(result.report.notes.join(" ")).toMatch(/pokie inspect/i);
         }
     });
