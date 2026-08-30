@@ -6,7 +6,7 @@ import {describeUnsupportedProjectOperation} from "./describeUnsupportedProjectO
 import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
 import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
 import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
-import {WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
+import {describeWasmSidecarFailure} from "./WasmProductContract.js";
 
 export type WasmComponentManifestReadResult =
     | {readonly supported: true; readonly manifest: PokieWasmComponentManifest}
@@ -30,16 +30,31 @@ export async function readWasmComponentManifest(project: PokieProject): Promise<
     }
 
     const sidecarPath = wasmComponentManifestSidecarPath(project.rootPath);
-    const raw = await fs.promises.readFile(sidecarPath, "utf-8");
-    const manifest: unknown = JSON.parse(raw);
+    let raw: string;
+    try {
+        raw = await fs.promises.readFile(sidecarPath, "utf-8");
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            throw new Error(describeWasmSidecarFailure(project.rootPath, sidecarPath, "missing"));
+        }
+        throw error;
+    }
+    let manifest: unknown;
+    try {
+        manifest = JSON.parse(raw);
+    } catch {
+        throw new Error(describeWasmSidecarFailure(project.rootPath, sidecarPath, "malformed", "it is not valid JSON"));
+    }
 
     const compatibility = assessWasmComponentCompatibility(manifest);
     if (!compatibility.compatible) {
-        throw new Error(
-            `"${sidecarPath}" no longer satisfies POKIE's WASM inspection contract (it may have changed on disk ` +
-                `since this project was resolved): ${compatibility.issues.map((issue) => issue.message).join(" ")} ` +
-                `Repair the sidecar, then inspect it again. ${WASM_PRODUCT_CONTRACT.inspectionBoundary}`,
-        );
+        const isShapeIssue = compatibility.issues.some((issue) => issue.code.startsWith("wasm-component-manifest-"));
+        throw new Error(describeWasmSidecarFailure(
+            project.rootPath,
+            sidecarPath,
+            isShapeIssue ? "malformed" : "incompatible",
+            compatibility.issues.map((issue) => issue.message).join(" "),
+        ));
     }
 
     return {supported: true, manifest: manifest as PokieWasmComponentManifest};

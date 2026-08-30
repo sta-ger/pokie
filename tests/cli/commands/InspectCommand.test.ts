@@ -1,4 +1,4 @@
-import {PokieProject, ProjectResolving} from "pokie";
+import {PokieProject, ProjectResolving, ProjectTargetMalformedError, ProjectTargetUnsupportedError} from "pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
@@ -101,6 +101,19 @@ describe("InspectCommand", () => {
             '"./missing" is not a supported POKIE project. Choose a Game Blueprint, POKIE game package, Outcome Library, Stake Engine export, PAR workbook, or compatible WASM component.',
         );
         expect(logSpy).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ["missing", new ProjectTargetUnsupportedError("missing compatible sidecar; add one to inspect declared metadata. POKIE never loads or executes the WASM binary.", {targetType: "wasm"})],
+        ["malformed", new ProjectTargetMalformedError("malformed sidecar; repair it to inspect declared metadata. POKIE never loads or executes the WASM binary.", {targetType: "wasm"})],
+        ["incompatible", new ProjectTargetUnsupportedError("incompatible sidecar; update it to inspect declared metadata. POKIE never loads or executes the WASM binary.", {targetType: "wasm"})],
+    ])("preserves the %s WASM sidecar inspection diagnostic", async (_kind, error) => {
+        const resolver: ProjectResolving = {resolve: () => Promise.reject(error)};
+        const command = new InspectCommand(resolver);
+
+        expect(await command.run(["component.wasm"])).toBe(1);
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(error.message));
+        expect(errorSpy.mock.calls[0][0]).toContain("POKIE could not inspect");
     });
 
     it.each([

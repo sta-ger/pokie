@@ -112,9 +112,15 @@ export class InspectCommand implements CliCommandHandling {
 
     private describeInspectionFailure(projectPath: string, error: unknown): string {
         if (error instanceof ProjectTargetMalformedError) {
+            if (error.targetType === "wasm") {
+                return `POKIE could not inspect "${projectPath}". ${error.message}`;
+            }
             return `POKIE could not inspect "${projectPath}" because its project metadata is malformed. Fix the project metadata, then run "pokie inspect ${projectPath}" again.`;
         }
         if (error instanceof ProjectTargetUnsupportedError) {
+            if (error.targetType === "wasm") {
+                return `POKIE could not inspect "${projectPath}". ${error.message}`;
+            }
             return `POKIE could not inspect "${projectPath}". ${error.message} Repair or add the compatible POKIE sidecar, then inspect it again. ${WASM_PRODUCT_CONTRACT.inspectionBoundary}`;
         }
         if (error instanceof ProjectTargetAmbiguousError) {

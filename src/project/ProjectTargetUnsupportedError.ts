@@ -6,8 +6,11 @@
 // resolve() explains why it can't be used yet instead of silently reporting it as unrecognized, the same
 // "a dedicated Error subclass per specific failure" naming convention ProjectTargetAmbiguousError uses.
 export class ProjectTargetUnsupportedError extends Error {
-    constructor(message: string) {
+    public readonly targetType?: string;
+
+    constructor(message: string, details: {readonly targetType?: string} = {}) {
         super(message);
         this.name = "ProjectTargetUnsupportedError";
+        this.targetType = details.targetType;
     }
 }

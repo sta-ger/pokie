@@ -13,6 +13,51 @@ export const WASM_PRODUCT_CONTRACT = {
     originalSourceRecovery: "Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
 } as const;
 
+export type WasmSidecarFailure = "missing" | "malformed" | "incompatible";
+
+// Every public entry point which encounters a WASM component before it can be
+// resolved uses this wording.  Keeping the cause here is important: a missing
+// sidecar is repaired differently from a malformed declaration or an older
+// contract, but none of those states authorizes loading the binary.
+export function describeWasmSidecarFailure(
+    wasmPath: string,
+    sidecarPath: string,
+    failure: WasmSidecarFailure,
+    detail?: string,
+): string {
+    const prefix = `"${wasmPath}" is a ${WASM_PRODUCT_CONTRACT.kind}`;
+    const repair = wasmSidecarRepair(sidecarPath, failure);
+    const cause = wasmSidecarCause(sidecarPath, failure, detail);
+    return `${prefix} ${cause} ${repair} ${WASM_PRODUCT_CONTRACT.inspectionBoundary}`;
+}
+
+function wasmSidecarRepair(sidecarPath: string, failure: WasmSidecarFailure): string {
+    switch (failure) {
+        case "missing":
+            return `Add a valid compatible sidecar at "${sidecarPath}", then inspect its declared metadata.`;
+        case "malformed":
+            return `Repair the malformed sidecar at "${sidecarPath}", then inspect its declared metadata.`;
+        case "incompatible":
+            return `Update the incompatible sidecar at "${sidecarPath}" to this POKIE contract, then inspect its declared metadata.`;
+        default:
+            throw new Error(`Unknown WASM sidecar failure: ${failure}`);
+    }
+}
+
+function wasmSidecarCause(sidecarPath: string, failure: WasmSidecarFailure, detail: string | undefined): string {
+    const detailSuffix = detail === undefined ? "." : `: ${detail}`;
+    switch (failure) {
+        case "missing":
+            return `but no compatible PokieWasmComponentManifest sidecar was found at "${sidecarPath}".`;
+        case "malformed":
+            return `but its PokieWasmComponentManifest sidecar at "${sidecarPath}" is malformed${detailSuffix}`;
+        case "incompatible":
+            return `but its PokieWasmComponentManifest sidecar at "${sidecarPath}" is not compatible with this POKIE build${detailSuffix}`;
+        default:
+            throw new Error(`Unknown WASM sidecar failure: ${failure}`);
+    }
+}
+
 // This deliberately small DTO is safe to send across Studio's independently
 // compiled client boundary.  It is produced here rather than recreated in a
 // React label map, so a Studio row and dashboard always describe the same

@@ -12,6 +12,8 @@ import {
     type ProjectType,
     ProjectResolving,
     ProjectTargetResolver,
+    ProjectTargetMalformedError,
+    ProjectTargetUnsupportedError,
     SimulationReport,
     SimulationReportRendering,
     describeWasmUnsupportedOperation,
@@ -99,6 +101,13 @@ export class ReportCommand implements CliCommandHandling {
             }
             this.emit(this.renderOutcomeSource(format, reportPath, outcomeSourceReport), out, format === "json");
             return;
+        }
+
+        // A compatible component is a resolved inspection target, not a
+        // simulation-report document.  Fail before readFile so the binary can
+        // never be parsed as JSON.
+        if (project?.type === "wasm") {
+            throw new Error(describeWasmUnsupportedOperation("create a simulation report"));
         }
 
         let parsed: SimulationReport | SimulationReportSet;
@@ -248,7 +257,11 @@ export class ReportCommand implements CliCommandHandling {
     private async resolveProjectSafely(reportPath: string) {
         try {
             return await this.resolveProject.resolve(reportPath);
-        } catch {
+        } catch (error) {
+            if (path.extname(reportPath).toLowerCase() === ".wasm" &&
+                (error instanceof ProjectTargetMalformedError || error instanceof ProjectTargetUnsupportedError)) {
+                throw new Error(error.message);
+            }
             return undefined;
         }
     }

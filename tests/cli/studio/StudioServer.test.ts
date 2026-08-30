@@ -50,6 +50,7 @@ import {createRecommendedBlueprint} from "../../../cli/studio-client/src/domain/
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
+import {InMemoryRecentProjectsRepository} from "../../../cli/studio/InMemoryRecentProjectsRepository.js";
 import {StudioNativePickerService} from "../../../cli/studio/home/StudioNativePickerService.js";
 import {isLoopbackRequest} from "../../../cli/studio/isLoopbackRequest.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
@@ -1130,6 +1131,75 @@ describe("StudioServer", () => {
         expect(await opening).toEqual({status: 409, body: {error: "Project opening was superseded by a newer request."}});
         expect((await get(`${baseUrl}/api/context`)).body).toEqual({mode: "home"});
         expect((await get(`${baseUrl}/api/home/recent-projects`)).body).toEqual([]);
+    });
+
+    it("supersedes a pending real-WASM Home open without committing context, recents, or registry state", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-home-wasm-supersession-"));
+        const wasmFile = path.join(workDir, "component.wasm");
+        const lifecycleStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-home-wasm-assets-"));
+        const recentProjects = new InMemoryRecentProjectsRepository();
+        const registry = new InMemoryStudioProjectRegistry();
+        const registration = new StudioProjectRegistrationService(registry);
+        const packageLoad = jest.fn();
+        const packageInspect = jest.fn();
+        const packageValidate = jest.fn();
+        let releaseDescription: (() => void) | undefined;
+        let signalDescriptionStarted: (() => void) | undefined;
+        const descriptionStarted = new Promise<void>((resolve) => {
+            signalDescriptionStarted = resolve;
+        });
+        fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+        fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({
+            schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+            component: {id: "superseded-component", version: "1.0.0"},
+            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+            host: {rng: "pokie.rng.v1", services: []},
+            capabilities: [],
+        }));
+        writeStudioAssets(lifecycleStudioRoot);
+        const homeService = new StudioHomeService(
+            "1.0.0",
+            recentProjects,
+            packageLoad,
+            undefined,
+            undefined,
+            () => new Promise((resolve) => {
+                signalDescriptionStarted?.();
+                releaseDescription = () => resolve(undefined);
+            }),
+        );
+        const lifecycleServer = new StudioServer({
+            pokieVersion: "1.0.0",
+            host: "127.0.0.1",
+            port: 0,
+            studioRoot: lifecycleStudioRoot,
+            homeService,
+            blueprintService: new StudioBlueprintService("1.0.0", lifecycleStudioRoot, homeService),
+            loadGame: packageLoad,
+            gamePackageInspector: {inspect: packageInspect},
+            gamePackageValidator: {validate: packageValidate},
+            projectRegistrationService: registration,
+        });
+        const address = await lifecycleServer.start();
+        const lifecycleBaseUrl = `http://${address.host}:${address.port}`;
+        try {
+            const opening = post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: wasmFile});
+            await descriptionStarted;
+            expect(await post(`${lifecycleBaseUrl}/api/projects/close`)).toEqual({status: 200, body: {context: {mode: "home"}}});
+            releaseDescription?.();
+
+            expect(await opening).toEqual({status: 409, body: {error: "Project opening was superseded by a newer request."}});
+            expect((await get(`${lifecycleBaseUrl}/api/context`)).body).toEqual({mode: "home"});
+            expect(await recentProjects.list()).toEqual([]);
+            expect(await registry.list()).toEqual([]);
+            expect(packageLoad).not.toHaveBeenCalled();
+            expect(packageInspect).not.toHaveBeenCalled();
+            expect(packageValidate).not.toHaveBeenCalled();
+        } finally {
+            await lifecycleServer.stop();
+            fs.rmSync(workDir, {recursive: true, force: true});
+            fs.rmSync(lifecycleStudioRoot, {recursive: true, force: true});
+        }
     });
 
     it("returns 400 for a projectRoot that fails to load", async () => {

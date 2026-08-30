@@ -127,6 +127,30 @@ describe("BuildCommand", () => {
         expect(help).toContain("PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or PAR workbook");
     });
 
+    it("rejects a real compatible WASM source before allocating a builder or destination", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-wasm-boundary-"));
+        const wasmFile = path.join(directory, "component.wasm");
+        const destination = path.join(directory, "must-not-exist");
+        const builder = stubBuilder("tsPackage", {outputPath: destination});
+        fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+        fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({
+            schemaVersion: "1.0.0",
+            component: {id: "build-boundary", version: "1.0.0"},
+            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+            host: {rng: "pokie.rng.v1", services: []},
+            capabilities: [],
+        }));
+        try {
+            const command = new BuildCommand("1.3.0", undefined, undefined, undefined, registryWithBuilders(builder));
+
+            await expect(command.run([wasmFile, "--target", "tsPackage", "--out", destination])).rejects.toThrow(/inspection-only|cannot be converted|never loads or executes/i);
+            expect(builder.calledWith).toBeUndefined();
+            expect(fs.existsSync(destination)).toBe(false);
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
     it("describes --exact as an explicit request, with bounded coverage as the large managed-build default", () => {
         const help = new BuildCommand("1.3.0").getCommanderCommand().helpInformation();
 
