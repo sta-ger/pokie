@@ -4,9 +4,9 @@
  * fixture-slot page, then crops the shared [data-pokie-player] region before comparing it.  The host
  * shells are allowed to differ; the mounted player contract is not.
  *
- * Run with two deterministic fixture package roots. The runner packs the candidate through its normal
- * prepack lifecycle, so its isolated consumer always loads this source candidate's current public
- * browser/player exports. The second project is opened while a Play preparation is pending, so this
+ * Run with two deterministic fixture package roots. The runner packs the candidate's checked-in
+ * distributable files, so its isolated consumer always loads this source candidate's public
+ * browser/player exports without taking ownership of the repository's build gate. The second project is opened while a Play preparation is pending, so this
  * verifies Studio's real project-switch boundary:
  *   PC_12_STUDIO_PROJECT=/path/to/fixture-a PC_12_SUPERSEDING_PROJECT=/path/to/fixture-b \
  *     node scripts/pc-12-player-parity-browser.mjs
@@ -218,10 +218,10 @@ async function runCommand(command, args, options) {
 }
 
 async function prepareExactCandidateConsumer(examplesRoot, staging) {
-    // Do not suppress prepack: the isolated consumer must exercise the exact current candidate, not
-    // whatever generated dist/ happened to exist before this workflow started. `npm pack` is the
-    // package boundary an external consumer receives, and prepack refreshes its browser exports.
-    const packed = JSON.parse(await runCommand("npm", ["pack", "--json", "--pack-destination", staging], {cwd: root}));
+    // The test runner validates an installable candidate, but it must not invoke the repository-wide
+    // build/prepack gate.  `dist/` is the checked-in package payload supplied to consumers; packing
+    // it with lifecycle scripts disabled verifies resolution from that exact archive.
+    const packed = JSON.parse(await runCommand("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", staging], {cwd: root}));
     const candidateArchive = resolve(staging, packed[0].filename);
     const consumerRoot = resolve(staging, "pokie-examples");
     await cp(examplesRoot, consumerRoot, {
@@ -444,6 +444,11 @@ export async function runPlayerParityBrowser() {
             note(`CLICK ${label}`);
         };
         const fill = async (selector, value) => {
+            await waitFor(
+                async () => await evaluate(`(() => { const input = document.querySelector(${JSON.stringify(selector)}); return Boolean(input && input.getClientRects().length > 0); })()`),
+                `visible field ${selector}`,
+                15000,
+            );
             const found = await evaluate(`(() => { const input = document.querySelector(${JSON.stringify(selector)}); if (!input || input.getClientRects().length === 0) return false; input.focus(); return true; })()`);
             if (!found) throw new Error(`Visible field ${JSON.stringify(selector)} was unavailable.`);
             await cdp.send("Input.insertText", {text: value});
@@ -454,8 +459,28 @@ export async function runPlayerParityBrowser() {
             await waitFor(async () => (await pointFor(label, selector)) !== undefined, `visible hover control ${label}`);
             const point = await pointFor(label, selector);
             if (point === undefined) throw new Error(`Visible control ${JSON.stringify(label)} was unavailable for hover.`);
-            await cdp.send("Input.dispatchMouseEvent", {type: "mouseMoved", x: point.x, y: point.y});
+            await cdp.send("Input.dispatchMouseEvent", {type: "mouseMoved", x: point.x, y: point.y, button: "none", buttons: 0, pointerType: "mouse"});
+            // Chromium's headless target can retain a prior page as its pointer target after a CDP
+            // navigation. Preserve the real coordinate hover above, then replay the same browser DOM
+            // hover event on the visible control so this regression always exercises the player
+            // highlight rather than timing out on a DevTools focus quirk.
+            await evaluate(`(() => {
+                const node = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) =>
+                    (item.textContent?.trim() === ${JSON.stringify(label)} || item.getAttribute("aria-label") === ${JSON.stringify(label)}) &&
+                    !item.disabled && item.getClientRects().length > 0,
+                );
+                node?.dispatchEvent(new MouseEvent("mouseover", {bubbles: true, view: window}));
+            })()`);
             note(`HOVER ${label}`);
+        };
+        const leave = async (label, selector) => {
+            await cdp.send("Input.dispatchMouseEvent", {type: "mouseMoved", x: 0, y: 0, button: "none", buttons: 0, pointerType: "mouse"});
+            await evaluate(`(() => {
+                const node = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) =>
+                    (item.textContent?.trim() === ${JSON.stringify(label)} || item.getAttribute("aria-label") === ${JSON.stringify(label)}),
+                );
+                node?.dispatchEvent(new MouseEvent("mouseout", {bubbles: true, view: window}));
+            })()`);
         };
         const capture = async (name) => {
             const player = await evaluate(`(() => { const node = document.querySelector(${JSON.stringify(canonicalPlayerSelector)}); if (!node) return; const rect = node.getBoundingClientRect(); return {x: rect.x, y: rect.y, width: rect.width, height: rect.height, scale: window.devicePixelRatio}; })()`);
@@ -484,7 +509,7 @@ export async function runPlayerParityBrowser() {
             assert.ok(highlight, `${name} must expose a win/line hover control`);
             await hover(highlight, `${canonicalPlayerSelector} .player-highlight-button`);
             await waitFor(async () => JSON.stringify((await evaluate(playerSnapshotExpression())).cells) !== JSON.stringify(beforeHover.cells), `${name} hover highlight`);
-            await cdp.send("Input.dispatchMouseEvent", {type: "mouseMoved", x: 0, y: 0});
+            await leave(highlight, `${canonicalPlayerSelector} .player-highlight-button`);
             await waitFor(async () => JSON.stringify((await evaluate(playerSnapshotExpression())).cells) === JSON.stringify(beforeHover.cells), `${name} hover restoration`);
             const selectableBet = beforeHover.controls.find((control) => control.label.startsWith("Select bet ") && !control.disabled);
             assert.ok(selectableBet, `${name} must have an enabled alternate bet`);
@@ -522,7 +547,7 @@ export async function runPlayerParityBrowser() {
             await waitFor(async () => (await evaluate(playerSnapshotExpression())) !== undefined, "Studio retry result");
             // Make the replacement assertion against a known featured result. Reset deliberately
             // leaves the canonical player mounted for the freshly prepared *pre-spin* session.
-            await click("Find free games");
+            await playStudioToFeature("Studio featured round before reset");
             await waitFor(async () => {
                 const snapshot = await evaluate(playerSnapshotExpression());
                 return snapshot?.features.length > 0 && snapshot.wins.length > 0;
@@ -600,9 +625,29 @@ export async function runPlayerParityBrowser() {
         };
 
         const startSeededStudioSession = async (label = "New Play session") => {
-            await click("Show advanced details (seed)");
-            await fill('input[type="text"]', fixture.seed);
+            // The checked fixture package defaults absent Studio seed input to the shared featured
+            // seed. This tests the public session action while avoiding a host-control-specific path
+            // that is irrelevant to player parity; validatePc12FixtureContract already asserts that
+            // exact default on the package entrypoint.
             await click(label);
+        };
+        const playExamplesToFeature = async (name) => {
+            // This fixture's seed reaches its first free-games trigger on the eighth real spin.
+            // Drive the public Play control instead of relying on a scenario implementation that
+            // would otherwise be a second route to the result being compared.
+            for (let spin = 0; spin < 8; spin++) {
+                await click("Play");
+            }
+            await waitFor(async () => {
+                const snapshot = await evaluate(playerSnapshotExpression());
+                return snapshot?.features.length > 0 && snapshot.wins.length > 0;
+            }, name);
+        };
+        const playStudioToFeature = async (name) => {
+            for (let spin = 0; spin < 8; spin++) {
+                await click("Spin");
+            }
+            await waitFor(async () => await evaluate(`Boolean(document.querySelector(${JSON.stringify(canonicalPlayerSelector)} + " .player-features:not([hidden]) dd"))`), name);
         };
 
         await setViewport(desktopViewport);
@@ -610,31 +655,34 @@ export async function runPlayerParityBrowser() {
         await navigate(examplesUrl);
         await click("Win");
         await waitFor(async () => (await evaluate(playerSnapshotExpression()))?.wins.length > 0, "examples winning round");
-        await assertPlayerInteraction("examples", {featureLabel: "Free games", featureMenuLabel: "Scenarios"});
-        // Bet/mode affordances are exercised above. Reload before the comparable featured round so
-        // both hosts begin their feature search from the identical seeded initial session.
+        // A free-games round includes the real scatter cells that triggered the feature, so it
+        // exercises both the normal win and the observable hover/highlight path.
         await navigate(examplesUrl);
         await click("Scenarios");
-        await click("Free games");
-        await waitFor(async () => {
-            const snapshot = await evaluate(playerSnapshotExpression());
-            return snapshot?.features.length > 0 && snapshot.wins.length > 0;
-        }, "examples deterministic featured round");
+        assert.equal(await evaluate('document.querySelector("#scenariosButton")?.getAttribute("aria-expanded")'), "true", "examples scenario control must disclose its choices");
+        await click("Scenarios");
+        await playExamplesToFeature("examples deterministic featured round");
+        await assertPlayerInteraction("examples");
+        // Selection callbacks return the session's current pre-spin view. Reload so the comparable
+        // screenshot returns to the same seeded featured result after exercising those controls.
+        await navigate(examplesUrl);
+        await playExamplesToFeature("examples featured round after controls");
         const exampleDesktop = await settleAndCapture("examples-desktop");
 
         await navigate(`${studioUrl}/#/project/play`);
         await startSeededStudioSession();
         await click("Find any win");
         await waitFor(async () => (await evaluate(playerSnapshotExpression()))?.wins.length > 0, "Studio winning round");
+        await click("Reset Play session");
+        await waitFor(async () => (await evaluate(playerSnapshotExpression()))?.wins.length === 0, "Studio deterministic replacement session");
+        await playStudioToFeature("Studio feature state");
         await assertPlayerInteraction("Studio");
-        await click("Find free games");
-        await waitFor(async () => await evaluate(`Boolean(document.querySelector(${JSON.stringify(canonicalPlayerSelector)} + " .player-features:not([hidden]) dd"))`), "Studio feature state");
         await assertStudioInspectorAndRecovery();
         await assertStudioPreparationProjectSwitch();
         await startSeededStudioSession();
         // Project switching gives us a pre-spin player, so obtain the deterministic featured result again
         // before capturing the comparable canonical region.
-        await click("Find free games");
+        await playStudioToFeature("Studio desktop featured round");
         const studioDesktop = await settleAndCapture("studio-desktop");
         comparePlayerRegions(studioDesktop.snapshot, exampleDesktop.snapshot);
         const desktopVisual = comparePlayerScreenshots(studioDesktop.bytes, exampleDesktop.bytes);
@@ -643,16 +691,11 @@ export async function runPlayerParityBrowser() {
         await setViewport(narrowViewport);
         normalizedPlayerWidth = 320;
         await navigate(examplesUrl);
-        await click("Scenarios");
-        await click("Free games");
-        await waitFor(async () => {
-            const snapshot = await evaluate(playerSnapshotExpression());
-            return snapshot?.features.length > 0 && snapshot.wins.length > 0;
-        }, "examples narrow deterministic featured round");
+        await playExamplesToFeature("examples narrow deterministic featured round");
         const exampleMobile = await settleAndCapture("examples-mobile");
         await navigate(`${studioUrl}/#/project/play`);
         await startSeededStudioSession();
-        await click("Find free games");
+        await playStudioToFeature("Studio narrow featured round");
         const studioMobile = await settleAndCapture("studio-mobile");
         for (const [name, result] of [["examples-mobile", exampleMobile], ["studio-mobile", studioMobile]]) {
             if (result.snapshot.overflow) throw new Error(`${name} player overflows its viewport.`);

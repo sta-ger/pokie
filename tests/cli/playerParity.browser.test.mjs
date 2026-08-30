@@ -49,6 +49,31 @@ function png(width, height, pixels) {
     return Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), chunk("IHDR", header), chunk("IDAT", deflateSync(Buffer.concat(rows))), chunk("IEND", Buffer.alloc(0))]);
 }
 
+function runRuntimeCompiler(args) {
+    const execution = spawnSync(process.execPath, args, {
+        cwd: process.cwd(),
+        encoding: "utf8",
+    });
+    assert.equal(
+        execution.status,
+        0,
+        `PC-12 browser fixture runtime preparation failed: node ${args.join(" ")}\n${execution.stdout}\n${execution.stderr}`,
+    );
+}
+
+async function prepareFixtureBrowserRuntime() {
+    // The executable fixture must use the source candidate being tested, including its shared game
+    // factory. Materialize the package's ESM/CJS runtime plus the two browser-facing consumers that
+    // an ordinary package build creates: the public Studio CLI/static app and client/player export.
+    // These are direct compiler boundaries, not the repository-wide npm build/prepack gate.
+    runRuntimeCompiler([resolve(process.cwd(), "node_modules/typescript/bin/tsc"), "--project", "tsconfig.prod.json"]);
+    runRuntimeCompiler([resolve(process.cwd(), "node_modules/typescript/bin/tsc"), "--project", "tsconfig.prod.json", "--module", "CommonJS", "--outDir", "dist/cjs"]);
+    runRuntimeCompiler(["write-cjs-package-json.js"]);
+    runRuntimeCompiler([resolve(process.cwd(), "node_modules/typescript/bin/tsc"), "--project", "tsconfig.cli.json"]);
+    runRuntimeCompiler([resolve(process.cwd(), "node_modules/typescript/bin/tsc"), "--project", "tsconfig.client.json"]);
+    runRuntimeCompiler([resolve(process.cwd(), "node_modules/vite/bin/vite.js"), "build", "--config", "cli/studio-client/vite.config.ts"]);
+}
+
 test("PC-12 browser parity contract targets only the canonical player region", () => {
     assert.equal(canonicalPlayerSelector, '[data-pokie-player="canonical-v1"]');
     assert.deepEqual(canonicalPlayerComparisonKeys, ["cells", "wins", "features", "totals", "paytable", "controls", "hover", "styles", "layout", "overflow"]);
@@ -126,6 +151,7 @@ test("PC-12 browser parity executes Studio and an isolated exact-consumer browse
     const examplesRoot = "/home/stager/Work/sta-ger/pokie-examples";
 
     try {
+        await prepareFixtureBrowserRuntime();
         const execution = spawnSync(process.execPath, [resolve(process.cwd(), "scripts/pc-12-player-parity-browser.mjs")], {
             cwd: process.cwd(),
             encoding: "utf8",

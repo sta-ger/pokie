@@ -16,6 +16,9 @@ export type VideoSlotInitialNetworkData<T extends string | number | symbol = str
 
 export type VideoSlotRoundNetworkData<T extends string | number | symbol = string> = {
     reelsSymbols: T[][];
+    // A round replaces the player view in browser consumers. Keep the session's real bet choices
+    // with it so a win/feature re-render cannot silently discard selectable bet controls.
+    availableBets?: number[];
     totalWin?: number;
     winningPositions?: number[][];
     winningLines?: Record<string, WinningLineNetworkData<T>>;

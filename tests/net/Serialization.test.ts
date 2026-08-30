@@ -40,8 +40,11 @@ describe("GameSessionSerializer", () => {
 });
 
 describe("VideoSlotSessionSerializer", () => {
-    function buildWinningSession(): VideoSlotSession {
+    function buildWinningSession(availableBets?: number[]): VideoSlotSession {
         const config = new VideoSlotConfig();
+        if (availableBets !== undefined) {
+            config.setAvailableBets(availableBets);
+        }
         const winCalculator = new VideoSlotWinCalculator(config);
         const generator = {
             generateSymbolsCombination: (): SymbolsCombination<string> =>
@@ -136,6 +139,15 @@ describe("VideoSlotSessionSerializer", () => {
         expect(initialData.availableBetModeIds).toEqual(["base", "ante"]);
         expect(roundData.betModeId).toBe("ante");
         expect(roundtripThroughJson(initialData)).toEqual(initialData);
+        expect(roundtripThroughJson(roundData)).toEqual(roundData);
+    });
+
+    test("a round retains the session's available bets so a player re-render keeps its real selection controls", () => {
+        const session = buildWinningSession([5, 10]);
+        session.play();
+
+        const roundData = new VideoSlotSessionSerializer().getRoundData(session);
+        expect(roundData.availableBets).toEqual([5, 10]);
         expect(roundtripThroughJson(roundData)).toEqual(roundData);
     });
 });

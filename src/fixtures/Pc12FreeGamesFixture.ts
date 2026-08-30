@@ -43,6 +43,10 @@ class Pc12FreeGamesConfig extends VideoSlotWithFreeGamesConfig {
     public constructor() {
         super();
         this.setCreditsAmount(10000);
+        // The parity fixture exercises the canonical player's real selection affordance on both
+        // hosts. Keep the default ten-credit stake, with one genuine alternate stake supplied by
+        // the session instead of inventing controls in either consumer.
+        this.setAvailableBets([5, 10]);
         const paytable = new Paytable(this.getAvailableBets(), this.getAvailableSymbols(), this.getWildSymbols(), this.getReelsNumber());
         this.getAvailableSymbols().filter((symbol) => !this.isSymbolWild(symbol)).forEach((symbol) => {
             paytable.setPayoutForSymbol(symbol, 2, 1);

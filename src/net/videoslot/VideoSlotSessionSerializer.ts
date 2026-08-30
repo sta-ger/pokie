@@ -64,6 +64,7 @@ implements VideoSlotSessionSerializing<T> {
         const r: VideoSlotRoundNetworkData<T> = {
             ...this.baseSerializer.getRoundData(session),
             reelsSymbols: symbolsCombination.toMatrix(),
+            availableBets: session.getAvailableBets(),
             totalWin: session.getWinAmount(),
             winningPositions: winEvaluationResult.getWinningPositions(),
             winEvaluationResult: serializeWinEvaluationResult(winEvaluationResult),

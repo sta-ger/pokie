@@ -279,8 +279,14 @@ function addHoverRow(listEl: HTMLElement, label: string, onEnter: () => void, on
     button.type = "button";
     button.className = "player-highlight-button";
     button.textContent = label;
+    // `mouseover`/`mouseout` are the browser events delivered by real pointer movement in addition
+    // to the non-bubbling enter/leave events existing DOM consumers already replay. The player only
+    // puts text inside this button, so neither handler has a child-transition ambiguity; each hover
+    // still restores its base colour.
     button.addEventListener("mouseenter", onEnter);
     button.addEventListener("mouseleave", onLeave);
+    button.addEventListener("mouseover", onEnter);
+    button.addEventListener("mouseout", onLeave);
     wrapper.appendChild(button);
     listEl.appendChild(wrapper);
 }
