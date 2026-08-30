@@ -120,6 +120,7 @@ describe("ProjectsPanel: Import Project", () => {
     });
 
     it("renders a compatible component's contract type and inspection action without a client fallback", async () => {
+        const user = userEvent.setup();
         const wasmPresentation = {
             label: "WASM component (inspection-only)",
             manifestCapability: "wasm.manifest.read",
@@ -148,10 +149,12 @@ describe("ProjectsPanel: Import Project", () => {
         const row = (await screen.findByText("Compatible component")).closest("tr") as HTMLElement;
         expect(within(row).getByText(wasmPresentation.label)).toBeInTheDocument();
         expect(within(row).getByRole("button", {name: wasmPresentation.inspectActionLabel})).toBeInTheDocument();
-        expect(screen.getByRole("combobox", {name: "Game type"})).toHaveTextContent(wasmPresentation.label);
+        await user.click(screen.getByRole("combobox", {name: "Game type"}));
+        expect(screen.getByRole("option", {name: wasmPresentation.label, hidden: true})).toBeInTheDocument();
     });
 
     it("uses the recognized component's contract label before registration and preserves its inspection action after registration", async () => {
+        const user = userEvent.setup();
         const wasmPresentation = {
             label: "WASM component (inspection-only)",
             manifestCapability: "wasm.manifest.read",
@@ -187,11 +190,11 @@ describe("ProjectsPanel: Import Project", () => {
         });
         renderWithProviders(<ProjectsPanel />, {fetchImpl});
 
-        await userEvent.setup().type(screen.getByLabelText("Game location", {exact: false}), location);
-        await userEvent.setup().click(screen.getByRole("button", {name: "Check game"}));
-        expect(await screen.findByText(`Found a ${wasmPresentation.label} at`)).toBeInTheDocument();
+        await user.type(screen.getByLabelText("Game location", {exact: false}), location);
+        await user.click(screen.getByRole("button", {name: "Check game"}));
+        expect(await screen.findByText((_, element) => element?.textContent === `Found a ${wasmPresentation.label} at ${location}.`)).toBeInTheDocument();
 
-        await userEvent.setup().click(screen.getByRole("button", {name: "Add to projects"}));
+        await user.click(screen.getByRole("button", {name: "Add to projects"}));
         expect(await screen.findByRole("button", {name: wasmPresentation.inspectActionLabel})).toBeInTheDocument();
     });
 

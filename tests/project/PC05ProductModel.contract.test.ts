@@ -667,7 +667,7 @@ describe("PC-05 product-model contract", () => {
         expect(fileRegistry).toContain("return Array.isArray(parsed) ?");
         expect(studioRegistry).toContain('export const PROJECT_REGISTRY_FILE_NAME = "projects.json"');
         expect(studioRegistry).toContain("new FileStudioProjectRegistry(path.join(appDataDirectory, PROJECT_REGISTRY_FILE_NAME))");
-        expect(studioRegistry).toContain('status: "unavailable"');
+        expect(studioRegistry).toContain('return registryView({...entry, location}, "unavailable", describeUnavailableWasmComponent())');
         expect(studioRegistry).toContain("public async relocate(");
         expect(studioRegistry).toContain("private async canonicalize(location: string)");
 
