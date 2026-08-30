@@ -23,6 +23,7 @@ import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
+import {ArtifactInteroperabilityRun} from "../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
 
@@ -100,6 +101,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
     });
 
     it("executes the provenance, drift, recovery and diagnostic matrix from public artifacts", async () => {
+        const evidence = new ArtifactInteroperabilityRun(workDir);
         const blueprint: GameBlueprint = {
             manifest: {id: "matrix-slot", name: "Matrix Slot", version: "1.0.0"},
             reels: 2,
@@ -133,6 +135,10 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         fs.writeFileSync(descriptorPath, JSON.stringify({modes: [{modeName: "base", libraryPath: path.basename(rawLibraryPath)}]}));
         expect(await new OutcomeLibraryCommand(POKIE_VERSION).run(["build", descriptorPath, "--out", bundlePath])).toBe(0);
         expect(await new OutcomeSourceCommand().run(["sample", bundlePath, "--mode", "base", "--seed", "matrix-sample"])).toBe(0);
+        evidence.record({
+            id: "outcome-library-sample", artifactKind: "outcomeLibrary", operation: "sample", sourcePath: bundlePath,
+            owner: "OutcomeSourceCommand", result: "sampled", observations: [{surface: "cli", owner: "OutcomeSourceCommand", result: "exit 0"}],
+        });
         await new SimCommand().run([bundlePath, "--mode", "base", "--rounds", "4", "--seed", "matrix-sim", "--out", simulationPath]);
         await new ReplayCommand().run([bundlePath, "--mode", "base", "--round", "1", "--seed", "matrix-replay", "--out", replayPath]);
         expect(fs.existsSync(simulationPath)).toBe(true);
@@ -179,6 +185,24 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         fs.writeFileSync(operationObservationPath, JSON.stringify(operationObservations, null, 2));
         expect(JSON.parse(fs.readFileSync(operationObservationPath, "utf-8"))).toEqual(operationObservations);
         expect(fs.readFileSync(reportPath, "utf-8")).toContain("Outcome Source Report");
+        evidence.record({
+            id: "outcome-library-simulate", artifactKind: "outcomeLibrary", operation: "simulate", sourcePath: bundlePath,
+            producedPath: simulationPath, owner: "SimCommand", result: "published", observations: [{surface: "cli", owner: "SimCommand", result: "exit 0"}],
+        });
+        evidence.record({
+            id: "outcome-library-replay", artifactKind: "outcomeLibrary", operation: "replay", sourcePath: bundlePath,
+            producedPath: replayPath, owner: "ReplayCommand", result: "published", observations: [{surface: "cli", owner: "ReplayCommand", result: "exit 0"}],
+        });
+        evidence.record({
+            id: "outcome-library-report", artifactKind: "outcomeLibrary", operation: "report", sourcePath: bundlePath,
+            producedPath: reportPath, owner: "ReportCommand", result: "published", observations: [{surface: "cli", owner: "ReportCommand", result: "exit 0"}],
+        });
+        const emittedEvidencePath = path.join(workDir, "pc-14-cli-real-artifact-result.json");
+        evidence.write(emittedEvidencePath);
+        expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
+            expect.objectContaining({id: "outcome-library-simulate", "source_path": "run-artifacts/matrix-bundle", "produced_path": "run-artifacts/matrix-simulation.json"}),
+            expect.objectContaining({id: "outcome-library-replay", "source_path": "run-artifacts/matrix-bundle", "produced_path": "run-artifacts/matrix-replay.json"}),
+        ]));
 
         fs.writeFileSync(certificationConfigPath, JSON.stringify({modes: [{modeName: "base", seed: "matrix-evidence", sampleCount: 4}]}));
         const certification = new CertificationCommand(POKIE_VERSION);
