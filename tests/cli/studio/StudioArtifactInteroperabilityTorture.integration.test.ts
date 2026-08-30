@@ -66,6 +66,18 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         const address = await server.start();
         try {
             const baseUrl = `http://${address.host}:${address.port}`;
+            const context = await fetch(`${baseUrl}/api/project/context`);
+            expect(context.status).toBe(200);
+            // Dashboard resolution is intentionally asynchronous: immediately
+            // after start it may still report loading, but it must be the real
+            // project context that the following inspect/validate calls own.
+            expect(await context.json()).toMatchObject({status: expect.any(String)});
+            const inspected = await fetch(`${baseUrl}/api/project/inspect`);
+            expect(inspected.status).toBe(200);
+            expect(await inspected.json()).toMatchObject({packageRoot: blueprintPath, valid: true});
+            const validated = await fetch(`${baseUrl}/api/project/validate`);
+            expect(validated.status).toBe(200);
+            expect(await validated.json()).toMatchObject({valid: true});
             const targets = await fetch(`${baseUrl}/api/project/artifacts/targets`);
             expect(targets.status).toBe(200);
             expect(await targets.json()).toEqual(expect.arrayContaining([
@@ -80,10 +92,13 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             expect(await preview.json()).toMatchObject({status: "ok", target: "tsPackage"});
             evidence.recordScenario({
                 id: "studio-artifact-http-preflight", sourcePath: blueprintPath,
-                result: "Studio HTTP target discovery and preflight resolve the same real Blueprint before any durable publication",
+                result: "Studio HTTP context, inspection, validation, target discovery, and preflight resolve the same real Blueprint before any durable publication",
                 surface: "studio-api", owner: "StudioServer / StudioArtifactBuildService",
-                assertions: ["GET targets lists tsPackage", "POST preview returns an executable tsPackage plan"],
+                assertions: ["GET context retains the real Blueprint", "GET inspect and validate accept the real Blueprint", "GET targets lists tsPackage", "POST preview returns an executable tsPackage plan"],
                 observations: [
+                    {route: "GET /api/project/context", result: "returned the opened Blueprint context"},
+                    {route: "GET /api/project/inspect", result: "inspected the opened Blueprint"},
+                    {route: "GET /api/project/validate", result: "validated the opened Blueprint"},
                     {route: "GET /api/project/artifacts/targets", result: "returned the supported Blueprint build target"},
                     {route: "POST /api/project/artifacts/preview", result: "returned the prepared tsPackage operation"},
                 ],
@@ -194,23 +209,78 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         expect(new StudioReplayExecutionService().start(wasmPath, {round: 1}, wasmProject)).toEqual({
             status: "unsupported", message: replayDiagnostic.message,
         });
+        // The HTTP routes own generic game simulation/replay while the direct
+        // outcome-source services own their narrower operations. Record each
+        // concrete diagnostic separately; treating either as the other would
+        // incorrectly claim API/service parity for different public actions.
+        const httpSimulationDiagnostic = describeUnavailableArtifactOperation(wasmProject, "sim");
+        const httpReplayDiagnostic = describeUnavailableArtifactOperation(wasmProject, "replay");
+        if (httpSimulationDiagnostic === undefined || httpReplayDiagnostic === undefined) {
+            throw new Error("Expected the shared Studio HTTP diagnostics.");
+        }
+        // Services are direct Studio-library callers, but the persisted API
+        // observations must come from the HTTP owners themselves.  Open the
+        // same generated component in a real Studio server and retain only
+        // the two routes actually requested below.
+        const wasmHome = new StudioHomeService(POKIE_VERSION);
+        const wasmServer = new StudioServer({
+            pokieVersion: POKIE_VERSION,
+            host: "127.0.0.1",
+            port: 0,
+            studioRoot,
+            homeService: wasmHome,
+            blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, wasmHome),
+            initialContext: {mode: "project", projectRoot: wasmPath},
+        });
+        const wasmAddress = await wasmServer.start();
+        try {
+            const wasmBaseUrl = `http://${wasmAddress.host}:${wasmAddress.port}`;
+            const simulationResponse = await fetch(`${wasmBaseUrl}/api/project/simulations`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({rounds: 1}),
+            });
+            expect(simulationResponse.status).toBe(409);
+            expect(await simulationResponse.json()).toEqual({error: httpSimulationDiagnostic.message});
+            const replayResponse = await fetch(`${wasmBaseUrl}/api/project/replays`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({round: 1}),
+            });
+            expect(replayResponse.status).toBe(409);
+            expect(await replayResponse.json()).toEqual({error: httpReplayDiagnostic.message});
+        } finally {
+            await wasmServer.stop();
+        }
         evidence.recordUnavailable({
             id: "studio-wasm-outcome-source-simulate", artifactKind: "wasmComponent", operation: "simulate", sourcePath: wasmPath,
             owner: "StudioSimulationService / ArtifactOperationDiagnostic",
             diagnostic: {code: simulationDiagnostic.code, message: simulationDiagnostic.message, recovery: simulationDiagnostic.recovery},
-            observations: [{surface: "studio-api", owner: "StudioSimulationService.start", result: "returned the resolved shared diagnostic"}],
+            observations: [{surface: "library", owner: "StudioSimulationService.start", result: "returned the resolved outcome-source diagnostic"}],
         });
         evidence.recordUnavailable({
             id: "studio-wasm-outcome-source-replay", artifactKind: "wasmComponent", operation: "replay", sourcePath: wasmPath,
             owner: "StudioReplayExecutionService / ArtifactOperationDiagnostic",
             diagnostic: {code: replayDiagnostic.code, message: replayDiagnostic.message, recovery: replayDiagnostic.recovery},
-            observations: [{surface: "studio-api", owner: "StudioReplayExecutionService.start", result: "returned the resolved shared diagnostic"}],
+            observations: [{surface: "library", owner: "StudioReplayExecutionService.start", result: "returned the resolved outcome-source diagnostic"}],
+        });
+        evidence.recordUnavailable({
+            id: "studio-wasm-simulate", artifactKind: "wasmComponent", operation: "simulate", sourcePath: wasmPath,
+            owner: "StudioServer / ArtifactOperationDiagnostic",
+            diagnostic: {code: httpSimulationDiagnostic.code, message: httpSimulationDiagnostic.message, recovery: httpSimulationDiagnostic.recovery},
+            observations: [{surface: "studio-api", owner: "StudioServer POST /api/project/simulations", result: "returned HTTP 409 with the resolved simulation diagnostic"}],
+        });
+        evidence.recordUnavailable({
+            id: "studio-wasm-replay", artifactKind: "wasmComponent", operation: "replay", sourcePath: wasmPath,
+            owner: "StudioServer / ArtifactOperationDiagnostic",
+            diagnostic: {code: httpReplayDiagnostic.code, message: httpReplayDiagnostic.message, recovery: httpReplayDiagnostic.recovery},
+            observations: [{surface: "studio-api", owner: "StudioServer POST /api/project/replays", result: "returned HTTP 409 with the resolved replay diagnostic"}],
         });
         evidence.recordScenario({
             id: "studio-wasm-boundary", sourcePath: wasmPath,
-            result: "Studio simulation and replay reject the resolved WASM component before creating a job, retaining the shared diagnostic recovery",
+            result: "Studio HTTP simulation/replay and direct outcome-source services reject the resolved WASM component before creating a job, each retaining its concrete shared diagnostic recovery",
             surface: "studio-api", owner: "StudioSimulationService / StudioReplayExecutionService",
-            assertions: ["neither Studio route creates a job for the unavailable component", "both routes return the shared diagnostic message"],
+            assertions: ["neither Studio HTTP route creates a job for the unavailable component", "HTTP and direct outcome-source owners retain their operation-specific shared diagnostic message"],
             observations: [
                 {route: "POST /api/project/simulations", result: "Studio simulation service returned unsupported"},
                 {route: "POST /api/project/replays", result: "Studio replay service returned unsupported"},
