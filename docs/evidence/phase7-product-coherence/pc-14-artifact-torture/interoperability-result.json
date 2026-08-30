@@ -9374,15 +9374,15 @@
         "runner": "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
         "surface": "CLI + source validators",
         "assertions": [
-          "sourceBundleManifestHash",
-          "mode index hash",
-          "library id/hash",
-          "portable exact replay classification"
+          "simulation lastReplay game/library id/hash",
+          "outcome-source replay derived-round-seed-v1 library id/hash",
+          "certification sourceBundleManifestHash and mode library id/hash",
+          "fairness proof mode index hash and library id/hash"
         ],
         "observations": [
           {
             "route": "pokie sim/replay/certification/fairness",
-            "result": "Reads the generated bundle manifest and verifies every persisted library id/hash and source manifest binding."
+            "result": "Builds one real sampled bundle, then compares the exact persisted game, library id/hash, and mode/index bindings in its simulation, replay, certification, and fairness outputs."
           }
         ]
       }
