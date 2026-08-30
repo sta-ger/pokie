@@ -1,4 +1,5 @@
 import fs from "fs";
+import crypto from "crypto";
 import path from "path";
 
 export type ArtifactInteroperabilityObservation = {
@@ -47,6 +48,10 @@ export type ArtifactInteroperabilityScenario = {
     readonly result: string;
     readonly surface: "cli" | "studio-api" | "studio-ui" | "library";
     readonly owner: string;
+    /** Assertions that completed before this lifecycle result was retained. */
+    readonly assertions: readonly string[];
+    /** Public observations actually made by this scenario. */
+    readonly observations: readonly {readonly route: string; readonly result: string}[];
 };
 
 /**
@@ -102,6 +107,8 @@ export class ArtifactInteroperabilityRun {
         this.assertExists(scenario.sourcePath, "source");
         if (scenario.producedPath !== undefined) this.assertExists(scenario.producedPath, "output");
         if (scenario.result.length === 0) throw new Error(`${scenario.id} has no observed lifecycle result.`);
+        if (scenario.assertions.length === 0) throw new Error(`${scenario.id} has no completed lifecycle assertion.`);
+        if (scenario.observations.length === 0) throw new Error(`${scenario.id} has no exercised lifecycle observation.`);
         this.scenarios.push(scenario);
     }
 
@@ -113,7 +120,9 @@ export class ArtifactInteroperabilityRun {
                 "artifact_kind": row.artifactKind,
                 operation: row.operation,
                 "source_path": this.redact(row.sourcePath),
+                "source_identity": this.identity(row.sourcePath),
                 "produced_path": row.producedPath === undefined ? null : this.redact(row.producedPath),
+                "produced_identity": row.producedPath === undefined ? null : this.identity(row.producedPath),
                 "operation_owner": row.owner,
                 status: row.status ?? "supported",
                 "observable_result": row.result,
@@ -125,9 +134,16 @@ export class ArtifactInteroperabilityRun {
             .map((scenario) => ({
                 id: scenario.id,
                 "source_path": this.redact(scenario.sourcePath),
+                "source_identity": this.identity(scenario.sourcePath),
                 "produced_path": scenario.producedPath === undefined ? null : this.redact(scenario.producedPath),
+                "produced_identity": scenario.producedPath === undefined ? null : this.identity(scenario.producedPath),
                 "observable_result": scenario.result,
-                observation: {surface: scenario.surface, owner: scenario.owner},
+                execution: {
+                    surface: scenario.surface,
+                    owner: scenario.owner,
+                    assertions: [...scenario.assertions],
+                    observations: scenario.observations.map((observation) => ({...observation})),
+                },
             }));
         fs.writeFileSync(outputPath, `${JSON.stringify({"schema_version": 2, rows, "scenario_results": scenarios}, null, 2)}\n`);
     }
@@ -142,5 +158,32 @@ export class ArtifactInteroperabilityRun {
             throw new Error(`Cannot redact artifact outside the runner root: ${artifactPath}`);
         }
         return `run-artifacts/${relative.split(path.sep).join("/")}`;
+    }
+
+    /**
+     * Preserve a deterministic identity of the real artifact without leaking
+     * the runner's temporary path. Directory identity includes every entry
+     * (including symlinks as links) in lexical order, so a result cannot be
+     * replayed from a same-named hand-authored placeholder.
+     */
+    private identity(artifactPath: string): string {
+        const digest = crypto.createHash("sha256");
+        const visit = (entryPath: string, relativePath: string): void => {
+            const stat = fs.lstatSync(entryPath);
+            if (stat.isSymbolicLink()) {
+                digest.update(`link:${relativePath}:${fs.readlinkSync(entryPath)}\n`);
+                return;
+            }
+            if (stat.isDirectory()) {
+                digest.update(`directory:${relativePath}\n`);
+                for (const child of fs.readdirSync(entryPath).sort()) visit(path.join(entryPath, child), path.posix.join(relativePath, child));
+                return;
+            }
+            digest.update(`file:${relativePath}:`);
+            digest.update(fs.readFileSync(entryPath));
+            digest.update("\n");
+        };
+        visit(artifactPath, ".");
+        return `sha256:${digest.digest("hex")}`;
     }
 }

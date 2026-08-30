@@ -53,6 +53,8 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             id: "studio-generation-cancellation", sourcePath: packagePath,
             result: "cancelled generation leaves no bundle publication and returns the resumable checkpoint",
             surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService",
+            assertions: ["cancelled generation returns a checkpoint and no bundle directory"],
+            observations: [{route: "StudioOutcomeLibraryGenerateService.generate", result: "Studio generation returned cancelled"}],
         });
 
         // A preview binds its destination. Occupying it after preflight must
@@ -72,6 +74,8 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             id: "studio-destination-drift", sourcePath: packagePath, producedPath: path.join(packagePath, occupiedOutDir),
             result: "prepared generation reports a conflict after destination occupancy and preserves borrowed.txt",
             surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService",
+            assertions: ["occupied borrowed.txt remains after the conflict"],
+            observations: [{route: "StudioOutcomeLibraryGenerateService.generate", result: "Studio preflight destination conflict returned"}],
         });
         fs.rmSync(path.join(packagePath, occupiedOutDir), {recursive: true});
         const generated = await generator.generate(packagePath, {mode: "base", stake: 1, resumeFrom: cancelled.checkpoint});
@@ -81,6 +85,8 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             producedPath: path.join(packagePath, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR),
             result: "the cancellation checkpoint resumes into a published Outcome Library after the conflicting borrowed destination is removed",
             surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService",
+            assertions: ["resumed generation returns ok and publishes its bundle"],
+            observations: [{route: "StudioOutcomeLibraryGenerateService.generate", result: "Studio generation recovered from checkpoint"}],
         });
 
         const registry = await generator.registry(packagePath);
@@ -113,6 +119,9 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             expect.objectContaining({id: "studio-generation-cancellation", "produced_path": null}),
             expect.objectContaining({id: "studio-destination-drift", "produced_path": "run-artifacts/package/outcomelibrary"}),
             expect.objectContaining({id: "studio-generation-recovery", "produced_path": "run-artifacts/package/outcomelibrary"}),
+        ]));
+        expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: {"source_identity": string; "produced_identity": string | null}[]}).rows).toEqual(expect.arrayContaining([
+            expect.objectContaining({"source_identity": expect.stringMatching(/^sha256:/), "produced_identity": expect.stringMatching(/^sha256:/)}),
         ]));
     });
 });

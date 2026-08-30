@@ -257,11 +257,15 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "exact-source-provenance", sourcePath: bundlePath, producedPath: proofPath,
             result: "simulation, replay, certification, and fairness retain the generated bundle game, library id, and library hash",
             surface: "cli", owner: "SimCommand / ReplayCommand / CertificationCommand / FairnessCommand",
+            assertions: ["simulation, replay, certification, and fairness source bindings match the generated bundle"],
+            observations: [{route: "pokie sim/replay/certification/fairness", result: "all public commands completed against the same bundle"}],
         });
         evidence.recordScenario({
             id: "portable-exact-outcome-replay", sourcePath: bundlePath, producedPath: replayPath,
             result: "seeded outcome-library replay records the source library hash and derived-round-seed-v1 selection algorithm",
             surface: "cli", owner: "ReplayCommand",
+            assertions: ["replay stores the source library hash and selection algorithm"],
+            observations: [{route: "pokie replay", result: "public replay output is portable and exact"}],
         });
         const emittedEvidencePath = path.join(workDir, "pc-14-cli-real-artifact-result.json");
         evidence.write(emittedEvidencePath);
@@ -270,6 +274,9 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             expect.objectContaining({id: "outcome-library-simulate", "source_path": "run-artifacts/matrix-bundle", "produced_path": "run-artifacts/matrix-simulation.json"}),
             expect.objectContaining({id: "outcome-library-certification", "produced_path": "run-artifacts/matrix-certification"}),
             expect.objectContaining({id: "outcome-library-fairness", "produced_path": "run-artifacts/matrix-proof.json"}),
+        ]));
+        expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: {"source_identity": string; "produced_identity": string | null}[]}).rows).toEqual(expect.arrayContaining([
+            expect.objectContaining({"source_identity": expect.stringMatching(/^sha256:/), "produced_identity": expect.stringMatching(/^sha256:/)}),
         ]));
 
         const generatedBlueprintPath = path.join(workDir, "generated.blueprint.json");
@@ -287,6 +294,8 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "generated-reel-non-lossless", sourcePath: generatedBlueprintPath, producedPath: generatedWorkbookPath,
             result: "generated reel provenance is retained but the imported PAR evidence marks the round trip non-lossless",
             surface: "cli", owner: "ParCommand",
+            assertions: ["PAR import conversion evidence sets losslessEligible false"],
+            observations: [{route: "pokie par export/import", result: "public PAR round trip preserves the non-lossless boundary"}],
         });
 
         const source = await resolver.resolve(blueprintPath);
@@ -300,6 +309,8 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "configuration-drift", sourcePath: blueprintPath,
             result: "prepared package publication rejects the changed source before creating its destination",
             surface: "library", owner: "ArtifactBuilderRegistry",
+            assertions: ["stale execution rejects and destination does not exist"],
+            observations: [{route: "ArtifactBuilderRegistry.executePlan", result: "source configuration drift rejected before publication"}],
         });
 
         const occupiedDestination = path.join(workDir, "occupied-package");
@@ -314,6 +325,8 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "borrowed-output-cleanup", sourcePath: blueprintPath, producedPath: occupiedDestination,
             result: "destination drift rejects publication and preserves the caller-owned borrowed.txt",
             surface: "library", owner: "ArtifactBuilderRegistry",
+            assertions: ["borrowed destination contents remain unchanged"],
+            observations: [{route: "ArtifactBuilderRegistry.executePlan", result: "destination drift rejected without deleting caller output"}],
         });
 
         const wasmPath = path.join(workDir, "matrix.wasm");
@@ -367,6 +380,8 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "wasm-boundary", sourcePath: wasmPath,
             result: "the public simulation command rejects the resolved WASM component with the shared diagnostic and recovery",
             surface: "cli", owner: "SimCommand / ArtifactOperationDiagnostic",
+            assertions: ["SimCommand throws the resolved shared WASM operation diagnostic"],
+            observations: [{route: "pokie sim", result: "public CLI returned the shared diagnostic recovery"}],
         });
         evidence.write(emittedEvidencePath);
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
@@ -379,6 +394,9 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             expect.objectContaining({id: "configuration-drift", "source_path": "run-artifacts/matrix.blueprint.json"}),
             expect.objectContaining({id: "borrowed-output-cleanup", "source_path": "run-artifacts/matrix.blueprint.json"}),
             expect.objectContaining({id: "wasm-boundary", "source_path": "run-artifacts/matrix.wasm"}),
+        ]));
+        expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {"scenario_results": {execution: {assertions: string[]; observations: unknown[]}}[]}).scenario_results).toEqual(expect.arrayContaining([
+            expect.objectContaining({execution: expect.objectContaining({assertions: expect.any(Array), observations: expect.any(Array)})}),
         ]));
     });
 });
