@@ -18,12 +18,27 @@ type InteroperabilityRow = {
     readonly observable_result: string;
     readonly reason?: string;
     readonly next_action?: string;
+    readonly diagnostic?: {readonly shared_owner: string; readonly code: string; readonly recovery: string};
+    readonly execution?: {
+        readonly runner: string;
+        readonly operation: string;
+        readonly artifact_origin: string;
+        readonly observations: Readonly<Record<string, {readonly surface: string; readonly result: string}>>;
+    };
 };
 
 type InteroperabilityResult = {
     readonly excluded_internal_state: readonly {readonly artifact_kind: string}[];
     readonly rows: readonly InteroperabilityRow[];
-    readonly systemic_class_audits: readonly {readonly class: string; readonly owner: string; readonly scope: readonly string[]}[];
+    readonly systemic_class_audits: readonly {
+        readonly class: string;
+        readonly owner: string;
+        readonly planner_cells: readonly string[];
+        readonly aliases: readonly string[];
+        readonly studio_routes: readonly string[];
+        readonly direct_callers: readonly string[];
+        readonly regressions: readonly string[];
+    }[];
     readonly scenario_results: readonly {
         readonly id: string;
         readonly status: "supported" | "intentionally-unsupported";
@@ -64,10 +79,17 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             expect(row.observable_result).not.toHaveLength(0);
             if (row.status === "supported") {
                 expect(row.produced_path).toMatch(/^run-artifacts\//);
+                expect(row.execution).toMatchObject({operation: row.operation});
+                expect(row.execution?.runner).toMatch(/^tests\//);
+                expect(row.execution?.artifact_origin).toMatch(/produced|imported/i);
+                expect(row.execution?.observations.library.result).not.toMatch(/covered/i);
+                expect(row.execution?.observations.cli.result).not.toMatch(/covered/i);
             } else {
                 expect(row.status).toBe("intentionally-unsupported");
                 expect(row.reason).toContain(row.source_path);
                 expect(row.next_action).toBeDefined();
+                expect(row.diagnostic).toMatchObject({code: "unsupported-boundary", recovery: row.next_action});
+                expect(row.diagnostic?.shared_owner).toMatch(/ArtifactConversionPlanner|describeUnsupportedProjectOperation/);
             }
         }
     });
@@ -93,16 +115,28 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             expect.objectContaining({class: "provenance and freshness binding"}),
             expect.objectContaining({class: "durable publication ownership"}),
         ]));
-        for (const audit of result.systemic_class_audits) expect(audit.scope.length).toBeGreaterThan(1);
+        for (const audit of result.systemic_class_audits) {
+            expect(audit.planner_cells.length).toBeGreaterThan(0);
+            expect(audit.aliases.length).toBeGreaterThan(0);
+            expect(audit.studio_routes.length).toBeGreaterThan(0);
+            expect(audit.direct_callers.length).toBeGreaterThan(0);
+            expect(audit.regressions).toEqual(expect.arrayContaining([
+                expect.stringMatching(/^tests\/project\//),
+                expect.stringMatching(/^tests\/cli\//),
+            ]));
+        }
     });
 
     it("binds every claimed lifecycle disposition to its executable real-artifact runner", () => {
         const requiredScenarios = [
             "par-lossless-roundtrip",
             "stake-library-roundtrip",
+            "exact-source-provenance",
+            "prepared-descriptor-drift",
             "prepared-source-drift",
             "prepared-destination-drift",
-            "stale-managed-library-reuse",
+            "managed-library-compatibility",
+            "durable-publication-recovery",
             "wasm-boundary",
         ];
         expect(result.scenario_results.map((scenario) => scenario.id)).toEqual(requiredScenarios);

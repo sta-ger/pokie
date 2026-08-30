@@ -134,17 +134,47 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         await new ReplayCommand().run([bundlePath, "--mode", "base", "--round", "1", "--seed", "matrix-replay", "--out", replayPath]);
         expect(fs.existsSync(simulationPath)).toBe(true);
         expect(fs.existsSync(replayPath)).toBe(true);
+        const bundleManifest = JSON.parse(fs.readFileSync(path.join(bundlePath, "manifest.json"), "utf-8")) as {
+            game: {id: string; version: string}; modes: {libraryId: string; libraryHash: string}[];
+        };
+        const simulation = JSON.parse(fs.readFileSync(simulationPath, "utf-8")) as {
+            libraryId: string; libraryHash: string; lastReplay: {game: {id: string; version: string}; libraryId: string; libraryHash: string};
+        };
+        const replay = JSON.parse(fs.readFileSync(replayPath, "utf-8")) as {
+            game: {id: string; version: string}; outcomeSource: {libraryId: string; libraryHash: string; selectionAlgorithm: string};
+        };
+        const sourceMode = bundleManifest.modes[0];
+        // These are the same source binding, not merely artifacts which happen
+        // to be generated in one temporary directory.  A seeded outcome-source
+        // replay is portable and exact because it records the library hash;
+        // package replay remains a separately documented best-effort path.
+        expect(simulation).toMatchObject({libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash, lastReplay: {
+            game: bundleManifest.game, libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash,
+        }});
+        expect(replay).toMatchObject({game: bundleManifest.game, outcomeSource: {
+            libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash, selectionAlgorithm: "derived-round-seed-v1",
+        }});
 
         fs.writeFileSync(certificationConfigPath, JSON.stringify({modes: [{modeName: "base", seed: "matrix-evidence", sampleCount: 4}]}));
         const certification = new CertificationCommand(POKIE_VERSION);
         expect(await certification.run(["build", bundlePath, certificationConfigPath, "--out", certificationPath])).toBe(0);
         expect(await certification.run(["verify", certificationPath, "--source", bundlePath])).toBe(0);
+        const certificationManifest = JSON.parse(fs.readFileSync(path.join(certificationPath, "manifest.json"), "utf-8")) as {
+            game: {id: string; version: string}; sourceBundleManifestHash: string; modes: {libraryId: string; libraryHash: string}[];
+        };
+        expect(certificationManifest).toMatchObject({game: bundleManifest.game, modes: [{
+            libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash,
+        }]});
+        expect(certificationManifest.sourceBundleManifestHash).toMatch(/^sha256:/);
         fs.writeFileSync(seedPath, "matrix-server-seed\n");
         const fairness = new FairnessCommand();
         expect(await fairness.run(["seed-commit", seedPath, "--out", seedCommitmentPath])).toBe(0);
         expect(await fairness.run(["commit", seedCommitmentPath, "--client-seed", "matrix-client", "--nonce", "1", "--source", bundlePath, "--mode", "base", "--out", commitmentPath])).toBe(0);
         expect(await fairness.run(["reveal", commitmentPath, "--server-seed", seedPath, "--source", bundlePath, "--out", proofPath])).toBe(0);
         expect(await fairness.run(["verify", proofPath, "--commitment", commitmentPath, "--source", bundlePath])).toBe(0);
+        const proof = JSON.parse(fs.readFileSync(proofPath, "utf-8")) as {libraryId: string; libraryHash: string; modeName: string; indexHash: string};
+        expect(proof).toMatchObject({libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash, modeName: "base"});
+        expect(proof.indexHash).toMatch(/^sha256:/);
 
         const generatedBlueprintPath = path.join(workDir, "generated.blueprint.json");
         const generatedWorkbookPath = path.join(workDir, "generated.par.xlsx");
