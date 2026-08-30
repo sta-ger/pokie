@@ -19,6 +19,7 @@ type EmittedRecord = {
     readonly observations?: readonly {readonly surface: string; readonly owner: string; readonly result: string}[];
     readonly execution?: {readonly assertions: readonly string[]; readonly observations: readonly {readonly route: string; readonly result: string}[]};
     readonly diagnostic?: {readonly code: string; readonly recovery: string};
+    readonly systemic_classes?: readonly string[];
 };
 
 type InteroperabilityResult = {
@@ -47,6 +48,7 @@ type InteroperabilityResult = {
             readonly operation_owners: readonly string[];
             readonly studio_routes: readonly string[];
             readonly studio_ui_routes: readonly string[];
+            readonly studio_service_callers: readonly string[];
             readonly direct_library_callers: readonly string[];
             readonly regression_links: readonly string[];
         };
@@ -129,12 +131,19 @@ describe("PC-14 artifact interoperability remediation contract", () => {
     });
 
     it("binds lifecycle assertions and audits to emitted outcomes instead of static scenario claims", () => {
+        const systemicClassKey: Readonly<Record<string, string>> = {
+            "shared conversion diagnostic parity": "shared-conversion-diagnostic-parity",
+            "provenance and freshness binding": "provenance-and-freshness-binding",
+            "durable publication ownership": "durable-publication-ownership",
+        };
         for (const scenario of result.scenario_results) {
             expect(scenario.source_path).toMatch(/^run-artifacts\//);
             expect(scenario.source_identity).toMatch(/^sha256:/);
             expect(scenario.observable_result).not.toHaveLength(0);
             expect(scenario.execution?.assertions.length).toBeGreaterThan(0);
             expect(scenario.execution?.observations.length).toBeGreaterThan(0);
+            expect(scenario.systemic_classes).toBeDefined();
+            expect(scenario.systemic_classes?.length).toBeGreaterThan(0);
         }
         expect(result.scenario_results.map((scenario) => scenario.id)).toEqual(expect.arrayContaining([
             "exact-source-provenance",
@@ -155,7 +164,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             expect(audit.derived_from.operation_rows.length + audit.derived_from.lifecycle_outcomes.length).toBeGreaterThan(0);
             expect(audit.derived_from.runner_outputs.length).toBeGreaterThan(0);
             for (const id of [...audit.derived_from.operation_rows, ...audit.derived_from.lifecycle_outcomes]) {
-                expect([...result.rows, ...result.scenario_results].map((record) => record.id)).toContain(id);
+                const record = [...result.rows, ...result.scenario_results].find((candidate) => candidate.id === id);
+                expect(record?.systemic_classes).toContain(systemicClassKey[audit.class]);
             }
         }
     });
@@ -190,11 +200,14 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         }
         for (const audit of result.systemic_class_audits) {
             expect(audit.derived_from).toMatchObject({
-                "planner_cells": expect.arrayContaining(cells),
+                "planner_cells": audit.class === "shared conversion diagnostic parity"
+                    ? expect.arrayContaining(cells)
+                    : [],
                 aliases: expect.any(Array),
                 "operation_owners": expect.any(Array),
                 "studio_routes": expect.any(Array),
                 "studio_ui_routes": expect.any(Array),
+                "studio_service_callers": expect.any(Array),
                 "direct_library_callers": expect.any(Array),
                 "regression_links": expect.any(Array),
             });

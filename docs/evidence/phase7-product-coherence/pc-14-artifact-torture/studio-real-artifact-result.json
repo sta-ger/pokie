@@ -8,8 +8,11 @@
       "source_path": "run-artifacts/source.blueprint.json",
       "source_identity": "sha256:677e919f98bf8c1f0d4872c72f92cb1b11976f59c8aed675ef54db3e3106c4e9",
       "produced_path": "run-artifacts/package",
-      "produced_identity": "sha256:6b93fa565a9c1e8b3a753605b4290e34bd6e2eea0df3d7e915aa63b818733f82",
+      "produced_identity": "sha256:d2b08ad4e539fbc564d686a3af93c779d51c5994d28ea61be6655124a47933ae",
       "operation_owner": "StudioArtifactBuildService",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
       "status": "supported",
       "observable_result": "published",
       "observations": [
@@ -25,10 +28,11 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "export",
       "source_path": "run-artifacts/package/outcomelibrary",
-      "source_identity": "sha256:095ef54462fac9158ba851b3fb81aa48f158727620ceb495f45fd630c397941a",
+      "source_identity": "sha256:858ea0bd14e30b984d7a2b3b3aa3aee9409bd0e9d8030a6d57b140dd54de4b98",
       "produced_path": "run-artifacts/package/stake",
-      "produced_identity": "sha256:0cbb852d43a3373c8b379e6879917c60a2e20d279f6ee273c0a51ef08c86aeb0",
+      "produced_identity": "sha256:692c16d9897df6ea33cf7e87d8cf751e5c798a09e57070a8d0e2c3e18e77729e",
       "operation_owner": "StudioStakeEngineExportService",
+      "systemic_classes": [],
       "status": "supported",
       "observable_result": "published",
       "observations": [
@@ -48,6 +52,9 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StudioReplayExecutionService / ArtifactOperationDiagnostic",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
       "status": "intentionally-unsupported",
       "observable_result": "This POKIE WASM component cannot replay a pre-generated outcome. POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary. Next: inspect a compatible component with `pokie inspect <path>`, repair or add its compatible sidecar when needed, or Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
       "diagnostic": {
@@ -71,6 +78,9 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StudioSimulationService / ArtifactOperationDiagnostic",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
       "status": "intentionally-unsupported",
       "observable_result": "This POKIE WASM component cannot simulate pre-generated outcomes. POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary. Next: inspect a compatible component with `pokie inspect <path>`, repair or add its compatible sidecar when needed, or Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
       "diagnostic": {
@@ -94,6 +104,9 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StudioServer / ArtifactOperationDiagnostic",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
       "status": "intentionally-unsupported",
       "observable_result": "This POKIE WASM component cannot replay a game round. POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary. Next: inspect a compatible component with `pokie inspect <path>`, repair or add its compatible sidecar when needed, or Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
       "diagnostic": {
@@ -117,6 +130,9 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StudioServer / ArtifactOperationDiagnostic",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
       "status": "intentionally-unsupported",
       "observable_result": "This POKIE WASM component cannot simulate game rounds. POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary. Next: inspect a compatible component with `pokie inspect <path>`, repair or add its compatible sidecar when needed, or Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
       "diagnostic": {
@@ -176,14 +192,17 @@
             "result": "created the pollable tsPackage build job"
           }
         ]
-      }
+      },
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ]
     },
     {
       "id": "studio-destination-drift",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:6b93fa565a9c1e8b3a753605b4290e34bd6e2eea0df3d7e915aa63b818733f82",
+      "source_identity": "sha256:d2b08ad4e539fbc564d686a3af93c779d51c5994d28ea61be6655124a47933ae",
       "produced_path": "run-artifacts/package/outcomelibrary",
-      "produced_identity": "sha256:095ef54462fac9158ba851b3fb81aa48f158727620ceb495f45fd630c397941a",
+      "produced_identity": "sha256:858ea0bd14e30b984d7a2b3b3aa3aee9409bd0e9d8030a6d57b140dd54de4b98",
       "observable_result": "prepared generation reports a conflict after destination occupancy and preserves borrowed.txt",
       "execution": {
         "surface": "studio-api",
@@ -197,12 +216,15 @@
             "result": "Studio preflight destination conflict returned"
           }
         ]
-      }
+      },
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ]
     },
     {
       "id": "studio-generation-cancellation",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:6b93fa565a9c1e8b3a753605b4290e34bd6e2eea0df3d7e915aa63b818733f82",
+      "source_identity": "sha256:d2b08ad4e539fbc564d686a3af93c779d51c5994d28ea61be6655124a47933ae",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "cancelled generation leaves no bundle publication and returns the resumable checkpoint",
@@ -218,14 +240,17 @@
             "result": "Studio generation returned cancelled"
           }
         ]
-      }
+      },
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ]
     },
     {
       "id": "studio-generation-recovery",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:6b93fa565a9c1e8b3a753605b4290e34bd6e2eea0df3d7e915aa63b818733f82",
+      "source_identity": "sha256:d2b08ad4e539fbc564d686a3af93c779d51c5994d28ea61be6655124a47933ae",
       "produced_path": "run-artifacts/package/outcomelibrary",
-      "produced_identity": "sha256:095ef54462fac9158ba851b3fb81aa48f158727620ceb495f45fd630c397941a",
+      "produced_identity": "sha256:858ea0bd14e30b984d7a2b3b3aa3aee9409bd0e9d8030a6d57b140dd54de4b98",
       "observable_result": "the cancellation checkpoint resumes into a published Outcome Library after the conflicting borrowed destination is removed",
       "execution": {
         "surface": "studio-api",
@@ -239,7 +264,10 @@
             "result": "Studio generation recovered from checkpoint"
           }
         ]
-      }
+      },
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ]
     },
     {
       "id": "studio-wasm-boundary",
@@ -265,7 +293,10 @@
             "result": "Studio replay service returned unsupported"
           }
         ]
-      }
+      },
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ]
     }
   ],
   "planner_cells": []

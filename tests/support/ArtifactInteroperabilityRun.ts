@@ -8,6 +8,17 @@ export type ArtifactInteroperabilityObservation = {
     readonly result: string;
 };
 
+/**
+ * A systemic class is attached by the runner at the assertion which observed
+ * it.  The merger must never rediscover a class from an id substring: that
+ * would allow a hand-named record to expand an audit without exercising the
+ * associated owner.
+ */
+export type ArtifactInteroperabilitySystemicClass =
+    | "shared-conversion-diagnostic-parity"
+    | "provenance-and-freshness-binding"
+    | "durable-publication-ownership";
+
 export type ArtifactInteroperabilityRunRow = {
     readonly id: string;
     readonly artifactKind: string;
@@ -17,6 +28,8 @@ export type ArtifactInteroperabilityRunRow = {
     readonly owner: string;
     readonly result: string;
     readonly observations: readonly ArtifactInteroperabilityObservation[];
+    /** Systemic classes actually covered by this completed operation. */
+    readonly systemicClasses?: readonly ArtifactInteroperabilitySystemicClass[];
     readonly status?: "supported" | "intentionally-unsupported";
     readonly diagnostic?: {
         readonly code: string;
@@ -39,6 +52,7 @@ export type ArtifactInteroperabilityUnavailableRow = {
         readonly recovery?: string;
     };
     readonly observations: readonly ArtifactInteroperabilityObservation[];
+    readonly systemicClasses?: readonly ArtifactInteroperabilitySystemicClass[];
 };
 
 /** A planner cell is retained only after the runner has resolved the source
@@ -66,6 +80,8 @@ export type ArtifactInteroperabilityScenario = {
     readonly assertions: readonly string[];
     /** Public observations actually made by this scenario. */
     readonly observations: readonly {readonly route: string; readonly result: string}[];
+    /** Classes asserted by this completed lifecycle observation. */
+    readonly systemicClasses: readonly ArtifactInteroperabilitySystemicClass[];
 };
 
 /**
@@ -89,6 +105,7 @@ export class ArtifactInteroperabilityRun {
         this.assertExists(row.sourcePath, "source");
         if (row.producedPath !== undefined) this.assertExists(row.producedPath, "output");
         if (row.observations.length === 0) throw new Error(`${row.id} has no exercised public observation.`);
+        if (row.systemicClasses !== undefined && row.systemicClasses.length === 0) throw new Error(`${row.id} has an empty systemic class assignment.`);
         this.rows.push(row);
     }
 
@@ -105,6 +122,7 @@ export class ArtifactInteroperabilityRun {
             throw new Error(`${row.id} has no concrete public diagnostic and recovery.`);
         }
         if (row.observations.length === 0) throw new Error(`${row.id} has no exercised public observation.`);
+        if (row.systemicClasses !== undefined && row.systemicClasses.length === 0) throw new Error(`${row.id} has an empty systemic class assignment.`);
         this.rows.push({
             id: row.id,
             artifactKind: row.artifactKind,
@@ -115,6 +133,7 @@ export class ArtifactInteroperabilityRun {
             observations: row.observations,
             status: "intentionally-unsupported",
             diagnostic: {code: row.diagnostic.code, recovery: row.diagnostic.recovery},
+            ...(row.systemicClasses === undefined ? {} : {systemicClasses: row.systemicClasses}),
         });
     }
 
@@ -134,6 +153,7 @@ export class ArtifactInteroperabilityRun {
         if (scenario.result.length === 0) throw new Error(`${scenario.id} has no observed lifecycle result.`);
         if (scenario.assertions.length === 0) throw new Error(`${scenario.id} has no completed lifecycle assertion.`);
         if (scenario.observations.length === 0) throw new Error(`${scenario.id} has no exercised lifecycle observation.`);
+        if (scenario.systemicClasses.length === 0) throw new Error(`${scenario.id} has no systemic audit class.`);
         this.scenarios.push(scenario);
     }
 
@@ -149,6 +169,7 @@ export class ArtifactInteroperabilityRun {
                 "produced_path": row.producedPath === undefined ? null : this.redact(row.producedPath),
                 "produced_identity": row.producedPath === undefined ? null : this.identity(row.producedPath),
                 "operation_owner": row.owner,
+                "systemic_classes": row.systemicClasses ?? [],
                 status: row.status ?? "supported",
                 "observable_result": row.result,
                 ...(row.diagnostic === undefined ? {} : {diagnostic: {...row.diagnostic}}),
@@ -169,6 +190,7 @@ export class ArtifactInteroperabilityRun {
                     assertions: [...scenario.assertions],
                     observations: scenario.observations.map((observation) => ({...observation})),
                 },
+                "systemic_classes": scenario.systemicClasses,
             }));
         const plannerCells = [...this.plannerCells]
             .sort((left, right) => `${left.sourceType}:${left.target}`.localeCompare(`${right.sourceType}:${right.target}`))
@@ -235,47 +257,64 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
         const parsed = JSON.parse(raw) as {readonly rows: unknown[]; readonly scenario_results: unknown[]; readonly planner_cells?: unknown[]};
         return {inputPath, raw, parsed};
     });
-    const classify = (fragments: readonly string[]) => ({
+    const classify = (systemicClass: ArtifactInteroperabilitySystemicClass) => ({
         "operation_rows": runs.flatMap((run) => run.parsed.rows)
-            .filter((row) => isMatchingRecord(row, fragments))
+            .filter((row) => hasSystemicClass(row, systemicClass))
             .map((row) => recordId(row))
             .sort(),
         "lifecycle_outcomes": runs.flatMap((run) => run.parsed.scenario_results)
-            .filter((scenario) => isMatchingRecord(scenario, fragments))
+            .filter((scenario) => hasSystemicClass(scenario, systemicClass))
             .map((scenario) => recordId(scenario))
             .sort(),
         "runner_outputs": runs.filter((run) => {
             const records = [...run.parsed.rows, ...run.parsed.scenario_results];
-            return records.some((record) => isMatchingRecord(record, fragments));
+            return records.some((record) => hasSystemicClass(record, systemicClass));
         }).map((run) => path.basename(run.inputPath)).sort(),
-        "planner_cells": runs.flatMap((run) => run.parsed.planner_cells ?? []),
+        // Planner cells describe the conversion class only.  Attaching the
+        // full cell set to provenance or publication findings would falsely
+        // claim those owners planned every conversion.
+        "planner_cells": systemicClass === "shared-conversion-diagnostic-parity"
+            ? runs.flatMap((run) => run.parsed.planner_cells ?? [])
+            : [],
         // These are aliases actually observed by the runner, not the broader
         // CLI vocabulary.  Keeping this on the derived audit lets a reviewer
         // see precisely which public identity reached an owner in this run.
         aliases: runs.flatMap((run) => run.parsed.rows)
-            .filter((row) => isMatchingRecord(row, fragments))
+            .filter((row) => hasSystemicClass(row, systemicClass))
             .flatMap(recordAlias)
             .filter((alias, index, aliases) => aliases.indexOf(alias) === index).sort(),
         "operation_owners": runs.flatMap((run) => run.parsed.rows)
-            .filter((row) => isMatchingRecord(row, fragments))
+            .filter((row) => hasSystemicClass(row, systemicClass))
             .map(recordOwner).filter((owner): owner is string => owner !== undefined)
             .filter((owner, index, owners) => owners.indexOf(owner) === index).sort(),
         "studio_routes": runs.flatMap((run) => run.parsed.scenario_results)
-            .filter((scenario) => isMatchingRecord(scenario, fragments))
+            .filter((scenario) => hasSystemicClass(scenario, systemicClass))
             .flatMap(recordRoutes).filter((route) => route.startsWith("POST /api/"))
             .filter((route, index, routes) => routes.indexOf(route) === index).sort(),
         "studio_ui_routes": runs.flatMap((run) => run.parsed.scenario_results)
-            .filter((scenario) => isMatchingRecord(scenario, fragments))
+            .filter((scenario) => hasSystemicClass(scenario, systemicClass))
             .flatMap(recordRoutes).filter((route) => route.startsWith("UI "))
             .filter((route, index, routes) => routes.indexOf(route) === index).sort(),
-        "direct_library_callers": runs.flatMap((run) => run.parsed.rows)
-            .filter((row) => isMatchingRecord(row, fragments))
-            .flatMap(recordObservations)
-            .filter((observation) => observation.surface === "library")
-            .map((observation) => observation.owner)
+        // Some retained Studio owners are service APIs, not HTTP routes. Keep
+        // them separate so service execution is never represented as a UI or
+        // browser-route observation.
+        "studio_service_callers": runs.flatMap((run) => run.parsed.scenario_results)
+            .filter((scenario) => hasSystemicClass(scenario, systemicClass))
+            .flatMap(recordStudioScenarioOwner)
+            .filter((owner, index, owners) => owners.indexOf(owner) === index).sort(),
+        "direct_library_callers": runs.flatMap((run) => [
+            ...run.parsed.rows
+                .filter((row) => hasSystemicClass(row, systemicClass))
+                .flatMap(recordObservations)
+                .filter((observation) => observation.surface === "library")
+                .map((observation) => observation.owner),
+            ...run.parsed.scenario_results
+                .filter((scenario) => hasSystemicClass(scenario, systemicClass))
+                .flatMap(recordLibraryScenarioOwner),
+        ])
             .filter((owner, index, owners) => owners.indexOf(owner) === index).sort(),
         "regression_links": runs.flatMap((run) => [...run.parsed.rows, ...run.parsed.scenario_results])
-            .filter((record) => isMatchingRecord(record, fragments))
+            .filter((record) => hasSystemicClass(record, systemicClass))
             .map(recordId).sort(),
     });
     fs.writeFileSync(outputPath, `${JSON.stringify({
@@ -296,9 +335,9 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
         rows: runs.flatMap((run) => run.parsed.rows),
         "scenario_results": runs.flatMap((run) => run.parsed.scenario_results),
         "systemic_class_audits": [
-            {class: "shared conversion diagnostic parity", "derived_from": classify(["blueprint-build", "studio-artifact", "wasm-boundary", "wasm-outcome"])},
-            {class: "provenance and freshness binding", "derived_from": classify(["provenance", "replay", "drift", "configuration"])},
-            {class: "durable publication ownership", "derived_from": classify(["cancellation", "recovery", "borrowed", "destination"])},
+            {class: "shared conversion diagnostic parity", "derived_from": classify("shared-conversion-diagnostic-parity")},
+            {class: "provenance and freshness binding", "derived_from": classify("provenance-and-freshness-binding")},
+            {class: "durable publication ownership", "derived_from": classify("durable-publication-ownership")},
         ],
     }, null, 2)}\n`);
 }
@@ -341,11 +380,26 @@ function recordRoutes(record: unknown): readonly string[] {
     );
 }
 
-function isMatchingRecord(record: unknown, fragments: readonly string[]): record is {readonly id: string} {
-    if (typeof record !== "object" || record === null || !("id" in record)) return false;
-    const candidate = record as {readonly id: unknown};
-    const id = candidate.id;
-    return typeof id === "string" && fragments.some((fragment) => id.includes(fragment));
+function recordLibraryScenarioOwner(record: unknown): readonly string[] {
+    if (typeof record !== "object" || record === null || !("execution" in record)) return [];
+    const execution = (record as {readonly execution: unknown}).execution;
+    if (typeof execution !== "object" || execution === null) return [];
+    const candidate = execution as {readonly surface?: unknown; readonly owner?: unknown};
+    return candidate.surface === "library" && typeof candidate.owner === "string" ? [candidate.owner] : [];
+}
+
+function recordStudioScenarioOwner(record: unknown): readonly string[] {
+    if (typeof record !== "object" || record === null || !("execution" in record)) return [];
+    const execution = (record as {readonly execution: unknown}).execution;
+    if (typeof execution !== "object" || execution === null) return [];
+    const candidate = execution as {readonly surface?: unknown; readonly owner?: unknown};
+    return candidate.surface === "studio-api" && typeof candidate.owner === "string" ? [candidate.owner] : [];
+}
+
+function hasSystemicClass(record: unknown, systemicClass: ArtifactInteroperabilitySystemicClass): boolean {
+    if (typeof record !== "object" || record === null || !("systemic_classes" in record)) return false;
+    const classes = (record as {readonly systemic_classes: unknown}).systemic_classes;
+    return Array.isArray(classes) && classes.includes(systemicClass);
 }
 
 function recordId(record: unknown): string {

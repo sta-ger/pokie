@@ -213,6 +213,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "stake-outcome-library-round-trip", sourcePath: bundlePath, producedPath: importedStakeLibraryPath,
             result: "Outcome Library to Stake export and public Stake import retain game, configuration hash, and POKIE version",
             surface: "cli", owner: "BuildCommand / StakeEngineCommand",
+            systemicClasses: ["provenance-and-freshness-binding"],
             assertions: ["imported library manifest matches the exported Stake manifest identity"],
             observations: [{route: "pokie build --target stakeAdapter / pokie stakeengine import", result: "round trip completed with matching provenance"}],
         });
@@ -289,10 +290,12 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         evidence.record({
             id: "outcome-library-simulate", artifactKind: "outcomeLibrary", operation: "simulate", sourcePath: bundlePath,
             producedPath: simulationPath, owner: "SimCommand", result: "published", observations: [{surface: "cli", owner: "SimCommand", result: "exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "outcome-library-replay", artifactKind: "outcomeLibrary", operation: "replay", sourcePath: bundlePath,
             producedPath: replayPath, owner: "ReplayCommand", result: "published", observations: [{surface: "cli", owner: "ReplayCommand", result: "exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "outcome-library-report", artifactKind: "outcomeLibrary", operation: "report", sourcePath: bundlePath,
@@ -305,6 +308,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "outcome-library-certification", artifactKind: "outcomeLibrary", operation: "certification", sourcePath: bundlePath,
             producedPath: certificationPath, owner: "CertificationCommand", result: "published",
             observations: [{surface: "cli", owner: "CertificationCommand", result: "exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
         });
         expect(await certification.run(["verify", certificationPath, "--source", bundlePath])).toBe(0);
         const certificationManifest = JSON.parse(fs.readFileSync(path.join(certificationPath, "manifest.json"), "utf-8")) as {
@@ -324,6 +328,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "outcome-library-fairness", artifactKind: "outcomeLibrary", operation: "fairness", sourcePath: bundlePath,
             producedPath: proofPath, owner: "FairnessCommand", result: "verified",
             observations: [{surface: "cli", owner: "FairnessCommand", result: "exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
         });
         const proof = JSON.parse(fs.readFileSync(proofPath, "utf-8")) as {libraryId: string; libraryHash: string; modeName: string; indexHash: string};
         expect(proof).toMatchObject({libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash, modeName: "base"});
@@ -332,6 +337,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "exact-source-provenance", sourcePath: bundlePath, producedPath: proofPath,
             result: "simulation, replay, certification, and fairness retain the generated bundle game, library id, and library hash",
             surface: "cli", owner: "SimCommand / ReplayCommand / CertificationCommand / FairnessCommand",
+            systemicClasses: ["provenance-and-freshness-binding"],
             assertions: ["simulation, replay, certification, and fairness source bindings match the generated bundle"],
             observations: [{route: "pokie sim/replay/certification/fairness", result: "all public commands completed against the same bundle"}],
         });
@@ -339,6 +345,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "portable-exact-outcome-replay", sourcePath: bundlePath, producedPath: replayPath,
             result: "seeded outcome-library replay records the source library hash and derived-round-seed-v1 selection algorithm",
             surface: "cli", owner: "ReplayCommand",
+            systemicClasses: ["provenance-and-freshness-binding"],
             assertions: ["replay stores the source library hash and selection algorithm"],
             observations: [{route: "pokie replay", result: "public replay output is portable and exact"}],
         });
@@ -346,6 +353,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "package-replay-best-effort-classification", sourcePath: packagePath, producedPath: packageReplayPath,
             result: "generated package replay has no Outcome Library identity and remains documented best-effort replay",
             surface: "cli", owner: "ReplayCommand",
+            systemicClasses: ["provenance-and-freshness-binding"],
             assertions: ["package replay descriptor omits outcomeSource provenance"],
             observations: [{route: "pokie replay", result: "public package replay completed without portable outcome-source identity"}],
         });
@@ -395,6 +403,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "cli-generation-cancellation-recovery", sourcePath: cancellationPackagePath, producedPath: cancellationOutputPath,
             result: "SIGINT cancellation leaves no partial raw library, then the saved checkpoint resumes into a published library and is removed",
             surface: "cli", owner: "OutcomeLibraryCommand",
+            systemicClasses: ["durable-publication-ownership"],
             assertions: ["cancelled command returns 130 with no output and a checkpoint", "resume publishes output and removes stale checkpoint"],
             observations: [{route: "pokie outcomelibrary generate --resume", result: "public CLI cancellation and recovery completed"}],
         });
@@ -434,6 +443,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "generated-reel-non-lossless", sourcePath: generatedBlueprintPath, producedPath: generatedWorkbookPath,
             result: "generated reel provenance is retained but the imported PAR evidence marks the round trip non-lossless",
             surface: "cli", owner: "ParCommand",
+            systemicClasses: ["provenance-and-freshness-binding"],
             assertions: ["PAR import conversion evidence sets losslessEligible false"],
             observations: [{route: "pokie par export/import", result: "public PAR round trip preserves the non-lossless boundary"}],
         });
@@ -449,6 +459,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "configuration-drift", sourcePath: blueprintPath,
             result: "prepared package publication rejects the changed source before creating its destination",
             surface: "library", owner: "ArtifactBuilderRegistry",
+            systemicClasses: ["provenance-and-freshness-binding"],
             assertions: ["stale execution rejects and destination does not exist"],
             observations: [{route: "ArtifactBuilderRegistry.executePlan", result: "source configuration drift rejected before publication"}],
         });
@@ -465,6 +476,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "borrowed-output-cleanup", sourcePath: blueprintPath, producedPath: occupiedDestination,
             result: "destination drift rejects publication and preserves the caller-owned borrowed.txt",
             surface: "library", owner: "ArtifactBuilderRegistry",
+            systemicClasses: ["durable-publication-ownership"],
             assertions: ["borrowed destination contents remain unchanged"],
             observations: [{route: "ArtifactBuilderRegistry.executePlan", result: "destination drift rejected without deleting caller output"}],
         });
@@ -490,6 +502,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 id, sourcePath: driftBundlePath,
                 result: `prepared Stake export rejects ${entryName} mutation before publication`,
                 surface: "library", owner: "ArtifactBuilderRegistry.executePlan",
+                systemicClasses: ["provenance-and-freshness-binding"],
                 assertions: [`mutated ${entryName} rejects execution`, "no Stake destination is published"],
                 observations: [{route: "ArtifactBuilderRegistry.executePlan", result: `${entryName} freshness drift rejected before publication`}],
             });
@@ -512,6 +525,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "par-source-drift", sourcePath: parDriftPath,
             result: "prepared PAR conversion rejects mutated workbook bytes before package publication",
             surface: "library", owner: "ArtifactBuilderRegistry.executePlan",
+            systemicClasses: ["provenance-and-freshness-binding"],
             assertions: ["PAR byte binding rejects execution", "no package destination is published"],
             observations: [{route: "ArtifactBuilderRegistry.executePlan", result: "PAR source-byte drift rejected before publication"}],
         });
@@ -586,6 +600,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                             owner: "ArtifactBuilderRegistry.preparePlan",
                             result: `resolved ${project!.type} -> ${target} as ${plan.status}: ${plan.diagnostic.code}`,
                         }],
+                        systemicClasses: ["shared-conversion-diagnostic-parity"],
                     });
                     continue;
                 }
@@ -596,6 +611,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                     sourcePath, producedPath: execution.outputPath, owner: "ArtifactBuilderRegistry.executePlan",
                     result: `planned ${project!.type} to ${target} conversion published`,
                     observations: [{surface: "library", owner: "ArtifactBuilderRegistry.executePlan", result: `executed ${project!.type} -> ${target}`}],
+                    systemicClasses: ["shared-conversion-diagnostic-parity"],
                 });
             }
         }
@@ -633,6 +649,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 {surface: "library", owner: "ArtifactOperationDiagnostic", result: "resolved WASM diagnostic"},
                 {surface: "cli", owner: "SimCommand", result: "rejected the same resolved WASM operation diagnostic"},
             ],
+            systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
         const replayDiagnostic = describeUnavailableArtifactOperation(wasm, "replay");
         if (replayDiagnostic === undefined) throw new Error("Expected the public WASM replay diagnostic to include recovery.");
@@ -654,11 +671,13 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 {surface: "library", owner: "ArtifactOperationDiagnostic", result: "resolved WASM replay diagnostic"},
                 {surface: "cli", owner: "ReplayCommand", result: "rejected the same resolved WASM replay diagnostic"},
             ],
+            systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
         evidence.recordScenario({
             id: "wasm-boundary", sourcePath: wasmPath,
             result: "the public simulation command rejects the resolved WASM component with the shared diagnostic and recovery",
             surface: "cli", owner: "SimCommand / ArtifactOperationDiagnostic",
+            systemicClasses: ["shared-conversion-diagnostic-parity"],
             assertions: ["SimCommand throws the resolved shared WASM operation diagnostic"],
             observations: [{route: "pokie sim", result: "public CLI returned the shared diagnostic recovery"}],
         });

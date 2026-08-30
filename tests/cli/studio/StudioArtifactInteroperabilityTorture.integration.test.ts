@@ -110,6 +110,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
                 id: "studio-artifact-http-preflight", sourcePath: blueprintPath,
                 result: "Studio HTTP context, inspection, validation, target discovery, preflight, and build-job creation resolve the same real Blueprint before durable publication completes",
                 surface: "studio-api", owner: "StudioServer / StudioArtifactBuildService",
+                systemicClasses: ["shared-conversion-diagnostic-parity"],
                 assertions: ["GET context retains the real Blueprint", "GET inspect and validate accept the real Blueprint", "GET targets lists tsPackage", "POST preview returns an executable tsPackage plan", "POST build creates the public pollable job from that real Blueprint"],
                 observations: [
                     {route: "GET /api/project/context", result: "returned the opened Blueprint context"},
@@ -129,6 +130,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         evidence.record({
             id: "studio-blueprint-build", artifactKind: "blueprint", operation: "build", sourcePath: blueprintPath,
             producedPath: packagePath, owner: "StudioArtifactBuildService", result: "published", observations: [{surface: "studio-api", owner: "StudioArtifactBuildService", result: "status ok"}],
+            systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
 
         const generator = new StudioOutcomeLibraryGenerateService(POKIE_VERSION);
@@ -144,6 +146,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             id: "studio-generation-cancellation", sourcePath: packagePath,
             result: "cancelled generation leaves no bundle publication and returns the resumable checkpoint",
             surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService",
+            systemicClasses: ["durable-publication-ownership"],
             assertions: ["cancelled generation returns a checkpoint and no bundle directory"],
             observations: [{route: "StudioOutcomeLibraryGenerateService.generate", result: "Studio generation returned cancelled"}],
         });
@@ -165,6 +168,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             id: "studio-destination-drift", sourcePath: packagePath, producedPath: path.join(packagePath, occupiedOutDir),
             result: "prepared generation reports a conflict after destination occupancy and preserves borrowed.txt",
             surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService",
+            systemicClasses: ["durable-publication-ownership"],
             assertions: ["occupied borrowed.txt remains after the conflict"],
             observations: [{route: "StudioOutcomeLibraryGenerateService.generate", result: "Studio preflight destination conflict returned"}],
         });
@@ -176,6 +180,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             producedPath: path.join(packagePath, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR),
             result: "the cancellation checkpoint resumes into a published Outcome Library after the conflicting borrowed destination is removed",
             surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService",
+            systemicClasses: ["durable-publication-ownership"],
             assertions: ["resumed generation returns ok and publishes its bundle"],
             observations: [{route: "StudioOutcomeLibraryGenerateService.generate", result: "Studio generation recovered from checkpoint"}],
         });
@@ -274,29 +279,34 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             owner: "StudioSimulationService / ArtifactOperationDiagnostic",
             diagnostic: {code: simulationDiagnostic.code, message: simulationDiagnostic.message, recovery: simulationDiagnostic.recovery},
             observations: [{surface: "library", owner: "StudioSimulationService.start", result: "returned the resolved outcome-source diagnostic"}],
+            systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
         evidence.recordUnavailable({
             id: "studio-wasm-outcome-source-replay", artifactKind: "wasmComponent", operation: "replay", sourcePath: wasmPath,
             owner: "StudioReplayExecutionService / ArtifactOperationDiagnostic",
             diagnostic: {code: replayDiagnostic.code, message: replayDiagnostic.message, recovery: replayDiagnostic.recovery},
             observations: [{surface: "library", owner: "StudioReplayExecutionService.start", result: "returned the resolved outcome-source diagnostic"}],
+            systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
         evidence.recordUnavailable({
             id: "studio-wasm-simulate", artifactKind: "wasmComponent", operation: "simulate", sourcePath: wasmPath,
             owner: "StudioServer / ArtifactOperationDiagnostic",
             diagnostic: {code: httpSimulationDiagnostic.code, message: httpSimulationDiagnostic.message, recovery: httpSimulationDiagnostic.recovery},
             observations: [{surface: "studio-api", owner: "StudioServer POST /api/project/simulations", result: "returned HTTP 409 with the resolved simulation diagnostic"}],
+            systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
         evidence.recordUnavailable({
             id: "studio-wasm-replay", artifactKind: "wasmComponent", operation: "replay", sourcePath: wasmPath,
             owner: "StudioServer / ArtifactOperationDiagnostic",
             diagnostic: {code: httpReplayDiagnostic.code, message: httpReplayDiagnostic.message, recovery: httpReplayDiagnostic.recovery},
             observations: [{surface: "studio-api", owner: "StudioServer POST /api/project/replays", result: "returned HTTP 409 with the resolved replay diagnostic"}],
+            systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
         evidence.recordScenario({
             id: "studio-wasm-boundary", sourcePath: wasmPath,
             result: "Studio HTTP simulation/replay and direct outcome-source services reject the resolved WASM component before creating a job, each retaining its concrete shared diagnostic recovery",
             surface: "studio-api", owner: "StudioSimulationService / StudioReplayExecutionService",
+            systemicClasses: ["shared-conversion-diagnostic-parity"],
             assertions: ["neither Studio HTTP route creates a job for the unavailable component", "HTTP and direct outcome-source owners retain their operation-specific shared diagnostic message"],
             observations: [
                 {route: "POST /api/project/simulations", result: "Studio simulation service returned unsupported"},
