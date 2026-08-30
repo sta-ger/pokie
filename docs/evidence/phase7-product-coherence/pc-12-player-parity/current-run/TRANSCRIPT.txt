@@ -1,5 +1,38 @@
-[2026-08-29T23:45:31.362Z] EXACT CANDIDATE export=file:///home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-c3wdh5jf/pokie-pc12-2dBRwv/pokie-examples/node_modules/pokie/dist/cli/client/player/index.js; archive=/home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-c3wdh5jf/pokie-pc12-2dBRwv/pokie-1.3.0.tgz
-[2026-08-29T23:47:31.446Z] FAILED Error: Timed out waiting for Studio public API
-    at waitFor (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-12-20260829220430/scripts/pc-12-player-parity-browser.mjs:163:42)
-    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
-    at async runPlayerParityBrowser (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-12-20260829220430/scripts/pc-12-player-parity-browser.mjs:338:9)
+[2026-08-30T03:25:31.859Z] EXACT CANDIDATE export=file:///home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-k3vb2dwl/pokie-pc12-2jdp6Z/pokie-examples/node_modules/pokie/dist/cli/client/player/index.js; archive=/home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-k3vb2dwl/pokie-pc12-2jdp6Z/pokie-1.3.0.tgz
+[2026-08-30T03:25:32.066Z] examples stdout: VITE v4.5.14  ready in 178 ms
+[2026-08-30T03:25:32.066Z] examples stdout: ➜  Local:   http://127.0.0.1:51792/
+[2026-08-30T03:25:33.398Z] Studio stdout: POKIE Studio listening on http://127.0.0.1:32192
+[2026-08-30T03:25:34.069Z] VIEWPORT requested=1280x800 actual=1280x800
+[2026-08-30T03:25:34.069Z] fixture id=pc-12-free-games-fixture; project=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-12-20260829220430/tests/cli/fixtures/playable-game-with-free-games; examples fixture=http://127.0.0.1:51792/fixture-slot.html; seed=fixture-round; round=find-free-games
+[2026-08-30T03:25:34.337Z] CLICK Win
+[2026-08-30T03:25:34.544Z] CLICK Scenarios
+[2026-08-30T03:25:34.566Z] CLICK Scenarios
+[2026-08-30T03:25:34.588Z] CLICK Scenarios
+[2026-08-30T03:25:34.617Z] CLICK Free games
+[2026-08-30T03:25:35.783Z] HOVER Line: 14, win: 5
+[2026-08-30T03:25:35.832Z] CLICK Select bet 10
+[2026-08-30T03:25:36.082Z] CLICK Scenarios
+[2026-08-30T03:25:36.110Z] CLICK Free games
+[2026-08-30T03:25:37.790Z] CLICK New Play session
+[2026-08-30T03:25:38.003Z] CLICK Find any win
+[2026-08-30T03:25:38.222Z] CLICK Reset Play session
+[2026-08-30T03:25:38.444Z] CLICK Find free games
+[2026-08-30T03:25:38.641Z] HOVER Line: 14, win: 5
+[2026-08-30T03:25:38.700Z] CLICK Select bet 10
+[2026-08-30T03:25:38.744Z] CLICK Inspect round artifact
+[2026-08-30T03:25:38.875Z] CLICK Spin
+[2026-08-30T03:25:38.919Z] CLICK Spin
+[2026-08-30T03:25:39.027Z] CLICK Find free games
+[2026-08-30T03:25:39.129Z] CLICK Reset Play session
+[2026-08-30T03:25:39.170Z] CLICK Reset Play session
+[2026-08-30T03:25:39.428Z] CLICK New Play session
+[2026-08-30T03:25:39.901Z] CLICK New Play session
+[2026-08-30T03:25:40.092Z] CLICK Find free games
+[2026-08-30T03:25:40.554Z] COMPARE desktop screenshot changed=0.0054 mean=0.52
+[2026-08-30T03:25:40.611Z] VIEWPORT requested=390x844 actual=390x844
+[2026-08-30T03:25:40.822Z] CLICK Scenarios
+[2026-08-30T03:25:40.847Z] CLICK Free games
+[2026-08-30T03:25:42.383Z] CLICK New Play session
+[2026-08-30T03:25:42.587Z] CLICK Find free games
+[2026-08-30T03:25:42.993Z] COMPARE narrow screenshot changed=0.0075 mean=0.59
+[2026-08-30T03:25:43.051Z] PASS canonical player DOM, semantics, computed styles, layout, screenshots and viewport overflow matched at both viewports.

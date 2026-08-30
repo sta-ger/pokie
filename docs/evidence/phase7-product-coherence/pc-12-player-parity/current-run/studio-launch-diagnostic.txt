@@ -1,2 +1,0 @@
-$ node ./dist/cli/pokie.js studio tests/cli/fixtures/playable-game --no-open
-Unknown command "studio". Run `pokie --help` to list commands.

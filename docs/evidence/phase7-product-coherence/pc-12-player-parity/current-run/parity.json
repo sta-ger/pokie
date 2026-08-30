@@ -1,0 +1,47 @@
+{
+  "fixture": {
+    "id": "pc-12-free-games-fixture",
+    "project": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-12-20260829220430/tests/cli/fixtures/playable-game-with-free-games",
+    "seed": "fixture-round",
+    "round": "winning featured round",
+    "exactConsumer": "file:///home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-k3vb2dwl/pokie-pc12-2jdp6Z/pokie-examples/node_modules/pokie/dist/cli/client/player/index.js"
+  },
+  "browser": {
+    "desktop": {
+      "width": 1280,
+      "height": 800
+    },
+    "narrow": {
+      "width": 390,
+      "height": 844
+    }
+  },
+  "comparison": {
+    "dom": "passed",
+    "computedStyle": "passed",
+    "layout": "passed",
+    "overflow": "passed",
+    "screenshot": {
+      "desktop": {
+        "width": 600,
+        "height": 599,
+        "hostHeightDelta": 0,
+        "changedRatio": 0.005406232609905398,
+        "meanDifference": 0.5153793359302541
+      },
+      "narrow": {
+        "width": 320,
+        "height": 563,
+        "hostHeightDelta": 0,
+        "changedRatio": 0.007454484902309059,
+        "meanDifference": 0.593616785079929
+      }
+    }
+  },
+  "screenshots": {
+    "studioDesktop": "5e7e1d930a74b95f32659b286830eef58e2d1abb51b8d96e6ef52dbc6e9e1e4c",
+    "examplesDesktop": "d2139fba131cb9665bd84502ac32260813d0c4a57098bd5b2e8e9d648279ca96",
+    "studioMobile": "82c3fb7a41aa7058f9e6727afab19d9b1950e4abbcd77a1c3609369fa2a3afef",
+    "examplesMobile": "915aa65ed90e22f4ef0ee23eb16e8c812a8dd7f0a66360c4b0f48aebd3863302"
+  }
+}

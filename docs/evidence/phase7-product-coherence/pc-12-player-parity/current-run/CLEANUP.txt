@@ -1,0 +1,8 @@
+PC-12 cleanup check (2026-08-30): passed
+
+- The exact-consumer directory created beneath the runner's unique `pokie-pc12-2jdp6Z`
+  temporary root no longer existed after the runner returned.
+- `ss -ltn` showed no listeners on Studio port 32192, examples port 51792, or
+  Chromium DevTools port 9229.
+- No generated consumer, browser profile, package archive, or process log was
+  retained under this evidence directory.

@@ -1,0 +1,10 @@
+Command:
+POKIE_EXAMPLES_PATH=/home/stager/Work/sta-ger/pokie-examples npm run test:targeted -- /home/stager/Work/sta-ger/pokie-examples/tests/ui.test.ts
+
+Result: passed
+
+PASS pokie-examples ../../../../pokie-examples/tests/ui.test.ts
+Test Suites: 1 passed, 1 total
+Tests:       2 passed, 2 total
+Snapshots:   0 total
+Ran all test suites within paths "/home/stager/Work/sta-ger/pokie-examples/tests/ui.test.ts".
