@@ -8,7 +8,7 @@
       "source_path": "run-artifacts/source.blueprint.json",
       "source_identity": "sha256:677e919f98bf8c1f0d4872c72f92cb1b11976f59c8aed675ef54db3e3106c4e9",
       "produced_path": "run-artifacts/package",
-      "produced_identity": "sha256:a10f7b25e526042778b85a2f9f09e6dedf943832fcda062f92319fa717286a6c",
+      "produced_identity": "sha256:c4181dfdc69252911933930afc6117926134e45faf21353882af85cfe2c0787a",
       "operation_owner": "StudioArtifactBuildService",
       "status": "supported",
       "observable_result": "published",
@@ -25,9 +25,9 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "export",
       "source_path": "run-artifacts/package/outcomelibrary",
-      "source_identity": "sha256:9d0e1893c32e913f04270246938319cd1c4414c40d5b3b1489dec74ef6ab4494",
+      "source_identity": "sha256:a06d91b8e226a9562d45f51edb91e03f8fd77aeb4ad6f7d80bf7befea4671371",
       "produced_path": "run-artifacts/package/stake",
-      "produced_identity": "sha256:16662d30f38b0c731a03620a5ed8552b13725c6446aa37ca8478042fd264a4a7",
+      "produced_identity": "sha256:8a2280182c93c850d08b668683c9b7a63d2220dc27414e342c7ec0ef07163cb5",
       "operation_owner": "StudioStakeEngineExportService",
       "status": "supported",
       "observable_result": "published",
@@ -90,9 +90,9 @@
     {
       "id": "studio-destination-drift",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:a10f7b25e526042778b85a2f9f09e6dedf943832fcda062f92319fa717286a6c",
+      "source_identity": "sha256:c4181dfdc69252911933930afc6117926134e45faf21353882af85cfe2c0787a",
       "produced_path": "run-artifacts/package/outcomelibrary",
-      "produced_identity": "sha256:9d0e1893c32e913f04270246938319cd1c4414c40d5b3b1489dec74ef6ab4494",
+      "produced_identity": "sha256:a06d91b8e226a9562d45f51edb91e03f8fd77aeb4ad6f7d80bf7befea4671371",
       "observable_result": "prepared generation reports a conflict after destination occupancy and preserves borrowed.txt",
       "execution": {
         "surface": "studio-api",
@@ -111,7 +111,7 @@
     {
       "id": "studio-generation-cancellation",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:a10f7b25e526042778b85a2f9f09e6dedf943832fcda062f92319fa717286a6c",
+      "source_identity": "sha256:c4181dfdc69252911933930afc6117926134e45faf21353882af85cfe2c0787a",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "cancelled generation leaves no bundle publication and returns the resumable checkpoint",
@@ -132,9 +132,9 @@
     {
       "id": "studio-generation-recovery",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:a10f7b25e526042778b85a2f9f09e6dedf943832fcda062f92319fa717286a6c",
+      "source_identity": "sha256:c4181dfdc69252911933930afc6117926134e45faf21353882af85cfe2c0787a",
       "produced_path": "run-artifacts/package/outcomelibrary",
-      "produced_identity": "sha256:9d0e1893c32e913f04270246938319cd1c4414c40d5b3b1489dec74ef6ab4494",
+      "produced_identity": "sha256:a06d91b8e226a9562d45f51edb91e03f8fd77aeb4ad6f7d80bf7befea4671371",
       "observable_result": "the cancellation checkpoint resumes into a published Outcome Library after the conflicting borrowed destination is removed",
       "execution": {
         "surface": "studio-api",

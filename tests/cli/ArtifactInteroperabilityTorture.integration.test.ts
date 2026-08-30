@@ -485,6 +485,28 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             {path: wasmPath, project: wasm},
         ];
         if (plannerSources.some((entry) => entry.project === undefined)) throw new Error("Expected every produced PC-05 artifact to resolve before planning its matrix cells.");
+
+        // A planner cell is not evidence that its selected writer can consume
+        // the resolved artifact. Execute every *planned* PC-05 build edge
+        // through the public direct-library owner before persisting the cell.
+        // This deliberately uses distinct destinations, including identity
+        // edges, so a successful earlier command cannot stand in for a later
+        // producer/consumer pair.
+        for (const {path: sourcePath, project} of plannerSources) {
+            for (const target of BUILD_PRODUCT_MATRIX_TARGETS) {
+                const destinationPath = path.join(workDir, `matrix-edge-${project!.type}-${target}`);
+                const plan = await registry.preparePlan(project!, target, {destinationPath});
+                if (plan.status !== "planned") continue;
+                const execution = await registry.executePlan(plan, project!, destinationPath);
+                expect(fs.existsSync(execution.outputPath)).toBe(true);
+                evidence.record({
+                    id: `matrix-${project!.type}-${target}-build`, artifactKind: project!.type, operation: `build:${target}`,
+                    sourcePath, producedPath: execution.outputPath, owner: "ArtifactBuilderRegistry.executePlan",
+                    result: `planned ${project!.type} to ${target} conversion published`,
+                    observations: [{surface: "library", owner: "ArtifactBuilderRegistry.executePlan", result: `executed ${project!.type} -> ${target}`}],
+                });
+            }
+        }
         evidence.recordPlannerCells(plannerSources.flatMap(({path: sourcePath, project}) =>
             BUILD_PRODUCT_MATRIX_TARGETS.map((target) => {
                 const plan = planner.plan(project!, target);

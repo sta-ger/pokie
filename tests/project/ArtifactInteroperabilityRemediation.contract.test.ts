@@ -43,6 +43,11 @@ type InteroperabilityResult = {
             readonly lifecycle_outcomes: readonly string[];
             readonly runner_outputs: readonly string[];
             readonly planner_cells: readonly unknown[];
+            readonly aliases: readonly string[];
+            readonly operation_owners: readonly string[];
+            readonly studio_routes: readonly string[];
+            readonly studio_ui_routes: readonly string[];
+            readonly direct_library_callers: readonly string[];
             readonly regression_links: readonly string[];
         };
     }[];
@@ -174,6 +179,11 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         for (const audit of result.systemic_class_audits) {
             expect(audit.derived_from).toMatchObject({
                 "planner_cells": expect.arrayContaining(cells),
+                aliases: expect.any(Array),
+                "operation_owners": expect.any(Array),
+                "studio_routes": expect.any(Array),
+                "studio_ui_routes": expect.any(Array),
+                "direct_library_callers": expect.any(Array),
                 "regression_links": expect.any(Array),
             });
         }

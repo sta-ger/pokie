@@ -10,13 +10,13 @@
   "runner_inputs": [
     {
       "file": "cli-real-artifact-result.json",
-      "sha256": "sha256:f68d364227b01ba97e4f6153b15e70bf8e6e4690bff0689d693a53cb12b3e4b7",
-      "rows": 18,
+      "sha256": "sha256:5398470a1fe0e6f0fae1e13004b52c1fdc67a8294ac109b69bfbcab4dcd1d750",
+      "rows": 32,
       "scenarios": 10
     },
     {
       "file": "studio-real-artifact-result.json",
-      "sha256": "sha256:0bb0aca79b8e71ac6567f565f7cd5b74fe609b6a03858326b5f8009762e90848",
+      "sha256": "sha256:8f50d03077c9bbdd4a4ff540a3b340e57cb0e4c749c88f1d31fd49dd7c7afa48",
       "rows": 4,
       "scenarios": 4
     }
@@ -48,7 +48,7 @@
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
       "produced_path": "run-artifacts/matrix.par.xlsx",
-      "produced_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+      "produced_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
       "operation_owner": "ParCommand",
       "status": "supported",
       "observable_result": "published",
@@ -99,13 +99,279 @@
       ]
     },
     {
+      "id": "matrix-blueprint-outcomeLibrary-build",
+      "artifact_kind": "blueprint",
+      "operation": "build:outcomeLibrary",
+      "source_path": "run-artifacts/matrix.blueprint.json",
+      "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
+      "produced_path": "run-artifacts/matrix-edge-blueprint-outcomeLibrary",
+      "produced_identity": "sha256:5287d7192df3e1461ce5cb396f3fafc1f8d759bac74acce42b076431f05a3db8",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned blueprint to outcomeLibrary conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed blueprint -> outcomeLibrary"
+        }
+      ]
+    },
+    {
+      "id": "matrix-blueprint-parWorkbook-build",
+      "artifact_kind": "blueprint",
+      "operation": "build:parWorkbook",
+      "source_path": "run-artifacts/matrix.blueprint.json",
+      "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
+      "produced_path": "run-artifacts/matrix-edge-blueprint-parWorkbook",
+      "produced_identity": "sha256:af6830dd9c62a04a572c153a45f0bca9ee8c990d3ba4c3a4ef64f4e57e6e7264",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned blueprint to parWorkbook conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed blueprint -> parWorkbook"
+        }
+      ]
+    },
+    {
+      "id": "matrix-blueprint-stakeAdapter-build",
+      "artifact_kind": "blueprint",
+      "operation": "build:stakeAdapter",
+      "source_path": "run-artifacts/matrix.blueprint.json",
+      "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
+      "produced_path": "run-artifacts/matrix-edge-blueprint-stakeAdapter",
+      "produced_identity": "sha256:084925c5c9387ad5a971ee9e659817be0335b87db92e1a50559ee8f747451a3d",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned blueprint to stakeAdapter conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed blueprint -> stakeAdapter"
+        }
+      ]
+    },
+    {
+      "id": "matrix-blueprint-tsPackage-build",
+      "artifact_kind": "blueprint",
+      "operation": "build:tsPackage",
+      "source_path": "run-artifacts/matrix.blueprint.json",
+      "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
+      "produced_path": "run-artifacts/matrix-edge-blueprint-tsPackage",
+      "produced_identity": "sha256:4afbc7d938d58e9350c00e94055cbbbde67f13d4fbc4fd4367e1a38cfde89c65",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned blueprint to tsPackage conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed blueprint -> tsPackage"
+        }
+      ]
+    },
+    {
+      "id": "matrix-outcomeLibrary-outcomeLibrary-build",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "build:outcomeLibrary",
+      "source_path": "run-artifacts/matrix-bundle",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
+      "produced_path": "run-artifacts/matrix-edge-outcomeLibrary-outcomeLibrary",
+      "produced_identity": "sha256:f952cd6783f675c60da89809baaa0c1a7013efb2b3858cd9a7c127cfa9ac7911",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned outcomeLibrary to outcomeLibrary conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed outcomeLibrary -> outcomeLibrary"
+        }
+      ]
+    },
+    {
+      "id": "matrix-outcomeLibrary-stakeAdapter-build",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "build:stakeAdapter",
+      "source_path": "run-artifacts/matrix-bundle",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
+      "produced_path": "run-artifacts/matrix-edge-outcomeLibrary-stakeAdapter",
+      "produced_identity": "sha256:bbe284efd9a3a3f0b2a935c6fa46a417e7e7c5a9746d0df70d710be48483f9a8",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned outcomeLibrary to stakeAdapter conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed outcomeLibrary -> stakeAdapter"
+        }
+      ]
+    },
+    {
+      "id": "matrix-parWorkbook-blueprint-build",
+      "artifact_kind": "parWorkbook",
+      "operation": "build:blueprint",
+      "source_path": "run-artifacts/matrix.par.xlsx",
+      "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
+      "produced_path": "run-artifacts/matrix-edge-parWorkbook-blueprint",
+      "produced_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned parWorkbook to blueprint conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed parWorkbook -> blueprint"
+        }
+      ]
+    },
+    {
+      "id": "matrix-parWorkbook-outcomeLibrary-build",
+      "artifact_kind": "parWorkbook",
+      "operation": "build:outcomeLibrary",
+      "source_path": "run-artifacts/matrix.par.xlsx",
+      "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
+      "produced_path": "run-artifacts/matrix-edge-parWorkbook-outcomeLibrary",
+      "produced_identity": "sha256:5febaf569237319e1e04eeb172f62ef6c3567a56b461f0a6b95ff7009b7fcc25",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned parWorkbook to outcomeLibrary conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed parWorkbook -> outcomeLibrary"
+        }
+      ]
+    },
+    {
+      "id": "matrix-parWorkbook-parWorkbook-build",
+      "artifact_kind": "parWorkbook",
+      "operation": "build:parWorkbook",
+      "source_path": "run-artifacts/matrix.par.xlsx",
+      "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
+      "produced_path": "run-artifacts/matrix-edge-parWorkbook-parWorkbook",
+      "produced_identity": "sha256:cb229bbf846338dd93c65960c73426fe19f69cd8d1ddf899171b994d98c7a82a",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned parWorkbook to parWorkbook conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed parWorkbook -> parWorkbook"
+        }
+      ]
+    },
+    {
+      "id": "matrix-parWorkbook-stakeAdapter-build",
+      "artifact_kind": "parWorkbook",
+      "operation": "build:stakeAdapter",
+      "source_path": "run-artifacts/matrix.par.xlsx",
+      "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
+      "produced_path": "run-artifacts/matrix-edge-parWorkbook-stakeAdapter",
+      "produced_identity": "sha256:6ff87e022ac8b49f2d3767cbe1f3352ab27b7213c9b6eadc7ec531b5deb1965e",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned parWorkbook to stakeAdapter conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed parWorkbook -> stakeAdapter"
+        }
+      ]
+    },
+    {
+      "id": "matrix-parWorkbook-tsPackage-build",
+      "artifact_kind": "parWorkbook",
+      "operation": "build:tsPackage",
+      "source_path": "run-artifacts/matrix.par.xlsx",
+      "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
+      "produced_path": "run-artifacts/matrix-edge-parWorkbook-tsPackage",
+      "produced_identity": "sha256:efc39c6a355c68f0af1a8da8ae8904c5d0070b50d9a254173edd8e465bbe1ec6",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned parWorkbook to tsPackage conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed parWorkbook -> tsPackage"
+        }
+      ]
+    },
+    {
+      "id": "matrix-stakeAdapter-stakeAdapter-build",
+      "artifact_kind": "stakeAdapter",
+      "operation": "build:stakeAdapter",
+      "source_path": "run-artifacts/matrix-stake",
+      "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
+      "produced_path": "run-artifacts/matrix-edge-stakeAdapter-stakeAdapter",
+      "produced_identity": "sha256:4632a55de468c74c193773737c68fe8b6781be11470e33999a85eefb512a9d65",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned stakeAdapter to stakeAdapter conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed stakeAdapter -> stakeAdapter"
+        }
+      ]
+    },
+    {
+      "id": "matrix-tsPackage-outcomeLibrary-build",
+      "artifact_kind": "tsPackage",
+      "operation": "build:outcomeLibrary",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": "run-artifacts/matrix-edge-tsPackage-outcomeLibrary",
+      "produced_identity": "sha256:710784759b8dd67a0e7f0357e282e50194117984f66aae30c67eea3b39c75e98",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned tsPackage to outcomeLibrary conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed tsPackage -> outcomeLibrary"
+        }
+      ]
+    },
+    {
+      "id": "matrix-tsPackage-stakeAdapter-build",
+      "artifact_kind": "tsPackage",
+      "operation": "build:stakeAdapter",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": "run-artifacts/matrix-edge-tsPackage-stakeAdapter",
+      "produced_identity": "sha256:d8bfc9448e4c8a48d55041863f2cd212d83aaf979e5c0f90b9ada4a1b0ff7b5e",
+      "operation_owner": "ArtifactBuilderRegistry.executePlan",
+      "status": "supported",
+      "observable_result": "planned tsPackage to stakeAdapter conversion published",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry.executePlan",
+          "result": "executed tsPackage -> stakeAdapter"
+        }
+      ]
+    },
+    {
       "id": "outcome-library-certification",
       "artifact_kind": "outcomeLibrary",
       "operation": "certification",
       "source_path": "run-artifacts/matrix-bundle",
-      "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "produced_path": "run-artifacts/matrix-certification",
-      "produced_identity": "sha256:2df0d7b4bb9579953752c005a076aed5b919cee85c436dfcaaed3e3687be1636",
+      "produced_identity": "sha256:7188a3be1bea073f2fdb9249d3163fb308bc70113b105dad88bff6510aa4d46a",
       "operation_owner": "CertificationCommand",
       "status": "supported",
       "observable_result": "published",
@@ -122,9 +388,9 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "export",
       "source_path": "run-artifacts/matrix-bundle",
-      "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "produced_path": "run-artifacts/matrix-stake",
-      "produced_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+      "produced_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
       "operation_owner": "BuildCommand / ArtifactBuilderRegistry",
       "status": "supported",
       "observable_result": "Stake Engine export published",
@@ -146,9 +412,9 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "fairness",
       "source_path": "run-artifacts/matrix-bundle",
-      "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "produced_path": "run-artifacts/matrix-proof.json",
-      "produced_identity": "sha256:50360afa33ffef3840521ad1449e4aa75923b7080aa246bf107cc722931e1141",
+      "produced_identity": "sha256:070f5e17b2a95a286f4e975dfbfec9b60dd2437e5606d73f763fb1c327fb980c",
       "operation_owner": "FairnessCommand",
       "status": "supported",
       "observable_result": "verified",
@@ -165,7 +431,7 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "inspect",
       "source_path": "run-artifacts/matrix-bundle",
-      "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "InspectCommand",
@@ -184,9 +450,9 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "replay",
       "source_path": "run-artifacts/matrix-bundle",
-      "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "produced_path": "run-artifacts/matrix-replay.json",
-      "produced_identity": "sha256:454e381642a10e6f29be1eec7916182fd950eeff16ffef2d0b7bec535d4f3829",
+      "produced_identity": "sha256:022621daf3ed4359937551bff1d70480e10f7e809149bed3763b955c2e5e6428",
       "operation_owner": "ReplayCommand",
       "status": "supported",
       "observable_result": "published",
@@ -203,9 +469,9 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "report",
       "source_path": "run-artifacts/matrix-bundle",
-      "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "produced_path": "run-artifacts/matrix-report.md",
-      "produced_identity": "sha256:06074dcb3562847e7bc12ebc9bddaecfb63bd257a869ef9f90c608bbc2a90c86",
+      "produced_identity": "sha256:956b50015bc49916a6fc13f7cc33dce0824076fcb9a5631c8aa0d6f3ec4e80c9",
       "operation_owner": "ReportCommand",
       "status": "supported",
       "observable_result": "published",
@@ -222,7 +488,7 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "sample",
       "source_path": "run-artifacts/matrix-bundle",
-      "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "OutcomeSourceCommand",
@@ -241,9 +507,9 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "simulate",
       "source_path": "run-artifacts/matrix-bundle",
-      "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "produced_path": "run-artifacts/matrix-simulation.json",
-      "produced_identity": "sha256:e4d3a8b54348aca0ebee58a4ed7ce87b5b26d5de160950635ffc45e5a512754d",
+      "produced_identity": "sha256:f08bed8a9a4fcec2d872e90230afaad96e3fd2ef053ecba4419766d8ad6b46c8",
       "operation_owner": "SimCommand",
       "status": "supported",
       "observable_result": "published",
@@ -260,7 +526,7 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "validate",
       "source_path": "run-artifacts/matrix-bundle",
-      "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ValidateCommand",
@@ -298,7 +564,7 @@
       "artifact_kind": "parWorkbook",
       "operation": "import",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+      "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
       "produced_path": "run-artifacts/matrix-imported.blueprint.json",
       "produced_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
       "operation_owner": "ParCommand",
@@ -319,7 +585,7 @@
       "source_path": "run-artifacts/matrix-library.json",
       "source_identity": "sha256:df4b1787463347568ac29d32136c508e58d6b448983977a56a59d31b1c8cd16f",
       "produced_path": "run-artifacts/matrix-bundle",
-      "produced_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "produced_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "operation_owner": "OutcomeLibraryCommand",
       "status": "supported",
       "observable_result": "published",
@@ -336,9 +602,9 @@
       "artifact_kind": "stakeAdapter",
       "operation": "import",
       "source_path": "run-artifacts/matrix-stake",
-      "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+      "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
       "produced_path": "run-artifacts/matrix-stake-imported-library",
-      "produced_identity": "sha256:9ed419693be8a4c3f3551b9ef5a0afd3d577656c28a855bdefbac176ddeaf4cc",
+      "produced_identity": "sha256:d09dfb3b55d97b52df8440ae7e19b31362d7bf65ec160ab7af77622e4e1ffb4e",
       "operation_owner": "StakeEngineCommand",
       "status": "supported",
       "observable_result": "Outcome Library published with matching Stake provenance",
@@ -385,7 +651,7 @@
       "source_path": "run-artifacts/source.blueprint.json",
       "source_identity": "sha256:677e919f98bf8c1f0d4872c72f92cb1b11976f59c8aed675ef54db3e3106c4e9",
       "produced_path": "run-artifacts/package",
-      "produced_identity": "sha256:a10f7b25e526042778b85a2f9f09e6dedf943832fcda062f92319fa717286a6c",
+      "produced_identity": "sha256:c4181dfdc69252911933930afc6117926134e45faf21353882af85cfe2c0787a",
       "operation_owner": "StudioArtifactBuildService",
       "status": "supported",
       "observable_result": "published",
@@ -402,9 +668,9 @@
       "artifact_kind": "outcomeLibrary",
       "operation": "export",
       "source_path": "run-artifacts/package/outcomelibrary",
-      "source_identity": "sha256:9d0e1893c32e913f04270246938319cd1c4414c40d5b3b1489dec74ef6ab4494",
+      "source_identity": "sha256:a06d91b8e226a9562d45f51edb91e03f8fd77aeb4ad6f7d80bf7befea4671371",
       "produced_path": "run-artifacts/package/stake",
-      "produced_identity": "sha256:16662d30f38b0c731a03620a5ed8552b13725c6446aa37ca8478042fd264a4a7",
+      "produced_identity": "sha256:8a2280182c93c850d08b668683c9b7a63d2220dc27414e342c7ec0ef07163cb5",
       "operation_owner": "StudioStakeEngineExportService",
       "status": "supported",
       "observable_result": "published",
@@ -509,9 +775,9 @@
     {
       "id": "exact-source-provenance",
       "source_path": "run-artifacts/matrix-bundle",
-      "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "produced_path": "run-artifacts/matrix-proof.json",
-      "produced_identity": "sha256:50360afa33ffef3840521ad1449e4aa75923b7080aa246bf107cc722931e1141",
+      "produced_identity": "sha256:070f5e17b2a95a286f4e975dfbfec9b60dd2437e5606d73f763fb1c327fb980c",
       "observable_result": "simulation, replay, certification, and fairness retain the generated bundle game, library id, and library hash",
       "execution": {
         "surface": "cli",
@@ -532,7 +798,7 @@
       "source_path": "run-artifacts/generated.blueprint.json",
       "source_identity": "sha256:8fa8e4af7601bfaee3d56e551739e409611b6d2125c2d50b5a75324307c20bcf",
       "produced_path": "run-artifacts/generated.par.xlsx",
-      "produced_identity": "sha256:07c79e101324059a2206b9df4d4d5ff14be976d9e00b7f4b75ee80cfba5d0e7f",
+      "produced_identity": "sha256:dca12b39a486e2d43dbd67848c7d8bdf79e9d0da2c36cd99f46915790bf26165",
       "observable_result": "generated reel provenance is retained but the imported PAR evidence marks the round trip non-lossless",
       "execution": {
         "surface": "cli",
@@ -551,7 +817,7 @@
     {
       "id": "index-drift",
       "source_path": "run-artifacts/matrix-index-drift-bundle",
-      "source_identity": "sha256:54f685d15715b7c5332ce81984873cafb4e02c4a6d55c47572aee7c15a608963",
+      "source_identity": "sha256:f9b3fdba6e0cea3b83f79a754070e1e6325e51be7e5f4e2abf3c00a9833d6955",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "prepared Stake export rejects index.json mutation before publication",
@@ -573,7 +839,7 @@
     {
       "id": "manifest-drift",
       "source_path": "run-artifacts/matrix-manifest-drift-bundle",
-      "source_identity": "sha256:def8f577b7e338319741e4616da569f6f56b557cbff50eafcad8df6983c03bd7",
+      "source_identity": "sha256:365b521d3bc47412d78a319481ea6146dd190574299f492909bdd1a52c86cecb",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "prepared Stake export rejects manifest.json mutation before publication",
@@ -595,7 +861,7 @@
     {
       "id": "par-source-drift",
       "source_path": "run-artifacts/matrix-par-source-drift.xlsx",
-      "source_identity": "sha256:9132d34451cd0036dc54541a9d433321f1931402240ca47e65f74734b0486491",
+      "source_identity": "sha256:2ad4552a30873c7cae1edd6794b340735057c7a0347d09a411fe0cd7633df25c",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "prepared PAR conversion rejects mutated workbook bytes before package publication",
@@ -617,9 +883,9 @@
     {
       "id": "portable-exact-outcome-replay",
       "source_path": "run-artifacts/matrix-bundle",
-      "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "produced_path": "run-artifacts/matrix-replay.json",
-      "produced_identity": "sha256:454e381642a10e6f29be1eec7916182fd950eeff16ffef2d0b7bec535d4f3829",
+      "produced_identity": "sha256:022621daf3ed4359937551bff1d70480e10f7e809149bed3763b955c2e5e6428",
       "observable_result": "seeded outcome-library replay records the source library hash and derived-round-seed-v1 selection algorithm",
       "execution": {
         "surface": "cli",
@@ -638,9 +904,9 @@
     {
       "id": "stake-outcome-library-round-trip",
       "source_path": "run-artifacts/matrix-bundle",
-      "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+      "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
       "produced_path": "run-artifacts/matrix-stake-imported-library",
-      "produced_identity": "sha256:9ed419693be8a4c3f3551b9ef5a0afd3d577656c28a855bdefbac176ddeaf4cc",
+      "produced_identity": "sha256:d09dfb3b55d97b52df8440ae7e19b31362d7bf65ec160ab7af77622e4e1ffb4e",
       "observable_result": "Outcome Library to Stake export and public Stake import retain game, configuration hash, and POKIE version",
       "execution": {
         "surface": "cli",
@@ -680,9 +946,9 @@
     {
       "id": "studio-destination-drift",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:a10f7b25e526042778b85a2f9f09e6dedf943832fcda062f92319fa717286a6c",
+      "source_identity": "sha256:c4181dfdc69252911933930afc6117926134e45faf21353882af85cfe2c0787a",
       "produced_path": "run-artifacts/package/outcomelibrary",
-      "produced_identity": "sha256:9d0e1893c32e913f04270246938319cd1c4414c40d5b3b1489dec74ef6ab4494",
+      "produced_identity": "sha256:a06d91b8e226a9562d45f51edb91e03f8fd77aeb4ad6f7d80bf7befea4671371",
       "observable_result": "prepared generation reports a conflict after destination occupancy and preserves borrowed.txt",
       "execution": {
         "surface": "studio-api",
@@ -701,7 +967,7 @@
     {
       "id": "studio-generation-cancellation",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:a10f7b25e526042778b85a2f9f09e6dedf943832fcda062f92319fa717286a6c",
+      "source_identity": "sha256:c4181dfdc69252911933930afc6117926134e45faf21353882af85cfe2c0787a",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "cancelled generation leaves no bundle publication and returns the resumable checkpoint",
@@ -722,9 +988,9 @@
     {
       "id": "studio-generation-recovery",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:a10f7b25e526042778b85a2f9f09e6dedf943832fcda062f92319fa717286a6c",
+      "source_identity": "sha256:c4181dfdc69252911933930afc6117926134e45faf21353882af85cfe2c0787a",
       "produced_path": "run-artifacts/package/outcomelibrary",
-      "produced_identity": "sha256:9d0e1893c32e913f04270246938319cd1c4414c40d5b3b1489dec74ef6ab4494",
+      "produced_identity": "sha256:a06d91b8e226a9562d45f51edb91e03f8fd77aeb4ad6f7d80bf7befea4671371",
       "observable_result": "the cancellation checkpoint resumes into a published Outcome Library after the conflicting borrowed destination is removed",
       "execution": {
         "surface": "studio-api",
@@ -773,6 +1039,7 @@
       "derived_from": {
         "operation_rows": [
           "blueprint-build-package",
+          "matrix-parWorkbook-blueprint-build",
           "studio-blueprint-build",
           "studio-wasm-outcome-source-replay",
           "studio-wasm-outcome-source-simulate",
@@ -828,7 +1095,7 @@
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "blueprint",
             "status": "unavailable",
@@ -839,14 +1106,14 @@
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "outcomeLibrary",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "parWorkbook",
             "status": "unavailable",
@@ -857,14 +1124,14 @@
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "stakeAdapter",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "tsPackage",
             "status": "unavailable",
@@ -875,42 +1142,42 @@
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "blueprint",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "outcomeLibrary",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "parWorkbook",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "stakeAdapter",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "tsPackage",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "blueprint",
             "status": "unavailable",
@@ -921,7 +1188,7 @@
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "outcomeLibrary",
             "status": "unavailable",
@@ -932,7 +1199,7 @@
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "parWorkbook",
             "status": "unavailable",
@@ -943,14 +1210,14 @@
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "stakeAdapter",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "tsPackage",
             "status": "unavailable",
@@ -1062,7 +1329,14 @@
             }
           }
         ],
+        "aliases": [
+          "blueprint:build",
+          "parWorkbook:build:blueprint",
+          "wasmComponent:replay",
+          "wasmComponent:simulate"
+        ],
         "operation_owners": [
+          "ArtifactBuilderRegistry.executePlan",
           "BuildCommand",
           "SimCommand / ArtifactOperationDiagnostic",
           "StudioArtifactBuildService",
@@ -1073,11 +1347,14 @@
           "POST /api/project/replays",
           "POST /api/project/simulations"
         ],
+        "studio_ui_routes": [],
         "direct_library_callers": [
+          "ArtifactBuilderRegistry.executePlan",
           "ArtifactOperationDiagnostic"
         ],
         "regression_links": [
           "blueprint-build-package",
+          "matrix-parWorkbook-blueprint-build",
           "studio-blueprint-build",
           "studio-wasm-boundary",
           "studio-wasm-outcome-source-replay",
@@ -1149,7 +1426,7 @@
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "blueprint",
             "status": "unavailable",
@@ -1160,14 +1437,14 @@
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "outcomeLibrary",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "parWorkbook",
             "status": "unavailable",
@@ -1178,14 +1455,14 @@
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "stakeAdapter",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "tsPackage",
             "status": "unavailable",
@@ -1196,42 +1473,42 @@
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "blueprint",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "outcomeLibrary",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "parWorkbook",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "stakeAdapter",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "tsPackage",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "blueprint",
             "status": "unavailable",
@@ -1242,7 +1519,7 @@
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "outcomeLibrary",
             "status": "unavailable",
@@ -1253,7 +1530,7 @@
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "parWorkbook",
             "status": "unavailable",
@@ -1264,14 +1541,14 @@
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "stakeAdapter",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "tsPackage",
             "status": "unavailable",
@@ -1383,11 +1660,16 @@
             }
           }
         ],
+        "aliases": [
+          "outcomeLibrary:replay",
+          "wasmComponent:replay"
+        ],
         "operation_owners": [
           "ReplayCommand",
           "StudioReplayExecutionService / ArtifactOperationDiagnostic"
         ],
         "studio_routes": [],
+        "studio_ui_routes": [],
         "direct_library_callers": [],
         "regression_links": [
           "configuration-drift",
@@ -1458,7 +1740,7 @@
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "blueprint",
             "status": "unavailable",
@@ -1469,14 +1751,14 @@
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "outcomeLibrary",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "parWorkbook",
             "status": "unavailable",
@@ -1487,14 +1769,14 @@
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "stakeAdapter",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix-bundle",
-            "source_identity": "sha256:65b624c8ae62b2d76b08acfc96edd055ffa36b915881832740cac490851e3a5c",
+            "source_identity": "sha256:4108b4c2a718d87b6501936807a1972f422f680ff240c6a61f24d8e67bdb9c6a",
             "source_type": "outcomeLibrary",
             "target": "tsPackage",
             "status": "unavailable",
@@ -1505,42 +1787,42 @@
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "blueprint",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "outcomeLibrary",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "parWorkbook",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "stakeAdapter",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix.par.xlsx",
-            "source_identity": "sha256:d341cae7c07601f376ab5f25364f1c5533af0148fc034a82250c194846d320f2",
+            "source_identity": "sha256:25b44ad95d73811b439086038ce063eafd513d13aeec50466c3a3f31853f4edc",
             "source_type": "parWorkbook",
             "target": "tsPackage",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "blueprint",
             "status": "unavailable",
@@ -1551,7 +1833,7 @@
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "outcomeLibrary",
             "status": "unavailable",
@@ -1562,7 +1844,7 @@
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "parWorkbook",
             "status": "unavailable",
@@ -1573,14 +1855,14 @@
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "stakeAdapter",
             "status": "planned"
           },
           {
             "source_path": "run-artifacts/matrix-stake",
-            "source_identity": "sha256:987f1b7c213da71726154989d119a951d2e2a2a39d31e15ef433e291d97d12cc",
+            "source_identity": "sha256:da3812a924fcc85346494d293be12c7924411c352d42104227c36c236b14d336",
             "source_type": "stakeAdapter",
             "target": "tsPackage",
             "status": "unavailable",
@@ -1692,8 +1974,10 @@
             }
           }
         ],
+        "aliases": [],
         "operation_owners": [],
         "studio_routes": [],
+        "studio_ui_routes": [],
         "direct_library_callers": [],
         "regression_links": [
           "borrowed-output-cleanup",

@@ -246,6 +246,13 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
             return records.some((record) => isMatchingRecord(record, fragments));
         }).map((run) => path.basename(run.inputPath)).sort(),
         "planner_cells": runs.flatMap((run) => run.parsed.planner_cells ?? []),
+        // These are aliases actually observed by the runner, not the broader
+        // CLI vocabulary.  Keeping this on the derived audit lets a reviewer
+        // see precisely which public identity reached an owner in this run.
+        aliases: runs.flatMap((run) => run.parsed.rows)
+            .filter((row) => isMatchingRecord(row, fragments))
+            .flatMap(recordAlias)
+            .filter((alias, index, aliases) => aliases.indexOf(alias) === index).sort(),
         "operation_owners": runs.flatMap((run) => run.parsed.rows)
             .filter((row) => isMatchingRecord(row, fragments))
             .map(recordOwner).filter((owner): owner is string => owner !== undefined)
@@ -253,6 +260,10 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
         "studio_routes": runs.flatMap((run) => run.parsed.scenario_results)
             .filter((scenario) => isMatchingRecord(scenario, fragments))
             .flatMap(recordRoutes).filter((route) => route.startsWith("POST /api/"))
+            .filter((route, index, routes) => routes.indexOf(route) === index).sort(),
+        "studio_ui_routes": runs.flatMap((run) => run.parsed.scenario_results)
+            .filter((scenario) => isMatchingRecord(scenario, fragments))
+            .flatMap(recordRoutes).filter((route) => route.startsWith("UI "))
             .filter((route, index, routes) => routes.indexOf(route) === index).sort(),
         "direct_library_callers": runs.flatMap((run) => run.parsed.rows)
             .filter((row) => isMatchingRecord(row, fragments))
@@ -293,6 +304,14 @@ function recordOwner(record: unknown): string | undefined {
     if (typeof record !== "object" || record === null || !("operation_owner" in record)) return undefined;
     const owner = (record as {readonly operation_owner: unknown}).operation_owner;
     return typeof owner === "string" ? owner : undefined;
+}
+
+function recordAlias(record: unknown): readonly string[] {
+    if (typeof record !== "object" || record === null || !("artifact_kind" in record) || !("operation" in record)) return [];
+    const candidate = record as {readonly artifact_kind: unknown; readonly operation: unknown};
+    return typeof candidate.artifact_kind === "string" && typeof candidate.operation === "string"
+        ? [`${candidate.artifact_kind}:${candidate.operation}`]
+        : [];
 }
 
 function recordObservations(record: unknown): readonly {readonly surface: string; readonly owner: string}[] {
