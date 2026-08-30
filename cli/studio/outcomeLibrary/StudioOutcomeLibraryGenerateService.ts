@@ -18,6 +18,7 @@ import {
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
     describeArtifactConversionPlanDiagnostic,
+    describeWasmLifecycleBoundary,
     estimateExactOutcomeSpaceSize,
     generateWeightedOutcomeLibrary,
     prepareOutcomeLibraryGeneration,
@@ -148,11 +149,22 @@ export class StudioOutcomeLibraryGenerateService {
         this.planning = planning;
     }
 
+    /** Shared no-runtime boundary used before every retained generation phase. */
+    public wasmBoundaryDiagnostic(projectRoot: string): string | undefined {
+        return path.extname(projectRoot).toLowerCase() === ".wasm"
+            ? describeWasmLifecycleBoundary(projectRoot, "generate an Outcome Library")
+            : undefined;
+    }
+
     // The cheap, non-enumerating dry run over estimateExactOutcomeSpaceSize -- exactly the probe "pokie
     // outcomelibrary generate --estimate" itself runs (see OutcomeLibraryCommand.executeEstimate), so the
     // Generate step's own "estimate/cost" panel never disagrees with what the CLI would report for the
     // same package/options.
     public async estimate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateEstimateRequest): Promise<StudioOutcomeLibraryGenerateEstimateView> {
+        const wasmDiagnostic = this.wasmBoundaryDiagnostic(projectRoot);
+        if (wasmDiagnostic !== undefined) {
+            return {status: "load-error", error: wasmDiagnostic, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+        }
         let game: PokieGame;
         try {
             game = await this.loadGame(projectRoot);
@@ -303,6 +315,10 @@ export class StudioOutcomeLibraryGenerateService {
     // writer "pokie outcomelibrary build" uses. Every other mode already in that bundle is preserved (see
     // this class's own doc comment); only "request.mode ?? 'base'" is (re)computed.
     public async generate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest): Promise<StudioOutcomeLibraryGenerateResultView> {
+        const wasmDiagnostic = this.wasmBoundaryDiagnostic(projectRoot);
+        if (wasmDiagnostic !== undefined) {
+            return {status: "load-error", error: wasmDiagnostic, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+        }
         const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
         const modeName = request.mode ?? "base";
         // The requested bundle directory is part of the prepared decision, not a
@@ -502,6 +518,8 @@ export class StudioOutcomeLibraryGenerateService {
     // reported from there, while a different mode still sitting untouched in an earlier bundle dir keeps
     // being reported from that one.
     public async registry(projectRoot: string): Promise<StudioOutcomeLibraryRegistryView> {
+        const wasmDiagnostic = this.wasmBoundaryDiagnostic(projectRoot);
+        if (wasmDiagnostic !== undefined) return {status: "load-error", error: wasmDiagnostic};
         let game: PokieGame;
         try {
             game = await this.loadGame(projectRoot);

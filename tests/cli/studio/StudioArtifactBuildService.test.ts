@@ -44,7 +44,7 @@ describe("StudioArtifactBuildService", () => {
 
         const result = service.start(wasmPath, "tsPackage", destination);
 
-        expect(result).toMatchObject({status: "unsupported", message: expect.stringContaining("This POKIE WASM component cannot build a POKIE game package")});
+        expect(result).toMatchObject({status: "unsupported", message: expect.stringContaining("no compatible PokieWasmComponentManifest sidecar")});
         expect(service.getStatusForProject(wasmPath, "1")).toBeUndefined();
         expect(fs.existsSync(destination)).toBe(false);
     });

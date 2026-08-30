@@ -377,7 +377,7 @@ describe("StudioSimulationService", () => {
 
         const result = service.start(wasmPath, {rounds: 5}, wasmProject);
 
-        expect(result).toMatchObject({status: "unsupported", message: expect.stringContaining("This POKIE WASM component cannot simulate game rounds")});
+        expect(result).toMatchObject({status: "unsupported", message: expect.stringContaining("no compatible PokieWasmComponentManifest sidecar")});
         expect(service.getActiveCount()).toBe(0);
         expect(materialize).not.toHaveBeenCalled();
         expect(loadGame).not.toHaveBeenCalled();

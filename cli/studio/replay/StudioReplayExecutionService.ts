@@ -4,7 +4,7 @@ import {
     captureRoundPokieSessionState,
     captureScreen,
     describeUnsupportedProjectOperation,
-    describeWasmUnsupportedOperation,
+    describeWasmLifecycleBoundary,
     GameSessionHandling,
     loadPokieGame,
     OUTCOME_SOURCE_REPLAY_OPERATION,
@@ -122,7 +122,7 @@ export class StudioReplayExecutionService {
         // StudioServer. A direct caller must not be able to queue work that
         // can only fail after attempting runtime preparation.
         if (projectRoot.toLowerCase().endsWith(".wasm") || outcomeSourceProject?.type === "wasm") {
-            return {status: "unsupported", message: describeWasmUnsupportedOperation("replay a game round")};
+            return {status: "unsupported", message: describeWasmLifecycleBoundary(outcomeSourceProject?.type === "wasm" ? outcomeSourceProject.rootPath : projectRoot, "replay a game round")};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {

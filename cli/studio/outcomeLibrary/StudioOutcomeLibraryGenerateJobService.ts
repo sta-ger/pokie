@@ -80,6 +80,8 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     public start(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest, resumedId?: string): StudioOutcomeLibraryGenerateJobView {
+        const wasmDiagnostic = this.generateService.wasmBoundaryDiagnostic?.(projectRoot);
+        if (wasmDiagnostic !== undefined) throw new Error(wasmDiagnostic);
         this.trimTerminalJobs();
         const destinationKey = this.destinationKey(projectRoot, request);
         if (this.activeDestinationOwners.has(destinationKey)) {
@@ -190,6 +192,8 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     public async resumeForProject(projectRoot: string, id: string): Promise<StudioOutcomeLibraryGenerateJobView | undefined> {
+        const wasmDiagnostic = this.generateService.wasmBoundaryDiagnostic?.(projectRoot);
+        if (wasmDiagnostic !== undefined) throw new Error(wasmDiagnostic);
         const persisted = this.readCheckpoint(projectRoot, id);
         if (persisted === undefined) return undefined;
         const request = fromPersistedRequest(persisted.request);

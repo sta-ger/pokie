@@ -2176,6 +2176,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 405, {error: "Method not allowed."});
             return;
         }
+        if (action === "resume" && await this.rejectCurrentWasmOperation(res, OUTCOME_LIBRARY_GENERATE_OPERATION)) return;
         let job;
         if (action === "cancel") {
             job = this.outcomeLibraryGenerateJobService.cancelForProject(this.currentContext.projectRoot, id);
@@ -2209,6 +2210,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (await this.rejectCurrentWasmOperation(res, OUTCOME_LIBRARY_GENERATE_OPERATION)) return;
         this.sendJson(res, 200, await this.outcomeLibraryGenerateService.registry(this.currentContext.projectRoot));
     }
 

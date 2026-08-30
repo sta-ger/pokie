@@ -13,7 +13,7 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     assertArtifactBuildNotCancelled,
-    describeWasmUnsupportedOperation,
+    describeWasmLifecycleBoundary,
     StakeProjectionExportService,
     type PreparedStakeProjectionOperation,
 } from "pokie";
@@ -366,7 +366,7 @@ export class StudioArtifactBuildService {
         // route: a WASM path must never receive an id, destination, staging
         // plan, or queued builder merely to fail later.
         if (projectRoot.toLowerCase().endsWith(".wasm")) {
-            return {status: "unsupported", message: describeWasmUnsupportedOperation("build a POKIE game package")};
+            return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "build a POKIE game package")};
         }
         return {status: "created", job: this.startOperation(projectRoot, target, outDir)};
     }

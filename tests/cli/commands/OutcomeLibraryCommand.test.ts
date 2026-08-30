@@ -430,6 +430,38 @@ describe("OutcomeLibraryCommand", () => {
             }
         });
 
+        it("rejects a source replaced by WASM at the pre-publication rebind before generation or writing", async () => {
+            const source = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pokie-generation-rebind-")), "source.wasm");
+            const output = path.join(path.dirname(source), "library.json");
+            fs.mkdirSync(source);
+            fs.writeFileSync(path.join(source, "package.json"), JSON.stringify({pokie: {entry: "./index.js"}}));
+            const loadGame = jest.fn(() => {
+                if (loadGame.mock.calls.length === 1) {
+                    fs.rmSync(source, {recursive: true, force: true});
+                    fs.writeFileSync(source, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+                    fs.writeFileSync(`${source}.pokie-wasm.json`, JSON.stringify({
+                        schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                        component: {id: "replaced", version: "1.0.0"},
+                        serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                        host: {rng: "pokie.rng.v1", services: []}, capabilities: [],
+                    }));
+                }
+                return Promise.resolve(FAKE_GAME);
+            });
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const writeFile = jest.fn();
+            try {
+                await expect(createGenerateCommand({loadGame, generate, writeFile}).run(["generate", source, "--out", output]))
+                    .rejects.toThrow("This POKIE WASM component cannot generate an Outcome Library");
+                expect(loadGame).toHaveBeenCalledTimes(1);
+                expect(generate).not.toHaveBeenCalled();
+                expect(writeFile).not.toHaveBeenCalled();
+                expect(fs.existsSync(output)).toBe(false);
+            } finally {
+                fs.rmSync(path.dirname(source), {recursive: true, force: true});
+            }
+        });
+
         it("derives a default library id from the game manifest and --mode when --library-id is omitted", async () => {
             const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
             const command = createGenerateCommand({generate});

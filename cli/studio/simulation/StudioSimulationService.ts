@@ -1,6 +1,6 @@
 import {
     describeUnsupportedProjectOperation,
-    describeWasmUnsupportedOperation,
+    describeWasmLifecycleBoundary,
     loadPokieGame,
     OUTCOME_SOURCE_SIMULATE_OPERATION,
     OutcomeLibraryBundleOutcomeSource,
@@ -136,7 +136,7 @@ export class StudioSimulationService {
         // any work. The server's fresh resolver check retains more specific
         // stale-sidecar diagnostics for browser callers.
         if (projectRoot.toLowerCase().endsWith(".wasm") || outcomeSourceProject?.type === "wasm") {
-            return {status: "unsupported", message: describeWasmUnsupportedOperation("simulate game rounds")};
+            return {status: "unsupported", message: describeWasmLifecycleBoundary(outcomeSourceProject?.type === "wasm" ? outcomeSourceProject.rootPath : projectRoot, "simulate game rounds")};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {

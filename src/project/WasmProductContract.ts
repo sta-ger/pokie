@@ -1,4 +1,6 @@
+import fs from "fs";
 import {WASM_MANIFEST_READ_CAPABILITY, type ProjectCapability} from "./ProjectCapability.js";
+import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
 
 // The one production-readable statement of POKIE's WASM product boundary. A
 // compatible sidecar makes a component inspectable; it never makes its binary
@@ -29,6 +31,40 @@ export function describeWasmSidecarFailure(
     const repair = wasmSidecarRepair(sidecarPath, failure);
     const cause = wasmSidecarCause(sidecarPath, failure, detail);
     return `${prefix} ${cause} ${repair} ${WASM_PRODUCT_CONTRACT.inspectionBoundary}`;
+}
+
+/**
+ * A synchronous counterpart to the resolver's WASM recognition branch for
+ * lifecycle services whose `start()` contract is deliberately synchronous.
+ * It reads only the sidecar and produces exactly the resolver diagnostic; it
+ * never opens the component binary.  Keeping it here prevents queued-job
+ * services from flattening a stale sidecar into the compatible-component
+ * message merely because they cannot await ProjectTargetResolver first.
+ */
+export function describeWasmLifecycleBoundary(wasmPath: string, operation: string): string {
+    const sidecarPath = `${wasmPath}.pokie-wasm.json`;
+    let raw: string;
+    try {
+        raw = fs.readFileSync(sidecarPath, "utf-8");
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+            return describeWasmSidecarFailure(wasmPath, sidecarPath, "missing");
+        }
+        return describeWasmSidecarFailure(wasmPath, sidecarPath, "malformed", error instanceof Error ? error.message : String(error));
+    }
+    let manifest: unknown;
+    try {
+        manifest = JSON.parse(raw);
+    } catch {
+        return describeWasmSidecarFailure(wasmPath, sidecarPath, "malformed", "it is not valid JSON");
+    }
+    const compatibility = assessWasmComponentCompatibility(manifest);
+    if (!compatibility.compatible) {
+        const detail = compatibility.issues.map((issue) => issue.message).join(" ");
+        const malformed = compatibility.issues.some((issue) => issue.code.startsWith("wasm-component-manifest-"));
+        return describeWasmSidecarFailure(wasmPath, sidecarPath, malformed ? "malformed" : "incompatible", detail);
+    }
+    return describeWasmUnsupportedOperation(operation);
 }
 
 function wasmSidecarRepair(sidecarPath: string, failure: WasmSidecarFailure): string {

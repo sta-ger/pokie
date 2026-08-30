@@ -286,7 +286,7 @@ describe("StudioReplayExecutionService", () => {
 
         const result = service.start(wasmPath, {round: 1, seed: "seed"}, wasmProject);
 
-        expect(result).toMatchObject({status: "unsupported", message: expect.stringContaining("This POKIE WASM component cannot replay a game round")});
+        expect(result).toMatchObject({status: "unsupported", message: expect.stringContaining("no compatible PokieWasmComponentManifest sidecar")});
         expect(repository.listActive()).toEqual([]);
         expect(loadGame).not.toHaveBeenCalled();
     });

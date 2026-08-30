@@ -64,6 +64,35 @@ describe("StudioOutcomeLibraryGenerateService", () => {
     }
 
     describe("estimate", () => {
+        it("rejects every WASM sidecar state before registry, estimate, generation, or a package load", async () => {
+            const wasmPath = path.join(projectRoot, "component.wasm");
+            const sidecar = `${wasmPath}.pokie-wasm.json`;
+            const loadGame = jest.fn(() => Promise.resolve(buildFixtureGame()));
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION, loadGame, undefined, undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, {prepare: () => Promise.resolve(plannedOutcomeLibrary)},
+            );
+            fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+            const compatible = {
+                schemaVersion: "1.0.0", component: {id: "fixture", version: "1.0.0"},
+                serialization: {session: "session", play: "play", state: "state"}, host: {rng: "rng", services: []}, capabilities: [],
+            };
+            const cases: readonly [string, string | undefined, RegExp][] = [
+                ["compatible", JSON.stringify(compatible), /cannot generate an Outcome Library/],
+                ["missing", undefined, /no compatible PokieWasmComponentManifest sidecar/],
+                ["malformed", "{", /sidecar at/],
+                ["incompatible", JSON.stringify({...compatible, schemaVersion: "2.0.0"}), /not compatible with this POKIE build/],
+            ];
+            for (const [, contents, expected] of cases) {
+                if (contents === undefined) fs.rmSync(sidecar, {force: true});
+                else fs.writeFileSync(sidecar, contents);
+                await expect(svc.estimate(wasmPath, {})).resolves.toMatchObject({status: "load-error", error: expect.stringMatching(expected)});
+                await expect(svc.generate(wasmPath, {})).resolves.toMatchObject({status: "load-error", error: expect.stringMatching(expected)});
+                await expect(svc.registry(wasmPath)).resolves.toMatchObject({status: "load-error", error: expect.stringMatching(expected)});
+            }
+            expect(loadGame).not.toHaveBeenCalled();
+        });
+
         it("does not advertise a planner result when the runtime cannot be loaded", async () => {
             const unavailable: ArtifactConversionPlan = {
                 ...plannedOutcomeLibrary,

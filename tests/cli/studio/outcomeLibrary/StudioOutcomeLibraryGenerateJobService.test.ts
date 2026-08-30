@@ -18,6 +18,19 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         fs.rmSync(projectRoot, {recursive: true, force: true});
     });
 
+    it("rejects a WASM start before reserving a job or calling generation", () => {
+        const wasmPath = path.join(projectRoot, "component.wasm");
+        fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+        const generate = jest.fn();
+        const jobs = new StudioOutcomeLibraryGenerateJobService({
+            generate,
+            wasmBoundaryDiagnostic: () => "WASM inspection-only diagnostic",
+        } as unknown as StudioOutcomeLibraryGenerateService);
+        expect(() => jobs.start(wasmPath, {})).toThrow("WASM inspection-only diagnostic");
+        expect(jobs.listForProject(wasmPath)).toEqual([]);
+        expect(generate).not.toHaveBeenCalled();
+    });
+
     it("cancels active project work and all remaining work through Studio lifecycle ownership", async () => {
         const checkpoint: ExactEnumerationCheckpoint = {
             processedRawIndex: BigInt(1), progressTotal: BigInt(6), sourceEnumerationId: "fixture-source", grids: new Map(),
