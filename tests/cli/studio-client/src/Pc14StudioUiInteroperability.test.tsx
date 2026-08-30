@@ -101,6 +101,14 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.click(screen.getByRole("button", {name: "New Play session"}));
         await screen.findByRole("button", {name: "Spin"});
 
+        // Exercise an actual unsupported runtime action before the successful
+        // round.  The generated package has no free-games mode; Studio must
+        // retain that product diagnostic while keeping the real session
+        // usable for the next action.
+        await user.click(screen.getByRole("button", {name: "Find free games"}));
+        const unsupportedScenario = await screen.findByRole("alert");
+        expect(unsupportedScenario).not.toBeEmptyDOMElement();
+
         // An ordinary Spin is a full user-visible product operation, not a
         // route-table assertion: it uses the package's real runtime and emits
         // the durable round artifact consumed by the Replay surface.
@@ -132,12 +140,14 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             assertions: [
                 "the rendered Build/Export tab exposed the real package's server-owned artifact surface",
                 "the UI opened the CLI-produced package rather than a hand-authored browser fixture",
+                "Play rendered the generated package's unsupported free-games diagnostic without discarding the active session",
+                "the same rendered Play session recovered by spinning a completed real round after the unsupported scenario",
                 "Play used the real package runtime and rendered a completed round artifact",
                 "Simulation completed against the same package and exposed its real report download output",
             ],
             observations: [
                 {route: "UI /project/:projectRoot/exportDeploy (Build/Export)", result: "selected the rendered build/export workflow for the real produced package"},
-                {route: "UI /project/:projectRoot/play (Play)", result: "created a session and spun a completed round artifact"},
+                {route: "UI /project/:projectRoot/play (Play)", result: "created a session, rendered an unsupported free-games diagnostic, then recovered by spinning a completed round artifact"},
                 {route: "UI /project/:projectRoot/simulation (Simulation)", result: "ran two rounds, rendered the completed report, and exposed its JSON download"},
                 {route: "UI /project/:projectRoot/replay (Replay)", result: "selected the rendered replay workflow after the completed runtime artifacts existed"},
             ],

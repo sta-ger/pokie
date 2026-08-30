@@ -15,6 +15,8 @@
         "assertions": [
           "the rendered Build/Export tab exposed the real package's server-owned artifact surface",
           "the UI opened the CLI-produced package rather than a hand-authored browser fixture",
+          "Play rendered the generated package's unsupported free-games diagnostic without discarding the active session",
+          "the same rendered Play session recovered by spinning a completed real round after the unsupported scenario",
           "Play used the real package runtime and rendered a completed round artifact",
           "Simulation completed against the same package and exposed its real report download output"
         ],
@@ -25,7 +27,7 @@
           },
           {
             "route": "UI /project/:projectRoot/play (Play)",
-            "result": "created a session and spun a completed round artifact"
+            "result": "created a session, rendered an unsupported free-games diagnostic, then recovered by spinning a completed round artifact"
           },
           {
             "route": "UI /project/:projectRoot/simulation (Simulation)",

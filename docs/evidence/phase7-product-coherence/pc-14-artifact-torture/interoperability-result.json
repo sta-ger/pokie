@@ -22,7 +22,7 @@
     },
     {
       "file": "studio-ui-real-artifact-result.json",
-      "sha256": "sha256:5dc53437252a0952490c0cfae3b6abe35c66bce4f3f09dbd675bf66e55b1d553",
+      "sha256": "sha256:bf77c62ac06d9919b5e0fd269424c9c1e9f99f207aaddb83b8a1d47d0d85a99a",
       "rows": 0,
       "scenarios": 1
     }
@@ -2672,6 +2672,8 @@
         "assertions": [
           "the rendered Build/Export tab exposed the real package's server-owned artifact surface",
           "the UI opened the CLI-produced package rather than a hand-authored browser fixture",
+          "Play rendered the generated package's unsupported free-games diagnostic without discarding the active session",
+          "the same rendered Play session recovered by spinning a completed real round after the unsupported scenario",
           "Play used the real package runtime and rendered a completed round artifact",
           "Simulation completed against the same package and exposed its real report download output"
         ],
@@ -2682,7 +2684,7 @@
           },
           {
             "route": "UI /project/:projectRoot/play (Play)",
-            "result": "created a session and spun a completed round artifact"
+            "result": "created a session, rendered an unsupported free-games diagnostic, then recovered by spinning a completed round artifact"
           },
           {
             "route": "UI /project/:projectRoot/simulation (Simulation)",
