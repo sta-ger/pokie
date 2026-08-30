@@ -5,9 +5,9 @@
     {
       "id": "studio-ui-blueprint-workflow-navigation",
       "source_path": "run-artifacts/ui-route-slot.blueprint.json",
-      "source_identity": "sha256:b41a746e771370036d0e9658e7fb1578f14999ed0d85776b9ff2d3f407dcc6fe",
+      "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
       "produced_path": "run-artifacts/tsPackage",
-      "produced_identity": "sha256:23e1ca0678b6ed39c1ea64ed30ff03d93c29c47f040291e85bacfd09bcf45d7d",
+      "produced_identity": "sha256:207739b638b72394a3ac119c97f54ee6ce05aa1a4e86372e99c6152192ef4834",
       "observable_result": "the rendered Studio dashboard opened the real CLI-produced package and selected its retained Build/Export, Play, Simulation, and Replay workflows",
       "execution": {
         "surface": "studio-ui",

@@ -45,11 +45,14 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         const evidence = new ArtifactInteroperabilityRun(workDir);
         const blueprint: GameBlueprint = {
             manifest: {id: "studio-artifact-torture", name: "Studio Artifact Torture", version: "1.0.0"},
-            reels: 2,
+            // Keep the source small enough for the other real-artifact paths,
+            // but large enough that the Outcome publication job reaches its
+            // writer progress boundary before cancellation.
+            reels: 3,
             rows: 1,
-            symbols: ["A", "B"],
-            paytable: {A: {2: 3}},
-            reelStrips: [["A", "B"], ["A", "B"]],
+            symbols: ["A", "B", "C", "D", "E", "F", "G"],
+            paytable: {A: {3: 3}},
+            reelStrips: Array.from({length: 3}, () => ["A", "B", "C", "D", "E", "F", "G"]),
             availableBets: [1],
         };
         const blueprintPath = path.join(workDir, "source.blueprint.json");
@@ -125,12 +128,62 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             );
             expect(terminalBuild).toMatchObject({status: 200, body: {status: "completed", result: {status: "ok", outputPath: path.join(workDir, "http-package")}}});
             expect(fs.existsSync(path.join(workDir, "http-package"))).toBe(true);
+
+            // Artifact publication is separately durable from the job state.
+            // Cancel while the real canonical writer is active, verify that
+            // neither its destination nor a managed registration survives,
+            // then start a fresh job to prove the same Studio server can
+            // recover without retaining a stale queued/running record.
+            const cancelledOutcomePath = path.join(workDir, "http-cancelled-outcome-library");
+            const cancelledStart = await fetch(`${baseUrl}/api/project/artifacts/build`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({target: "outcomeLibrary", outDir: cancelledOutcomePath}),
+            });
+            expect(cancelledStart.status).toBe(202);
+            const cancelledJob = await cancelledStart.json() as {job: {id: string}};
+            let activeBuild: {status: number; body: {status: string; progress?: {message?: string}}} | undefined;
+            for (let attempt = 0; attempt < 1200; attempt += 1) {
+                const current = await fetch(`${baseUrl}/api/project/artifacts/build/${cancelledJob.job.id}`)
+                    .then(async (response) => ({status: response.status, body: await response.json() as {status: string; progress?: {message?: string}}}));
+                if (current.body.status === "running" && current.body.progress?.message?.startsWith("Writing Outcome mode")) {
+                    activeBuild = current;
+                    break;
+                }
+                if (current.body.status !== "queued" && current.body.status !== "running") break;
+                await new Promise<void>((resolve) => {
+                    setTimeout(resolve, 10);
+                });
+            }
+            expect(activeBuild).toMatchObject({status: 200, body: {status: "running"}});
+            const cancellation = await fetch(`${baseUrl}/api/project/artifacts/build/${cancelledJob.job.id}/cancel`, {method: "POST"});
+            expect(cancellation.status).toBe(200);
+            const cancelledTerminal = await waitForStudioJob(
+                () => fetch(`${baseUrl}/api/project/artifacts/build/${cancelledJob.job.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+            );
+            expect(cancelledTerminal).toMatchObject({status: 200, body: {status: "cancelled", cancellationRequested: true, result: {status: "cancelled"}}});
+            expect(fs.existsSync(cancelledOutcomePath)).toBe(false);
+            expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+
+            const restartedOutcomePath = path.join(workDir, "http-restarted-outcome-library");
+            const restart = await fetch(`${baseUrl}/api/project/artifacts/build`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({target: "outcomeLibrary", outDir: restartedOutcomePath}),
+            });
+            expect(restart.status).toBe(202);
+            const restartedJob = await restart.json() as {job: {id: string}};
+            const restartedTerminal = await waitForStudioJob(
+                () => fetch(`${baseUrl}/api/project/artifacts/build/${restartedJob.job.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+            );
+            expect(restartedTerminal).toMatchObject({status: 200, body: {status: "completed", result: {status: "ok", outputPath: restartedOutcomePath}}});
+            expect(fs.existsSync(restartedOutcomePath)).toBe(true);
             evidence.recordScenario({
                 id: "studio-artifact-http-preflight", sourcePath: blueprintPath,
-                result: "Studio HTTP context, inspection, validation, target discovery, preflight, build-job polling, and terminal result resolve the same real Blueprint before publication",
+                result: "Studio HTTP context, inspection, validation, target discovery, preflight, polling, cancellation cleanup, and restart resolve the same real Blueprint before publication",
                 surface: "studio-api", owner: "StudioServer / StudioArtifactBuildService",
-                systemicClasses: ["shared-conversion-diagnostic-parity"],
-                assertions: ["GET context retains the real Blueprint", "GET inspect and validate accept the real Blueprint", "GET targets lists tsPackage", "POST preview returns an executable tsPackage plan", "POST build creates and GET job reaches the terminal published result"],
+                systemicClasses: ["shared-conversion-diagnostic-parity", "durable-publication-ownership"],
+                assertions: ["GET context retains the real Blueprint", "GET inspect and validate accept the real Blueprint", "GET targets lists tsPackage", "POST preview returns an executable tsPackage plan", "POST build creates and GET job reaches the terminal published result", "POST cancel removes the interrupted Outcome publication and leaves no managed registration", "a later POST build completes to a fresh destination"],
                 observations: [
                     {route: "GET /api/project/context", result: "returned the opened Blueprint context"},
                     {route: "GET /api/project/inspect", result: "inspected the opened Blueprint"},
@@ -139,6 +192,8 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
                     {route: "POST /api/project/artifacts/preview", result: "returned the prepared tsPackage operation"},
                     {route: "POST /api/project/artifacts/build", result: "created the pollable tsPackage build job"},
                     {route: "GET /api/project/artifacts/build/:id", result: "polled the completed job and observed its published output"},
+                    {route: "POST /api/project/artifacts/build/:id/cancel", result: "cancelled an active Outcome publication job and retained no partial destination"},
+                    {route: "POST /api/project/artifacts/build", result: "restarted a clean Outcome publication job after cancellation"},
                 ],
             });
         } finally {
@@ -178,7 +233,13 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         const artworkSource = path.join(workDir, "symbol.png");
         fs.writeFileSync(artworkSource, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
         const artworkService = new StudioBlueprintService(POKIE_VERSION, studioRoot, home);
+        // The product intentionally gives independently imported artwork a
+        // collision-resistant filename.  Pin the runner identity only while
+        // it creates this disposable fixture so the emitted real path can be
+        // byte-compared by a later clean process.
+        const random = jest.spyOn(Math, "random").mockReturnValue(0.5);
         const artworkImport = artworkService.importSymbolArtwork(artworkSource);
+        random.mockRestore();
         expect(artworkImport.status).toBe("ok");
         if (artworkImport.status !== "ok") throw new Error(artworkImport.error);
         expect(artworkService.save(blueprintPath, {...blueprint, symbolArtwork: {A: artworkImport.reference}}, true)).toMatchObject({status: "ok"});
@@ -348,6 +409,24 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         await expect(managedService.registerAndOpen(blueprintPath, path.join(packagePath, mode.bundleDir), managedCompatibility)).resolves.toMatchObject({type: "outcomeLibrary"});
         const managedRegistryPath = path.join(workDir, ".pokie", "managed-outcome-projects.json");
         expect(await managedService.findCompatible(blueprintPath, managedCompatibility)).toMatchObject({rootPath: path.join(packagePath, mode.bundleDir)});
+        // Compatibility includes the selected sampling/generation policy, not
+        // only game/config/version.  A caller requesting a different bounded
+        // policy must not borrow this managed registration.
+        const incompatibleSamplingPolicy = {
+            ...managedCompatibility,
+            generation: "bounded",
+            maxExactOutcomeSpaceSize: managedCompatibility.maxExactOutcomeSpaceSize === "1" ? "2" : "1",
+            compatibilityPolicyVersion: "pc14-incompatible-sampling-policy",
+        };
+        expect(await managedService.findCompatible(blueprintPath, incompatibleSamplingPolicy)).toBeUndefined();
+        evidence.recordScenario({
+            id: "managed-reuse-sampling-policy-incompatibility", sourcePath: path.join(packagePath, mode.bundleDir), producedPath: managedRegistryPath,
+            result: "the durable managed Outcome Library registry rejects reuse when the requested sampling policy differs, while retaining the compatible borrowed registration",
+            surface: "library", owner: "ManagedOutcomeProjectService.findCompatible",
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+            assertions: ["incompatible sampling policy returns no reusable project", "existing compatible managed registration remains available"],
+            observations: [{route: "ManagedOutcomeProjectService.findCompatible", result: "policy-incompatible request did not borrow the managed Outcome Library"}],
+        });
         evidence.record({
             id: "managed-outcome-project-registry-reuse", artifactKind: "managedOutcomeProjectsRegistry", operation: "reuse",
             sourcePath: path.join(packagePath, mode.bundleDir), producedPath: managedRegistryPath, owner: "ManagedOutcomeProjectService.registerAndOpen/findCompatible",

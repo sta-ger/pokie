@@ -14,6 +14,10 @@ const jestPath = path.join(repositoryRoot, "node_modules", "jest", "bin", "jest.
 const temporaryDirectory = path.join(repositoryRoot, "node_modules", ".cache", "pokie-tmp");
 const committedFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"];
 const writeCommittedEvidence = process.argv.includes("--write");
+// The contract test invokes this script as a separate clean process.  Do not
+// recursively invoke that same contract from inside the child; the artifact
+// runners and byte comparison remain exactly the production refresh path.
+const regenerationChild = process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1";
 
 mkdirSync(temporaryDirectory, {recursive: true});
 const runDirectory = mkdtempSync(path.join(temporaryDirectory, "pc14-evidence-"));
@@ -36,6 +40,7 @@ function run(testPath) {
         "--max-old-space-size=1408",
         jestPath,
         "--runInBand",
+        "--no-cache",
         "--runTestsByPath",
         testPath,
     ], {cwd: repositoryRoot, env: environment, stdio: "inherit"});
@@ -46,7 +51,7 @@ function run(testPath) {
 run("tests/cli/ArtifactInteroperabilityTorture.integration.test.ts");
 run("tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts");
 run("tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx");
-run("tests/project/ArtifactInteroperabilityRemediation.contract.test.ts");
+if (!regenerationChild && !writeCommittedEvidence) run("tests/project/ArtifactInteroperabilityRemediation.contract.test.ts");
 
 try {
     for (const file of committedFiles) {

@@ -1,6 +1,7 @@
 import fs from "fs";
 import crypto from "crypto";
 import path from "path";
+import {spawnSync} from "child_process";
 import {
     ArtifactConversionPlanner,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
@@ -36,6 +37,15 @@ type InteroperabilityResult = {
         readonly public_owners: readonly string[];
         readonly executed_regressions: readonly string[];
         readonly exclusion?: string;
+    }[];
+    readonly public_owner_coverage: readonly {
+        readonly artifact_kind: string;
+        readonly public_owner: string;
+        readonly status: "executed" | "intentionally-boundary";
+        readonly record_id: string | null;
+        readonly source_path: string | null;
+        readonly result?: string;
+        readonly diagnostic?: {readonly code: string; readonly message: string; readonly recovery: string};
     }[];
     readonly planner_cells?: readonly {
         readonly source_path: string;
@@ -94,16 +104,26 @@ describe("PC-14 artifact interoperability remediation contract", () => {
     it("has a reproducible runner-owned regeneration entry point", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const packageJson = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf-8")) as {readonly scripts: Record<string, string>};
-        const script = fs.readFileSync(scriptPath, "utf-8");
         expect(packageJson.scripts["evidence:pc14-interoperability"]).toBe("node scripts/generate-pc14-interoperability-evidence.mjs");
-        expect(script).toContain("PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR");
-        expect(script).toContain("PC14_FIXED_RUNNER_CLOCK");
-        expect(script).toContain("fresh.equals(committed)");
-        expect(script).toContain("ArtifactInteroperabilityTorture.integration.test.ts");
-        expect(script).toContain("StudioArtifactInteroperabilityTorture.integration.test.ts");
-        expect(script).toContain("Pc14StudioUiInteroperability.test.tsx");
-        expect(script).toContain("ArtifactInteroperabilityRemediation.contract.test.ts");
-    });
+        expect(fs.existsSync(scriptPath)).toBe(true);
+    }, 120000);
+
+    it("executes the clean-process regeneration byte comparison", () => {
+        // The child runs the same deterministic real-artifact runners and
+        // compares their fresh files with the checked-in evidence.  Its flag
+        // only prevents this contract from recursively starting itself.
+        if (process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1") return;
+        const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
+        const writeEvidence = process.env.PC14_INTEROPERABILITY_WRITE_EVIDENCE === "1";
+        const result = spawnSync(process.execPath, [scriptPath, ...(writeEvidence ? ["--write"] : [])], {
+            cwd: process.cwd(),
+            env: {...process.env, PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"},
+            encoding: "utf-8",
+            timeout: 150000,
+        });
+        expect(result.error).toBeUndefined();
+        if (result.status !== 0) throw new Error(`${result.stdout}\n${result.stderr}`);
+    }, 180000);
 
     it("injects the fixed evidence clock into real writers instead of only normalising saved hashes", () => {
         const originalClock = process.env.PC14_FIXED_RUNNER_CLOCK;
@@ -193,6 +213,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             "studio-destination-drift",
             "studio-generation-recovery",
             "studio-managed-reuse-compatibility",
+            "managed-reuse-sampling-policy-incompatibility",
+            "partial-import-recovery",
             "studio-artifact-http-preflight",
             "studio-simulation-replay-cancellation",
             "studio-wasm-boundary",
@@ -280,6 +302,45 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             // inventory assertion.
             expect(entry.disposition).toBe("executed");
             expect(entry.executed_regressions.length).toBeGreaterThan(0);
+        }
+    });
+
+    it("derives a path-aware disposition for every PC-05 public owner rather than closing an artifact kind by itself", () => {
+        const registryPath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json");
+        const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as {readonly artifact_kinds: readonly {
+            readonly id: string;
+            readonly created_by?: readonly string[];
+            readonly recognized_by?: readonly string[];
+            readonly runs_by?: readonly string[];
+            readonly validates_by?: readonly string[];
+            readonly reports_by?: readonly string[];
+            readonly replays_by?: readonly string[];
+        }[]};
+        const expected = [...new Set(registry.artifact_kinds
+            .filter((artifact) => !(/^(?:blueprintRuntimeMaterialization)(?:Cache|Marker)$/).test(artifact.id))
+            .flatMap((artifact) => [
+                ...(artifact.created_by ?? []), ...(artifact.recognized_by ?? []), ...(artifact.runs_by ?? []),
+                ...(artifact.validates_by ?? []), ...(artifact.reports_by ?? []), ...(artifact.replays_by ?? []),
+            ].map((owner) => `${artifact.id}:${owner}`)))].sort();
+        const actual = result.public_owner_coverage
+            .map((entry) => `${entry.artifact_kind}:${entry.public_owner}`)
+            .sort();
+        expect(actual).toEqual(expected);
+        for (const entry of result.public_owner_coverage) {
+            if (entry.status === "executed") {
+                expect(entry.record_id).toEqual(expect.any(String));
+                expect(entry.source_path).toMatch(/^run-artifacts\//);
+                continue;
+            }
+            expect(entry).toMatchObject({
+                "record_id": expect.any(String),
+                "source_path": expect.stringMatching(/^run-artifacts\//),
+                diagnostic: {
+                    code: "owner-not-separately-invoked",
+                    message: expect.stringContaining(entry.public_owner),
+                    recovery: expect.stringContaining(entry.record_id!),
+                },
+            });
         }
     });
 });

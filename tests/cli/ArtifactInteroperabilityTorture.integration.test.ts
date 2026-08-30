@@ -16,6 +16,7 @@ import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";
 import {DiffCommand} from "../../cli/commands/DiffCommand.js";
 import {FairnessCommand} from "../../cli/commands/FairnessCommand.js";
 import {InspectCommand} from "../../cli/commands/InspectCommand.js";
+import {ImportCommand} from "../../cli/commands/ImportCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
 import {OutcomeSourceCommand} from "../../cli/commands/OutcomeSourceCommand.js";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
@@ -242,12 +243,22 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             ],
         });
         fs.writeFileSync(stakeDescriptorPath, JSON.stringify({modes: [{modeName: "base", cost: 1, bundleDir: path.basename(bundlePath), bundleModeName: "base"}]}));
+        let stakeExportDiagnostic = "";
+        (console.error as jest.Mock).mockImplementation((message: unknown) => {
+            stakeExportDiagnostic += `${String(message)}\n`;
+        });
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["export", stakeDescriptorPath, "--out", path.join(workDir, "matrix-descriptor-stake")])).toBe(1);
+        expect(stakeExportDiagnostic).toMatch(/integer|canonical|id/i);
+        (console.error as jest.Mock).mockImplementation(() => undefined);
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["analyze", stakePath, "--format", "json", "--out", stakeAnalysisPath])).toBe(0);
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["diff", stakePath, stakePath, "--format", "json", "--out", stakeComparisonPath])).toBe(0);
-        evidence.record({
+        evidence.recordUnavailable({
             id: "stake-export-descriptor", artifactKind: "stakeEngineExportDescriptor", operation: "export", sourcePath: stakeDescriptorPath,
-            owner: "StakeEngineCommand", result: "public descriptor owner rejected the real generated bundle with Stake's canonical integer-ID recovery diagnostic",
+            owner: "StakeEngineCommand", diagnostic: {
+                code: "unsupported-project-operation",
+                message: stakeExportDiagnostic.trim(),
+                recovery: "Assign canonical integer outcome IDs in the Stake export descriptor or export the generated Outcome Library through the supported stakeAdapter build target.",
+            },
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "stakeengine export exit 1 retained the concrete canonical-ID diagnostic"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
@@ -297,6 +308,27 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             systemicClasses: ["provenance-and-freshness-binding"],
             assertions: ["imported library manifest matches the exported Stake manifest identity"],
             observations: [{route: "pokie build --target stakeAdapter / pokie stakeengine import", result: "round trip completed with matching provenance"}],
+        });
+        // A pre-existing interrupted import destination is externally owned:
+        // the public import must reject it without deleting its bytes.  Once
+        // that partial state is explicitly removed, the same real Stake
+        // export can be imported cleanly through the generic dispatcher.
+        const partialImportPath = path.join(workDir, "matrix-partial-import");
+        fs.mkdirSync(partialImportPath);
+        fs.writeFileSync(path.join(partialImportPath, "partial.json"), "caller-owned partial import");
+        const genericImport = new ImportCommand(POKIE_VERSION);
+        await expect(genericImport.run([stakePath, "--out", partialImportPath])).rejects.toThrow(/destination|exist|occupied|stale/i);
+        expect(fs.readFileSync(path.join(partialImportPath, "partial.json"), "utf-8")).toBe("caller-owned partial import");
+        fs.rmSync(partialImportPath, {recursive: true});
+        expect(await genericImport.run([stakePath, "--out", partialImportPath])).toBe(0);
+        expect(fs.existsSync(path.join(partialImportPath, "manifest.json"))).toBe(true);
+        evidence.recordScenario({
+            id: "partial-import-recovery", sourcePath: stakePath, producedPath: partialImportPath,
+            result: "generic public import preserves a caller-owned partial destination on rejection, then recovers by importing the same real Stake export after the partial state is removed",
+            surface: "cli", owner: "ImportCommand / StakeEngineCommand.runPreparedImport",
+            systemicClasses: ["durable-publication-ownership", "provenance-and-freshness-binding"],
+            assertions: ["occupied partial destination is rejected without deletion", "fresh retry publishes the imported Outcome Library"],
+            observations: [{route: "pokie import", result: "public dispatcher rejected partial state then completed a clean retry"}],
         });
         expect(await new OutcomeSourceCommand().run(["sample", bundlePath, "--mode", "base", "--seed", "matrix-sample"])).toBe(0);
         evidence.record({
