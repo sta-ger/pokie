@@ -37,6 +37,18 @@ describe("StudioArtifactBuildService", () => {
         return filePath;
     }
 
+    it("rejects a WASM path before creating an artifact build job or destination", () => {
+        const wasmPath = path.join(workDir, "component.wasm");
+        const destination = path.join(workDir, "out");
+        fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+
+        const result = service.start(wasmPath, "tsPackage", destination);
+
+        expect(result).toMatchObject({status: "unsupported", message: expect.stringContaining("This POKIE WASM component cannot build a POKIE game package")});
+        expect(service.getStatusForProject(wasmPath, "1")).toBeUndefined();
+        expect(fs.existsSync(destination)).toBe(false);
+    });
+
     describe("listTargets", () => {
         it("reports the registry-owned Blueprint artifact targets as supported", async () => {
             const blueprintPath = writeBlueprintFile();
@@ -587,29 +599,30 @@ describe("StudioArtifactBuildService", () => {
             service = new StudioArtifactBuildService("1.3.0", registry, resolver);
 
             const started = service.start(project.rootPath, "outcomeLibrary", path.join(workDir, "out"));
-            expect(started.status).toBe("queued");
+            if (started.status !== "created") throw new Error("expected artifact job to be created");
+            expect(started.job.status).toBe("queued");
             await new Promise<void>((resolve) => {
                 setTimeout(resolve, 0);
             });
 
-            expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({
+            expect(service.getStatusForProject(project.rootPath, started.job.id)).toMatchObject({
                 status: "running",
                 progress: {status: "running", completed: "1", total: "12", message: "Writing outcomes"},
             });
-            expect(service.getStatusForProject(project.rootPath, started.id)?.progress?.preflight).toEqual({
+            expect(service.getStatusForProject(project.rootPath, started.job.id)?.progress?.preflight).toEqual({
                 estimatedItemCount: "12",
                 estimatedBytes: "34",
                 complexityWarning: "Large publish",
             });
 
-            expect(service.cancelForProject(project.rootPath, started.id)).toMatchObject({cancellationRequested: true, status: "running"});
+            expect(service.cancelForProject(project.rootPath, started.job.id)).toMatchObject({cancellationRequested: true, status: "running"});
             releaseBuild?.();
             await new Promise<void>((resolve) => {
                 setTimeout(() => {
                     resolve();
                 }, 0);
             });
-            expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({
+            expect(service.getStatusForProject(project.rootPath, started.job.id)).toMatchObject({
                 status: "cancelled",
                 result: {status: "cancelled", plan: {status: "planned", target: {kind: "outcomeLibrary"}}},
             });
@@ -671,18 +684,19 @@ describe("StudioArtifactBuildService", () => {
             });
 
             const started = service.start(project.rootPath, "outcomeLibrary", outputPath);
+            if (started.status !== "created") throw new Error("expected artifact job to be created");
             await publishing;
-            expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({
+            expect(service.getStatusForProject(project.rootPath, started.job.id)).toMatchObject({
                 status: "running",
                 progress: {status: "running", preflight: {estimatedItemCount: "512", complexityWarning: "Large publish"}},
             });
 
-            expect(service.cancelForProject(project.rootPath, started.id)).toMatchObject({status: "running", cancellationRequested: true});
+            expect(service.cancelForProject(project.rootPath, started.job.id)).toMatchObject({status: "running", cancellationRequested: true});
             await new Promise<void>((resolve) => {
                 setImmediate(resolve);
             });
 
-            expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({
+            expect(service.getStatusForProject(project.rootPath, started.job.id)).toMatchObject({
                 status: "cancelled",
                 cancellationRequested: true,
                 result: {status: "cancelled", plan: {status: "planned", target: {kind: "outcomeLibrary"}}},

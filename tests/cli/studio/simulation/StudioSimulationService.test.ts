@@ -347,7 +347,7 @@ describe("StudioSimulationService", () => {
         expect(loadGame).not.toHaveBeenCalled();
     });
 
-    it("reports a project with no runtime capability as unsupported instead of loading it as a package", async () => {
+    it("rejects a WASM project before creating a queued simulation job or loading it as a package", () => {
         const wasmPath = "/projects/component.wasm";
         const wasmProject: PokieProject = {
             type: "wasm",
@@ -375,16 +375,10 @@ describe("StudioSimulationService", () => {
             resolveRuntimePackageRoot,
         );
 
-        const result = service.start(wasmPath, {rounds: 5});
-        if (result.status !== "created") {
-            throw new Error("expected job to be created");
-        }
-        const job = await waitForTerminal(service, result.job.id);
+        const result = service.start(wasmPath, {rounds: 5}, wasmProject);
 
-        expect(job.status).toBe("failed");
-        expect(job.error).toContain("This POKIE WASM component cannot simulate game rounds");
-        expect(job.error).toContain("POKIE game package");
-        expect(job.error).not.toContain("ENOTDIR");
+        expect(result).toMatchObject({status: "unsupported", message: expect.stringContaining("This POKIE WASM component cannot simulate game rounds")});
+        expect(service.getActiveCount()).toBe(0);
         expect(materialize).not.toHaveBeenCalled();
         expect(loadGame).not.toHaveBeenCalled();
     });

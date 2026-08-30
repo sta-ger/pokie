@@ -1,5 +1,6 @@
 import {
     describeUnsupportedProjectOperation,
+    describeWasmUnsupportedOperation,
     loadPokieGame,
     OUTCOME_SOURCE_SIMULATE_OPERATION,
     OutcomeLibraryBundleOutcomeSource,
@@ -36,7 +37,8 @@ const DEFAULT_CHUNK_SIZE = 1000;
 
 export type StudioSimulationStartResult =
     | {status: "created"; job: StudioSimulationJobView}
-    | {status: "conflict"; activeJobId: string};
+    | {status: "conflict"; activeJobId: string}
+    | {status: "unsupported"; message: string};
 
 export type GetSimulationReportResult =
     | {status: "ok"; report: SimulationReport; statistics?: StudioSimulationStatisticsView}
@@ -128,6 +130,14 @@ export class StudioSimulationService {
     // through" convention handleOutcomeSourceSample already uses for the sample route. Undefined here means
     // "run the ordinary ParallelSimulationRunner path" (see run()), exactly as before this parameter existed.
     public start(projectRoot: string, request: ValidatedSimulationRequest, outcomeSourceProject?: PokieProject): StudioSimulationStartResult {
+        // This service is also used directly, outside StudioServer's HTTP
+        // guard. A .wasm path has no runnable branch regardless of sidecar
+        // state, so reject before reserving a repository record or scheduling
+        // any work. The server's fresh resolver check retains more specific
+        // stale-sidecar diagnostics for browser callers.
+        if (projectRoot.toLowerCase().endsWith(".wasm") || outcomeSourceProject?.type === "wasm") {
+            return {status: "unsupported", message: describeWasmUnsupportedOperation("simulate game rounds")};
+        }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
             return {status: "conflict", activeJobId: active.id};

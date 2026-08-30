@@ -32,20 +32,27 @@ describe("GenerateCommand", () => {
         expect((error as Error).message).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
     });
 
-    it("keeps the public alias's inspection-only WASM rejection", async () => {
+    it("keeps every WASM sidecar state on the public alias's inspection-only boundary", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-generate-alias-wasm-"));
         const wasmPath = path.join(workDir, "component.wasm");
         try {
             fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
-            fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({
+            const compatibleManifest = {
                 schemaVersion: POKIE_WASM_CONTRACT_VERSION,
                 component: {id: "component", version: "1.0.0"},
                 serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
                 host: {rng: "pokie.rng.v1", services: []},
                 capabilities: [],
-            }));
+            };
+            fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(compatibleManifest));
 
             await expect(new GenerateCommand("1.3.0").run([wasmPath, "--estimate"])).rejects.toThrow("This POKIE WASM component cannot generate an Outcome Library");
+            fs.rmSync(`${wasmPath}.pokie-wasm.json`);
+            await expect(new GenerateCommand("1.3.0").run([wasmPath, "--estimate"])).rejects.toThrow("no compatible PokieWasmComponentManifest sidecar");
+            fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, "{");
+            await expect(new GenerateCommand("1.3.0").run([wasmPath, "--estimate"])).rejects.toThrow("sidecar at");
+            fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({...compatibleManifest, schemaVersion: "2.0.0"}));
+            await expect(new GenerateCommand("1.3.0").run([wasmPath, "--estimate"])).rejects.toThrow("not compatible with this POKIE build");
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }

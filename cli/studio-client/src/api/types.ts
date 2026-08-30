@@ -138,7 +138,16 @@ export type GamePackageInspectionReport = {
     valid: boolean;
     error?: string;
     packageJson?: {name?: string; version?: string; description?: string};
-    wasmManifest?: {component: {id: string; version: string}; schemaVersion: string};
+    // A WASM inspection is deliberately the sidecar manifest's declared data,
+    // never a view of the component binary. Keep this full DTO here so the
+    // independently-built client cannot reconstruct or omit contract fields.
+    wasmManifest?: {
+        component: {id: string; version: string};
+        schemaVersion: string;
+        serialization: {session: string; play: string; state: string};
+        host: {rng: string; services: string[]};
+        capabilities: string[];
+    };
 };
 
 export type ValidationIssue = {

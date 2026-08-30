@@ -47,6 +47,21 @@ describe("ProjectDashboardPage", () => {
                     wasmPresentation,
                 },
             }),
+            "/api/project/inspect": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    packageRoot: "/games/component.wasm",
+                    valid: true,
+                    wasmManifest: {
+                        component: {id: "component", version: "1.0.0"},
+                        schemaVersion: "1.0.0",
+                        serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                        host: {rng: "pokie.rng.v1", services: ["clock.v1"]},
+                        capabilities: ["round.play"],
+                    },
+                },
+            }),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -54,6 +69,10 @@ describe("ProjectDashboardPage", () => {
         expect(await screen.findByRole("heading", {name: wasmPresentation.label})).toBeInTheDocument();
         expect(screen.getAllByText(wasmPresentation.label).length).toBeGreaterThan(1);
         expect(screen.getByText(wasmPresentation.inspectionSummary)).toBeInTheDocument();
+        expect(await screen.findByRole("table", {name: "Declared WASM component manifest"})).toBeInTheDocument();
+        expect(screen.getByText("pokie.session.v1")).toBeInTheDocument();
+        expect(screen.getByText("clock.v1")).toBeInTheDocument();
+        expect(screen.getByText("round.play")).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Play"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Build/Export"})).not.toBeInTheDocument();
     });

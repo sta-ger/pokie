@@ -3848,7 +3848,19 @@ describe("StudioServer", () => {
                 const inspection = await get(`${projectBaseUrl}/api/project/inspect`);
                 const validation = await get(`${projectBaseUrl}/api/project/validate`);
 
-                expect(inspection).toMatchObject({status: 200, body: {valid: true, wasmManifest: {component: {id: "sample-component", version: "0.1.0"}}}});
+                expect(inspection).toMatchObject({
+                    status: 200,
+                    body: {
+                        valid: true,
+                        wasmManifest: {
+                            component: {id: "sample-component", version: "0.1.0"},
+                            schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                            host: {rng: "pokie.rng.v1", services: []},
+                            capabilities: [],
+                        },
+                    },
+                });
                 expect(validation).toMatchObject({status: 409, body: {error: expect.stringContaining("inspect a compatible component")}});
                 expect(packageInspect).not.toHaveBeenCalled();
                 expect(packageValidate).not.toHaveBeenCalled();
@@ -3949,8 +3961,15 @@ describe("StudioServer", () => {
                 expect(loadGame).not.toHaveBeenCalled();
 
                 fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, "{");
-                const stale = await post(`${baseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
-                expect(stale).toMatchObject({status: 409, body: {error: expect.stringContaining("not valid JSON")}});
+                for (const stale of await Promise.all([
+                    post(`${baseUrl}/api/project/artifacts/build`, {target: "tsPackage"}),
+                    post(`${baseUrl}/api/project/simulations`, {rounds: 1}),
+                    post(`${baseUrl}/api/project/replays`, {round: 1, seed: "seed"}),
+                    get(`${baseUrl}/api/project/deployment/build-modes`),
+                    post(`${baseUrl}/api/project/deployment/runs`, {}),
+                ])) {
+                    expect(stale).toMatchObject({status: 409, body: {error: expect.stringContaining("not valid JSON")}});
+                }
                 expect(loadGame).not.toHaveBeenCalled();
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});

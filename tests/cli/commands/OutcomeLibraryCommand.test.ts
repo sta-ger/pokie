@@ -393,7 +393,7 @@ describe("OutcomeLibraryCommand", () => {
             expect(printed).toContain("pokie-exact-reel-enumeration-v1");
         });
 
-        it("rejects a real compatible WASM component before estimate, generation, or output publication", async () => {
+        it("rejects every real WASM sidecar state before estimate, generation, or output publication", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcome-generation-wasm-"));
             const wasmPath = path.join(workDir, "component.wasm");
             const loadGame = jest.fn(() => Promise.resolve(FAKE_GAME));
@@ -401,17 +401,25 @@ describe("OutcomeLibraryCommand", () => {
             const writeFile = jest.fn();
             try {
                 fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
-                fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({
+                const compatibleManifest = {
                     schemaVersion: POKIE_WASM_CONTRACT_VERSION,
                     component: {id: "component", version: "1.0.0"},
                     serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
                     host: {rng: "pokie.rng.v1", services: []},
                     capabilities: [],
-                }));
+                };
+                fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(compatibleManifest));
                 const command = createGenerateCommand({loadGame, generate, writeFile});
 
                 await expect(command.run(["generate", wasmPath, "--estimate"])).rejects.toThrow("This POKIE WASM component cannot generate an Outcome Library");
                 await expect(command.run(["generate", wasmPath, "--out", path.join(workDir, "library.json")])).rejects.toThrow("inspect a compatible component");
+
+                fs.rmSync(`${wasmPath}.pokie-wasm.json`);
+                await expect(command.run(["generate", wasmPath, "--estimate"])).rejects.toThrow("no compatible PokieWasmComponentManifest sidecar");
+                fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, "{");
+                await expect(command.run(["generate", wasmPath, "--estimate"])).rejects.toThrow("sidecar at");
+                fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({...compatibleManifest, schemaVersion: "2.0.0"}));
+                await expect(command.run(["generate", wasmPath, "--estimate"])).rejects.toThrow("not compatible with this POKIE build");
 
                 expect(loadGame).not.toHaveBeenCalled();
                 expect(generate).not.toHaveBeenCalled();

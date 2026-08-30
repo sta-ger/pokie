@@ -9,6 +9,7 @@ import {
     PokieGameManifest,
     PokieProject,
     ProjectTargetResolver,
+    PROJECT_TYPE_CAPABILITIES,
     REPLAY_OPERATION,
     ReplayRecorder,
     WinEvaluationResult,
@@ -271,6 +272,24 @@ function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendin
 }
 
 describe("StudioReplayExecutionService", () => {
+    it("rejects a WASM project before creating a queued replay job", () => {
+        const wasmPath = "/projects/component.wasm";
+        const repository = new InMemoryStudioReplayRepository();
+        const loadGame = jest.fn();
+        const service = new StudioReplayExecutionService(repository, loadGame);
+        const wasmProject: PokieProject = {
+            type: "wasm",
+            rootPath: wasmPath,
+            capabilities: PROJECT_TYPE_CAPABILITIES.wasm,
+            provenance: "test WASM component",
+        } as PokieProject;
+
+        const result = service.start(wasmPath, {round: 1, seed: "seed"}, wasmProject);
+
+        expect(result).toMatchObject({status: "unsupported", message: expect.stringContaining("This POKIE WASM component cannot replay a game round")});
+        expect(repository.listActive()).toEqual([]);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("returns a queued job immediately, before any round is played (POST never blocks)", () => {

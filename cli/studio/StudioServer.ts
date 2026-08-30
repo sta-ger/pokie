@@ -1765,6 +1765,12 @@ export class StudioServer implements StudioServerHandling {
                 wasmManifest: {
                     component: manifestRead.manifest.component,
                     schemaVersion: manifestRead.manifest.schemaVersion,
+                    serialization: manifestRead.manifest.serialization,
+                    host: {
+                        rng: manifestRead.manifest.host.rng,
+                        services: [...manifestRead.manifest.host.services],
+                    },
+                    capabilities: [...manifestRead.manifest.capabilities],
                 },
             };
         } catch (error) {
@@ -2577,7 +2583,12 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 202, {status: "created", job});
             return;
         }
-        this.sendJson(res, 202, {status: "created", job: this.artifactBuildService.start(this.currentContext.projectRoot, validated.target, validated.outDir)});
+        const result = this.artifactBuildService.start(this.currentContext.projectRoot, validated.target, validated.outDir);
+        if (result.status === "unsupported") {
+            this.sendJson(res, 409, {error: result.message});
+            return;
+        }
+        this.sendJson(res, 202, result);
     }
 
     private handleArtifactBuildJob(method: string, res: ServerResponse, id: string, cancel: boolean): Promise<void> {
@@ -2623,6 +2634,10 @@ export class StudioServer implements StudioServerHandling {
                 error: "A simulation is already running for this project.",
                 activeJobId: result.activeJobId,
             });
+            return;
+        }
+        if (result.status === "unsupported") {
+            this.sendJson(res, 409, {error: result.message});
             return;
         }
         this.sendJson(res, 202, result.job);
@@ -2777,6 +2792,10 @@ export class StudioServer implements StudioServerHandling {
                 error: "A replay is already running for this project.",
                 activeJobId: result.activeJobId,
             });
+            return;
+        }
+        if (result.status === "unsupported") {
+            this.sendJson(res, 409, {error: result.message});
             return;
         }
         this.sendJson(res, 202, result.job);
