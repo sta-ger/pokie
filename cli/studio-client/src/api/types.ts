@@ -8,7 +8,11 @@ export type RecentProjectEntry = {
 
 // GET /api/home/recent-projects's own DTO — see cli/studio/home/StudioHomeRecentProjectView.ts's own
 // doc comment. A missing project is flagged, never silently dropped from the list.
-export type StudioHomeRecentProjectView = RecentProjectEntry & {missing: boolean};
+export type StudioHomeRecentProjectView = RecentProjectEntry & {
+    missing: boolean;
+    availability: "available" | "missing" | "unavailable";
+    unavailableReason?: string;
+};
 
 export type PokieGameManifest = {
     id: string;

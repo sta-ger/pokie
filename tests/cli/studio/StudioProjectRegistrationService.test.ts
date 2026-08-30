@@ -581,7 +581,7 @@ describe("StudioProjectRegistrationService", () => {
 
     describe("migrateRecentProjects", () => {
         function recent(projectRoot: string, missing = false): StudioHomeRecentProjectView {
-            return {projectRoot, name: path.basename(projectRoot), openedAt: new Date().toISOString(), missing};
+            return {projectRoot, name: path.basename(projectRoot), openedAt: new Date().toISOString(), missing, availability: missing ? "missing" : "available"};
         }
 
         it("registers each non-missing recent project through the resolver, skipping missing entries entirely", async () => {

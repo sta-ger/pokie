@@ -117,6 +117,22 @@ describe("buildProjectGameModel", () => {
         expect(projection.basics).toEqual({status: "unavailable", reason: "The sidecar manifest is no longer compatible."});
     });
 
+    it("preserves a stale WASM resolver diagnostic without inspecting it as a package", async () => {
+        const inspectPackage = jest.fn();
+
+        const projection = await buildProjectGameModel(
+            "/games/a.wasm",
+            undefined,
+            false,
+            readers({inspectPackage}),
+            undefined,
+            "The sidecar manifest is not valid JSON; repair it before inspection.",
+        );
+
+        expect(projection.basics).toEqual({status: "unavailable", reason: "The sidecar manifest is not valid JSON; repair it before inspection."});
+        expect(inspectPackage).not.toHaveBeenCalled();
+    });
+
     it("exposes only package.json's own version/description for a tsPackage project, never mapping its \"name\" to basics.id or basics.name (an npm package identifier, not the game's own id or display name)", async () => {
         const inspectPackage = (root: string): GamePackageInspectionReport => {
             expect(root).toBe("/games/a-package");

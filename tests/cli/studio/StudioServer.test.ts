@@ -3786,6 +3786,43 @@ describe("StudioServer", () => {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }
         });
+
+        it("preserves a sidecar mutation's exact resolver diagnostic in Game Model without package inspection", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-stale-wasm-gamemodel-test-"));
+            try {
+                const wasmFile = path.join(workDir, "game.wasm");
+                fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+                fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({
+                    schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                    component: {id: "sample-component", version: "0.1.0"},
+                    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                    host: {rng: "pokie.rng.v1", services: []},
+                    capabilities: [],
+                }));
+                const packageInspect = jest.fn();
+                const homeService = new StudioHomeService("1.0.0");
+                wasmServer = new StudioServer({
+                    pokieVersion: "1.0.0",
+                    host: "127.0.0.1",
+                    port: 0,
+                    studioRoot: wasmStudioRoot,
+                    homeService,
+                    blueprintService: new StudioBlueprintService("1.0.0", wasmStudioRoot, homeService),
+                    initialContext: {mode: "project", projectRoot: wasmFile},
+                    gamePackageInspector: {inspect: packageInspect},
+                });
+                const address = await wasmServer.start();
+                fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, "{");
+
+                const {status, body} = await get(`http://${address.host}:${address.port}/api/project/gameModel`);
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({basics: {status: "unavailable", reason: expect.stringContaining("not valid JSON")}});
+                expect(packageInspect).not.toHaveBeenCalled();
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
     });
 
     describe("GET /api/project/gameModel for resolved 'outcomeLibrary'/'stakeAdapter' projects (real fixtures on disk)", () => {

@@ -147,6 +147,40 @@ describe("loadProjectDashboardContext", () => {
         }
     });
 
+    it("cancels a pending WASM resolution before any runtime or package load can begin", async () => {
+        const controller = new AbortController();
+        const loadGame = jest.fn();
+        const resolveRuntimePackageRoot = jest.fn();
+        let finishArtifactResolution: ((project: PokieProject | undefined) => void) | undefined;
+        let signalArtifactResolutionStarted: (() => void) | undefined;
+        const waitingForArtifactResolution = new Promise<void>((resolve) => {
+            signalArtifactResolutionStarted = resolve;
+        });
+        const resolveArtifactProject = jest.fn(() => new Promise<PokieProject | undefined>((finish) => {
+            finishArtifactResolution = finish;
+            signalArtifactResolutionStarted?.();
+        }));
+        const pending = loadProjectDashboardContext(
+            "/components/pending.wasm",
+            loadGame,
+            resolveRuntimePackageRoot,
+            undefined,
+            () => Promise.resolve(undefined),
+            resolveArtifactProject,
+            {signal: controller.signal, isCurrent: () => !controller.signal.aborted},
+        );
+
+        await waitingForArtifactResolution;
+        controller.abort();
+        finishArtifactResolution?.(undefined);
+
+        // The resolver completion is superseded before the runtime boundary,
+        // so neither a runtime materializer nor package loader is reachable.
+        await expect(pending).rejects.toThrow("Runtime preparation was cancelled");
+        expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
     it("opens a runnable PAR workbook through the shared runtime materialization boundary", async () => {
         const manifest: PokieGameManifest = {id: "par-slot", name: "PAR Slot", version: "1.0.0"};
         const loadGame = jest.fn().mockResolvedValue(createFakeGame(manifest));

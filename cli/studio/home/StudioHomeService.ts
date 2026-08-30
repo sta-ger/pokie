@@ -1,4 +1,4 @@
-import {loadPokieGame} from "pokie";
+import {describeUnavailableWasmComponent, loadPokieGame, ProjectTargetResolver} from "pokie";
 import fs from "fs";
 import path from "path";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
@@ -85,7 +85,7 @@ export class StudioHomeService {
     // it for package.json would immediately turn a just-opened component into a false missing recent.
     public async listRecentProjects(): Promise<StudioHomeRecentProjectView[]> {
         const entries = await this.recentProjectsRepository.list();
-        return entries.map((entry) => ({...entry, missing: !this.projectStillExists(entry.projectRoot)}));
+        return Promise.all(entries.map((entry) => this.describeRecentProject(entry)));
     }
 
     // Reuses loadProjectDashboardContext exactly as the Project Dashboard's own background load and
@@ -135,5 +135,28 @@ export class StudioHomeService {
             return false;
         }
         return path.extname(projectRoot).toLowerCase() === ".wasm" || fs.existsSync(path.join(projectRoot, "package.json"));
+    }
+
+    private async describeRecentProject(entry: {readonly projectRoot: string; readonly name: string; readonly openedAt: string}): Promise<StudioHomeRecentProjectView> {
+        if (!this.projectStillExists(entry.projectRoot)) {
+            return {...entry, missing: true, availability: "missing"};
+        }
+        if (path.extname(entry.projectRoot).toLowerCase() !== ".wasm") {
+            return {...entry, missing: false, availability: "available"};
+        }
+        try {
+            const resolved = await new ProjectTargetResolver().resolve(entry.projectRoot);
+            if (resolved?.type === "wasm") {
+                return {...entry, missing: false, availability: "available"};
+            }
+            return {...entry, missing: false, availability: "unavailable", unavailableReason: describeUnavailableWasmComponent()};
+        } catch (error) {
+            return {
+                ...entry,
+                missing: false,
+                availability: "unavailable",
+                unavailableReason: error instanceof Error ? error.message : String(error),
+            };
+        }
     }
 }

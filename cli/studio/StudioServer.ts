@@ -1683,7 +1683,7 @@ export class StudioServer implements StudioServerHandling {
     // `<projectRoot>/package.json`. A file can never legitimately be a package directory regardless of
     // what the resolver made of its contents, so this is a strict widening of "blueprint", not a new type.
     private isOpenedBlueprintProject(projectRoot: string, resolved: PokieProject | undefined): boolean {
-        return resolved !== undefined ? resolved.type === "blueprint" : this.isFile(projectRoot);
+        return resolved !== undefined ? resolved.type === "blueprint" : !this.isWasmPath(projectRoot) && this.isFile(projectRoot);
     }
 
     private isFile(targetPath: string): boolean {
@@ -1796,7 +1796,18 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         const projectRoot = this.currentContext.projectRoot;
-        const resolved = await this.resolveOpenedProject(projectRoot);
+        // Preserve a stale component's exact resolver failure.  This endpoint
+        // runs after an earlier open may already have accepted the component,
+        // so a sidecar edit must not become a package-inspection fallback.
+        let resolved: PokieProject | undefined;
+        let unresolvedWasmReason: string | undefined;
+        try {
+            resolved = await new ProjectTargetResolver().resolve(projectRoot);
+        } catch (error) {
+            if (this.isWasmPath(projectRoot)) {
+                unresolvedWasmReason = error instanceof Error ? error.message : String(error);
+            }
+        }
         const seedParam = url.searchParams.get("sharedWeightsSampleSeed");
         const seed = seedParam !== null && Number.isFinite(Number(seedParam)) ? Number(seedParam) : undefined;
         const projection = await buildProjectGameModel(
@@ -1809,6 +1820,7 @@ export class StudioServer implements StudioServerHandling {
                 readWasmManifest: readWasmComponentManifest,
             },
             seed,
+            unresolvedWasmReason,
         );
         this.sendJson(res, 200, projection);
     }
