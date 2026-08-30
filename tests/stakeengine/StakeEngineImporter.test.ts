@@ -144,9 +144,10 @@ describe("StakeEngineImporter", () => {
         expect(imported.issues.some((issue) => issue.severity === "error")).toBe(false);
         expect(imported.modes).toEqual([expect.objectContaining({modeName: "base", generator})]);
 
-        await exporter.exportToDirectory(imported.modes, importedOutDir);
+        await exporter.exportToDirectory(imported.modes.map((mode) => ({...mode, sourceProvenance: imported.sourceProvenance})), importedOutDir);
         const reexported = JSON.parse(fs.readFileSync(path.join(importedOutDir, "pokie-manifest.json"), "utf-8")) as StakeEngineManifest;
         expect(reexported.modes).toEqual([expect.objectContaining({name: "base", generator})]);
+        expect(reexported.sourceProvenance).toEqual(imported.sourceProvenance);
     });
 
     it("computes sourceProvenance as the exact SHA-256 of every raw file it read, before any parsing/decompression", async () => {

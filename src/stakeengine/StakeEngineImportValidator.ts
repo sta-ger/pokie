@@ -4,6 +4,7 @@ import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js
 import {resolveSafeStakeEngineFilePath} from "./internal/resolveSafeStakeEngineFilePath.js";
 import type {StakeEngineImportBookLineResult, StakeEngineImportBundle, StakeEngineImportModeFiles} from "./StakeEngineImportBundle.js";
 import type {StakeEngineImportValidating} from "./StakeEngineImportValidating.js";
+import type {StakeEngineImportSourceProvenance} from "./StakeEngineImportSourceProvenance.js";
 import type {StakeEngineIndex, StakeEngineIndexModeEntry} from "./StakeEngineIndex.js";
 import {STAKE_ENGINE_MANIFEST_SCHEMA_VERSION, type StakeEngineManifest, type StakeEngineManifestModeEntry} from "./StakeEngineManifest.js";
 
@@ -36,6 +37,22 @@ function isGenerationDiagnostics(value: unknown): value is OutcomeLibraryGenerat
         isNonEmptyString((game as Record<string, unknown>).id) &&
         isNonEmptyString((game as Record<string, unknown>).name) &&
         isNonEmptyString((game as Record<string, unknown>).version);
+}
+
+function isSourceProvenance(value: unknown): value is StakeEngineImportSourceProvenance {
+    if (typeof value !== "object" || value === null) return false;
+    const provenance = value as {indexHash?: unknown; manifestHash?: unknown; modes?: unknown};
+    return typeof provenance.indexHash === "string" && LIBRARY_HASH_PATTERN.test(provenance.indexHash) &&
+        typeof provenance.manifestHash === "string" && LIBRARY_HASH_PATTERN.test(provenance.manifestHash) &&
+        Array.isArray(provenance.modes) && provenance.modes.every(isSourceProvenanceMode);
+}
+
+function isSourceProvenanceMode(value: unknown): boolean {
+    if (typeof value !== "object" || value === null) return false;
+    const mode = value as {modeName?: unknown; csvHash?: unknown; booksHash?: unknown};
+    return isNonEmptyString(mode.modeName) &&
+        typeof mode.csvHash === "string" && LIBRARY_HASH_PATTERN.test(mode.csvHash) &&
+        typeof mode.booksHash === "string" && LIBRARY_HASH_PATTERN.test(mode.booksHash);
 }
 
 function isSafeNonNegativeInteger(value: unknown): value is number {
@@ -614,6 +631,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             generatedAt?: unknown;
             game?: unknown;
             configHash?: unknown;
+            sourceProvenance?: unknown;
             files?: unknown;
             modes: unknown[];
         };
@@ -643,6 +661,9 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
         }
         if (manifest.configHash !== undefined && typeof manifest.configHash !== "string") {
             fieldInvalid("configHash", "must be a string when present");
+        }
+        if (manifest.sourceProvenance !== undefined && !isSourceProvenance(manifest.sourceProvenance)) {
+            fieldInvalid("sourceProvenance", "must contain SHA-256 hashes for the imported Stake source when present");
         }
         if (
             manifest.files === undefined ||
@@ -799,6 +820,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             generatedAt: manifest.generatedAt as string,
             game: game as {id: string; name: string; version: string},
             ...(manifest.configHash !== undefined ? {configHash: manifest.configHash as string} : {}),
+            ...(manifest.sourceProvenance === undefined ? {} : {sourceProvenance: manifest.sourceProvenance as StakeEngineImportSourceProvenance}),
             modes,
             files: manifest.files as string[],
         };

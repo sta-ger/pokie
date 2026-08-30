@@ -9,7 +9,6 @@ import {
     PokieGameManifest,
     PokieProject,
     ProjectTargetResolver,
-    PROJECT_TYPE_CAPABILITIES,
     REPLAY_OPERATION,
     ReplayRecorder,
     WinEvaluationResult,
@@ -280,12 +279,6 @@ describe("StudioReplayExecutionService", () => {
         const repository = new InMemoryStudioReplayRepository();
         const loadGame = jest.fn();
         const service = new StudioReplayExecutionService(repository, loadGame);
-        const wasmProject: PokieProject = {
-            type: "wasm",
-            rootPath: wasmPath,
-            capabilities: PROJECT_TYPE_CAPABILITIES.wasm,
-            provenance: "test WASM component",
-        } as PokieProject;
         const compatible = {
             schemaVersion: "1.0.0", component: {id: "fixture", version: "1.0.0"},
             serialization: {session: "session", play: "play", state: "state"}, host: {rng: "rng", services: []}, capabilities: [],
@@ -300,7 +293,7 @@ describe("StudioReplayExecutionService", () => {
             for (const [contents, expected] of cases) {
                 if (contents === undefined) fs.rmSync(sidecar, {force: true});
                 else fs.writeFileSync(sidecar, contents);
-                const result = service.start(wasmPath, {round: 1, seed: "seed"}, wasmProject);
+                const result = service.start(wasmPath, {round: 1, seed: "seed"});
                 expect(result).toMatchObject({status: "unsupported", message: expect.stringMatching(expected)});
                 expect(repository.listActive()).toEqual([]);
             }

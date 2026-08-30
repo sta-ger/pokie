@@ -1,3 +1,6 @@
+import type {StakeEngineImportSourceProvenance} from "./StakeEngineImportSourceProvenance.js";
+import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js";
+
 // One Stake mode to export directly from a canonical outcome-library bundle (see
 // StakeEngineBundleStreamingExporter) — "bundleModeName" is the mode's own name *inside* the bundle, which
 // doesn't have to match the Stake "modeName" this run exports it as (mirrors StakeEngineCommand's own
@@ -11,5 +14,6 @@ export type StakeEngineBundleModeInput = {
      * retains the source bundle's generation contract just like the
      * in-memory exporter does. */
     readonly generator?: OutcomeLibraryGeneratorDiagnostics;
+    /** Exact Stake source bytes retained by a public import -> re-export. */
+    readonly sourceProvenance?: StakeEngineImportSourceProvenance;
 };
-import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js";

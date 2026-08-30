@@ -10,7 +10,7 @@
   "runner_inputs": [
     {
       "file": "cli-real-artifact-result.json",
-      "sha256": "sha256:1a9590e7a16ced0d26f854a8d03fd06d61f9af7c7fd4a8aa0ac49df3cb015b0a",
+      "sha256": "sha256:26cdd013acae598621132cc1a6e679de6b5a7f33041ac5953f39205e866382c7",
       "rows": 72,
       "scenarios": 15
     },
@@ -1590,7 +1590,7 @@
         {
           "surface": "library",
           "owner": "StakeEngineCommand",
-          "result": "imported source-provenance manifest/index/mode hashes remained available to the public re-export path"
+          "result": "re-exported Stake manifest retained the imported source-provenance manifest/index/mode hashes"
         }
       ]
     },
@@ -2360,7 +2360,7 @@
         "assertions": [
           "imported library manifest matches the exported Stake manifest identity",
           "re-exported Stake manifest preserves each imported generation descriptor",
-          "imported source provenance retains manifest, index, and mode hashes through the re-export boundary"
+          "re-exported Stake manifest retains the imported source provenance manifest, index, and mode hashes"
         ],
         "observations": [
           {

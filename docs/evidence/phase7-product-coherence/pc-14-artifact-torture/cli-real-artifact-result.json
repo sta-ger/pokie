@@ -1563,7 +1563,7 @@
         {
           "surface": "library",
           "owner": "StakeEngineCommand",
-          "result": "imported source-provenance manifest/index/mode hashes remained available to the public re-export path"
+          "result": "re-exported Stake manifest retained the imported source-provenance manifest/index/mode hashes"
         }
       ]
     },
@@ -1988,7 +1988,7 @@
         "assertions": [
           "imported library manifest matches the exported Stake manifest identity",
           "re-exported Stake manifest preserves each imported generation descriptor",
-          "imported source provenance retains manifest, index, and mode hashes through the re-export boundary"
+          "re-exported Stake manifest retains the imported source provenance manifest, index, and mode hashes"
         ],
         "observations": [
           {

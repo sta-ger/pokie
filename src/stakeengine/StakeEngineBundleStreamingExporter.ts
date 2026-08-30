@@ -194,6 +194,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                 generatedAt: this.now().toISOString(),
                 game: gameManifest,
                 ...(configHash !== undefined ? {configHash} : {}),
+                ...(modes[0].sourceProvenance === undefined ? {} : {sourceProvenance: modes[0].sourceProvenance}),
                 modes: manifestEntries,
                 files: relativeFiles,
             };

@@ -339,13 +339,14 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             indexHash: expect.stringMatching(/^sha256:/),
             modes: expect.arrayContaining([expect.objectContaining({modeName: "base", csvHash: expect.stringMatching(/^sha256:/), booksHash: expect.stringMatching(/^sha256:/)})]),
         });
+        expect(reexportedStakeManifest.sourceProvenance).toEqual(importedSourceProvenance);
         evidence.record({
             id: "stake-import-reexport-stake", artifactKind: "stakeImportReExportConfig", operation: "re-export", sourcePath: importConfigPath,
             producedPath: reexportedStakePath, owner: "StakeEngineCommand", result: "public Stake re-export retained game identity, configuration hash, POKIE version, generation semantics, and imported source provenance",
             observations: [
                 {surface: "cli", owner: "StakeEngineCommand", result: "stakeengine export imported config.json exit 0"},
                 {surface: "library", owner: "StakeEngineCommand", result: "re-exported Stake manifest retained the original generation semantics"},
-                {surface: "library", owner: "StakeEngineCommand", result: "imported source-provenance manifest/index/mode hashes remained available to the public re-export path"},
+                {surface: "library", owner: "StakeEngineCommand", result: "re-exported Stake manifest retained the imported source-provenance manifest/index/mode hashes"},
             ],
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
         });
@@ -354,7 +355,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             result: "Outcome Library to Stake export, public import, and public re-export retain game identity, configuration hash, POKIE version, generation semantics, and source provenance",
             surface: "cli", owner: "StakeEngineCommand",
             systemicClasses: ["provenance-and-freshness-binding"],
-            assertions: ["imported library manifest matches the exported Stake manifest identity", "re-exported Stake manifest preserves each imported generation descriptor", "imported source provenance retains manifest, index, and mode hashes through the re-export boundary"],
+            assertions: ["imported library manifest matches the exported Stake manifest identity", "re-exported Stake manifest preserves each imported generation descriptor", "re-exported Stake manifest retains the imported source provenance manifest, index, and mode hashes"],
             observations: [{route: "pokie build --target stakeAdapter / pokie stakeengine import / pokie stakeengine export", result: "complete public round trip completed with matching identity, generation, and source provenance"}],
         });
         // A pre-existing interrupted import destination is externally owned:

@@ -34,6 +34,7 @@ export class StakeEngineImportWriter<T extends string | number = string> impleme
                     {
                         fileName: "config.json",
                         contents: `${JSON.stringify({
+                            ...(importResult.sourceProvenance === undefined ? {} : {sourceProvenance: importResult.sourceProvenance}),
                             modes: importResult.modes.map((mode) => ({
                                 modeName: mode.modeName,
                                 cost: mode.cost,
