@@ -24,6 +24,28 @@
       ]
     },
     {
+      "id": "studio-outcome-library-registry-index",
+      "artifact_kind": "studioOutcomeLibraryRegistryIndex",
+      "operation": "inspect",
+      "source_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
+      "source_identity": "sha256:9f83dc19cbd49e865f414d34afb41fca2f3977f9a0ca464406e0156a253a2776",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StudioOutcomeLibraryGenerateService.registry",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Studio generated and then discovered the persisted bundle registry index",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioOutcomeLibraryGenerateService.registry",
+          "result": "registry returned the indexed compatible real bundle"
+        }
+      ]
+    },
+    {
       "id": "studio-outcome-library-stake-export",
       "artifact_kind": "outcomeLibrary",
       "operation": "export",

@@ -13,6 +13,7 @@ import {
     ProjectTargetResolver,
 } from "pokie";
 import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";
+import {DiffCommand} from "../../cli/commands/DiffCommand.js";
 import {FairnessCommand} from "../../cli/commands/FairnessCommand.js";
 import {InspectCommand} from "../../cli/commands/InspectCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
@@ -132,8 +133,17 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const descriptorPath = path.join(workDir, "matrix-bundle.json");
         const bundlePath = path.join(workDir, "matrix-bundle");
         const stakePath = path.join(workDir, "matrix-stake");
+        const stakeDescriptorPath = path.join(workDir, "matrix-stake-export.json");
+        const stakeAnalysisPath = path.join(workDir, "matrix-stake-analysis.json");
+        const stakeComparisonPath = path.join(workDir, "matrix-stake-comparison.json");
         const importedStakeLibraryPath = path.join(workDir, "matrix-stake-imported-library");
         const simulationPath = path.join(workDir, "matrix-simulation.json");
+        const comparisonSimulationPath = path.join(workDir, "matrix-comparison-simulation.json");
+        const packageSimulationPath = path.join(workDir, "matrix-package-simulation.json");
+        const packageComparisonSimulationPath = path.join(workDir, "matrix-package-comparison-simulation.json");
+        const simulationDiffPath = path.join(workDir, "matrix-simulation-diff.json");
+        const outcomeDiffPath = path.join(workDir, "matrix-outcome-diff.json");
+        const renderedReportPath = path.join(workDir, "matrix-rendered-report.html");
         const replayPath = path.join(workDir, "matrix-replay.json");
         const packageReplayPath = path.join(workDir, "matrix-package-replay.json");
         const certificationConfigPath = path.join(workDir, "matrix-certification.json");
@@ -231,6 +241,26 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 {surface: "library", owner: "ArtifactBuilderRegistry", result: "executed registry conversion"},
             ],
         });
+        fs.writeFileSync(stakeDescriptorPath, JSON.stringify({modes: [{modeName: "base", cost: 1, bundleDir: path.basename(bundlePath), bundleModeName: "base"}]}));
+        expect(await new StakeEngineCommand(POKIE_VERSION).run(["export", stakeDescriptorPath, "--out", path.join(workDir, "matrix-descriptor-stake")])).toBe(1);
+        expect(await new StakeEngineCommand(POKIE_VERSION).run(["analyze", stakePath, "--format", "json", "--out", stakeAnalysisPath])).toBe(0);
+        expect(await new StakeEngineCommand(POKIE_VERSION).run(["diff", stakePath, stakePath, "--format", "json", "--out", stakeComparisonPath])).toBe(0);
+        evidence.record({
+            id: "stake-export-descriptor", artifactKind: "stakeEngineExportDescriptor", operation: "export", sourcePath: stakeDescriptorPath,
+            owner: "StakeEngineCommand", result: "public descriptor owner rejected the real generated bundle with Stake's canonical integer-ID recovery diagnostic",
+            observations: [{surface: "cli", owner: "StakeEngineCommand", result: "stakeengine export exit 1 retained the concrete canonical-ID diagnostic"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "stake-engine-analysis-report", artifactKind: "stakeEngineAnalysisReport", operation: "analyze", sourcePath: stakeAnalysisPath,
+            owner: "StakeEngineCommand", result: "analysis report published from the generated Stake adapter",
+            observations: [{surface: "cli", owner: "StakeEngineCommand", result: "stakeengine analyze --out exit 0"}],
+        });
+        evidence.record({
+            id: "stake-engine-comparison-report", artifactKind: "stakeEngineComparisonReport", operation: "diff", sourcePath: stakeComparisonPath,
+            owner: "StakeEngineCommand", result: "comparison report published from two real Stake exports",
+            observations: [{surface: "cli", owner: "StakeEngineCommand", result: "stakeengine diff --out exit 0"}],
+        });
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["import", stakePath, "--out", importedStakeLibraryPath])).toBe(0);
         const stakeManifest = JSON.parse(fs.readFileSync(path.join(stakePath, "pokie-manifest.json"), "utf-8"));
         const importedStakeManifest = JSON.parse(fs.readFileSync(path.join(importedStakeLibraryPath, "manifest.json"), "utf-8"));
@@ -274,8 +304,14 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             owner: "OutcomeSourceCommand", result: "sampled", observations: [{surface: "cli", owner: "OutcomeSourceCommand", result: "exit 0"}],
         });
         await new SimCommand().run([bundlePath, "--mode", "base", "--rounds", "4", "--seed", "matrix-sim", "--out", simulationPath]);
+        await new SimCommand().run([bundlePath, "--mode", "base", "--rounds", "5", "--seed", "matrix-sim-comparison", "--out", comparisonSimulationPath]);
+        await new SimCommand().run([packagePath, "--rounds", "4", "--seed", "matrix-package-sim", "--out", packageSimulationPath]);
+        await new SimCommand().run([packagePath, "--rounds", "5", "--seed", "matrix-package-sim-comparison", "--out", packageComparisonSimulationPath]);
         await new ReplayCommand().run([bundlePath, "--mode", "base", "--round", "1", "--seed", "matrix-replay", "--out", replayPath]);
         expect(fs.existsSync(simulationPath)).toBe(true);
+        expect(fs.existsSync(comparisonSimulationPath)).toBe(true);
+        expect(fs.existsSync(packageSimulationPath)).toBe(true);
+        expect(fs.existsSync(packageComparisonSimulationPath)).toBe(true);
         expect(fs.existsSync(replayPath)).toBe(true);
         const provenanceBundleManifest = JSON.parse(fs.readFileSync(path.join(bundlePath, "manifest.json"), "utf-8")) as {
             game: {id: string; version: string}; modes: {libraryId: string; libraryHash: string}[];
@@ -331,6 +367,12 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             owner: "InspectCommand", result: "recognized", observations: [{surface: "cli", owner: "InspectCommand", result: "exit 0"}],
         });
         await new ReportCommand().run([bundlePath, "--format", "markdown", "--out", reportPath]);
+        await new ReportCommand().run([packageSimulationPath, "--format", "html", "--out", renderedReportPath]);
+        await new DiffCommand().run([packageSimulationPath, packageComparisonSimulationPath, "--out", simulationDiffPath]);
+        await new DiffCommand().run([bundlePath, importedStakeLibraryPath, "--format", "json", "--out", outcomeDiffPath]);
+        expect(fs.existsSync(renderedReportPath)).toBe(true);
+        expect(fs.existsSync(simulationDiffPath)).toBe(true);
+        expect(fs.existsSync(outcomeDiffPath)).toBe(true);
         const operationObservationPath = path.join(workDir, "pc-14-operation-observations.json");
         const operationObservations = [
             {id: "blueprint:validate", sourcePath: blueprintPath, producedPath: null, owner: "ValidateCommand", result: "valid"},
@@ -356,6 +398,23 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         evidence.record({
             id: "outcome-library-report", artifactKind: "outcomeLibrary", operation: "report", sourcePath: bundlePath,
             producedPath: reportPath, owner: "ReportCommand", result: "published", observations: [{surface: "cli", owner: "ReportCommand", result: "exit 0"}],
+        });
+        evidence.record({
+            id: "outcome-source-analysis-report", artifactKind: "outcomeSourceAnalysisReport", operation: "report", sourcePath: reportPath,
+            owner: "ReportCommand", result: "analysis report published from the generated Outcome Library",
+            observations: [{surface: "cli", owner: "ReportCommand", result: "report --out exit 0 rendered the Outcome Source Report"}],
+        });
+        evidence.record({
+            id: "simulation-comparison-report", artifactKind: "simulationComparisonReport", operation: "diff", sourcePath: simulationDiffPath,
+            owner: "DiffCommand", result: "published from two real simulation reports", observations: [{surface: "cli", owner: "DiffCommand", result: "diff --out exit 0"}],
+        });
+        evidence.record({
+            id: "outcome-source-comparison-report", artifactKind: "outcomeSourceComparisonReport", operation: "diff", sourcePath: outcomeDiffPath,
+            owner: "DiffCommand", result: "published from real Outcome Library sources", observations: [{surface: "cli", owner: "DiffCommand", result: "outcome-source diff --out exit 0"}],
+        });
+        evidence.record({
+            id: "rendered-simulation-report", artifactKind: "renderedReport", operation: "render", sourcePath: renderedReportPath,
+            owner: "ReportCommand", result: "HTML report published from the real simulation report", observations: [{surface: "cli", owner: "ReportCommand", result: "report --format html --out exit 0"}],
         });
         fs.writeFileSync(certificationConfigPath, JSON.stringify({modes: [{modeName: "base", seed: "matrix-evidence", sampleCount: 4}]}));
         const certification = new CertificationCommand(POKIE_VERSION);
@@ -396,7 +455,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(proof).toMatchObject({libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash, modeName: "base"});
         expect(proof.indexHash).toMatch(/^sha256:/);
         evidence.record({
-            id: "simulation-report-inspect", artifactKind: "simulationReport", operation: "report", sourcePath: simulationPath,
+            id: "simulation-report-inspect", artifactKind: "simulationReport", operation: "report", sourcePath: packageSimulationPath,
             owner: "ReportCommand", result: "the real simulation output was consumed by the report owner",
             observations: [{surface: "cli", owner: "ReportCommand", result: "simulation report was rendered"}],
             systemicClasses: ["provenance-and-freshness-binding"],

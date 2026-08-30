@@ -204,6 +204,15 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         const mode = registry.modes.find((entry) => entry.modeName === "base");
         expect(mode).toMatchObject({buildStatus: "compatible"});
         if (mode === undefined || mode.bundleDir === undefined) throw new Error("Expected a compatible generated Outcome Library mode.");
+        const studioRegistryIndexPath = path.join(packagePath, ".pokie", "outcome-library-registry.json");
+        expect(fs.existsSync(studioRegistryIndexPath)).toBe(true);
+        evidence.record({
+            id: "studio-outcome-library-registry-index", artifactKind: "studioOutcomeLibraryRegistryIndex", operation: "inspect",
+            sourcePath: studioRegistryIndexPath, owner: "StudioOutcomeLibraryGenerateService.registry",
+            result: "Studio generated and then discovered the persisted bundle registry index",
+            observations: [{surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService.registry", result: "registry returned the indexed compatible real bundle"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
 
         // Compatibility is a property of the generated artifact *and* its
         // current runnable owner. Rebuild independent packages and copy the
