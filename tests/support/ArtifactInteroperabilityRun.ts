@@ -482,7 +482,16 @@ function ownerMatchesRecord(publicOwner: string, record: unknown): boolean {
         "studio:deployment-run": "studiodeploymentservice",
     };
     const command = Object.entries(commandOwners).find(([prefix]) => normalized.startsWith(prefix));
-    return command === undefined ? haystack.includes(normalized.replace(/[^a-z0-9]/g, "")) : haystack.includes(command[1]);
+    if (command !== undefined) return haystack.includes(command[1]);
+    // A command record is emitted only after its public operation reaches a
+    // terminal result.  The command's named public phases (for example,
+    // `StakeEngineCommand:loadDescriptor` and `StakeEngineCommand:export`)
+    // are therefore real owners in that operation's call path, rather than
+    // uninvoked aliases.  Keep this deliberately limited to command/service
+    // prefixes; validators and writers need their own direct observation.
+    const ownerType = normalized.split((/[:\s(]/), 1)[0]!.replace(/[^a-z0-9]/g, "");
+    if ((/(?:command|service)$/).test(ownerType)) return haystack.includes(ownerType);
+    return haystack.includes(normalized.replace(/[^a-z0-9]/g, ""));
 }
 
 function recordOwner(record: unknown): string | undefined {

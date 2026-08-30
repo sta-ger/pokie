@@ -120,14 +120,21 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.clear(rounds);
         await user.type(rounds, "2");
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
-        await screen.findByRole("button", {name: "View results"}, {}, {timeout: 30000});
-        await user.click(screen.getByRole("button", {name: "View results"}));
+        // Mantine exposes the step number and description as part of the
+        // accessible name ("3 Review See results"), so match the user-facing
+        // action instead of assuming the button contains only its label.
+        await screen.findByRole("button", {name: /View results/}, {}, {timeout: 30000});
+        await user.click(screen.getByRole("button", {name: /View results/}));
         expect(screen.getAllByRole("cell", {name: /%/}).length).toBeGreaterThan(0);
         await user.click(screen.getByRole("button", {name: /Export Download report/}));
         await screen.findByRole("link", {name: /Download JSON/i});
 
         await user.click(screen.getByRole("button", {name: "Replay"}));
         await waitFor(() => expect(screen.getByRole("button", {name: "Replay"})).toHaveAttribute("aria-current", "page"));
+        await user.click(screen.getByText("Session Spin"));
+        await screen.findByRole("button", {name: /Round 1/});
+        await user.click(screen.getByRole("button", {name: /Round 1/}));
+        await screen.findByText("Round inspector");
 
         evidence.recordScenario({
             id: "studio-ui-blueprint-runtime-workflows",
@@ -149,7 +156,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
                 {route: "UI /project/:projectRoot/exportDeploy (Build/Export)", result: "selected the rendered build/export workflow for the real produced package"},
                 {route: "UI /project/:projectRoot/play (Play)", result: "created a session, rendered an unsupported free-games diagnostic, then recovered by spinning a completed round artifact"},
                 {route: "UI /project/:projectRoot/simulation (Simulation)", result: "ran two rounds, rendered the completed report, and exposed its JSON download"},
-                {route: "UI /project/:projectRoot/replay (Replay)", result: "selected the rendered replay workflow after the completed runtime artifacts existed"},
+                {route: "UI /project/:projectRoot/replay (Replay)", result: "selected the persisted Play round and rendered its replay artifact inspector"},
             ],
         });
 
