@@ -100,6 +100,7 @@ function sameConfigurationProvenance(
     right: ArtifactConfigurationProvenance | undefined,
 ): boolean {
     return left?.configurationHash === right?.configurationHash &&
+        left?.inputBindingHash === right?.inputBindingHash &&
         left?.pokieVersion === right?.pokieVersion &&
         left?.generationSemantics === right?.generationSemantics &&
         left?.gameId === right?.gameId &&
@@ -916,6 +917,15 @@ export class ArtifactBuilderRegistry {
             if (preparedHash === undefined || preparedHash !== currentHash) {
                 throw new Error("The PAR workbook changed after this conversion was prepared; prepare a new plan before executing it.");
             }
+        }
+        // Resolver-owned projects retain compatibility metadata such as a
+        // library config hash, but that metadata alone cannot notice a
+        // changed manifest or index which still advertises the same game.
+        // Rebind every resolved artifact tree that supplied an input hash
+        // before any writer is allowed to publish.
+        const preparedInputBindingHash = plan.source.configurationProvenance?.inputBindingHash;
+        if (preparedInputBindingHash !== undefined && computeArtifactInputBindingHash([source.rootPath]) !== preparedInputBindingHash) {
+            throw new Error("The source artifact bytes changed after this conversion was prepared; prepare a new plan before executing it.");
         }
         // Resolved Blueprint/package provenance is computed from the runnable
         // source, rather than copied from the project wrapper. Re-prepare it

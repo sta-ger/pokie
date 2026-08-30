@@ -188,7 +188,10 @@ describe("ProjectTargetResolver", () => {
             capabilities: ["parWorkbook.exchange"],
             provenance: expect.stringContaining("Manifest"),
         });
-        expect(project?.configurationProvenance).toEqual({configurationHash: expect.stringMatching(/^sha256:/)});
+        expect(project?.configurationProvenance).toMatchObject({
+            configurationHash: expect.stringMatching(/^sha256:/),
+            inputBindingHash: expect.stringMatching(/^sha256:/),
+        });
     });
 
     it("returns undefined for a .json file that isn't blueprint-shaped", async () => {

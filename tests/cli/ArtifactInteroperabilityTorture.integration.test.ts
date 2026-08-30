@@ -378,7 +378,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const staleDestination = path.join(workDir, "stale-package");
         const stalePlan = await registry.preparePlan(source, "tsPackage", {destinationPath: staleDestination});
         fs.writeFileSync(blueprintPath, JSON.stringify({...blueprint, manifest: {...blueprint.manifest, version: "2.0.0"}}));
-        await expect(registry.executePlan(stalePlan, source, staleDestination)).rejects.toThrow(/source configuration.*changed|recognized source changed/i);
+        await expect(registry.executePlan(stalePlan, source, staleDestination)).rejects.toThrow(/source (artifact bytes|configuration).*changed|recognized source changed/i);
         expect(fs.existsSync(staleDestination)).toBe(false);
         evidence.recordScenario({
             id: "configuration-drift", sourcePath: blueprintPath,
@@ -402,6 +402,53 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             surface: "library", owner: "ArtifactBuilderRegistry",
             assertions: ["borrowed destination contents remain unchanged"],
             observations: [{route: "ArtifactBuilderRegistry.executePlan", result: "destination drift rejected without deleting caller output"}],
+        });
+
+        // Each freshness binding is exercised from a separately copied real
+        // bundle.  The copies are corruption inputs only: the source bundle
+        // above was generated and validated through public commands before it
+        // is copied, then its manifest or index is changed after preflight.
+        // This keeps the emitted result attached to the actual registry
+        // boundary instead of describing a mutation which only a unit fixture
+        // happened to make.
+        for (const [id, entryName] of [["manifest-drift", "manifest.json"], ["index-drift", "index.json"]] as const) {
+            const driftBundlePath = path.join(workDir, `matrix-${id}-bundle`);
+            fs.cpSync(bundlePath, driftBundlePath, {recursive: true});
+            const driftSource = await resolver.resolve(driftBundlePath);
+            if (driftSource === undefined) throw new Error(`Expected the real ${id} bundle copy to resolve.`);
+            const driftDestination = path.join(workDir, `matrix-${id}-stake`);
+            const driftPlan = await registry.preparePlan(driftSource, "stakeAdapter", {destinationPath: driftDestination});
+            fs.appendFileSync(path.join(driftBundlePath, entryName), "\n");
+            await expect(registry.executePlan(driftPlan, driftSource, driftDestination)).rejects.toThrow(/source.*changed|manifest|index|stale/i);
+            expect(fs.existsSync(driftDestination)).toBe(false);
+            evidence.recordScenario({
+                id, sourcePath: driftBundlePath,
+                result: `prepared Stake export rejects ${entryName} mutation before publication`,
+                surface: "library", owner: "ArtifactBuilderRegistry.executePlan",
+                assertions: [`mutated ${entryName} rejects execution`, "no Stake destination is published"],
+                observations: [{route: "ArtifactBuilderRegistry.executePlan", result: `${entryName} freshness drift rejected before publication`}],
+            });
+        }
+
+        // PAR byte provenance has an independent binding from descriptor and
+        // Outcome Library metadata.  Mutate the real exported workbook after
+        // its direct conversion preflight and retain the public registry
+        // rejection alongside the artifact that was actually imported above.
+        const parDriftPath = path.join(workDir, "matrix-par-source-drift.xlsx");
+        fs.copyFileSync(workbookPath, parDriftPath);
+        const parDriftSource = await resolver.resolve(parDriftPath);
+        if (parDriftSource === undefined) throw new Error("Expected the exported PAR workbook copy to resolve.");
+        const parDriftDestination = path.join(workDir, "matrix-par-source-drift-package");
+        const parDriftPlan = await registry.preparePlan(parDriftSource, "tsPackage", {destinationPath: parDriftDestination});
+        fs.appendFileSync(parDriftPath, "PC-14 source drift");
+        await expect(registry.executePlan(parDriftPlan, parDriftSource, parDriftDestination)).rejects.toThrow(/PAR workbook changed after this conversion was prepared/i);
+        expect(fs.existsSync(parDriftDestination)).toBe(false);
+        evidence.recordScenario({
+            id: "par-source-drift", sourcePath: parDriftPath,
+            result: "prepared PAR conversion rejects mutated workbook bytes before package publication",
+            surface: "library", owner: "ArtifactBuilderRegistry.executePlan",
+            assertions: ["PAR byte binding rejects execution", "no package destination is published"],
+            observations: [{route: "ArtifactBuilderRegistry.executePlan", result: "PAR source-byte drift rejected before publication"}],
         });
 
         const wasmPath = path.join(workDir, "matrix.wasm");

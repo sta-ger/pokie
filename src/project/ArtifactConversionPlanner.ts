@@ -42,6 +42,12 @@ export type ArtifactFilePublicationIdentity = Omit<ArtifactIdentity, "kind"> & {
 /** Configuration facts that make generated artifacts safe to reuse. */
 export type ArtifactConfigurationProvenance = {
     readonly configurationHash?: string;
+    /**
+     * Exact bytes consumed by a prepared operation.  Unlike configurationHash
+     * (which is portable compatibility metadata), this binds a particular
+     * descriptor, manifest, index, or runtime package tree until execution.
+     */
+    readonly inputBindingHash?: string;
     readonly pokieVersion?: string;
     readonly generationSemantics?: "exact" | "boundedSample";
     readonly gameId?: string;
