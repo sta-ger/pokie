@@ -1,6 +1,7 @@
 import fs from "fs";
 import crypto from "crypto";
 import path from "path";
+import {inflateRawSync} from "zlib";
 
 /**
  * Makes the real artifact writers deterministic during the dedicated PC-14
@@ -278,7 +279,7 @@ export class ArtifactInteroperabilityRun {
             // in otherwise portable metadata; normalise only that path before
             // hashing so the evidence can be regenerated in a clean process
             // without reducing every same-shaped artifact to one identity.
-            digest.update(this.normaliseRunnerRoot(fs.readFileSync(entryPath)));
+            digest.update(this.normaliseArtifactIdentity(entryPath, fs.readFileSync(entryPath)));
             digest.update("\n");
         };
         visit(artifactPath, ".");
@@ -300,6 +301,67 @@ export class ArtifactInteroperabilityRun {
         if (chunks.length === 0) return value;
         chunks.push(value.subarray(cursor));
         return Buffer.concat(chunks);
+    }
+
+    /**
+     * Evidence identities bind an artifact's semantic bytes, not volatile
+     * transport metadata.  PAR workbooks are ZIP containers whose per-entry
+     * DOS/extended timestamps are assigned by the ZIP writer outside the
+     * injected JavaScript clock.  Package replay descriptors likewise create
+     * a runtime-only session id.  Neither value changes the artifact contract
+     * exercised by the runner, so normalise only those documented fields.
+     */
+    private normaliseArtifactIdentity(entryPath: string, value: Buffer): Buffer {
+        const rooted = this.normaliseRunnerRoot(value);
+        if (entryPath.endsWith(".xlsx")) return this.normaliseZipArtifact(rooted);
+        if (!entryPath.endsWith(".json")) return rooted;
+        return Buffer.from(rooted.toString("utf-8").replace(/("sessionId"\s*:\s*)"[^"]*"/g, "$1\"<pc14-runtime-session>\""));
+    }
+
+    private normaliseZipArtifact(value: Buffer): Buffer {
+        const entries: {readonly name: string; readonly content: Buffer}[] = [];
+        for (let offset = 0; offset + 46 <= value.length; offset++) {
+            if (value.readUInt32LE(offset) !== 0x02014b50) continue;
+            const compression = value.readUInt16LE(offset + 10);
+            const compressedSize = value.readUInt32LE(offset + 20);
+            const nameLength = value.readUInt16LE(offset + 28);
+            const extraLength = value.readUInt16LE(offset + 30);
+            const commentLength = value.readUInt16LE(offset + 32);
+            const localOffset = value.readUInt32LE(offset + 42);
+            const nextOffset = offset + 46 + nameLength + extraLength + commentLength;
+            if (nextOffset > value.length || localOffset + 30 > value.length || value.readUInt32LE(localOffset) !== 0x04034b50) return value;
+            const name = value.subarray(offset + 46, offset + 46 + nameLength).toString("utf-8");
+            const localNameLength = value.readUInt16LE(localOffset + 26);
+            const localExtraLength = value.readUInt16LE(localOffset + 28);
+            const compressedStart = localOffset + 30 + localNameLength + localExtraLength;
+            const compressedEnd = compressedStart + compressedSize;
+            if (compressedEnd > value.length) return value;
+            const compressed = value.subarray(compressedStart, compressedEnd);
+            let content: Buffer;
+            if (compression === 0) {
+                content = Buffer.from(compressed);
+            } else if (compression === 8) {
+                content = inflateRawSync(compressed);
+            } else {
+                content = compressed;
+            }
+            entries.push({name, content: this.normaliseZipEntry(name, content)});
+            offset = nextOffset - 1;
+        }
+        return entries.length === 0 ? value : Buffer.concat(entries
+            .sort((left, right) => left.name.localeCompare(right.name))
+            .flatMap((entry) => [Buffer.from(`entry:${entry.name}\n`), entry.content, Buffer.from("\n")]));
+    }
+
+    private normaliseZipEntry(name: string, value: Buffer): Buffer {
+        // The runner root is compressed inside workbook parts, so normalising
+        // only the ZIP container cannot redact source paths recorded in the
+        // provenance sheet.
+        const rooted = this.normaliseRunnerRoot(value);
+        // Document properties are transport metadata, not a PAR artifact's
+        // observable workbook contract.
+        if (name === "docProps/core.xml") return Buffer.alloc(0);
+        return rooted;
     }
 
     private redactEmbeddedRunnerRoot(value: string): string {

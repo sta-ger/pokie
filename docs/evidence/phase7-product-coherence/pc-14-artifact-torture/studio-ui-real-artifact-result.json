@@ -7,7 +7,7 @@
       "source_path": "run-artifacts/studio-ui-edited.blueprint.json",
       "source_identity": "sha256:5e740edc945ae153dab7732c6ba5b3fcdeceef12d88b53c2e9ea769aee5c40b3",
       "produced_path": "run-artifacts/studio-ui-edited.par.xlsx",
-      "produced_identity": "sha256:a2d0117779e6d7a79ecbc729e2228b78df29f3ae579a6882ba2b6b80f41a87a1",
+      "produced_identity": "sha256:dfd1c46119695b2735098084b878d69bd64c7cc2876d2872f78fedf8e4249aac",
       "observable_result": "the rendered Design Game editor saved an edited Blueprint, preserved an occupied caller-owned PAR destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
       "execution": {
         "surface": "studio-ui",
