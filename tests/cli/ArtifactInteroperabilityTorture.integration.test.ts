@@ -201,6 +201,12 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             producedPath: bundlePath, owner: "OutcomeLibraryCommand", result: "published",
             observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "exit 0"}],
         });
+        evidence.record({
+            id: "outcome-library-bundle-descriptor-build", artifactKind: "outcomeLibraryBundleDescriptor", operation: "build", sourcePath: descriptorPath,
+            producedPath: bundlePath, owner: "OutcomeLibraryCommand", result: "descriptor consumed by the published bundle",
+            observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "build exit 0 consumed the descriptor"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
         // These are durable companion files emitted by the public bundle
         // writer.  Record their actual paths separately: validating the
         // parent bundle is not evidence that the companions are merely
@@ -355,6 +361,12 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const certification = new CertificationCommand(POKIE_VERSION);
         expect(await certification.run(["build", bundlePath, certificationConfigPath, "--out", certificationPath])).toBe(0);
         evidence.record({
+            id: "certification-build-descriptor-build", artifactKind: "certificationBuildDescriptor", operation: "build", sourcePath: certificationConfigPath,
+            producedPath: certificationPath, owner: "CertificationCommand", result: "descriptor consumed by the published certification bundle",
+            observations: [{surface: "cli", owner: "CertificationCommand", result: "build exit 0 consumed the descriptor"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
             id: "outcome-library-certification", artifactKind: "outcomeLibrary", operation: "certification", sourcePath: bundlePath,
             producedPath: certificationPath, owner: "CertificationCommand", result: "published",
             observations: [{surface: "cli", owner: "CertificationCommand", result: "exit 0"}],
@@ -393,6 +405,12 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "replay-descriptor-round-artifact", artifactKind: "runtimeReplayDescriptor", operation: "inspect", sourcePath: replayPath,
             owner: "ReplayCommand", result: "portable replay descriptor retained exact outcome-source provenance",
             observations: [{surface: "cli", owner: "ReplayCommand", result: "replay --out wrote the inspected descriptor"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "round-artifact-replay-provenance", artifactKind: "roundArtifact", operation: "validate", sourcePath: replayPath,
+            owner: "ReplayCommand / RoundArtifactValidator", result: "recorded round artifact retained in the public replay descriptor",
+            observations: [{surface: "cli", owner: "ReplayCommand", result: "replay --out published the descriptor containing the round artifact"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
@@ -478,6 +496,14 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(cancellationObserved).toBe(true);
         expect(fs.existsSync(cancellationOutputPath)).toBe(false);
         expect(fs.existsSync(cancellationCheckpointPath)).toBe(true);
+        const checkpointEvidencePath = path.join(workDir, "matrix-cancellation-checkpoint-observed.json");
+        fs.copyFileSync(cancellationCheckpointPath, checkpointEvidencePath);
+        evidence.record({
+            id: "outcome-library-generation-checkpoint-resume", artifactKind: "outcomeLibraryGenerationCheckpoint", operation: "resume", sourcePath: checkpointEvidencePath,
+            owner: "OutcomeLibraryCommand", result: "persisted cancellation checkpoint accepted for public resume",
+            observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "generate --resume exit 130 created this checkpoint"}],
+            systemicClasses: ["durable-publication-ownership"],
+        });
         (console.error as jest.Mock).mockImplementation(() => undefined);
         expect(await new OutcomeLibraryCommand(POKIE_VERSION).run([
             "generate", cancellationPackagePath, "--out", cancellationOutputPath,
