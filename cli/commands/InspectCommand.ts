@@ -7,6 +7,7 @@ import {
     ProjectTargetMalformedError,
     ProjectTargetResolver,
     ProjectTargetUnsupportedError,
+    WASM_PRODUCT_CONTRACT,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -114,7 +115,7 @@ export class InspectCommand implements CliCommandHandling {
             return `POKIE could not inspect "${projectPath}" because its project metadata is malformed. Fix the project metadata, then run "pokie inspect ${projectPath}" again.`;
         }
         if (error instanceof ProjectTargetUnsupportedError) {
-            return `POKIE could not inspect "${projectPath}" as a compatible WASM component. Add compatible POKIE component metadata, then inspect it again. POKIE can inspect WASM metadata only; it cannot build, run, simulate, or validate WASM game logic.`;
+            return `POKIE could not inspect "${projectPath}". ${error.message} Repair or add the compatible POKIE sidecar, then inspect it again. ${WASM_PRODUCT_CONTRACT.inspectionBoundary}`;
         }
         if (error instanceof ProjectTargetAmbiguousError) {
             return `POKIE could not identify one project kind for "${projectPath}". Keep one POKIE project format at this location, then inspect it again.`;

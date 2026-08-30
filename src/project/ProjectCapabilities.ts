@@ -8,10 +8,10 @@ import {
     RUNTIME_EXECUTE_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     STAKE_ADAPTER_EXPORT_CAPABILITY,
-    WASM_MANIFEST_READ_CAPABILITY,
     type ProjectCapability,
 } from "./ProjectCapability.js";
 import type {ProjectType} from "./ProjectType.js";
+import {WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
 
 // The fixed set of ProjectCapability ids a resolved PokieProject carries — resolved once, by
 // PROJECT_TYPE_CAPABILITIES below, and stamped onto the PokieProject instance itself (see PokieProject.ts) so
@@ -51,6 +51,6 @@ export const PROJECT_TYPE_CAPABILITIES: Readonly<Record<ProjectType, ProjectCapa
     // Project -> Artifact boundary for that conversion.
     outcomeLibrary: [OUTCOME_LIBRARY_READ_CAPABILITY, OUTCOME_LIBRARY_GENERATE_CAPABILITY, OUTCOME_SOURCE_READ_CAPABILITY, OUTCOME_SOURCE_SAMPLE_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY],
     stakeAdapter: [STAKE_ADAPTER_EXCHANGE_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY, OUTCOME_SOURCE_READ_CAPABILITY],
-    wasm: [WASM_MANIFEST_READ_CAPABILITY],
+    wasm: WASM_PRODUCT_CONTRACT.capabilities,
     parWorkbook: [PAR_WORKBOOK_EXCHANGE_CAPABILITY],
 };

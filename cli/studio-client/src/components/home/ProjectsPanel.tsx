@@ -16,6 +16,7 @@ import {errorMessage} from "../../domain/errorMessage";
 import {formatTimestamp} from "../../domain/formatTimestamp";
 import {describePathActionError} from "../../domain/pathActionError";
 import {describeProjectActionError} from "../../domain/projectActionError";
+import {PROJECT_TYPE_LABEL} from "../../domain/interpret/ProjectDashboard";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
@@ -56,9 +57,10 @@ const PROJECT_IMPORT_DETECTION_TIMEOUT_MS = 15_000;
 // The ProjectTypes Home's Open action (StudioHomeService.openProject/loadProjectDashboardContext) can
 // load runnable packages and Blueprints, as well as canonical outcome-source projects and exchangeable
 // PAR workbooks. A Blueprint is materialized into a runtime package; an outcome library, Stake Engine
-// export, or PAR workbook loads its own capability-gated dashboard, including Build/Export. WASM has no
-// Studio workspace. PAR workbooks additionally retain their dedicated Design Game action below.
-const OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType>([
+// export, or PAR workbook loads its own capability-gated dashboard, including Build/Export. WASM opens
+// its read-only inspection dashboard and never reaches runtime or Build/Export. PAR workbooks additionally
+// retain their dedicated Design Game action below.
+const RUNTIME_OR_ARTIFACT_OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType>([
     "tsPackage",
     "blueprint",
     "outcomeLibrary",
@@ -66,19 +68,27 @@ const OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType
     "parWorkbook",
 ]);
 
-const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
-    blueprint: "Game design",
-    tsPackage: "Playable game",
-    outcomeLibrary: "Game data library",
-    stakeAdapter: "Game export",
-    wasm: "Game module",
-    parWorkbook: "PAR spreadsheet",
-};
+// The server refreshes this capability from the canonical WASM product contract
+// before returning a registry row. The client therefore never treats a stale
+// persisted `type: "wasm"` alone as permission to open an inspection workspace.
+const WASM_MANIFEST_READ_CAPABILITY = "wasm.manifest.read";
+
+function isOpenable(entry: StudioProjectRegistryView): boolean {
+    return entry.type === "wasm"
+        ? entry.capabilities.includes(WASM_MANIFEST_READ_CAPABILITY)
+        : RUNTIME_OR_ARTIFACT_OPENABLE_TYPES.has(entry.type);
+}
+
+function describeAvailability(status: StudioProjectRegistryView["status"]): string {
+    if (status === "ok") return "Available";
+    if (status === "missing") return "Needs attention";
+    return "Unavailable: re-check its POKIE contract";
+}
 
 const PROJECTS_PER_PAGE = 10;
 
 type ProjectTypeFilter = "all" | StudioProjectType;
-type ProjectStatusFilter = "all" | "ok" | "missing";
+type ProjectStatusFilter = "all" | "ok" | "missing" | "unavailable";
 
 function previewProjectImportWithTimeout(fetchImpl: FetchLike, location: string): Promise<StudioProjectImportPreviewResult> {
     return new Promise((resolve, reject) => {
@@ -326,7 +336,7 @@ export function ProjectsPanel({
         if (entry.status === "missing") {
             return <Text c="dimmed">{entry.name} (missing)</Text>;
         }
-        if (OPENABLE_TYPES.has(entry.type)) {
+        if (entry.status === "ok" && isOpenable(entry)) {
             return (
                 <Anchor component="button" type="button" onClick={() => handleOpen(entry)}>
                     {entry.name}
@@ -401,7 +411,7 @@ export function ProjectsPanel({
                 {renderEntryName(entry)}
                 <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>{entry.location}</Text>
                 <Text className="project-registry-status" size="sm" c={entry.status === "ok" ? "teal" : "orange"}>
-                    {entry.status === "ok" ? "Available" : "Needs attention"}
+                    {describeAvailability(entry.status)}
                 </Text>
             </Table.Td>
             <Table.Td data-label="Type">{PROJECT_TYPE_LABEL[entry.type]}</Table.Td>
@@ -415,8 +425,8 @@ export function ProjectsPanel({
             <Table.Td data-label="Last opened">{formatTimestamp(entry.lastOpenedAt)}</Table.Td>
             <Table.Td className="project-registry-actions" data-label="Actions">
                 <QuickActions>
-                    {entry.status === "ok" && OPENABLE_TYPES.has(entry.type) && (
-                        <Button variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>Open</Button>
+                    {entry.status === "ok" && isOpenable(entry) && (
+                        <Button variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>{entry.type === "wasm" ? "Inspect" : "Open"}</Button>
                     )}
                     {entry.status === "ok" && entry.type === "parWorkbook" && (
                         <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Open in Start a game</Button>
@@ -470,7 +480,7 @@ export function ProjectsPanel({
                             />
                             <Select
                                 label="Availability"
-                                data={[{value: "all", label: "All projects"}, {value: "ok", label: "Available"}, {value: "missing", label: "Missing"}]}
+                                data={[{value: "all", label: "All projects"}, {value: "ok", label: "Available"}, {value: "missing", label: "Missing"}, {value: "unavailable", label: "Unavailable"}]}
                                 value={statusFilter}
                                 onChange={(value) => setFilters(search, typeFilter, (value ?? "all") as ProjectStatusFilter)}
                             />

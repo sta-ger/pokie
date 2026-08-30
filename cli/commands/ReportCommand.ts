@@ -14,6 +14,7 @@ import {
     ProjectTargetResolver,
     SimulationReport,
     SimulationReportRendering,
+    describeWasmUnsupportedOperation,
     SimulationReportSet,
 } from "pokie";
 import fs from "fs";
@@ -302,7 +303,7 @@ export class ReportCommand implements CliCommandHandling {
             case "parWorkbook":
                 return 'To create a simulation report, first import the workbook into a Game Blueprint and build a POKIE game package, then run "pokie sim <packagePath> --out <file>".';
             case "wasm":
-                return "POKIE cannot create a simulation report from a POKIE WASM component yet; use a POKIE game package instead.";
+                return describeWasmUnsupportedOperation("create a simulation report");
             case "outcomeLibrary":
             case "stakeAdapter":
                 return "This outcome source should be analyzed directly by the report command.";

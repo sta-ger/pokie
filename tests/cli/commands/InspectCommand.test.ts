@@ -33,6 +33,7 @@ const SAMPLE_BLUEPRINT = {
     symbols: ["A", "B", "C"],
     paytable: {A: {3: 5}},
 };
+const WASM_BINARY = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
 
 describe("InspectCommand", () => {
     let logSpy: jest.SpyInstance;
@@ -226,7 +227,7 @@ describe("InspectCommand (integration, real GamePackageInspector)", () => {
         workbook.addWorksheet("Symbols");
         workbook.addWorksheet("Paytable");
         await workbook.xlsx.writeFile(workbookPath);
-        fs.writeFileSync(wasmPath, "not real WASM bytes");
+        fs.writeFileSync(wasmPath, WASM_BINARY);
         fs.writeFileSync(
             `${wasmPath}.pokie-wasm.json`,
             JSON.stringify({

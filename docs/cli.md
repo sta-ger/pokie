@@ -377,7 +377,8 @@ it, writing the result to `--out <path>` (default: a `<target>`-named sibling of
 `tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults to `./blueprints/tsPackage`).
 
 The build command supports targets: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, and `parWorkbook`.
-It supports source types: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and `wasm`.
+It can resolve a compatible `wasm` component only to reject conversion before publication: WASM is an
+inspection-only input, not a source workflow or a build target.
 
 ## `pokie generate <packageRoot>`
 

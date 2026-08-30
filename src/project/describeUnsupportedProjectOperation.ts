@@ -4,6 +4,7 @@ import type {PokieProject} from "./PokieProject.js";
 import {describeProjectType} from "./ProjectPresentation.js";
 import type {ProjectType} from "./ProjectType.js";
 import type {UnsupportedProjectOperationDiagnostic} from "./UnsupportedProjectOperationDiagnostic.js";
+import {describeWasmUnsupportedOperation} from "./WasmProductContract.js";
 
 const ALL_PROJECT_TYPES = Object.keys(PROJECT_TYPE_CAPABILITIES) as ProjectType[];
 
@@ -60,6 +61,15 @@ export function describeUnsupportedProjectOperation(
     );
 
     const action = OPERATION_NAMES[operation] ?? "perform this action";
+    if (project.type === "wasm") {
+        return {
+            detectedType: project.type,
+            operation,
+            missingCapability: requiredCapability,
+            alternatives,
+            message: describeWasmUnsupportedOperation(action),
+        };
+    }
     const alternativesText =
         alternatives.length > 0
             ? ` You can ${action} with ${alternatives.map(describeProjectType).join(" or ")}.`

@@ -19,6 +19,7 @@ import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibra
 import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
 import {computeArtifactInputBindingHash, type ArtifactConfigurationProvenance} from "./ArtifactConversionPlanner.js";
 import {recognizeParWorkbookFile} from "./internal/looksLikeParWorkbookFile.js";
+import {WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
 
 // The one file extension resolve() explicitly rejects rather than silently reporting undefined for — see its
 // ProjectTargetUnsupportedError usage below.
@@ -127,7 +128,7 @@ export class ProjectTargetResolver implements ProjectResolving {
                 throw new ProjectTargetUnsupportedError(
                     `"${resolvedPath}" is a WASM target, but no compatible PokieWasmComponentManifest sidecar was found at ` +
                         `"${wasmComponentManifestSidecarPath(resolvedPath)}" (see docs/wasm-compatibility-boundary.md) — this ` +
-                        `is not a supported POKIE project, and does not mean WASM execution is supported.`,
+                        `component is unavailable for POKIE inspection. Add a compatible sidecar to inspect its declared metadata; ${WASM_PRODUCT_CONTRACT.inspectionBoundary}`,
                 );
             }
             return undefined;

@@ -35,8 +35,9 @@ const defaultResolveOutcomeSourceProject: OutcomeSourceProjectResolving = async 
     return {project, report};
 };
 
-// Resolves artifacts which deliberately have no runtime path. PAR is omitted:
-// runnable-compatible workbooks go through the shared runtime planner below.
+// Resolves artifacts which deliberately have no runtime path. WASM inspection
+// is routed here before runtime preparation, so opening it can never load the
+// binary or allocate a materialized package.
 export type ArtifactProjectResolving = (projectRoot: string) => Promise<PokieProject | undefined>;
 
 // `isCurrent` belongs to Studio's request-generation owner.  An AbortSignal stops the
@@ -45,7 +46,10 @@ export type ArtifactProjectResolving = (projectRoot: string) => Promise<PokiePro
 // the same time as a project switch).
 export type ProjectDashboardLoadOptions = {readonly signal?: AbortSignal; readonly isCurrent?: () => boolean};
 
-const defaultResolveArtifactProject: ArtifactProjectResolving = () => Promise.resolve(undefined);
+const defaultResolveArtifactProject: ArtifactProjectResolving = async (projectRoot) => {
+    const project = await new ProjectTargetResolver().resolve(projectRoot).catch(() => undefined);
+    return project?.type === "wasm" ? project : undefined;
+};
 
 // Adapts loadPokieGame's throw-on-failure contract into ProjectDashboardContext's safe, typed
 // "loaded"/"error" result — the one place a failure to load `projectRoot` (missing build output, a

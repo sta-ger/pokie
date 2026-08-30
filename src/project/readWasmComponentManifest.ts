@@ -6,6 +6,7 @@ import {describeUnsupportedProjectOperation} from "./describeUnsupportedProjectO
 import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
 import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
 import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
+import {WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
 
 export type WasmComponentManifestReadResult =
     | {readonly supported: true; readonly manifest: PokieWasmComponentManifest}
@@ -35,8 +36,9 @@ export async function readWasmComponentManifest(project: PokieProject): Promise<
     const compatibility = assessWasmComponentCompatibility(manifest);
     if (!compatibility.compatible) {
         throw new Error(
-            `"${sidecarPath}" no longer satisfies PokieWasmComponentManifest's own compatibility check (it may have changed on disk ` +
-                `since this project was resolved): ${compatibility.issues.map((issue) => issue.message).join(" ")}`,
+            `"${sidecarPath}" no longer satisfies POKIE's WASM inspection contract (it may have changed on disk ` +
+                `since this project was resolved): ${compatibility.issues.map((issue) => issue.message).join(" ")} ` +
+                `Repair the sidecar, then inspect it again. ${WASM_PRODUCT_CONTRACT.inspectionBoundary}`,
         );
     }
 

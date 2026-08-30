@@ -160,7 +160,7 @@ export const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
     tsPackage: "Playable game",
     outcomeLibrary: "Game data library",
     stakeAdapter: "Game export",
-    wasm: "Game module",
+    wasm: "WASM component (inspection-only)",
     parWorkbook: "PAR spreadsheet",
 };
 
@@ -170,7 +170,7 @@ const CAPABILITY_LABEL: Record<string, string> = {
     "outcomeLibrary.read": "Use saved game outcomes",
     "stakeAdapter.exchange": "Share this game export",
     "parWorkbook.exchange": "Share this PAR spreadsheet",
-    "wasm.export": "Export this game module",
+    "wasm.manifest.read": "Inspect declared WASM component metadata",
     "outcomeSource.read": "Review game outcome data",
     "outcomeSource.sample": "Play and replay saved outcomes",
 };

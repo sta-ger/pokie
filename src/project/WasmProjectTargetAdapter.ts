@@ -5,6 +5,7 @@ import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest
 import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
 import {ProjectTargetUnsupportedError} from "./ProjectTargetUnsupportedError.js";
+import {WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
 
 // The sidecar file a ".wasm" file must be paired with for this adapter to ever recognize it -- e.g.
 // "game.wasm" needs a "game.wasm.pokie-wasm.json" next to it declaring a PokieWasmComponentManifest. Exported
@@ -67,7 +68,8 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
                 throw new ProjectTargetMalformedError(`"${sidecarPath}" does not satisfy PokieWasmComponentManifest's own shape: ${summary}`);
             }
             throw new ProjectTargetUnsupportedError(
-                `"${resolvedPath}" declares a PokieWasmComponentManifest that is not compatible with this POKIE build: ${summary}`,
+                `"${resolvedPath}" declares a PokieWasmComponentManifest that is not compatible with this POKIE build: ${summary} ` +
+                    `Repair the sidecar to inspect its declared metadata. ${WASM_PRODUCT_CONTRACT.inspectionBoundary}`,
             );
         }
 

@@ -10,6 +10,12 @@ resolver that recognizes and validates a component against that contract (read-o
 and an advisory preflight that names portability concerns in a package. WASM is inspection-only, not a build or
 export target.
 
+The production-readable source for this boundary is `WASM_PRODUCT_CONTRACT` in
+`src/project/WasmProductContract.ts`. Resolver capabilities, CLI inspection and
+unsupported-operation diagnostics, conversion planning, and Studio's refreshed
+WASM availability all derive from that contract; this page explains it but does
+not define a second product route.
+
 **Scope:** contract + validation + read-only resolution + advisory preflight. Not in scope: an execution
 backend, a compiler, or any claim that a specific package can be compiled to WASM today.
 

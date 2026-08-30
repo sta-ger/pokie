@@ -239,7 +239,7 @@ export type StudioProjectCapability = string;
 
 export type StudioProjectOrigin = "managed" | "external";
 
-export type StudioProjectStatus = "ok" | "missing";
+export type StudioProjectStatus = "ok" | "missing" | "unavailable";
 
 // GET /api/home/projects/registry's own row shape -- see cli/studio/StudioProjectRegistryView.ts's own
 // doc comment. `status` is computed fresh at read time, never persisted.

@@ -3658,7 +3658,7 @@ describe("StudioServer", () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-wasm-work-test-"));
             try {
                 const wasmFile = path.join(workDir, "game.wasm");
-                fs.writeFileSync(wasmFile, "not real wasm bytes, extension only");
+                fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
                 fs.writeFileSync(
                     `${wasmFile}.pokie-wasm.json`,
                     JSON.stringify({

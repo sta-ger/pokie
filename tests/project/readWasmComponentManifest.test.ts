@@ -14,6 +14,7 @@ const SAMPLE_WASM_COMPONENT_MANIFEST = {
     host: {rng: "pokie.rng.v1", services: ["pokie.clock.v1"]},
     capabilities: ["pokie.wasm.replay"],
 };
+const WASM_BINARY = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
 
 describe("readWasmComponentManifest", () => {
     const resolver = new ProjectTargetResolver();
@@ -29,7 +30,7 @@ describe("readWasmComponentManifest", () => {
 
     it("reads back every field of a resolved wasm project's own manifest", async () => {
         const wasmFile = path.join(workDir, "game.wasm");
-        fs.writeFileSync(wasmFile, "not real wasm bytes, extension only");
+        fs.writeFileSync(wasmFile, WASM_BINARY);
         fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(SAMPLE_WASM_COMPONENT_MANIFEST));
 
         const project = await resolver.resolve(wasmFile);
@@ -56,7 +57,7 @@ describe("readWasmComponentManifest", () => {
 
     it("throws if the sidecar manifest changed on disk to something incompatible since resolution", async () => {
         const wasmFile = path.join(workDir, "game.wasm");
-        fs.writeFileSync(wasmFile, "not real wasm bytes, extension only");
+        fs.writeFileSync(wasmFile, WASM_BINARY);
         fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(SAMPLE_WASM_COMPONENT_MANIFEST));
 
         const project = await resolver.resolve(wasmFile);

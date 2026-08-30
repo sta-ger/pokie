@@ -77,14 +77,21 @@ export class StudioProjectRegistrationService {
         const entries = await this.registry.list();
         const canonicalEntries = await Promise.all(entries.map(async (entry) => ({entry, location: await this.canonicalize(entry.location)})));
         const seenLocations = new Set<string>();
-        return canonicalEntries.flatMap(({entry, location}) => {
+        const refreshed = await Promise.all(canonicalEntries.map(async ({entry, location}) => {
+            if (entry.type !== "wasm") return {...entry, location, status: this.pathExists(location) ? "ok" as const : "missing" as const};
+            if (!this.pathExists(location)) return {...entry, location, status: "missing" as const};
+            const resolved = await this.resolveRecognizedProject(location).catch(() => undefined);
+            if (resolved === undefined) return {...entry, location, status: "unavailable" as const};
+            return {...entry, location: resolved.location, type: resolved.project.type, capabilities: resolved.project.capabilities, status: "ok" as const};
+        }));
+        return refreshed.flatMap((entry) => {
             // Older registry files can contain aliases written before canonical identity was introduced.
             // Keep the most-recent row only; callers never see two records for one physical Project.
-            if (seenLocations.has(location)) {
+            if (seenLocations.has(entry.location)) {
                 return [];
             }
-            seenLocations.add(location);
-            return [{...entry, location, status: this.pathExists(location) ? "ok" : "missing"}];
+            seenLocations.add(entry.location);
+            return [entry];
         });
     }
 

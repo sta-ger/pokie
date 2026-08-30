@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import {PokieGame, PokieGameManifest, STUDIO_OPERATION} from "pokie";
+import {PokieGame, PokieGameManifest, PokieProject, STUDIO_OPERATION} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -88,6 +88,30 @@ describe("loadProjectDashboardContext", () => {
         const loadGame = jest.fn().mockRejectedValue(new Error("boom"));
 
         await expect(loadProjectDashboardContext("./broken-game", loadGame)).resolves.not.toThrow();
+    });
+
+    it("opens a compatible WASM component as an inspection-only artifact without preparing or loading a runtime", async () => {
+        const loadGame = jest.fn();
+        const resolveRuntimePackageRoot = jest.fn();
+        const wasmProject: PokieProject = {
+            type: "wasm",
+            rootPath: "/components/sample.wasm",
+            capabilities: ["wasm.manifest.read"],
+            provenance: "compatible POKIE WASM sidecar",
+        };
+
+        const dashboard = await loadProjectDashboardContext(
+            wasmProject.rootPath,
+            loadGame,
+            resolveRuntimePackageRoot,
+            undefined,
+            undefined,
+            () => Promise.resolve(wasmProject),
+        );
+
+        expect(dashboard).toMatchObject({status: "artifact", project: wasmProject});
+        expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+        expect(loadGame).not.toHaveBeenCalled();
     });
 
     it("opens a runnable PAR workbook through the shared runtime materialization boundary", async () => {
