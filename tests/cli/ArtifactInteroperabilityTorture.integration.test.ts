@@ -419,9 +419,13 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         // A generated package can record a useful round artifact, but it has
         // no immutable Outcome Library identity and must never be advertised
         // as the portable/exact outcome-source replay above.
-        await new ReplayCommand().run([packagePath, "--round", "1", "--out", packageReplayPath]);
-        const packageReplay = JSON.parse(fs.readFileSync(packageReplayPath, "utf-8")) as {outcomeSource?: unknown};
+        // A package replay remains best-effort because it lacks an Outcome
+        // Library identity, but its sampled game result must still be seeded
+        // for the runner-owned evidence to be reproducible across processes.
+        await new ReplayCommand().run([packagePath, "--round", "1", "--seed", "matrix-package-replay", "--out", packageReplayPath]);
+        const packageReplay = JSON.parse(fs.readFileSync(packageReplayPath, "utf-8")) as {outcomeSource?: unknown; seed?: string | null};
         expect(packageReplay.outcomeSource).toBeUndefined();
+        expect(packageReplay.seed).toBe("matrix-package-replay");
 
         // Keep an operation-level record produced by the public owners.  This
         // is intentionally written only after each command has completed: it

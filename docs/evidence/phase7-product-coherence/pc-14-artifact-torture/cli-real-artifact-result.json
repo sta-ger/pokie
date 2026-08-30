@@ -288,7 +288,7 @@
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
       "produced_path": "run-artifacts/matrix-edge-blueprint-parWorkbook",
-      "produced_identity": "sha256:86ef7e077a9855cdfe2992de4e5649c4d23adf697902fb5102c7c4fb91a49013",
+      "produced_identity": "sha256:beca40bcc77449bc1b88888e63ef2b3ee83285b9d95976876f53eba9f796d5c1",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -520,7 +520,7 @@
       "source_path": "run-artifacts/matrix.par.xlsx",
       "source_identity": "sha256:95868490c4249a79d13e2768d1f8ec4bb382bbc09ac0fa4eb4f799f99a8ebea3",
       "produced_path": "run-artifacts/matrix-edge-parWorkbook-parWorkbook",
-      "produced_identity": "sha256:d2450f23d761368bd3ec2a56c073b449c7fccf412bc88a266fe21f53f27d84f4",
+      "produced_identity": "sha256:b83835114e6f2e9ce5abd78e034eb7a4571b5787e50f9f2ac41db1d41d3216c7",
       "operation_owner": "ArtifactBuilderRegistry.executePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
@@ -1855,7 +1855,7 @@
       "source_path": "run-artifacts/matrix-package",
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
       "produced_path": "run-artifacts/matrix-package-replay.json",
-      "produced_identity": "sha256:52e88e8e4feb3b45ddb93c950bac2a46f1d2337df06fed05bc224acde695fed6",
+      "produced_identity": "sha256:9980329d5d622d9fbadbfcaf489d1554a52a71ddd485125f12740e093e30695b",
       "observable_result": "generated package replay has no Outcome Library identity and remains documented best-effort replay",
       "execution": {
         "surface": "cli",
