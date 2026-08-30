@@ -561,7 +561,34 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             for (const target of BUILD_PRODUCT_MATRIX_TARGETS) {
                 const destinationPath = path.join(workDir, `matrix-edge-${project!.type}-${target}`);
                 const plan = await registry.preparePlan(project!, target, {destinationPath});
-                if (plan.status !== "planned") continue;
+                if (plan.status !== "planned") {
+                    // A complete product matrix must retain the diagnostic
+                    // the public direct-library owner actually returned for
+                    // every unavailable pair.  This is intentionally not a
+                    // synthetic type-string diagnostic: preparePlan resolved
+                    // the real generated/imported source above and delegated
+                    // to the shared conversion planner before this record is
+                    // emitted.
+                    if (plan.diagnostic === undefined) throw new Error(`Expected ${project!.type} -> ${target} to retain a planner diagnostic.`);
+                    evidence.recordUnavailable({
+                        id: `matrix-${project!.type}-${target}-build`,
+                        artifactKind: project!.type,
+                        operation: `build:${target}`,
+                        sourcePath,
+                        owner: "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+                        diagnostic: {
+                            code: plan.diagnostic.code,
+                            message: plan.diagnostic.message,
+                            recovery: plan.diagnostic.recovery,
+                        },
+                        observations: [{
+                            surface: "library",
+                            owner: "ArtifactBuilderRegistry.preparePlan",
+                            result: `resolved ${project!.type} -> ${target} as ${plan.status}: ${plan.diagnostic.code}`,
+                        }],
+                    });
+                    continue;
+                }
                 const execution = await registry.executePlan(plan, project!, destinationPath);
                 expect(fs.existsSync(execution.outputPath)).toBe(true);
                 evidence.record({
@@ -620,6 +647,19 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 diagnostic: expect.objectContaining({code: "unsupported-project-operation"}),
             }),
         ]));
+        const emittedMatrixRows = (JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {
+            rows: {id: string; status: string; diagnostic?: {code: string; recovery: string}}[];
+        }).rows.filter((row) => row.id.startsWith("matrix-"));
+        expect(emittedMatrixRows).toHaveLength(BUILD_PRODUCT_MATRIX_TARGETS.length * plannerSources.length);
+        for (const source of plannerSources) {
+            for (const target of BUILD_PRODUCT_MATRIX_TARGETS) {
+                const row = emittedMatrixRows.find((candidate) => candidate.id === `matrix-${source.project!.type}-${target}-build`);
+                expect(row).toBeDefined();
+                const plan = planner.plan(source.project!, target);
+                expect(row?.status).toBe(plan.status === "planned" ? "supported" : "intentionally-unsupported");
+                if (plan.status !== "planned") expect(row?.diagnostic).toMatchObject({code: plan.diagnostic?.code, recovery: plan.diagnostic?.recovery});
+            }
+        }
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {"scenario_results": {id: string; "source_path": string}[]}).scenario_results).toEqual(expect.arrayContaining([
             expect.objectContaining({id: "configuration-drift", "source_path": "run-artifacts/matrix.blueprint.json"}),
             expect.objectContaining({id: "borrowed-output-cleanup", "source_path": "run-artifacts/matrix.blueprint.json"}),

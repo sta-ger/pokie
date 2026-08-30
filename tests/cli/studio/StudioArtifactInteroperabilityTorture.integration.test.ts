@@ -89,18 +89,35 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
                 body: JSON.stringify({target: "tsPackage", outDir: path.join(workDir, "http-package")}),
             });
             expect(preview.status).toBe(200);
-            expect(await preview.json()).toMatchObject({status: "ok", target: "tsPackage"});
+            const previewBody = await preview.json() as {status: string; target: string; preparedOperationId?: string};
+            expect(previewBody).toMatchObject({status: "ok", target: "tsPackage"});
+            // Start the exact public build route from the previewed target.
+            // The route deliberately returns a pollable job immediately, so
+            // this records only the observable job creation rather than
+            // claiming that this HTTP request synchronously published output.
+            const buildStart = await fetch(`${baseUrl}/api/project/artifacts/build`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    target: "tsPackage",
+                    outDir: path.join(workDir, "http-package"),
+                    ...(previewBody.preparedOperationId === undefined ? {} : {preparedOperationId: previewBody.preparedOperationId}),
+                }),
+            });
+            expect(buildStart.status).toBe(202);
+            expect(await buildStart.json()).toMatchObject({status: "created", job: {id: expect.any(String)}});
             evidence.recordScenario({
                 id: "studio-artifact-http-preflight", sourcePath: blueprintPath,
-                result: "Studio HTTP context, inspection, validation, target discovery, and preflight resolve the same real Blueprint before any durable publication",
+                result: "Studio HTTP context, inspection, validation, target discovery, preflight, and build-job creation resolve the same real Blueprint before durable publication completes",
                 surface: "studio-api", owner: "StudioServer / StudioArtifactBuildService",
-                assertions: ["GET context retains the real Blueprint", "GET inspect and validate accept the real Blueprint", "GET targets lists tsPackage", "POST preview returns an executable tsPackage plan"],
+                assertions: ["GET context retains the real Blueprint", "GET inspect and validate accept the real Blueprint", "GET targets lists tsPackage", "POST preview returns an executable tsPackage plan", "POST build creates the public pollable job from that real Blueprint"],
                 observations: [
                     {route: "GET /api/project/context", result: "returned the opened Blueprint context"},
                     {route: "GET /api/project/inspect", result: "inspected the opened Blueprint"},
                     {route: "GET /api/project/validate", result: "validated the opened Blueprint"},
                     {route: "GET /api/project/artifacts/targets", result: "returned the supported Blueprint build target"},
                     {route: "POST /api/project/artifacts/preview", result: "returned the prepared tsPackage operation"},
+                    {route: "POST /api/project/artifacts/build", result: "created the pollable tsPackage build job"},
                 ],
             });
         } finally {

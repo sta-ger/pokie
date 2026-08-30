@@ -31,6 +31,9 @@ export type ArtifactInteroperabilityUnavailableRow = {
     readonly sourcePath: string;
     readonly owner: string;
     readonly diagnostic: {
+        /** The code returned by the exercised public owner.  Planner cells
+         * retain their conversion diagnostic while command/service callers
+         * retain the operation diagnostic layered on top of it. */
         readonly code: string;
         readonly message: string;
         readonly recovery?: string;
