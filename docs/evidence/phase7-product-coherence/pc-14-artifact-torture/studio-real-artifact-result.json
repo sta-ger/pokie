@@ -155,7 +155,7 @@
       "source_identity": "sha256:3fdae1136d66fb45a5d462f45d59aaa09499ee14d3ba917ae1ed4e41cd4b0519",
       "produced_path": null,
       "produced_identity": null,
-      "observable_result": "Studio HTTP context, inspection, validation, target discovery, preflight, and build-job creation resolve the same real Blueprint before durable publication completes",
+      "observable_result": "Studio HTTP context, inspection, validation, target discovery, preflight, build-job polling, and terminal result resolve the same real Blueprint before publication",
       "execution": {
         "surface": "studio-api",
         "owner": "StudioServer / StudioArtifactBuildService",
@@ -164,7 +164,7 @@
           "GET inspect and validate accept the real Blueprint",
           "GET targets lists tsPackage",
           "POST preview returns an executable tsPackage plan",
-          "POST build creates the public pollable job from that real Blueprint"
+          "POST build creates and GET job reaches the terminal published result"
         ],
         "observations": [
           {
@@ -190,6 +190,10 @@
           {
             "route": "POST /api/project/artifacts/build",
             "result": "created the pollable tsPackage build job"
+          },
+          {
+            "route": "GET /api/project/artifacts/build/:id",
+            "result": "polled the completed job and observed its published output"
           }
         ]
       },
@@ -262,6 +266,51 @@
           {
             "route": "StudioOutcomeLibraryGenerateService.generate",
             "result": "Studio generation recovered from checkpoint"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-simulation-replay-cancellation",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:b9d6469ff03bcb2a1f7e7f51867e42807d0c75dea1c877e5cdc6c82eca8d2aa8",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "Studio HTTP cancellation transitions real simulation and replay jobs to terminal cancelled states without retaining a report or replay descriptor",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioServer / StudioSimulationService / StudioReplayExecutionService",
+        "assertions": [
+          "DELETE simulation reaches cancelled and report retrieval remains not-ready",
+          "DELETE replay reaches cancelled and replay download remains not-ready"
+        ],
+        "observations": [
+          {
+            "route": "POST /api/project/simulations",
+            "result": "created a real package simulation job"
+          },
+          {
+            "route": "DELETE /api/project/simulations/:id",
+            "result": "cancelled that job"
+          },
+          {
+            "route": "GET /api/project/simulations/:id",
+            "result": "polled terminal cancelled simulation"
+          },
+          {
+            "route": "POST /api/project/replays",
+            "result": "created a real package replay job"
+          },
+          {
+            "route": "DELETE /api/project/replays/:id",
+            "result": "cancelled that job"
+          },
+          {
+            "route": "GET /api/project/replays/:id",
+            "result": "polled terminal cancelled replay"
           }
         ]
       },

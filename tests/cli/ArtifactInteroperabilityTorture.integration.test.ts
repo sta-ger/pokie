@@ -493,27 +493,6 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             assertions: ["cancelled command returns 130 with no output and a checkpoint", "resume publishes output and removes stale checkpoint"],
             observations: [{route: "pokie outcomelibrary generate --resume", result: "public CLI cancellation and recovery completed"}],
         });
-        // PC-14's checked-in result is deliberately emitted by this runner,
-        // not maintained as a second hand-written matrix.  Normal test runs
-        // keep their result in the temporary root; the evidence refresh
-        // command supplies the destination below and commits that exact
-        // redacted execution record.
-        const evidenceDirectory = process.env.PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR;
-        if (evidenceDirectory !== undefined) fs.mkdirSync(evidenceDirectory, {recursive: true});
-        const emittedEvidencePath = evidenceDirectory === undefined
-            ? path.join(workDir, "pc-14-cli-real-artifact-result.json")
-            : path.join(evidenceDirectory, "cli-real-artifact-result.json");
-        evidence.write(emittedEvidencePath);
-        expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
-            expect.objectContaining({id: "blueprint-build-package", "source_path": "run-artifacts/matrix.blueprint.json", "produced_path": "run-artifacts/matrix-package"}),
-            expect.objectContaining({id: "outcome-library-simulate", "source_path": "run-artifacts/matrix-bundle", "produced_path": "run-artifacts/matrix-simulation.json"}),
-            expect.objectContaining({id: "outcome-library-certification", "produced_path": "run-artifacts/matrix-certification"}),
-            expect.objectContaining({id: "outcome-library-fairness", "produced_path": "run-artifacts/matrix-proof.json"}),
-        ]));
-        expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: {"source_identity": string; "produced_identity": string | null}[]}).rows).toEqual(expect.arrayContaining([
-            expect.objectContaining({"source_identity": expect.stringMatching(/^sha256:/), "produced_identity": expect.stringMatching(/^sha256:/)}),
-        ]));
-
         const generatedBlueprintPath = path.join(workDir, "generated.blueprint.json");
         const generatedWorkbookPath = path.join(workDir, "generated.par.xlsx");
         const {reelStrips: _literalReels, ...generatedBlueprintBase} = blueprint;
@@ -810,6 +789,17 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             assertions: ["raw source byte binding rejects execution", "no bundle destination is published"],
             observations: [{route: "OutcomeLibraryCommand.prepareDescriptorBuildOperation", result: "raw source drift rejected before publication"}],
         });
+        // Write only after every lifecycle and conversion assertion has
+        // completed.  Writing at the first successful chain left the saved
+        // ledger blind to the later, independently exercised drift and
+        // planner cells even though this runner had already performed them.
+        // PC-14's checked-in result is deliberately emitted by this runner,
+        // not maintained as a second hand-written matrix.
+        const evidenceDirectory = process.env.PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR;
+        if (evidenceDirectory !== undefined) fs.mkdirSync(evidenceDirectory, {recursive: true});
+        const emittedEvidencePath = evidenceDirectory === undefined
+            ? path.join(workDir, "pc-14-cli-real-artifact-result.json")
+            : path.join(evidenceDirectory, "cli-real-artifact-result.json");
         evidence.write(emittedEvidencePath);
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: unknown[]}).rows).toEqual(expect.arrayContaining([
             expect.objectContaining({

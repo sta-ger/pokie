@@ -173,12 +173,18 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             "cli-generation-cancellation-recovery",
             "generated-reel-non-lossless",
             "configuration-drift",
+            "descriptor-drift",
+            "raw-source-drift",
+            "manifest-drift",
+            "index-drift",
+            "par-source-drift",
             "borrowed-output-cleanup",
             "wasm-boundary",
             "studio-generation-cancellation",
             "studio-destination-drift",
             "studio-generation-recovery",
             "studio-artifact-http-preflight",
+            "studio-simulation-replay-cancellation",
             "studio-wasm-boundary",
         ]));
         for (const audit of result.systemic_class_audits) {
