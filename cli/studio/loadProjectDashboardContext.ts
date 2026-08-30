@@ -47,7 +47,11 @@ export type ArtifactProjectResolving = (projectRoot: string) => Promise<PokiePro
 export type ProjectDashboardLoadOptions = {readonly signal?: AbortSignal; readonly isCurrent?: () => boolean};
 
 const defaultResolveArtifactProject: ArtifactProjectResolving = async (projectRoot) => {
-    const project = await new ProjectTargetResolver().resolve(projectRoot).catch(() => undefined);
+    // Preserve a WASM resolver failure rather than treating it as an ordinary
+    // unrecognized artifact. Its missing/malformed/incompatible sidecar reason
+    // is the actionable inspection diagnostic, and letting it fall through
+    // would incorrectly start package/runtime preparation for a binary file.
+    const project = await new ProjectTargetResolver().resolve(projectRoot);
     return project?.type === "wasm" ? project : undefined;
 };
 
@@ -107,7 +111,19 @@ export async function loadProjectDashboardContext(
     }
 
     // Keep any truly non-runnable artifact visible without claiming it loaded.
-    const artifact = await resolveArtifactProject(projectRoot).catch(() => undefined);
+    let artifact: PokieProject | undefined;
+    try {
+        artifact = await resolveArtifactProject(projectRoot);
+    } catch (error) {
+        assertDashboardLoadCurrent(options);
+        if (path.extname(projectRoot).toLowerCase() === ".wasm") {
+            return {
+                status: "error",
+                projectRoot: resolvedRoot,
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    }
     assertDashboardLoadCurrent(options);
     if (artifact !== undefined) {
         const identity = await describeLocation(projectRoot).catch(() => undefined);

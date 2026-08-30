@@ -114,6 +114,39 @@ describe("loadProjectDashboardContext", () => {
         expect(loadGame).not.toHaveBeenCalled();
     });
 
+    it("preserves real malformed and incompatible WASM sidecar diagnostics without runtime preparation", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-dashboard-test-"));
+        const loadGame = jest.fn();
+        const resolveRuntimePackageRoot = jest.fn();
+        try {
+            const malformed = path.join(workDir, "malformed.wasm");
+            const incompatible = path.join(workDir, "incompatible.wasm");
+            for (const wasmFile of [malformed, incompatible]) {
+                fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+            }
+            fs.writeFileSync(`${malformed}.pokie-wasm.json`, "{");
+            fs.writeFileSync(`${incompatible}.pokie-wasm.json`, JSON.stringify({
+                schemaVersion: "2.0.0",
+                component: {id: "incompatible-component", version: "1.0.0"},
+                serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                host: {rng: "pokie.rng.v1", services: []},
+                capabilities: [],
+            }));
+
+            for (const [wasmFile, reason] of [[malformed, "not valid JSON"], [incompatible, "not compatible with this POKIE build"]] as const) {
+                await expect(loadProjectDashboardContext(wasmFile, loadGame, resolveRuntimePackageRoot)).resolves.toMatchObject({
+                    status: "error",
+                    projectRoot: wasmFile,
+                    error: expect.stringContaining(reason),
+                });
+            }
+            expect(loadGame).not.toHaveBeenCalled();
+            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("opens a runnable PAR workbook through the shared runtime materialization boundary", async () => {
         const manifest: PokieGameManifest = {id: "par-slot", name: "PAR Slot", version: "1.0.0"};
         const loadGame = jest.fn().mockResolvedValue(createFakeGame(manifest));

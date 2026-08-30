@@ -67,6 +67,12 @@ function isWasmArtifactContext(context: Extract<ProjectDashboardContext, {status
 const PROJECT_OPEN_FAILURE_MESSAGE =
     "We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.";
 
+// Resolver diagnostics for a component's missing, malformed, or incompatible
+// sidecar are already the product contract's safe recovery guidance. They can
+// arrive during direct launch or history restore before a project type exists,
+// so identify the contract wording rather than relying on a typed dashboard.
+const WASM_CONTRACT_FAILURE = /(?:WASM target|WASM component|PokieWasmComponentManifest)/i;
+
 // Project-context failures can originate while Studio starts directly in a workspace, restores a
 // project-scoped browser-history entry, or reloads the active project. Those are all the same
 // designer-facing recovery moment. Keep the server's response available for support, but never let
@@ -75,7 +81,7 @@ export function describeProjectContextFailure(projectRoot: string, detail?: stri
     // Planner diagnostics are already safe, actionable user-facing text.  In particular they carry
     // the attempted path, exact conversion edge, and recovery; replacing them with opening copy loses
     // the only information a designer can use to repair a non-runnable source.
-    if (detail?.startsWith("Cannot prepare a runnable runtime")) {
+    if (detail !== undefined && (detail.startsWith("Cannot prepare a runnable runtime") || WASM_CONTRACT_FAILURE.test(detail))) {
         return {status: "error", projectRoot, message: detail};
     }
     return {status: "error", projectRoot, message: PROJECT_OPEN_FAILURE_MESSAGE, errorDetail: detail};

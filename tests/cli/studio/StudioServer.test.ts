@@ -3158,6 +3158,54 @@ describe("StudioServer", () => {
                 error: "Cannot find module './dist/index.js'",
             });
         });
+
+        it("keeps real malformed and incompatible WASM direct launches out of package/runtime loading and exposes their resolver diagnostics", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-direct-wasm-test-"));
+            try {
+                const malformed = path.join(workDir, "malformed.wasm");
+                const incompatible = path.join(workDir, "incompatible.wasm");
+                for (const wasmFile of [malformed, incompatible]) {
+                    fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+                }
+                fs.writeFileSync(`${malformed}.pokie-wasm.json`, "{");
+                fs.writeFileSync(`${incompatible}.pokie-wasm.json`, JSON.stringify({
+                    schemaVersion: "2.0.0",
+                    component: {id: "incompatible-component", version: "1.0.0"},
+                    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                    host: {rng: "pokie.rng.v1", services: []},
+                    capabilities: [],
+                }));
+
+                for (const [wasmFile, reason] of [[malformed, "not valid JSON"], [incompatible, "not compatible with this POKIE build"]] as const) {
+                    const directLoadGame = jest.fn();
+                    const runtimeResolver = jest.fn();
+                    const homeService = new StudioHomeService("1.0.0", undefined, directLoadGame, undefined, runtimeResolver);
+                    const directServer = new StudioServer({
+                        pokieVersion: "1.0.0",
+                        host: "127.0.0.1",
+                        port: 0,
+                        studioRoot: projectStudioRoot,
+                        homeService,
+                        blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, homeService),
+                        loadGame: directLoadGame,
+                        resolveRuntimePackageRoot: runtimeResolver,
+                        initialContext: {mode: "project", projectRoot: wasmFile},
+                    });
+                    try {
+                        const address = await directServer.start();
+                        const context = await pollUntilProjectContextSettled(`http://${address.host}:${address.port}/api/project/context`);
+
+                        expect(context.body).toMatchObject({status: "error", projectRoot: wasmFile, error: expect.stringContaining(reason)});
+                        expect(directLoadGame).not.toHaveBeenCalled();
+                        expect(runtimeResolver).not.toHaveBeenCalled();
+                    } finally {
+                        await directServer.stop();
+                    }
+                }
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
     });
 
     describe("GET /api/project/inspect with the real GamePackageInspector (fixtures on disk)", () => {

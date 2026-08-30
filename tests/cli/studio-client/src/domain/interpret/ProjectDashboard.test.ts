@@ -43,6 +43,16 @@ describe("describeProjectHeader", () => {
         });
     });
 
+    it("shows a resolver-derived WASM sidecar diagnostic as the primary direct-entry failure", () => {
+        const diagnostic = '"/a/component.wasm.pokie-wasm.json" is not valid JSON, but "/a/component.wasm" requires it as its PokieWasmComponentManifest sidecar.';
+
+        expect(describeProjectHeader({status: "error", projectRoot: "/a/component.wasm", error: diagnostic})).toEqual({
+            status: "error",
+            projectRoot: "/a/component.wasm",
+            message: diagnostic,
+        });
+    });
+
     it("flattens the loaded state's manifest fields", () => {
         const view = describeProjectHeader({
             status: "loaded",
