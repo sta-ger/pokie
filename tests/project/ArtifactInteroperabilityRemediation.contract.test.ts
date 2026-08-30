@@ -119,11 +119,17 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             cwd: process.cwd(),
             env: {...process.env, PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"},
             encoding: "utf-8",
-            timeout: 150000,
+            // The deterministic regeneration starts three foreground
+            // real-artifact runners.  Studio's rendered Stake recovery adds
+            // one publication/polling lifecycle, so leave enough headroom
+            // for an otherwise healthy constrained CI worker instead of
+            // treating its fixed 150-second process budget as a product
+            // difference.
+            timeout: 210000,
         });
         expect(result.error).toBeUndefined();
         if (result.status !== 0) throw new Error(`${result.stdout}\n${result.stderr}`);
-    }, 180000);
+    }, 240000);
 
     it("injects the fixed evidence clock into real writers instead of only normalising saved hashes", () => {
         const originalClock = process.env.PC14_FIXED_RUNNER_CLOCK;
