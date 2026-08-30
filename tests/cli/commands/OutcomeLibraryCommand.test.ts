@@ -9,6 +9,7 @@ import {
     OutcomeLibraryBundleValidateOptions,
     OutcomeLibraryBundleWriteResult,
     OutcomeSpaceEstimate,
+    POKIE_WASM_CONTRACT_VERSION,
     PokieGame,
     ValidationIssue,
     WeightedOutcomeLibraryGenerationCancelledError,
@@ -390,6 +391,75 @@ describe("OutcomeLibraryCommand", () => {
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain('"algorithm"');
             expect(printed).toContain("pokie-exact-reel-enumeration-v1");
+        });
+
+        it("rejects every real WASM sidecar state before estimate, generation, or output publication", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcome-generation-wasm-"));
+            const wasmPath = path.join(workDir, "component.wasm");
+            const loadGame = jest.fn(() => Promise.resolve(FAKE_GAME));
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const writeFile = jest.fn();
+            try {
+                fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+                const compatibleManifest = {
+                    schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                    component: {id: "component", version: "1.0.0"},
+                    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                    host: {rng: "pokie.rng.v1", services: []},
+                    capabilities: [],
+                };
+                fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(compatibleManifest));
+                const command = createGenerateCommand({loadGame, generate, writeFile});
+
+                await expect(command.run(["generate", wasmPath, "--estimate"])).rejects.toThrow("This POKIE WASM component cannot generate an Outcome Library");
+                await expect(command.run(["generate", wasmPath, "--out", path.join(workDir, "library.json")])).rejects.toThrow("inspect a compatible component");
+
+                fs.rmSync(`${wasmPath}.pokie-wasm.json`);
+                await expect(command.run(["generate", wasmPath, "--estimate"])).rejects.toThrow("no compatible PokieWasmComponentManifest sidecar");
+                fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, "{");
+                await expect(command.run(["generate", wasmPath, "--estimate"])).rejects.toThrow("sidecar at");
+                fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({...compatibleManifest, schemaVersion: "2.0.0"}));
+                await expect(command.run(["generate", wasmPath, "--estimate"])).rejects.toThrow("not compatible with this POKIE build");
+
+                expect(loadGame).not.toHaveBeenCalled();
+                expect(generate).not.toHaveBeenCalled();
+                expect(writeFile).not.toHaveBeenCalled();
+                expect(fs.existsSync(path.join(workDir, "library.json"))).toBe(false);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
+        it("rejects a source replaced by WASM at the pre-publication rebind before generation or writing", async () => {
+            const source = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pokie-generation-rebind-")), "source.wasm");
+            const output = path.join(path.dirname(source), "library.json");
+            fs.mkdirSync(source);
+            fs.writeFileSync(path.join(source, "package.json"), JSON.stringify({pokie: {entry: "./index.js"}}));
+            const loadGame = jest.fn(() => {
+                if (loadGame.mock.calls.length === 1) {
+                    fs.rmSync(source, {recursive: true, force: true});
+                    fs.writeFileSync(source, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+                    fs.writeFileSync(`${source}.pokie-wasm.json`, JSON.stringify({
+                        schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                        component: {id: "replaced", version: "1.0.0"},
+                        serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                        host: {rng: "pokie.rng.v1", services: []}, capabilities: [],
+                    }));
+                }
+                return Promise.resolve(FAKE_GAME);
+            });
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const writeFile = jest.fn();
+            try {
+                await expect(createGenerateCommand({loadGame, generate, writeFile}).run(["generate", source, "--out", output]))
+                    .rejects.toThrow("This POKIE WASM component cannot generate an Outcome Library");
+                expect(loadGame).toHaveBeenCalledTimes(1);
+                expect(generate).not.toHaveBeenCalled();
+                expect(writeFile).not.toHaveBeenCalled();
+                expect(fs.existsSync(output)).toBe(false);
+            } finally {
+                fs.rmSync(path.dirname(source), {recursive: true, force: true});
+            }
         });
 
         it("derives a default library id from the game manifest and --mode when --library-id is omitted", async () => {

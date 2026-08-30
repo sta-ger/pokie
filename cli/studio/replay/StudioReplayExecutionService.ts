@@ -4,6 +4,8 @@ import {
     captureRoundPokieSessionState,
     captureScreen,
     describeUnsupportedProjectOperation,
+    describeWasmLifecycleBoundary,
+    isWasmComponentFile,
     GameSessionHandling,
     loadPokieGame,
     OUTCOME_SOURCE_REPLAY_OPERATION,
@@ -41,7 +43,8 @@ export type StudioGameLoading = (projectRoot: string, options?: {readonly signal
 
 export type StudioReplayStartResult =
     | {status: "created"; job: StudioReplayJobView}
-    | {status: "conflict"; activeJobId: string};
+    | {status: "conflict"; activeJobId: string}
+    | {status: "unsupported"; message: string};
 
 export type GetReplayDownloadResult =
     | {status: "ok"; descriptor: ReplayDescriptor}
@@ -116,6 +119,12 @@ export class StudioReplayExecutionService {
     // parameter of the same name (see that doc comment for why this service never re-resolves
     // `projectRoot`'s own type itself).
     public start(projectRoot: string, request: ValidatedReplayRequest, outcomeSourceProject?: PokieProject): StudioReplayStartResult {
+        // Keep the no-job WASM boundary inside the shared lifecycle as well as
+        // StudioServer. A direct caller must not be able to queue work that
+        // can only fail after attempting runtime preparation.
+        if (isWasmComponentFile(projectRoot) || outcomeSourceProject?.type === "wasm") {
+            return {status: "unsupported", message: describeWasmLifecycleBoundary(outcomeSourceProject?.type === "wasm" ? outcomeSourceProject.rootPath : projectRoot, "replay a game round")};
+        }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
             return {status: "conflict", activeJobId: active.id};

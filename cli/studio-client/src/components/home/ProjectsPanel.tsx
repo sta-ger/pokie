@@ -16,6 +16,7 @@ import {errorMessage} from "../../domain/errorMessage";
 import {formatTimestamp} from "../../domain/formatTimestamp";
 import {describePathActionError} from "../../domain/pathActionError";
 import {describeProjectActionError} from "../../domain/projectActionError";
+import {describeProjectType, PROJECT_TYPE_LABEL} from "../../domain/interpret/ProjectDashboard";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
@@ -56,9 +57,10 @@ const PROJECT_IMPORT_DETECTION_TIMEOUT_MS = 15_000;
 // The ProjectTypes Home's Open action (StudioHomeService.openProject/loadProjectDashboardContext) can
 // load runnable packages and Blueprints, as well as canonical outcome-source projects and exchangeable
 // PAR workbooks. A Blueprint is materialized into a runtime package; an outcome library, Stake Engine
-// export, or PAR workbook loads its own capability-gated dashboard, including Build/Export. WASM has no
-// Studio workspace. PAR workbooks additionally retain their dedicated Design Game action below.
-const OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType>([
+// export, or PAR workbook loads its own capability-gated dashboard, including Build/Export. WASM opens
+// its read-only inspection dashboard and never reaches runtime or Build/Export. PAR workbooks additionally
+// retain their dedicated Design Game action below.
+const RUNTIME_OR_ARTIFACT_OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType>([
     "tsPackage",
     "blueprint",
     "outcomeLibrary",
@@ -66,19 +68,22 @@ const OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType
     "parWorkbook",
 ]);
 
-const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
-    blueprint: "Game design",
-    tsPackage: "Playable game",
-    outcomeLibrary: "Game data library",
-    stakeAdapter: "Game export",
-    wasm: "Game module",
-    parWorkbook: "PAR spreadsheet",
-};
+function isOpenable(entry: StudioProjectRegistryView): boolean {
+    return entry.type === "wasm"
+        ? entry.capabilities.includes(entry.wasmPresentation.manifestCapability)
+        : RUNTIME_OR_ARTIFACT_OPENABLE_TYPES.has(entry.type);
+}
+
+function describeAvailability(entry: StudioProjectRegistryView): string {
+    if (entry.status === "ok") return "Available";
+    if (entry.status === "missing") return "Needs attention";
+    return entry.unavailableReason ?? "Unavailable";
+}
 
 const PROJECTS_PER_PAGE = 10;
 
 type ProjectTypeFilter = "all" | StudioProjectType;
-type ProjectStatusFilter = "all" | "ok" | "missing";
+type ProjectStatusFilter = "all" | "ok" | "missing" | "unavailable";
 
 function previewProjectImportWithTimeout(fetchImpl: FetchLike, location: string): Promise<StudioProjectImportPreviewResult> {
     return new Promise((resolve, reject) => {
@@ -326,7 +331,7 @@ export function ProjectsPanel({
         if (entry.status === "missing") {
             return <Text c="dimmed">{entry.name} (missing)</Text>;
         }
-        if (OPENABLE_TYPES.has(entry.type)) {
+        if (entry.status === "ok" && isOpenable(entry)) {
             return (
                 <Anchor component="button" type="button" onClick={() => handleOpen(entry)}>
                     {entry.name}
@@ -367,7 +372,8 @@ export function ProjectsPanel({
     const entries = listView.status === "loaded" ? listView.entries : [];
     const searchNeedle = search.trim().toLocaleLowerCase();
     const filteredEntries = entries.filter((entry) => {
-        const matchesSearch = searchNeedle.length === 0 || [entry.name, entry.location, PROJECT_TYPE_LABEL[entry.type], entry.origin]
+        const typeLabel = entry.type === "wasm" ? describeProjectType(entry.type, entry.wasmPresentation) : describeProjectType(entry.type);
+        const matchesSearch = searchNeedle.length === 0 || [entry.name, entry.location, typeLabel, entry.origin]
             .some((value) => value.toLocaleLowerCase().includes(searchNeedle));
         return matchesSearch && (typeFilter === "all" || entry.type === typeFilter) && (statusFilter === "all" || entry.status === statusFilter);
     });
@@ -376,6 +382,7 @@ export function ProjectsPanel({
     const pageEntries = filteredEntries.slice((currentPage - 1) * PROJECTS_PER_PAGE, currentPage * PROJECTS_PER_PAGE);
     const availablePageEntries = pageEntries.filter((entry) => entry.status === "ok");
     const missingPageEntries = pageEntries.filter((entry) => entry.status === "missing");
+    const unavailablePageEntries = pageEntries.filter((entry) => entry.status === "unavailable");
     const missingEntries = entries.filter((entry) => entry.status === "missing");
     const selectedMissingOnPage = missingPageEntries.filter((entry) => selectedMissingLocations.has(entry.location));
     const toggleMissingSelection = (location: string, checked: boolean): void => {
@@ -401,10 +408,10 @@ export function ProjectsPanel({
                 {renderEntryName(entry)}
                 <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>{entry.location}</Text>
                 <Text className="project-registry-status" size="sm" c={entry.status === "ok" ? "teal" : "orange"}>
-                    {entry.status === "ok" ? "Available" : "Needs attention"}
+                    {describeAvailability(entry)}
                 </Text>
             </Table.Td>
-            <Table.Td data-label="Type">{PROJECT_TYPE_LABEL[entry.type]}</Table.Td>
+            <Table.Td data-label="Type">{entry.type === "wasm" ? describeProjectType(entry.type, entry.wasmPresentation) : describeProjectType(entry.type)}</Table.Td>
             <Table.Td data-label="Added to Studio">
                 <Group gap={6} wrap="nowrap">
                     <Text component="span">{entry.origin === "managed" ? "Created in Studio" : "Added from your computer"}</Text>
@@ -415,8 +422,8 @@ export function ProjectsPanel({
             <Table.Td data-label="Last opened">{formatTimestamp(entry.lastOpenedAt)}</Table.Td>
             <Table.Td className="project-registry-actions" data-label="Actions">
                 <QuickActions>
-                    {entry.status === "ok" && OPENABLE_TYPES.has(entry.type) && (
-                        <Button variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>Open</Button>
+                    {entry.status === "ok" && isOpenable(entry) && (
+                        <Button variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>{entry.type === "wasm" ? entry.wasmPresentation.inspectActionLabel : "Open"}</Button>
                     )}
                     {entry.status === "ok" && entry.type === "parWorkbook" && (
                         <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Open in Start a game</Button>
@@ -464,13 +471,17 @@ export function ProjectsPanel({
                             />
                             <Select
                                 label="Game type"
-                                data={[{value: "all", label: "All game types"}, ...Object.entries(PROJECT_TYPE_LABEL).map(([value, label]) => ({value, label}))]}
+                                data={[
+                                    {value: "all", label: "All game types"},
+                                    ...Object.entries(PROJECT_TYPE_LABEL).map(([value, label]) => ({value, label})),
+                                    ...entries.filter((entry) => entry.type === "wasm").slice(0, 1).map((entry) => ({value: entry.type, label: describeProjectType(entry.type, entry.wasmPresentation)})),
+                                ]}
                                 value={typeFilter}
                                 onChange={(value) => setFilters(search, (value ?? "all") as ProjectTypeFilter, statusFilter)}
                             />
                             <Select
                                 label="Availability"
-                                data={[{value: "all", label: "All projects"}, {value: "ok", label: "Available"}, {value: "missing", label: "Missing"}]}
+                                data={[{value: "all", label: "All projects"}, {value: "ok", label: "Available"}, {value: "missing", label: "Missing"}, {value: "unavailable", label: "Unavailable"}]}
                                 value={statusFilter}
                                 onChange={(value) => setFilters(search, typeFilter, (value ?? "all") as ProjectStatusFilter)}
                             />
@@ -530,6 +541,12 @@ export function ProjectsPanel({
                                             </Table.Tr>
                                         )}
                                         {missingPageEntries.map(renderEntryRow)}
+                                        {unavailablePageEntries.length > 0 && (
+                                            <Table.Tr className="project-registry-group">
+                                                <Table.Td colSpan={6}><Text fw={600} size="sm">Unavailable projects</Text></Table.Td>
+                                            </Table.Tr>
+                                        )}
+                                        {unavailablePageEntries.map(renderEntryRow)}
                                     </Table.Tbody>
                                 </Table>
                             </Table.ScrollContainer>
@@ -641,7 +658,7 @@ export function ProjectsPanel({
                 {(importView.status === "recognized" || importView.status === "registering") && (
                     <div>
                         <Text size="sm" mb="sm">
-                            Found a {PROJECT_TYPE_LABEL[importView.result.type]} at{" "}
+                            Found a {importView.result.type === "wasm" ? describeProjectType(importView.result.type, importView.result.wasmPresentation) : describeProjectType(importView.result.type)} at{" "}
                             <strong style={{overflowWrap: "anywhere"}}>{importView.result.location}</strong>.
                         </Text>
                         {importView.result.type === "parWorkbook" && (

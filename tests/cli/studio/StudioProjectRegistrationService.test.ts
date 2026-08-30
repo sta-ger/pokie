@@ -44,6 +44,10 @@ function blueprintProject(rootPath: string): PokieProject {
     return {type: "blueprint", rootPath: path.resolve(rootPath), capabilities: ["blueprint.build"], provenance: "required blueprint fields present"};
 }
 
+function wasmProject(rootPath: string): PokieProject {
+    return {type: "wasm", rootPath: path.resolve(rootPath), capabilities: ["wasm.manifest.read"], provenance: "compatible POKIE WASM sidecar"};
+}
+
 describe("StudioProjectRegistrationService", () => {
     describe("registerManaged", () => {
         it("records an entry with origin \"managed\", the resolved type, and capabilities from the resolver -- never the caller's own assertion", async () => {
@@ -241,6 +245,42 @@ describe("StudioProjectRegistrationService", () => {
             const list = await service.list();
 
             expect(list).toEqual([expect.objectContaining({location: "/present", status: "ok"})]);
+        });
+
+        it("refreshes a WASM entry from its current compatible sidecar and marks it unavailable when that contract no longer resolves", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            await registry.upsert({
+                location: "/component.wasm",
+                name: "Component",
+                type: "wasm",
+                capabilities: ["wasm.manifest.read"],
+                origin: "external",
+                lastOpenedAt: new Date().toISOString(),
+            });
+            const resolver = fakeResolver({"/component.wasm": wasmProject("/component.wasm")});
+            const service = new StudioProjectRegistrationService(registry, resolver, () => true);
+
+            expect(await service.list()).toEqual([expect.objectContaining({type: "wasm", capabilities: ["wasm.manifest.read"], status: "ok"})]);
+            const unavailable = new StudioProjectRegistrationService(registry, fakeResolver({}), () => true);
+            expect(await unavailable.list()).toEqual([expect.objectContaining({status: "unavailable", unavailableReason: expect.stringContaining("compatible sidecar")})]);
+        });
+
+        it("retains the resolver's specific malformed WASM sidecar reason on an unavailable entry", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            await registry.upsert({
+                location: "/component.wasm",
+                name: "Component",
+                type: "wasm",
+                capabilities: ["wasm.manifest.read"],
+                origin: "external",
+                lastOpenedAt: new Date().toISOString(),
+            });
+            const resolver: ProjectResolving = {resolve: () => Promise.reject(new Error("The WASM sidecar is malformed; repair its JSON."))};
+            const service = new StudioProjectRegistrationService(registry, resolver, () => true);
+
+            expect(await service.list()).toEqual([
+                expect.objectContaining({status: "unavailable", unavailableReason: "The WASM sidecar is malformed; repair its JSON."}),
+            ]);
         });
     });
 
@@ -541,7 +581,7 @@ describe("StudioProjectRegistrationService", () => {
 
     describe("migrateRecentProjects", () => {
         function recent(projectRoot: string, missing = false): StudioHomeRecentProjectView {
-            return {projectRoot, name: path.basename(projectRoot), openedAt: new Date().toISOString(), missing};
+            return {projectRoot, name: path.basename(projectRoot), openedAt: new Date().toISOString(), missing, availability: missing ? "missing" : "available"};
         }
 
         it("registers each non-missing recent project through the resolver, skipping missing entries entirely", async () => {

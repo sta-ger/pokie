@@ -1,6 +1,13 @@
 import {Command} from "commander";
 import path from "path";
-import {ArtifactBuilderRegistry, ArtifactConversionPlanner, ProjectResolving, ProjectTargetResolver} from "pokie";
+import {
+    ArtifactBuilderRegistry,
+    ArtifactConversionPlanner,
+    describeUnsupportedProjectOperation,
+    PAR_IMPORT_OPERATION,
+    ProjectResolving,
+    ProjectTargetResolver,
+} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {ParCommand} from "./ParCommand.js";
 import {StakeEngineCommand} from "./StakeEngineCommand.js";
@@ -62,6 +69,14 @@ export class ImportCommand implements CliCommandHandling {
 
     private async delegate(options: ImportOptions): Promise<number> {
         const source = await this.resolveProject.resolve(options.input);
+        if (source?.type === "wasm") {
+            // The generic import's workbook branch is the only import operation
+            // a component could otherwise resemble. Keep the canonical WASM
+            // boundary instead of falling through to this command's PAR/Stake
+            // source-format wording.
+            const diagnostic = describeUnsupportedProjectOperation(source, PAR_IMPORT_OPERATION);
+            if (diagnostic !== undefined) throw new Error(diagnostic.message);
+        }
         if (source === undefined || (source.type !== "parWorkbook" && source.type !== "stakeAdapter")) {
             throw new Error(`"${options.input}" is not a recognized PAR workbook or POKIE-produced Stake Engine export. ${USAGE}`);
         }

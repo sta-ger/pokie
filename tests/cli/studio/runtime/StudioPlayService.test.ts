@@ -15,6 +15,7 @@ import {
     VideoSlotConfig,
     VideoSlotSessionHandling,
     VideoSlotWinCalculator,
+    WASM_MANIFEST_READ_CAPABILITY,
     WinEvaluationResult,
 } from "pokie";
 import ExcelJS from "exceljs";
@@ -275,6 +276,38 @@ describe("StudioPlayService", () => {
         const result = await service.newSession("/fake/project");
 
         expect(result).toEqual({status: "failed", error: "bad package"});
+    });
+
+    it("invalidates a live package session when its current path resolves as an inspection-only WASM component", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-play-wasm-session-"));
+        const componentPath = path.join(workDir, "project.wasm");
+        fs.writeFileSync(componentPath, "");
+        const resolve = jest.fn()
+            .mockResolvedValueOnce(undefined)
+            .mockResolvedValueOnce({
+                rootPath: componentPath,
+                type: "wasm",
+                capabilities: [WASM_MANIFEST_READ_CAPABILITY],
+                provenance: "compatible POKIE WASM component sidecar",
+            });
+        const loadGame = jest.fn(fakeLoadVideoSlotGame());
+        const service = new StudioPlayService(loadGame, undefined, "unknown", {resolve});
+
+        try {
+            const created = await service.newSession(componentPath);
+            if (created.status !== "ok") {
+                throw new Error("expected a package session");
+            }
+
+            await expect(service.spin(created.session.sessionId)).resolves.toMatchObject({
+                status: "error",
+                error: expect.stringContaining("cannot play a game round"),
+            });
+            await expect(service.findAnyWin(created.session.sessionId)).resolves.toEqual({status: "not-found"});
+            expect(loadGame).toHaveBeenCalledTimes(1);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("spins the just-created session and returns a real RoundArtifact, settled through the same wallet SpinCommandHandler always uses", async () => {

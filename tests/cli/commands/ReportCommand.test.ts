@@ -6,6 +6,8 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
     ProjectTargetResolver,
+    ProjectTargetMalformedError,
+    ProjectTargetUnsupportedError,
     SimulationReport,
     SimulationReportRendering,
     SimulationReportSet,
@@ -306,6 +308,28 @@ describe("ReportCommand resolved-project boundary", () => {
 
         await expect(command.run(["other.json"])).rejects.toThrow(/does not look like a pokie sim report/);
         expect(resolveProject.calls).toEqual(["other.json"]);
+    });
+
+    it.each([
+        ["missing", new ProjectTargetUnsupportedError("missing WASM sidecar diagnostic", {targetType: "wasm"})],
+        ["malformed", new ProjectTargetMalformedError("malformed WASM sidecar diagnostic", {targetType: "wasm"})],
+        ["incompatible", new ProjectTargetUnsupportedError("incompatible WASM sidecar diagnostic", {targetType: "wasm"})],
+    ])("fails closed for an unresolved %s WASM component without parsing its binary", async (_kind, resolverError) => {
+        const readFile = jest.fn(() => "WASM binary must not be parsed");
+        const resolver: ProjectResolving = {resolve: () => Promise.reject(resolverError)};
+        const command = new ReportCommand(readFile, undefined, undefined, resolver);
+
+        await expect(command.run(["component.wasm"])).rejects.toThrow(resolverError.message);
+        expect(readFile).not.toHaveBeenCalled();
+    });
+
+    it("fails closed for a resolved WASM component without parsing its binary", async () => {
+        const wasm = {type: "wasm", rootPath: "component.wasm", capabilities: PROJECT_TYPE_CAPABILITIES.wasm, provenance: "test fixture"} as PokieProject;
+        const readFile = jest.fn(() => "WASM binary must not be parsed");
+        const command = new ReportCommand(readFile, undefined, undefined, stubProjectResolver(wasm));
+
+        await expect(command.run(["component.wasm"])).rejects.toThrow(/inspection-only.*cannot yield a runnable|cannot create a simulation report/i);
+        expect(readFile).not.toHaveBeenCalled();
     });
 });
 

@@ -48,8 +48,11 @@ import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {createRecommendedBlueprint} from "../../../cli/studio-client/src/domain/blueprintEditorState.js";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
+import {StudioCertificationService} from "../../../cli/studio/certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
+import {StudioFairnessService} from "../../../cli/studio/fairness/StudioFairnessService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
+import {InMemoryRecentProjectsRepository} from "../../../cli/studio/InMemoryRecentProjectsRepository.js";
 import {StudioNativePickerService} from "../../../cli/studio/home/StudioNativePickerService.js";
 import {isLoopbackRequest} from "../../../cli/studio/isLoopbackRequest.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
@@ -1130,6 +1133,75 @@ describe("StudioServer", () => {
         expect(await opening).toEqual({status: 409, body: {error: "Project opening was superseded by a newer request."}});
         expect((await get(`${baseUrl}/api/context`)).body).toEqual({mode: "home"});
         expect((await get(`${baseUrl}/api/home/recent-projects`)).body).toEqual([]);
+    });
+
+    it("supersedes a pending real-WASM Home open without committing context, recents, or registry state", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-home-wasm-supersession-"));
+        const wasmFile = path.join(workDir, "component.wasm");
+        const lifecycleStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-home-wasm-assets-"));
+        const recentProjects = new InMemoryRecentProjectsRepository();
+        const registry = new InMemoryStudioProjectRegistry();
+        const registration = new StudioProjectRegistrationService(registry);
+        const packageLoad = jest.fn();
+        const packageInspect = jest.fn();
+        const packageValidate = jest.fn();
+        let releaseDescription: (() => void) | undefined;
+        let signalDescriptionStarted: (() => void) | undefined;
+        const descriptionStarted = new Promise<void>((resolve) => {
+            signalDescriptionStarted = resolve;
+        });
+        fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+        fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({
+            schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+            component: {id: "superseded-component", version: "1.0.0"},
+            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+            host: {rng: "pokie.rng.v1", services: []},
+            capabilities: [],
+        }));
+        writeStudioAssets(lifecycleStudioRoot);
+        const homeService = new StudioHomeService(
+            "1.0.0",
+            recentProjects,
+            packageLoad,
+            undefined,
+            undefined,
+            () => new Promise((resolve) => {
+                signalDescriptionStarted?.();
+                releaseDescription = () => resolve(undefined);
+            }),
+        );
+        const lifecycleServer = new StudioServer({
+            pokieVersion: "1.0.0",
+            host: "127.0.0.1",
+            port: 0,
+            studioRoot: lifecycleStudioRoot,
+            homeService,
+            blueprintService: new StudioBlueprintService("1.0.0", lifecycleStudioRoot, homeService),
+            loadGame: packageLoad,
+            gamePackageInspector: {inspect: packageInspect},
+            gamePackageValidator: {validate: packageValidate},
+            projectRegistrationService: registration,
+        });
+        const address = await lifecycleServer.start();
+        const lifecycleBaseUrl = `http://${address.host}:${address.port}`;
+        try {
+            const opening = post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: wasmFile});
+            await descriptionStarted;
+            expect(await post(`${lifecycleBaseUrl}/api/projects/close`)).toEqual({status: 200, body: {context: {mode: "home"}}});
+            releaseDescription?.();
+
+            expect(await opening).toEqual({status: 409, body: {error: "Project opening was superseded by a newer request."}});
+            expect((await get(`${lifecycleBaseUrl}/api/context`)).body).toEqual({mode: "home"});
+            expect(await recentProjects.list()).toEqual([]);
+            expect(await registry.list()).toEqual([]);
+            expect(packageLoad).not.toHaveBeenCalled();
+            expect(packageInspect).not.toHaveBeenCalled();
+            expect(packageValidate).not.toHaveBeenCalled();
+        } finally {
+            await lifecycleServer.stop();
+            fs.rmSync(workDir, {recursive: true, force: true});
+            fs.rmSync(lifecycleStudioRoot, {recursive: true, force: true});
+        }
     });
 
     it("returns 400 for a projectRoot that fails to load", async () => {
@@ -3100,7 +3172,9 @@ describe("StudioServer", () => {
         });
 
         afterEach(async () => {
-            await projectServer?.stop();
+            const serverToStop = projectServer;
+            projectServer = undefined;
+            await serverToStop?.stop();
             fs.rmSync(projectStudioRoot, {recursive: true, force: true});
         });
 
@@ -3157,6 +3231,54 @@ describe("StudioServer", () => {
                 projectRoot: "/tmp/broken-game",
                 error: "Cannot find module './dist/index.js'",
             });
+        });
+
+        it("keeps real malformed and incompatible WASM direct launches out of package/runtime loading and exposes their resolver diagnostics", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-direct-wasm-test-"));
+            try {
+                const malformed = path.join(workDir, "malformed.wasm");
+                const incompatible = path.join(workDir, "incompatible.wasm");
+                for (const wasmFile of [malformed, incompatible]) {
+                    fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+                }
+                fs.writeFileSync(`${malformed}.pokie-wasm.json`, "{");
+                fs.writeFileSync(`${incompatible}.pokie-wasm.json`, JSON.stringify({
+                    schemaVersion: "2.0.0",
+                    component: {id: "incompatible-component", version: "1.0.0"},
+                    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                    host: {rng: "pokie.rng.v1", services: []},
+                    capabilities: [],
+                }));
+
+                for (const [wasmFile, reason] of [[malformed, "not valid JSON"], [incompatible, "not compatible with this POKIE build"]] as const) {
+                    const directLoadGame = jest.fn();
+                    const runtimeResolver = jest.fn();
+                    const homeService = new StudioHomeService("1.0.0", undefined, directLoadGame, undefined, runtimeResolver);
+                    const directServer = new StudioServer({
+                        pokieVersion: "1.0.0",
+                        host: "127.0.0.1",
+                        port: 0,
+                        studioRoot: projectStudioRoot,
+                        homeService,
+                        blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, homeService),
+                        loadGame: directLoadGame,
+                        resolveRuntimePackageRoot: runtimeResolver,
+                        initialContext: {mode: "project", projectRoot: wasmFile},
+                    });
+                    try {
+                        const address = await directServer.start();
+                        const context = await pollUntilProjectContextSettled(`http://${address.host}:${address.port}/api/project/context`);
+
+                        expect(context.body).toMatchObject({status: "error", projectRoot: wasmFile, error: expect.stringContaining(reason)});
+                        expect(directLoadGame).not.toHaveBeenCalled();
+                        expect(runtimeResolver).not.toHaveBeenCalled();
+                    } finally {
+                        await directServer.stop();
+                    }
+                }
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
         });
     });
 
@@ -3658,7 +3780,7 @@ describe("StudioServer", () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-wasm-work-test-"));
             try {
                 const wasmFile = path.join(workDir, "game.wasm");
-                fs.writeFileSync(wasmFile, "not real wasm bytes, extension only");
+                fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
                 fs.writeFileSync(
                     `${wasmFile}.pokie-wasm.json`,
                     JSON.stringify({
@@ -3691,6 +3813,306 @@ describe("StudioServer", () => {
                     reels: {status: "unavailable"},
                     paytable: {status: "unavailable"},
                 });
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
+        it("inspects only the compatible sidecar and rejects validation without invoking package APIs", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-boundary-test-"));
+            try {
+                const wasmFile = path.join(workDir, "game.wasm");
+                fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+                fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({
+                    schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                    component: {id: "sample-component", version: "0.1.0"},
+                    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                    host: {rng: "pokie.rng.v1", services: []},
+                    capabilities: [],
+                }));
+                const packageInspect = jest.fn();
+                const packageValidate = jest.fn();
+                const homeService = new StudioHomeService("1.0.0");
+                wasmServer = new StudioServer({
+                    pokieVersion: "1.0.0",
+                    host: "127.0.0.1",
+                    port: 0,
+                    studioRoot: wasmStudioRoot,
+                    homeService,
+                    blueprintService: new StudioBlueprintService("1.0.0", wasmStudioRoot, homeService),
+                    initialContext: {mode: "project", projectRoot: wasmFile},
+                    gamePackageInspector: {inspect: packageInspect},
+                    gamePackageValidator: {validate: packageValidate},
+                });
+                const address = await wasmServer.start();
+                const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+                const inspection = await get(`${projectBaseUrl}/api/project/inspect`);
+                const validation = await get(`${projectBaseUrl}/api/project/validate`);
+
+                expect(inspection).toMatchObject({
+                    status: 200,
+                    body: {
+                        valid: true,
+                        wasmManifest: {
+                            component: {id: "sample-component", version: "0.1.0"},
+                            schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                            host: {rng: "pokie.rng.v1", services: []},
+                            capabilities: [],
+                        },
+                    },
+                });
+                expect(validation).toMatchObject({status: 409, body: {error: expect.stringContaining("inspect a compatible component")}});
+                expect(packageInspect).not.toHaveBeenCalled();
+                expect(packageValidate).not.toHaveBeenCalled();
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
+        it("preserves a sidecar mutation's exact resolver diagnostic in Game Model without package inspection", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-stale-wasm-gamemodel-test-"));
+            try {
+                const wasmFile = path.join(workDir, "game.wasm");
+                fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+                fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({
+                    schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                    component: {id: "sample-component", version: "0.1.0"},
+                    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                    host: {rng: "pokie.rng.v1", services: []},
+                    capabilities: [],
+                }));
+                const packageInspect = jest.fn();
+                const homeService = new StudioHomeService("1.0.0");
+                wasmServer = new StudioServer({
+                    pokieVersion: "1.0.0",
+                    host: "127.0.0.1",
+                    port: 0,
+                    studioRoot: wasmStudioRoot,
+                    homeService,
+                    blueprintService: new StudioBlueprintService("1.0.0", wasmStudioRoot, homeService),
+                    initialContext: {mode: "project", projectRoot: wasmFile},
+                    gamePackageInspector: {inspect: packageInspect},
+                });
+                const address = await wasmServer.start();
+                fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, "{");
+
+                const {status, body} = await get(`http://${address.host}:${address.port}/api/project/gameModel`);
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({basics: {status: "unavailable", reason: expect.stringContaining("not valid JSON")}});
+                expect(packageInspect).not.toHaveBeenCalled();
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+    });
+
+    describe("direct WASM Build/Export and job routes", () => {
+        let wasmStudioRoot: string;
+        let wasmServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            wasmStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-direct-wasm-actions-"));
+            writeStudioAssets(wasmStudioRoot);
+        });
+
+        afterEach(async () => {
+            await wasmServer?.stop();
+            fs.rmSync(wasmStudioRoot, {recursive: true, force: true});
+        });
+
+        it("rejects compatible and stale components before allocating Build/Export, simulation, or replay work", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-direct-wasm-actions-work-"));
+            try {
+                const wasmFile = path.join(workDir, "component.wasm");
+                fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+                fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({
+                    schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                    component: {id: "component", version: "1.0.0"},
+                    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                    host: {rng: "pokie.rng.v1", services: []},
+                    capabilities: [],
+                }));
+                const loadGame = jest.fn();
+                const listTargets = jest.fn(() => []);
+                const validateSourceBundle = jest.fn();
+                const buildCertification = jest.fn();
+                const configureFairness = jest.fn();
+                const generateFairnessProof = jest.fn();
+                const verifyFairnessProof = jest.fn();
+                const estimateOutcomeLibrary = jest.fn();
+                const registryOutcomeLibrary = jest.fn();
+                const homeService = new StudioHomeService("1.0.0");
+                wasmServer = new StudioServer({
+                    pokieVersion: "1.0.0",
+                    host: "127.0.0.1",
+                    port: 0,
+                    studioRoot: wasmStudioRoot,
+                    homeService,
+                    blueprintService: new StudioBlueprintService("1.0.0", wasmStudioRoot, homeService),
+                    initialContext: {mode: "project", projectRoot: wasmFile},
+                    loadGame,
+                    deploymentService: {listTargets} as unknown as StudioDeploymentService,
+                    certificationService: {validateSourceBundle, build: buildCertification} as unknown as StudioCertificationService,
+                    fairnessService: {
+                        configure: configureFairness,
+                        generateProof: generateFairnessProof,
+                        verify: verifyFairnessProof,
+                    } as unknown as StudioFairnessService,
+                    outcomeLibraryGenerateService: {
+                        estimate: estimateOutcomeLibrary,
+                        registry: registryOutcomeLibrary,
+                    } as unknown as StudioOutcomeLibraryGenerateService,
+                });
+                const address = await wasmServer.start();
+                const baseUrl = `http://${address.host}:${address.port}`;
+
+                for (const response of await Promise.all([
+                    post(`${baseUrl}/api/project/artifacts/build`, {target: "tsPackage"}),
+                    post(`${baseUrl}/api/project/simulations`, {rounds: 1}),
+                    post(`${baseUrl}/api/project/replays`, {round: 1, seed: "seed"}),
+                    post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 1}),
+                    post(`${baseUrl}/api/project/play/session`, {}),
+                    post(`${baseUrl}/api/project/play/sessions/session/spin`, {}),
+                    post(`${baseUrl}/api/project/play/sessions/session/find-any-win`, {}),
+                    post(`${baseUrl}/api/project/play/sessions/session/find-symbol-win`, {symbolId: "A"}),
+                    post(`${baseUrl}/api/project/play/sessions/session/find-free-games`, {}),
+                    post(`${baseUrl}/api/project/stakeengine/validate`, {}),
+                    post(`${baseUrl}/api/project/stakeengine/export`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/estimate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs/checkpoint/resume`, {}),
+                    get(`${baseUrl}/api/project/outcome-libraries/registry`),
+                    get(`${baseUrl}/api/project/deployment/targets`),
+                    get(`${baseUrl}/api/project/deployment/build-modes`),
+                    post(`${baseUrl}/api/project/deployment/runs`, {}),
+                    post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base"}),
+                    post(`${baseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"}),
+                    post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "certification", modes: []}),
+                    post(`${baseUrl}/api/project/fairness/configure`, {bundleDir: "bundle", modeName: "base", serverSeed: "s", clientSeed: "c", nonce: 0}),
+                    post(`${baseUrl}/api/project/fairness/generate`, {bundleDir: "bundle", commitment: {}, serverSeed: "s"}),
+                    post(`${baseUrl}/api/project/fairness/verify`, {proof: {}}),
+                ])) {
+                    expect(response).toMatchObject({status: 409, body: {error: expect.stringContaining("POKIE WASM component")}});
+                    expect((response.body as {error: string}).error).toContain("inspect a compatible component");
+                }
+                expect(loadGame).not.toHaveBeenCalled();
+                expect(listTargets).not.toHaveBeenCalled();
+                expect(validateSourceBundle).not.toHaveBeenCalled();
+                expect(buildCertification).not.toHaveBeenCalled();
+                expect(configureFairness).not.toHaveBeenCalled();
+                expect(generateFairnessProof).not.toHaveBeenCalled();
+                expect(verifyFairnessProof).not.toHaveBeenCalled();
+                expect(estimateOutcomeLibrary).not.toHaveBeenCalled();
+                expect(registryOutcomeLibrary).not.toHaveBeenCalled();
+
+                fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, "{");
+                for (const stale of await Promise.all([
+                    post(`${baseUrl}/api/project/artifacts/build`, {target: "tsPackage"}),
+                    post(`${baseUrl}/api/project/simulations`, {rounds: 1}),
+                    post(`${baseUrl}/api/project/replays`, {round: 1, seed: "seed"}),
+                    post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 1}),
+                    post(`${baseUrl}/api/project/play/session`, {}),
+                    post(`${baseUrl}/api/project/play/sessions/session/spin`, {}),
+                    post(`${baseUrl}/api/project/play/sessions/session/find-any-win`, {}),
+                    post(`${baseUrl}/api/project/play/sessions/session/find-symbol-win`, {symbolId: "A"}),
+                    post(`${baseUrl}/api/project/play/sessions/session/find-free-games`, {}),
+                    post(`${baseUrl}/api/project/stakeengine/validate`, {}),
+                    post(`${baseUrl}/api/project/stakeengine/export`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/estimate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs/checkpoint/resume`, {}),
+                    get(`${baseUrl}/api/project/outcome-libraries/registry`),
+                    get(`${baseUrl}/api/project/deployment/targets`),
+                    get(`${baseUrl}/api/project/deployment/build-modes`),
+                    post(`${baseUrl}/api/project/deployment/runs`, {}),
+                    post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base"}),
+                    post(`${baseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"}),
+                    post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "certification", modes: []}),
+                    post(`${baseUrl}/api/project/fairness/configure`, {bundleDir: "bundle", modeName: "base", serverSeed: "s", clientSeed: "c", nonce: 0}),
+                    post(`${baseUrl}/api/project/fairness/generate`, {bundleDir: "bundle", commitment: {}, serverSeed: "s"}),
+                    post(`${baseUrl}/api/project/fairness/verify`, {proof: {}}),
+                ])) {
+                    expect(stale).toMatchObject({status: 409, body: {error: expect.stringContaining("not valid JSON")}});
+                }
+                expect(loadGame).not.toHaveBeenCalled();
+                expect(listTargets).not.toHaveBeenCalled();
+                expect(validateSourceBundle).not.toHaveBeenCalled();
+                expect(buildCertification).not.toHaveBeenCalled();
+                expect(configureFairness).not.toHaveBeenCalled();
+                expect(generateFairnessProof).not.toHaveBeenCalled();
+                expect(verifyFairnessProof).not.toHaveBeenCalled();
+                expect(estimateOutcomeLibrary).not.toHaveBeenCalled();
+                expect(registryOutcomeLibrary).not.toHaveBeenCalled();
+
+                fs.rmSync(`${wasmFile}.pokie-wasm.json`);
+                for (const missing of await Promise.all([
+                    get(`${baseUrl}/api/project/deployment/targets`),
+                    post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base"}),
+                    post(`${baseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"}),
+                    post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "certification", modes: []}),
+                    post(`${baseUrl}/api/project/fairness/configure`, {bundleDir: "bundle", modeName: "base", serverSeed: "s", clientSeed: "c", nonce: 0}),
+                    post(`${baseUrl}/api/project/fairness/generate`, {bundleDir: "bundle", commitment: {}, serverSeed: "s"}),
+                    post(`${baseUrl}/api/project/fairness/verify`, {proof: {}}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/estimate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs/checkpoint/resume`, {}),
+                    get(`${baseUrl}/api/project/outcome-libraries/registry`),
+                    post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 1}),
+                    post(`${baseUrl}/api/project/play/session`, {}),
+                    post(`${baseUrl}/api/project/play/sessions/session/spin`, {}),
+                    post(`${baseUrl}/api/project/play/sessions/session/find-any-win`, {}),
+                    post(`${baseUrl}/api/project/play/sessions/session/find-symbol-win`, {symbolId: "A"}),
+                    post(`${baseUrl}/api/project/play/sessions/session/find-free-games`, {}),
+                    post(`${baseUrl}/api/project/stakeengine/validate`, {}),
+                    post(`${baseUrl}/api/project/stakeengine/export`, {}),
+                ])) {
+                    expect(missing).toMatchObject({status: 409, body: {error: expect.stringContaining("no compatible PokieWasmComponentManifest sidecar")}});
+                }
+
+                fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({
+                    schemaVersion: "2.0.0",
+                    component: {id: "component", version: "1.0.0"},
+                    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                    host: {rng: "pokie.rng.v1", services: []}, capabilities: [],
+                }));
+                for (const incompatible of await Promise.all([
+                    get(`${baseUrl}/api/project/deployment/targets`),
+                    post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base"}),
+                    post(`${baseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"}),
+                    post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "certification", modes: []}),
+                    post(`${baseUrl}/api/project/fairness/configure`, {bundleDir: "bundle", modeName: "base", serverSeed: "s", clientSeed: "c", nonce: 0}),
+                    post(`${baseUrl}/api/project/fairness/generate`, {bundleDir: "bundle", commitment: {}, serverSeed: "s"}),
+                    post(`${baseUrl}/api/project/fairness/verify`, {proof: {}}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/estimate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs`, {}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/jobs/checkpoint/resume`, {}),
+                    get(`${baseUrl}/api/project/outcome-libraries/registry`),
+                    post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 1}),
+                    post(`${baseUrl}/api/project/play/session`, {}),
+                    post(`${baseUrl}/api/project/play/sessions/session/spin`, {}),
+                    post(`${baseUrl}/api/project/play/sessions/session/find-any-win`, {}),
+                    post(`${baseUrl}/api/project/play/sessions/session/find-symbol-win`, {symbolId: "A"}),
+                    post(`${baseUrl}/api/project/play/sessions/session/find-free-games`, {}),
+                    post(`${baseUrl}/api/project/stakeengine/validate`, {}),
+                    post(`${baseUrl}/api/project/stakeengine/export`, {}),
+                ])) {
+                    expect(incompatible).toMatchObject({status: 409, body: {error: expect.stringContaining("not compatible with this POKIE build")}});
+                }
+                expect(listTargets).not.toHaveBeenCalled();
+                expect(validateSourceBundle).not.toHaveBeenCalled();
+                expect(buildCertification).not.toHaveBeenCalled();
+                expect(configureFairness).not.toHaveBeenCalled();
+                expect(generateFairnessProof).not.toHaveBeenCalled();
+                expect(verifyFairnessProof).not.toHaveBeenCalled();
+                expect(estimateOutcomeLibrary).not.toHaveBeenCalled();
+                expect(registryOutcomeLibrary).not.toHaveBeenCalled();
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }

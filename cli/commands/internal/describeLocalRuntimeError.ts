@@ -1,7 +1,7 @@
 // Keeps the three local-runtime commands' actionable startup/load diagnostics in one place. These
 // commands deliberately expose the same local HTTP workflow, so their recovery guidance must not
 // drift as their individual server wiring evolves.
-import {ProjectTargetMalformedError} from "pokie";
+import {ProjectTargetMalformedError, ProjectTargetUnsupportedError} from "pokie";
 import {RuntimePreparationError} from "../../materialize/RuntimePreparationError.js";
 
 export function describeLocalServerStartError(
@@ -29,6 +29,14 @@ export function describeRuntimePackageLoadError(packageRoot: string, error: unkn
     if (error instanceof ProjectTargetMalformedError && error.targetType === "parWorkbook") {
         return RuntimePreparationError.parWorkbookRecognition(packageRoot, error);
     }
+    // A .wasm path has its own inspection-only resolver boundary.  In
+    // particular, a missing, malformed, or incompatible sidecar is not a
+    // package.json problem, and runtime preparation must not erase its exact
+    // repair action while trying to load a game.
+    if (
+        (error instanceof ProjectTargetMalformedError || error instanceof ProjectTargetUnsupportedError) &&
+        error.targetType === "wasm"
+    ) return error;
     // Planner/materialization errors already name the attempted runtime path
     // and exact failed stage. Replacing them with package-validation advice is
     // actively misleading for a valid Blueprint or PAR workbook.

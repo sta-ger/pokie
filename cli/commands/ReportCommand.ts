@@ -12,8 +12,11 @@ import {
     type ProjectType,
     ProjectResolving,
     ProjectTargetResolver,
+    ProjectTargetMalformedError,
+    ProjectTargetUnsupportedError,
     SimulationReport,
     SimulationReportRendering,
+    describeWasmUnsupportedOperation,
     SimulationReportSet,
 } from "pokie";
 import fs from "fs";
@@ -98,6 +101,13 @@ export class ReportCommand implements CliCommandHandling {
             }
             this.emit(this.renderOutcomeSource(format, reportPath, outcomeSourceReport), out, format === "json");
             return;
+        }
+
+        // A compatible component is a resolved inspection target, not a
+        // simulation-report document.  Fail before readFile so the binary can
+        // never be parsed as JSON.
+        if (project?.type === "wasm") {
+            throw new Error(describeWasmUnsupportedOperation("create a simulation report"));
         }
 
         let parsed: SimulationReport | SimulationReportSet;
@@ -247,7 +257,11 @@ export class ReportCommand implements CliCommandHandling {
     private async resolveProjectSafely(reportPath: string) {
         try {
             return await this.resolveProject.resolve(reportPath);
-        } catch {
+        } catch (error) {
+            if (path.extname(reportPath).toLowerCase() === ".wasm" &&
+                (error instanceof ProjectTargetMalformedError || error instanceof ProjectTargetUnsupportedError)) {
+                throw new Error(error.message);
+            }
             return undefined;
         }
     }
@@ -302,7 +316,7 @@ export class ReportCommand implements CliCommandHandling {
             case "parWorkbook":
                 return 'To create a simulation report, first import the workbook into a Game Blueprint and build a POKIE game package, then run "pokie sim <packagePath> --out <file>".';
             case "wasm":
-                return "POKIE cannot create a simulation report from a POKIE WASM component yet; use a POKIE game package instead.";
+                return describeWasmUnsupportedOperation("create a simulation report");
             case "outcomeLibrary":
             case "stakeAdapter":
                 return "This outcome source should be analyzed directly by the report command.";

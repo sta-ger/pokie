@@ -27,6 +27,56 @@ function baseFetchRoutes() {
 }
 
 describe("ProjectDashboardPage", () => {
+    it("opens a compatible component in the contract-provided inspection-only dashboard", async () => {
+        const wasmPresentation = {
+            label: "WASM component (inspection-only)",
+            manifestCapability: "wasm.manifest.read",
+            manifestCapabilityLabel: "Inspect declared WASM component metadata",
+            inspectActionLabel: "Inspect declared manifest",
+            inspectionSummary: "POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary.",
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...baseFetchRoutes(),
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "artifact",
+                    projectRoot: "/games/component.wasm",
+                    project: {type: "wasm", rootPath: "/games/component.wasm", capabilities: ["wasm.manifest.read"], provenance: "compatible sidecar"},
+                    wasmPresentation,
+                },
+            }),
+            "/api/project/inspect": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    packageRoot: "/games/component.wasm",
+                    valid: true,
+                    wasmManifest: {
+                        component: {id: "component", version: "1.0.0"},
+                        schemaVersion: "1.0.0",
+                        serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                        host: {rng: "pokie.rng.v1", services: ["clock.v1"]},
+                        capabilities: ["round.play"],
+                    },
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        expect(await screen.findByRole("heading", {name: wasmPresentation.label})).toBeInTheDocument();
+        expect(screen.getAllByText(wasmPresentation.label).length).toBeGreaterThan(1);
+        expect(screen.getByText(wasmPresentation.inspectionSummary)).toBeInTheDocument();
+        expect(await screen.findByRole("table", {name: "Declared WASM component manifest"})).toBeInTheDocument();
+        expect(screen.getByText("pokie.session.v1")).toBeInTheDocument();
+        expect(screen.getByText("clock.v1")).toBeInTheDocument();
+        expect(screen.getByText("round.play")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Play"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Build/Export"})).not.toBeInTheDocument();
+    });
+
     it("loads the project header and Overview tab, then switches tabs", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch(baseFetchRoutes());

@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import {PokieGame, PokieGameManifest, STUDIO_OPERATION} from "pokie";
+import {PokieGame, PokieGameManifest, PokieProject, STUDIO_OPERATION} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -88,6 +88,97 @@ describe("loadProjectDashboardContext", () => {
         const loadGame = jest.fn().mockRejectedValue(new Error("boom"));
 
         await expect(loadProjectDashboardContext("./broken-game", loadGame)).resolves.not.toThrow();
+    });
+
+    it("opens a compatible WASM component as an inspection-only artifact without preparing or loading a runtime", async () => {
+        const loadGame = jest.fn();
+        const resolveRuntimePackageRoot = jest.fn();
+        const wasmProject: PokieProject = {
+            type: "wasm",
+            rootPath: "/components/sample.wasm",
+            capabilities: ["wasm.manifest.read"],
+            provenance: "compatible POKIE WASM sidecar",
+        };
+
+        const dashboard = await loadProjectDashboardContext(
+            wasmProject.rootPath,
+            loadGame,
+            resolveRuntimePackageRoot,
+            undefined,
+            undefined,
+            () => Promise.resolve(wasmProject),
+        );
+
+        expect(dashboard).toMatchObject({status: "artifact", project: wasmProject});
+        expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("preserves real malformed and incompatible WASM sidecar diagnostics without runtime preparation", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-dashboard-test-"));
+        const loadGame = jest.fn();
+        const resolveRuntimePackageRoot = jest.fn();
+        try {
+            const malformed = path.join(workDir, "malformed.wasm");
+            const incompatible = path.join(workDir, "incompatible.wasm");
+            for (const wasmFile of [malformed, incompatible]) {
+                fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+            }
+            fs.writeFileSync(`${malformed}.pokie-wasm.json`, "{");
+            fs.writeFileSync(`${incompatible}.pokie-wasm.json`, JSON.stringify({
+                schemaVersion: "2.0.0",
+                component: {id: "incompatible-component", version: "1.0.0"},
+                serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                host: {rng: "pokie.rng.v1", services: []},
+                capabilities: [],
+            }));
+
+            for (const [wasmFile, reason] of [[malformed, "not valid JSON"], [incompatible, "not compatible with this POKIE build"]] as const) {
+                await expect(loadProjectDashboardContext(wasmFile, loadGame, resolveRuntimePackageRoot)).resolves.toMatchObject({
+                    status: "error",
+                    projectRoot: wasmFile,
+                    error: expect.stringContaining(reason),
+                });
+            }
+            expect(loadGame).not.toHaveBeenCalled();
+            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("cancels a pending WASM resolution before any runtime or package load can begin", async () => {
+        const controller = new AbortController();
+        const loadGame = jest.fn();
+        const resolveRuntimePackageRoot = jest.fn();
+        let finishArtifactResolution: ((project: PokieProject | undefined) => void) | undefined;
+        let signalArtifactResolutionStarted: (() => void) | undefined;
+        const waitingForArtifactResolution = new Promise<void>((resolve) => {
+            signalArtifactResolutionStarted = resolve;
+        });
+        const resolveArtifactProject = jest.fn(() => new Promise<PokieProject | undefined>((finish) => {
+            finishArtifactResolution = finish;
+            signalArtifactResolutionStarted?.();
+        }));
+        const pending = loadProjectDashboardContext(
+            "/components/pending.wasm",
+            loadGame,
+            resolveRuntimePackageRoot,
+            undefined,
+            () => Promise.resolve(undefined),
+            resolveArtifactProject,
+            {signal: controller.signal, isCurrent: () => !controller.signal.aborted},
+        );
+
+        await waitingForArtifactResolution;
+        controller.abort();
+        finishArtifactResolution?.(undefined);
+
+        // The resolver completion is superseded before the runtime boundary,
+        // so neither a runtime materializer nor package loader is reachable.
+        await expect(pending).rejects.toThrow("Runtime preparation was cancelled");
+        expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+        expect(loadGame).not.toHaveBeenCalled();
     });
 
     it("opens a runnable PAR workbook through the shared runtime materialization boundary", async () => {

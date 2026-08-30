@@ -1,4 +1,4 @@
-import {PokieGame, PokieGameManifest} from "pokie";
+import {PokieGame, PokieGameManifest, POKIE_WASM_CONTRACT_VERSION} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -44,7 +44,7 @@ describe("StudioHomeService", () => {
 
             const entries = await service.listRecentProjects();
 
-            expect(entries).toEqual([{projectRoot, name: "Present", openedAt: "2026-01-01T00:00:00.000Z", missing: false}]);
+            expect(entries).toEqual([{projectRoot, name: "Present", openedAt: "2026-01-01T00:00:00.000Z", missing: false, availability: "available"}]);
         });
 
         it("marks a project missing: true when its directory no longer exists, without removing it", async () => {
@@ -55,7 +55,7 @@ describe("StudioHomeService", () => {
 
             const entries = await service.listRecentProjects();
 
-            expect(entries).toEqual([{projectRoot, name: "Gone", openedAt: "2026-01-01T00:00:00.000Z", missing: true}]);
+            expect(entries).toEqual([{projectRoot, name: "Gone", openedAt: "2026-01-01T00:00:00.000Z", missing: true, availability: "missing"}]);
             expect(await repository.list()).toHaveLength(1);
         });
 
@@ -67,6 +67,51 @@ describe("StudioHomeService", () => {
             const service = new StudioHomeService("1.0.0", repository);
 
             expect((await service.listRecentProjects())[0].missing).toBe(true);
+        });
+
+        it("keeps a compatible WASM component in recents without requiring package.json", async () => {
+            const repository = new InMemoryRecentProjectsRepository();
+            const wasmFile = path.join(tmpDir, "component.wasm");
+            fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+            fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({
+                schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                component: {id: "recent-component", version: "1.0.0"},
+                serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                host: {rng: "pokie.rng.v1", services: []},
+                capabilities: [],
+            }));
+            await repository.add({projectRoot: wasmFile, name: "Recent component", openedAt: "2026-01-01T00:00:00.000Z"});
+            const service = new StudioHomeService("1.0.0", repository);
+
+            expect(await service.listRecentProjects()).toEqual([
+                {projectRoot: wasmFile, name: "Recent component", openedAt: "2026-01-01T00:00:00.000Z", missing: false, availability: "available"},
+            ]);
+        });
+
+        it("re-resolves recent WASM sidecars and exposes the exact malformed and incompatible diagnostics", async () => {
+            const repository = new InMemoryRecentProjectsRepository();
+            const malformed = path.join(tmpDir, "malformed.wasm");
+            const incompatible = path.join(tmpDir, "incompatible.wasm");
+            for (const wasmFile of [malformed, incompatible]) {
+                fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+            }
+            fs.writeFileSync(`${malformed}.pokie-wasm.json`, "{");
+            fs.writeFileSync(`${incompatible}.pokie-wasm.json`, JSON.stringify({
+                schemaVersion: "2.0.0",
+                component: {id: "incompatible-component", version: "1.0.0"},
+                serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                host: {rng: "pokie.rng.v1", services: []},
+                capabilities: [],
+            }));
+            await repository.add({projectRoot: malformed, name: "Malformed", openedAt: "2026-01-01T00:00:00.000Z"});
+            await repository.add({projectRoot: incompatible, name: "Incompatible", openedAt: "2026-01-02T00:00:00.000Z"});
+
+            const entries = await new StudioHomeService("1.0.0", repository).listRecentProjects();
+
+            expect(entries).toEqual(expect.arrayContaining([
+                expect.objectContaining({projectRoot: malformed, missing: false, availability: "unavailable", unavailableReason: expect.stringContaining("not valid JSON")}),
+                expect.objectContaining({projectRoot: incompatible, missing: false, availability: "unavailable", unavailableReason: expect.stringContaining("not compatible with this POKIE build")}),
+            ]));
         });
     });
 
@@ -93,6 +138,40 @@ describe("StudioHomeService", () => {
 
             expect(dashboard).toEqual({status: "error", projectRoot: path.resolve(tmpDir), error: "not a pokie game package"});
             expect(await repository.list()).toEqual([]);
+        });
+
+        it("records a compatible WASM inspection but preserves malformed and incompatible sidecar diagnostics without runtime loading", async () => {
+            const repository = new InMemoryRecentProjectsRepository();
+            const loadGame = jest.fn();
+            const service = new StudioHomeService("1.2.1", repository, loadGame);
+            const compatible = path.join(tmpDir, "compatible.wasm");
+            const malformed = path.join(tmpDir, "malformed.wasm");
+            const incompatible = path.join(tmpDir, "incompatible.wasm");
+            for (const wasmFile of [compatible, malformed, incompatible]) {
+                fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+            }
+            fs.writeFileSync(`${compatible}.pokie-wasm.json`, JSON.stringify({
+                schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                component: {id: "compatible-component", version: "1.0.0"},
+                serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                host: {rng: "pokie.rng.v1", services: []},
+                capabilities: [],
+            }));
+            fs.writeFileSync(`${malformed}.pokie-wasm.json`, "{");
+            fs.writeFileSync(`${incompatible}.pokie-wasm.json`, JSON.stringify({
+                schemaVersion: "2.0.0",
+                component: {id: "incompatible-component", version: "1.0.0"},
+                serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                host: {rng: "pokie.rng.v1", services: []},
+                capabilities: [],
+            }));
+
+            expect(await service.openProject(compatible)).toMatchObject({status: "artifact", project: {type: "wasm"}});
+            await expect(service.openProject(malformed)).resolves.toMatchObject({status: "error", error: expect.stringContaining("not valid JSON")});
+            await expect(service.openProject(incompatible)).resolves.toMatchObject({status: "error", error: expect.stringContaining("not compatible with this POKIE build")});
+            expect(loadGame).not.toHaveBeenCalled();
+            expect(await repository.list()).toHaveLength(1);
+            expect((await repository.list())[0].projectRoot).toBe(path.resolve(compatible));
         });
 
         it("does not record a project when its owning Home request has been superseded", async () => {

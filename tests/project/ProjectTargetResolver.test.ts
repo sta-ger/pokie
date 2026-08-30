@@ -40,6 +40,7 @@ const SAMPLE_WASM_COMPONENT_MANIFEST = {
     host: {rng: "pokie.rng.v1", services: []},
     capabilities: [],
 };
+const WASM_BINARY = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
 
 async function writeSampleParWorkbook(filePath: string): Promise<void> {
     const workbook = new ExcelJS.Workbook();
@@ -234,15 +235,23 @@ describe("ProjectTargetResolver", () => {
 
     it("rejects an ordinary .wasm file with no PokieWasmComponentManifest sidecar as unsupported", async () => {
         const wasmFile = path.join(workDir, "game.wasm");
-        fs.writeFileSync(wasmFile, "not real wasm bytes, extension only");
+        fs.writeFileSync(wasmFile, WASM_BINARY);
 
         await expect(resolver.resolve(wasmFile)).rejects.toThrow(ProjectTargetUnsupportedError);
         await expect(resolver.resolve(wasmFile)).rejects.toThrow(/no compatible PokieWasmComponentManifest sidecar/);
     });
 
+    it("resolves a package directory named .wasm by its directory contents, not its suffix", async () => {
+        const packageDirectory = path.join(workDir, "game.wasm");
+        fs.mkdirSync(packageDirectory);
+        fs.writeFileSync(path.join(packageDirectory, "package.json"), JSON.stringify({name: "fixture-package", version: "1.0.0", pokie: {entry: "./dist/index.js"}}));
+
+        await expect(resolver.resolve(packageDirectory)).resolves.toMatchObject({type: "tsPackage", rootPath: packageDirectory});
+    });
+
     it("resolves a .wasm file with a compatible PokieWasmComponentManifest sidecar as a wasm project, read-only", async () => {
         const wasmFile = path.join(workDir, "game.wasm");
-        fs.writeFileSync(wasmFile, "not real wasm bytes, extension only");
+        fs.writeFileSync(wasmFile, WASM_BINARY);
         fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(SAMPLE_WASM_COMPONENT_MANIFEST));
 
         const project = await resolver.resolve(wasmFile);
@@ -257,7 +266,7 @@ describe("ProjectTargetResolver", () => {
 
     it("throws ProjectTargetMalformedError for a .wasm file whose manifest sidecar isn't valid JSON", async () => {
         const wasmFile = path.join(workDir, "broken.wasm");
-        fs.writeFileSync(wasmFile, "not real wasm bytes, extension only");
+        fs.writeFileSync(wasmFile, WASM_BINARY);
         fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, "{not valid json");
 
         await expect(resolver.resolve(wasmFile)).rejects.toThrow(ProjectTargetMalformedError);
@@ -265,7 +274,7 @@ describe("ProjectTargetResolver", () => {
 
     it("throws ProjectTargetMalformedError for a .wasm file whose manifest sidecar fails shape validation", async () => {
         const wasmFile = path.join(workDir, "malshaped.wasm");
-        fs.writeFileSync(wasmFile, "not real wasm bytes, extension only");
+        fs.writeFileSync(wasmFile, WASM_BINARY);
         fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({...SAMPLE_WASM_COMPONENT_MANIFEST, host: undefined}));
 
         await expect(resolver.resolve(wasmFile)).rejects.toThrow(ProjectTargetMalformedError);
@@ -274,7 +283,7 @@ describe("ProjectTargetResolver", () => {
 
     it("throws ProjectTargetUnsupportedError for a well-shaped but schemaVersion-incompatible manifest sidecar", async () => {
         const wasmFile = path.join(workDir, "incompatible.wasm");
-        fs.writeFileSync(wasmFile, "not real wasm bytes, extension only");
+        fs.writeFileSync(wasmFile, WASM_BINARY);
         fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({...SAMPLE_WASM_COMPONENT_MANIFEST, schemaVersion: "2.0.0"}));
 
         await expect(resolver.resolve(wasmFile)).rejects.toThrow(ProjectTargetUnsupportedError);

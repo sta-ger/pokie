@@ -1,4 +1,4 @@
-import {buildGameModelProjection, GameBlueprint, GameModelProjection, GamePackageInspectionReport, PokieProject, readWasmComponentManifest} from "pokie";
+import {buildGameModelProjection, describeUnavailableWasmComponent, describeWasmGameModelBoundary, GameBlueprint, GameModelProjection, GamePackageInspectionReport, isWasmComponentFile, PokieProject, readWasmComponentManifest} from "pokie";
 import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 
 // The collaborators GET /api/project/gameModel's own resolved-project-type dispatch needs to actually
@@ -37,6 +37,11 @@ export async function buildProjectGameModel(
     // own "New sample" action can re-roll a fresh, still-reproducible sample for a saved Blueprint
     // Project without writing anything to disk.
     sharedWeightsSampleSeed?: number,
+    // A WASM component can be resolved when Studio opens it and become malformed
+    // or incompatible before this later read.  The resolver owns the actionable
+    // contract diagnostic, so carry it into the projection instead of replacing
+    // it with the generic unavailable wording below.
+    unresolvedWasmReason?: string,
 ): Promise<GameModelProjection> {
     if (isOpenedBlueprintProject) {
         const loaded = readers.loadBlueprint(projectRoot);
@@ -59,8 +64,15 @@ export async function buildProjectGameModel(
         }
         return buildGameModelProjection(undefined, {
             manifest: {id: manifestRead.manifest.component.id, version: manifestRead.manifest.component.version},
-            reason: "This project is a WASM component -- only its own manifest identity is exposed here; POKIE has no execution backend to introspect its underlying game model.",
+            reason: describeWasmGameModelBoundary(),
         });
+    }
+
+    // A component can become incompatible after Studio has already opened its
+    // path (for example when its sidecar is edited).  Never fall through to a
+    // package reader merely because re-resolution now rejects that WASM path.
+    if (isWasmComponentFile(projectRoot)) {
+        return buildGameModelProjection(undefined, {reason: unresolvedWasmReason ?? describeUnavailableWasmComponent()});
     }
 
     const inspected = readers.inspectPackage(projectRoot);

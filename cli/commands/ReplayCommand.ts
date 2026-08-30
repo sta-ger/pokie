@@ -1,5 +1,6 @@
 import {Command} from "commander";
 import {
+    describeUnsupportedProjectOperation,
     loadPokieGame,
     OutcomeSourceReplayResult,
     PokieGame,
@@ -9,6 +10,7 @@ import {
     replayOutcomeSourceProject,
     ReplayRecorder,
     ReplayRecording,
+    REPLAY_OPERATION,
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -107,6 +109,10 @@ export class ReplayCommand implements CliCommandHandling {
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
             await this.runOutcomeSourceReplay(project, options);
             return;
+        }
+        if (project?.type === "wasm") {
+            const diagnostic = describeUnsupportedProjectOperation(project, REPLAY_OPERATION);
+            if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
         }
 
         const resolution = await this.resolveRuntimePackageRoot(options.packageRoot);

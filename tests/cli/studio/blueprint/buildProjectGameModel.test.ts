@@ -1,3 +1,6 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import type {GamePackageInspectionReport, PokieProject, WasmComponentManifestReadResult} from "pokie";
 import {buildProjectGameModel, type GameModelSourceReaders} from "../../../../cli/studio/blueprint/buildProjectGameModel.js";
 import type {StudioBlueprintLoadView} from "../../../../cli/studio/blueprint/StudioBlueprintLoadView.js";
@@ -115,6 +118,29 @@ describe("buildProjectGameModel", () => {
         const projection = await buildProjectGameModel("/games/a.wasm", wasmProject(), false, readers({readWasmManifest}));
 
         expect(projection.basics).toEqual({status: "unavailable", reason: "The sidecar manifest is no longer compatible."});
+    });
+
+    it("preserves a stale WASM resolver diagnostic without inspecting it as a package", async () => {
+        const inspectPackage = jest.fn();
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-game-model-stale-wasm-"));
+        const wasmFile = path.join(workDir, "component.wasm");
+        fs.writeFileSync(wasmFile, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+
+        try {
+            const projection = await buildProjectGameModel(
+                wasmFile,
+                undefined,
+                false,
+                readers({inspectPackage}),
+                undefined,
+                "The sidecar manifest is not valid JSON; repair it before inspection.",
+            );
+
+            expect(projection.basics).toEqual({status: "unavailable", reason: "The sidecar manifest is not valid JSON; repair it before inspection."});
+            expect(inspectPackage).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("exposes only package.json's own version/description for a tsPackage project, never mapping its \"name\" to basics.id or basics.name (an npm package identifier, not the game's own id or display name)", async () => {

@@ -283,6 +283,7 @@ export * from "./project/StakeProjectionExportService.js";
 export * from "./project/TsPackageArtifactBuilder.js";
 export * from "./project/TsPackageProjectTargetAdapter.js";
 export * from "./project/UnsupportedProjectOperationDiagnostic.js";
+export * from "./project/WasmProductContract.js";
 export * from "./project/WasmProjectTargetAdapter.js";
 export * from "./project/buildGameModelProjection.js";
 export * from "./project/buildGameModelReels.js";

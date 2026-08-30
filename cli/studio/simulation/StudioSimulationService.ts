@@ -1,5 +1,7 @@
 import {
     describeUnsupportedProjectOperation,
+    describeWasmLifecycleBoundary,
+    isWasmComponentFile,
     loadPokieGame,
     OUTCOME_SOURCE_SIMULATE_OPERATION,
     OutcomeLibraryBundleOutcomeSource,
@@ -36,7 +38,8 @@ const DEFAULT_CHUNK_SIZE = 1000;
 
 export type StudioSimulationStartResult =
     | {status: "created"; job: StudioSimulationJobView}
-    | {status: "conflict"; activeJobId: string};
+    | {status: "conflict"; activeJobId: string}
+    | {status: "unsupported"; message: string};
 
 export type GetSimulationReportResult =
     | {status: "ok"; report: SimulationReport; statistics?: StudioSimulationStatisticsView}
@@ -128,6 +131,13 @@ export class StudioSimulationService {
     // through" convention handleOutcomeSourceSample already uses for the sample route. Undefined here means
     // "run the ordinary ParallelSimulationRunner path" (see run()), exactly as before this parameter existed.
     public start(projectRoot: string, request: ValidatedSimulationRequest, outcomeSourceProject?: PokieProject): StudioSimulationStartResult {
+        // This service is also used directly, outside StudioServer's HTTP
+        // guard. A resolved component, or an actual unresolved WASM file, has
+        // no runnable branch. A package directory named `game.wasm` remains a
+        // normal project and must not be rejected from its pathname alone.
+        if (isWasmComponentFile(projectRoot) || outcomeSourceProject?.type === "wasm") {
+            return {status: "unsupported", message: describeWasmLifecycleBoundary(outcomeSourceProject?.type === "wasm" ? outcomeSourceProject.rootPath : projectRoot, "simulate game rounds")};
+        }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
             return {status: "conflict", activeJobId: active.id};

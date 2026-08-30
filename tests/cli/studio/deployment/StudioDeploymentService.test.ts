@@ -8,6 +8,7 @@ import {
     OutcomeLibraryBundleManifest,
     OutcomeLibraryBundleModeIndex,
     OutcomeLibraryBundleReading,
+    POKIE_WASM_CONTRACT_VERSION,
     RoundArtifact,
     RoundArtifactProvenance,
     WeightedOutcomeLibrary,
@@ -16,6 +17,10 @@ import {
 } from "pokie";
 import {StudioDeploymentService as ConfiguredStudioDeploymentService} from "../../../../cli/studio/deployment/StudioDeploymentService.js";
 import type {ValidatedDeploymentRunRequest} from "../../../../cli/studio/deployment/validateDeploymentRunRequest.js";
+import {resolveCurrentBuildModeIds} from "../../../../cli/studio/deployment/resolveCurrentBuildModeIds.js";
+import fs from "fs";
+import os from "os";
+import path from "path";
 
 // Production construction must name Studio's configured version. These legacy
 // dependency-injection tests focus on delivery behavior, so their local adapter
@@ -123,6 +128,47 @@ const identityRealpath = (resolvedPath: string): string => resolvedPath;
 const buildModeIdsIncludingBase = () => Promise.resolve(["base"] as readonly string[] | undefined);
 
 describe("StudioDeploymentService", () => {
+    it("never loads a compatible WASM component while resolving deployment modes", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-deployment-modes-wasm-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const loadGame = jest.fn();
+        try {
+            fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+            fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({
+                schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                component: {id: "component", version: "1.0.0"},
+                serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                host: {rng: "pokie.rng.v1", services: []},
+                capabilities: [],
+            }));
+
+            await expect(resolveCurrentBuildModeIds(wasmPath, loadGame)).rejects.toThrow("This POKIE WASM component cannot build a POKIE game package");
+            expect(loadGame).not.toHaveBeenCalled();
+
+            const service = new StudioDeploymentService(undefined, () => stubTarget(), undefined, identityRealpath, undefined, undefined, () => resolveCurrentBuildModeIds(wasmPath, loadGame));
+            await expect(service.getBuildModes(wasmPath)).resolves.toMatchObject({status: "unavailable", error: expect.stringContaining("inspect a compatible component")});
+            const result = await service.run(wasmPath, runRequest());
+            expect(result).toMatchObject({status: "invalid-modes", error: expect.stringContaining("inspect a compatible component")});
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("loads build modes for a package directory named .wasm", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-deployment-modes-package-suffix-"));
+        const packageDirectory = path.join(workDir, "game.wasm");
+        const loadGame = jest.fn(() => Promise.resolve({getBetModes: () => [{id: "base"}]}));
+        fs.mkdirSync(packageDirectory);
+        fs.writeFileSync(path.join(packageDirectory, "package.json"), JSON.stringify({name: "fixture-package", version: "1.0.0"}));
+        try {
+            await expect(resolveCurrentBuildModeIds(packageDirectory, loadGame as never)).resolves.toEqual(["base"]);
+            expect(loadGame).toHaveBeenCalledWith(packageDirectory);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("requires configured POKIE versioning for direct construction", () => {
         expect(() => new ConfiguredStudioDeploymentService()).toThrow("requires the configured POKIE version");
     });

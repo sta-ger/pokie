@@ -4,6 +4,7 @@ import type {PokieProject} from "./PokieProject.js";
 import {describeProjectType} from "./ProjectPresentation.js";
 import type {ProjectType} from "./ProjectType.js";
 import type {UnsupportedProjectOperationDiagnostic} from "./UnsupportedProjectOperationDiagnostic.js";
+import {describeWasmUnsupportedOperation} from "./WasmProductContract.js";
 
 const ALL_PROJECT_TYPES = Object.keys(PROJECT_TYPE_CAPABILITIES) as ProjectType[];
 
@@ -11,6 +12,7 @@ const OPERATION_NAMES: Readonly<Record<string, string>> = {
     build: "build a POKIE game package",
     sim: "simulate game rounds",
     replay: "replay a game round",
+    play: "play a game round",
     validate: "validate the game",
     edit: "edit the Game Blueprint",
     inspect: "inspect the game package",
@@ -39,6 +41,11 @@ const OPERATION_NAMES: Readonly<Record<string, string>> = {
     "outcomeSource.diff": "compare outcome sources",
     "certification.build": "build certification evidence",
     "certification.verify": "verify certification evidence",
+    "deployment.targets": "list deployment targets",
+    "certification.validate": "validate certification source data",
+    "fairness.configure": "configure a Provably Fair round",
+    "fairness.generate": "generate a Provably Fair proof",
+    "fairness.verify": "verify a Provably Fair proof",
 };
 
 // Checks whether `project` can perform `operation` and, if not, explains why — the single place this
@@ -60,6 +67,15 @@ export function describeUnsupportedProjectOperation(
     );
 
     const action = OPERATION_NAMES[operation] ?? "perform this action";
+    if (project.type === "wasm") {
+        return {
+            detectedType: project.type,
+            operation,
+            missingCapability: requiredCapability,
+            alternatives,
+            message: describeWasmUnsupportedOperation(action),
+        };
+    }
     const alternativesText =
         alternatives.length > 0
             ? ` You can ${action} with ${alternatives.map(describeProjectType).join(" or ")}.`

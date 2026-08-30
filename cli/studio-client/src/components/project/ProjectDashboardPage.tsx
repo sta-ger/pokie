@@ -1,4 +1,4 @@
-import {Alert, Button, Text, Title} from "@mantine/core";
+import {Alert, Button, Table, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
 import {useLocation, useNavigate, useParams} from "react-router-dom";
@@ -7,13 +7,14 @@ import {
     closeProject,
     getReplay,
     getReport,
+    inspectProject,
     inspectReplayArtifact,
     listRecentSpins,
     listReplays,
     listReports,
     validateProject,
 } from "../../api/apiClient";
-import type {RoundArtifactJson, StudioProjectCapability, StudioSimulationReportListEntry} from "../../api/types";
+import type {GamePackageInspectionReport, RoundArtifactJson, StudioProjectCapability, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {
@@ -23,7 +24,7 @@ import {
     OUTCOME_LIBRARY_READ_CAPABILITY,
     OUTCOME_SOURCE_SAMPLE_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
-    PROJECT_TYPE_LABEL,
+    describeProjectType,
     RUNTIME_EXECUTE_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     type ProjectHeaderView,
@@ -303,12 +304,66 @@ function describeProjectName(header: ProjectHeaderView): string {
         return header.name;
     }
     if (header.status === "outcome-source") {
-        return PROJECT_TYPE_LABEL[header.type];
+        return describeProjectType(header.type as Exclude<typeof header.type, "wasm">);
     }
     if (header.status === "artifact") {
-        return PROJECT_TYPE_LABEL[header.type];
+        return header.type === "wasm" ? describeProjectType(header.type, header.wasmPresentation) : describeProjectType(header.type);
     }
     return "Project";
+}
+
+// The compatible component's declared metadata is the whole Studio WASM
+// workflow. It comes from GET /api/project/inspect, whose server branch reads
+// the canonical sidecar reader only; this component intentionally has no
+// binary URL, loader, or execution control.
+function WasmManifestInspection({projectRoot, summary}: {projectRoot: string; summary: string}) {
+    const fetchImpl = useStudioApi();
+    const [inspection, setInspection] = useState<GamePackageInspectionReport>();
+    const [error, setError] = useState<string>();
+
+    useEffect(() => {
+        let active = true;
+        inspectProject(fetchImpl).then(
+            (result) => {
+                if (active) setInspection(result);
+            },
+            (reason: unknown) => {
+                if (active) setError(errorMessage(reason));
+            },
+        );
+        return () => {
+            active = false;
+        };
+    // The API's inspection is scoped to Studio's current project rather than
+    // carrying a path in its URL.  Re-read it when that current component
+    // changes; otherwise switching directly between two WASM components
+    // would retain the first component's declared metadata in this mounted
+    // overview panel.
+    }, [fetchImpl, projectRoot]);
+
+    if (error !== undefined) return <ErrorState message={error} />;
+    if (inspection === undefined) return <LoadingState label="Reading declared WASM manifest…" />;
+    if (!inspection.valid || inspection.wasmManifest === undefined) return <ErrorState message={inspection.error ?? "The WASM manifest is unavailable for inspection."} />;
+
+    const {component, schemaVersion, serialization, host, capabilities} = inspection.wasmManifest;
+    return (
+        <div>
+            <Text mb="sm">{summary}</Text>
+            <Table withRowBorders={false} aria-label="Declared WASM component manifest">
+                <Table.Tbody>
+                    <Table.Tr><Table.Th>Component ID</Table.Th><Table.Td>{component.id}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Component version</Table.Th><Table.Td>{component.version}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Schema version</Table.Th><Table.Td>{schemaVersion}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Session serialization</Table.Th><Table.Td>{serialization.session}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Play serialization</Table.Th><Table.Td>{serialization.play}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>State serialization</Table.Th><Table.Td>{serialization.state}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>RNG host binding</Table.Th><Table.Td>{host.rng}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Host services</Table.Th><Table.Td>{host.services.length === 0 ? "None declared" : host.services.join(", ")}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Declared capabilities</Table.Th><Table.Td>{capabilities.length === 0 ? "None declared" : capabilities.join(", ")}</Table.Td></Table.Tr>
+                </Table.Tbody>
+            </Table>
+        </div>
+    );
 }
 
 // Mirrors the old app's own showProjectDashboard: every tab's data-loading hook lives here, at the page
@@ -975,7 +1030,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                 <OutcomeSourceOverview header={header} onRoundRecorded={refreshRecentSpins} />
                             )}
                             {activeTab === "overview" && header.status === "artifact" && (
-                                <Text>This {PROJECT_TYPE_LABEL[header.type].toLowerCase()} can be republished from Build/Export.</Text>
+                                header.type === "wasm"
+                                    ? <WasmManifestInspection projectRoot={header.projectRoot} summary={header.wasmPresentation.inspectionSummary} />
+                                    : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
                             {activeTab === "gameModel" && (
                             // GameModelTab owns all of its own fetch state locally (no page-level hook),

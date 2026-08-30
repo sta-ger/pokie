@@ -1,6 +1,7 @@
 import {Command} from "commander";
 import {
     BetMode,
+    describeUnsupportedProjectOperation,
     loadPokieGame,
     MAX_SIMULATION_WORKERS,
     OutcomeSourceSimulationReport,
@@ -20,6 +21,7 @@ import {
     SimulationReportBuilder,
     SimulationReportBuilding,
     SimulationReportSet,
+    SIM_OPERATION,
     WeightedOutcomeRandomSource,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -317,6 +319,10 @@ export class SimCommand implements CliCommandHandling {
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
             await this.runOutcomeSourceSim(project, options);
             return;
+        }
+        if (project?.type === "wasm") {
+            const diagnostic = describeUnsupportedProjectOperation(project, SIM_OPERATION);
+            if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
         }
 
         // Crossed exactly once per invocation -- every downstream step (the metadata load below,

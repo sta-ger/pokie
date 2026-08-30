@@ -5,6 +5,7 @@ import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest
 import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
 import {ProjectTargetUnsupportedError} from "./ProjectTargetUnsupportedError.js";
+import {describeWasmSidecarFailure} from "./WasmProductContract.js";
 
 // The sidecar file a ".wasm" file must be paired with for this adapter to ever recognize it -- e.g.
 // "game.wasm" needs a "game.wasm.pokie-wasm.json" next to it declaring a PokieWasmComponentManifest. Exported
@@ -55,7 +56,8 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
             manifest = JSON.parse(raw);
         } catch {
             throw new ProjectTargetMalformedError(
-                `"${sidecarPath}" is not valid JSON, but "${resolvedPath}" requires it as its PokieWasmComponentManifest sidecar.`,
+                describeWasmSidecarFailure(resolvedPath, sidecarPath, "malformed", "it is not valid JSON"),
+                {targetType: "wasm", stage: "WASM component sidecar", recovery: "Repair the compatible POKIE WASM component sidecar, then inspect it again."},
             );
         }
 
@@ -64,10 +66,14 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
             const summary = diagnostic.issues.map((issue) => issue.message).join(" ");
             const isShapeIssue = diagnostic.issues.some((issue) => issue.code.startsWith("wasm-component-manifest-"));
             if (isShapeIssue) {
-                throw new ProjectTargetMalformedError(`"${sidecarPath}" does not satisfy PokieWasmComponentManifest's own shape: ${summary}`);
+                throw new ProjectTargetMalformedError(
+                    describeWasmSidecarFailure(resolvedPath, sidecarPath, "malformed", `it does not satisfy PokieWasmComponentManifest's own shape: ${summary}`),
+                    {targetType: "wasm", stage: "WASM component sidecar", recovery: "Repair the compatible POKIE WASM component sidecar, then inspect it again."},
+                );
             }
             throw new ProjectTargetUnsupportedError(
-                `"${resolvedPath}" declares a PokieWasmComponentManifest that is not compatible with this POKIE build: ${summary}`,
+                describeWasmSidecarFailure(resolvedPath, sidecarPath, "incompatible", summary),
+                {targetType: "wasm"},
             );
         }
 

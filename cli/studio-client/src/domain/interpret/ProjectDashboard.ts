@@ -5,6 +5,7 @@ import type {
     StudioProjectCapability,
     StudioProjectOrigin,
     StudioProjectType,
+    StudioWasmPresentation,
 } from "../../api/types";
 
 // Pure view-model transforms for the Project Dashboard — mirrors cli/client/interpretResponse.ts's
@@ -41,13 +42,36 @@ export type ProjectHeaderView =
     | {
           status: "artifact";
           projectRoot: string;
-          type: StudioProjectType;
+          type: Exclude<StudioProjectType, "wasm">;
           capabilities: StudioProjectCapability[];
           origin?: StudioProjectOrigin;
+      }
+    | {
+          status: "artifact";
+          projectRoot: string;
+          type: "wasm";
+          capabilities: StudioProjectCapability[];
+          origin?: StudioProjectOrigin;
+          wasmPresentation: StudioWasmPresentation;
       };
+
+type WasmArtifactContext = Extract<ProjectDashboardContext, {status: "artifact"}> & {
+    project: {type: "wasm"; rootPath: string; capabilities: StudioProjectCapability[]; provenance: string};
+    wasmPresentation: StudioWasmPresentation;
+};
+
+function isWasmArtifactContext(context: Extract<ProjectDashboardContext, {status: "artifact"}>): context is WasmArtifactContext {
+    return context.project.type === "wasm";
+}
 
 const PROJECT_OPEN_FAILURE_MESSAGE =
     "We couldn't open this game. Return to your games and try opening it again. If it continues, check the game's location and reopen Studio.";
+
+// Resolver diagnostics for a component's missing, malformed, or incompatible
+// sidecar are already the product contract's safe recovery guidance. They can
+// arrive during direct launch or history restore before a project type exists,
+// so identify the contract wording rather than relying on a typed dashboard.
+const WASM_CONTRACT_FAILURE = /(?:WASM target|WASM component|PokieWasmComponentManifest)/i;
 
 // Project-context failures can originate while Studio starts directly in a workspace, restores a
 // project-scoped browser-history entry, or reloads the active project. Those are all the same
@@ -57,7 +81,7 @@ export function describeProjectContextFailure(projectRoot: string, detail?: stri
     // Planner diagnostics are already safe, actionable user-facing text.  In particular they carry
     // the attempted path, exact conversion edge, and recovery; replacing them with opening copy loses
     // the only information a designer can use to repair a non-runnable source.
-    if (detail?.startsWith("Cannot prepare a runnable runtime")) {
+    if (detail !== undefined && (detail.startsWith("Cannot prepare a runnable runtime") || WASM_CONTRACT_FAILURE.test(detail))) {
         return {status: "error", projectRoot, message: detail};
     }
     return {status: "error", projectRoot, message: PROJECT_OPEN_FAILURE_MESSAGE, errorDetail: detail};
@@ -85,6 +109,16 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
         };
     }
     if (context.status === "artifact") {
+        if (isWasmArtifactContext(context)) {
+            return {
+                status: "artifact",
+                projectRoot: context.projectRoot,
+                type: "wasm",
+                capabilities: context.project.capabilities,
+                origin: context.origin,
+                wasmPresentation: context.wasmPresentation,
+            };
+        }
         return {
             status: "artifact",
             projectRoot: context.projectRoot,
@@ -155,14 +189,19 @@ export const STAKE_ADAPTER_EXCHANGE_CAPABILITY: StudioProjectCapability = "stake
 // destination, but it cannot be loaded as a game or treated as a canonical outcome source.
 export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: StudioProjectCapability = "parWorkbook.exchange";
 
-export const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
+export const PROJECT_TYPE_LABEL: Record<Exclude<StudioProjectType, "wasm">, string> = {
     blueprint: "Game design",
     tsPackage: "Playable game",
     outcomeLibrary: "Game data library",
     stakeAdapter: "Game export",
-    wasm: "Game module",
     parWorkbook: "PAR spreadsheet",
 };
+
+export function describeProjectType(type: Exclude<StudioProjectType, "wasm">): string;
+export function describeProjectType(type: "wasm", wasmPresentation: StudioWasmPresentation): string;
+export function describeProjectType(type: StudioProjectType, wasmPresentation?: StudioWasmPresentation): string {
+    return type === "wasm" ? wasmPresentation!.label : PROJECT_TYPE_LABEL[type];
+}
 
 const CAPABILITY_LABEL: Record<string, string> = {
     "blueprint.build": "Edit and build this game",
@@ -170,7 +209,6 @@ const CAPABILITY_LABEL: Record<string, string> = {
     "outcomeLibrary.read": "Use saved game outcomes",
     "stakeAdapter.exchange": "Share this game export",
     "parWorkbook.exchange": "Share this PAR spreadsheet",
-    "wasm.export": "Export this game module",
     "outcomeSource.read": "Review game outcome data",
     "outcomeSource.sample": "Play and replay saved outcomes",
 };

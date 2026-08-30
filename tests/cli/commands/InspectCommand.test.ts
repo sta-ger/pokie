@@ -1,4 +1,4 @@
-import {PokieProject, ProjectResolving} from "pokie";
+import {PokieProject, ProjectResolving, ProjectTargetMalformedError, ProjectTargetUnsupportedError} from "pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
@@ -24,7 +24,6 @@ const blueprintProject = projectOf("blueprint", "./game.blueprint.json");
 const outcomeProject = projectOf("outcomeLibrary", "./outcomes");
 const parWorkbookProject = projectOf("parWorkbook", "./game.par.xlsx");
 const stakeProject = projectOf("stakeAdapter", "./stake-export");
-const wasmProject = projectOf("wasm", "./game.wasm");
 
 const SAMPLE_BLUEPRINT = {
     manifest: {id: "sample", name: "Sample", version: "1.0.0"},
@@ -33,6 +32,7 @@ const SAMPLE_BLUEPRINT = {
     symbols: ["A", "B", "C"],
     paytable: {A: {3: 5}},
 };
+const WASM_BINARY = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
 
 describe("InspectCommand", () => {
     let logSpy: jest.SpyInstance;
@@ -103,11 +103,23 @@ describe("InspectCommand", () => {
     });
 
     it.each([
+        ["missing", new ProjectTargetUnsupportedError("missing compatible sidecar; add one to inspect declared metadata. POKIE never loads or executes the WASM binary.", {targetType: "wasm"})],
+        ["malformed", new ProjectTargetMalformedError("malformed sidecar; repair it to inspect declared metadata. POKIE never loads or executes the WASM binary.", {targetType: "wasm"})],
+        ["incompatible", new ProjectTargetUnsupportedError("incompatible sidecar; update it to inspect declared metadata. POKIE never loads or executes the WASM binary.", {targetType: "wasm"})],
+    ])("preserves the %s WASM sidecar inspection diagnostic", async (_kind, error) => {
+        const resolver: ProjectResolving = {resolve: () => Promise.reject(error)};
+        const command = new InspectCommand(resolver);
+
+        expect(await command.run(["component.wasm"])).toBe(1);
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(error.message));
+        expect(errorSpy.mock.calls[0][0]).toContain("POKIE could not inspect");
+    });
+
+    it.each([
         [blueprintProject, "Game Blueprint", "Build a POKIE game package", "first build a POKIE game package"],
         [outcomeProject, "Outcome Library", "Simulate outcome draws", "original game logic"],
         [stakeProject, "Stake Engine export", "Render exact outcome statistics", "use the compatible Outcome Library"],
         [parWorkbookProject, "PAR workbook", "Import a Game Blueprint", "first import the workbook"],
-        [wasmProject, "POKIE WASM component", "Inspect this component", "cannot build, run, simulate, or validate WASM game logic"],
     ])("explains the public kind, compatible actions, and prerequisites for %s", async (project, kind, action, prerequisite) => {
         const command = new InspectCommand(createStubResolver(project));
 
@@ -226,7 +238,7 @@ describe("InspectCommand (integration, real GamePackageInspector)", () => {
         workbook.addWorksheet("Symbols");
         workbook.addWorksheet("Paytable");
         await workbook.xlsx.writeFile(workbookPath);
-        fs.writeFileSync(wasmPath, "not real WASM bytes");
+        fs.writeFileSync(wasmPath, WASM_BINARY);
         fs.writeFileSync(
             `${wasmPath}.pokie-wasm.json`,
             JSON.stringify({
@@ -258,6 +270,39 @@ describe("InspectCommand (integration, real GamePackageInspector)", () => {
             expect(await command.run([malformedPackageDir])).toBe(1);
             expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("project metadata is malformed");
             expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).not.toContain("ProjectTarget");
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("reads and renders a compatible WASM component manifest without offering inspect as a next action", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-inspect-wasm-manifest-test-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        fs.writeFileSync(wasmPath, WASM_BINARY);
+        fs.writeFileSync(
+            `${wasmPath}.pokie-wasm.json`,
+            JSON.stringify({
+                schemaVersion: "1.0.0",
+                component: {id: "sample-component", version: "0.1.0"},
+                serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                host: {rng: "pokie.rng.v1", services: ["pokie.clock.v1"]},
+                capabilities: ["pokie.round.play.v1"],
+            }),
+        );
+
+        try {
+            expect(await new InspectCommand().run([wasmPath])).toBe(0);
+
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("Declared component manifest:");
+            expect(printed).toContain("component id     sample-component");
+            expect(printed).toContain("component version 0.1.0");
+            expect(printed).toContain("schema version   1.0.0");
+            expect(printed).toContain("session=pokie.session.v1, play=pokie.play.v1, state=pokie.state.v1");
+            expect(printed).toContain("rng=pokie.rng.v1, services=pokie.clock.v1");
+            expect(printed).toContain("capabilities     pokie.round.play.v1");
+            expect(printed).not.toContain("Available next actions:");
+            expect(printed).not.toContain("pokie inspect");
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }

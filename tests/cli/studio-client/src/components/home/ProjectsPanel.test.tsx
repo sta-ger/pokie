@@ -87,6 +87,117 @@ describe("ProjectsPanel: Import Project", () => {
         expect(calls.filter((call) => call.url.startsWith("/api/home/projects/registry?"))).toHaveLength(2);
     });
 
+    it("renders the resolver's actionable unavailable WASM reason and never offers an open action", async () => {
+        const reason = "The WASM sidecar is malformed; repair its JSON.";
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [{
+                    location: "/games/component.wasm",
+                    name: "Component",
+                    type: "wasm",
+                    capabilities: ["wasm.manifest.read"],
+                    origin: "external",
+                    lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                    status: "unavailable",
+                    unavailableReason: reason,
+                    wasmPresentation: {
+                        label: "WASM component (inspection-only)",
+                        manifestCapability: "wasm.manifest.read",
+                        manifestCapabilityLabel: "Inspect declared WASM component metadata",
+                        inspectActionLabel: "Inspect declared manifest",
+                        inspectionSummary: "inspection-only",
+                    },
+                }],
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        const row = (await screen.findByText("Component")).closest("tr") as HTMLElement;
+        expect(within(row).getByText(reason)).toBeInTheDocument();
+        expect(within(row).queryByRole("button", {name: /inspect|open/i})).not.toBeInTheDocument();
+    });
+
+    it("renders a compatible component's contract type and inspection action without a client fallback", async () => {
+        const user = userEvent.setup();
+        const wasmPresentation = {
+            label: "WASM component (inspection-only)",
+            manifestCapability: "wasm.manifest.read",
+            manifestCapabilityLabel: "Inspect declared WASM component metadata",
+            inspectActionLabel: "Inspect declared manifest",
+            inspectionSummary: "POKIE reads compatible component metadata only.",
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [{
+                    location: "/games/component.wasm",
+                    name: "Compatible component",
+                    type: "wasm",
+                    capabilities: ["wasm.manifest.read"],
+                    origin: "external",
+                    lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                    status: "ok",
+                    wasmPresentation,
+                }],
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        const row = (await screen.findByText("Compatible component")).closest("tr") as HTMLElement;
+        expect(within(row).getByText(wasmPresentation.label)).toBeInTheDocument();
+        expect(within(row).getByRole("button", {name: wasmPresentation.inspectActionLabel})).toBeInTheDocument();
+        await user.click(screen.getByRole("combobox", {name: "Game type"}));
+        expect(screen.getByRole("option", {name: wasmPresentation.label, hidden: true})).toBeInTheDocument();
+    });
+
+    it("uses the recognized component's contract label before registration and preserves its inspection action after registration", async () => {
+        const user = userEvent.setup();
+        const wasmPresentation = {
+            label: "WASM component (inspection-only)",
+            manifestCapability: "wasm.manifest.read",
+            manifestCapabilityLabel: "Inspect declared WASM component metadata",
+            inspectActionLabel: "Inspect declared manifest",
+            inspectionSummary: "POKIE reads compatible component metadata only.",
+        };
+        const location = "/games/component.wasm";
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "recognized", location, type: "wasm", capabilities: ["wasm.manifest.read"], suggestedName: "component", wasmPresentation},
+            }),
+            "/api/home/projects/registry/register": () => ({
+                ok: true,
+                status: 201,
+                body: {
+                    status: "ok",
+                    entry: {
+                        location,
+                        name: "component",
+                        type: "wasm",
+                        capabilities: ["wasm.manifest.read"],
+                        origin: "external",
+                        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                        status: "ok",
+                        wasmPresentation,
+                    },
+                },
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        await user.type(screen.getByLabelText("Game location", {exact: false}), location);
+        await user.click(screen.getByRole("button", {name: "Check game"}));
+        expect(await screen.findByText((_, element) => element?.textContent === `Found a ${wasmPresentation.label} at ${location}.`)).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Add to projects"}));
+        expect(await screen.findByRole("button", {name: wasmPresentation.inspectActionLabel})).toBeInTheDocument();
+    });
+
     it("detects a recognized package, prefills the suggested name, and Register adds it to the list", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({

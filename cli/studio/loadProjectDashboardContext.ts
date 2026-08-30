@@ -1,4 +1,4 @@
-import {loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, type ProjectType} from "pokie";
+import {isWasmComponentFile, loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, wasmProductContractView, type ProjectType} from "pokie";
 import path from "path";
 import {BlueprintMaterializationError} from "../materialize/BlueprintMaterializationError.js";
 import {RuntimePreparationError} from "../materialize/RuntimePreparationError.js";
@@ -35,8 +35,9 @@ const defaultResolveOutcomeSourceProject: OutcomeSourceProjectResolving = async 
     return {project, report};
 };
 
-// Resolves artifacts which deliberately have no runtime path. PAR is omitted:
-// runnable-compatible workbooks go through the shared runtime planner below.
+// Resolves artifacts which deliberately have no runtime path. WASM inspection
+// is routed here before runtime preparation, so opening it can never load the
+// binary or allocate a materialized package.
 export type ArtifactProjectResolving = (projectRoot: string) => Promise<PokieProject | undefined>;
 
 // `isCurrent` belongs to Studio's request-generation owner.  An AbortSignal stops the
@@ -45,7 +46,14 @@ export type ArtifactProjectResolving = (projectRoot: string) => Promise<PokiePro
 // the same time as a project switch).
 export type ProjectDashboardLoadOptions = {readonly signal?: AbortSignal; readonly isCurrent?: () => boolean};
 
-const defaultResolveArtifactProject: ArtifactProjectResolving = () => Promise.resolve(undefined);
+const defaultResolveArtifactProject: ArtifactProjectResolving = async (projectRoot) => {
+    // Preserve a WASM resolver failure rather than treating it as an ordinary
+    // unrecognized artifact. Its missing/malformed/incompatible sidecar reason
+    // is the actionable inspection diagnostic, and letting it fall through
+    // would incorrectly start package/runtime preparation for a binary file.
+    const project = await new ProjectTargetResolver().resolve(projectRoot);
+    return project?.type === "wasm" ? project : undefined;
+};
 
 // Adapts loadPokieGame's throw-on-failure contract into ProjectDashboardContext's safe, typed
 // "loaded"/"error" result — the one place a failure to load `projectRoot` (missing build output, a
@@ -103,11 +111,32 @@ export async function loadProjectDashboardContext(
     }
 
     // Keep any truly non-runnable artifact visible without claiming it loaded.
-    const artifact = await resolveArtifactProject(projectRoot).catch(() => undefined);
+    let artifact: PokieProject | undefined;
+    try {
+        artifact = await resolveArtifactProject(projectRoot);
+    } catch (error) {
+        assertDashboardLoadCurrent(options);
+        if (isWasmComponentFile(projectRoot)) {
+            return {
+                status: "error",
+                projectRoot: resolvedRoot,
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    }
     assertDashboardLoadCurrent(options);
     if (artifact !== undefined) {
         const identity = await describeLocation(projectRoot).catch(() => undefined);
         assertDashboardLoadCurrent(options);
+        if (artifact.type === "wasm") {
+            return {
+                status: "artifact",
+                projectRoot: resolvedRoot,
+                project: artifact,
+                origin: identity?.origin,
+                wasmPresentation: wasmProductContractView(),
+            };
+        }
         return {
             status: "artifact",
             projectRoot: resolvedRoot,

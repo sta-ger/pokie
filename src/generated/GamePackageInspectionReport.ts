@@ -7,4 +7,14 @@ export type GamePackageInspectionReport = {
     valid: boolean;
     error?: string;
     packageJson?: {name?: string; version?: string; description?: string};
+    // Present only for an inspection-only resolved WASM component.  This keeps
+    // Studio's inspect route truthful without treating a component as a
+    // package or asking any package reader to open its binary.
+    wasmManifest?: {
+        component: {id: string; version: string};
+        schemaVersion: string;
+        serialization: {session: string; play: string; state: string};
+        host: {rng: string; services: string[]};
+        capabilities: string[];
+    };
 };

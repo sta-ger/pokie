@@ -13,6 +13,9 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     assertArtifactBuildNotCancelled,
+    describeWasmLifecycleBoundary,
+    describeUnsupportedProjectOperation,
+    isWasmComponentFile,
     StakeProjectionExportService,
     type PreparedStakeProjectionOperation,
 } from "pokie";
@@ -23,6 +26,15 @@ import type {StudioArtifactBuildJobView, StudioArtifactBuildProgressView} from "
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
 import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPlan.js";
+
+export type StudioArtifactBuildStartResult =
+    | {status: "created"; job: StudioArtifactBuildJobView}
+    | {status: "unsupported"; message: string};
+
+export type StudioPreparedStakeProjectionStartResult =
+    | {status: "created"; job: StudioArtifactBuildJobView}
+    | {status: "unsupported"; message: string}
+    | {status: "stale"};
 
 // "parWorkbook" is the one target whose artifact is a single file rather than a directory -- its default
 // destination needs a real file extension, mirroring BuildCommand's own PAR_WORKBOOK_DEFAULT_EXTENSION.
@@ -356,16 +368,45 @@ export class StudioArtifactBuildService {
     // Starts independently from the request that created it, so a client can observe the preflight and
     // every running update rather than waiting for one terminal HTTP response.  Retention is bounded;
     // active jobs are never evicted.
-    public start(projectRoot: string, target: ArtifactTargetType, outDir?: string): StudioArtifactBuildJobView {
-        return this.startOperation(projectRoot, target, outDir);
+    public start(projectRoot: string, target: ArtifactTargetType, outDir?: string): StudioArtifactBuildStartResult {
+        // A direct service caller has the same no-job boundary as the HTTP
+        // route: a WASM path must never receive an id, destination, staging
+        // plan, or queued builder merely to fail later.
+        if (isWasmComponentFile(projectRoot)) {
+            return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "build a POKIE game package")};
+        }
+        return {status: "created", job: this.startOperation(projectRoot, target, outDir)};
     }
 
     /** Consume a preview-issued operation, rejecting stale or cross-project handles. */
-    public startPreparedStakeProjection(projectRoot: string, preparedOperationId: string): StudioArtifactBuildJobView | undefined {
+    public async startPreparedStakeProjection(projectRoot: string, preparedOperationId: string): Promise<StudioPreparedStakeProjectionStartResult> {
         const prepared = this.preparedStakeOperations.get(preparedOperationId);
-        if (prepared === undefined || prepared.projectRoot !== projectRoot) return undefined;
+        if (prepared === undefined || prepared.projectRoot !== projectRoot) return {status: "stale"};
+
+        // A prepared Stake operation is only a preflight snapshot. Re-resolve
+        // immediately before allocating its job so a package path replaced by
+        // an inspection-only component cannot consume the retained operation.
+        try {
+            const current = await this.resolveProject.resolve(projectRoot);
+            if (current?.type === "wasm") {
+                return {
+                    status: "unsupported",
+                    message: describeUnsupportedProjectOperation(current, "build a Stake Engine export")?.message
+                        ?? describeWasmLifecycleBoundary(projectRoot, "build a Stake Engine export"),
+                };
+            }
+            if (current === undefined && isWasmComponentFile(projectRoot)) {
+                return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "build a Stake Engine export")};
+            }
+            if (current === undefined) return {status: "stale"};
+        } catch {
+            if (isWasmComponentFile(projectRoot)) {
+                return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "build a Stake Engine export")};
+            }
+            return {status: "stale"};
+        }
         this.preparedStakeOperations.delete(preparedOperationId);
-        return this.startOperation(projectRoot, "stakeAdapter", prepared.operation.destinationPath, prepared.operation);
+        return {status: "created", job: this.startOperation(projectRoot, "stakeAdapter", prepared.operation.destinationPath, prepared.operation)};
     }
 
     /** Returns the destination bound by a preview without exposing its operation. */

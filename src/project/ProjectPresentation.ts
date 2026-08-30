@@ -1,5 +1,6 @@
 import type {PokieProject} from "./PokieProject.js";
 import type {ProjectType} from "./ProjectType.js";
+import {WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
 
 export type ProjectNextAction = {
     readonly label: string;
@@ -66,11 +67,15 @@ const PROJECT_PRESENTATIONS: Readonly<Record<ProjectType, ProjectPresentation>> 
         ],
     },
     wasm: {
-        kind: "POKIE WASM component",
-        purpose: "A compatible WebAssembly component whose POKIE metadata can be inspected.",
-        nextActions: [{label: "Inspect this component", command: "pokie inspect <path>"}],
+        kind: WASM_PRODUCT_CONTRACT.kind,
+        purpose: WASM_PRODUCT_CONTRACT.inspectionPurpose,
+        // `pokie inspect` is the operation currently rendering this presentation.
+        // A WASM component has no further CLI action after its manifest has been
+        // read, so do not send users back through a self-referential command.
+        nextActions: [],
         prerequisites: [
-            "POKIE can inspect this component's metadata, but cannot build, run, simulate, or validate WASM game logic.",
+            `${WASM_PRODUCT_CONTRACT.inspectionBoundary} It cannot build, run, simulate, or validate WASM game logic; it also cannot replay or serve it.`,
+            WASM_PRODUCT_CONTRACT.originalSourceRecovery,
         ],
     },
     parWorkbook: {

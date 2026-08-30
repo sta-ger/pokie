@@ -1,6 +1,7 @@
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
 import {ArtifactConversionPlanner} from "./ArtifactConversionPlanner.js";
 import type {ProjectType} from "./ProjectType.js";
+import {WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
 
 // The build product contract is deliberately data, rather than a collection of capability checks spread
 // across the CLI, registry and Studio.  It includes every resolver source kind and every artifact target;
@@ -44,7 +45,7 @@ const PUBLIC_PROJECT_TYPE_NAMES: Readonly<Record<ProjectType, string>> = {
     outcomeLibrary: "Outcome Library",
     stakeAdapter: "Stake Engine export",
     parWorkbook: "PAR workbook",
-    wasm: "POKIE WASM component",
+    wasm: WASM_PRODUCT_CONTRACT.kind,
 };
 
 // Compatibility wording retained for callers of the former matrix API. The matrix state itself is now

@@ -43,6 +43,16 @@ describe("describeProjectHeader", () => {
         });
     });
 
+    it("shows a resolver-derived WASM sidecar diagnostic as the primary direct-entry failure", () => {
+        const diagnostic = '"/a/component.wasm.pokie-wasm.json" is not valid JSON, but "/a/component.wasm" requires it as its PokieWasmComponentManifest sidecar.';
+
+        expect(describeProjectHeader({status: "error", projectRoot: "/a/component.wasm", error: diagnostic})).toEqual({
+            status: "error",
+            projectRoot: "/a/component.wasm",
+            message: diagnostic,
+        });
+    });
+
     it("flattens the loaded state's manifest fields", () => {
         const view = describeProjectHeader({
             status: "loaded",
@@ -115,6 +125,32 @@ describe("describeProjectHeader", () => {
             type: "parWorkbook",
             capabilities: ["parWorkbook.exchange"],
             origin: undefined,
+        });
+    });
+
+    it("carries the server-provided WASM presentation into the inspection-only dashboard", () => {
+        const wasmPresentation = {
+            label: "WASM component (inspection-only)",
+            manifestCapability: "wasm.manifest.read",
+            manifestCapabilityLabel: "Inspect declared WASM component metadata",
+            inspectActionLabel: "Inspect declared manifest",
+            inspectionSummary: "POKIE reads compatible component metadata only.",
+        };
+
+        expect(
+            describeProjectHeader({
+                status: "artifact",
+                projectRoot: "/a/component.wasm",
+                project: {type: "wasm", rootPath: "/a/component.wasm", capabilities: ["wasm.manifest.read"], provenance: "compatible sidecar"},
+                wasmPresentation,
+            }),
+        ).toEqual({
+            status: "artifact",
+            projectRoot: "/a/component.wasm",
+            type: "wasm",
+            capabilities: ["wasm.manifest.read"],
+            origin: undefined,
+            wasmPresentation,
         });
     });
 });

@@ -377,7 +377,8 @@ it, writing the result to `--out <path>` (default: a `<target>`-named sibling of
 `tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults to `./blueprints/tsPackage`).
 
 The build command supports targets: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, and `parWorkbook`.
-It supports source types: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and `wasm`.
+It can resolve a compatible `wasm` component only to reject conversion before publication: WASM is an
+inspection-only input, not a source workflow or a build target.
 
 ## `pokie generate <packageRoot>`
 
@@ -435,8 +436,6 @@ The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: it
 `blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM remains
 inspection-only. PAR-derived targets first import a durable Blueprint intermediate; dry-run prints that stage and
 any generated/reused Outcome intermediate without writing it.
-resolvable for inspection, but is intentionally not a build target: it is an inspection-only compatibility boundary,
-not a POKIE artifact workflow.
 
 A `blueprint` → `tsPackage` conversion is the classic "generate a game package from a `GameBlueprint`" path,
 described in full below. Blueprint → PAR Workbook freezes generated, weighted, or default reels as a deterministic

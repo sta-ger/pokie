@@ -347,8 +347,11 @@ describe("StudioSimulationService", () => {
         expect(loadGame).not.toHaveBeenCalled();
     });
 
-    it("reports a project with no runtime capability as unsupported instead of loading it as a package", async () => {
-        const wasmPath = "/projects/component.wasm";
+    it("rejects every real WASM sidecar state before creating a queued simulation job or loading it as a package", () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-simulation-wasm-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const sidecar = `${wasmPath}.pokie-wasm.json`;
+        fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
         const wasmProject: PokieProject = {
             type: "wasm",
             rootPath: wasmPath,
@@ -375,18 +378,47 @@ describe("StudioSimulationService", () => {
             resolveRuntimePackageRoot,
         );
 
-        const result = service.start(wasmPath, {rounds: 5});
-        if (result.status !== "created") {
-            throw new Error("expected job to be created");
+        const compatible = {
+            schemaVersion: "1.0.0", component: {id: "fixture", version: "1.0.0"},
+            serialization: {session: "session", play: "play", state: "state"}, host: {rng: "rng", services: []}, capabilities: [],
+        };
+        try {
+            const cases: readonly [string | undefined, RegExp][] = [
+                [JSON.stringify(compatible), /cannot simulate game rounds/],
+                [undefined, /no compatible PokieWasmComponentManifest sidecar/],
+                ["{", /sidecar at/],
+                [JSON.stringify({...compatible, schemaVersion: "2.0.0"}), /not compatible with this POKIE build/],
+            ];
+            for (const [contents, expected] of cases) {
+                if (contents === undefined) fs.rmSync(sidecar, {force: true});
+                else fs.writeFileSync(sidecar, contents);
+                const result = service.start(wasmPath, {rounds: 5}, wasmProject);
+                expect(result).toMatchObject({status: "unsupported", message: expect.stringMatching(expected)});
+                expect(service.getActiveCount()).toBe(0);
+            }
+            expect(materialize).not.toHaveBeenCalled();
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
         }
-        const job = await waitForTerminal(service, result.job.id);
+    });
 
-        expect(job.status).toBe("failed");
-        expect(job.error).toContain("This POKIE WASM component cannot simulate game rounds");
-        expect(job.error).toContain("POKIE game package");
-        expect(job.error).not.toContain("ENOTDIR");
-        expect(materialize).not.toHaveBeenCalled();
-        expect(loadGame).not.toHaveBeenCalled();
+    it("keeps a directory named .wasm on the normal simulation lifecycle", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-simulation-package-suffix-"));
+        const packageDirectory = path.join(workDir, "game.wasm");
+        fs.mkdirSync(packageDirectory);
+        const service = new StudioSimulationService(
+            new InMemoryStudioSimulationRepository(),
+            () => Promise.resolve(createFakeGame(manifest)),
+        );
+        try {
+            const result = service.start(packageDirectory, {rounds: 1});
+            expect(result.status).toBe("created");
+            if (result.status !== "created") throw new Error("expected normal simulation job");
+            await expect(waitForTerminal(service, result.job.id)).resolves.toMatchObject({status: "completed"});
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("has no breakdown when the session doesn't implement StakeAmountDetermining/getSimulationCategory", async () => {

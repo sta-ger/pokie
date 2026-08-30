@@ -11,6 +11,7 @@ import {
     PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
+    SERVE_OPERATION,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolution, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
@@ -97,6 +98,10 @@ export class ServeCommand implements CliCommandHandling {
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
             await this.runOutcomeSourceServe(project, options);
             return;
+        }
+        if (project?.type === "wasm") {
+            const diagnostic = describeUnsupportedProjectOperation(project, SERVE_OPERATION);
+            if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
         }
 
         const game = await this.loadRuntimeGame(options.packageRoot);
