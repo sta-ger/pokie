@@ -226,7 +226,7 @@
       "operation": "import",
       "source_path": "run-artifacts/symbol.png",
       "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
-      "produced_path": "run-artifacts/assets/symbols/symbol-1704164645000-i.png",
+      "produced_path": "run-artifacts/assets/symbols/symbol-1788105880043-i.png",
       "produced_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
       "systemic_classes": [

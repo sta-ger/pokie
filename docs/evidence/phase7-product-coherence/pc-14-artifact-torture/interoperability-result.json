@@ -10,13 +10,13 @@
   "runner_inputs": [
     {
       "file": "cli-real-artifact-result.json",
-      "sha256": "sha256:bfcf712cd85bea7161f868aa114be4786c02d9f34793877c4c0e6af1925c95f7",
+      "sha256": "sha256:1a9590e7a16ced0d26f854a8d03fd06d61f9af7c7fd4a8aa0ac49df3cb015b0a",
       "rows": 72,
       "scenarios": 15
     },
     {
       "file": "studio-real-artifact-result.json",
-      "sha256": "sha256:af0a0bad1f4cbd77e711317ac72c239a882cd4644705983f6aa911af300ff192",
+      "sha256": "sha256:3405a12709b372679eea89876b8c9e9c3b8adf817dd960c3b4aeef42832f9437",
       "rows": 15,
       "scenarios": 8
     },
@@ -1569,7 +1569,7 @@
       "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
       "produced_path": "run-artifacts/matrix-stake-reexported",
       "produced_identity": "sha256:845f608fa53f68b3b28532037d1fc494bbc4475bd740f23def1e5f2d739ae326",
-      "operation_owner": "BuildCommand / ArtifactBuilderRegistry",
+      "operation_owner": "StakeEngineCommand",
       "systemic_classes": [
         "provenance-and-freshness-binding",
         "durable-publication-ownership"
@@ -1579,18 +1579,18 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "BuildCommand",
-          "result": "build imported Outcome Library --target stakeAdapter exit 0"
+          "owner": "StakeEngineCommand",
+          "result": "stakeengine export imported config.json exit 0"
         },
         {
           "surface": "library",
-          "owner": "ArtifactBuilderRegistry",
+          "owner": "StakeEngineCommand",
           "result": "re-exported Stake manifest retained the original generation semantics"
         },
         {
           "surface": "library",
           "owner": "StakeEngineCommand",
-          "result": "imported source-provenance manifest/index/mode hashes remained available to the re-export path"
+          "result": "imported source-provenance manifest/index/mode hashes remained available to the public re-export path"
         }
       ]
     },
@@ -1903,7 +1903,7 @@
       "operation": "import",
       "source_path": "run-artifacts/symbol.png",
       "source_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
-      "produced_path": "run-artifacts/assets/symbols/symbol-1704164645000-i.png",
+      "produced_path": "run-artifacts/assets/symbols/symbol-1788105880043-i.png",
       "produced_identity": "sha256:c1166312f296f0c21a369cbed5af0696be79866ac373a450d80453d778f6214a",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
       "systemic_classes": [
@@ -2356,7 +2356,7 @@
       "observable_result": "Outcome Library to Stake export, public import, and public re-export retain game identity, configuration hash, POKIE version, generation semantics, and source provenance",
       "execution": {
         "surface": "cli",
-        "owner": "BuildCommand / StakeEngineCommand",
+        "owner": "StakeEngineCommand",
         "assertions": [
           "imported library manifest matches the exported Stake manifest identity",
           "re-exported Stake manifest preserves each imported generation descriptor",
@@ -2364,7 +2364,7 @@
         ],
         "observations": [
           {
-            "route": "pokie build --target stakeAdapter / pokie stakeengine import / pokie build --target stakeAdapter",
+            "route": "pokie build --target stakeAdapter / pokie stakeengine import / pokie stakeengine export",
             "result": "complete public round trip completed with matching identity, generation, and source provenance"
           }
         ]
@@ -7337,7 +7337,6 @@
           "studioOutcomeLibrarySelector:export"
         ],
         "operation_owners": [
-          "BuildCommand / ArtifactBuilderRegistry",
           "CertificationCommand",
           "FairnessCommand",
           "FileSessionRepository.load",
@@ -7449,11 +7448,11 @@
           "studioSymbolArtworkPng:import"
         ],
         "operation_owners": [
-          "BuildCommand / ArtifactBuilderRegistry",
           "FileSessionRepository.save",
           "GamePackagePreparer.prepare",
           "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
           "OutcomeLibraryCommand",
+          "StakeEngineCommand",
           "StudioBlueprintService.importSymbolArtwork/save",
           "StudioDeploymentService.run",
           "StudioProjectRegistrationService.registerExternal"
