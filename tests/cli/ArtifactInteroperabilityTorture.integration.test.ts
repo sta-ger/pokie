@@ -13,13 +13,16 @@ import {
 } from "pokie";
 import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";
 import {FairnessCommand} from "../../cli/commands/FairnessCommand.js";
+import {InspectCommand} from "../../cli/commands/InspectCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
 import {OutcomeSourceCommand} from "../../cli/commands/OutcomeSourceCommand.js";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
+import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
+import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 
 const POKIE_VERSION = "1.3.0";
 
@@ -154,6 +157,28 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(replay).toMatchObject({game: bundleManifest.game, outcomeSource: {
             libraryId: sourceMode.libraryId, libraryHash: sourceMode.libraryHash, selectionAlgorithm: "derived-round-seed-v1",
         }});
+
+        // Keep an operation-level record produced by the public owners.  This
+        // is intentionally written only after each command has completed: it
+        // prevents the PC-14 evidence runner from treating a planned command
+        // or a hand-authored fixture as an observed artifact operation.
+        const reportPath = path.join(workDir, "matrix-report.md");
+        expect(await new ValidateCommand().run([blueprintPath, "--format", "json"])).toBe(0);
+        expect(await new ValidateCommand().run([bundlePath, "--deep", "--format", "json"])).toBe(0);
+        expect(await new InspectCommand().run([bundlePath])).toBe(0);
+        await new ReportCommand().run([bundlePath, "--format", "markdown", "--out", reportPath]);
+        const operationObservationPath = path.join(workDir, "pc-14-operation-observations.json");
+        const operationObservations = [
+            {id: "blueprint:validate", sourcePath: blueprintPath, producedPath: null, owner: "ValidateCommand", result: "valid"},
+            {id: "outcomeLibrary:validate", sourcePath: bundlePath, producedPath: null, owner: "ValidateCommand", result: "valid"},
+            {id: "outcomeLibrary:inspect", sourcePath: bundlePath, producedPath: null, owner: "InspectCommand", result: "recognized"},
+            {id: "outcomeLibrary:report", sourcePath: bundlePath, producedPath: reportPath, owner: "ReportCommand", result: "published"},
+            {id: "outcomeLibrary:simulate", sourcePath: bundlePath, producedPath: simulationPath, owner: "SimCommand", result: "published"},
+            {id: "outcomeLibrary:replay", sourcePath: bundlePath, producedPath: replayPath, owner: "ReplayCommand", result: "published"},
+        ];
+        fs.writeFileSync(operationObservationPath, JSON.stringify(operationObservations, null, 2));
+        expect(JSON.parse(fs.readFileSync(operationObservationPath, "utf-8"))).toEqual(operationObservations);
+        expect(fs.readFileSync(reportPath, "utf-8")).toContain("Outcome Source Report");
 
         fs.writeFileSync(certificationConfigPath, JSON.stringify({modes: [{modeName: "base", seed: "matrix-evidence", sampleCount: 4}]}));
         const certification = new CertificationCommand(POKIE_VERSION);

@@ -55,6 +55,14 @@ type InteroperabilityResult = {
         };
     }[];
     readonly targeted_test_runs: readonly {readonly file: string; readonly purpose: string}[];
+    readonly real_artifact_runs: readonly {
+        readonly id: string;
+        readonly source: string;
+        readonly chain: readonly string[];
+        readonly surfaces: readonly string[];
+        readonly regression: string;
+        readonly result?: string;
+    }[];
 };
 
 const evidencePath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-14-artifact-torture/interoperability-result.json");
@@ -206,6 +214,30 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 expect(scenario.next_action).toMatch(/Blueprint|package|inspect|choose|use/i);
             }
         }
+    });
+
+    it("records command observations only from the durable paths emitted after public operations complete", () => {
+        const ledger = result.real_artifact_runs.find((run) => run.id === "cli-operation-observation-ledger");
+        expect(ledger).toMatchObject({
+            source: "generated Blueprint, Outcome Library bundle, and simulation report",
+            regression: "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
+        });
+        expect(ledger?.chain).toEqual([
+            "blueprint:validate",
+            "outcomeLibrary:validate",
+            "outcomeLibrary:inspect",
+            "outcomeLibrary:simulate",
+            "outcomeLibrary:replay",
+            "outcomeLibrary:report",
+        ]);
+        expect(ledger?.surfaces).toEqual([
+            "ValidateCommand",
+            "InspectCommand",
+            "SimCommand",
+            "ReplayCommand",
+            "ReportCommand",
+        ]);
+        expect(ledger?.result).toMatch(/writes pc-14-operation-observations\.json only after every command exits successfully/i);
     });
 
     it("keeps the complete PC-14 lifecycle closure attached to the exact owner regressions", () => {

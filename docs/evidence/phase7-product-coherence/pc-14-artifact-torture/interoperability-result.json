@@ -64,6 +64,27 @@
         "StudioStakeEngineExportService"
       ],
       "regression": "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts"
+    },
+    {
+      "id": "cli-operation-observation-ledger",
+      "source": "generated Blueprint, Outcome Library bundle, and simulation report",
+      "chain": [
+        "blueprint:validate",
+        "outcomeLibrary:validate",
+        "outcomeLibrary:inspect",
+        "outcomeLibrary:simulate",
+        "outcomeLibrary:replay",
+        "outcomeLibrary:report"
+      ],
+      "surfaces": [
+        "ValidateCommand",
+        "InspectCommand",
+        "SimCommand",
+        "ReplayCommand",
+        "ReportCommand"
+      ],
+      "result": "The runner writes pc-14-operation-observations.json only after every command exits successfully; the record retains the concrete temporary source and produced paths before the temporary root is cleaned up.",
+      "regression": "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts"
     }
   ],
   "rows": [
