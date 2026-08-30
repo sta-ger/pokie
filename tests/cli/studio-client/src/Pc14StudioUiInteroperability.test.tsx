@@ -1,4 +1,4 @@
-import {screen, waitFor} from "@testing-library/react";
+import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import fs from "fs";
 import http from "http";
@@ -220,6 +220,32 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.click(screen.getByRole("button", {name: "Continue to Export"}));
         await screen.findByText("Output directory");
 
+        // Build/Export is also the retained Studio route for Stake.  Drive
+        // the rendered card through a failed occupied destination and then a
+        // successful publication, so the UI evidence covers an artifact
+        // output and recovery rather than only the server-side Stake service.
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        const stakeHeading = await screen.findByText("Stake Engine export");
+        const stakeCard = stakeHeading.closest("div")?.parentElement;
+        expect(stakeCard).not.toBeNull();
+        const stake = within(stakeCard!);
+        const stakeDestination = stake.getByRole("textbox", {name: "Output directory (optional)"});
+        const occupiedStakePath = path.join(workDir, "occupied-stake");
+        fs.mkdirSync(occupiedStakePath);
+        fs.writeFileSync(path.join(occupiedStakePath, "borrowed.txt"), "caller-owned");
+        await user.clear(stakeDestination);
+        await user.type(stakeDestination, occupiedStakePath);
+        await screen.findByText("This destination already contains files. Choose a different destination; Build will not overwrite it.");
+        expect(stake.getByRole("button", {name: "Build"})).toBeDisabled();
+        expect(fs.readFileSync(path.join(occupiedStakePath, "borrowed.txt"), "utf8")).toBe("caller-owned");
+        const stakePath = path.join(workDir, "studio-ui-stake");
+        await user.clear(stakeDestination);
+        await user.type(stakeDestination, stakePath);
+        await waitFor(() => expect(stake.getByRole("button", {name: "Build"})).toBeEnabled());
+        await user.click(stake.getByRole("button", {name: "Build"}));
+        await screen.findByText(new RegExp(`Built to ${stakePath.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}`), {}, {timeout: 30000});
+        expect(fs.existsSync(path.join(stakePath, "pokie-manifest.json"))).toBe(true);
+
         evidence.recordScenario({
             id: "studio-ui-outcome-source-certification-output-error-recovery",
             sourcePath: outcomeLibraryPath,
@@ -239,6 +265,26 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
                 {route: "UI /project/:projectRoot/certification (Certification)", result: "completed source error, validation recovery, build, inspection, and export workflow"},
                 {route: "POST /api/project/certification/validate-source", result: "returned both the missing-path error and the recovered native-bundle validation"},
                 {route: "POST /api/project/certification/build", result: "published the real certification evidence bundle consumed by the rendered inspector"},
+            ],
+        });
+
+        evidence.recordScenario({
+            id: "studio-ui-stake-output-error-recovery",
+            sourcePath: outcomeLibraryPath,
+            producedPath: stakePath,
+            result: "the rendered Build/Export Stake card preserved a caller-owned occupied destination, then published a real Stake export after the destination was corrected",
+            surface: "studio-ui",
+            owner: "ExportDeployTab",
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+            assertions: [
+                "the rendered Stake card received the server preflight conflict for an occupied caller-owned destination",
+                "the rejected destination retained its borrowed file unchanged",
+                "correcting the destination enabled the real Stake artifact publication and manifest output",
+            ],
+            observations: [
+                {route: "UI /project/:projectRoot/exportDeploy (Stake Engine export)", result: "rendered the occupied-destination error and the recovered Stake publication"},
+                {route: "POST /api/project/artifacts/preview", result: "returned the resolved occupied-destination conflict then the prepared Stake plan"},
+                {route: "POST /api/project/artifacts/build", result: "published the real Stake Engine export after the corrected preflight"},
             ],
         });
 

@@ -22,9 +22,9 @@
     },
     {
       "file": "studio-ui-real-artifact-result.json",
-      "sha256": "sha256:6e04905d2db9e9231b82a2d36dd0d60e5f6db9bf60c9d52bc517841c5a2bd589",
+      "sha256": "sha256:67ff370248ad85f6f6a575dfc74d2e3cdc7184dbfa2d733e9dfa02584f1b4d2c",
       "rows": 0,
-      "scenarios": 3
+      "scenarios": 4
     }
   ],
   "rows": [
@@ -2780,6 +2780,41 @@
           {
             "route": "POST /api/project/fairness/verify",
             "result": "rendered the verified proof result"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-stake-output-error-recovery",
+      "source_path": "run-artifacts/tsPackage/outcomes/bundle",
+      "source_identity": "sha256:a06d094e0408ce9b1741c1e128b368dcaa91e2a2add8b3a70c52ed92b9e852c8",
+      "produced_path": "run-artifacts/studio-ui-stake",
+      "produced_identity": "sha256:845f608fa53f68b3b28532037d1fc494bbc4475bd740f23def1e5f2d739ae326",
+      "observable_result": "the rendered Build/Export Stake card preserved a caller-owned occupied destination, then published a real Stake export after the destination was corrected",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "ExportDeployTab",
+        "assertions": [
+          "the rendered Stake card received the server preflight conflict for an occupied caller-owned destination",
+          "the rejected destination retained its borrowed file unchanged",
+          "correcting the destination enabled the real Stake artifact publication and manifest output"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/exportDeploy (Stake Engine export)",
+            "result": "rendered the occupied-destination error and the recovered Stake publication"
+          },
+          {
+            "route": "POST /api/project/artifacts/preview",
+            "result": "returned the resolved occupied-destination conflict then the prepared Stake plan"
+          },
+          {
+            "route": "POST /api/project/artifacts/build",
+            "result": "published the real Stake Engine export after the corrected preflight"
           }
         ]
       },
@@ -7246,7 +7281,8 @@
           "stake-outcome-library-round-trip",
           "studio-managed-reuse-compatibility",
           "studio-ui-outcome-source-certification-output-error-recovery",
-          "studio-ui-provably-fair-output-error-recovery"
+          "studio-ui-provably-fair-output-error-recovery",
+          "studio-ui-stake-output-error-recovery"
         ],
         "runner_outputs": [
           "cli-real-artifact-result.json",
@@ -7294,6 +7330,8 @@
           "StudioOutcomeLibraryGenerateService.registry"
         ],
         "studio_routes": [
+          "POST /api/project/artifacts/build",
+          "POST /api/project/artifacts/preview",
           "POST /api/project/certification/build",
           "POST /api/project/certification/validate-source",
           "POST /api/project/fairness/configure",
@@ -7303,6 +7341,7 @@
         ],
         "studio_ui_routes": [
           "UI /project/:projectRoot/certification (Certification)",
+          "UI /project/:projectRoot/exportDeploy (Stake Engine export)",
           "UI /project/:projectRoot/overview (Outcome Source)",
           "UI /project/:projectRoot/provablyFair (Provably Fair)"
         ],
@@ -7355,7 +7394,8 @@
           "studio-outcome-library-registry-index",
           "studio-outcome-library-selector-deployment",
           "studio-ui-outcome-source-certification-output-error-recovery",
-          "studio-ui-provably-fair-output-error-recovery"
+          "studio-ui-provably-fair-output-error-recovery",
+          "studio-ui-stake-output-error-recovery"
         ]
       }
     },
@@ -7386,7 +7426,8 @@
           "studio-simulation-replay-cancellation",
           "studio-ui-blueprint-runtime-workflows",
           "studio-ui-outcome-source-certification-output-error-recovery",
-          "studio-ui-provably-fair-output-error-recovery"
+          "studio-ui-provably-fair-output-error-recovery",
+          "studio-ui-stake-output-error-recovery"
         ],
         "runner_outputs": [
           "cli-real-artifact-result.json",
@@ -7430,6 +7471,7 @@
         "studio_ui_routes": [
           "UI /project/:projectRoot/certification (Certification)",
           "UI /project/:projectRoot/exportDeploy (Build/Export)",
+          "UI /project/:projectRoot/exportDeploy (Stake Engine export)",
           "UI /project/:projectRoot/overview (Outcome Source)",
           "UI /project/:projectRoot/play (Play)",
           "UI /project/:projectRoot/provablyFair (Provably Fair)",
@@ -7470,7 +7512,8 @@
           "studio-symbol-artwork-materialize",
           "studio-ui-blueprint-runtime-workflows",
           "studio-ui-outcome-source-certification-output-error-recovery",
-          "studio-ui-provably-fair-output-error-recovery"
+          "studio-ui-provably-fair-output-error-recovery",
+          "studio-ui-stake-output-error-recovery"
         ]
       }
     }

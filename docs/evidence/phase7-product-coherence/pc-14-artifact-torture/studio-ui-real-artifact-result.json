@@ -130,6 +130,41 @@
         "provenance-and-freshness-binding",
         "durable-publication-ownership"
       ]
+    },
+    {
+      "id": "studio-ui-stake-output-error-recovery",
+      "source_path": "run-artifacts/tsPackage/outcomes/bundle",
+      "source_identity": "sha256:a06d094e0408ce9b1741c1e128b368dcaa91e2a2add8b3a70c52ed92b9e852c8",
+      "produced_path": "run-artifacts/studio-ui-stake",
+      "produced_identity": "sha256:845f608fa53f68b3b28532037d1fc494bbc4475bd740f23def1e5f2d739ae326",
+      "observable_result": "the rendered Build/Export Stake card preserved a caller-owned occupied destination, then published a real Stake export after the destination was corrected",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "ExportDeployTab",
+        "assertions": [
+          "the rendered Stake card received the server preflight conflict for an occupied caller-owned destination",
+          "the rejected destination retained its borrowed file unchanged",
+          "correcting the destination enabled the real Stake artifact publication and manifest output"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/exportDeploy (Stake Engine export)",
+            "result": "rendered the occupied-destination error and the recovered Stake publication"
+          },
+          {
+            "route": "POST /api/project/artifacts/preview",
+            "result": "returned the resolved occupied-destination conflict then the prepared Stake plan"
+          },
+          {
+            "route": "POST /api/project/artifacts/build",
+            "result": "published the real Stake Engine export after the corrected preflight"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
     }
   ],
   "planner_cells": []
