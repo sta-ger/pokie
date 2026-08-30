@@ -8,6 +8,7 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     type PokieProject,
 } from "../../src/index.js";
+import {installPc14FixedRunnerClock} from "../support/ArtifactInteroperabilityRun.js";
 
 type EmittedRecord = {
     readonly id: string;
@@ -93,6 +94,24 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(script).toContain("ArtifactInteroperabilityTorture.integration.test.ts");
         expect(script).toContain("StudioArtifactInteroperabilityTorture.integration.test.ts");
         expect(script).toContain("ArtifactInteroperabilityRemediation.contract.test.ts");
+    });
+
+    it("injects the fixed evidence clock into real writers instead of only normalising saved hashes", () => {
+        const originalClock = process.env.PC14_FIXED_RUNNER_CLOCK;
+        process.env.PC14_FIXED_RUNNER_CLOCK = "2024-01-02T03:04:05.000Z";
+        const restore = installPc14FixedRunnerClock();
+        try {
+            expect(new Date().toISOString()).toBe("2024-01-02T03:04:05.000Z");
+            expect(Date.now()).toBe(Date.parse("2024-01-02T03:04:05.000Z"));
+            // Explicit timestamps remain writer-owned inputs; freezing the
+            // runner must not rewrite an artifact that deliberately supplies
+            // one as part of its public contract.
+            expect(new Date("2020-01-01T00:00:00.000Z").toISOString()).toBe("2020-01-01T00:00:00.000Z");
+        } finally {
+            restore();
+            if (originalClock === undefined) Reflect.deleteProperty(process.env, "PC14_FIXED_RUNNER_CLOCK");
+            else process.env.PC14_FIXED_RUNNER_CLOCK = originalClock;
+        }
     });
 
     it("keeps actual artifact identities, owners, and only exercised observations", () => {

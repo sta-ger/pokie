@@ -24,14 +24,16 @@ import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
-import {ArtifactInteroperabilityRun} from "../support/ArtifactInteroperabilityRun.js";
+import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock} from "../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
 
 describe("PC-14 CLI real-artifact interoperability torture", () => {
     let workDir: string;
+    let restoreRunnerClock: () => void;
 
     beforeEach(() => {
+        restoreRunnerClock = installPc14FixedRunnerClock();
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-artifact-torture-"));
         jest.spyOn(console, "log").mockImplementation(() => undefined);
         jest.spyOn(console, "error").mockImplementation(() => undefined);
@@ -39,6 +41,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
 
     afterEach(() => {
         fs.rmSync(workDir, {recursive: true, force: true});
+        restoreRunnerClock();
         (console.log as jest.Mock).mockRestore();
         (console.error as jest.Mock).mockRestore();
     });

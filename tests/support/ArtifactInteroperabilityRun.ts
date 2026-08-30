@@ -2,6 +2,42 @@ import fs from "fs";
 import crypto from "crypto";
 import path from "path";
 
+/**
+ * Makes the real artifact writers deterministic during the dedicated PC-14
+ * evidence refresh.  This is deliberately an opt-in test seam: production
+ * writers continue to receive the host clock, while the refresh process
+ * injects one fixed clock before it creates any public artifact.
+ *
+ * Replacing the Date constructor (rather than merely normalising the saved
+ * hash) makes timestamps written by PAR, Stake, bundle, certification and
+ * fairness writers themselves reproducible.  Timers are not faked, so Studio
+ * HTTP jobs and cancellation continue to exercise their real event-loop
+ * behaviour.
+ */
+export function installPc14FixedRunnerClock(): () => void {
+    const configuredClock = process.env.PC14_FIXED_RUNNER_CLOCK;
+    if (configuredClock === undefined) return () => undefined;
+    const fixedTime = new Date(configuredClock).getTime();
+    if (Number.isNaN(fixedTime)) throw new Error(`PC14_FIXED_RUNNER_CLOCK is not a valid ISO timestamp: ${configuredClock}`);
+    const NativeDate = Date;
+    class FixedRunnerDate extends NativeDate {
+        public constructor(value?: string | number) {
+            super(value ?? fixedTime);
+        }
+
+        public static now(): number {
+            return fixedTime;
+        }
+    }
+    // Date is a documented mutable global in Node's test environment.  Keep
+    // the replacement scoped to the runner process/test and restore it in
+    // afterEach so ordinary integration tests retain the host clock.
+    globalThis.Date = FixedRunnerDate as DateConstructor;
+    return () => {
+        globalThis.Date = NativeDate;
+    };
+}
+
 export type ArtifactInteroperabilityObservation = {
     readonly surface: "cli" | "studio-api" | "studio-ui" | "library";
     readonly owner: string;

@@ -15,18 +15,23 @@ import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioRep
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioStakeEngineExportService} from "../../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
-import {ArtifactInteroperabilityRun, mergeArtifactInteroperabilityRuns} from "../../support/ArtifactInteroperabilityRun.js";
+import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, mergeArtifactInteroperabilityRuns} from "../../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
 
 describe("PC-14 Studio real-artifact interoperability torture", () => {
     let workDir: string;
+    let restoreRunnerClock: () => void;
 
     beforeEach(() => {
+        restoreRunnerClock = installPc14FixedRunnerClock();
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-artifact-torture-"));
     });
 
-    afterEach(() => fs.rmSync(workDir, {recursive: true, force: true}));
+    afterEach(() => {
+        fs.rmSync(workDir, {recursive: true, force: true});
+        restoreRunnerClock();
+    });
 
     it("uses the same prepared artifact chain for Studio build, generation, registry reuse and Stake export", async () => {
         const evidence = new ArtifactInteroperabilityRun(workDir);
