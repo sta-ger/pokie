@@ -318,12 +318,10 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         // A re-exportable import configuration is not itself a round trip.
-        // Run the normal public build command against the imported library and
-        // compare the second Stake manifest with both sides of the first
-        // exchange.  This makes the retained generation policy and original
-        // source provenance an observable property of the re-exported
-        // artifact, rather than an assertion about an intermediate config.
-        expect(await build.run([importedStakeLibraryPath, "--target", "stakeAdapter", "--out", reexportedStakePath])).toBe(0);
+        // Exercise the config-driven public Stake owner, rather than the
+        // generic build alias, so the artifact ledger proves the same
+        // re-export boundary users receive after `stakeengine import`.
+        expect(await new StakeEngineCommand(POKIE_VERSION).run(["export", importConfigPath, "--out", reexportedStakePath])).toBe(0);
         const reexportedStakeManifest = JSON.parse(fs.readFileSync(path.join(reexportedStakePath, "pokie-manifest.json"), "utf-8"));
         const importedSourceProvenance = JSON.parse(fs.readFileSync(importProvenancePath, "utf-8"));
         expect(reexportedStakeManifest).toMatchObject({

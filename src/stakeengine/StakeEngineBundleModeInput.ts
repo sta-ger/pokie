@@ -7,4 +7,9 @@ export type StakeEngineBundleModeInput = {
     readonly cost: number;
     readonly bundleDir: string;
     readonly bundleModeName: string;
+    /** Persisted by a Stake import's re-export config, so the streaming path
+     * retains the source bundle's generation contract just like the
+     * in-memory exporter does. */
+    readonly generator?: OutcomeLibraryGeneratorDiagnostics;
 };
+import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js";

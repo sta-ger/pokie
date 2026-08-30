@@ -39,6 +39,7 @@ export class StakeEngineImportWriter<T extends string | number = string> impleme
                                 cost: mode.cost,
                                 bundleDir: ".",
                                 bundleModeName: mode.modeName,
+                                ...(mode.generator === undefined ? {} : {generator: mode.generator}),
                             })),
                         }, null, 4)}\n`,
                     },

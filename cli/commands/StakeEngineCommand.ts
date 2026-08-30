@@ -35,6 +35,7 @@ import {
     STAKE_ENGINE_IMPORT_OPERATION,
     ValidationIssue,
     WeightedOutcomeLibrary,
+    OutcomeLibraryGeneratorDiagnostics,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -96,6 +97,7 @@ type ExportDescriptorModeEntry = {
     libraryPath?: string;
     bundleDir?: string;
     bundleModeName?: string;
+    generator?: OutcomeLibraryGeneratorDiagnostics;
 };
 type ExportDescriptor = {modes: ExportDescriptorModeEntry[]};
 
@@ -482,6 +484,7 @@ export class StakeEngineCommand implements CliCommandHandling {
                         cost: entry.cost,
                         bundleDir: path.resolve(read.configDir, entry.bundleDir as string),
                         bundleModeName: entry.bundleModeName ?? entry.modeName,
+                        ...(entry.generator === undefined ? {} : {generator: entry.generator}),
                     })),
                     outDir,
                 )
@@ -896,7 +899,7 @@ export class StakeEngineCommand implements CliCommandHandling {
             if (typeof entry !== "object" || entry === null) {
                 throw new Error(`"${configPath}": modes[${position}] must be an object. ${CONFIG_HINT}`);
             }
-            const e = entry as {modeName?: unknown; cost?: unknown; libraryPath?: unknown; bundleDir?: unknown; bundleModeName?: unknown};
+            const e = entry as {modeName?: unknown; cost?: unknown; libraryPath?: unknown; bundleDir?: unknown; bundleModeName?: unknown; generator?: unknown};
             if (typeof e.modeName !== "string" || typeof e.cost !== "number") {
                 throw new Error(`"${configPath}": modes[${position}] must have a string "modeName" and a number "cost". ${CONFIG_HINT}`);
             }
@@ -915,7 +918,11 @@ export class StakeEngineCommand implements CliCommandHandling {
                 cost: e.cost,
                 ...(hasLibraryPath
                     ? {libraryPath: e.libraryPath as string}
-                    : {bundleDir: e.bundleDir as string, bundleModeName: e.bundleModeName as string | undefined}),
+                    : {
+                        bundleDir: e.bundleDir as string,
+                        bundleModeName: e.bundleModeName as string | undefined,
+                        ...(e.generator === undefined ? {} : {generator: e.generator as OutcomeLibraryGeneratorDiagnostics}),
+                    }),
             };
         });
 

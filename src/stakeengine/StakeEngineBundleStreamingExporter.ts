@@ -402,6 +402,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                 libraryHash: index.libraryHash,
                 events: booksFileName,
                 weights: csvFileName,
+                ...(mode.generator === undefined ? {} : {generator: mode.generator}),
             },
             provenance: firstArtifact.provenance,
         };
