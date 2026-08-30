@@ -28,6 +28,11 @@ export const pc12FixtureId = "pc-12-free-games-fixture";
 export const desktopViewport = {width: 1280, height: 800};
 export const narrowViewport = {width: 390, height: 844};
 
+export function chromiumExecutableCandidates(environment = process.env) {
+    const configured = environment.PC_12_CHROMIUM_BINARY?.trim();
+    return configured ? [configured] : ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"];
+}
+
 // Studio is launched through POKIE's public implicit-project form.  `studio` is an internal
 // dispatcher name, not a user-facing subcommand, so including it here makes an exact packed
 // candidate exit before its server can start.
@@ -208,6 +213,20 @@ async function terminate(child) {
     child.kill("SIGTERM");
     await Promise.race([new Promise((resolveExit) => child.once("exit", resolveExit)), wait(5000)]);
     if (child.exitCode === null && !child.killed) child.kill("SIGKILL");
+}
+
+async function launchChromium(args, environment = process.env) {
+    const failures = [];
+    for (const executable of chromiumExecutableCandidates(environment)) {
+        const child = spawn(executable, args, {stdio: "pipe"});
+        const result = await new Promise((resolveLaunch) => {
+            child.once("spawn", () => resolveLaunch({child}));
+            child.once("error", (error) => resolveLaunch({error}));
+        });
+        if (result.child !== undefined) return result.child;
+        failures.push(`${executable}: ${result.error.message}`);
+    }
+    throw new Error(`Unable to launch Chromium (${failures.join("; ")})`);
 }
 
 async function runCommand(command, args, options) {
@@ -406,10 +425,10 @@ export async function runPlayerParityBrowser() {
             try { return (await fetch(examplesUrl)).ok; } catch { return false; }
         }, "fixture-slot public page");
 
-        chromium = spawn("chromium", [
+        chromium = await launchChromium([
             "--headless=new", "--no-first-run", "--no-default-browser-check", `--user-data-dir=${resolve(profile, "chromium")}`,
             "--remote-debugging-address=127.0.0.1", `--remote-debugging-port=${devtoolsPort}`, "about:blank",
-        ], {stdio: "pipe"});
+        ]);
         await waitFor(async () => {
             try { return Array.isArray(await devtoolsJson(`${devtoolsUrl}/json/list`)); } catch { return false; }
         }, "Chromium");

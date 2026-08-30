@@ -8,6 +8,7 @@ import {test} from "@jest/globals";
 import {
     canonicalPlayerComparisonKeys,
     canonicalPlayerSelector,
+    chromiumExecutableCandidates,
     assertExactCandidatePlayerExport,
     comparePlayerRegions,
     comparePlayerScreenshots,
@@ -104,6 +105,11 @@ test("PC-12 browser parity launches Studio through the public implicit-project f
         ["dist/cli/pokie.js", "/fixtures/same-game", "--no-open", "--host", "127.0.0.1", "--port", "32192"],
     );
     assert.equal(studioLaunchArguments("/fixtures/same-game", 32192).includes("studio"), false);
+});
+
+test("PC-12 browser parity falls back to common Chromium executable names", () => {
+    assert.deepEqual(chromiumExecutableCandidates({}), ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]);
+    assert.deepEqual(chromiumExecutableCandidates({PC_12_CHROMIUM_BINARY: " /opt/chromium "}), ["/opt/chromium"]);
 });
 
 test("PC-12 browser parity's executable fixture preflight binds Studio and examples to one seeded free-games game", async () => {
