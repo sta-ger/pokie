@@ -530,17 +530,17 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const planner = new ArtifactConversionPlanner();
         const unavailable = planner.plan(wasm, "outcomeLibrary");
         expect(unavailable).toMatchObject({status: "unavailable", diagnostic: {code: "unsupported-boundary"}});
-        const operationDiagnostic = describeUnavailableArtifactOperation(wasm, "outcomeSource.simulate");
-        // This is the concrete diagnostic record an unavailable CLI or Studio
-        // route retains.  `recovery` is structured by the shared owner; it is
-        // not reconstructed from a command-specific error string.
-        expect(operationDiagnostic).toMatchObject({
+        const simulationDiagnostic = describeUnavailableArtifactOperation(wasm, "sim");
+        // This is the exact diagnostic returned by the public CLI owner.
+        // `recovery` is structured by the shared owner; it is not
+        // reconstructed from a command-specific error string.
+        expect(simulationDiagnostic).toMatchObject({
             detectedType: "wasm",
-            operation: "outcomeSource.simulate",
+            operation: "sim",
             recovery: "Inspect the compatible manifest or use the original Blueprint or POKIE game package where runnable or convertible source is required.",
         });
-        expect(operationDiagnostic?.message).toContain("Next:");
-        if (operationDiagnostic?.recovery === undefined) throw new Error("Expected the public WASM diagnostic to include recovery.");
+        expect(simulationDiagnostic?.message).toContain("Next:");
+        if (simulationDiagnostic?.recovery === undefined) throw new Error("Expected the public WASM diagnostic to include recovery.");
         const plannerSources = [
             {path: blueprintPath, project: await resolver.resolve(blueprintPath)},
             {path: packagePath, project: await resolver.resolve(packagePath)},
@@ -619,18 +619,40 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             diagnostic: expect.objectContaining({
                 detectedType: "wasm",
                 operation: "sim",
-                recovery: operationDiagnostic.recovery,
+                message: simulationDiagnostic.message,
+                recovery: simulationDiagnostic.recovery,
             }),
         });
         evidence.recordUnavailable({
             id: "wasm-outcome-source-simulate", artifactKind: "wasmComponent", operation: "simulate", sourcePath: wasmPath,
             owner: "SimCommand / ArtifactOperationDiagnostic", diagnostic: {
-                code: "unsupported-project-operation", message: operationDiagnostic?.message ?? "",
-                recovery: operationDiagnostic.recovery,
+                code: simulationDiagnostic?.code ?? "", message: simulationDiagnostic?.message ?? "",
+                recovery: simulationDiagnostic.recovery,
             },
             observations: [
                 {surface: "library", owner: "ArtifactOperationDiagnostic", result: "resolved WASM diagnostic"},
                 {surface: "cli", owner: "SimCommand", result: "rejected the same resolved WASM operation diagnostic"},
+            ],
+        });
+        const replayDiagnostic = describeUnavailableArtifactOperation(wasm, "replay");
+        if (replayDiagnostic === undefined) throw new Error("Expected the public WASM replay diagnostic to include recovery.");
+        await expect(new ReplayCommand().run([wasmPath, "--round", "1"])).rejects.toMatchObject({
+            name: "UnsupportedProjectOperationError",
+            diagnostic: expect.objectContaining({
+                detectedType: "wasm",
+                operation: "replay",
+                message: replayDiagnostic.message,
+                recovery: replayDiagnostic.recovery,
+            }),
+        });
+        evidence.recordUnavailable({
+            id: "wasm-outcome-source-replay", artifactKind: "wasmComponent", operation: "replay", sourcePath: wasmPath,
+            owner: "ReplayCommand / ArtifactOperationDiagnostic", diagnostic: {
+                code: replayDiagnostic.code, message: replayDiagnostic.message, recovery: replayDiagnostic.recovery,
+            },
+            observations: [
+                {surface: "library", owner: "ArtifactOperationDiagnostic", result: "resolved WASM replay diagnostic"},
+                {surface: "cli", owner: "ReplayCommand", result: "rejected the same resolved WASM replay diagnostic"},
             ],
         });
         evidence.recordScenario({

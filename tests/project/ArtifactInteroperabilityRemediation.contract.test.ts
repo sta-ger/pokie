@@ -102,7 +102,15 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 expect(row.produced_path).toMatch(/^run-artifacts\//);
                 expect(row.produced_identity).toMatch(/^sha256:/);
             }
-            if (row.diagnostic !== undefined) expect(row.diagnostic).toMatchObject({code: "unsupported-project-operation", recovery: expect.any(String)});
+            // Planner-owned conversion boundaries retain their native
+            // conversion diagnostic, while command and Studio operation
+            // owners retain the capability diagnostic layered on top.  The
+            // emitted result must preserve the concrete owner code rather
+            // than rewriting every unavailable edge as a CLI-style error.
+            if (row.diagnostic !== undefined) expect(row.diagnostic).toMatchObject({
+                code: expect.stringMatching(/^(?:missing-capability|missing-data|unsupported-boundary|unsupported-project-operation)$/),
+                recovery: expect.any(String),
+            });
         }
         expect(result.rows.map((row) => row.id)).toEqual(expect.arrayContaining([
             "blueprint-build-package",
@@ -112,6 +120,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             "outcome-library-certification",
             "outcome-library-fairness",
             "wasm-outcome-source-simulate",
+            "wasm-outcome-source-replay",
             "studio-blueprint-build",
             "studio-outcome-library-stake-export",
             "studio-wasm-outcome-source-simulate",
