@@ -185,6 +185,25 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
     });
 
     it("rejects proxy owner declarations instead of promoting sibling operations", () => {
+        const sourcePath = path.join(rootPath, "source.json");
+        fs.writeFileSync(sourcePath, "source");
+        const runner = new ArtifactInteroperabilityRun(rootPath);
+
+        const proxyOwnerRow = {
+            id: "proxy-owner", artifactKind: "blueprint", operation: "create", registryOperation: "created_by",
+            sourcePath, owner: "cli:create", result: "created",
+            observations: [{surface: "cli", owner: "cli:create", result: "created"}],
+        };
+        // The public API intentionally has no proxy field. Exercise the
+        // runtime guard too, because runner rows are persisted JSON.
+        Reflect.set(proxyOwnerRow, "executed_public_owners", ["GameBlueprintValidator"]);
+        expect(() => runner.record(proxyOwnerRow)).toThrow(
+            "proxy-owner cannot declare executed_public_owners",
+        );
+        expect(fs.existsSync(path.join(rootPath, "proxy.json"))).toBe(false);
+    });
+
+    it("rejects persisted proxy owner declarations before merging evidence", () => {
         const runnerPath = recordOperation("direct", {
             id: "direct-create", artifactKind: "blueprint", operation: "create", registryOperation: "created_by", owner: "cli:create", surface: "cli",
         });

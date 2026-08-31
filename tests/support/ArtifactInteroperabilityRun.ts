@@ -196,6 +196,7 @@ export class ArtifactInteroperabilityRun {
     }
 
     public record(row: ArtifactInteroperabilityRunRow): void {
+        this.assertNoProxyOwnerCoverage(row);
         this.assertExists(row.sourcePath, "source");
         if (row.producedPath !== undefined) this.assertExists(row.producedPath, "output");
         if (row.observations.length === 0) throw new Error(`${row.id} has no exercised public observation.`);
@@ -213,6 +214,7 @@ export class ArtifactInteroperabilityRun {
      * into an assertion about a route that was never exercised.
      */
     public recordUnavailable(row: ArtifactInteroperabilityUnavailableRow): void {
+        this.assertNoProxyOwnerCoverage(row);
         this.assertExists(row.sourcePath, "source");
         if (row.diagnostic.code.length === 0 || row.diagnostic.message.length === 0 || row.diagnostic.recovery === undefined || row.diagnostic.recovery.length === 0) {
             throw new Error(`${row.id} has no concrete public diagnostic and recovery.`);
@@ -320,6 +322,18 @@ export class ArtifactInteroperabilityRun {
         const ownerObservations = row.observations.filter((observation) => observation.owner === row.owner && observation.result.length > 0);
         if (ownerObservations.length !== 1) {
             throw new Error(`${row.id} records ${row.registryOperation} for ${row.owner}, but must bind exactly one actual surface observation from that owner.`);
+        }
+    }
+
+    /**
+     * Owner coverage is a record, never a list attached to another owner's
+     * operation. Reject this legacy proxy shape at the recorder boundary so
+     * it cannot be silently dropped when the runner serialises its rows.
+     */
+    private assertNoProxyOwnerCoverage(row: object): void {
+        if ("executed_public_owners" in row) {
+            const id = "id" in row && typeof row.id === "string" ? row.id : "unknown record";
+            throw new Error(`${id} cannot declare executed_public_owners; record the owner's own operation instead.`);
         }
     }
 
@@ -611,7 +625,7 @@ export function mergeArtifactInteroperabilityRuns(
         const producedPath = (record as {readonly produced_path?: unknown}).produced_path;
         const diagnostic = (record as {readonly diagnostic?: unknown}).diagnostic;
         if (registryOperation === undefined) return [];
-        if (artifactKind === undefined || owner === undefined || typeof sourcePath !== "string" || !isRegistryOperation(registryOperation)) {
+        if (artifactKind === undefined || owner === undefined || !isRedactedArtifactPath(sourcePath) || !isRegistryOperation(registryOperation)) {
             throw new Error(`PC-14 runner emitted an invalid exact owner-operation tuple for ${recordId(record)}.`);
         }
         if (!requiredOwnerOperations.some((required) =>
@@ -619,7 +633,7 @@ export function mergeArtifactInteroperabilityRuns(
         )) {
             throw new Error(`PC-14 runner emitted an exact owner-operation tuple absent from PC-05: ${artifactKind}:${registryOperation}:${owner}.`);
         }
-        if (producedPath !== null && producedPath !== undefined && typeof producedPath !== "string") {
+        if (producedPath !== null && producedPath !== undefined && !isRedactedArtifactPath(producedPath)) {
             throw new Error(`PC-14 runner emitted ${recordId(record)} with an invalid output path.`);
         }
         if (diagnostic !== undefined && !isDiagnostic(diagnostic)) {
@@ -719,6 +733,11 @@ function recordOwner(record: unknown): string | undefined {
 function isRegistryOperation(value: unknown): value is Pc05PublicOwnerOperation["registryOperation"] {
     return value === "created_by" || value === "recognized_by" || value === "runs_by" ||
         value === "validates_by" || value === "reports_by" || value === "replays_by";
+}
+
+function isRedactedArtifactPath(value: unknown): value is string {
+    return typeof value === "string" && value.startsWith("run-artifacts/") &&
+        value.length > "run-artifacts/".length && !value.split("/").includes("..");
 }
 
 function recordArtifactKind(record: unknown): string | undefined {
