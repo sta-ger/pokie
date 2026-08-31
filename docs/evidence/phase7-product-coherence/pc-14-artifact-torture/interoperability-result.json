@@ -3691,68 +3691,30 @@
       "artifact_kind": "blueprint",
       "disposition": "executed",
       "public_owners": [
-        "ArtifactBuilderRegistry.executePlan",
-        "ArtifactBuilderRegistry.preparePlan",
         "GameBlueprintValidator",
-        "ProjectTargetResolver",
-        "StudioArtifactBuildService",
-        "ValidateCommand",
-        "cli:create",
-        "cli:create --out",
-        "cli:create without --out",
-        "cli:import --out for an XLSX source",
-        "cli:import XLSX without --out",
-        "cli:par import --out",
-        "cli:par import without --out"
+        "ProjectTargetResolver"
       ],
       "executed_regressions": [
-        "blueprint-cli-create",
-        "blueprint-cli-create-default-output",
-        "blueprint-cli-create-explicit-output",
-        "blueprint-plan-package",
-        "blueprint-validate",
-        "import-par-blueprint-default",
-        "import-par-blueprint-explicit-output",
         "library-resolve-imported-blueprint",
-        "library-validate-blueprint",
-        "matrix-blueprint-outcomeLibrary-build",
-        "par-import-blueprint",
-        "par-import-blueprint-default",
-        "studio-blueprint-build"
+        "library-validate-blueprint"
       ]
     },
     {
       "artifact_kind": "studioSymbolArtworkPng",
-      "disposition": "executed",
-      "public_owners": [
-        "StudioBlueprintService.importSymbolArtwork/save"
-      ],
-      "executed_regressions": [
-        "studio-symbol-artwork-materialize"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "tsPackage",
       "disposition": "executed",
       "public_owners": [
-        "ArtifactBuilderRegistry.executePlan",
-        "ArtifactBuilderRegistry.preparePlan",
         "ArtifactBuilderRegistry:build(tsPackage)",
-        "OutcomeLibraryCommand",
-        "ProjectTargetResolver",
-        "cli:build",
-        "cli:build --target tsPackage --out",
-        "cli:build --target tsPackage without --out"
+        "ProjectTargetResolver"
       ],
       "executed_regressions": [
-        "blueprint-build-package",
-        "blueprint-build-package-default",
-        "blueprint-build-package-generic",
         "library-build-package",
-        "library-resolve-direct-package",
-        "matrix-tsPackage-blueprint-build",
-        "matrix-tsPackage-outcomeLibrary-build",
-        "package-generate-raw-outcomes"
+        "library-resolve-direct-package"
       ]
     },
     {
@@ -3771,1664 +3733,318 @@
     },
     {
       "artifact_kind": "weightedOutcomeLibraryJson",
-      "disposition": "executed",
-      "public_owners": [
-        "OutcomeLibraryCommand",
-        "cli:export --to outcomes"
-      ],
-      "executed_regressions": [
-        "export-outcome-library-weighted-json",
-        "raw-outcomes-build-bundle"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "outcomeLibraryBundleDescriptor",
-      "disposition": "executed",
-      "public_owners": [
-        "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
-        "OutcomeLibraryCommand"
-      ],
-      "executed_regressions": [
-        "export-outcome-library-descriptor",
-        "outcome-library-bundle-descriptor-build"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "canonicalOutcomeJsonl",
-      "disposition": "executed",
-      "public_owners": [
-        "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
-        "OutcomeLibraryCommand"
-      ],
-      "executed_regressions": [
-        "bundle-canonical-outcomes",
-        "export-outcome-library-canonical-jsonl"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "outcomeLibraryGenerationCheckpoint",
-      "disposition": "executed",
-      "public_owners": [
-        "OutcomeLibraryCommand"
-      ],
-      "executed_regressions": [
-        "outcome-library-generation-checkpoint-resume"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "outcomeLibrary",
       "disposition": "executed",
       "public_owners": [
-        "ArtifactBuilderRegistry.executePlan",
-        "ArtifactBuilderRegistry.preparePlan",
-        "BuildCommand",
-        "CertificationCommand",
-        "FairnessCommand",
-        "InspectCommand",
-        "OutcomeLibraryBundleReader",
-        "OutcomeSourceCommand",
-        "ReplayCommand",
-        "ReportCommand",
-        "SimCommand",
-        "StudioStakeEngineExportService",
-        "ValidateCommand",
-        "cli:build --target outcomeLibrary",
-        "cli:build --target outcomeLibrary --out",
-        "cli:build --target outcomeLibrary without --out",
-        "cli:export --to outcomes --out",
-        "cli:export --to outcomes without --out",
-        "cli:import --out",
-        "cli:import Stake without --out"
+        "OutcomeLibraryBundleReader"
       ],
       "executed_regressions": [
-        "library-read-outcome-library",
-        "matrix-outcomeLibrary-blueprint-build",
-        "matrix-outcomeLibrary-outcomeLibrary-build",
-        "outcome-library-certification",
-        "outcome-library-export-stake",
-        "outcome-library-fairness",
-        "outcome-library-inspect",
-        "outcome-library-replay",
-        "outcome-library-report",
-        "outcome-library-sample",
-        "outcome-library-simulate",
-        "outcome-library-validate",
-        "package-build-outcome-library-default",
-        "package-build-outcome-library-explicit-output",
-        "package-build-outcome-library-generic",
-        "package-export-outcome-library-default",
-        "package-export-outcome-library-explicit-output",
-        "stake-import-outcome-library-default-output",
-        "stake-import-outcome-library-explicit-output",
-        "studio-outcome-library-stake-export"
+        "library-read-outcome-library"
       ]
     },
     {
       "artifact_kind": "stakeEngineExportDescriptor",
-      "disposition": "executed",
-      "public_owners": [
-        "ExportCommand --to adapter delegation to StakeEngineCommand.export",
-        "StakeEngineCommand"
-      ],
-      "executed_regressions": [
-        "export-stake-descriptor",
-        "stake-export-descriptor"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "stakeAdapter",
       "disposition": "executed",
       "public_owners": [
-        "ArtifactBuilderRegistry.executePlan",
-        "ArtifactBuilderRegistry.preparePlan",
-        "StakeEngineCommand",
-        "StakeEngineOutcomeSourceReader",
-        "cli:build --target stakeAdapter",
-        "cli:build --target stakeAdapter --out",
-        "cli:build --target stakeAdapter without --out",
-        "cli:export --to adapter --out",
-        "cli:export --to adapter without --out"
+        "StakeEngineOutcomeSourceReader"
       ],
       "executed_regressions": [
-        "library-read-stake-adapter",
-        "matrix-stakeAdapter-blueprint-build",
-        "matrix-stakeAdapter-stakeAdapter-build",
-        "outcome-library-build-stake-default",
-        "outcome-library-build-stake-explicit-output",
-        "outcome-library-build-stake-generic",
-        "outcome-library-export-stake-default",
-        "outcome-library-export-stake-explicit-output",
-        "stake-import-outcome-library"
+        "library-read-stake-adapter"
       ]
     },
     {
       "artifact_kind": "parWorkbook",
       "disposition": "executed",
       "public_owners": [
-        "ArtifactBuilderRegistry.executePlan",
-        "ParSheetImporter during import",
-        "cli:build --target parWorkbook --out",
-        "cli:build --target parWorkbook without --out",
-        "cli:export --to workbook --out",
-        "cli:export --to workbook without --out",
-        "cli:par export --out",
-        "cli:par export without --out"
+        "ParSheetImporter during import"
       ],
       "executed_regressions": [
-        "blueprint-build-par-default",
-        "blueprint-build-par-explicit-output",
-        "blueprint-export-par",
-        "blueprint-export-par-via-export-default",
-        "blueprint-export-par-via-export-explicit-output",
-        "blueprint-par-export-default",
-        "library-import-par-workbook",
-        "matrix-parWorkbook-blueprint-build"
+        "library-import-par-workbook"
       ]
     },
     {
       "artifact_kind": "wasmComponent",
-      "disposition": "executed",
-      "public_owners": [
-        "ReplayCommand",
-        "SimCommand",
-        "StudioReplayExecutionService.start",
-        "StudioServer POST /api/project/replays",
-        "StudioServer POST /api/project/simulations",
-        "StudioSimulationService.start",
-        "describeUnavailableArtifactOperation"
-      ],
-      "executed_regressions": [
-        "studio-wasm-outcome-source-replay",
-        "studio-wasm-outcome-source-simulate",
-        "studio-wasm-replay",
-        "studio-wasm-simulate",
-        "wasm-outcome-source-replay",
-        "wasm-outcome-source-replay-diagnostic",
-        "wasm-outcome-source-simulate"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "roundArtifact",
-      "disposition": "executed",
-      "public_owners": [
-        "ReplayCommand"
-      ],
-      "executed_regressions": [
-        "round-artifact-replay-provenance"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "runtimeSession",
-      "disposition": "executed",
-      "public_owners": [
-        "FileSessionRepository.save"
-      ],
-      "executed_regressions": [
-        "runtime-session-file-export"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "fileSessionRepositoryRecord",
-      "disposition": "executed",
-      "public_owners": [
-        "FileSessionRepository.load"
-      ],
-      "executed_regressions": [
-        "file-session-record-recovery"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "simulationReport",
-      "disposition": "executed",
-      "public_owners": [
-        "ReportCommand"
-      ],
-      "executed_regressions": [
-        "simulation-report-inspect"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "simulationReportSet",
-      "disposition": "executed",
-      "public_owners": [
-        "SimCommand"
-      ],
-      "executed_regressions": [
-        "simulation-report-set-mode-diagnostic"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "validationReport",
-      "disposition": "executed",
-      "public_owners": [
-        "ValidateCommand"
-      ],
-      "executed_regressions": [
-        "blueprint-validation-report"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "simulationComparisonReport",
-      "disposition": "executed",
-      "public_owners": [
-        "DiffCommand"
-      ],
-      "executed_regressions": [
-        "simulation-comparison-report"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "outcomeSourceComparisonReport",
-      "disposition": "executed",
-      "public_owners": [
-        "DiffCommand"
-      ],
-      "executed_regressions": [
-        "outcome-source-comparison-report"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "stakeEngineAnalysisReport",
-      "disposition": "executed",
-      "public_owners": [
-        "StakeEngineCommand"
-      ],
-      "executed_regressions": [
-        "stake-engine-analysis-report"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "stakeEngineComparisonReport",
-      "disposition": "executed",
-      "public_owners": [
-        "StakeEngineCommand"
-      ],
-      "executed_regressions": [
-        "stake-engine-comparison-report"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "outcomeSourceAnalysisReport",
-      "disposition": "executed",
-      "public_owners": [
-        "ReportCommand"
-      ],
-      "executed_regressions": [
-        "outcome-source-analysis-report"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "renderedReport",
-      "disposition": "executed",
-      "public_owners": [
-        "ReportCommand"
-      ],
-      "executed_regressions": [
-        "rendered-simulation-report"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "runtimeReplayDescriptor",
-      "disposition": "executed",
-      "public_owners": [
-        "ReplayCommand"
-      ],
-      "executed_regressions": [
-        "replay-descriptor-round-artifact"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "stakeImportReExportConfig",
-      "disposition": "executed",
-      "public_owners": [
-        "StakeEngineCommand",
-        "cli:import"
-      ],
-      "executed_regressions": [
-        "generic-import-reexport-config",
-        "stake-import-reexport-config"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "stakeImportSourceProvenance",
-      "disposition": "executed",
-      "public_owners": [
-        "StakeEngineCommand",
-        "cli:import"
-      ],
-      "executed_regressions": [
-        "generic-import-source-provenance",
-        "stake-import-source-provenance"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "certificationEvidenceBundle",
-      "disposition": "executed",
-      "public_owners": [
-        "CertificationCommand"
-      ],
-      "executed_regressions": [
-        "certification-evidence-bundle"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "certificationBuildDescriptor",
-      "disposition": "executed",
-      "public_owners": [
-        "CertificationCommand"
-      ],
-      "executed_regressions": [
-        "certification-build-descriptor-build"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "fairnessServerSeedCommitment",
-      "disposition": "executed",
-      "public_owners": [
-        "FairnessCommand"
-      ],
-      "executed_regressions": [
-        "fairness-server-seed-commitment"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "fairnessCommitment",
-      "disposition": "executed",
-      "public_owners": [
-        "FairnessCommand"
-      ],
-      "executed_regressions": [
-        "fairness-round-commitment"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "fairnessProof",
-      "disposition": "executed",
-      "public_owners": [
-        "FairnessCommand"
-      ],
-      "executed_regressions": [
-        "fairness-round-proof"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "studioOutcomeLibrarySelector",
-      "disposition": "executed",
-      "public_owners": [
-        "StudioDeploymentService.run"
-      ],
-      "executed_regressions": [
-        "studio-outcome-library-selector-deployment"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "externalDeploymentArtifact",
-      "disposition": "executed",
-      "public_owners": [
-        "StudioDeploymentService.run"
-      ],
-      "executed_regressions": [
-        "studio-external-deployment-publication"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "managedOutcomeProjectsRegistry",
-      "disposition": "executed",
-      "public_owners": [
-        "ManagedOutcomeProjectService.registerAndOpen/findCompatible"
-      ],
-      "executed_regressions": [
-        "managed-outcome-project-registry-reuse"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "studioOutcomeLibraryRegistryIndex",
-      "disposition": "executed",
-      "public_owners": [
-        "StudioOutcomeLibraryGenerateService.registry"
-      ],
-      "executed_regressions": [
-        "studio-outcome-library-registry-index"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "studioProjectRegistryEntry",
-      "disposition": "executed",
-      "public_owners": [
-        "StudioProjectRegistrationService.registerExternal"
-      ],
-      "executed_regressions": [
-        "studio-project-registry-reopen"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     },
     {
       "artifact_kind": "preparationStateMarker",
-      "disposition": "executed",
-      "public_owners": [
-        "GamePackagePreparer.prepare"
-      ],
-      "executed_regressions": [
-        "package-preparation-marker-recovery"
-      ]
+      "disposition": "not-executed",
+      "public_owners": [],
+      "executed_regressions": []
     }
   ],
-  "public_owner_coverage": [
+  "exact_owner_operation_coverage": [
     {
-      "artifact_kind": "tsPackage",
-      "public_owner": "cli:build --target tsPackage --out",
-      "status": "executed",
-      "record_id": "blueprint-build-package",
-      "source_path": "run-artifacts/matrix.blueprint.json",
-      "operation_owner": "cli:build --target tsPackage --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-build-package returned from cli:build --target tsPackage --out."
-    },
-    {
-      "artifact_kind": "tsPackage",
-      "public_owner": "cli:build --target tsPackage without --out",
-      "status": "executed",
-      "record_id": "blueprint-build-package-default",
-      "source_path": "run-artifacts/owner-aliases/build-default/source.blueprint.json",
-      "operation_owner": "cli:build --target tsPackage without --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-build-package-default returned from cli:build --target tsPackage without --out."
-    },
-    {
-      "artifact_kind": "tsPackage",
-      "public_owner": "cli:build",
-      "status": "executed",
-      "record_id": "blueprint-build-package-generic",
-      "source_path": "run-artifacts/matrix.blueprint.json",
-      "operation_owner": "cli:build",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-build-package-generic returned from cli:build."
-    },
-    {
-      "artifact_kind": "parWorkbook",
-      "public_owner": "cli:build --target parWorkbook without --out",
-      "status": "executed",
-      "record_id": "blueprint-build-par-default",
-      "source_path": "run-artifacts/owner-aliases/build-default/source.blueprint.json",
-      "operation_owner": "cli:build --target parWorkbook without --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-build-par-default returned from cli:build --target parWorkbook without --out."
-    },
-    {
-      "artifact_kind": "parWorkbook",
-      "public_owner": "cli:build --target parWorkbook --out",
-      "status": "executed",
-      "record_id": "blueprint-build-par-explicit-output",
-      "source_path": "run-artifacts/matrix.blueprint.json",
-      "operation_owner": "cli:build --target parWorkbook --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-build-par-explicit-output returned from cli:build --target parWorkbook --out."
-    },
-    {
+      "exact_tuple_identity": "[\"blueprint\",\"recognized_by\",\"ProjectTargetResolver\",\"library\"]",
       "artifact_kind": "blueprint",
-      "public_owner": "cli:create",
-      "status": "executed",
-      "record_id": "blueprint-cli-create",
-      "source_path": "run-artifacts/cli-authoring/generic.blueprint.json",
-      "operation_owner": "cli:create",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-cli-create returned from cli:create."
-    },
-    {
-      "artifact_kind": "blueprint",
-      "public_owner": "cli:create without --out",
-      "status": "executed",
-      "record_id": "blueprint-cli-create-default-output",
-      "source_path": "run-artifacts/cli-authoring/default.blueprint.json",
-      "operation_owner": "cli:create without --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-cli-create-default-output returned from cli:create without --out."
-    },
-    {
-      "artifact_kind": "blueprint",
-      "public_owner": "cli:create --out",
-      "status": "executed",
-      "record_id": "blueprint-cli-create-explicit-output",
-      "source_path": "run-artifacts/cli-authoring/explicit.blueprint.json",
-      "operation_owner": "cli:create --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-cli-create-explicit-output returned from cli:create --out."
-    },
-    {
-      "artifact_kind": "parWorkbook",
-      "public_owner": "cli:par export --out",
-      "status": "executed",
-      "record_id": "blueprint-export-par",
-      "source_path": "run-artifacts/matrix.blueprint.json",
-      "operation_owner": "cli:par export --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-export-par returned from cli:par export --out."
-    },
-    {
-      "artifact_kind": "parWorkbook",
-      "public_owner": "cli:export --to workbook without --out",
-      "status": "executed",
-      "record_id": "blueprint-export-par-via-export-default",
-      "source_path": "run-artifacts/owner-aliases/export-default/source.blueprint.json",
-      "operation_owner": "cli:export --to workbook without --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-export-par-via-export-default returned from cli:export --to workbook without --out."
-    },
-    {
-      "artifact_kind": "parWorkbook",
-      "public_owner": "cli:export --to workbook --out",
-      "status": "executed",
-      "record_id": "blueprint-export-par-via-export-explicit-output",
-      "source_path": "run-artifacts/owner-aliases/export-default/source.blueprint.json",
-      "operation_owner": "cli:export --to workbook --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-export-par-via-export-explicit-output returned from cli:export --to workbook --out."
-    },
-    {
-      "artifact_kind": "parWorkbook",
-      "public_owner": "cli:par export without --out",
-      "status": "executed",
-      "record_id": "blueprint-par-export-default",
-      "source_path": "run-artifacts/owner-aliases/direct-par.blueprint.json",
-      "operation_owner": "cli:par export without --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-par-export-default returned from cli:par export without --out."
-    },
-    {
-      "artifact_kind": "blueprint",
-      "public_owner": "ArtifactBuilderRegistry.preparePlan",
-      "status": "executed",
-      "record_id": "blueprint-plan-package",
-      "source_path": "run-artifacts/matrix-imported.blueprint.json",
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-plan-package returned from ArtifactBuilderRegistry.preparePlan."
-    },
-    {
-      "artifact_kind": "blueprint",
-      "public_owner": "ValidateCommand",
-      "status": "executed",
-      "record_id": "blueprint-validate",
-      "source_path": "run-artifacts/matrix.blueprint.json",
-      "operation_owner": "ValidateCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-validate returned from ValidateCommand."
-    },
-    {
-      "artifact_kind": "validationReport",
-      "public_owner": "ValidateCommand",
-      "status": "executed",
-      "record_id": "blueprint-validation-report",
-      "source_path": "run-artifacts/matrix-validation.json",
-      "operation_owner": "ValidateCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation blueprint-validation-report returned from ValidateCommand."
-    },
-    {
-      "artifact_kind": "canonicalOutcomeJsonl",
-      "public_owner": "OutcomeLibraryCommand",
-      "status": "executed",
-      "record_id": "bundle-canonical-outcomes",
-      "source_path": "run-artifacts/matrix-bundle/outcomes_base.jsonl",
-      "operation_owner": "OutcomeLibraryCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation bundle-canonical-outcomes returned from OutcomeLibraryCommand."
-    },
-    {
-      "artifact_kind": "certificationBuildDescriptor",
-      "public_owner": "CertificationCommand",
-      "status": "executed",
-      "record_id": "certification-build-descriptor-build",
-      "source_path": "run-artifacts/matrix-certification.json",
-      "operation_owner": "CertificationCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation certification-build-descriptor-build returned from CertificationCommand."
-    },
-    {
-      "artifact_kind": "certificationEvidenceBundle",
-      "public_owner": "CertificationCommand",
-      "status": "executed",
-      "record_id": "certification-evidence-bundle",
-      "source_path": "run-artifacts/matrix-certification",
-      "operation_owner": "CertificationCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation certification-evidence-bundle returned from CertificationCommand."
-    },
-    {
-      "artifact_kind": "canonicalOutcomeJsonl",
-      "public_owner": "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
-      "status": "executed",
-      "record_id": "export-outcome-library-canonical-jsonl",
-      "source_path": "run-artifacts/matrix-delegated-export-bundle/outcomes_base.jsonl",
-      "operation_owner": "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation export-outcome-library-canonical-jsonl returned from ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build."
-    },
-    {
-      "artifact_kind": "outcomeLibraryBundleDescriptor",
-      "public_owner": "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
-      "status": "executed",
-      "record_id": "export-outcome-library-descriptor",
-      "source_path": "run-artifacts/matrix-bundle.json",
-      "operation_owner": "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation export-outcome-library-descriptor returned from ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build."
-    },
-    {
-      "artifact_kind": "weightedOutcomeLibraryJson",
-      "public_owner": "cli:export --to outcomes",
-      "status": "executed",
-      "record_id": "export-outcome-library-weighted-json",
-      "source_path": "run-artifacts/matrix-library.json",
-      "operation_owner": "cli:export --to outcomes",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation export-outcome-library-weighted-json returned from cli:export --to outcomes."
-    },
-    {
-      "artifact_kind": "stakeEngineExportDescriptor",
-      "public_owner": "ExportCommand --to adapter delegation to StakeEngineCommand.export",
-      "status": "executed",
-      "record_id": "export-stake-descriptor",
-      "source_path": "run-artifacts/matrix-delegated-stake-export.json",
-      "operation_owner": "ExportCommand --to adapter delegation to StakeEngineCommand.export",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation export-stake-descriptor returned from ExportCommand --to adapter delegation to StakeEngineCommand.export."
-    },
-    {
-      "artifact_kind": "fairnessCommitment",
-      "public_owner": "FairnessCommand",
-      "status": "executed",
-      "record_id": "fairness-round-commitment",
-      "source_path": "run-artifacts/matrix-commitment.json",
-      "operation_owner": "FairnessCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation fairness-round-commitment returned from FairnessCommand."
-    },
-    {
-      "artifact_kind": "fairnessProof",
-      "public_owner": "FairnessCommand",
-      "status": "executed",
-      "record_id": "fairness-round-proof",
-      "source_path": "run-artifacts/matrix-proof.json",
-      "operation_owner": "FairnessCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation fairness-round-proof returned from FairnessCommand."
-    },
-    {
-      "artifact_kind": "fairnessServerSeedCommitment",
-      "public_owner": "FairnessCommand",
-      "status": "executed",
-      "record_id": "fairness-server-seed-commitment",
-      "source_path": "run-artifacts/matrix-seed-commitment.json",
-      "operation_owner": "FairnessCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation fairness-server-seed-commitment returned from FairnessCommand."
-    },
-    {
-      "artifact_kind": "stakeImportReExportConfig",
-      "public_owner": "cli:import",
-      "status": "executed",
-      "record_id": "generic-import-reexport-config",
-      "source_path": "run-artifacts/matrix-generic-stake-import/config.json",
-      "operation_owner": "cli:import",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation generic-import-reexport-config returned from cli:import."
-    },
-    {
-      "artifact_kind": "stakeImportSourceProvenance",
-      "public_owner": "cli:import",
-      "status": "executed",
-      "record_id": "generic-import-source-provenance",
-      "source_path": "run-artifacts/matrix-generic-stake-import/source-provenance.json",
-      "operation_owner": "cli:import",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation generic-import-source-provenance returned from cli:import."
-    },
-    {
-      "artifact_kind": "blueprint",
-      "public_owner": "cli:import XLSX without --out",
-      "status": "executed",
-      "record_id": "import-par-blueprint-default",
-      "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
-      "operation_owner": "cli:import XLSX without --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation import-par-blueprint-default returned from cli:import XLSX without --out."
-    },
-    {
-      "artifact_kind": "blueprint",
-      "public_owner": "cli:import --out for an XLSX source",
-      "status": "executed",
-      "record_id": "import-par-blueprint-explicit-output",
-      "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
-      "operation_owner": "cli:import --out for an XLSX source",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation import-par-blueprint-explicit-output returned from cli:import --out for an XLSX source."
-    },
-    {
-      "artifact_kind": "tsPackage",
-      "public_owner": "ArtifactBuilderRegistry:build(tsPackage)",
-      "status": "executed",
-      "record_id": "library-build-package",
-      "source_path": "run-artifacts/matrix-imported.blueprint.json",
-      "operation_owner": "ArtifactBuilderRegistry:build(tsPackage)",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation library-build-package returned from ArtifactBuilderRegistry:build(tsPackage)."
-    },
-    {
-      "artifact_kind": "parWorkbook",
-      "public_owner": "ParSheetImporter during import",
-      "status": "executed",
-      "record_id": "library-import-par-workbook",
-      "source_path": "run-artifacts/matrix.par.xlsx",
-      "operation_owner": "ParSheetImporter during import",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation library-import-par-workbook returned from ParSheetImporter during import."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "OutcomeLibraryBundleReader",
-      "status": "executed",
-      "record_id": "library-read-outcome-library",
-      "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "OutcomeLibraryBundleReader",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation library-read-outcome-library returned from OutcomeLibraryBundleReader."
-    },
-    {
-      "artifact_kind": "stakeAdapter",
-      "public_owner": "StakeEngineOutcomeSourceReader",
-      "status": "executed",
-      "record_id": "library-read-stake-adapter",
-      "source_path": "run-artifacts/matrix-stake",
-      "operation_owner": "StakeEngineOutcomeSourceReader",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation library-read-stake-adapter returned from StakeEngineOutcomeSourceReader."
-    },
-    {
-      "artifact_kind": "tsPackage",
+      "registry_operation": "recognized_by",
       "public_owner": "ProjectTargetResolver",
-      "status": "executed",
-      "record_id": "library-resolve-direct-package",
-      "source_path": "run-artifacts/direct-library-package",
-      "operation_owner": "ProjectTargetResolver",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation library-resolve-direct-package returned from ProjectTargetResolver."
-    },
-    {
-      "artifact_kind": "blueprint",
-      "public_owner": "ProjectTargetResolver",
+      "surface": "library",
       "status": "executed",
       "record_id": "library-resolve-imported-blueprint",
       "source_path": "run-artifacts/matrix-imported.blueprint.json",
-      "operation_owner": "ProjectTargetResolver",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation library-resolve-imported-blueprint returned from ProjectTargetResolver."
+      "produced_path": null,
+      "observable_result": "resolve returned blueprint"
     },
     {
+      "exact_tuple_identity": "[\"blueprint\",\"validates_by\",\"GameBlueprintValidator\",\"library\"]",
       "artifact_kind": "blueprint",
+      "registry_operation": "validates_by",
       "public_owner": "GameBlueprintValidator",
+      "surface": "library",
       "status": "executed",
       "record_id": "library-validate-blueprint",
       "source_path": "run-artifacts/matrix.blueprint.json",
-      "operation_owner": "GameBlueprintValidator",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation library-validate-blueprint returned from GameBlueprintValidator."
+      "produced_path": null,
+      "observable_result": "validate returned no errors"
     },
     {
-      "artifact_kind": "blueprint",
-      "public_owner": "ArtifactBuilderRegistry.executePlan",
-      "status": "executed",
-      "record_id": "matrix-blueprint-outcomeLibrary-build",
-      "source_path": "run-artifacts/matrix.blueprint.json",
-      "operation_owner": "ArtifactBuilderRegistry.executePlan",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation matrix-blueprint-outcomeLibrary-build returned from ArtifactBuilderRegistry.executePlan."
-    },
-    {
+      "exact_tuple_identity": "[\"outcomeLibrary\",\"recognized_by\",\"OutcomeLibraryBundleReader\",\"library\"]",
       "artifact_kind": "outcomeLibrary",
-      "public_owner": "ArtifactBuilderRegistry.preparePlan",
+      "registry_operation": "recognized_by",
+      "public_owner": "OutcomeLibraryBundleReader",
+      "surface": "library",
       "status": "executed",
-      "record_id": "matrix-outcomeLibrary-blueprint-build",
+      "record_id": "library-read-outcome-library",
       "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build returned from ArtifactBuilderRegistry.preparePlan."
+      "produced_path": null,
+      "observable_result": "readManifest returned the generated mode"
     },
     {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "ArtifactBuilderRegistry.executePlan",
-      "status": "executed",
-      "record_id": "matrix-outcomeLibrary-outcomeLibrary-build",
-      "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "ArtifactBuilderRegistry.executePlan",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-outcomeLibrary-build returned from ArtifactBuilderRegistry.executePlan."
-    },
-    {
+      "exact_tuple_identity": "[\"parWorkbook\",\"validates_by\",\"ParSheetImporter during import\",\"library\"]",
       "artifact_kind": "parWorkbook",
-      "public_owner": "ArtifactBuilderRegistry.executePlan",
+      "registry_operation": "validates_by",
+      "public_owner": "ParSheetImporter during import",
+      "surface": "library",
       "status": "executed",
-      "record_id": "matrix-parWorkbook-blueprint-build",
+      "record_id": "library-import-par-workbook",
       "source_path": "run-artifacts/matrix.par.xlsx",
-      "operation_owner": "ArtifactBuilderRegistry.executePlan",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation matrix-parWorkbook-blueprint-build returned from ArtifactBuilderRegistry.executePlan."
+      "produced_path": null,
+      "observable_result": "importFromFile returned no errors"
     },
     {
+      "exact_tuple_identity": "[\"stakeAdapter\",\"recognized_by\",\"StakeEngineOutcomeSourceReader\",\"library\"]",
       "artifact_kind": "stakeAdapter",
-      "public_owner": "ArtifactBuilderRegistry.preparePlan",
+      "registry_operation": "recognized_by",
+      "public_owner": "StakeEngineOutcomeSourceReader",
+      "surface": "library",
       "status": "executed",
-      "record_id": "matrix-stakeAdapter-blueprint-build",
+      "record_id": "library-read-stake-adapter",
       "source_path": "run-artifacts/matrix-stake",
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build returned from ArtifactBuilderRegistry.preparePlan."
+      "produced_path": null,
+      "observable_result": "readFromDirectory returned valid modes"
     },
     {
-      "artifact_kind": "stakeAdapter",
-      "public_owner": "ArtifactBuilderRegistry.executePlan",
-      "status": "executed",
-      "record_id": "matrix-stakeAdapter-stakeAdapter-build",
-      "source_path": "run-artifacts/matrix-stake",
-      "operation_owner": "ArtifactBuilderRegistry.executePlan",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-stakeAdapter-build returned from ArtifactBuilderRegistry.executePlan."
-    },
-    {
-      "artifact_kind": "tsPackage",
-      "public_owner": "ArtifactBuilderRegistry.preparePlan",
-      "status": "executed",
-      "record_id": "matrix-tsPackage-blueprint-build",
-      "source_path": "run-artifacts/matrix-package",
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build returned from ArtifactBuilderRegistry.preparePlan."
-    },
-    {
-      "artifact_kind": "tsPackage",
-      "public_owner": "ArtifactBuilderRegistry.executePlan",
-      "status": "executed",
-      "record_id": "matrix-tsPackage-outcomeLibrary-build",
-      "source_path": "run-artifacts/matrix-package",
-      "operation_owner": "ArtifactBuilderRegistry.executePlan",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation matrix-tsPackage-outcomeLibrary-build returned from ArtifactBuilderRegistry.executePlan."
-    },
-    {
-      "artifact_kind": "wasm",
-      "public_owner": "ArtifactBuilderRegistry.preparePlan",
-      "status": "executed",
-      "record_id": "matrix-wasm-blueprint-build",
-      "source_path": "run-artifacts/matrix.wasm",
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation matrix-wasm-blueprint-build returned from ArtifactBuilderRegistry.preparePlan."
-    },
-    {
-      "artifact_kind": "stakeAdapter",
-      "public_owner": "cli:build --target stakeAdapter without --out",
-      "status": "executed",
-      "record_id": "outcome-library-build-stake-default",
-      "source_path": "run-artifacts/owner-aliases/build-default/outcomeLibrary",
-      "operation_owner": "cli:build --target stakeAdapter without --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-build-stake-default returned from cli:build --target stakeAdapter without --out."
-    },
-    {
-      "artifact_kind": "stakeAdapter",
-      "public_owner": "cli:build --target stakeAdapter --out",
-      "status": "executed",
-      "record_id": "outcome-library-build-stake-explicit-output",
-      "source_path": "run-artifacts/matrix-explicit-bundle",
-      "operation_owner": "cli:build --target stakeAdapter --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-build-stake-explicit-output returned from cli:build --target stakeAdapter --out."
-    },
-    {
-      "artifact_kind": "stakeAdapter",
-      "public_owner": "cli:build --target stakeAdapter",
-      "status": "executed",
-      "record_id": "outcome-library-build-stake-generic",
-      "source_path": "run-artifacts/matrix-generic-bundle",
-      "operation_owner": "cli:build --target stakeAdapter",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-build-stake-generic returned from cli:build --target stakeAdapter."
-    },
-    {
-      "artifact_kind": "outcomeLibraryBundleDescriptor",
-      "public_owner": "OutcomeLibraryCommand",
-      "status": "executed",
-      "record_id": "outcome-library-bundle-descriptor-build",
-      "source_path": "run-artifacts/matrix-bundle.json",
-      "operation_owner": "OutcomeLibraryCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-bundle-descriptor-build returned from OutcomeLibraryCommand."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "CertificationCommand",
-      "status": "executed",
-      "record_id": "outcome-library-certification",
-      "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "CertificationCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-certification returned from CertificationCommand."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "BuildCommand",
-      "status": "executed",
-      "record_id": "outcome-library-export-stake",
-      "source_path": "run-artifacts/matrix-generated-bundle",
-      "operation_owner": "BuildCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-export-stake returned from BuildCommand."
-    },
-    {
-      "artifact_kind": "stakeAdapter",
-      "public_owner": "cli:export --to adapter without --out",
-      "status": "executed",
-      "record_id": "outcome-library-export-stake-default",
-      "source_path": "run-artifacts/owner-aliases/export-default/outcomelibrary",
-      "operation_owner": "cli:export --to adapter without --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-export-stake-default returned from cli:export --to adapter without --out."
-    },
-    {
-      "artifact_kind": "stakeAdapter",
-      "public_owner": "cli:export --to adapter --out",
-      "status": "executed",
-      "record_id": "outcome-library-export-stake-explicit-output",
-      "source_path": "run-artifacts/owner-aliases/export-default/explicit-outcomes",
-      "operation_owner": "cli:export --to adapter --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-export-stake-explicit-output returned from cli:export --to adapter --out."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "FairnessCommand",
-      "status": "executed",
-      "record_id": "outcome-library-fairness",
-      "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "FairnessCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-fairness returned from FairnessCommand."
-    },
-    {
-      "artifact_kind": "outcomeLibraryGenerationCheckpoint",
-      "public_owner": "OutcomeLibraryCommand",
-      "status": "executed",
-      "record_id": "outcome-library-generation-checkpoint-resume",
-      "source_path": "run-artifacts/matrix-cancellation-checkpoint-observed.json",
-      "operation_owner": "OutcomeLibraryCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-generation-checkpoint-resume returned from OutcomeLibraryCommand."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "InspectCommand",
-      "status": "executed",
-      "record_id": "outcome-library-inspect",
-      "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "InspectCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-inspect returned from InspectCommand."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "ReplayCommand",
-      "status": "executed",
-      "record_id": "outcome-library-replay",
-      "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "ReplayCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-replay returned from ReplayCommand."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "ReportCommand",
-      "status": "executed",
-      "record_id": "outcome-library-report",
-      "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "ReportCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-report returned from ReportCommand."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "OutcomeSourceCommand",
-      "status": "executed",
-      "record_id": "outcome-library-sample",
-      "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "OutcomeSourceCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-sample returned from OutcomeSourceCommand."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "SimCommand",
-      "status": "executed",
-      "record_id": "outcome-library-simulate",
-      "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "SimCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-simulate returned from SimCommand."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "ValidateCommand",
-      "status": "executed",
-      "record_id": "outcome-library-validate",
-      "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "ValidateCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-library-validate returned from ValidateCommand."
-    },
-    {
-      "artifact_kind": "outcomeSourceAnalysisReport",
-      "public_owner": "ReportCommand",
-      "status": "executed",
-      "record_id": "outcome-source-analysis-report",
-      "source_path": "run-artifacts/matrix-report.md",
-      "operation_owner": "ReportCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-source-analysis-report returned from ReportCommand."
-    },
-    {
-      "artifact_kind": "outcomeSourceComparisonReport",
-      "public_owner": "DiffCommand",
-      "status": "executed",
-      "record_id": "outcome-source-comparison-report",
-      "source_path": "run-artifacts/matrix-outcome-diff.json",
-      "operation_owner": "DiffCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation outcome-source-comparison-report returned from DiffCommand."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "cli:build --target outcomeLibrary without --out",
-      "status": "executed",
-      "record_id": "package-build-outcome-library-default",
-      "source_path": "run-artifacts/owner-aliases/build-default/tsPackage",
-      "operation_owner": "cli:build --target outcomeLibrary without --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation package-build-outcome-library-default returned from cli:build --target outcomeLibrary without --out."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "cli:build --target outcomeLibrary --out",
-      "status": "executed",
-      "record_id": "package-build-outcome-library-explicit-output",
-      "source_path": "run-artifacts/matrix-package",
-      "operation_owner": "cli:build --target outcomeLibrary --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation package-build-outcome-library-explicit-output returned from cli:build --target outcomeLibrary --out."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "cli:build --target outcomeLibrary",
-      "status": "executed",
-      "record_id": "package-build-outcome-library-generic",
-      "source_path": "run-artifacts/matrix-package",
-      "operation_owner": "cli:build --target outcomeLibrary",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation package-build-outcome-library-generic returned from cli:build --target outcomeLibrary."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "cli:export --to outcomes without --out",
-      "status": "executed",
-      "record_id": "package-export-outcome-library-default",
-      "source_path": "run-artifacts/owner-aliases/export-default/package",
-      "operation_owner": "cli:export --to outcomes without --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation package-export-outcome-library-default returned from cli:export --to outcomes without --out."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "cli:export --to outcomes --out",
-      "status": "executed",
-      "record_id": "package-export-outcome-library-explicit-output",
-      "source_path": "run-artifacts/owner-aliases/export-default/package",
-      "operation_owner": "cli:export --to outcomes --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation package-export-outcome-library-explicit-output returned from cli:export --to outcomes --out."
-    },
-    {
-      "artifact_kind": "tsPackage",
-      "public_owner": "OutcomeLibraryCommand",
-      "status": "executed",
-      "record_id": "package-generate-raw-outcomes",
-      "source_path": "run-artifacts/matrix-package",
-      "operation_owner": "OutcomeLibraryCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation package-generate-raw-outcomes returned from OutcomeLibraryCommand."
-    },
-    {
-      "artifact_kind": "blueprint",
-      "public_owner": "cli:par import --out",
-      "status": "executed",
-      "record_id": "par-import-blueprint",
-      "source_path": "run-artifacts/matrix.par.xlsx",
-      "operation_owner": "cli:par import --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation par-import-blueprint returned from cli:par import --out."
-    },
-    {
-      "artifact_kind": "blueprint",
-      "public_owner": "cli:par import without --out",
-      "status": "executed",
-      "record_id": "par-import-blueprint-default",
-      "source_path": "run-artifacts/owner-aliases/direct-par.par.xlsx",
-      "operation_owner": "cli:par import without --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation par-import-blueprint-default returned from cli:par import without --out."
-    },
-    {
-      "artifact_kind": "weightedOutcomeLibraryJson",
-      "public_owner": "OutcomeLibraryCommand",
-      "status": "executed",
-      "record_id": "raw-outcomes-build-bundle",
-      "source_path": "run-artifacts/matrix-library.json",
-      "operation_owner": "OutcomeLibraryCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation raw-outcomes-build-bundle returned from OutcomeLibraryCommand."
-    },
-    {
-      "artifact_kind": "renderedReport",
-      "public_owner": "ReportCommand",
-      "status": "executed",
-      "record_id": "rendered-simulation-report",
-      "source_path": "run-artifacts/matrix-rendered-report.html",
-      "operation_owner": "ReportCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation rendered-simulation-report returned from ReportCommand."
-    },
-    {
-      "artifact_kind": "runtimeReplayDescriptor",
-      "public_owner": "ReplayCommand",
-      "status": "executed",
-      "record_id": "replay-descriptor-round-artifact",
-      "source_path": "run-artifacts/matrix-replay.json",
-      "operation_owner": "ReplayCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation replay-descriptor-round-artifact returned from ReplayCommand."
-    },
-    {
-      "artifact_kind": "roundArtifact",
-      "public_owner": "ReplayCommand",
-      "status": "executed",
-      "record_id": "round-artifact-replay-provenance",
-      "source_path": "run-artifacts/matrix-replay.json",
-      "operation_owner": "ReplayCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation round-artifact-replay-provenance returned from ReplayCommand."
-    },
-    {
-      "artifact_kind": "simulationComparisonReport",
-      "public_owner": "DiffCommand",
-      "status": "executed",
-      "record_id": "simulation-comparison-report",
-      "source_path": "run-artifacts/matrix-simulation-diff.json",
-      "operation_owner": "DiffCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation simulation-comparison-report returned from DiffCommand."
-    },
-    {
-      "artifact_kind": "simulationReport",
-      "public_owner": "ReportCommand",
-      "status": "executed",
-      "record_id": "simulation-report-inspect",
-      "source_path": "run-artifacts/matrix-package-simulation.json",
-      "operation_owner": "ReportCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation simulation-report-inspect returned from ReportCommand."
-    },
-    {
-      "artifact_kind": "simulationReportSet",
-      "public_owner": "SimCommand",
-      "status": "executed",
-      "record_id": "simulation-report-set-mode-diagnostic",
-      "source_path": "run-artifacts/matrix-package",
-      "operation_owner": "SimCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation simulation-report-set-mode-diagnostic returned from SimCommand."
-    },
-    {
-      "artifact_kind": "stakeEngineAnalysisReport",
-      "public_owner": "StakeEngineCommand",
-      "status": "executed",
-      "record_id": "stake-engine-analysis-report",
-      "source_path": "run-artifacts/matrix-stake-analysis.json",
-      "operation_owner": "StakeEngineCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation stake-engine-analysis-report returned from StakeEngineCommand."
-    },
-    {
-      "artifact_kind": "stakeEngineComparisonReport",
-      "public_owner": "StakeEngineCommand",
-      "status": "executed",
-      "record_id": "stake-engine-comparison-report",
-      "source_path": "run-artifacts/matrix-stake-comparison.json",
-      "operation_owner": "StakeEngineCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation stake-engine-comparison-report returned from StakeEngineCommand."
-    },
-    {
-      "artifact_kind": "stakeEngineExportDescriptor",
-      "public_owner": "StakeEngineCommand",
-      "status": "executed",
-      "record_id": "stake-export-descriptor",
-      "source_path": "run-artifacts/matrix-stake-export.json",
-      "operation_owner": "StakeEngineCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation stake-export-descriptor returned from StakeEngineCommand."
-    },
-    {
-      "artifact_kind": "stakeAdapter",
-      "public_owner": "StakeEngineCommand",
-      "status": "executed",
-      "record_id": "stake-import-outcome-library",
-      "source_path": "run-artifacts/matrix-stake",
-      "operation_owner": "StakeEngineCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation stake-import-outcome-library returned from StakeEngineCommand."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "cli:import Stake without --out",
-      "status": "executed",
-      "record_id": "stake-import-outcome-library-default-output",
-      "source_path": "run-artifacts/matrix-stake",
-      "operation_owner": "cli:import Stake without --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation stake-import-outcome-library-default-output returned from cli:import Stake without --out."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "cli:import --out",
-      "status": "executed",
-      "record_id": "stake-import-outcome-library-explicit-output",
-      "source_path": "run-artifacts/matrix-stake",
-      "operation_owner": "cli:import --out",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation stake-import-outcome-library-explicit-output returned from cli:import --out."
-    },
-    {
-      "artifact_kind": "stakeImportReExportConfig",
-      "public_owner": "StakeEngineCommand",
-      "status": "executed",
-      "record_id": "stake-import-reexport-config",
-      "source_path": "run-artifacts/matrix-stake-imported-library/config.json",
-      "operation_owner": "StakeEngineCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation stake-import-reexport-config returned from StakeEngineCommand."
-    },
-    {
-      "artifact_kind": "stakeImportSourceProvenance",
-      "public_owner": "StakeEngineCommand",
-      "status": "executed",
-      "record_id": "stake-import-source-provenance",
-      "source_path": "run-artifacts/matrix-stake-imported-library/source-provenance.json",
-      "operation_owner": "StakeEngineCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation stake-import-source-provenance returned from StakeEngineCommand."
-    },
-    {
-      "artifact_kind": "wasmComponent",
-      "public_owner": "ReplayCommand",
-      "status": "executed",
-      "record_id": "wasm-outcome-source-replay",
-      "source_path": "run-artifacts/matrix.wasm",
-      "operation_owner": "ReplayCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation wasm-outcome-source-replay returned from ReplayCommand."
-    },
-    {
-      "artifact_kind": "wasmComponent",
-      "public_owner": "describeUnavailableArtifactOperation",
-      "status": "executed",
-      "record_id": "wasm-outcome-source-replay-diagnostic",
-      "source_path": "run-artifacts/matrix.wasm",
-      "operation_owner": "describeUnavailableArtifactOperation",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation wasm-outcome-source-replay-diagnostic returned from describeUnavailableArtifactOperation."
-    },
-    {
-      "artifact_kind": "wasmComponent",
-      "public_owner": "SimCommand",
-      "status": "executed",
-      "record_id": "wasm-outcome-source-simulate",
-      "source_path": "run-artifacts/matrix.wasm",
-      "operation_owner": "SimCommand",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation wasm-outcome-source-simulate returned from SimCommand."
-    },
-    {
-      "artifact_kind": "fileSessionRepositoryRecord",
-      "public_owner": "FileSessionRepository.load",
-      "status": "executed",
-      "record_id": "file-session-record-recovery",
-      "source_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
-      "operation_owner": "FileSessionRepository.load",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation file-session-record-recovery returned from FileSessionRepository.load."
-    },
-    {
-      "artifact_kind": "managedOutcomeProjectsRegistry",
-      "public_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
-      "status": "executed",
-      "record_id": "managed-outcome-project-registry-reuse",
-      "source_path": "run-artifacts/package/outcomelibrary",
-      "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse returned from ManagedOutcomeProjectService.registerAndOpen/findCompatible."
-    },
-    {
-      "artifact_kind": "preparationStateMarker",
-      "public_owner": "GamePackagePreparer.prepare",
-      "status": "executed",
-      "record_id": "package-preparation-marker-recovery",
-      "source_path": "run-artifacts/preparation/interrupted-package",
-      "operation_owner": "GamePackagePreparer.prepare",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation package-preparation-marker-recovery returned from GamePackagePreparer.prepare."
-    },
-    {
-      "artifact_kind": "runtimeSession",
-      "public_owner": "FileSessionRepository.save",
-      "status": "executed",
-      "record_id": "runtime-session-file-export",
-      "source_path": "run-artifacts/package",
-      "operation_owner": "FileSessionRepository.save",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation runtime-session-file-export returned from FileSessionRepository.save."
-    },
-    {
-      "artifact_kind": "blueprint",
-      "public_owner": "StudioArtifactBuildService",
-      "status": "executed",
-      "record_id": "studio-blueprint-build",
-      "source_path": "run-artifacts/source.blueprint.json",
-      "operation_owner": "StudioArtifactBuildService",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation studio-blueprint-build returned from StudioArtifactBuildService."
-    },
-    {
-      "artifact_kind": "externalDeploymentArtifact",
-      "public_owner": "StudioDeploymentService.run",
-      "status": "executed",
-      "record_id": "studio-external-deployment-publication",
-      "source_path": "run-artifacts/package/outcomelibrary",
-      "operation_owner": "StudioDeploymentService.run",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation studio-external-deployment-publication returned from StudioDeploymentService.run."
-    },
-    {
-      "artifact_kind": "studioOutcomeLibraryRegistryIndex",
-      "public_owner": "StudioOutcomeLibraryGenerateService.registry",
-      "status": "executed",
-      "record_id": "studio-outcome-library-registry-index",
-      "source_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
-      "operation_owner": "StudioOutcomeLibraryGenerateService.registry",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation studio-outcome-library-registry-index returned from StudioOutcomeLibraryGenerateService.registry."
-    },
-    {
-      "artifact_kind": "studioOutcomeLibrarySelector",
-      "public_owner": "StudioDeploymentService.run",
-      "status": "executed",
-      "record_id": "studio-outcome-library-selector-deployment",
-      "source_path": "run-artifacts/package/outcomelibrary",
-      "operation_owner": "StudioDeploymentService.run",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment returned from StudioDeploymentService.run."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "public_owner": "StudioStakeEngineExportService",
-      "status": "executed",
-      "record_id": "studio-outcome-library-stake-export",
-      "source_path": "run-artifacts/package/outcomelibrary",
-      "operation_owner": "StudioStakeEngineExportService",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation studio-outcome-library-stake-export returned from StudioStakeEngineExportService."
-    },
-    {
-      "artifact_kind": "studioProjectRegistryEntry",
-      "public_owner": "StudioProjectRegistrationService.registerExternal",
-      "status": "executed",
-      "record_id": "studio-project-registry-reopen",
-      "source_path": "run-artifacts/package",
-      "operation_owner": "StudioProjectRegistrationService.registerExternal",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation studio-project-registry-reopen returned from StudioProjectRegistrationService.registerExternal."
-    },
-    {
-      "artifact_kind": "studioSymbolArtworkPng",
-      "public_owner": "StudioBlueprintService.importSymbolArtwork/save",
-      "status": "executed",
-      "record_id": "studio-symbol-artwork-materialize",
-      "source_path": "run-artifacts/symbol.png",
-      "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation studio-symbol-artwork-materialize returned from StudioBlueprintService.importSymbolArtwork/save."
-    },
-    {
-      "artifact_kind": "wasmComponent",
-      "public_owner": "StudioReplayExecutionService.start",
-      "status": "executed",
-      "record_id": "studio-wasm-outcome-source-replay",
-      "source_path": "run-artifacts/studio-component.wasm",
-      "operation_owner": "StudioReplayExecutionService.start",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation studio-wasm-outcome-source-replay returned from StudioReplayExecutionService.start."
-    },
-    {
-      "artifact_kind": "wasmComponent",
-      "public_owner": "StudioSimulationService.start",
-      "status": "executed",
-      "record_id": "studio-wasm-outcome-source-simulate",
-      "source_path": "run-artifacts/studio-component.wasm",
-      "operation_owner": "StudioSimulationService.start",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation studio-wasm-outcome-source-simulate returned from StudioSimulationService.start."
-    },
-    {
-      "artifact_kind": "wasmComponent",
-      "public_owner": "StudioServer POST /api/project/replays",
-      "status": "executed",
-      "record_id": "studio-wasm-replay",
-      "source_path": "run-artifacts/studio-component.wasm",
-      "operation_owner": "StudioServer POST /api/project/replays",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation studio-wasm-replay returned from StudioServer POST /api/project/replays."
-    },
-    {
-      "artifact_kind": "wasmComponent",
-      "public_owner": "StudioServer POST /api/project/simulations",
-      "status": "executed",
-      "record_id": "studio-wasm-simulate",
-      "source_path": "run-artifacts/studio-component.wasm",
-      "operation_owner": "StudioServer POST /api/project/simulations",
-      "owner_execution": "runner-emitted",
-      "result": "Completed real-artifact operation studio-wasm-simulate returned from StudioServer POST /api/project/simulations."
-    }
-  ],
-  "direct_owner_operation_coverage": [
-    {
+      "exact_tuple_identity": "[\"tsPackage\",\"created_by\",\"ArtifactBuilderRegistry:build(tsPackage)\",\"library\"]",
       "artifact_kind": "tsPackage",
       "registry_operation": "created_by",
       "public_owner": "ArtifactBuilderRegistry:build(tsPackage)",
+      "surface": "library",
       "status": "executed",
       "record_id": "library-build-package",
       "source_path": "run-artifacts/matrix-imported.blueprint.json",
-      "operation_owner": "ArtifactBuilderRegistry:build(tsPackage)",
-      "owner_execution": "runner-emitted-direct-library",
-      "result": "Completed direct-library created_by operation library-build-package returned from ArtifactBuilderRegistry:build(tsPackage)."
+      "produced_path": "run-artifacts/direct-library-package",
+      "observable_result": "build returned a published package"
     },
     {
-      "artifact_kind": "parWorkbook",
-      "registry_operation": "validates_by",
-      "public_owner": "ParSheetImporter during import",
-      "status": "executed",
-      "record_id": "library-import-par-workbook",
-      "source_path": "run-artifacts/matrix.par.xlsx",
-      "operation_owner": "ParSheetImporter during import",
-      "owner_execution": "runner-emitted-direct-library",
-      "result": "Completed direct-library validates_by operation library-import-par-workbook returned from ParSheetImporter during import."
-    },
-    {
-      "artifact_kind": "outcomeLibrary",
-      "registry_operation": "recognized_by",
-      "public_owner": "OutcomeLibraryBundleReader",
-      "status": "executed",
-      "record_id": "library-read-outcome-library",
-      "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "OutcomeLibraryBundleReader",
-      "owner_execution": "runner-emitted-direct-library",
-      "result": "Completed direct-library recognized_by operation library-read-outcome-library returned from OutcomeLibraryBundleReader."
-    },
-    {
-      "artifact_kind": "stakeAdapter",
-      "registry_operation": "recognized_by",
-      "public_owner": "StakeEngineOutcomeSourceReader",
-      "status": "executed",
-      "record_id": "library-read-stake-adapter",
-      "source_path": "run-artifacts/matrix-stake",
-      "operation_owner": "StakeEngineOutcomeSourceReader",
-      "owner_execution": "runner-emitted-direct-library",
-      "result": "Completed direct-library recognized_by operation library-read-stake-adapter returned from StakeEngineOutcomeSourceReader."
-    },
-    {
+      "exact_tuple_identity": "[\"tsPackage\",\"recognized_by\",\"ProjectTargetResolver\",\"library\"]",
       "artifact_kind": "tsPackage",
       "registry_operation": "recognized_by",
       "public_owner": "ProjectTargetResolver",
+      "surface": "library",
       "status": "executed",
       "record_id": "library-resolve-direct-package",
       "source_path": "run-artifacts/direct-library-package",
-      "operation_owner": "ProjectTargetResolver",
-      "owner_execution": "runner-emitted-direct-library",
-      "result": "Completed direct-library recognized_by operation library-resolve-direct-package returned from ProjectTargetResolver."
-    },
-    {
-      "artifact_kind": "blueprint",
-      "registry_operation": "recognized_by",
-      "public_owner": "ProjectTargetResolver",
-      "status": "executed",
-      "record_id": "library-resolve-imported-blueprint",
-      "source_path": "run-artifacts/matrix-imported.blueprint.json",
-      "operation_owner": "ProjectTargetResolver",
-      "owner_execution": "runner-emitted-direct-library",
-      "result": "Completed direct-library recognized_by operation library-resolve-imported-blueprint returned from ProjectTargetResolver."
-    },
-    {
-      "artifact_kind": "blueprint",
-      "registry_operation": "validates_by",
-      "public_owner": "GameBlueprintValidator",
-      "status": "executed",
-      "record_id": "library-validate-blueprint",
-      "source_path": "run-artifacts/matrix.blueprint.json",
-      "operation_owner": "GameBlueprintValidator",
-      "owner_execution": "runner-emitted-direct-library",
-      "result": "Completed direct-library validates_by operation library-validate-blueprint returned from GameBlueprintValidator."
+      "produced_path": null,
+      "observable_result": "resolve returned tsPackage"
     }
   ],
   "systemic_class_audits": [
     {
       "class": "shared conversion diagnostic parity",
       "derived_from": {
-        "executed_owner_inventory": [
-          {
-            "artifact_kind": "blueprint",
-            "public_owner": "ArtifactBuilderRegistry.executePlan",
-            "record_id": "matrix-blueprint-outcomeLibrary-build"
-          },
-          {
-            "artifact_kind": "outcomeLibrary",
-            "public_owner": "ArtifactBuilderRegistry.preparePlan",
-            "record_id": "matrix-outcomeLibrary-blueprint-build"
-          },
-          {
-            "artifact_kind": "outcomeLibrary",
-            "public_owner": "ArtifactBuilderRegistry.executePlan",
-            "record_id": "matrix-outcomeLibrary-outcomeLibrary-build"
-          },
-          {
-            "artifact_kind": "parWorkbook",
-            "public_owner": "ArtifactBuilderRegistry.executePlan",
-            "record_id": "matrix-parWorkbook-blueprint-build"
-          },
-          {
-            "artifact_kind": "stakeAdapter",
-            "public_owner": "ArtifactBuilderRegistry.preparePlan",
-            "record_id": "matrix-stakeAdapter-blueprint-build"
-          },
-          {
-            "artifact_kind": "stakeAdapter",
-            "public_owner": "ArtifactBuilderRegistry.executePlan",
-            "record_id": "matrix-stakeAdapter-stakeAdapter-build"
-          },
-          {
-            "artifact_kind": "tsPackage",
-            "public_owner": "ArtifactBuilderRegistry.preparePlan",
-            "record_id": "matrix-tsPackage-blueprint-build"
-          },
-          {
-            "artifact_kind": "tsPackage",
-            "public_owner": "ArtifactBuilderRegistry.executePlan",
-            "record_id": "matrix-tsPackage-outcomeLibrary-build"
-          },
-          {
-            "artifact_kind": "wasm",
-            "public_owner": "ArtifactBuilderRegistry.preparePlan",
-            "record_id": "matrix-wasm-blueprint-build"
-          },
-          {
-            "artifact_kind": "simulationReportSet",
-            "public_owner": "SimCommand",
-            "record_id": "simulation-report-set-mode-diagnostic"
-          },
-          {
-            "artifact_kind": "wasmComponent",
-            "public_owner": "ReplayCommand",
-            "record_id": "wasm-outcome-source-replay"
-          },
-          {
-            "artifact_kind": "wasmComponent",
-            "public_owner": "describeUnavailableArtifactOperation",
-            "record_id": "wasm-outcome-source-replay-diagnostic"
-          },
-          {
-            "artifact_kind": "wasmComponent",
-            "public_owner": "SimCommand",
-            "record_id": "wasm-outcome-source-simulate"
-          },
-          {
-            "artifact_kind": "blueprint",
-            "public_owner": "StudioArtifactBuildService",
-            "record_id": "studio-blueprint-build"
-          },
-          {
-            "artifact_kind": "wasmComponent",
-            "public_owner": "StudioReplayExecutionService.start",
-            "record_id": "studio-wasm-outcome-source-replay"
-          },
-          {
-            "artifact_kind": "wasmComponent",
-            "public_owner": "StudioSimulationService.start",
-            "record_id": "studio-wasm-outcome-source-simulate"
-          },
-          {
-            "artifact_kind": "wasmComponent",
-            "public_owner": "StudioServer POST /api/project/replays",
-            "record_id": "studio-wasm-replay"
-          },
-          {
-            "artifact_kind": "wasmComponent",
-            "public_owner": "StudioServer POST /api/project/simulations",
-            "record_id": "studio-wasm-simulate"
-          }
-        ],
+        "executed_operation_tuples": [],
         "operation_rows": [
           "matrix-blueprint-blueprint-build",
           "matrix-blueprint-outcomeLibrary-build",
@@ -5885,113 +4501,7 @@
     {
       "class": "provenance and freshness binding",
       "derived_from": {
-        "executed_owner_inventory": [
-          {
-            "artifact_kind": "canonicalOutcomeJsonl",
-            "public_owner": "OutcomeLibraryCommand",
-            "record_id": "bundle-canonical-outcomes"
-          },
-          {
-            "artifact_kind": "certificationBuildDescriptor",
-            "public_owner": "CertificationCommand",
-            "record_id": "certification-build-descriptor-build"
-          },
-          {
-            "artifact_kind": "certificationEvidenceBundle",
-            "public_owner": "CertificationCommand",
-            "record_id": "certification-evidence-bundle"
-          },
-          {
-            "artifact_kind": "fairnessCommitment",
-            "public_owner": "FairnessCommand",
-            "record_id": "fairness-round-commitment"
-          },
-          {
-            "artifact_kind": "fairnessProof",
-            "public_owner": "FairnessCommand",
-            "record_id": "fairness-round-proof"
-          },
-          {
-            "artifact_kind": "fairnessServerSeedCommitment",
-            "public_owner": "FairnessCommand",
-            "record_id": "fairness-server-seed-commitment"
-          },
-          {
-            "artifact_kind": "outcomeLibraryBundleDescriptor",
-            "public_owner": "OutcomeLibraryCommand",
-            "record_id": "outcome-library-bundle-descriptor-build"
-          },
-          {
-            "artifact_kind": "outcomeLibrary",
-            "public_owner": "CertificationCommand",
-            "record_id": "outcome-library-certification"
-          },
-          {
-            "artifact_kind": "outcomeLibrary",
-            "public_owner": "FairnessCommand",
-            "record_id": "outcome-library-fairness"
-          },
-          {
-            "artifact_kind": "outcomeLibrary",
-            "public_owner": "ReplayCommand",
-            "record_id": "outcome-library-replay"
-          },
-          {
-            "artifact_kind": "outcomeLibrary",
-            "public_owner": "SimCommand",
-            "record_id": "outcome-library-simulate"
-          },
-          {
-            "artifact_kind": "runtimeReplayDescriptor",
-            "public_owner": "ReplayCommand",
-            "record_id": "replay-descriptor-round-artifact"
-          },
-          {
-            "artifact_kind": "roundArtifact",
-            "public_owner": "ReplayCommand",
-            "record_id": "round-artifact-replay-provenance"
-          },
-          {
-            "artifact_kind": "simulationReport",
-            "public_owner": "ReportCommand",
-            "record_id": "simulation-report-inspect"
-          },
-          {
-            "artifact_kind": "stakeEngineExportDescriptor",
-            "public_owner": "StakeEngineCommand",
-            "record_id": "stake-export-descriptor"
-          },
-          {
-            "artifact_kind": "stakeImportReExportConfig",
-            "public_owner": "StakeEngineCommand",
-            "record_id": "stake-import-reexport-config"
-          },
-          {
-            "artifact_kind": "stakeImportSourceProvenance",
-            "public_owner": "StakeEngineCommand",
-            "record_id": "stake-import-source-provenance"
-          },
-          {
-            "artifact_kind": "fileSessionRepositoryRecord",
-            "public_owner": "FileSessionRepository.load",
-            "record_id": "file-session-record-recovery"
-          },
-          {
-            "artifact_kind": "managedOutcomeProjectsRegistry",
-            "public_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
-            "record_id": "managed-outcome-project-registry-reuse"
-          },
-          {
-            "artifact_kind": "studioOutcomeLibraryRegistryIndex",
-            "public_owner": "StudioOutcomeLibraryGenerateService.registry",
-            "record_id": "studio-outcome-library-registry-index"
-          },
-          {
-            "artifact_kind": "studioOutcomeLibrarySelector",
-            "public_owner": "StudioDeploymentService.run",
-            "record_id": "studio-outcome-library-selector-deployment"
-          }
-        ],
+        "executed_operation_tuples": [],
         "operation_rows": [
           "bundle-canonical-outcomes",
           "certification-build-descriptor-build",
@@ -6158,43 +4668,7 @@
     {
       "class": "durable publication ownership",
       "derived_from": {
-        "executed_owner_inventory": [
-          {
-            "artifact_kind": "outcomeLibraryGenerationCheckpoint",
-            "public_owner": "OutcomeLibraryCommand",
-            "record_id": "outcome-library-generation-checkpoint-resume"
-          },
-          {
-            "artifact_kind": "managedOutcomeProjectsRegistry",
-            "public_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
-            "record_id": "managed-outcome-project-registry-reuse"
-          },
-          {
-            "artifact_kind": "preparationStateMarker",
-            "public_owner": "GamePackagePreparer.prepare",
-            "record_id": "package-preparation-marker-recovery"
-          },
-          {
-            "artifact_kind": "runtimeSession",
-            "public_owner": "FileSessionRepository.save",
-            "record_id": "runtime-session-file-export"
-          },
-          {
-            "artifact_kind": "externalDeploymentArtifact",
-            "public_owner": "StudioDeploymentService.run",
-            "record_id": "studio-external-deployment-publication"
-          },
-          {
-            "artifact_kind": "studioProjectRegistryEntry",
-            "public_owner": "StudioProjectRegistrationService.registerExternal",
-            "record_id": "studio-project-registry-reopen"
-          },
-          {
-            "artifact_kind": "studioSymbolArtworkPng",
-            "public_owner": "StudioBlueprintService.importSymbolArtwork/save",
-            "record_id": "studio-symbol-artwork-materialize"
-          }
-        ],
+        "executed_operation_tuples": [],
         "operation_rows": [
           "managed-outcome-project-registry-reuse",
           "outcome-library-generation-checkpoint-resume",
