@@ -199,7 +199,8 @@ export class ArtifactInteroperabilityRun {
         this.assertExists(row.sourcePath, "source");
         if (row.producedPath !== undefined) this.assertExists(row.producedPath, "output");
         if (row.observations.length === 0) throw new Error(`${row.id} has no exercised public observation.`);
-        this.assertDirectOwnerOperation(row);
+        if (row.result.length === 0) throw new Error(`${row.id} has no observed operation result.`);
+        this.assertExactOwnerOperation(row);
         if (row.systemicClasses !== undefined && row.systemicClasses.length === 0) throw new Error(`${row.id} has an empty systemic class assignment.`);
         this.rows.push(row);
     }
@@ -217,7 +218,7 @@ export class ArtifactInteroperabilityRun {
             throw new Error(`${row.id} has no concrete public diagnostic and recovery.`);
         }
         if (row.observations.length === 0) throw new Error(`${row.id} has no exercised public observation.`);
-        this.assertDirectOwnerOperation(row);
+        this.assertExactOwnerOperation(row);
         if (row.systemicClasses !== undefined && row.systemicClasses.length === 0) throw new Error(`${row.id} has an empty systemic class assignment.`);
         this.rows.push({
             id: row.id,
@@ -309,14 +310,16 @@ export class ArtifactInteroperabilityRun {
 
     /**
      * Registry coverage is intentionally stricter than an ordinary scenario
-     * observation.  A direct tuple is evidence only when the row names the
-     * very same consuming API and the runner retained that API's library
-     * observation; a command, service, or sibling reader cannot stand in.
+     * observation. A tuple is evidence only when the row names the same
+     * public owner that actually answered on a recorded surface. The surface
+     * may be CLI, Studio, Studio UI, or library: requiring library here would
+     * discard valid public command and Studio executions.
      */
-    private assertDirectOwnerOperation(row: Pick<ArtifactInteroperabilityRunRow, "id" | "owner" | "registryOperation" | "observations">): void {
+    private assertExactOwnerOperation(row: Pick<ArtifactInteroperabilityRunRow, "id" | "owner" | "registryOperation" | "observations">): void {
         if (row.registryOperation === undefined) return;
-        if (!row.observations.some((observation) => observation.surface === "library" && observation.owner === row.owner)) {
-            throw new Error(`${row.id} records ${row.registryOperation} for ${row.owner}, but has no direct-library observation from that owner.`);
+        const ownerObservation = row.observations.find((observation) => observation.owner === row.owner);
+        if (ownerObservation === undefined || ownerObservation.result.length === 0) {
+            throw new Error(`${row.id} records ${row.registryOperation} for ${row.owner}, but has no actual surface observation from that owner.`);
         }
     }
 
@@ -516,11 +519,13 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
         // An audit is scoped to the records that exercised its class.  A
         // global inventory would turn an unrelated build or planner result
         // into evidence for every class-level owner.
-        "executed_owner_inventory": ownerExecutions.filter((entry) => allRecords.some((record) =>
+        "executed_operation_tuples": exactOwnerOperationExecutions.filter((entry) => allRecords.some((record) =>
             recordId(record) === entry.record_id && hasSystemicClass(record, systemicClass),
         )).map((entry) => ({
             "artifact_kind": entry.artifact_kind,
+            "registry_operation": entry.registry_operation,
             "public_owner": entry.public_owner,
+            surface: entry.surface,
             "record_id": entry.record_id,
         })),
         "operation_rows": runs.flatMap((run) => run.parsed.rows)
@@ -582,76 +587,66 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
             .filter((record) => hasSystemicClass(record, systemicClass))
             .map(recordId).sort(),
     });
-    // PC-05 is the product inventory, rather than an execution log. Coverage
-    // is emitted only from the public owner recorded by a runner after its
-    // real operation completed; an inventory entry must not turn a sibling
-    // command into a fabricated execution result.
+    // PC-05 is the product inventory, rather than an execution log. Closure
+    // is emitted only from a runner row that names a registry operation and
+    // retains its owner's actual public surface observation. In particular,
+    // an owner-only row cannot become evidence for a sibling operation.
     const registry = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json"), "utf-8")) as {
         readonly artifact_kinds: readonly Pc05ArtifactKind[];
     };
     const allRecords = runs.flatMap((run) => [...run.parsed.rows, ...run.parsed.scenario_results]);
-    const ownerExecutions = runs.flatMap((run) => run.parsed.rows).flatMap((record) => {
-        const artifactKind = recordArtifactKind(record);
-        const owner = recordOwner(record);
-        const sourcePath = (record as {readonly source_path?: unknown}).source_path;
-        if (artifactKind === undefined || owner === undefined || typeof sourcePath !== "string") {
-            throw new Error("PC-14 runner emitted an owner row without artifact kind, source path, or operation owner.");
-        }
-        return [{
-            "artifact_kind": artifactKind,
-            "public_owner": owner,
-            status: "executed" as const,
-            "record_id": recordId(record),
-            "source_path": sourcePath,
-            "operation_owner": owner,
-            "owner_execution": "runner-emitted" as const,
-            result: `Completed real-artifact operation ${recordId(record)} returned from ${owner}.`,
-        }];
-    }).filter((entry, index, entries) => entries.findIndex((candidate) =>
-        candidate.artifact_kind === entry.artifact_kind && candidate.public_owner === entry.public_owner,
-    ) === index);
     const requiredOwnerOperations = pc05PublicOwnerOperations(registry);
-    const directOwnerOperationExecutions = runs.flatMap((run) => run.parsed.rows).flatMap((record) => {
+    const exactOwnerOperationExecutions = runs.flatMap((run) => run.parsed.rows).flatMap((record) => {
         const artifactKind = recordArtifactKind(record);
         const owner = recordOwner(record);
         const registryOperation = (record as {readonly registry_operation?: unknown}).registry_operation;
         const sourcePath = (record as {readonly source_path?: unknown}).source_path;
+        const producedPath = (record as {readonly produced_path?: unknown}).produced_path;
+        const diagnostic = (record as {readonly diagnostic?: unknown}).diagnostic;
         if (registryOperation === undefined) return [];
         if (artifactKind === undefined || owner === undefined || typeof sourcePath !== "string" || !isRegistryOperation(registryOperation)) {
-            throw new Error("PC-14 runner emitted an invalid direct owner-operation tuple.");
+            throw new Error("PC-14 runner emitted an invalid exact owner-operation tuple.");
         }
         if (!requiredOwnerOperations.some((required) =>
             required.artifactKind === artifactKind && required.owner === owner && required.registryOperation === registryOperation,
         )) {
-            throw new Error(`PC-14 runner emitted a direct owner-operation tuple absent from PC-05: ${artifactKind}:${registryOperation}:${owner}.`);
+            throw new Error(`PC-14 runner emitted an exact owner-operation tuple absent from PC-05: ${artifactKind}:${registryOperation}:${owner}.`);
         }
-        return [{
+        const observations = recordObservations(record).filter((observation) => observation.owner === owner && observation.result.length > 0);
+        if (observations.length === 0) {
+            throw new Error(`PC-14 runner emitted ${artifactKind}:${registryOperation}:${owner} without that owner's actual surface observation.`);
+        }
+        if (producedPath !== null && producedPath !== undefined && typeof producedPath !== "string") {
+            throw new Error(`PC-14 runner emitted ${artifactKind}:${registryOperation}:${owner} with an invalid output path.`);
+        }
+        if (diagnostic !== undefined && !isDiagnostic(diagnostic)) {
+            throw new Error(`PC-14 runner emitted ${artifactKind}:${registryOperation}:${owner} with an invalid diagnostic.`);
+        }
+        return observations.map((observation) => ({
+            "exact_tuple_identity": JSON.stringify([artifactKind, registryOperation, owner, observation.surface]),
             "artifact_kind": artifactKind,
             "registry_operation": registryOperation,
             "public_owner": owner,
+            surface: observation.surface,
             status: "executed" as const,
             "record_id": recordId(record),
             "source_path": sourcePath,
-            "operation_owner": owner,
-            "owner_execution": "runner-emitted-direct-library" as const,
-            result: `Completed direct-library ${registryOperation} operation ${recordId(record)} returned from ${owner}.`,
-        }];
-    }).filter((entry, index, entries) => entries.findIndex((candidate) =>
-        candidate.artifact_kind === entry.artifact_kind &&
-        candidate.registry_operation === entry.registry_operation &&
-        candidate.public_owner === entry.public_owner,
-    ) === index);
+            "produced_path": producedPath ?? null,
+            ...(diagnostic === undefined ? {} : {diagnostic}),
+            "observable_result": observation.result,
+        }));
+    }).sort((left, right) => `${left.exact_tuple_identity}:${left.record_id}`.localeCompare(`${right.exact_tuple_identity}:${right.record_id}`));
     const registryCoverage = registry.artifact_kinds.map((artifact) => {
         const internalOnly = INTERNAL_PC05_ARTIFACT_KINDS.has(artifact.id);
-        const completedOwners = ownerExecutions.filter((entry) => entry.artifact_kind === artifact.id);
+        const completedOperations = exactOwnerOperationExecutions.filter((entry) => entry.artifact_kind === artifact.id);
         let disposition: "executed" | "not-executed" | "excluded-internal-cache-state" = "executed";
         if (internalOnly) disposition = "excluded-internal-cache-state";
-        else if (completedOwners.length === 0) disposition = "not-executed";
+        else if (completedOperations.length === 0) disposition = "not-executed";
         return {
             "artifact_kind": artifact.id,
             disposition,
-            "public_owners": completedOwners.map((entry) => entry.public_owner).sort(),
-            "executed_regressions": [...new Set(completedOwners.map((entry) => entry.record_id))].sort(),
+            "public_owners": [...new Set(completedOperations.map((entry) => entry.public_owner))].sort(),
+            "executed_regressions": [...new Set(completedOperations.map((entry) => entry.record_id))].sort(),
             ...(internalOnly ? {exclusion: "Machine-local materialization cache/marker is not a user artifact or public-operation claim."} : {}),
         };
     });
@@ -675,11 +670,10 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
         // This is derived from the checked-in PC-05 registry at refresh time,
         // not maintained beside the result as a second hand-authored census.
         "registry_artifact_coverage": registryCoverage,
-        "public_owner_coverage": ownerExecutions,
-        // Unlike public_owner_coverage, this is deliberately tuple-shaped:
-        // consumers may use it only for a record that named its PC-05 field
-        // and retained the exact direct-library owner observation.
-        "direct_owner_operation_coverage": directOwnerOperationExecutions,
+        // This is the sole closure ledger. Every entry has the complete
+        // artifact/registry-operation/owner/surface tuple plus the observed
+        // source, output-or-diagnostic, and concrete public result.
+        "exact_owner_operation_coverage": exactOwnerOperationExecutions,
         "systemic_class_audits": [
             {class: "shared conversion diagnostic parity", "derived_from": classify("shared-conversion-diagnostic-parity")},
             {class: "provenance and freshness binding", "derived_from": classify("provenance-and-freshness-binding")},
@@ -713,15 +707,23 @@ function recordAlias(record: unknown): readonly string[] {
         : [];
 }
 
-function recordObservations(record: unknown): readonly {readonly surface: string; readonly owner: string}[] {
+function recordObservations(record: unknown): readonly {readonly surface: string; readonly owner: string; readonly result: string}[] {
     if (typeof record !== "object" || record === null || !("observations" in record)) return [];
     const observations = (record as {readonly observations: unknown}).observations;
     if (!Array.isArray(observations)) return [];
-    return observations.filter((observation): observation is {readonly surface: string; readonly owner: string} =>
+    return observations.filter((observation): observation is {readonly surface: string; readonly owner: string; readonly result: string} =>
         typeof observation === "object" && observation !== null &&
         "surface" in observation && typeof observation.surface === "string" &&
-        "owner" in observation && typeof observation.owner === "string",
+        "owner" in observation && typeof observation.owner === "string" &&
+        "result" in observation && typeof observation.result === "string",
     );
+}
+
+function isDiagnostic(value: unknown): value is {readonly code: string; readonly recovery: string} {
+    if (typeof value !== "object" || value === null) return false;
+    const diagnostic = value as {readonly code?: unknown; readonly recovery?: unknown};
+    return typeof diagnostic.code === "string" && diagnostic.code.length > 0 &&
+        typeof diagnostic.recovery === "string" && diagnostic.recovery.length > 0;
 }
 
 function recordRoutes(record: unknown): readonly string[] {
