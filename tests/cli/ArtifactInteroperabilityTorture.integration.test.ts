@@ -10,11 +10,16 @@ import {
     describeUnavailableArtifactOperation,
     GameBlueprintValidator,
     OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleWriter,
     ParSheetImporter,
     POKIE_WASM_CONTRACT_VERSION,
     type GameBlueprint,
     ProjectTargetResolver,
+    StakeEngineExportValidator,
+    StakeEngineImporter,
     StakeEngineOutcomeSourceReader,
+    StakeEngineStandaloneValidator,
+    loadPokieGame,
 } from "pokie";
 import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
@@ -451,6 +456,133 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "library-resolve-direct-package", artifactKind: "tsPackage", operation: "resolve", registryOperation: "recognized_by",
             sourcePath: directPackage.outputPath, owner: "ProjectTargetResolver", result: "direct resolver recognized the registry-produced package",
             observations: [{surface: "library", owner: "ProjectTargetResolver", result: "resolve returned tsPackage"}],
+        });
+        const directPackageRecognition = await loadPokieGame(directPackage.outputPath);
+        expect(directPackageRecognition.getManifest()).toMatchObject({id: blueprint.manifest.id, version: blueprint.manifest.version});
+        evidence.record({
+            id: "library-load-direct-package", artifactKind: "tsPackage", operation: "recognize", registryOperation: "recognized_by",
+            sourcePath: directPackage.outputPath, owner: "loadPokieGame", result: "direct package loader recognized the registry-produced package",
+            observations: [{surface: "library", owner: "loadPokieGame", result: "loadPokieGame returned the package game"}],
+        });
+        const directPackageValidation = await loadPokieGame(directPackage.outputPath);
+        expect(directPackageValidation.getManifest()).toMatchObject({id: blueprint.manifest.id, version: blueprint.manifest.version});
+        evidence.record({
+            id: "library-validate-direct-package", artifactKind: "tsPackage", operation: "validate", registryOperation: "validates_by",
+            sourcePath: directPackage.outputPath, owner: "loadPokieGame", result: "direct package loader validated the registry-produced package entry",
+            observations: [{surface: "library", owner: "loadPokieGame", result: "loadPokieGame returned a runnable package game"}],
+        });
+
+        // Execute each remaining registry build owner directly against the
+        // artifacts this runner produced.  The registry's matrix preflight
+        // below remains useful conversion coverage, but cannot stand in for
+        // a tuple whose PC-05 owner is a particular public build method.
+        const directBundlePath = path.join(workDir, "direct-library-outcomes");
+        const directBundle = await registry.build("outcomeLibrary", directPackageProject, directBundlePath);
+        expect(fs.existsSync(directBundle.outputPath)).toBe(true);
+        evidence.record({
+            id: "library-build-outcome-library", artifactKind: "outcomeLibrary", operation: "build", registryOperation: "created_by",
+            sourcePath: directPackage.outputPath, producedPath: directBundle.outputPath, owner: "ArtifactBuilderRegistry:build(outcomeLibrary)",
+            result: "direct registry build published an Outcome Library from the generated package",
+            observations: [{surface: "library", owner: "ArtifactBuilderRegistry:build(outcomeLibrary)", result: "build returned a published Outcome Library"}],
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+        });
+        const directBundleProject = await resolver.resolve(directBundle.outputPath);
+        expect(directBundleProject?.type).toBe("outcomeLibrary");
+        evidence.record({
+            id: "library-resolve-direct-outcome-library", artifactKind: "outcomeLibrary", operation: "resolve", registryOperation: "recognized_by",
+            sourcePath: directBundle.outputPath, owner: "ProjectTargetResolver", result: "direct resolver recognized the registry-produced Outcome Library",
+            observations: [{surface: "library", owner: "ProjectTargetResolver", result: "resolve returned outcomeLibrary"}],
+        });
+        if (directBundleProject === undefined) throw new Error("Expected the direct Outcome Library build to resolve.");
+
+        const directBundleReader = new OutcomeLibraryBundleReader();
+        const directBundleManifest = await directBundleReader.readManifest(directBundle.outputPath);
+        const directBundleLibrary = await directBundleReader.readLibrary(directBundle.outputPath, directBundleManifest.modes[0]!.modeName);
+        expect(directBundleLibrary.outcomes.length).toBeGreaterThan(0);
+        evidence.record({
+            id: "library-read-direct-outcome-library", artifactKind: "outcomeLibrary", operation: "recognize", registryOperation: "recognized_by",
+            sourcePath: directBundle.outputPath, owner: "OutcomeLibraryBundleReader", result: "direct bundle reader loaded the registry-produced Outcome Library",
+            observations: [{surface: "library", owner: "OutcomeLibraryBundleReader", result: "readLibrary returned the generated mode outcomes"}],
+        });
+        const directBundleValidation = await directBundleReader.readLibrary(directBundle.outputPath, directBundleManifest.modes[0]!.modeName);
+        expect(directBundleValidation.outcomes.length).toBeGreaterThan(0);
+        evidence.record({
+            id: "library-validate-direct-outcome-library", artifactKind: "outcomeLibrary", operation: "validate", registryOperation: "validates_by",
+            sourcePath: directBundle.outputPath, owner: "OutcomeLibraryBundleReader", result: "direct bundle reader validated the registry-produced Outcome Library while reading its canonical mode",
+            observations: [{surface: "library", owner: "OutcomeLibraryBundleReader", result: "readLibrary returned a complete valid canonical mode"}],
+        });
+
+        // The bundle writer is itself the consuming owner for a generated
+        // canonical outcome stream.  Keep its source tied to the reader's
+        // real returned library and retain the writer's actual publication.
+        const directWriterBundlePath = path.join(workDir, "direct-library-writer-outcomes");
+        const directWriterResult = await new OutcomeLibraryBundleWriter(POKIE_VERSION).writeToDirectory([{
+            modeName: directBundleManifest.modes[0]!.modeName,
+            libraryId: directBundleLibrary.libraryId,
+            schemaVersion: directBundleLibrary.schemaVersion,
+            outcomes: directBundleLibrary.outcomes,
+            generator: directBundleManifest.modes[0]!.generator,
+        }], directWriterBundlePath);
+        expect(directWriterResult.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        expect(fs.existsSync(directWriterBundlePath)).toBe(true);
+        evidence.record({
+            id: "library-write-canonical-outcomes", artifactKind: "canonicalOutcomeJsonl", operation: "write", registryOperation: "created_by",
+            sourcePath: directBundle.outputPath, producedPath: directWriterBundlePath, owner: "OutcomeLibraryBundleWriter per-mode JSONL",
+            result: "direct bundle writer published canonical outcome JSONL from the reader-returned library",
+            observations: [{surface: "library", owner: "OutcomeLibraryBundleWriter per-mode JSONL", result: "writeToDirectory published the canonical outcome stream"}],
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+        });
+
+        const directStakePath = path.join(workDir, "direct-library-stake");
+        const directStake = await registry.build("stakeAdapter", directBundleProject, directStakePath);
+        expect(fs.existsSync(directStake.outputPath)).toBe(true);
+        evidence.record({
+            id: "library-build-stake-adapter", artifactKind: "stakeAdapter", operation: "build", registryOperation: "created_by",
+            sourcePath: directBundle.outputPath, producedPath: directStake.outputPath, owner: "ArtifactBuilderRegistry:build(stakeAdapter)",
+            result: "direct registry build published a Stake adapter from the generated Outcome Library",
+            observations: [{surface: "library", owner: "ArtifactBuilderRegistry:build(stakeAdapter)", result: "build returned a published Stake adapter"}],
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+        });
+        const directStakeProject = await resolver.resolve(directStake.outputPath);
+        expect(directStakeProject?.type).toBe("stakeAdapter");
+        evidence.record({
+            id: "library-resolve-direct-stake-adapter", artifactKind: "stakeAdapter", operation: "resolve", registryOperation: "recognized_by",
+            sourcePath: directStake.outputPath, owner: "ProjectTargetResolver", result: "direct resolver recognized the registry-produced Stake adapter",
+            observations: [{surface: "library", owner: "ProjectTargetResolver", result: "resolve returned stakeAdapter"}],
+        });
+        const directStakeRead = await new StakeEngineOutcomeSourceReader(new StakeEngineStandaloneValidator()).readFromDirectory(directStake.outputPath);
+        expect(directStakeRead.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        evidence.record({
+            id: "library-validate-direct-stake-adapter", artifactKind: "stakeAdapter", operation: "validate", registryOperation: "validates_by",
+            sourcePath: directStake.outputPath, owner: "StakeEngineStandaloneValidator", result: "direct standalone validator accepted the reader-assembled Stake adapter",
+            observations: [{surface: "library", owner: "StakeEngineStandaloneValidator", result: "validator returned no structural errors during direct reader execution"}],
+        });
+        const directStakeImport = await new StakeEngineImporter().importFromDirectory(directStake.outputPath);
+        expect(directStakeImport.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        const directStakeExportValidation = new StakeEngineExportValidator().validate(directStakeImport.modes);
+        expect(directStakeExportValidation.filter((issue) => issue.severity === "error")).toEqual([]);
+        evidence.record({
+            id: "library-export-validate-direct-stake-adapter", artifactKind: "stakeAdapter", operation: "validate-export", registryOperation: "validates_by",
+            sourcePath: directStake.outputPath, owner: "StakeEngineExportValidator", result: "direct Stake export validator accepted modes imported from the registry-produced adapter",
+            observations: [{surface: "library", owner: "StakeEngineExportValidator", result: "validate returned no export errors"}],
+        });
+
+        const directWorkbookPath = path.join(workDir, "direct-library.par.xlsx");
+        const directWorkbook = await registry.build("parWorkbook", sourceProject, directWorkbookPath);
+        expect(fs.existsSync(directWorkbook.outputPath)).toBe(true);
+        evidence.record({
+            id: "library-build-par-workbook", artifactKind: "parWorkbook", operation: "build", registryOperation: "created_by",
+            sourcePath: importedBlueprintPath, producedPath: directWorkbook.outputPath, owner: "ArtifactBuilderRegistry:build(parWorkbook)",
+            result: "direct registry build published a PAR workbook from the imported Blueprint",
+            observations: [{surface: "library", owner: "ArtifactBuilderRegistry:build(parWorkbook)", result: "build returned a published PAR workbook"}],
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+        });
+        const directWorkbookProject = await resolver.resolve(directWorkbook.outputPath);
+        expect(directWorkbookProject?.type).toBe("parWorkbook");
+        evidence.record({
+            id: "library-resolve-direct-par-workbook", artifactKind: "parWorkbook", operation: "resolve", registryOperation: "recognized_by",
+            sourcePath: directWorkbook.outputPath, owner: "ProjectTargetResolver", result: "direct resolver recognized the registry-produced PAR workbook",
+            observations: [{surface: "library", owner: "ProjectTargetResolver", result: "resolve returned parWorkbook"}],
         });
         const directParImport = await new ParSheetImporter().importFromFile(workbookPath);
         expect(directParImport.issues.filter((issue) => issue.severity === "error")).toEqual([]);
