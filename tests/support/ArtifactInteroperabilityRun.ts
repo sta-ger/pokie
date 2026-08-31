@@ -203,56 +203,6 @@ export function pc05PublicOwnerOperations(registry: Pc05ArtifactRegistry): reado
  * emitted by a runner before it is written.  The merger remains a pure
  * validator and cannot fill gaps in an execution.
  */
-export function recordRemainingPc05OwnerOperationBoundaries(
-    run: ArtifactInteroperabilityRun,
-    sourcePath: string,
-    priorRunPaths: readonly string[],
-): void {
-    const registryPath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json");
-    const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as Pc05ArtifactRegistry;
-    const emitted = new Set(priorRunPaths.flatMap((priorPath) => {
-        const parsed = JSON.parse(fs.readFileSync(priorPath, "utf-8")) as {readonly rows: readonly {
-            readonly artifact_kind?: string;
-            readonly registry_operation?: string;
-            readonly operation_owner?: string;
-        }[]};
-        return parsed.rows.flatMap((row) => row.artifact_kind === undefined || row.registry_operation === undefined || row.operation_owner === undefined
-            ? []
-            : [`${row.artifact_kind}:${row.registry_operation}:${row.operation_owner}`]);
-    }));
-    for (const operation of pc05PublicOwnerOperations(registry)) {
-        const key = `${operation.artifactKind}:${operation.registryOperation}:${operation.owner}`;
-        if (emitted.has(key)) continue;
-        let surface: ArtifactInteroperabilityObservation["surface"] = "library";
-        if (operation.owner.startsWith("cli:") || operation.owner.startsWith("cli/")) {
-            surface = "cli";
-        } else if (operation.owner.startsWith("studio:") || operation.owner.startsWith("Studio ") || operation.owner.startsWith("Studio")) {
-            surface = "studio-api";
-        }
-        const identity = crypto.createHash("sha256").update(key).digest("hex").slice(0, 16);
-        const message = `${operation.owner} exercised the ${operation.registryOperation} boundary for ${operation.artifactKind} using ${sourcePath}; no additional durable output is published by this owner.`;
-        run.recordUnavailable({
-            id: `pc05-owner-boundary-${identity}`,
-            artifactKind: operation.artifactKind,
-            operation: operation.registryOperation,
-            registryOperation: operation.registryOperation,
-            sourcePath,
-            owner: operation.owner,
-            diagnostic: {
-                code: "unsupported-project-operation",
-                message,
-                recovery: `Use the owner-returned result for ${operation.artifactKind}; ${operation.owner} does not publish a second artifact at this boundary.`,
-            },
-            observations: [{surface, owner: operation.owner, result: message}],
-            systemicClasses: [
-                "shared-conversion-diagnostic-parity",
-                "provenance-and-freshness-binding",
-                "durable-publication-ownership",
-            ],
-        });
-    }
-}
-
 /** A lifecycle outcome is recorded by the runner at the point its assertion
  * completes.  It deliberately carries real source/output paths just like an
  * operation row, so a scenario cannot be represented by prose alone. */
@@ -812,9 +762,11 @@ export function mergeArtifactInteroperabilityRuns(
                 "canonical_proof": canonicalProof,
             };
         }
-        // Unit tests deliberately exercise partial ledgers to prove missing
-        // and duplicate rejection.  They may retain the legacy inventory
-        // dispositions, but a normal (complete) evidence refresh cannot.
+        // A capability inventory is larger than an execution ledger. Reuse a
+        // real canonical operation only for an owner in the same artifact
+        // domain and registry operation; all other retained owners remain an
+        // explicit, unexecuted boundary. Neither disposition is an execution
+        // claim for the owner being described.
         if (options.requireComplete === false) {
             const adapter = requiredOwnerOperations.find((candidate) =>
                 candidate.artifactKind === required.artifactKind &&
@@ -834,7 +786,7 @@ export function mergeArtifactInteroperabilityRuns(
                         "canonical_capability_identity": JSON.stringify([adapter.artifactKind, adapter.registryOperation, adapter.owner]),
                         "canonical_public_owner": adapter.owner,
                         "record_id": adapterProof.record_id,
-                        reason: "Partial-ledger test disposition; not an execution claim.",
+                        reason: `Thin adapter over the runner-emitted ${adapter.owner} ${adapter.registryOperation} capability; ${required.owner} was not executed by this refresh.`,
                     },
                 };
             }
@@ -846,11 +798,11 @@ export function mergeArtifactInteroperabilityRuns(
                 disposition: "unreachable-or-legacy-diagnostic",
                 diagnostic: {
                     code: "unreached-distinct-capability",
-                    recovery: "Partial-ledger test disposition; not an execution claim.",
+                    recovery: `Exercise ${required.owner}'s ${required.registryOperation} public boundary to replace this unexecuted capability diagnostic with a canonical proof.`,
                 },
             };
         }
-        throw new Error(`PC-14 capability matrix cannot retain an adapter or unreached entry: ${tupleKey}.`);
+        throw new Error(`PC-14 capability matrix requires a complete exact owner-operation ledger: ${tupleKey}.`);
     });
     const registryCoverage = registry.artifact_kinds.map((artifact) => {
         const internalOnly = INTERNAL_PC05_ARTIFACT_KINDS.has(artifact.id);

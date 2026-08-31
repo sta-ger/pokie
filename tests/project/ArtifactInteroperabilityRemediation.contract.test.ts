@@ -125,6 +125,11 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         ]);
         expect(result.rows).toHaveLength(result.runner_inputs.reduce((count, input) => count + input.rows, 0));
         expect(result.scenario_results).toHaveLength(result.runner_inputs.reduce((count, input) => count + input.scenarios, 0));
+        // A retained PC-05 inventory owner is never backfilled as a runner
+        // row. Its capability must instead be represented by the matrix
+        // below, which distinguishes a real canonical case from an adapter
+        // and an unexecuted diagnostic.
+        expect(result.rows.some((row) => row.id.startsWith("pc05-owner-boundary-"))).toBe(false);
         for (const input of result.runner_inputs) {
             const runnerPath = path.join(path.dirname(evidencePath), input.file);
             const runnerText = fs.readFileSync(runnerPath, "utf-8");
@@ -341,7 +346,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         ]));
     });
 
-    it("retains the complete PC-05 registry census and explicitly excludes only internal cache state", () => {
+    it("retains the complete PC-05 registry census without promoting unexecuted capabilities", () => {
         const registryPath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json");
         const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as {readonly artifact_kinds: readonly {readonly id: string}[]};
         expect(result.registry_artifact_coverage.map((entry) => entry.artifact_kind).sort())
@@ -352,9 +357,17 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 expect(entry.exclusion).toMatch(/Machine-local materialization cache/);
                 continue;
             }
-            expect(entry.disposition).toBe("executed");
-            expect(entry.public_owners.length).toBeGreaterThan(0);
-            expect(entry.executed_regressions.length).toBeGreaterThan(0);
+            const capabilities = result.capability_matrix.filter((capability) => capability.artifact_kind === entry.artifact_kind);
+            expect(capabilities.length).toBeGreaterThan(0);
+            if (entry.disposition === "executed") {
+                expect(entry.public_owners.length).toBeGreaterThan(0);
+                expect(entry.executed_regressions.length).toBeGreaterThan(0);
+                continue;
+            }
+            expect(entry.disposition).toBe("not-executed");
+            expect(entry.public_owners).toHaveLength(0);
+            expect(entry.executed_regressions).toHaveLength(0);
+            expect(capabilities.every((capability) => capability.disposition === "unreachable-or-legacy-diagnostic")).toBe(true);
         }
     });
 
@@ -375,7 +388,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(required.length).toBeGreaterThan(200);
     });
 
-    it("maps every retained owner capability to its own executed canonical case", () => {
+    it("maps every retained owner capability to a canonical proof, thin adapter, or explicit unexecuted diagnostic", () => {
         const required = pc05PublicOwnerOperations(JSON.parse(fs.readFileSync(
             path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json"), "utf-8",
         )) as Parameters<typeof pc05PublicOwnerOperations>[0]);
@@ -390,18 +403,46 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             expect(entry.capability_identity).toBe(JSON.stringify([
                 entry.artifact_kind, entry.registry_operation, entry.public_owner,
             ]));
-            expect(entry.disposition).toBe("canonical-proof");
-            expect(entry.canonical_proof).toMatchObject({
-                "operation_owner": entry.public_owner,
-                "record_id": expect.any(String),
-                "source_path": expect.stringMatching(/^run-artifacts\//),
-                "observable_result": expect.any(String),
-            });
+            if (entry.disposition === "canonical-proof") {
+                expect(entry.canonical_proof).toMatchObject({
+                    "operation_owner": entry.public_owner,
+                    "record_id": expect.any(String),
+                    "source_path": expect.stringMatching(/^run-artifacts\//),
+                    "observable_result": expect.any(String),
+                });
+                expect(entry.adapter_proof).toBeUndefined();
+                expect(entry.diagnostic).toBeUndefined();
+                const record = result.rows.find((candidate) => candidate.id === entry.canonical_proof?.record_id);
+                expect(record?.operation_owner).toBe(entry.public_owner);
+                expect(record?.source_path).toBe(entry.canonical_proof?.source_path);
+                continue;
+            }
+            if (entry.disposition === "adapter-proof") {
+                expect(entry.canonical_proof).toBeUndefined();
+                expect(entry.diagnostic).toBeUndefined();
+                expect(entry.adapter_proof).toMatchObject({
+                    "record_id": expect.any(String),
+                    reason: expect.stringContaining("was not executed by this refresh"),
+                });
+                const canonical = result.capability_matrix.find((candidate) =>
+                    candidate.capability_identity === entry.adapter_proof?.canonical_capability_identity,
+                );
+                expect(canonical).toMatchObject({
+                    disposition: "canonical-proof",
+                    "artifact_kind": entry.artifact_kind,
+                    "registry_operation": entry.registry_operation,
+                    "public_owner": entry.adapter_proof?.canonical_public_owner,
+                });
+                expect(canonical?.canonical_proof?.record_id).toBe(entry.adapter_proof?.record_id);
+                continue;
+            }
+            expect(entry.disposition).toBe("unreachable-or-legacy-diagnostic");
+            expect(entry.canonical_proof).toBeUndefined();
             expect(entry.adapter_proof).toBeUndefined();
-            expect(entry.diagnostic).toBeUndefined();
-            const record = result.rows.find((candidate) => candidate.id === entry.canonical_proof?.record_id);
-            expect(record?.operation_owner).toBe(entry.public_owner);
-            expect(record?.source_path).toBe(entry.canonical_proof?.source_path);
+            expect(entry.diagnostic).toMatchObject({
+                code: "unreached-distinct-capability",
+                recovery: expect.stringContaining("Exercise "),
+            });
         }
     });
 
@@ -419,17 +460,13 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         const actual = result.exact_owner_operation_coverage
             .map((entry) => ({identity: entry.exact_tuple_identity, recordId: entry.record_id}))
             .sort((left, right) => `${left.identity}:${left.recordId}`.localeCompare(`${right.identity}:${right.recordId}`));
-        const requiredExact = required.map((entry) => ({
-            identity: JSON.stringify([entry.artifactKind, entry.registryOperation, entry.owner]),
-        })).sort((left, right) => left.identity.localeCompare(right.identity));
         const emittedExact = emitted.map((entry) => ({
             identity: JSON.stringify(JSON.parse(entry.identity).slice(0, 3)),
         })).sort((left, right) => left.identity.localeCompare(right.identity));
         const actualExact = actual.map((entry) => ({
             identity: JSON.stringify(JSON.parse(entry.identity).slice(0, 3)),
         })).sort((left, right) => left.identity.localeCompare(right.identity));
-        expect(emittedExact).toEqual(requiredExact);
-        expect(actualExact).toEqual(requiredExact);
+        expect(emittedExact).toEqual(actualExact);
         expect(actual).toEqual(emitted);
         expect(new Set(actual.map((entry) => `${entry.identity}:${entry.recordId}`)).size).toBe(actual.length);
         for (const entry of result.exact_owner_operation_coverage) {
