@@ -41,11 +41,11 @@ type InteroperabilityResult = {
     readonly public_owner_coverage: readonly {
         readonly artifact_kind: string;
         readonly public_owner: string;
-        readonly status: "executed" | "intentionally-boundary";
-        readonly record_id: string | null;
-        readonly source_path: string | null;
-        readonly result?: string;
-        readonly diagnostic?: {readonly code: string; readonly message: string; readonly recovery: string};
+        readonly status: "executed";
+        readonly record_id: string;
+        readonly source_path: string;
+        readonly operation_owner: string;
+        readonly result: string;
     }[];
     readonly planner_cells?: readonly {
         readonly source_path: string;
@@ -68,6 +68,7 @@ type InteroperabilityResult = {
             readonly studio_ui_routes: readonly string[];
             readonly studio_service_callers: readonly string[];
             readonly direct_library_callers: readonly string[];
+            readonly executed_owner_inventory: readonly {readonly artifact_kind: string; readonly public_owner: string; readonly record_id: string}[];
             readonly regression_links: readonly string[];
         };
     }[];
@@ -287,6 +288,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 "studio_ui_routes": expect.any(Array),
                 "studio_service_callers": expect.any(Array),
                 "direct_library_callers": expect.any(Array),
+                "executed_owner_inventory": expect.any(Array),
                 "regression_links": expect.any(Array),
             });
         }
@@ -345,20 +347,20 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             .sort();
         expect(actual).toEqual(expected);
         for (const entry of result.public_owner_coverage) {
-            if (entry.status === "executed") {
-                expect(entry.record_id).toEqual(expect.any(String));
-                expect(entry.source_path).toMatch(/^run-artifacts\//);
-                continue;
+            expect(entry.status).toBe("executed");
+            expect(entry.record_id).toEqual(expect.any(String));
+            expect(entry.source_path).toMatch(/^run-artifacts\//);
+            expect(entry.operation_owner).toEqual(expect.any(String));
+            expect(entry.result).toContain(entry.public_owner);
+            const record = result.rows.find((candidate) => candidate.id === entry.record_id);
+            expect(record?.source_path).toBe(entry.source_path);
+        }
+        for (const audit of result.systemic_class_audits) {
+            expect(audit.derived_from.executed_owner_inventory.map((entry) => `${entry.artifact_kind}:${entry.public_owner}`).sort())
+                .toEqual(expected);
+            for (const entry of audit.derived_from.executed_owner_inventory) {
+                expect(result.rows.some((record) => record.id === entry.record_id)).toBe(true);
             }
-            expect(entry).toMatchObject({
-                "record_id": expect.any(String),
-                "source_path": expect.stringMatching(/^run-artifacts\//),
-                diagnostic: {
-                    code: "owner-not-separately-invoked",
-                    message: expect.stringContaining(entry.public_owner),
-                    recovery: expect.stringContaining(entry.record_id!),
-                },
-            });
         }
     });
 });

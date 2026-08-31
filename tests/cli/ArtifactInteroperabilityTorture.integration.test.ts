@@ -14,6 +14,7 @@ import {
 } from "pokie";
 import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";
 import {DiffCommand} from "../../cli/commands/DiffCommand.js";
+import {ExportCommand} from "../../cli/commands/ExportCommand.js";
 import {FairnessCommand} from "../../cli/commands/FairnessCommand.js";
 import {InspectCommand} from "../../cli/commands/InspectCommand.js";
 import {ImportCommand} from "../../cli/commands/ImportCommand.js";
@@ -194,6 +195,117 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "blueprint-build-package", artifactKind: "blueprint", operation: "build", sourcePath: blueprintPath,
             producedPath: packagePath, owner: "BuildCommand", result: "published",
             observations: [{surface: "cli", owner: "BuildCommand", result: "exit 0"}],
+        });
+
+        // The registry inventory deliberately distinguishes public aliases
+        // and default-destination branches.  Exercise those branches here,
+        // rather than projecting a single --out build over their names in
+        // the evidence merger.  Each source lives in its own directory so a
+        // command's documented default cannot be satisfied by an earlier
+        // output with the same target-shaped name.
+        const ownerAliasRoot = path.join(workDir, "owner-aliases");
+        fs.mkdirSync(ownerAliasRoot);
+        const aliasBlueprintPath = path.join(ownerAliasRoot, "direct-par.blueprint.json");
+        fs.copyFileSync(blueprintPath, aliasBlueprintPath);
+        const aliasParPath = path.join(ownerAliasRoot, "direct-par.par.xlsx");
+        expect(await new ParCommand(POKIE_VERSION).run(["export", aliasBlueprintPath])).toBe(0);
+        expect(fs.existsSync(aliasParPath)).toBe(true);
+        evidence.record({
+            id: "blueprint-par-export-default", artifactKind: "blueprint", operation: "par-export-default", sourcePath: aliasBlueprintPath,
+            producedPath: aliasParPath, owner: "cli:par export without --out", result: "published at the documented sibling default",
+            observations: [{surface: "cli", owner: "ParCommand", result: "par export without --out exit 0"}],
+        });
+        const aliasImportedBlueprintPath = path.join(ownerAliasRoot, "direct-par.par.blueprint.json");
+        expect(await new ParCommand(POKIE_VERSION).run(["import", aliasParPath])).toBe(0);
+        expect(fs.existsSync(aliasImportedBlueprintPath)).toBe(true);
+        evidence.record({
+            id: "par-import-blueprint-default", artifactKind: "parWorkbook", operation: "par-import-default", sourcePath: aliasParPath,
+            producedPath: aliasImportedBlueprintPath, owner: "cli:par import without --out", result: "published at the documented sibling default",
+            observations: [{surface: "cli", owner: "ParCommand", result: "par import without --out exit 0"}],
+        });
+
+        const dispatcherBlueprintPath = path.join(ownerAliasRoot, "dispatcher.blueprint.json");
+        const dispatcherParPath = path.join(ownerAliasRoot, "dispatcher.par.xlsx");
+        const dispatcherImportedBlueprintPath = path.join(ownerAliasRoot, "dispatcher.par.blueprint.json");
+        fs.copyFileSync(blueprintPath, dispatcherBlueprintPath);
+        expect(await new ParCommand(POKIE_VERSION).run(["export", dispatcherBlueprintPath, "--out", dispatcherParPath])).toBe(0);
+        expect(await new ImportCommand(POKIE_VERSION).run([dispatcherParPath])).toBe(0);
+        expect(fs.existsSync(dispatcherImportedBlueprintPath)).toBe(true);
+        evidence.record({
+            id: "import-par-blueprint-default", artifactKind: "parWorkbook", operation: "import-default", sourcePath: dispatcherParPath,
+            producedPath: dispatcherImportedBlueprintPath, owner: "cli:import XLSX without --out", result: "generic public dispatcher published its documented Blueprint default",
+            observations: [{surface: "cli", owner: "ImportCommand", result: "import XLSX without --out exit 0"}],
+        });
+
+        const defaultBuildRoot = path.join(ownerAliasRoot, "build-default");
+        fs.mkdirSync(defaultBuildRoot);
+        const defaultBuildBlueprintPath = path.join(defaultBuildRoot, "source.blueprint.json");
+        fs.copyFileSync(blueprintPath, defaultBuildBlueprintPath);
+        const defaultBuild = new BuildCommand(POKIE_VERSION, undefined, undefined, new ProjectTargetResolver(), new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(process.cwd()));
+        const defaultPackagePath = path.join(defaultBuildRoot, "tsPackage");
+        expect(await defaultBuild.run([defaultBuildBlueprintPath, "--target", "tsPackage"])).toBe(0);
+        expect(fs.existsSync(defaultPackagePath)).toBe(true);
+        evidence.record({
+            id: "blueprint-build-package-default", artifactKind: "blueprint", operation: "build:tsPackage-default", sourcePath: defaultBuildBlueprintPath,
+            producedPath: defaultPackagePath, owner: "cli:build --target tsPackage without --out", result: "published at the documented target-named sibling",
+            observations: [{surface: "cli", owner: "BuildCommand", result: "build tsPackage without --out exit 0"}],
+        });
+        const defaultBundlePath = path.join(defaultBuildRoot, "outcomeLibrary");
+        expect(await defaultBuild.run([defaultPackagePath, "--target", "outcomeLibrary"])).toBe(0);
+        expect(fs.existsSync(defaultBundlePath)).toBe(true);
+        evidence.record({
+            id: "package-build-outcome-library-default", artifactKind: "tsPackage", operation: "build:outcomeLibrary-default", sourcePath: defaultPackagePath,
+            producedPath: defaultBundlePath, owner: "cli:build --target outcomeLibrary without --out", result: "published at the documented target-named sibling",
+            observations: [{surface: "cli", owner: "BuildCommand", result: "build outcomeLibrary without --out exit 0"}],
+        });
+        const defaultStakePath = path.join(defaultBuildRoot, "stakeAdapter");
+        expect(await defaultBuild.run([defaultBundlePath, "--target", "stakeAdapter"])).toBe(0);
+        expect(fs.existsSync(defaultStakePath)).toBe(true);
+        evidence.record({
+            id: "outcome-library-build-stake-default", artifactKind: "outcomeLibrary", operation: "build:stakeAdapter-default", sourcePath: defaultBundlePath,
+            producedPath: defaultStakePath, owner: "cli:build --target stakeAdapter without --out", result: "published at the documented target-named sibling",
+            observations: [{surface: "cli", owner: "BuildCommand", result: "build stakeAdapter without --out exit 0"}],
+        });
+        const defaultParPath = path.join(defaultBuildRoot, "parWorkbook.xlsx");
+        expect(await defaultBuild.run([defaultBuildBlueprintPath, "--target", "parWorkbook"])).toBe(0);
+        expect(fs.existsSync(defaultParPath)).toBe(true);
+        evidence.record({
+            id: "blueprint-build-par-default", artifactKind: "blueprint", operation: "build:parWorkbook-default", sourcePath: defaultBuildBlueprintPath,
+            producedPath: defaultParPath, owner: "cli:build --target parWorkbook without --out", result: "published at the documented workbook sibling",
+            observations: [{surface: "cli", owner: "BuildCommand", result: "build parWorkbook without --out exit 0"}],
+        });
+
+        const exportRoot = path.join(ownerAliasRoot, "export-default");
+        fs.mkdirSync(exportRoot);
+        const exportBlueprintPath = path.join(exportRoot, "source.blueprint.json");
+        fs.copyFileSync(blueprintPath, exportBlueprintPath);
+        const exportBuild = new BuildCommand(POKIE_VERSION, undefined, undefined, new ProjectTargetResolver(), new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(process.cwd()));
+        const exportPackagePath = path.join(exportRoot, "package");
+        expect(await exportBuild.run([exportBlueprintPath, "--target", "tsPackage", "--out", exportPackagePath])).toBe(0);
+        const exportCommand = new ExportCommand(POKIE_VERSION);
+        const exportBundlePath = path.join(exportRoot, "outcomelibrary");
+        expect(await exportCommand.run([exportPackagePath, "--to", "outcomes"])).toBe(0);
+        expect(fs.existsSync(exportBundlePath)).toBe(true);
+        evidence.record({
+            id: "package-export-outcome-library-default", artifactKind: "tsPackage", operation: "export:outcomes-default", sourcePath: exportPackagePath,
+            producedPath: exportBundlePath, owner: "cli:export --to outcomes without --out", result: "target-oriented export published its documented default",
+            observations: [{surface: "cli", owner: "ExportCommand", result: "export outcomes without --out exit 0"}],
+        });
+        const exportStakePath = path.join(exportRoot, "stakeengine");
+        expect(await exportCommand.run([exportBundlePath, "--to", "adapter"])).toBe(0);
+        expect(fs.existsSync(exportStakePath)).toBe(true);
+        evidence.record({
+            id: "outcome-library-export-stake-default", artifactKind: "outcomeLibrary", operation: "export:adapter-default", sourcePath: exportBundlePath,
+            producedPath: exportStakePath, owner: "cli:export --to adapter without --out", result: "target-oriented export published its documented default",
+            observations: [{surface: "cli", owner: "ExportCommand", result: "export adapter without --out exit 0"}],
+        });
+        const exportWorkbookPath = path.join(exportRoot, "source.par.xlsx");
+        expect(await exportCommand.run([exportBlueprintPath, "--to", "workbook"])).toBe(0);
+        expect(fs.existsSync(exportWorkbookPath)).toBe(true);
+        evidence.record({
+            id: "blueprint-export-par-via-export-default", artifactKind: "blueprint", operation: "export:workbook-default", sourcePath: exportBlueprintPath,
+            producedPath: exportWorkbookPath, owner: "cli:export --to workbook without --out", result: "target-oriented export published its documented workbook default",
+            observations: [{surface: "cli", owner: "ExportCommand", result: "export workbook without --out exit 0"}],
         });
         const sourceProject = await resolver.resolve(importedBlueprintPath);
         if (sourceProject === undefined) throw new Error("Expected the imported Blueprint to resolve for the direct-library preflight.");

@@ -22,6 +22,46 @@
       ]
     },
     {
+      "id": "blueprint-build-package-default",
+      "artifact_kind": "blueprint",
+      "operation": "build:tsPackage-default",
+      "source_path": "run-artifacts/owner-aliases/build-default/source.blueprint.json",
+      "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
+      "produced_path": "run-artifacts/owner-aliases/build-default/tsPackage",
+      "produced_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "operation_owner": "cli:build --target tsPackage without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "published at the documented target-named sibling",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "BuildCommand",
+          "result": "build tsPackage without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-build-par-default",
+      "artifact_kind": "blueprint",
+      "operation": "build:parWorkbook-default",
+      "source_path": "run-artifacts/owner-aliases/build-default/source.blueprint.json",
+      "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
+      "produced_path": "run-artifacts/owner-aliases/build-default/parWorkbook.xlsx",
+      "produced_identity": "sha256:6a5f27fb269d258cbef42dc5595b97436302b749e756af112e4785cc54f50868",
+      "operation_owner": "cli:build --target parWorkbook without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "published at the documented workbook sibling",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "BuildCommand",
+          "result": "build parWorkbook without --out exit 0"
+        }
+      ]
+    },
+    {
       "id": "blueprint-export-par",
       "artifact_kind": "blueprint",
       "operation": "export",
@@ -38,6 +78,46 @@
           "surface": "cli",
           "owner": "ParCommand",
           "result": "export exit 0"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-export-par-via-export-default",
+      "artifact_kind": "blueprint",
+      "operation": "export:workbook-default",
+      "source_path": "run-artifacts/owner-aliases/export-default/source.blueprint.json",
+      "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
+      "produced_path": "run-artifacts/owner-aliases/export-default/source.par.xlsx",
+      "produced_identity": "sha256:423c3bfd41774b830c6f89ea82cc9111dd2fbfed3f72ea7b3dd605ce8dce3043",
+      "operation_owner": "cli:export --to workbook without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "target-oriented export published its documented workbook default",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ExportCommand",
+          "result": "export workbook without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-par-export-default",
+      "artifact_kind": "blueprint",
+      "operation": "par-export-default",
+      "source_path": "run-artifacts/owner-aliases/direct-par.blueprint.json",
+      "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
+      "produced_path": "run-artifacts/owner-aliases/direct-par.par.xlsx",
+      "produced_identity": "sha256:ae7552b668f4cf57a0eb19df4ec9800f1ed6e1e301a2f296f7d8c80cea927493",
+      "operation_owner": "cli:par export without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "published at the documented sibling default",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ParCommand",
+          "result": "par export without --out exit 0"
         }
       ]
     },
@@ -230,6 +310,26 @@
           "surface": "cli",
           "owner": "FairnessCommand",
           "result": "commit exit 0"
+        }
+      ]
+    },
+    {
+      "id": "import-par-blueprint-default",
+      "artifact_kind": "parWorkbook",
+      "operation": "import-default",
+      "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
+      "source_identity": "sha256:cbdf86f3b6a333dde806ec8d0340d9feac62387d016964acb3d26cf562a3223e",
+      "produced_path": "run-artifacts/owner-aliases/dispatcher.par.blueprint.json",
+      "produced_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
+      "operation_owner": "cli:import XLSX without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "generic public dispatcher published its documented Blueprint default",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ImportCommand",
+          "result": "import XLSX without --out exit 0"
         }
       ]
     },
@@ -958,6 +1058,26 @@
       ]
     },
     {
+      "id": "outcome-library-build-stake-default",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "build:stakeAdapter-default",
+      "source_path": "run-artifacts/owner-aliases/build-default/outcomeLibrary",
+      "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "produced_path": "run-artifacts/owner-aliases/build-default/stakeAdapter",
+      "produced_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "operation_owner": "cli:build --target stakeAdapter without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "published at the documented target-named sibling",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "BuildCommand",
+          "result": "build stakeAdapter without --out exit 0"
+        }
+      ]
+    },
+    {
       "id": "outcome-library-bundle-descriptor-build",
       "artifact_kind": "outcomeLibraryBundleDescriptor",
       "operation": "build",
@@ -1023,6 +1143,26 @@
           "surface": "library",
           "owner": "ArtifactBuilderRegistry",
           "result": "executed registry conversion"
+        }
+      ]
+    },
+    {
+      "id": "outcome-library-export-stake-default",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "export:adapter-default",
+      "source_path": "run-artifacts/owner-aliases/export-default/outcomelibrary",
+      "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "produced_path": "run-artifacts/owner-aliases/export-default/stakeengine",
+      "produced_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "operation_owner": "cli:export --to adapter without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "target-oriented export published its documented default",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ExportCommand",
+          "result": "export adapter without --out exit 0"
         }
       ]
     },
@@ -1235,6 +1375,46 @@
       ]
     },
     {
+      "id": "package-build-outcome-library-default",
+      "artifact_kind": "tsPackage",
+      "operation": "build:outcomeLibrary-default",
+      "source_path": "run-artifacts/owner-aliases/build-default/tsPackage",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": "run-artifacts/owner-aliases/build-default/outcomeLibrary",
+      "produced_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "operation_owner": "cli:build --target outcomeLibrary without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "published at the documented target-named sibling",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "BuildCommand",
+          "result": "build outcomeLibrary without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "package-export-outcome-library-default",
+      "artifact_kind": "tsPackage",
+      "operation": "export:outcomes-default",
+      "source_path": "run-artifacts/owner-aliases/export-default/package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": "run-artifacts/owner-aliases/export-default/outcomelibrary",
+      "produced_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "operation_owner": "cli:export --to outcomes without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "target-oriented export published its documented default",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ExportCommand",
+          "result": "export outcomes without --out exit 0"
+        }
+      ]
+    },
+    {
       "id": "package-generate-raw-outcomes",
       "artifact_kind": "tsPackage",
       "operation": "generate",
@@ -1271,6 +1451,26 @@
           "surface": "cli",
           "owner": "ParCommand",
           "result": "import exit 0 with matching provenance hash"
+        }
+      ]
+    },
+    {
+      "id": "par-import-blueprint-default",
+      "artifact_kind": "parWorkbook",
+      "operation": "par-import-default",
+      "source_path": "run-artifacts/owner-aliases/direct-par.par.xlsx",
+      "source_identity": "sha256:ae7552b668f4cf57a0eb19df4ec9800f1ed6e1e301a2f296f7d8c80cea927493",
+      "produced_path": "run-artifacts/owner-aliases/direct-par.par.blueprint.json",
+      "produced_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
+      "operation_owner": "cli:par import without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "published at the documented sibling default",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ParCommand",
+          "result": "par import without --out exit 0"
         }
       ]
     },
