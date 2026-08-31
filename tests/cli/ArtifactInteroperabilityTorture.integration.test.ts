@@ -471,6 +471,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             sourcePath: directPackage.outputPath, owner: "loadPokieGame", result: "direct package loader validated the registry-produced package entry",
             observations: [{surface: "library", owner: "loadPokieGame", result: "loadPokieGame returned a runnable package game"}],
         });
+        if (directPackageProject === undefined) throw new Error("Expected the direct TypeScript package build to resolve.");
 
         // Execute each remaining registry build owner directly against the
         // artifacts this runner produced.  The registry's matrix preflight
@@ -648,8 +649,8 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         };
         const bundleMode = bundleManifest.modes[0];
         expect(bundleMode).toBeDefined();
-        const directBundleManifest = await new OutcomeLibraryBundleReader().readManifest(bundlePath);
-        expect(directBundleManifest.modes).toHaveLength(1);
+        const rawBundleManifest = await new OutcomeLibraryBundleReader().readManifest(bundlePath);
+        expect(rawBundleManifest.modes).toHaveLength(1);
         evidence.record({
             id: "library-read-outcome-library", artifactKind: "outcomeLibrary", operation: "recognize", registryOperation: "recognized_by",
             sourcePath: bundlePath, owner: "OutcomeLibraryBundleReader", result: "direct bundle reader retained the produced Outcome Library manifest",
@@ -690,8 +691,8 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 {surface: "library", owner: "ArtifactBuilderRegistry", result: "executed registry conversion"},
             ],
         });
-        const directStakeRead = await new StakeEngineOutcomeSourceReader().readFromDirectory(stakePath);
-        expect(directStakeRead.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        const builtStakeRead = await new StakeEngineOutcomeSourceReader().readFromDirectory(stakePath);
+        expect(builtStakeRead.issues.filter((issue) => issue.severity === "error")).toEqual([]);
         evidence.record({
             id: "library-read-stake-adapter", artifactKind: "stakeAdapter", operation: "recognize", registryOperation: "recognized_by",
             sourcePath: stakePath, owner: "StakeEngineOutcomeSourceReader", result: "direct Stake reader reconstructed runner-produced outcome modes",
