@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // PC-14 evidence is deliberately a by-product of the real artifact runners.
-// Keep the two runners in separate Jest processes: the Studio runner merges
-// the CLI ledger only after its own real operations have completed.
+// Keep the three runners in separate Jest processes: the Studio UI runner
+// merges the CLI and Studio API ledgers only after every real operation has
+// completed.
 import {mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync} from "node:fs";
 import path from "node:path";
 import process from "node:process";

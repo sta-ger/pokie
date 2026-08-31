@@ -3,13 +3,13 @@
   "rows": [
     {
       "id": "blueprint-build-package",
-      "artifact_kind": "blueprint",
+      "artifact_kind": "tsPackage",
       "operation": "build",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
       "produced_path": "run-artifacts/matrix-package",
       "produced_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
-      "operation_owner": "BuildCommand",
+      "operation_owner": "cli:build --target tsPackage --out",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published",
@@ -23,7 +23,7 @@
     },
     {
       "id": "blueprint-build-package-default",
-      "artifact_kind": "blueprint",
+      "artifact_kind": "tsPackage",
       "operation": "build:tsPackage-default",
       "source_path": "run-artifacts/owner-aliases/build-default/source.blueprint.json",
       "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
@@ -42,8 +42,28 @@
       ]
     },
     {
+      "id": "blueprint-build-package-generic",
+      "artifact_kind": "tsPackage",
+      "operation": "build:tsPackage-generic",
+      "source_path": "run-artifacts/matrix.blueprint.json",
+      "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
+      "produced_path": "run-artifacts/matrix-generic-package",
+      "produced_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "operation_owner": "cli:build",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "the public build owner published its own package artifact",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "BuildCommand",
+          "result": "build --target tsPackage --out exit 0"
+        }
+      ]
+    },
+    {
       "id": "blueprint-build-par-default",
-      "artifact_kind": "blueprint",
+      "artifact_kind": "parWorkbook",
       "operation": "build:parWorkbook-default",
       "source_path": "run-artifacts/owner-aliases/build-default/source.blueprint.json",
       "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
@@ -62,14 +82,94 @@
       ]
     },
     {
-      "id": "blueprint-export-par",
+      "id": "blueprint-build-par-explicit-output",
+      "artifact_kind": "parWorkbook",
+      "operation": "build:parWorkbook-explicit-output",
+      "source_path": "run-artifacts/matrix.blueprint.json",
+      "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
+      "produced_path": "run-artifacts/matrix-explicit.par.xlsx",
+      "produced_identity": "sha256:95868490c4249a79d13e2768d1f8ec4bb382bbc09ac0fa4eb4f799f99a8ebea3",
+      "operation_owner": "cli:build --target parWorkbook --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "public build published a PAR workbook at its explicit destination",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "BuildCommand",
+          "result": "build --target parWorkbook --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-cli-create",
       "artifact_kind": "blueprint",
+      "operation": "create",
+      "source_path": "run-artifacts/cli-authoring/generic.blueprint.json",
+      "source_identity": "sha256:ddb9ecc78d757d9ed6d7859249ec340f82701eaf8332497ea851e609e7a7885f",
+      "produced_path": "run-artifacts/cli-authoring/generic.blueprint.json",
+      "produced_identity": "sha256:ddb9ecc78d757d9ed6d7859249ec340f82701eaf8332497ea851e609e7a7885f",
+      "operation_owner": "cli:create",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "public CLI authoring published a valid generated Blueprint",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "CreateCommand",
+          "result": "create --random --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-cli-create-default-output",
+      "artifact_kind": "blueprint",
+      "operation": "create:default-output",
+      "source_path": "run-artifacts/cli-authoring/default.blueprint.json",
+      "source_identity": "sha256:36593696841e1064b4f135b92df5f2609a3c65ca0956bf9a2a36516590276bee",
+      "produced_path": "run-artifacts/cli-authoring/default.blueprint.json",
+      "produced_identity": "sha256:36593696841e1064b4f135b92df5f2609a3c65ca0956bf9a2a36516590276bee",
+      "operation_owner": "cli:create without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "public CLI authoring published at its documented default destination",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "CreateCommand",
+          "result": "create --random without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-cli-create-explicit-output",
+      "artifact_kind": "blueprint",
+      "operation": "create:explicit-output",
+      "source_path": "run-artifacts/cli-authoring/explicit.blueprint.json",
+      "source_identity": "sha256:f6134042db50bafc955de3c593345e5f536e404259d23bca039e55334db45bf6",
+      "produced_path": "run-artifacts/cli-authoring/explicit.blueprint.json",
+      "produced_identity": "sha256:f6134042db50bafc955de3c593345e5f536e404259d23bca039e55334db45bf6",
+      "operation_owner": "cli:create --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "public CLI authoring published at its explicit destination",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "CreateCommand",
+          "result": "create --random --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-export-par",
+      "artifact_kind": "parWorkbook",
       "operation": "export",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
       "produced_path": "run-artifacts/matrix.par.xlsx",
       "produced_identity": "sha256:95868490c4249a79d13e2768d1f8ec4bb382bbc09ac0fa4eb4f799f99a8ebea3",
-      "operation_owner": "ParCommand",
+      "operation_owner": "cli:par export --out",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published",
@@ -83,7 +183,7 @@
     },
     {
       "id": "blueprint-export-par-via-export-default",
-      "artifact_kind": "blueprint",
+      "artifact_kind": "parWorkbook",
       "operation": "export:workbook-default",
       "source_path": "run-artifacts/owner-aliases/export-default/source.blueprint.json",
       "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
@@ -102,8 +202,28 @@
       ]
     },
     {
+      "id": "blueprint-export-par-via-export-explicit-output",
+      "artifact_kind": "parWorkbook",
+      "operation": "export:workbook-explicit-output",
+      "source_path": "run-artifacts/owner-aliases/export-default/source.blueprint.json",
+      "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
+      "produced_path": "run-artifacts/owner-aliases/export-default/explicit-workbook.xlsx",
+      "produced_identity": "sha256:423c3bfd41774b830c6f89ea82cc9111dd2fbfed3f72ea7b3dd605ce8dce3043",
+      "operation_owner": "cli:export --to workbook --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "target-oriented export published a PAR workbook at its explicit destination",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ExportCommand",
+          "result": "export workbook --out exit 0"
+        }
+      ]
+    },
+    {
       "id": "blueprint-par-export-default",
-      "artifact_kind": "blueprint",
+      "artifact_kind": "parWorkbook",
       "operation": "par-export-default",
       "source_path": "run-artifacts/owner-aliases/direct-par.blueprint.json",
       "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
@@ -248,6 +368,86 @@
       ]
     },
     {
+      "id": "export-outcome-library-canonical-jsonl",
+      "artifact_kind": "canonicalOutcomeJsonl",
+      "operation": "export:outcomes-delegation",
+      "source_path": "run-artifacts/matrix-delegated-export-bundle/outcomes_base.jsonl",
+      "source_identity": "sha256:586a56c88f226f799c438838dc25df0d17b059817e94b972a10f63d26abc0bde",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "the exercised export owner published its canonical outcome JSONL",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ExportCommand",
+          "result": "export outcomes delegated to OutcomeLibraryCommand.build"
+        }
+      ]
+    },
+    {
+      "id": "export-outcome-library-descriptor",
+      "artifact_kind": "outcomeLibraryBundleDescriptor",
+      "operation": "export:outcomes-delegation",
+      "source_path": "run-artifacts/matrix-bundle.json",
+      "source_identity": "sha256:7fcd8de6952d71dbc513b6bdb2de32543c633640b393b09a688892adf31d84ed",
+      "produced_path": "run-artifacts/matrix-delegated-export-bundle",
+      "produced_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
+      "operation_owner": "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "the exercised export owner consumed the generated descriptor through OutcomeLibraryCommand.build",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ExportCommand",
+          "result": "export outcomes delegated to OutcomeLibraryCommand.build"
+        }
+      ]
+    },
+    {
+      "id": "export-outcome-library-weighted-json",
+      "artifact_kind": "weightedOutcomeLibraryJson",
+      "operation": "export:outcomes-delegation",
+      "source_path": "run-artifacts/matrix-library.json",
+      "source_identity": "sha256:57fe0e0758dc028de17d648b7275c8d172a7c0915d83e98252405aa805568bf8",
+      "produced_path": "run-artifacts/matrix-delegated-export-bundle",
+      "produced_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
+      "operation_owner": "cli:export --to outcomes",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "the exercised descriptor export published the weighted outcome JSONL consumed by its bundle",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ExportCommand",
+          "result": "export outcomes delegated to the Outcome Library writer"
+        }
+      ]
+    },
+    {
+      "id": "export-stake-descriptor",
+      "artifact_kind": "stakeEngineExportDescriptor",
+      "operation": "export:adapter-delegation",
+      "source_path": "run-artifacts/matrix-delegated-stake-export.json",
+      "source_identity": "sha256:f0ce269ef7a5401a57b37760198bfd2bd280af64b3d787cbdb924676b11a82ef",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "ExportCommand --to adapter delegation to StakeEngineCommand.export",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "the exercised export owner consumed a descriptor bound to the runner-produced Outcome Library",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ExportCommand",
+          "result": "export adapter delegated to StakeEngineCommand.export"
+        }
+      ]
+    },
+    {
       "id": "fairness-round-commitment",
       "artifact_kind": "fairnessCommitment",
       "operation": "reveal",
@@ -314,8 +514,48 @@
       ]
     },
     {
+      "id": "generic-import-reexport-config",
+      "artifact_kind": "stakeImportReExportConfig",
+      "operation": "import:stake-config",
+      "source_path": "run-artifacts/matrix-generic-stake-import/config.json",
+      "source_identity": "sha256:e5d68c59278cd9af66dd16b6be4bef613283fbfd68823c846e62bc8c8b53dcdb",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:import",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "the exercised generic import published its re-exportable Stake configuration",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ImportCommand",
+          "result": "import Stake --out wrote config.json"
+        }
+      ]
+    },
+    {
+      "id": "generic-import-source-provenance",
+      "artifact_kind": "stakeImportSourceProvenance",
+      "operation": "import:stake-provenance",
+      "source_path": "run-artifacts/matrix-generic-stake-import/source-provenance.json",
+      "source_identity": "sha256:14b5f390f3f4bee1bc80afafbe51bbd9ec6e89cfac08f584da4d768d1fbe6747",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:import",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "the exercised generic import published its Stake source provenance",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ImportCommand",
+          "result": "import Stake --out wrote source-provenance.json"
+        }
+      ]
+    },
+    {
       "id": "import-par-blueprint-default",
-      "artifact_kind": "parWorkbook",
+      "artifact_kind": "blueprint",
       "operation": "import-default",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "source_identity": "sha256:cbdf86f3b6a333dde806ec8d0340d9feac62387d016964acb3d26cf562a3223e",
@@ -330,6 +570,26 @@
           "surface": "cli",
           "owner": "ImportCommand",
           "result": "import XLSX without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "import-par-blueprint-explicit-output",
+      "artifact_kind": "blueprint",
+      "operation": "import:explicit-output",
+      "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
+      "source_identity": "sha256:cbdf86f3b6a333dde806ec8d0340d9feac62387d016964acb3d26cf562a3223e",
+      "produced_path": "run-artifacts/owner-aliases/dispatcher-explicit.blueprint.json",
+      "produced_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
+      "operation_owner": "cli:import --out for an XLSX source",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "generic public dispatcher published its Blueprint at the explicit destination",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ImportCommand",
+          "result": "import XLSX --out exit 0"
         }
       ]
     },
@@ -1059,7 +1319,7 @@
     },
     {
       "id": "outcome-library-build-stake-default",
-      "artifact_kind": "outcomeLibrary",
+      "artifact_kind": "stakeAdapter",
       "operation": "build:stakeAdapter-default",
       "source_path": "run-artifacts/owner-aliases/build-default/outcomeLibrary",
       "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
@@ -1074,6 +1334,46 @@
           "surface": "cli",
           "owner": "BuildCommand",
           "result": "build stakeAdapter without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "outcome-library-build-stake-explicit-output",
+      "artifact_kind": "stakeAdapter",
+      "operation": "build:stakeAdapter-explicit-output",
+      "source_path": "run-artifacts/matrix-explicit-bundle",
+      "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "produced_path": "run-artifacts/matrix-explicit-stake",
+      "produced_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "operation_owner": "cli:build --target stakeAdapter --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "public build published a Stake adapter at its explicit destination",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "BuildCommand",
+          "result": "build --target stakeAdapter --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "outcome-library-build-stake-generic",
+      "artifact_kind": "stakeAdapter",
+      "operation": "build:stakeAdapter-generic",
+      "source_path": "run-artifacts/matrix-generic-bundle",
+      "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "produced_path": "run-artifacts/matrix-generic-stake",
+      "produced_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "operation_owner": "cli:build --target stakeAdapter",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "public build owner published its own Stake adapter artifact",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "BuildCommand",
+          "result": "build --target stakeAdapter --out exit 0"
         }
       ]
     },
@@ -1148,7 +1448,7 @@
     },
     {
       "id": "outcome-library-export-stake-default",
-      "artifact_kind": "outcomeLibrary",
+      "artifact_kind": "stakeAdapter",
       "operation": "export:adapter-default",
       "source_path": "run-artifacts/owner-aliases/export-default/outcomelibrary",
       "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
@@ -1163,6 +1463,26 @@
           "surface": "cli",
           "owner": "ExportCommand",
           "result": "export adapter without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "outcome-library-export-stake-explicit-output",
+      "artifact_kind": "stakeAdapter",
+      "operation": "export:adapter-explicit-output",
+      "source_path": "run-artifacts/owner-aliases/export-default/explicit-outcomes",
+      "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "produced_path": "run-artifacts/owner-aliases/export-default/explicit-adapter",
+      "produced_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "operation_owner": "cli:export --to adapter --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "target-oriented export published a Stake adapter at its explicit destination",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ExportCommand",
+          "result": "export adapter --out exit 0"
         }
       ]
     },
@@ -1376,7 +1696,7 @@
     },
     {
       "id": "package-build-outcome-library-default",
-      "artifact_kind": "tsPackage",
+      "artifact_kind": "outcomeLibrary",
       "operation": "build:outcomeLibrary-default",
       "source_path": "run-artifacts/owner-aliases/build-default/tsPackage",
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
@@ -1395,8 +1715,48 @@
       ]
     },
     {
+      "id": "package-build-outcome-library-explicit-output",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "build:outcomeLibrary-explicit-output",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": "run-artifacts/matrix-explicit-bundle",
+      "produced_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "operation_owner": "cli:build --target outcomeLibrary --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "public build published an Outcome Library at its explicit destination",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "BuildCommand",
+          "result": "build --target outcomeLibrary --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "package-build-outcome-library-generic",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "build:outcomeLibrary-generic",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": "run-artifacts/matrix-generic-bundle",
+      "produced_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "operation_owner": "cli:build --target outcomeLibrary",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "public build owner published its own Outcome Library artifact",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "BuildCommand",
+          "result": "build --target outcomeLibrary --out exit 0"
+        }
+      ]
+    },
+    {
       "id": "package-export-outcome-library-default",
-      "artifact_kind": "tsPackage",
+      "artifact_kind": "outcomeLibrary",
       "operation": "export:outcomes-default",
       "source_path": "run-artifacts/owner-aliases/export-default/package",
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
@@ -1411,6 +1771,26 @@
           "surface": "cli",
           "owner": "ExportCommand",
           "result": "export outcomes without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "package-export-outcome-library-explicit-output",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "export:outcomes-explicit-output",
+      "source_path": "run-artifacts/owner-aliases/export-default/package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": "run-artifacts/owner-aliases/export-default/explicit-outcomes",
+      "produced_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "operation_owner": "cli:export --to outcomes --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "target-oriented export published an Outcome Library at its explicit destination",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ExportCommand",
+          "result": "export outcomes --out exit 0"
         }
       ]
     },
@@ -1436,13 +1816,13 @@
     },
     {
       "id": "par-import-blueprint",
-      "artifact_kind": "parWorkbook",
+      "artifact_kind": "blueprint",
       "operation": "import",
       "source_path": "run-artifacts/matrix.par.xlsx",
       "source_identity": "sha256:95868490c4249a79d13e2768d1f8ec4bb382bbc09ac0fa4eb4f799f99a8ebea3",
       "produced_path": "run-artifacts/matrix-imported.blueprint.json",
       "produced_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
-      "operation_owner": "ParCommand",
+      "operation_owner": "cli:par import --out",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "lossless Blueprint published",
@@ -1456,7 +1836,7 @@
     },
     {
       "id": "par-import-blueprint-default",
-      "artifact_kind": "parWorkbook",
+      "artifact_kind": "blueprint",
       "operation": "par-import-default",
       "source_path": "run-artifacts/owner-aliases/direct-par.par.xlsx",
       "source_identity": "sha256:ae7552b668f4cf57a0eb19df4ec9800f1ed6e1e301a2f296f7d8c80cea927493",
@@ -1709,6 +2089,46 @@
           "surface": "cli",
           "owner": "StakeEngineCommand",
           "result": "import exit 0 with matching game/config/version"
+        }
+      ]
+    },
+    {
+      "id": "stake-import-outcome-library-default-output",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "import:stake-default-output",
+      "source_path": "run-artifacts/matrix-stake",
+      "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "produced_path": "run-artifacts/matrix-stake-imported",
+      "produced_identity": "sha256:274b6235f31df27da3cc23dc5962520edb4a768ffeb76afdabfba59f8fbc5596",
+      "operation_owner": "cli:import Stake without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "generic public import published the Stake Outcome Library at its documented default destination",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ImportCommand",
+          "result": "import Stake without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "stake-import-outcome-library-explicit-output",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "import:stake-explicit-output",
+      "source_path": "run-artifacts/matrix-stake",
+      "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "produced_path": "run-artifacts/matrix-generic-stake-import",
+      "produced_identity": "sha256:274b6235f31df27da3cc23dc5962520edb4a768ffeb76afdabfba59f8fbc5596",
+      "operation_owner": "cli:import --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "generic public import published the Stake Outcome Library at its explicit destination",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "ImportCommand",
+          "result": "import Stake --out exit 0"
         }
       ]
     },

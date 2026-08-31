@@ -23,7 +23,7 @@ import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {GamePackagePreparer} from "../../../cli/prepare/GamePackagePreparer.js";
 import {PREPARATION_STATE_FILE} from "../../../cli/prepare/PreparationStateStore.js";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
-import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, mergeArtifactInteroperabilityRuns} from "../../support/ArtifactInteroperabilityRun.js";
+import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock} from "../../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
 
@@ -659,11 +659,11 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {rows: {"source_identity": string; "produced_identity": string | null}[]}).rows).toEqual(expect.arrayContaining([
             expect.objectContaining({"source_identity": expect.stringMatching(/^sha256:/), "produced_identity": expect.stringMatching(/^sha256:/)}),
         ]));
-        const persistedResultPath = process.env.PC14_INTEROPERABILITY_PERSISTED_RESULT;
-        const cliEvidencePath = evidenceDirectory === undefined ? undefined : path.join(evidenceDirectory, "cli-real-artifact-result.json");
-        if (persistedResultPath !== undefined && cliEvidencePath !== undefined && fs.existsSync(cliEvidencePath)) {
-            mergeArtifactInteroperabilityRuns([cliEvidencePath, emittedEvidencePath], persistedResultPath);
-        }
+        // The clean regeneration process runs three independent ledgers.  The
+        // Studio UI runner is deliberately last and performs their merge once
+        // it has emitted its own records.  Merging here would validate the
+        // PC-05 inventory against only CLI and Studio API owners, producing a
+        // false incomplete-matrix failure before the UI owners can run.
     }, 120_000);
 });
 
