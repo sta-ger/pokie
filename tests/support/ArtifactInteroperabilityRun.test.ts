@@ -122,7 +122,78 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
             owner: "ProjectTargetResolver",
             result: "completed",
             observations: [{surface: "library", owner: "OtherReader", result: "other reader completed"}],
-        })).toThrow("has no actual surface observation from that owner");
+        })).toThrow("must bind exactly one actual surface observation from that owner");
+    });
+
+    it("rejects missing PC-05 owner-operation evidence before writing merged evidence", () => {
+        const sourcePath = path.join(rootPath, "source.json");
+        fs.writeFileSync(sourcePath, "source");
+        const runner = new ArtifactInteroperabilityRun(rootPath);
+        runner.record({
+            id: "one-owner", artifactKind: "blueprint", operation: "recognize", registryOperation: "recognized_by",
+            sourcePath, owner: "ProjectTargetResolver", result: "recognized",
+            observations: [{surface: "library", owner: "ProjectTargetResolver", result: "recognized"}],
+        });
+        const runnerPath = path.join(rootPath, "partial.json");
+        runner.write(runnerPath);
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json"), {requireComplete: true}))
+            .toThrow("PC-14 is missing exact owner-operation evidence");
+    });
+
+    it("rejects an extra PC-05 tuple before writing merged evidence", () => {
+        const sourcePath = path.join(rootPath, "source.json");
+        fs.writeFileSync(sourcePath, "source");
+        const runner = new ArtifactInteroperabilityRun(rootPath);
+        runner.record({
+            id: "synthetic-owner", artifactKind: "blueprint", operation: "recognize", registryOperation: "recognized_by",
+            sourcePath, owner: "SyntheticOwner", result: "synthetic result",
+            observations: [{surface: "library", owner: "SyntheticOwner", result: "synthetic result"}],
+        });
+        const runnerPath = path.join(rootPath, "extra.json");
+        runner.write(runnerPath);
+
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json"), {requireComplete: false}))
+            .toThrow("exact owner-operation tuple absent from PC-05");
+    });
+
+    it("rejects a known owner promoted to a sibling registry operation", () => {
+        const sourcePath = path.join(rootPath, "source.json");
+        fs.writeFileSync(sourcePath, "source");
+        const runner = new ArtifactInteroperabilityRun(rootPath);
+        runner.record({
+            id: "sibling-operation", artifactKind: "blueprint", operation: "recognize", registryOperation: "recognized_by",
+            sourcePath, owner: "GameBlueprintValidator", result: "synthetic recognition",
+            observations: [{surface: "library", owner: "GameBlueprintValidator", result: "synthetic recognition"}],
+        });
+        const runnerPath = path.join(rootPath, "sibling.json");
+        runner.write(runnerPath);
+
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json"), {requireComplete: false}))
+            .toThrow("exact owner-operation tuple absent from PC-05: blueprint:recognized_by:GameBlueprintValidator");
+    });
+
+    it("rejects duplicate PC-05 tuple records even when their sources differ", () => {
+        const first = recordOperation("first", {
+            id: "first-create", artifactKind: "blueprint", operation: "create", registryOperation: "created_by", owner: "cli:create", surface: "cli",
+        });
+        const second = recordOperation("second", {
+            id: "second-create", artifactKind: "blueprint", operation: "create", registryOperation: "created_by", owner: "cli:create", surface: "library",
+        });
+
+        expect(() => mergeArtifactInteroperabilityRuns([first, second], path.join(rootPath, "merged.json"), {requireComplete: false}))
+            .toThrow("duplicate exact owner-operation evidence: blueprint:created_by:cli:create");
+    });
+
+    it("rejects proxy owner declarations instead of promoting sibling operations", () => {
+        const runnerPath = recordOperation("direct", {
+            id: "direct-create", artifactKind: "blueprint", operation: "create", registryOperation: "created_by", owner: "cli:create", surface: "cli",
+        });
+        const proxy = JSON.parse(fs.readFileSync(runnerPath, "utf-8")) as {readonly rows: Array<Record<string, unknown>>};
+        proxy.rows[0]!["executed_public_owners"] = ["GameBlueprintValidator"];
+        fs.writeFileSync(runnerPath, `${JSON.stringify(proxy)}\n`);
+
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json"), {requireComplete: false}))
+            .toThrow("emitted proxy owner coverage for direct-create");
     });
 
     function recordOperation(

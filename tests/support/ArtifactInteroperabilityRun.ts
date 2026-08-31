@@ -317,9 +317,9 @@ export class ArtifactInteroperabilityRun {
      */
     private assertExactOwnerOperation(row: Pick<ArtifactInteroperabilityRunRow, "id" | "owner" | "registryOperation" | "observations">): void {
         if (row.registryOperation === undefined) return;
-        const ownerObservation = row.observations.find((observation) => observation.owner === row.owner);
-        if (ownerObservation === undefined || ownerObservation.result.length === 0) {
-            throw new Error(`${row.id} records ${row.registryOperation} for ${row.owner}, but has no actual surface observation from that owner.`);
+        const ownerObservations = row.observations.filter((observation) => observation.owner === row.owner && observation.result.length > 0);
+        if (ownerObservations.length !== 1) {
+            throw new Error(`${row.id} records ${row.registryOperation} for ${row.owner}, but must bind exactly one actual surface observation from that owner.`);
         }
     }
 
@@ -509,7 +509,11 @@ export class ArtifactInteroperabilityRun {
  * already persisted, which keeps the checked-in PC-14 result tied to actual
  * operations rather than a second manually maintained assertion list.
  */
-export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[], outputPath: string): void {
+export function mergeArtifactInteroperabilityRuns(
+    inputPaths: readonly string[],
+    outputPath: string,
+    options: {readonly requireComplete?: boolean} = {},
+): void {
     const runs = inputPaths.map((inputPath) => {
         const raw = fs.readFileSync(inputPath, "utf-8");
         const parsed = JSON.parse(raw) as {readonly rows: unknown[]; readonly scenario_results: unknown[]; readonly planner_cells?: unknown[]};
@@ -597,6 +601,9 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
     const allRecords = runs.flatMap((run) => [...run.parsed.rows, ...run.parsed.scenario_results]);
     const requiredOwnerOperations = pc05PublicOwnerOperations(registry);
     const exactOwnerOperationExecutions = runs.flatMap((run) => run.parsed.rows).flatMap((record) => {
+        if (typeof record === "object" && record !== null && "executed_public_owners" in record) {
+            throw new Error(`PC-14 runner emitted proxy owner coverage for ${recordId(record)}.`);
+        }
         const artifactKind = recordArtifactKind(record);
         const owner = recordOwner(record);
         const registryOperation = (record as {readonly registry_operation?: unknown}).registry_operation;
@@ -605,24 +612,25 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
         const diagnostic = (record as {readonly diagnostic?: unknown}).diagnostic;
         if (registryOperation === undefined) return [];
         if (artifactKind === undefined || owner === undefined || typeof sourcePath !== "string" || !isRegistryOperation(registryOperation)) {
-            throw new Error("PC-14 runner emitted an invalid exact owner-operation tuple.");
+            throw new Error(`PC-14 runner emitted an invalid exact owner-operation tuple for ${recordId(record)}.`);
         }
         if (!requiredOwnerOperations.some((required) =>
             required.artifactKind === artifactKind && required.owner === owner && required.registryOperation === registryOperation,
         )) {
             throw new Error(`PC-14 runner emitted an exact owner-operation tuple absent from PC-05: ${artifactKind}:${registryOperation}:${owner}.`);
         }
-        const observations = recordObservations(record).filter((observation) => observation.owner === owner && observation.result.length > 0);
-        if (observations.length === 0) {
-            throw new Error(`PC-14 runner emitted ${artifactKind}:${registryOperation}:${owner} without that owner's actual surface observation.`);
-        }
         if (producedPath !== null && producedPath !== undefined && typeof producedPath !== "string") {
-            throw new Error(`PC-14 runner emitted ${artifactKind}:${registryOperation}:${owner} with an invalid output path.`);
+            throw new Error(`PC-14 runner emitted ${recordId(record)} with an invalid output path.`);
         }
         if (diagnostic !== undefined && !isDiagnostic(diagnostic)) {
-            throw new Error(`PC-14 runner emitted ${artifactKind}:${registryOperation}:${owner} with an invalid diagnostic.`);
+            throw new Error(`PC-14 runner emitted ${recordId(record)} with an invalid diagnostic.`);
         }
-        return observations.map((observation) => ({
+        const observations = recordObservations(record).filter((observation) => observation.owner === owner && observation.result.length > 0);
+        if (observations.length !== 1) {
+            throw new Error(`PC-14 runner emitted ${artifactKind}:${registryOperation}:${owner} without exactly one actual surface observation from that owner.`);
+        }
+        const observation = observations[0]!;
+        return [{
             "exact_tuple_identity": JSON.stringify([artifactKind, registryOperation, owner, observation.surface]),
             "artifact_kind": artifactKind,
             "registry_operation": registryOperation,
@@ -634,14 +642,34 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
             "produced_path": producedPath ?? null,
             ...(diagnostic === undefined ? {} : {diagnostic}),
             "observable_result": observation.result,
-        }));
+        }];
     }).sort((left, right) => `${left.exact_tuple_identity}:${left.record_id}`.localeCompare(`${right.exact_tuple_identity}:${right.record_id}`));
+    const tupleRecordIds = new Map<string, string>();
+    for (const entry of exactOwnerOperationExecutions) {
+        const tupleKey = `${entry.artifact_kind}:${entry.registry_operation}:${entry.public_owner}`;
+        const previousRecordId = tupleRecordIds.get(tupleKey);
+        if (previousRecordId !== undefined) {
+            throw new Error(`PC-14 emitted duplicate exact owner-operation evidence: ${tupleKey} (${previousRecordId}, ${entry.record_id}).`);
+        }
+        tupleRecordIds.set(tupleKey, entry.record_id);
+    }
+    const executedTupleKeys = new Set(exactOwnerOperationExecutions.map((entry) => `${entry.artifact_kind}:${entry.registry_operation}:${entry.public_owner}`));
+    const requiredTupleKeys = new Set(requiredOwnerOperations.map((entry) => `${entry.artifactKind}:${entry.registryOperation}:${entry.owner}`));
+    const missingTuple = requiredOwnerOperations.find((entry) => !executedTupleKeys.has(`${entry.artifactKind}:${entry.registryOperation}:${entry.owner}`));
+    if (options.requireComplete === true && missingTuple !== undefined) {
+        throw new Error(`PC-14 is missing exact owner-operation evidence: ${missingTuple.artifactKind}:${missingTuple.registryOperation}:${missingTuple.owner}.`);
+    }
+    const extraTuple = [...executedTupleKeys].find((entry) => !requiredTupleKeys.has(entry));
+    if (extraTuple !== undefined) throw new Error(`PC-14 emitted extra exact owner-operation evidence: ${extraTuple}.`);
     const registryCoverage = registry.artifact_kinds.map((artifact) => {
         const internalOnly = INTERNAL_PC05_ARTIFACT_KINDS.has(artifact.id);
         const completedOperations = exactOwnerOperationExecutions.filter((entry) => entry.artifact_kind === artifact.id);
         let disposition: "executed" | "not-executed" | "excluded-internal-cache-state" = "executed";
         if (internalOnly) disposition = "excluded-internal-cache-state";
         else if (completedOperations.length === 0) disposition = "not-executed";
+        else if (options.requireComplete === true && completedOperations.length !== requiredOwnerOperations.filter((required) => required.artifactKind === artifact.id).length) {
+            throw new Error(`PC-14 cannot mark ${artifact.id} executed until every public owner-operation tuple is emitted.`);
+        }
         return {
             "artifact_kind": artifact.id,
             disposition,

@@ -22,7 +22,6 @@ type EmittedRecord = {
     readonly produced_identity: string | null;
     readonly observable_result: string;
     readonly observations?: readonly {readonly surface: string; readonly owner: string; readonly result: string}[];
-    readonly executed_public_owners?: readonly string[];
     readonly execution?: {readonly assertions: readonly string[]; readonly observations: readonly {readonly route: string; readonly result: string}[]};
     readonly diagnostic?: {readonly code: string; readonly recovery: string};
     readonly systemic_classes?: readonly string[];
@@ -169,6 +168,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
     it("keeps actual artifact identities, owners, and only exercised observations", () => {
         const identities = new Set<string>();
         for (const row of result.rows) {
+            expect(row).not.toHaveProperty("executed_public_owners");
             expect(row.source_path).toMatch(/^run-artifacts\//);
             expect(row.source_identity).toMatch(/^sha256:/);
             identities.add(row.source_identity);
