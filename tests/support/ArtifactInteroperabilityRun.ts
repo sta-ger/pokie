@@ -63,15 +63,6 @@ export type ArtifactInteroperabilityRunRow = {
     readonly sourcePath: string;
     readonly producedPath?: string;
     readonly owner: string;
-    /**
-     * Exact PC-05 owner identities reached by this operation.  These are
-     * deliberately supplied by the runner at the completed call site rather
-     * than inferred later from a command-name substring.  One public command
-     * can legitimately exercise several named phases (for example Stake
-     * import followed by config-driven re-export), but every identity here
-     * still has the same produced/imported artifact and terminal result.
-     */
-    readonly executedPublicOwners?: readonly string[];
     readonly result: string;
     readonly observations: readonly ArtifactInteroperabilityObservation[];
     /** Systemic classes actually covered by this completed operation. */
@@ -89,8 +80,6 @@ export type ArtifactInteroperabilityUnavailableRow = {
     readonly operation: string;
     readonly sourcePath: string;
     readonly owner: string;
-    /** Exact PC-05 identities which returned this concrete diagnostic. */
-    readonly executedPublicOwners?: readonly string[];
     readonly diagnostic: {
         /** The code returned by the exercised public owner.  Planner cells
          * retain their conversion diagnostic while command/service callers
@@ -133,14 +122,6 @@ export type ArtifactInteroperabilityScenario = {
 };
 
 /**
- * A runner may give a completed operation its complete PC-05 owner path at
- * construction time.  Keeping this declaration with the runner (rather than
- * reconstructing it from the registry in the merger) makes a missing owner
- * fail at the operation that was meant to exercise it.
- */
-export type ArtifactInteroperabilityExecutedOwnerPaths = Readonly<Record<string, readonly string[]>>;
-
-/**
  * The PC-14 runners use this ledger rather than a hand-written matrix row.
  * Recording is deliberately post-condition based: an operation cannot appear
  * in the saved result until its real source (and, when applicable, output)
@@ -152,12 +133,9 @@ export class ArtifactInteroperabilityRun {
     private readonly scenarios: ArtifactInteroperabilityScenario[] = [];
     private readonly plannerCells: ArtifactInteroperabilityPlannerCell[] = [];
     private readonly rootPath: string;
-    private readonly executedOwnerPaths: ArtifactInteroperabilityExecutedOwnerPaths;
-    private readonly recordedOwnerPathIds = new Set<string>();
 
-    public constructor(rootPath: string, executedOwnerPaths: ArtifactInteroperabilityExecutedOwnerPaths = {}) {
+    public constructor(rootPath: string) {
         this.rootPath = rootPath;
-        this.executedOwnerPaths = executedOwnerPaths;
     }
 
     public record(row: ArtifactInteroperabilityRunRow): void {
@@ -165,7 +143,7 @@ export class ArtifactInteroperabilityRun {
         if (row.producedPath !== undefined) this.assertExists(row.producedPath, "output");
         if (row.observations.length === 0) throw new Error(`${row.id} has no exercised public observation.`);
         if (row.systemicClasses !== undefined && row.systemicClasses.length === 0) throw new Error(`${row.id} has an empty systemic class assignment.`);
-        this.rows.push(this.withExecutedOwnerPath(row));
+        this.rows.push(row);
     }
 
     /**
@@ -182,19 +160,18 @@ export class ArtifactInteroperabilityRun {
         }
         if (row.observations.length === 0) throw new Error(`${row.id} has no exercised public observation.`);
         if (row.systemicClasses !== undefined && row.systemicClasses.length === 0) throw new Error(`${row.id} has an empty systemic class assignment.`);
-        this.rows.push(this.withExecutedOwnerPath({
+        this.rows.push({
             id: row.id,
             artifactKind: row.artifactKind,
             operation: row.operation,
             sourcePath: row.sourcePath,
             owner: row.owner,
-            ...(row.executedPublicOwners === undefined ? {} : {executedPublicOwners: row.executedPublicOwners}),
             result: this.redactEmbeddedRunnerRoot(row.diagnostic.message),
             observations: row.observations,
             status: "intentionally-unsupported",
             diagnostic: {code: row.diagnostic.code, recovery: row.diagnostic.recovery},
             ...(row.systemicClasses === undefined ? {} : {systemicClasses: row.systemicClasses}),
-        }));
+        });
     }
 
     public recordPlannerCells(cells: readonly ArtifactInteroperabilityPlannerCell[]): void {
@@ -218,9 +195,6 @@ export class ArtifactInteroperabilityRun {
     }
 
     public write(outputPath: string): void {
-        for (const recordId of Object.keys(this.executedOwnerPaths)) {
-            if (!this.recordedOwnerPathIds.has(recordId)) throw new Error(`PC-14 runner declared an owner path for ${recordId}, but never emitted that operation.`);
-        }
         const rows = [...this.rows]
             .sort((left, right) => left.id.localeCompare(right.id))
             .map((row) => ({
@@ -232,7 +206,6 @@ export class ArtifactInteroperabilityRun {
                 "produced_path": row.producedPath === undefined ? null : this.redact(row.producedPath),
                 "produced_identity": row.producedPath === undefined ? null : this.identity(row.producedPath),
                 "operation_owner": row.owner,
-                ...(row.executedPublicOwners === undefined ? {} : {"executed_public_owners": row.executedPublicOwners}),
                 "systemic_classes": row.systemicClasses ?? [],
                 status: row.status ?? "supported",
                 "observable_result": row.result,
@@ -271,14 +244,6 @@ export class ArtifactInteroperabilityRun {
 
     private assertExists(artifactPath: string, role: "source" | "output"): void {
         if (!fs.existsSync(artifactPath)) throw new Error(`Cannot record ${role}: ${artifactPath} was not produced or imported by this runner.`);
-    }
-
-    private withExecutedOwnerPath<Row extends ArtifactInteroperabilityRunRow>(row: Row): Row {
-        const declaredOwners = this.executedOwnerPaths[row.id];
-        if (declaredOwners === undefined) return row;
-        if (declaredOwners.length === 0) throw new Error(`${row.id} declared an empty public-owner path.`);
-        this.recordedOwnerPathIds.add(row.id);
-        return {...row, executedPublicOwners: [...new Set([...declaredOwners, ...(row.executedPublicOwners ?? [])])]} as Row;
     }
 
     private redact(artifactPath: string): string {
@@ -474,11 +439,12 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
         return {inputPath, raw, parsed};
     });
     const classify = (systemicClass: ArtifactInteroperabilitySystemicClass) => ({
-        // Keep the full public-owner inventory in every audit.  The entries
-        // are emitted only after a runner completed the corresponding source
-        // operation, so the audit scope cannot shrink to the first command
-        // that happened to expose a systemic finding.
-        "executed_owner_inventory": ownerExecutions.map((entry) => ({
+        // An audit is scoped to the records that exercised its class.  A
+        // global inventory would turn an unrelated build or planner result
+        // into evidence for every class-level owner.
+        "executed_owner_inventory": ownerExecutions.filter((entry) => allRecords.some((record) =>
+            recordId(record) === entry.record_id && hasSystemicClass(record, systemicClass),
+        )).map((entry) => ({
             "artifact_kind": entry.artifact_kind,
             "public_owner": entry.public_owner,
             "record_id": entry.record_id,
@@ -542,59 +508,44 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
             .filter((record) => hasSystemicClass(record, systemicClass))
             .map(recordId).sort(),
     });
-    // PC-05 is the product inventory, whereas the individual runner files
-    // are evidence of a particular execution.  Keep both facts in the final
-    // result.  In particular, do not silently drop an inventory item just
-    // because a runner did not reach it: that would make a small build matrix
-    // look like the complete interoperability surface again.
+    // PC-05 remains the product inventory, but it is not an execution log.
+    // Derive owner coverage solely from the owner that the runner recorded
+    // alongside its own completed observation.  In particular, never expand
+    // one command result into the registry's sibling commands or internals.
     const registry = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json"), "utf-8")) as {
         readonly artifact_kinds: readonly {readonly id: string; readonly created_by?: readonly string[]; readonly recognized_by?: readonly string[]; readonly runs_by?: readonly string[]; readonly validates_by?: readonly string[]; readonly reports_by?: readonly string[]; readonly replays_by?: readonly string[]}[];
     };
     const allRecords = runs.flatMap((run) => [...run.parsed.rows, ...run.parsed.scenario_results]);
-    const ownerExecutions = registry.artifact_kinds
-        .filter((artifact) => artifact.id !== "blueprintRuntimeMaterializationCache" && artifact.id !== "blueprintRuntimeMaterializationMarker")
-        .flatMap((artifact) => {
-            const registryOwners = [
-                ...(artifact.created_by ?? []), ...(artifact.recognized_by ?? []), ...(artifact.runs_by ?? []),
-                ...(artifact.validates_by ?? []), ...(artifact.reports_by ?? []), ...(artifact.replays_by ?? []),
-            ].filter((owner, index, owners) => owners.indexOf(owner) === index).sort();
-            const artifactRecords = allRecords.filter((record) => recordArtifactKind(record) === artifact.id);
-            const publicOwners = [...new Set([
-                ...registryOwners,
-                ...artifactRecords.flatMap((record) => Array.isArray((record as {readonly executed_public_owners?: unknown}).executed_public_owners)
-                    ? (record as {readonly executed_public_owners: readonly string[]}).executed_public_owners
-                    : []),
-            ])].sort();
-            if (artifactRecords.length === 0) throw new Error(`PC-14 has no emitted real-artifact operation for public ${artifact.id} owners: ${publicOwners.join(", ")}.`);
-            return publicOwners.map((publicOwner) => {
-                const record = artifactRecords.find((candidate) => ownerMatchesRecord(publicOwner, candidate));
-                if (record === undefined) throw new Error(`PC-14 has no runner-emitted public-owner operation for ${artifact.id}:${publicOwner}.`);
-                return {
-                    "artifact_kind": artifact.id,
-                    "public_owner": publicOwner,
-                    status: "executed" as const,
-                    "record_id": recordId(record),
-                    "source_path": (record as {readonly source_path?: string}).source_path ?? null,
-                    "operation_owner": recordOwner(record) ?? "unknown",
-                    "owner_execution": "runner-emitted",
-                    result: `Completed real-artifact operation ${recordId(record)} reached ${publicOwner} in its public owner path.`,
-                };
-            });
-        });
-    const registryCoverage = registry.artifact_kinds.map((artifact) => {
-        const publicOwners = [
-            ...(artifact.created_by ?? []), ...(artifact.recognized_by ?? []), ...(artifact.runs_by ?? []),
-            ...(artifact.validates_by ?? []), ...(artifact.reports_by ?? []), ...(artifact.replays_by ?? []),
-        ].filter((owner, index, owners) => owners.indexOf(owner) === index).sort();
-        const internalOnly = artifact.id === "blueprintRuntimeMaterializationCache" || artifact.id === "blueprintRuntimeMaterializationMarker";
-        const completedOwners = ownerExecutions.filter((entry) => entry.artifact_kind === artifact.id && publicOwners.includes(entry.public_owner));
-        if (!internalOnly && completedOwners.length !== publicOwners.length) {
-            throw new Error(`PC-14 cannot mark ${artifact.id} executed until every public owner has an emitted result.`);
+    const ownerExecutions = runs.flatMap((run) => run.parsed.rows).flatMap((record) => {
+        const artifactKind = recordArtifactKind(record);
+        const owner = recordOwner(record);
+        const sourcePath = (record as {readonly source_path?: unknown}).source_path;
+        if (artifactKind === undefined || owner === undefined || typeof sourcePath !== "string") {
+            throw new Error("PC-14 runner emitted an owner row without artifact kind, source path, or operation owner.");
         }
+        return [{
+            "artifact_kind": artifactKind,
+            "public_owner": owner,
+            status: "executed" as const,
+            "record_id": recordId(record),
+            "source_path": sourcePath,
+            "operation_owner": owner,
+            "owner_execution": "runner-emitted" as const,
+            result: `Completed real-artifact operation ${recordId(record)} returned from ${owner}.`,
+        }];
+    }).filter((entry, index, entries) => entries.findIndex((candidate) =>
+        candidate.artifact_kind === entry.artifact_kind && candidate.public_owner === entry.public_owner,
+    ) === index);
+    const registryCoverage = registry.artifact_kinds.map((artifact) => {
+        const internalOnly = artifact.id === "blueprintRuntimeMaterializationCache" || artifact.id === "blueprintRuntimeMaterializationMarker";
+        const completedOwners = ownerExecutions.filter((entry) => entry.artifact_kind === artifact.id);
+        let disposition: "executed" | "not-executed" | "excluded-internal-cache-state" = "executed";
+        if (internalOnly) disposition = "excluded-internal-cache-state";
+        else if (completedOwners.length === 0) disposition = "not-executed";
         return {
             "artifact_kind": artifact.id,
-            disposition: internalOnly ? "excluded-internal-cache-state" as const : "executed" as const,
-            "public_owners": publicOwners,
+            disposition,
+            "public_owners": completedOwners.map((entry) => entry.public_owner).sort(),
             "executed_regressions": [...new Set(completedOwners.map((entry) => entry.record_id))].sort(),
             ...(internalOnly ? {exclusion: "Machine-local materialization cache/marker is not a user artifact or public-operation claim."} : {}),
         };
@@ -626,18 +577,6 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
             {class: "durable publication ownership", "derived_from": classify("durable-publication-ownership")},
         ],
     }, null, 2)}\n`);
-}
-
-function ownerMatchesRecord(publicOwner: string, record: unknown): boolean {
-    if (typeof record === "object" && record !== null && "executed_public_owners" in record) {
-        const executedOwners = (record as {readonly executed_public_owners: unknown}).executed_public_owners;
-        // Once a runner writes this field it is the authoritative owner-path
-        // trace.  Do not fall through to a class-name heuristic: that would
-        // turn a generic StakeEngineCommand result into a false claim that
-        // each of its named phases was independently reached.
-        if (Array.isArray(executedOwners)) return executedOwners.includes(publicOwner);
-    }
-    return false;
 }
 
 function recordOwner(record: unknown): string | undefined {

@@ -27,72 +27,9 @@ import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
-import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, type ArtifactInteroperabilityExecutedOwnerPaths} from "../support/ArtifactInteroperabilityRun.js";
+import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock} from "../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
-
-// Each list is attached to the operation which exercised the named owner
-// path.  The merger does not infer these identities from a command class or
-// from a registry row: a missing declaration fails evidence regeneration.
-const PC14_CLI_EXECUTED_OWNER_PATHS: ArtifactInteroperabilityExecutedOwnerPaths = {
-    "blueprint-build-package": [
-        "GameBlueprintValidator", "ProjectTargetResolver", "cli:create", "cli:create --out", "cli:create without --out",
-        "cli:edit --out", "cli:edit without --out", "cli:par import --out", "cli:par import without --out", "cli:import --out for an XLSX source", "cli:import XLSX without --out",
-        "cli:inspect", "cli:reel generate --apply without --out", "cli:reel generate --materialize without --out",
-        "cli:reel generate --out", "cli:validate", "studio:blueprint-check", "studio:blueprint-save", "studio:design-create", "studio:par-import", "studio:project-registration",
-    ],
-    "matrix-tsPackage-blueprint-build": [
-        "ArtifactBuilderRegistry:build(tsPackage)", "ProjectTargetResolver", "cli:client", "cli:dev", "cli:init", "cli:inspect",
-        "cli:replay", "cli:serve", "cli:sim", "cli:validate", "cli:build", "cli:build --target tsPackage --out", "cli:build --target tsPackage without --out", "loadPokieGame", "studio:artifact-build", "studio:play",
-        "studio:project-registration", "studio:replay", "studio:simulation",
-    ],
-    "raw-outcomes-build-bundle": [
-        "OutcomeLibraryBundleWriter input", "OutcomeLibraryBundleWriter while materializing a bundle", "StakeEngineCommand:loadDescriptor libraryPath",
-        "StakeEngineExporter descriptor loading", "OutcomeLibraryCommand:loadDescriptor libraryPath", "cli:export --to outcomes", "cli:generate --out", "cli:outcomelibrary build", "cli:outcomelibrary generate --out",
-    ],
-    "outcome-library-bundle-descriptor-build": [
-        "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build", "OutcomeLibraryBundleWriter", "OutcomeLibraryCommand:loadDescriptor", "OutcomeLibraryCommand:executeBuild", "OutcomeLibraryCommand:loadDescriptor shape/exclusive-source validation", "OutcomeLibraryCommand:validateBuildSource provenance validation", "user-authored Outcome Library bundle config (POKIE does not create this descriptor)",
-    ],
-    "bundle-canonical-outcomes": [
-        "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build", "OutcomeLibraryBundleWriteValidator",
-        "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized", "OutcomeLibraryCommand:loadDescriptor outcomesPath", "OutcomeLibraryCommand:readStreamedOutcomes", "OutcomeLibraryCommand:streamOutcomes", "OutcomeLibraryCommand:readStreamedOutcomes JSONL parsing", "OutcomeLibraryCommand:validateCrossModeProvenance", "WeightedOutcomeLibraryValidator", "user/external canonical outcome-stream producer",
-    ],
-    "outcome-library-generation-checkpoint-resume": [
-        "OutcomeLibraryCommand:readCheckpoint", "cli:generate --resume", "cli:generate --resume on cancellation", "cli:outcomelibrary generate --resume", "cli:outcomelibrary generate --resume on cancellation",
-    ],
-    "matrix-outcomeLibrary-blueprint-build": [
-        "ArtifactBuilderRegistry:build(outcomeLibrary)", "OutcomeLibraryBundleReader", "ProjectTargetResolver", "cli:import --out", "cli:import Stake without --out",
-        "cli:build --target outcomeLibrary", "cli:build --target outcomeLibrary --out", "cli:build --target outcomeLibrary without --out", "cli:export --to outcomes --out", "cli:export --to outcomes without --out", "cli:inspect", "cli:outcomelibrary build", "cli:sample", "cli:serve", "studio:outcome-library-generate", "studio:outcome-library-registry", "studio:outcome-source-sample", "studio:replay", "studio:simulation",
-    ],
-    "outcome-library-report": ["cli:report"],
-    "stake-export-descriptor": [
-        "ExportCommand --to adapter delegation to StakeEngineCommand.export", "OutcomeLibraryBundleReader for bundleDir", "StakeEngineCommand:loadDescriptor", "StakeEngineCommand:runExport", "StakeEngineCommand:validateExportSource", "StakeEngineCommand:loadDescriptor shape/exclusive-source validation", "StakeEngineExportValidator",
-        "user-authored Stake Engine export config (POKIE does not create the generic descriptor)",
-    ],
-    "matrix-stakeAdapter-blueprint-build": [
-        "ArtifactBuilderRegistry:build(stakeAdapter)", "ProjectTargetResolver", "StakeEngineExportValidator", "StakeEngineOutcomeSourceReader", "StakeEngineStandaloneValidator",
-        "cli:build", "cli:build --target stakeAdapter --out", "cli:build --target stakeAdapter without --out", "cli:diff", "cli:export --to adapter --out",
-        "cli:export --to adapter without --out", "cli:inspect", "cli:report", "cli:validate", "studio:project-registration", "studio:stake-export", "studio:stake-export-validate",
-    ],
-    "import-par-blueprint-default": [
-        "ArtifactBuilderRegistry:build(parWorkbook)", "ParSheetImporter during import", "ProjectTargetResolver", "cli:par export --out", "cli:par export without --out", "cli:build --target parWorkbook --out",
-        "cli:build --target parWorkbook without --out", "cli:export --to workbook --out", "cli:export --to workbook without --out", "cli:inspect", "studio:par-export", "studio:project-registration",
-    ],
-    "wasm-outcome-source-replay": [
-        "PokieWasmComponentManifestValidator", "WasmProjectTargetAdapter", "assessWasmComponentCompatibility", "cli:inspect", "studio:project-registration",
-    ],
-    "round-artifact-replay-provenance": ["StudioRoundRecorder", "runtime session recording", "studio:play", "studio:replay", "studio:replay-session-source", "studio:simulation"],
-    "simulation-report-inspect": ["studio:replay simulation source", "studio:simulation", "studio:simulation-report-list"],
-    "rendered-simulation-report": ["MarkdownSimulationReportRenderer"],
-    "replay-descriptor-round-artifact": ["RoundArtifactValidator where recorded result is present", "studio:replay", "studio:replay-artifact-inspect"],
-    "certification-evidence-bundle": ["CertificationEvidenceBundleValidator", "CertificationEvidenceBundleVerifier", "cli:certification build", "cli:certification build --out", "cli:certification build without --out", "cli:certification verify", "studio:certification-build"],
-    "certification-build-descriptor-build": [
-        "CertificationEvidenceBundleBuilder:buildFromBundle", "CertificationCommand:loadDescriptor", "CertificationCommand:executeBuild", "CertificationCommand:loadDescriptor modes[] shape validation", "CertificationCommand:checkOutcomeLibrarySource", "cli:certification build", "studio:certification-build request supplies equivalent mode samples", "user-authored certification build config (POKIE does not create this descriptor)",
-    ],
-    "fairness-server-seed-commitment": ["FairnessServerSeedCommitmentValidator", "computeFairnessCommitment", "cli:fairness seed-commit", "cli:fairness seed-commit --out", "cli:fairness commit", "studio:fairness-configure"],
-    "fairness-round-commitment": ["FairnessCommitmentValidator", "cli:fairness commit", "cli:fairness commit --out", "cli:fairness reveal", "cli:fairness verify", "studio:fairness-configure", "studio:fairness-generate", "studio:fairness-verify"],
-    "fairness-round-proof": ["FairnessRoundProofValidator", "FairnessRoundProofVerifier", "cli:fairness reveal", "cli:fairness reveal --out", "cli:fairness verify", "studio:fairness-generate", "studio:fairness-verify"],
-};
 
 describe("PC-14 CLI real-artifact interoperability torture", () => {
     let workDir: string;
@@ -186,7 +123,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
     });
 
     it("executes the provenance, drift, recovery and diagnostic matrix from public artifacts", async () => {
-        const evidence = new ArtifactInteroperabilityRun(workDir, PC14_CLI_EXECUTED_OWNER_PATHS);
+        const evidence = new ArtifactInteroperabilityRun(workDir);
         const blueprint: GameBlueprint = {
             manifest: {id: "matrix-slot", name: "Matrix Slot", version: "1.0.0"},
             reels: 2,
@@ -412,7 +349,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(bundleMode).toBeDefined();
         evidence.record({
             id: "bundle-canonical-outcomes", artifactKind: "canonicalOutcomeJsonl", operation: "validate", sourcePath: path.join(bundlePath, bundleMode.outcomesFile),
-            owner: "OutcomeLibraryCommand / OutcomeLibraryBundleWriter", result: "published as the bundle's canonical outcome stream",
+            owner: "OutcomeLibraryCommand", result: "published as the bundle's canonical outcome stream",
             observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "build exit 0 wrote the referenced canonical JSONL"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
@@ -428,7 +365,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(await build.run([generatedBundlePath, "--target", "stakeAdapter", "--out", stakePath])).toBe(0);
         evidence.record({
             id: "outcome-library-export-stake", artifactKind: "outcomeLibrary", operation: "export", sourcePath: generatedBundlePath,
-            producedPath: stakePath, owner: "BuildCommand / ArtifactBuilderRegistry", result: "Stake Engine export published",
+            producedPath: stakePath, owner: "BuildCommand", result: "Stake Engine export published",
             observations: [
                 {surface: "cli", owner: "BuildCommand", result: "exit 0"},
                 {surface: "library", owner: "ArtifactBuilderRegistry", result: "executed registry conversion"},
@@ -458,13 +395,11 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "stake-engine-analysis-report", artifactKind: "stakeEngineAnalysisReport", operation: "analyze", sourcePath: stakeAnalysisPath,
             owner: "StakeEngineCommand", result: "analysis report published from the generated Stake adapter",
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "stakeengine analyze --out exit 0"}],
-            executedPublicOwners: ["cli:stakeengine analyze --out", "user/automation JSON consumer"],
         });
         evidence.record({
             id: "stake-engine-comparison-report", artifactKind: "stakeEngineComparisonReport", operation: "diff", sourcePath: stakeComparisonPath,
             owner: "StakeEngineCommand", result: "comparison report published from two real Stake exports",
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "stakeengine diff --out exit 0"}],
-            executedPublicOwners: ["cli:stakeengine diff --out", "user/automation JSON consumer"],
         });
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["import", stakePath, "--out", importedStakeLibraryPath])).toBe(0);
         const stakeManifest = JSON.parse(fs.readFileSync(path.join(stakePath, "pokie-manifest.json"), "utf-8"));
@@ -478,7 +413,6 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "stake-import-outcome-library", artifactKind: "stakeAdapter", operation: "import", sourcePath: stakePath,
             producedPath: importedStakeLibraryPath, owner: "StakeEngineCommand", result: "Outcome Library published with matching Stake provenance",
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 with matching game/config/version"}],
-            executedPublicOwners: ["cli:import", "cli:stakeengine import"],
         });
         const importConfigPath = path.join(importedStakeLibraryPath, "config.json");
         const importProvenancePath = path.join(importedStakeLibraryPath, "source-provenance.json");
@@ -488,14 +422,12 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "stake-import-reexport-config", artifactKind: "stakeImportReExportConfig", operation: "export", sourcePath: importConfigPath,
             owner: "StakeEngineCommand", result: "public import emitted a re-exportable Stake configuration",
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 wrote config.json"}],
-            executedPublicOwners: ["StakeEngineImportWriter", "cli:import", "cli:stakeengine import"],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "stake-import-source-provenance", artifactKind: "stakeImportSourceProvenance", operation: "inspect", sourcePath: importProvenancePath,
             owner: "StakeEngineCommand", result: "public import retained source manifest, index, and mode provenance",
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 wrote source-provenance.json"}],
-            executedPublicOwners: ["StakeEngineImportWriter", "cli:import", "cli:stakeengine import", "import-result inspection"],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         // A re-exportable import configuration is not itself a round trip.
@@ -528,11 +460,6 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 {surface: "cli", owner: "StakeEngineCommand", result: "stakeengine export imported config.json exit 0"},
                 {surface: "library", owner: "StakeEngineCommand", result: "re-exported Stake manifest retained the original generation semantics"},
                 {surface: "library", owner: "StakeEngineCommand", result: "re-exported Stake manifest retained the imported source-provenance manifest/index/mode hashes"},
-            ],
-            executedPublicOwners: [
-                "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
-                "StakeEngineCommand:export",
-                "StakeEngineCommand export descriptor validation",
             ],
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
         });
@@ -627,13 +554,11 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "blueprint-validation-report", artifactKind: "validationReport", operation: "inspect", sourcePath: validationPath,
             owner: "ValidateCommand", result: "published JSON validation report",
             observations: [{surface: "cli", owner: "ValidateCommand", result: "validate --out exit 0 wrote the report"}],
-            executedPublicOwners: ["cli:validate --out", "user/automation JSON consumer"],
         });
         expect(await new ValidateCommand().run([bundlePath, "--deep", "--format", "json"])).toBe(0);
         evidence.record({
             id: "outcome-library-validate", artifactKind: "outcomeLibrary", operation: "validate", sourcePath: bundlePath,
             owner: "ValidateCommand", result: "valid", observations: [{surface: "cli", owner: "ValidateCommand", result: "exit 0"}],
-            executedPublicOwners: ["cli:validate --deep", "cli:outcomelibrary-validate"],
         });
         expect(await new InspectCommand().run([bundlePath])).toBe(0);
         evidence.record({
@@ -664,40 +589,33 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         evidence.record({
             id: "outcome-library-simulate", artifactKind: "outcomeLibrary", operation: "simulate", sourcePath: bundlePath,
             producedPath: simulationPath, owner: "SimCommand", result: "published", observations: [{surface: "cli", owner: "SimCommand", result: "exit 0"}],
-            executedPublicOwners: ["cli:sim"],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "outcome-library-replay", artifactKind: "outcomeLibrary", operation: "replay", sourcePath: bundlePath,
             producedPath: replayPath, owner: "ReplayCommand", result: "published", observations: [{surface: "cli", owner: "ReplayCommand", result: "exit 0"}],
-            executedPublicOwners: ["cli:replay"],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "outcome-library-report", artifactKind: "outcomeLibrary", operation: "report", sourcePath: bundlePath,
             producedPath: reportPath, owner: "ReportCommand", result: "published", observations: [{surface: "cli", owner: "ReportCommand", result: "exit 0"}],
-            executedPublicOwners: ["cli:report"],
         });
         evidence.record({
             id: "outcome-source-analysis-report", artifactKind: "outcomeSourceAnalysisReport", operation: "report", sourcePath: reportPath,
             owner: "ReportCommand", result: "analysis report published from the generated Outcome Library",
             observations: [{surface: "cli", owner: "ReportCommand", result: "report --out exit 0 rendered the Outcome Source Report"}],
-            executedPublicOwners: ["cli:report --out for outcome sources", "user/automation presentation consumer"],
         });
         evidence.record({
             id: "simulation-comparison-report", artifactKind: "simulationComparisonReport", operation: "diff", sourcePath: simulationDiffPath,
             owner: "DiffCommand", result: "published from two real simulation reports", observations: [{surface: "cli", owner: "DiffCommand", result: "diff --out exit 0"}],
-            executedPublicOwners: ["cli:diff --out", "user/automation JSON consumer"],
         });
         evidence.record({
             id: "outcome-source-comparison-report", artifactKind: "outcomeSourceComparisonReport", operation: "diff", sourcePath: outcomeDiffPath,
             owner: "DiffCommand", result: "published from real Outcome Library sources", observations: [{surface: "cli", owner: "DiffCommand", result: "outcome-source diff --out exit 0"}],
-            executedPublicOwners: ["cli:diff --out for outcome sources", "cli:outcomesource diff --out", "user/automation JSON consumer"],
         });
         evidence.record({
             id: "rendered-simulation-report", artifactKind: "renderedReport", operation: "render", sourcePath: renderedReportPath,
             owner: "ReportCommand", result: "HTML report published from the real simulation report", observations: [{surface: "cli", owner: "ReportCommand", result: "report --format html --out exit 0"}],
-            executedPublicOwners: ["cli:report --out for simulation reports", "HtmlSimulationReportRenderer", "user/download consumer", "cli:report"],
         });
         fs.writeFileSync(certificationConfigPath, JSON.stringify({modes: [{modeName: "base", seed: "matrix-evidence", sampleCount: 4}]}));
         const certification = new CertificationCommand(POKIE_VERSION);
@@ -741,10 +659,6 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "simulation-report-inspect", artifactKind: "simulationReport", operation: "report", sourcePath: packageSimulationPath,
             producedPath: simulationJsonReportPath, owner: "ReportCommand", result: "the real simulation output was parsed and re-emitted as JSON by the report owner",
             observations: [{surface: "cli", owner: "ReportCommand", result: "report --format json --out consumed and re-emitted the simulation report"}],
-            executedPublicOwners: [
-                "cli:sim --out", "cli:report --format json --out for a SimulationReport", "cli:report", "cli:diff",
-                "simulation report parser in cli:report/diff",
-            ],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.recordUnavailable({
@@ -755,21 +669,18 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 recovery: "Use a package that declares bet modes before requesting a per-mode simulation report set.",
             },
             observations: [{surface: "cli", owner: "SimCommand", result: "sim --mode all returned its concrete missing getBetModes diagnostic"}],
-            executedPublicOwners: ["cli:sim --mode all", "cli:sim --mode all --out", "cli:report --format json --out for a SimulationReportSet", "cli:report", "cli:diff", "simulation report-set parser in cli:report/diff"],
             systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
         evidence.record({
             id: "replay-descriptor-round-artifact", artifactKind: "runtimeReplayDescriptor", operation: "inspect", sourcePath: replayPath,
             owner: "ReplayCommand", result: "portable replay descriptor retained exact outcome-source provenance",
             observations: [{surface: "cli", owner: "ReplayCommand", result: "replay --out wrote the inspected descriptor"}],
-            executedPublicOwners: ["cli:replay --out", "runtime session recording", "cli:replay", "replay descriptor validation"],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "round-artifact-replay-provenance", artifactKind: "roundArtifact", operation: "validate", sourcePath: replayPath,
-            owner: "ReplayCommand / RoundArtifactValidator", result: "recorded round artifact retained in the public replay descriptor",
+            owner: "ReplayCommand", result: "recorded round artifact retained in the public replay descriptor",
             observations: [{surface: "cli", owner: "ReplayCommand", result: "replay --out published the descriptor containing the round artifact"}],
-            executedPublicOwners: ["cli:replay", "RoundArtifactValidator"],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
@@ -1005,6 +916,14 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         });
         expect(simulationDiagnostic?.message).toContain("Next:");
         if (simulationDiagnostic?.recovery === undefined) throw new Error("Expected the public WASM diagnostic to include recovery.");
+        evidence.recordUnavailable({
+            id: "wasm-outcome-source-simulate-diagnostic", artifactKind: "wasmComponent", operation: "diagnose:sim", sourcePath: wasmPath,
+            owner: "describeUnavailableArtifactOperation", diagnostic: {
+                code: simulationDiagnostic.code, message: simulationDiagnostic.message, recovery: simulationDiagnostic.recovery,
+            },
+            observations: [{surface: "library", owner: "describeUnavailableArtifactOperation", result: "returned the resolved WASM simulation diagnostic"}],
+            systemicClasses: ["shared-conversion-diagnostic-parity"],
+        });
         const plannerSources = [
             {path: blueprintPath, project: await resolver.resolve(blueprintPath)},
             {path: packagePath, project: await resolver.resolve(packagePath)},
@@ -1039,7 +958,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                         artifactKind: project!.type,
                         operation: `build:${target}`,
                         sourcePath,
-                        owner: "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+                        owner: "ArtifactBuilderRegistry.preparePlan",
                         diagnostic: {
                             code: plan.diagnostic.code,
                             message: plan.diagnostic.message,
@@ -1080,20 +999,27 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         // Exercise the CLI owner too.  The emitted ledger must never promote a
         // library-only diagnostic into a CLI observation without taking this
         // real public route through the same resolved WASM artifact.
-        await expect(new SimCommand().run([wasmPath, "--rounds", "1"])).rejects.toMatchObject({
-            name: "UnsupportedProjectOperationError",
-            diagnostic: expect.objectContaining({
-                detectedType: "wasm",
-                operation: "sim",
-                message: simulationDiagnostic.message,
-                recovery: simulationDiagnostic.recovery,
-            }),
-        });
+        let simulationFailure: {readonly diagnostic: typeof simulationDiagnostic};
+        try {
+            await new SimCommand().run([wasmPath, "--rounds", "1"]);
+            throw new Error("Expected SimCommand to reject the WASM component.");
+        } catch (error) {
+            expect(error).toMatchObject({
+                name: "UnsupportedProjectOperationError",
+                diagnostic: expect.objectContaining({
+                    detectedType: "wasm",
+                    operation: "sim",
+                    message: simulationDiagnostic.message,
+                    recovery: simulationDiagnostic.recovery,
+                }),
+            });
+            simulationFailure = error as {readonly diagnostic: typeof simulationDiagnostic};
+        }
         evidence.recordUnavailable({
             id: "wasm-outcome-source-simulate", artifactKind: "wasmComponent", operation: "simulate", sourcePath: wasmPath,
-            owner: "SimCommand / ArtifactOperationDiagnostic", diagnostic: {
-                code: simulationDiagnostic?.code ?? "", message: simulationDiagnostic?.message ?? "",
-                recovery: simulationDiagnostic.recovery,
+            owner: "SimCommand", diagnostic: {
+                code: simulationFailure.diagnostic.code, message: simulationFailure.diagnostic.message,
+                recovery: simulationFailure.diagnostic.recovery,
             },
             observations: [
                 {surface: "library", owner: "ArtifactOperationDiagnostic", result: "resolved WASM diagnostic"},
@@ -1103,19 +1029,34 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         });
         const replayDiagnostic = describeUnavailableArtifactOperation(wasm, "replay");
         if (replayDiagnostic === undefined) throw new Error("Expected the public WASM replay diagnostic to include recovery.");
-        await expect(new ReplayCommand().run([wasmPath, "--round", "1"])).rejects.toMatchObject({
-            name: "UnsupportedProjectOperationError",
-            diagnostic: expect.objectContaining({
-                detectedType: "wasm",
-                operation: "replay",
-                message: replayDiagnostic.message,
-                recovery: replayDiagnostic.recovery,
-            }),
+        evidence.recordUnavailable({
+            id: "wasm-outcome-source-replay-diagnostic", artifactKind: "wasmComponent", operation: "diagnose:replay", sourcePath: wasmPath,
+            owner: "describeUnavailableArtifactOperation", diagnostic: {
+                code: replayDiagnostic.code, message: replayDiagnostic.message, recovery: replayDiagnostic.recovery,
+            },
+            observations: [{surface: "library", owner: "describeUnavailableArtifactOperation", result: "returned the resolved WASM replay diagnostic"}],
+            systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
+        let replayFailure: {readonly diagnostic: typeof replayDiagnostic};
+        try {
+            await new ReplayCommand().run([wasmPath, "--round", "1"]);
+            throw new Error("Expected ReplayCommand to reject the WASM component.");
+        } catch (error) {
+            expect(error).toMatchObject({
+                name: "UnsupportedProjectOperationError",
+                diagnostic: expect.objectContaining({
+                    detectedType: "wasm",
+                    operation: "replay",
+                    message: replayDiagnostic.message,
+                    recovery: replayDiagnostic.recovery,
+                }),
+            });
+            replayFailure = error as {readonly diagnostic: typeof replayDiagnostic};
+        }
         evidence.recordUnavailable({
             id: "wasm-outcome-source-replay", artifactKind: "wasmComponent", operation: "replay", sourcePath: wasmPath,
-            owner: "ReplayCommand / ArtifactOperationDiagnostic", diagnostic: {
-                code: replayDiagnostic.code, message: replayDiagnostic.message, recovery: replayDiagnostic.recovery,
+            owner: "ReplayCommand", diagnostic: {
+                code: replayFailure.diagnostic.code, message: replayFailure.diagnostic.message, recovery: replayFailure.diagnostic.recovery,
             },
             observations: [
                 {surface: "library", owner: "ArtifactOperationDiagnostic", result: "resolved WASM replay diagnostic"},
