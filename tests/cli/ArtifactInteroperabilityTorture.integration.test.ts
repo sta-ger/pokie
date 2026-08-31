@@ -64,6 +64,7 @@ const PC14_CLI_EXECUTED_OWNER_PATHS: ArtifactInteroperabilityExecutedOwnerPaths 
         "ArtifactBuilderRegistry:build(outcomeLibrary)", "OutcomeLibraryBundleReader", "ProjectTargetResolver", "cli:import --out", "cli:import Stake without --out",
         "cli:build --target outcomeLibrary", "cli:build --target outcomeLibrary --out", "cli:build --target outcomeLibrary without --out", "cli:export --to outcomes --out", "cli:export --to outcomes without --out", "cli:inspect", "cli:outcomelibrary build", "cli:sample", "cli:serve", "studio:outcome-library-generate", "studio:outcome-library-registry", "studio:outcome-source-sample", "studio:replay", "studio:simulation",
     ],
+    "outcome-library-report": ["cli:report"],
     "stake-export-descriptor": [
         "ExportCommand --to adapter delegation to StakeEngineCommand.export", "OutcomeLibraryBundleReader for bundleDir", "StakeEngineCommand:loadDescriptor", "StakeEngineCommand:runExport", "StakeEngineCommand:validateExportSource", "StakeEngineCommand:loadDescriptor shape/exclusive-source validation", "StakeEngineExportValidator",
         "user-authored Stake Engine export config (POKIE does not create the generic descriptor)",

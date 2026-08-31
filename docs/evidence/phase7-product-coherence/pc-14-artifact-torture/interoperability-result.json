@@ -5086,6 +5086,16 @@
     },
     {
       "artifact_kind": "outcomeLibrary",
+      "public_owner": "cli:report",
+      "status": "executed",
+      "record_id": "outcome-library-report",
+      "source_path": "run-artifacts/matrix-bundle",
+      "operation_owner": "ReportCommand",
+      "owner_execution": "runner-emitted",
+      "result": "Completed real-artifact operation outcome-library-report reached cli:report in its public owner path."
+    },
+    {
+      "artifact_kind": "outcomeLibrary",
       "public_owner": "cli:sample",
       "status": "executed",
       "record_id": "matrix-outcomeLibrary-blueprint-build",
@@ -5366,6 +5376,16 @@
     },
     {
       "artifact_kind": "stakeAdapter",
+      "public_owner": "cli:import",
+      "status": "executed",
+      "record_id": "stake-import-outcome-library",
+      "source_path": "run-artifacts/matrix-stake",
+      "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
+      "result": "Completed real-artifact operation stake-import-outcome-library reached cli:import in its public owner path."
+    },
+    {
+      "artifact_kind": "stakeAdapter",
       "public_owner": "cli:inspect",
       "status": "executed",
       "record_id": "matrix-stakeAdapter-blueprint-build",
@@ -5383,6 +5403,16 @@
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
       "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached cli:report in its public owner path."
+    },
+    {
+      "artifact_kind": "stakeAdapter",
+      "public_owner": "cli:stakeengine import",
+      "status": "executed",
+      "record_id": "stake-import-outcome-library",
+      "source_path": "run-artifacts/matrix-stake",
+      "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
+      "result": "Completed real-artifact operation stake-import-outcome-library reached cli:stakeengine import in its public owner path."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -7617,6 +7647,11 @@
           },
           {
             "artifact_kind": "outcomeLibrary",
+            "public_owner": "cli:report",
+            "record_id": "outcome-library-report"
+          },
+          {
+            "artifact_kind": "outcomeLibrary",
             "public_owner": "cli:sample",
             "record_id": "matrix-outcomeLibrary-blueprint-build"
           },
@@ -7757,6 +7792,11 @@
           },
           {
             "artifact_kind": "stakeAdapter",
+            "public_owner": "cli:import",
+            "record_id": "stake-import-outcome-library"
+          },
+          {
+            "artifact_kind": "stakeAdapter",
             "public_owner": "cli:inspect",
             "record_id": "matrix-stakeAdapter-blueprint-build"
           },
@@ -7764,6 +7804,11 @@
             "artifact_kind": "stakeAdapter",
             "public_owner": "cli:report",
             "record_id": "matrix-stakeAdapter-blueprint-build"
+          },
+          {
+            "artifact_kind": "stakeAdapter",
+            "public_owner": "cli:stakeengine import",
+            "record_id": "stake-import-outcome-library"
           },
           {
             "artifact_kind": "stakeAdapter",
@@ -9567,6 +9612,11 @@
           },
           {
             "artifact_kind": "outcomeLibrary",
+            "public_owner": "cli:report",
+            "record_id": "outcome-library-report"
+          },
+          {
+            "artifact_kind": "outcomeLibrary",
             "public_owner": "cli:sample",
             "record_id": "matrix-outcomeLibrary-blueprint-build"
           },
@@ -9707,6 +9757,11 @@
           },
           {
             "artifact_kind": "stakeAdapter",
+            "public_owner": "cli:import",
+            "record_id": "stake-import-outcome-library"
+          },
+          {
+            "artifact_kind": "stakeAdapter",
             "public_owner": "cli:inspect",
             "record_id": "matrix-stakeAdapter-blueprint-build"
           },
@@ -9714,6 +9769,11 @@
             "artifact_kind": "stakeAdapter",
             "public_owner": "cli:report",
             "record_id": "matrix-stakeAdapter-blueprint-build"
+          },
+          {
+            "artifact_kind": "stakeAdapter",
+            "public_owner": "cli:stakeengine import",
+            "record_id": "stake-import-outcome-library"
           },
           {
             "artifact_kind": "stakeAdapter",
@@ -11237,6 +11297,11 @@
           },
           {
             "artifact_kind": "outcomeLibrary",
+            "public_owner": "cli:report",
+            "record_id": "outcome-library-report"
+          },
+          {
+            "artifact_kind": "outcomeLibrary",
             "public_owner": "cli:sample",
             "record_id": "matrix-outcomeLibrary-blueprint-build"
           },
@@ -11377,6 +11442,11 @@
           },
           {
             "artifact_kind": "stakeAdapter",
+            "public_owner": "cli:import",
+            "record_id": "stake-import-outcome-library"
+          },
+          {
+            "artifact_kind": "stakeAdapter",
             "public_owner": "cli:inspect",
             "record_id": "matrix-stakeAdapter-blueprint-build"
           },
@@ -11384,6 +11454,11 @@
             "artifact_kind": "stakeAdapter",
             "public_owner": "cli:report",
             "record_id": "matrix-stakeAdapter-blueprint-build"
+          },
+          {
+            "artifact_kind": "stakeAdapter",
+            "public_owner": "cli:stakeengine import",
+            "record_id": "stake-import-outcome-library"
           },
           {
             "artifact_kind": "stakeAdapter",

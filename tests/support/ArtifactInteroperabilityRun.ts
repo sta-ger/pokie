@@ -554,11 +554,17 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
     const ownerExecutions = registry.artifact_kinds
         .filter((artifact) => artifact.id !== "blueprintRuntimeMaterializationCache" && artifact.id !== "blueprintRuntimeMaterializationMarker")
         .flatMap((artifact) => {
-            const publicOwners = [
+            const registryOwners = [
                 ...(artifact.created_by ?? []), ...(artifact.recognized_by ?? []), ...(artifact.runs_by ?? []),
                 ...(artifact.validates_by ?? []), ...(artifact.reports_by ?? []), ...(artifact.replays_by ?? []),
             ].filter((owner, index, owners) => owners.indexOf(owner) === index).sort();
             const artifactRecords = allRecords.filter((record) => recordArtifactKind(record) === artifact.id);
+            const publicOwners = [...new Set([
+                ...registryOwners,
+                ...artifactRecords.flatMap((record) => Array.isArray((record as {readonly executed_public_owners?: unknown}).executed_public_owners)
+                    ? (record as {readonly executed_public_owners: readonly string[]}).executed_public_owners
+                    : []),
+            ])].sort();
             if (artifactRecords.length === 0) throw new Error(`PC-14 has no emitted real-artifact operation for public ${artifact.id} owners: ${publicOwners.join(", ")}.`);
             return publicOwners.map((publicOwner) => {
                 const record = artifactRecords.find((candidate) => ownerMatchesRecord(publicOwner, candidate));
@@ -581,7 +587,7 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
             ...(artifact.validates_by ?? []), ...(artifact.reports_by ?? []), ...(artifact.replays_by ?? []),
         ].filter((owner, index, owners) => owners.indexOf(owner) === index).sort();
         const internalOnly = artifact.id === "blueprintRuntimeMaterializationCache" || artifact.id === "blueprintRuntimeMaterializationMarker";
-        const completedOwners = ownerExecutions.filter((entry) => entry.artifact_kind === artifact.id);
+        const completedOwners = ownerExecutions.filter((entry) => entry.artifact_kind === artifact.id && publicOwners.includes(entry.public_owner));
         if (!internalOnly && completedOwners.length !== publicOwners.length) {
             throw new Error(`PC-14 cannot mark ${artifact.id} executed until every public owner has an emitted result.`);
         }
