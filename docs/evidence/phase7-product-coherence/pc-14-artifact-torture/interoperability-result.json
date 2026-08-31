@@ -10,8 +10,8 @@
   "runner_inputs": [
     {
       "file": "cli-real-artifact-result.json",
-      "sha256": "sha256:4a7385664415f75f1f5bb35b6257d980387ec952c3ef7ae7470e92449dd48b02",
-      "rows": 112,
+      "sha256": "sha256:15253905a2ee1feb24a0c56667dc16fdf5630b7f95a4479a9387c5032ec1ac6e",
+      "rows": 125,
       "scenarios": 15
     },
     {
@@ -621,6 +621,30 @@
       ]
     },
     {
+      "id": "library-build-outcome-library",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "build",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/direct-library-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": "run-artifacts/direct-library-outcomes",
+      "produced_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "operation_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "direct registry build published an Outcome Library from the generated package",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
+          "result": "build returned a published Outcome Library"
+        }
+      ]
+    },
+    {
       "id": "library-build-package",
       "artifact_kind": "tsPackage",
       "operation": "build",
@@ -638,6 +662,75 @@
           "surface": "library",
           "owner": "ArtifactBuilderRegistry:build(tsPackage)",
           "result": "build returned a published package"
+        }
+      ]
+    },
+    {
+      "id": "library-build-par-workbook",
+      "artifact_kind": "parWorkbook",
+      "operation": "build",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-imported.blueprint.json",
+      "source_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
+      "produced_path": "run-artifacts/direct-library.par.xlsx",
+      "produced_identity": "sha256:41d6f6ccb1a966f08b546587e727519e0a4980175d52c4da7e066d8fab5f6f25",
+      "operation_owner": "ArtifactBuilderRegistry:build(parWorkbook)",
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "direct registry build published a PAR workbook from the imported Blueprint",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry:build(parWorkbook)",
+          "result": "build returned a published PAR workbook"
+        }
+      ]
+    },
+    {
+      "id": "library-build-stake-adapter",
+      "artifact_kind": "stakeAdapter",
+      "operation": "build",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/direct-library-outcomes",
+      "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "produced_path": "run-artifacts/direct-library-stake",
+      "produced_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "operation_owner": "ArtifactBuilderRegistry:build(stakeAdapter)",
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "direct registry build published a Stake adapter from the generated Outcome Library",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry:build(stakeAdapter)",
+          "result": "build returned a published Stake adapter"
+        }
+      ]
+    },
+    {
+      "id": "library-export-validate-direct-stake-adapter",
+      "artifact_kind": "stakeAdapter",
+      "operation": "validate-export",
+      "registry_operation": "validates_by",
+      "source_path": "run-artifacts/direct-library-stake",
+      "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StakeEngineExportValidator",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct Stake export validator accepted modes imported from the registry-produced adapter",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "StakeEngineExportValidator",
+          "result": "validate returned no export errors"
         }
       ]
     },
@@ -663,10 +756,51 @@
       ]
     },
     {
-      "id": "library-read-outcome-library",
+      "id": "library-load-direct-package",
+      "artifact_kind": "tsPackage",
+      "operation": "recognize",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/direct-library-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "loadPokieGame",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct package loader recognized the registry-produced package",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "loadPokieGame",
+          "result": "loadPokieGame returned the package game"
+        }
+      ]
+    },
+    {
+      "id": "library-read-direct-outcome-library",
       "artifact_kind": "outcomeLibrary",
       "operation": "recognize",
       "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/direct-library-outcomes",
+      "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "OutcomeLibraryBundleReader",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct bundle reader loaded the registry-produced Outcome Library",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "OutcomeLibraryBundleReader",
+          "result": "readLibrary returned the generated mode outcomes"
+        }
+      ]
+    },
+    {
+      "id": "library-read-outcome-library",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "recognize",
       "source_path": "run-artifacts/matrix-bundle",
       "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
       "produced_path": null,
@@ -705,6 +839,27 @@
       ]
     },
     {
+      "id": "library-resolve-direct-outcome-library",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "resolve",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/direct-library-outcomes",
+      "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "ProjectTargetResolver",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct resolver recognized the registry-produced Outcome Library",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ProjectTargetResolver",
+          "result": "resolve returned outcomeLibrary"
+        }
+      ]
+    },
+    {
       "id": "library-resolve-direct-package",
       "artifact_kind": "tsPackage",
       "operation": "resolve",
@@ -722,6 +877,48 @@
           "surface": "library",
           "owner": "ProjectTargetResolver",
           "result": "resolve returned tsPackage"
+        }
+      ]
+    },
+    {
+      "id": "library-resolve-direct-par-workbook",
+      "artifact_kind": "parWorkbook",
+      "operation": "resolve",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/direct-library.par.xlsx",
+      "source_identity": "sha256:41d6f6ccb1a966f08b546587e727519e0a4980175d52c4da7e066d8fab5f6f25",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "ProjectTargetResolver",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct resolver recognized the registry-produced PAR workbook",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ProjectTargetResolver",
+          "result": "resolve returned parWorkbook"
+        }
+      ]
+    },
+    {
+      "id": "library-resolve-direct-stake-adapter",
+      "artifact_kind": "stakeAdapter",
+      "operation": "resolve",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/direct-library-stake",
+      "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "ProjectTargetResolver",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct resolver recognized the registry-produced Stake adapter",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ProjectTargetResolver",
+          "result": "resolve returned stakeAdapter"
         }
       ]
     },
@@ -764,6 +961,93 @@
           "surface": "library",
           "owner": "GameBlueprintValidator",
           "result": "validate returned no errors"
+        }
+      ]
+    },
+    {
+      "id": "library-validate-direct-outcome-library",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "validate",
+      "registry_operation": "validates_by",
+      "source_path": "run-artifacts/direct-library-outcomes",
+      "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "OutcomeLibraryBundleReader",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct bundle reader validated the registry-produced Outcome Library while reading its canonical mode",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "OutcomeLibraryBundleReader",
+          "result": "readLibrary returned a complete valid canonical mode"
+        }
+      ]
+    },
+    {
+      "id": "library-validate-direct-package",
+      "artifact_kind": "tsPackage",
+      "operation": "validate",
+      "registry_operation": "validates_by",
+      "source_path": "run-artifacts/direct-library-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "loadPokieGame",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct package loader validated the registry-produced package entry",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "loadPokieGame",
+          "result": "loadPokieGame returned a runnable package game"
+        }
+      ]
+    },
+    {
+      "id": "library-validate-direct-stake-adapter",
+      "artifact_kind": "stakeAdapter",
+      "operation": "validate",
+      "registry_operation": "validates_by",
+      "source_path": "run-artifacts/direct-library-stake",
+      "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StakeEngineStandaloneValidator",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct standalone validator accepted the reader-assembled Stake adapter",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "StakeEngineStandaloneValidator",
+          "result": "validator returned no structural errors during direct reader execution"
+        }
+      ]
+    },
+    {
+      "id": "library-write-canonical-outcomes",
+      "artifact_kind": "canonicalOutcomeJsonl",
+      "operation": "write",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/direct-library-outcomes",
+      "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "produced_path": "run-artifacts/direct-library-writer-outcomes",
+      "produced_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
+      "operation_owner": "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "direct bundle writer published canonical outcome JSONL from the reader-returned library",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
+          "result": "writeToDirectory published the canonical outcome stream"
         }
       ]
     },
@@ -3710,11 +3994,14 @@
       "disposition": "executed",
       "public_owners": [
         "ArtifactBuilderRegistry:build(tsPackage)",
-        "ProjectTargetResolver"
+        "ProjectTargetResolver",
+        "loadPokieGame"
       ],
       "executed_regressions": [
         "library-build-package",
-        "library-resolve-direct-package"
+        "library-load-direct-package",
+        "library-resolve-direct-package",
+        "library-validate-direct-package"
       ]
     },
     {
@@ -3745,9 +4032,13 @@
     },
     {
       "artifact_kind": "canonicalOutcomeJsonl",
-      "disposition": "not-executed",
-      "public_owners": [],
-      "executed_regressions": []
+      "disposition": "executed",
+      "public_owners": [
+        "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized"
+      ],
+      "executed_regressions": [
+        "library-write-canonical-outcomes"
+      ]
     },
     {
       "artifact_kind": "outcomeLibraryGenerationCheckpoint",
@@ -3759,10 +4050,15 @@
       "artifact_kind": "outcomeLibrary",
       "disposition": "executed",
       "public_owners": [
-        "OutcomeLibraryBundleReader"
+        "ArtifactBuilderRegistry:build(outcomeLibrary)",
+        "OutcomeLibraryBundleReader",
+        "ProjectTargetResolver"
       ],
       "executed_regressions": [
-        "library-read-outcome-library"
+        "library-build-outcome-library",
+        "library-read-direct-outcome-library",
+        "library-resolve-direct-outcome-library",
+        "library-validate-direct-outcome-library"
       ]
     },
     {
@@ -3775,20 +4071,32 @@
       "artifact_kind": "stakeAdapter",
       "disposition": "executed",
       "public_owners": [
-        "StakeEngineOutcomeSourceReader"
+        "ArtifactBuilderRegistry:build(stakeAdapter)",
+        "ProjectTargetResolver",
+        "StakeEngineExportValidator",
+        "StakeEngineOutcomeSourceReader",
+        "StakeEngineStandaloneValidator"
       ],
       "executed_regressions": [
-        "library-read-stake-adapter"
+        "library-build-stake-adapter",
+        "library-export-validate-direct-stake-adapter",
+        "library-read-stake-adapter",
+        "library-resolve-direct-stake-adapter",
+        "library-validate-direct-stake-adapter"
       ]
     },
     {
       "artifact_kind": "parWorkbook",
       "disposition": "executed",
       "public_owners": [
-        "ParSheetImporter during import"
+        "ArtifactBuilderRegistry:build(parWorkbook)",
+        "ParSheetImporter during import",
+        "ProjectTargetResolver"
       ],
       "executed_regressions": [
-        "library-import-par-workbook"
+        "library-build-par-workbook",
+        "library-import-par-workbook",
+        "library-resolve-direct-par-workbook"
       ]
     },
     {
@@ -3980,16 +4288,88 @@
       "observable_result": "validate returned no errors"
     },
     {
+      "exact_tuple_identity": "[\"canonicalOutcomeJsonl\",\"created_by\",\"OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized\",\"library\"]",
+      "artifact_kind": "canonicalOutcomeJsonl",
+      "registry_operation": "created_by",
+      "public_owner": "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
+      "surface": "library",
+      "status": "executed",
+      "record_id": "library-write-canonical-outcomes",
+      "source_path": "run-artifacts/direct-library-outcomes",
+      "produced_path": "run-artifacts/direct-library-writer-outcomes",
+      "observable_result": "writeToDirectory published the canonical outcome stream"
+    },
+    {
+      "exact_tuple_identity": "[\"outcomeLibrary\",\"created_by\",\"ArtifactBuilderRegistry:build(outcomeLibrary)\",\"library\"]",
+      "artifact_kind": "outcomeLibrary",
+      "registry_operation": "created_by",
+      "public_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
+      "surface": "library",
+      "status": "executed",
+      "record_id": "library-build-outcome-library",
+      "source_path": "run-artifacts/direct-library-package",
+      "produced_path": "run-artifacts/direct-library-outcomes",
+      "observable_result": "build returned a published Outcome Library"
+    },
+    {
       "exact_tuple_identity": "[\"outcomeLibrary\",\"recognized_by\",\"OutcomeLibraryBundleReader\",\"library\"]",
       "artifact_kind": "outcomeLibrary",
       "registry_operation": "recognized_by",
       "public_owner": "OutcomeLibraryBundleReader",
       "surface": "library",
       "status": "executed",
-      "record_id": "library-read-outcome-library",
-      "source_path": "run-artifacts/matrix-bundle",
+      "record_id": "library-read-direct-outcome-library",
+      "source_path": "run-artifacts/direct-library-outcomes",
       "produced_path": null,
-      "observable_result": "readManifest returned the generated mode"
+      "observable_result": "readLibrary returned the generated mode outcomes"
+    },
+    {
+      "exact_tuple_identity": "[\"outcomeLibrary\",\"recognized_by\",\"ProjectTargetResolver\",\"library\"]",
+      "artifact_kind": "outcomeLibrary",
+      "registry_operation": "recognized_by",
+      "public_owner": "ProjectTargetResolver",
+      "surface": "library",
+      "status": "executed",
+      "record_id": "library-resolve-direct-outcome-library",
+      "source_path": "run-artifacts/direct-library-outcomes",
+      "produced_path": null,
+      "observable_result": "resolve returned outcomeLibrary"
+    },
+    {
+      "exact_tuple_identity": "[\"outcomeLibrary\",\"validates_by\",\"OutcomeLibraryBundleReader\",\"library\"]",
+      "artifact_kind": "outcomeLibrary",
+      "registry_operation": "validates_by",
+      "public_owner": "OutcomeLibraryBundleReader",
+      "surface": "library",
+      "status": "executed",
+      "record_id": "library-validate-direct-outcome-library",
+      "source_path": "run-artifacts/direct-library-outcomes",
+      "produced_path": null,
+      "observable_result": "readLibrary returned a complete valid canonical mode"
+    },
+    {
+      "exact_tuple_identity": "[\"parWorkbook\",\"created_by\",\"ArtifactBuilderRegistry:build(parWorkbook)\",\"library\"]",
+      "artifact_kind": "parWorkbook",
+      "registry_operation": "created_by",
+      "public_owner": "ArtifactBuilderRegistry:build(parWorkbook)",
+      "surface": "library",
+      "status": "executed",
+      "record_id": "library-build-par-workbook",
+      "source_path": "run-artifacts/matrix-imported.blueprint.json",
+      "produced_path": "run-artifacts/direct-library.par.xlsx",
+      "observable_result": "build returned a published PAR workbook"
+    },
+    {
+      "exact_tuple_identity": "[\"parWorkbook\",\"recognized_by\",\"ProjectTargetResolver\",\"library\"]",
+      "artifact_kind": "parWorkbook",
+      "registry_operation": "recognized_by",
+      "public_owner": "ProjectTargetResolver",
+      "surface": "library",
+      "status": "executed",
+      "record_id": "library-resolve-direct-par-workbook",
+      "source_path": "run-artifacts/direct-library.par.xlsx",
+      "produced_path": null,
+      "observable_result": "resolve returned parWorkbook"
     },
     {
       "exact_tuple_identity": "[\"parWorkbook\",\"validates_by\",\"ParSheetImporter during import\",\"library\"]",
@@ -4004,6 +4384,30 @@
       "observable_result": "importFromFile returned no errors"
     },
     {
+      "exact_tuple_identity": "[\"stakeAdapter\",\"created_by\",\"ArtifactBuilderRegistry:build(stakeAdapter)\",\"library\"]",
+      "artifact_kind": "stakeAdapter",
+      "registry_operation": "created_by",
+      "public_owner": "ArtifactBuilderRegistry:build(stakeAdapter)",
+      "surface": "library",
+      "status": "executed",
+      "record_id": "library-build-stake-adapter",
+      "source_path": "run-artifacts/direct-library-outcomes",
+      "produced_path": "run-artifacts/direct-library-stake",
+      "observable_result": "build returned a published Stake adapter"
+    },
+    {
+      "exact_tuple_identity": "[\"stakeAdapter\",\"recognized_by\",\"ProjectTargetResolver\",\"library\"]",
+      "artifact_kind": "stakeAdapter",
+      "registry_operation": "recognized_by",
+      "public_owner": "ProjectTargetResolver",
+      "surface": "library",
+      "status": "executed",
+      "record_id": "library-resolve-direct-stake-adapter",
+      "source_path": "run-artifacts/direct-library-stake",
+      "produced_path": null,
+      "observable_result": "resolve returned stakeAdapter"
+    },
+    {
       "exact_tuple_identity": "[\"stakeAdapter\",\"recognized_by\",\"StakeEngineOutcomeSourceReader\",\"library\"]",
       "artifact_kind": "stakeAdapter",
       "registry_operation": "recognized_by",
@@ -4014,6 +4418,30 @@
       "source_path": "run-artifacts/matrix-stake",
       "produced_path": null,
       "observable_result": "readFromDirectory returned valid modes"
+    },
+    {
+      "exact_tuple_identity": "[\"stakeAdapter\",\"validates_by\",\"StakeEngineExportValidator\",\"library\"]",
+      "artifact_kind": "stakeAdapter",
+      "registry_operation": "validates_by",
+      "public_owner": "StakeEngineExportValidator",
+      "surface": "library",
+      "status": "executed",
+      "record_id": "library-export-validate-direct-stake-adapter",
+      "source_path": "run-artifacts/direct-library-stake",
+      "produced_path": null,
+      "observable_result": "validate returned no export errors"
+    },
+    {
+      "exact_tuple_identity": "[\"stakeAdapter\",\"validates_by\",\"StakeEngineStandaloneValidator\",\"library\"]",
+      "artifact_kind": "stakeAdapter",
+      "registry_operation": "validates_by",
+      "public_owner": "StakeEngineStandaloneValidator",
+      "surface": "library",
+      "status": "executed",
+      "record_id": "library-validate-direct-stake-adapter",
+      "source_path": "run-artifacts/direct-library-stake",
+      "produced_path": null,
+      "observable_result": "validator returned no structural errors during direct reader execution"
     },
     {
       "exact_tuple_identity": "[\"tsPackage\",\"created_by\",\"ArtifactBuilderRegistry:build(tsPackage)\",\"library\"]",
@@ -4028,6 +4456,18 @@
       "observable_result": "build returned a published package"
     },
     {
+      "exact_tuple_identity": "[\"tsPackage\",\"recognized_by\",\"loadPokieGame\",\"library\"]",
+      "artifact_kind": "tsPackage",
+      "registry_operation": "recognized_by",
+      "public_owner": "loadPokieGame",
+      "surface": "library",
+      "status": "executed",
+      "record_id": "library-load-direct-package",
+      "source_path": "run-artifacts/direct-library-package",
+      "produced_path": null,
+      "observable_result": "loadPokieGame returned the package game"
+    },
+    {
       "exact_tuple_identity": "[\"tsPackage\",\"recognized_by\",\"ProjectTargetResolver\",\"library\"]",
       "artifact_kind": "tsPackage",
       "registry_operation": "recognized_by",
@@ -4038,6 +4478,18 @@
       "source_path": "run-artifacts/direct-library-package",
       "produced_path": null,
       "observable_result": "resolve returned tsPackage"
+    },
+    {
+      "exact_tuple_identity": "[\"tsPackage\",\"validates_by\",\"loadPokieGame\",\"library\"]",
+      "artifact_kind": "tsPackage",
+      "registry_operation": "validates_by",
+      "public_owner": "loadPokieGame",
+      "surface": "library",
+      "status": "executed",
+      "record_id": "library-validate-direct-package",
+      "source_path": "run-artifacts/direct-library-package",
+      "produced_path": null,
+      "observable_result": "loadPokieGame returned a runnable package game"
     }
   ],
   "systemic_class_audits": [
@@ -4501,7 +4953,36 @@
     {
       "class": "provenance and freshness binding",
       "derived_from": {
-        "executed_operation_tuples": [],
+        "executed_operation_tuples": [
+          {
+            "artifact_kind": "canonicalOutcomeJsonl",
+            "registry_operation": "created_by",
+            "public_owner": "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
+            "surface": "library",
+            "record_id": "library-write-canonical-outcomes"
+          },
+          {
+            "artifact_kind": "outcomeLibrary",
+            "registry_operation": "created_by",
+            "public_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
+            "surface": "library",
+            "record_id": "library-build-outcome-library"
+          },
+          {
+            "artifact_kind": "parWorkbook",
+            "registry_operation": "created_by",
+            "public_owner": "ArtifactBuilderRegistry:build(parWorkbook)",
+            "surface": "library",
+            "record_id": "library-build-par-workbook"
+          },
+          {
+            "artifact_kind": "stakeAdapter",
+            "registry_operation": "created_by",
+            "public_owner": "ArtifactBuilderRegistry:build(stakeAdapter)",
+            "surface": "library",
+            "record_id": "library-build-stake-adapter"
+          }
+        ],
         "operation_rows": [
           "bundle-canonical-outcomes",
           "certification-build-descriptor-build",
@@ -4510,6 +4991,10 @@
           "fairness-round-proof",
           "fairness-server-seed-commitment",
           "file-session-record-recovery",
+          "library-build-outcome-library",
+          "library-build-par-workbook",
+          "library-build-stake-adapter",
+          "library-write-canonical-outcomes",
           "managed-outcome-project-registry-reuse",
           "outcome-library-bundle-descriptor-build",
           "outcome-library-certification",
@@ -4554,6 +5039,7 @@
         "planner_cells": [],
         "aliases": [
           "canonicalOutcomeJsonl:validate",
+          "canonicalOutcomeJsonl:write",
           "certificationBuildDescriptor:build",
           "certificationEvidenceBundle:verify",
           "fairnessCommitment:reveal",
@@ -4561,14 +5047,17 @@
           "fairnessServerSeedCommitment:commit",
           "fileSessionRepositoryRecord:import",
           "managedOutcomeProjectsRegistry:reuse",
+          "outcomeLibrary:build",
           "outcomeLibrary:certification",
           "outcomeLibrary:fairness",
           "outcomeLibrary:replay",
           "outcomeLibrary:simulate",
           "outcomeLibraryBundleDescriptor:build",
+          "parWorkbook:build",
           "roundArtifact:validate",
           "runtimeReplayDescriptor:inspect",
           "simulationReport:report",
+          "stakeAdapter:build",
           "stakeEngineExportDescriptor:export",
           "stakeImportReExportConfig:export",
           "stakeImportReExportConfig:re-export",
@@ -4577,10 +5066,14 @@
           "studioOutcomeLibrarySelector:export"
         ],
         "operation_owners": [
+          "ArtifactBuilderRegistry:build(outcomeLibrary)",
+          "ArtifactBuilderRegistry:build(parWorkbook)",
+          "ArtifactBuilderRegistry:build(stakeAdapter)",
           "CertificationCommand",
           "FairnessCommand",
           "FileSessionRepository.load",
           "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
+          "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
           "OutcomeLibraryCommand",
           "ReplayCommand",
           "ReportCommand",
@@ -4616,8 +5109,12 @@
         "direct_library_callers": [
           "ArtifactBuilderRegistry",
           "ArtifactBuilderRegistry.executePlan",
+          "ArtifactBuilderRegistry:build(outcomeLibrary)",
+          "ArtifactBuilderRegistry:build(parWorkbook)",
+          "ArtifactBuilderRegistry:build(stakeAdapter)",
           "FileSessionRepository.load",
           "ManagedOutcomeProjectService.findCompatible",
+          "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
           "OutcomeLibraryCommand.prepareDescriptorBuildOperation",
           "StakeEngineCommand"
         ],
@@ -4634,6 +5131,10 @@
           "file-session-record-recovery",
           "generated-reel-non-lossless",
           "index-drift",
+          "library-build-outcome-library",
+          "library-build-par-workbook",
+          "library-build-stake-adapter",
+          "library-write-canonical-outcomes",
           "managed-outcome-project-registry-reuse",
           "managed-reuse-sampling-policy-incompatibility",
           "manifest-drift",
@@ -4668,8 +5169,41 @@
     {
       "class": "durable publication ownership",
       "derived_from": {
-        "executed_operation_tuples": [],
+        "executed_operation_tuples": [
+          {
+            "artifact_kind": "canonicalOutcomeJsonl",
+            "registry_operation": "created_by",
+            "public_owner": "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
+            "surface": "library",
+            "record_id": "library-write-canonical-outcomes"
+          },
+          {
+            "artifact_kind": "outcomeLibrary",
+            "registry_operation": "created_by",
+            "public_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
+            "surface": "library",
+            "record_id": "library-build-outcome-library"
+          },
+          {
+            "artifact_kind": "parWorkbook",
+            "registry_operation": "created_by",
+            "public_owner": "ArtifactBuilderRegistry:build(parWorkbook)",
+            "surface": "library",
+            "record_id": "library-build-par-workbook"
+          },
+          {
+            "artifact_kind": "stakeAdapter",
+            "registry_operation": "created_by",
+            "public_owner": "ArtifactBuilderRegistry:build(stakeAdapter)",
+            "surface": "library",
+            "record_id": "library-build-stake-adapter"
+          }
+        ],
         "operation_rows": [
+          "library-build-outcome-library",
+          "library-build-par-workbook",
+          "library-build-stake-adapter",
+          "library-write-canonical-outcomes",
           "managed-outcome-project-registry-reuse",
           "outcome-library-generation-checkpoint-resume",
           "package-preparation-marker-recovery",
@@ -4704,19 +5238,27 @@
         ],
         "planner_cells": [],
         "aliases": [
+          "canonicalOutcomeJsonl:write",
           "externalDeploymentArtifact:deploy",
           "managedOutcomeProjectsRegistry:reuse",
+          "outcomeLibrary:build",
           "outcomeLibraryGenerationCheckpoint:resume",
+          "parWorkbook:build",
           "preparationStateMarker:recover",
           "runtimeSession:export",
+          "stakeAdapter:build",
           "stakeImportReExportConfig:re-export",
           "studioProjectRegistryEntry:import",
           "studioSymbolArtworkPng:import"
         ],
         "operation_owners": [
+          "ArtifactBuilderRegistry:build(outcomeLibrary)",
+          "ArtifactBuilderRegistry:build(parWorkbook)",
+          "ArtifactBuilderRegistry:build(stakeAdapter)",
           "FileSessionRepository.save",
           "GamePackagePreparer.prepare",
           "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
+          "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
           "OutcomeLibraryCommand",
           "StakeEngineCommand",
           "StudioBlueprintService.importSymbolArtwork/save",
@@ -4758,8 +5300,12 @@
         ],
         "direct_library_callers": [
           "ArtifactBuilderRegistry",
+          "ArtifactBuilderRegistry:build(outcomeLibrary)",
+          "ArtifactBuilderRegistry:build(parWorkbook)",
+          "ArtifactBuilderRegistry:build(stakeAdapter)",
           "FileSessionRepository.save",
           "ManagedOutcomeProjectService.findCompatible",
+          "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
           "OutcomeLibraryCommand.prepareDescriptorBuildOperation",
           "StakeEngineCommand"
         ],
@@ -4767,6 +5313,10 @@
           "borrowed-output-cleanup",
           "cli-generation-cancellation-recovery",
           "descriptor-drift",
+          "library-build-outcome-library",
+          "library-build-par-workbook",
+          "library-build-stake-adapter",
+          "library-write-canonical-outcomes",
           "managed-outcome-project-registry-reuse",
           "managed-reuse-sampling-policy-incompatibility",
           "outcome-library-generation-checkpoint-resume",
