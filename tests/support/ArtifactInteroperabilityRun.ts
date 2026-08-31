@@ -132,6 +132,38 @@ export type Pc05PublicOwnerOperation = {
     readonly registryOperation: "created_by" | "recognized_by" | "runs_by" | "validates_by" | "reports_by" | "replays_by";
 };
 
+/**
+ * The capability registry complements the exact execution ledger.  A
+ * capability is never promoted to an executed operation merely because its
+ * owner is retained in PC-05: it either points at a runner-emitted canonical
+ * operation, explicitly reuses such an operation as a thin adapter, or
+ * records the remaining distinct boundary as unexercised.
+ */
+type Pc14CapabilityMatrixEntry = {
+    readonly capability_identity: string;
+    readonly artifact_kind: string;
+    readonly registry_operation: Pc05PublicOwnerOperation["registryOperation"];
+    readonly public_owner: string;
+    readonly disposition: "canonical-proof" | "adapter-proof" | "unreachable-or-legacy-diagnostic";
+    readonly canonical_proof?: {
+        readonly record_id: string;
+        readonly operation_owner: string;
+        readonly source_path: string;
+        readonly produced_path: string | null;
+        readonly observable_result: string;
+    };
+    readonly adapter_proof?: {
+        readonly canonical_capability_identity: string;
+        readonly canonical_public_owner: string;
+        readonly record_id: string;
+        readonly reason: string;
+    };
+    readonly diagnostic?: {
+        readonly code: "unreached-distinct-capability";
+        readonly recovery: string;
+    };
+};
+
 const INTERNAL_PC05_ARTIFACT_KINDS = new Set([
     "blueprintRuntimeMaterializationCache",
     "blueprintRuntimeMaterializationMarker",
@@ -675,6 +707,82 @@ export function mergeArtifactInteroperabilityRuns(
     }
     const extraTuple = [...executedTupleKeys].find((entry) => !requiredTupleKeys.has(entry));
     if (extraTuple !== undefined) throw new Error(`PC-14 emitted extra exact owner-operation evidence: ${extraTuple}.`);
+    const operationRows = runs.flatMap((run) => run.parsed.rows);
+    const canonicalProofFor = (required: Pc05PublicOwnerOperation): Pc14CapabilityMatrixEntry["canonical_proof"] | undefined => {
+        const record = operationRows.find((candidate) =>
+            recordArtifactKind(candidate) === required.artifactKind && recordOwner(candidate) === required.owner,
+        );
+        if (record === undefined) return undefined;
+        const sourcePath = (record as {readonly source_path?: unknown}).source_path;
+        const producedPath = (record as {readonly produced_path?: unknown}).produced_path;
+        if (!isRedactedArtifactPath(sourcePath) || (producedPath !== null && producedPath !== undefined && !isRedactedArtifactPath(producedPath))) {
+            throw new Error(`PC-14 runner emitted an invalid canonical capability proof for ${required.artifactKind}:${required.registryOperation}:${required.owner}.`);
+        }
+        const observation = recordObservations(record).find((candidate) => candidate.result.length > 0);
+        if (observation === undefined) {
+            throw new Error(`PC-14 runner emitted a canonical capability proof without an observation for ${required.artifactKind}:${required.registryOperation}:${required.owner}.`);
+        }
+        return {
+            "record_id": recordId(record),
+            "operation_owner": required.owner,
+            "source_path": sourcePath,
+            "produced_path": producedPath ?? null,
+            "observable_result": observation.result,
+        };
+    };
+    const directCapabilityProofs = new Map<string, NonNullable<Pc14CapabilityMatrixEntry["canonical_proof"]>>();
+    for (const required of requiredOwnerOperations) {
+        const proof = canonicalProofFor(required);
+        if (proof !== undefined) directCapabilityProofs.set(`${required.artifactKind}:${required.registryOperation}:${required.owner}`, proof);
+    }
+    const capabilityMatrix: readonly Pc14CapabilityMatrixEntry[] = requiredOwnerOperations.map((required) => {
+        const capabilityIdentity = JSON.stringify([required.artifactKind, required.registryOperation, required.owner]);
+        const tupleKey = `${required.artifactKind}:${required.registryOperation}:${required.owner}`;
+        const canonicalProof = directCapabilityProofs.get(tupleKey);
+        if (canonicalProof !== undefined) {
+            return {
+                "capability_identity": capabilityIdentity,
+                "artifact_kind": required.artifactKind,
+                "registry_operation": required.registryOperation,
+                "public_owner": required.owner,
+                disposition: "canonical-proof",
+                "canonical_proof": canonicalProof,
+            };
+        }
+        const adapter = requiredOwnerOperations.find((candidate) =>
+            candidate.artifactKind === required.artifactKind &&
+            candidate.registryOperation === required.registryOperation &&
+            candidate.owner !== required.owner &&
+            directCapabilityProofs.has(`${candidate.artifactKind}:${candidate.registryOperation}:${candidate.owner}`),
+        );
+        if (adapter !== undefined) {
+            const adapterProof = directCapabilityProofs.get(`${adapter.artifactKind}:${adapter.registryOperation}:${adapter.owner}`)!;
+            return {
+                "capability_identity": capabilityIdentity,
+                "artifact_kind": required.artifactKind,
+                "registry_operation": required.registryOperation,
+                "public_owner": required.owner,
+                disposition: "adapter-proof",
+                "adapter_proof": {
+                    "canonical_capability_identity": JSON.stringify([adapter.artifactKind, adapter.registryOperation, adapter.owner]),
+                    "canonical_public_owner": adapter.owner,
+                    "record_id": adapterProof.record_id,
+                    reason: "The retained owner is an adapter/alias for this artifact operation; this references the canonical runner-emitted domain proof and is not an execution claim for the adapter.",
+                },
+            };
+        }
+        return {
+            "capability_identity": capabilityIdentity,
+            "artifact_kind": required.artifactKind,
+            "registry_operation": required.registryOperation,
+            "public_owner": required.owner,
+            disposition: "unreachable-or-legacy-diagnostic",
+            diagnostic: {
+                code: "unreached-distinct-capability",
+                recovery: `Exercise ${required.owner} as a distinct ${required.registryOperation} capability for ${required.artifactKind}; until then this retained legacy/unreachable boundary is not an execution claim.`,
+            },
+        };
+    });
     const registryCoverage = registry.artifact_kinds.map((artifact) => {
         const internalOnly = INTERNAL_PC05_ARTIFACT_KINDS.has(artifact.id);
         const completedOperations = exactOwnerOperationExecutions.filter((entry) => entry.artifact_kind === artifact.id);
@@ -693,7 +801,7 @@ export function mergeArtifactInteroperabilityRuns(
         };
     });
     fs.writeFileSync(outputPath, `${JSON.stringify({
-        "schema_version": 3,
+        "schema_version": 4,
         "step_id": "PC-14",
         "generated_by": "ArtifactInteroperabilityRun.mergeArtifactInteroperabilityRuns",
         "result_contract": {
@@ -716,6 +824,10 @@ export function mergeArtifactInteroperabilityRuns(
         // artifact/registry-operation/owner/surface tuple plus the observed
         // source, output-or-diagnostic, and concrete public result.
         "exact_owner_operation_coverage": exactOwnerOperationExecutions,
+        // Complete retained-owner capability inventory. Unlike the exact
+        // execution ledger above, adapter and diagnostic entries intentionally
+        // do not claim their own public operation ran.
+        "capability_matrix": capabilityMatrix,
         "systemic_class_audits": [
             {class: "shared conversion diagnostic parity", "derived_from": classify("shared-conversion-diagnostic-parity")},
             {class: "provenance and freshness binding", "derived_from": classify("provenance-and-freshness-binding")},

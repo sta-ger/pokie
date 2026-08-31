@@ -53,6 +53,27 @@ type InteroperabilityResult = {
         readonly produced_path: string | null;
         readonly observable_result: string;
     }[];
+    readonly capability_matrix: readonly {
+        readonly capability_identity: string;
+        readonly artifact_kind: string;
+        readonly registry_operation: "created_by" | "recognized_by" | "runs_by" | "validates_by" | "reports_by" | "replays_by";
+        readonly public_owner: string;
+        readonly disposition: "canonical-proof" | "adapter-proof" | "unreachable-or-legacy-diagnostic";
+        readonly canonical_proof?: {
+            readonly record_id: string;
+            readonly operation_owner: string;
+            readonly source_path: string;
+            readonly produced_path: string | null;
+            readonly observable_result: string;
+        };
+        readonly adapter_proof?: {
+            readonly canonical_capability_identity: string;
+            readonly canonical_public_owner: string;
+            readonly record_id: string;
+            readonly reason: string;
+        };
+        readonly diagnostic?: {readonly code: string; readonly recovery: string};
+    }[];
     readonly planner_cells?: readonly {
         readonly source_path: string;
         readonly source_identity: string;
@@ -96,7 +117,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
     const result = JSON.parse(fs.readFileSync(evidencePath, "utf-8")) as InteroperabilityResult;
 
     it("retains only records emitted by the real CLI and Studio runners", () => {
-        expect(result).toMatchObject({"schema_version": 3, "step_id": "PC-14", "generated_by": "ArtifactInteroperabilityRun.mergeArtifactInteroperabilityRuns"});
+        expect(result).toMatchObject({"schema_version": 4, "step_id": "PC-14", "generated_by": "ArtifactInteroperabilityRun.mergeArtifactInteroperabilityRuns"});
         expect(result.runner_inputs).toEqual([
             expect.objectContaining({file: "cli-real-artifact-result.json", sha256: expect.stringMatching(/^sha256:/), rows: expect.any(Number), scenarios: expect.any(Number)}),
             expect.objectContaining({file: "studio-real-artifact-result.json", sha256: expect.stringMatching(/^sha256:/), rows: expect.any(Number), scenarios: expect.any(Number)}),
@@ -360,6 +381,63 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         // Regression guard: this must remain the registry-sized matrix, not
         // the smaller set that happened to have been emitted by one runner.
         expect(required.length).toBeGreaterThan(200);
+    });
+
+    it("maps every retained owner capability to an honest canonical, adapter, or diagnostic case", () => {
+        const required = pc05PublicOwnerOperations(JSON.parse(fs.readFileSync(
+            path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json"), "utf-8",
+        )) as Parameters<typeof pc05PublicOwnerOperations>[0]);
+        const expected = required.map((entry) => JSON.stringify([
+            entry.artifactKind, entry.registryOperation, entry.owner,
+        ])).sort();
+        const actual = result.capability_matrix.map((entry) => entry.capability_identity).sort();
+        expect(actual).toEqual(expected);
+        expect(new Set(actual).size).toBe(actual.length);
+
+        const canonicalByIdentity = new Map(result.capability_matrix
+            .filter((entry) => entry.disposition === "canonical-proof")
+            .map((entry) => [entry.capability_identity, entry]));
+        for (const entry of result.capability_matrix) {
+            expect(entry.capability_identity).toBe(JSON.stringify([
+                entry.artifact_kind, entry.registry_operation, entry.public_owner,
+            ]));
+            switch (entry.disposition) {
+                case "canonical-proof": {
+                    expect(entry.canonical_proof).toMatchObject({
+                        "operation_owner": entry.public_owner,
+                        "record_id": expect.any(String),
+                        "source_path": expect.stringMatching(/^run-artifacts\//),
+                        "observable_result": expect.any(String),
+                    });
+                    expect(entry.adapter_proof).toBeUndefined();
+                    expect(entry.diagnostic).toBeUndefined();
+                    const record = result.rows.find((candidate) => candidate.id === entry.canonical_proof?.record_id);
+                    expect(record?.operation_owner).toBe(entry.public_owner);
+                    expect(record?.source_path).toBe(entry.canonical_proof?.source_path);
+                    break;
+                }
+                case "adapter-proof": {
+                    expect(entry.canonical_proof).toBeUndefined();
+                    expect(entry.diagnostic).toBeUndefined();
+                    expect(entry.adapter_proof?.reason).toMatch(/not an execution claim/);
+                    const canonical = canonicalByIdentity.get(entry.adapter_proof!.canonical_capability_identity);
+                    expect(canonical?.public_owner).toBe(entry.adapter_proof?.canonical_public_owner);
+                    expect(canonical?.canonical_proof?.record_id).toBe(entry.adapter_proof?.record_id);
+                    break;
+                }
+                case "unreachable-or-legacy-diagnostic":
+                    expect(entry.canonical_proof).toBeUndefined();
+                    expect(entry.adapter_proof).toBeUndefined();
+                    expect(entry.diagnostic).toEqual({
+                        code: "unreached-distinct-capability",
+                        recovery: expect.stringMatching(/not an execution claim/),
+                    });
+                    break;
+            }
+        }
+        expect(result.capability_matrix.some((entry) => entry.disposition === "canonical-proof")).toBe(true);
+        expect(result.capability_matrix.some((entry) => entry.disposition === "adapter-proof")).toBe(true);
+        expect(result.capability_matrix.some((entry) => entry.disposition === "unreachable-or-legacy-diagnostic")).toBe(true);
     });
 
     it("derives an exact path-aware tuple from every runner-emitted registry operation", () => {

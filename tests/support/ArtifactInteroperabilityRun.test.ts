@@ -68,6 +68,14 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
 
         const output = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
             readonly exact_owner_operation_coverage: readonly ExactTuple[];
+            readonly capability_matrix: readonly {
+                readonly capability_identity: string;
+                readonly disposition: string;
+                readonly adapter_proof?: {
+                    readonly canonical_capability_identity: string;
+                    readonly record_id: string;
+                };
+            }[];
         };
         expect(output.exact_owner_operation_coverage).toHaveLength(3);
         expect(output.exact_owner_operation_coverage).toEqual(expect.arrayContaining([
@@ -106,6 +114,20 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
             }),
         ]));
         expect(output.exact_owner_operation_coverage.some((entry) => entry.public_owner === "GameBlueprintValidator")).toBe(false);
+        const createCapability = output.capability_matrix.find((entry) =>
+            entry.capability_identity === JSON.stringify(["blueprint", "created_by", "cli:create"]),
+        );
+        expect(createCapability?.disposition).toBe("canonical-proof");
+        const createAdapter = output.capability_matrix.find((entry) =>
+            entry.capability_identity === JSON.stringify(["blueprint", "created_by", "cli:create --out"]),
+        );
+        expect(createAdapter).toMatchObject({
+            disposition: "adapter-proof",
+            "adapter_proof": {
+                "canonical_capability_identity": JSON.stringify(["blueprint", "created_by", "cli:create"]),
+                "record_id": "cli-create-blueprint",
+            },
+        });
     });
 
     it("requires a registry operation row to retain its owner's actual surface observation", () => {
