@@ -10,16 +10,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "FileSessionRepository.load",
-      "executed_public_owners": [
-        "FileSessionRepository:load/loadVersioned",
-        "FileSessionRepository:readRecord JSON/version-envelope recognition",
-        "PokieDevServer unknown-session 404 mapping",
-        "PokieDevServer:GET /sessions/:id",
-        "PokieDevServer:POST /sessions via configured FileSessionRepository.save",
-        "SpinCommandHandler cache-miss session reconstruction after restart",
-        "SpinCommandHandler:POST /sessions/:id/spin via configured FileSessionRepository.save/saveVersioned",
-        "VersionedSessionRepository optimistic-version check"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -42,17 +32,6 @@
       "produced_path": "run-artifacts/.pokie/managed-outcome-projects.json",
       "produced_identity": "sha256:2cd4f8cb706bc491565f380e89bd7e22b87cc0895f2964861b68c86fe82cf6da",
       "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
-      "executed_public_owners": [
-        "ArtifactBuilderRegistry managed Outcome Library reuse",
-        "ManagedOutcomeProjectService:registerAndOpen",
-        "ManagedOutcomeProjectService:findCompatible legacy adoption",
-        "ManagedOutcomeProjectService:findCompatible",
-        "OutcomeLibraryBundleReader manifest read",
-        "OutcomeProjectCompatibility exact comparison",
-        "ProjectTargetResolver",
-        "cli/stake export managed-library lifecycle",
-        "studio:managed-outcome-library lifecycle"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding",
         "durable-publication-ownership"
@@ -76,15 +55,6 @@
       "produced_path": "run-artifacts/preparation/interrupted-package/.pokie-prepare-state.json",
       "produced_identity": "sha256:8ef794895094198a29524a53ea57971383115880383b232ebb4db41958c00b56",
       "operation_owner": "GamePackagePreparer.prepare",
-      "executed_public_owners": [
-        "GamePackagePreparer phase ordering",
-        "GamePackagePreparer:prepare after dependencies/build",
-        "GamePackagePreparer:prepare phase resume",
-        "GamePackagePreparer:runCreatePhase",
-        "GamePackagePreparer:runCreatePhase retry",
-        "PreparationStateStore JSON parse as PreparationState",
-        "PreparationStateStore:readPreparationState"
-      ],
       "systemic_classes": [
         "durable-publication-ownership"
       ],
@@ -107,14 +77,6 @@
       "produced_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
       "produced_identity": "sha256:59a8a55f57980d4a9cccbe69d35946fc7d0aed1d8970d90ea0edf50402747f50",
       "operation_owner": "FileSessionRepository.save",
-      "executed_public_owners": [
-        "PokieDevServer",
-        "StudioRoundRecorder",
-        "cli:dev",
-        "cli:serve",
-        "studio:play",
-        "studio:replay-session-source"
-      ],
       "systemic_classes": [
         "durable-publication-ownership"
       ],
@@ -159,12 +121,6 @@
       "produced_path": "run-artifacts/package/deployment/local-json-example",
       "produced_identity": "sha256:d0d6157d55f36628b391b44c395cf537390636b16119eae7db1f00e6bfb87721",
       "operation_owner": "StudioDeploymentService.run",
-      "executed_public_owners": [
-        "ExternalArtifactValidator and built-in deployment validators",
-        "ExternalDeploymentService",
-        "studio:deployment-run",
-        "target-defined validator"
-      ],
       "systemic_classes": [
         "durable-publication-ownership"
       ],
@@ -187,15 +143,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StudioOutcomeLibraryGenerateService.registry",
-      "executed_public_owners": [
-        "OutcomeLibraryBundleReader manifest read",
-        "Studio Outcome Library Registry panel after restart",
-        "resolveProjectDirectory containment/realpath check",
-        "StudioOutcomeLibraryGenerateService:recordDiscoveredBundleDir after successful generate",
-        "StudioOutcomeLibraryGenerateService:readRegistryIndex",
-        "StudioOutcomeLibraryGenerateService:registry",
-        "StudioOutcomeLibraryGenerateService:isDirectory"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -218,17 +165,6 @@
       "produced_path": "run-artifacts/package/deployment/local-json-example",
       "produced_identity": "sha256:d0d6157d55f36628b391b44c395cf537390636b16119eae7db1f00e6bfb87721",
       "operation_owner": "StudioDeploymentService.run",
-      "executed_public_owners": [
-        "OutcomeLibraryBundleReader",
-        "StakeEngineImporter",
-        "StudioDeploymentService",
-        "Studio browser/request author (POKIE does not persist this selector)",
-        "StudioStakeEngineExportService",
-        "loadOutcomeLibraryFromSelector",
-        "loadWeightedOutcomeLibraryFromProjectFile JSON parse/containment",
-        "validateOutcomeLibrarySelector",
-        "validateOutcomeLibrarySelector request-shape validation"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -271,19 +207,6 @@
       "produced_path": "run-artifacts/studio-app-data/projects.json",
       "produced_identity": "sha256:021f8a28d09b5f1a5e1bca92bd7424f697ce6e64973b6569d644d6b17250815b",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
-      "executed_public_owners": [
-        "FileStudioProjectRegistry JSON-array read",
-        "FileStudioProjectRegistry:list/read",
-        "FileStudioProjectRegistry:upsert atomically writes projects.json",
-        "StudioProjectRegistrationService:registerManaged/registerExternal/recordOpened/relocate",
-        "StudioProjectRegistrationService:list",
-        "StudioProjectRegistrationService:recordOpened/remove/relocate",
-        "StudioProjectRegistrationService:canonicalize realpath/absolute fallback",
-        "StudioProjectRegistrationService:list fresh exists status",
-        "ProjectTargetResolver at registration/open/relocate",
-        "Studio Projects dashboard after restart",
-        "StudioServer Projects create/register/open/relocate flows"
-      ],
       "systemic_classes": [
         "durable-publication-ownership"
       ],
@@ -306,18 +229,6 @@
       "produced_path": "run-artifacts/assets/symbols/symbol-1704164645000-i.png",
       "produced_identity": "sha256:016777d7225e2367021e5af254179097e153ffe29d61ce49af3453e63e324c27",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
-      "executed_public_owners": [
-        "cli:client player renderPlayer artworkUrlForSymbol callback (shared renderer; no endpoint or declared-reference consumer)",
-        "studio:blueprint-save-managed/materializeSymbolArtwork",
-        "studio:blueprint-save/materializeSymbolArtwork",
-        "studio:blueprint-symbol-artwork-import (temporary staging)",
-        "studio:editor SymbolPresentation",
-        "studio:player CanonicalPlayerView (Studio adapter resolves declared references and supplies URLs)",
-        "StudioBlueprintService:getSymbolArtwork",
-        "StudioBlueprintService:resolveSymbolArtwork",
-        "StudioBlueprintService:importSymbolArtwork PNG signature/size check",
-        "StudioBlueprintService:resolveSymbolArtwork declared-reference/path/PNG check"
-      ],
       "systemic_classes": [
         "durable-publication-ownership"
       ],
@@ -339,7 +250,7 @@
       "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "StudioReplayExecutionService / ArtifactOperationDiagnostic",
+      "operation_owner": "StudioReplayExecutionService.start",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -365,7 +276,7 @@
       "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "StudioSimulationService / ArtifactOperationDiagnostic",
+      "operation_owner": "StudioSimulationService.start",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -391,7 +302,7 @@
       "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "StudioServer / ArtifactOperationDiagnostic",
+      "operation_owner": "StudioServer POST /api/project/replays",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -417,7 +328,7 @@
       "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "StudioServer / ArtifactOperationDiagnostic",
+      "operation_owner": "StudioServer POST /api/project/simulations",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],

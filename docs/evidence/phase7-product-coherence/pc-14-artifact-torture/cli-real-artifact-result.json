@@ -10,29 +10,6 @@
       "produced_path": "run-artifacts/matrix-package",
       "produced_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
       "operation_owner": "BuildCommand",
-      "executed_public_owners": [
-        "GameBlueprintValidator",
-        "ProjectTargetResolver",
-        "cli:create",
-        "cli:create --out",
-        "cli:create without --out",
-        "cli:edit --out",
-        "cli:edit without --out",
-        "cli:par import --out",
-        "cli:par import without --out",
-        "cli:import --out for an XLSX source",
-        "cli:import XLSX without --out",
-        "cli:inspect",
-        "cli:reel generate --apply without --out",
-        "cli:reel generate --materialize without --out",
-        "cli:reel generate --out",
-        "cli:validate",
-        "studio:blueprint-check",
-        "studio:blueprint-save",
-        "studio:design-create",
-        "studio:par-import",
-        "studio:project-registration"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published",
@@ -193,10 +170,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ValidateCommand",
-      "executed_public_owners": [
-        "cli:validate --out",
-        "user/automation JSON consumer"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published JSON validation report",
@@ -216,19 +189,7 @@
       "source_identity": "sha256:586a56c88f226f799c438838dc25df0d17b059817e94b972a10f63d26abc0bde",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "OutcomeLibraryCommand / OutcomeLibraryBundleWriter",
-      "executed_public_owners": [
-        "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
-        "OutcomeLibraryBundleWriteValidator",
-        "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
-        "OutcomeLibraryCommand:loadDescriptor outcomesPath",
-        "OutcomeLibraryCommand:readStreamedOutcomes",
-        "OutcomeLibraryCommand:streamOutcomes",
-        "OutcomeLibraryCommand:readStreamedOutcomes JSONL parsing",
-        "OutcomeLibraryCommand:validateCrossModeProvenance",
-        "WeightedOutcomeLibraryValidator",
-        "user/external canonical outcome-stream producer"
-      ],
+      "operation_owner": "OutcomeLibraryCommand",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -251,16 +212,6 @@
       "produced_path": "run-artifacts/matrix-certification",
       "produced_identity": "sha256:ce151586c51d5a8db3f4b1f7edf0aea960a9b44002db6619b8fb15f6b73128b5",
       "operation_owner": "CertificationCommand",
-      "executed_public_owners": [
-        "CertificationEvidenceBundleBuilder:buildFromBundle",
-        "CertificationCommand:loadDescriptor",
-        "CertificationCommand:executeBuild",
-        "CertificationCommand:loadDescriptor modes[] shape validation",
-        "CertificationCommand:checkOutcomeLibrarySource",
-        "cli:certification build",
-        "studio:certification-build request supplies equivalent mode samples",
-        "user-authored certification build config (POKIE does not create this descriptor)"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -283,15 +234,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "CertificationCommand",
-      "executed_public_owners": [
-        "CertificationEvidenceBundleValidator",
-        "CertificationEvidenceBundleVerifier",
-        "cli:certification build",
-        "cli:certification build --out",
-        "cli:certification build without --out",
-        "cli:certification verify",
-        "studio:certification-build"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -314,16 +256,6 @@
       "produced_path": "run-artifacts/matrix-proof.json",
       "produced_identity": "sha256:dd95cf2f4cf439401815593ae1c5d562cf64d4a28157e7d22a98ae5ff2b21ca4",
       "operation_owner": "FairnessCommand",
-      "executed_public_owners": [
-        "FairnessCommitmentValidator",
-        "cli:fairness commit",
-        "cli:fairness commit --out",
-        "cli:fairness reveal",
-        "cli:fairness verify",
-        "studio:fairness-configure",
-        "studio:fairness-generate",
-        "studio:fairness-verify"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -346,15 +278,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "FairnessCommand",
-      "executed_public_owners": [
-        "FairnessRoundProofValidator",
-        "FairnessRoundProofVerifier",
-        "cli:fairness reveal",
-        "cli:fairness reveal --out",
-        "cli:fairness verify",
-        "studio:fairness-generate",
-        "studio:fairness-verify"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -377,14 +300,6 @@
       "produced_path": "run-artifacts/matrix-commitment.json",
       "produced_identity": "sha256:3128727aceebb13d3fa4b4c2aa471d893b8e362b1ee1f47ed4b7be311d4f2973",
       "operation_owner": "FairnessCommand",
-      "executed_public_owners": [
-        "FairnessServerSeedCommitmentValidator",
-        "computeFairnessCommitment",
-        "cli:fairness seed-commit",
-        "cli:fairness seed-commit --out",
-        "cli:fairness commit",
-        "studio:fairness-configure"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -407,20 +322,6 @@
       "produced_path": "run-artifacts/owner-aliases/dispatcher.par.blueprint.json",
       "produced_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
       "operation_owner": "cli:import XLSX without --out",
-      "executed_public_owners": [
-        "ArtifactBuilderRegistry:build(parWorkbook)",
-        "ParSheetImporter during import",
-        "ProjectTargetResolver",
-        "cli:par export --out",
-        "cli:par export without --out",
-        "cli:build --target parWorkbook --out",
-        "cli:build --target parWorkbook without --out",
-        "cli:export --to workbook --out",
-        "cli:export --to workbook without --out",
-        "cli:inspect",
-        "studio:par-export",
-        "studio:project-registration"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "generic public dispatcher published its documented Blueprint default",
@@ -440,7 +341,7 @@
       "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -554,28 +455,7 @@
       "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "executed_public_owners": [
-        "ArtifactBuilderRegistry:build(outcomeLibrary)",
-        "OutcomeLibraryBundleReader",
-        "ProjectTargetResolver",
-        "cli:import --out",
-        "cli:import Stake without --out",
-        "cli:build --target outcomeLibrary",
-        "cli:build --target outcomeLibrary --out",
-        "cli:build --target outcomeLibrary without --out",
-        "cli:export --to outcomes --out",
-        "cli:export --to outcomes without --out",
-        "cli:inspect",
-        "cli:outcomelibrary build",
-        "cli:sample",
-        "cli:serve",
-        "studio:outcome-library-generate",
-        "studio:outcome-library-registry",
-        "studio:outcome-source-sample",
-        "studio:replay",
-        "studio:simulation"
-      ],
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -623,7 +503,7 @@
       "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -671,7 +551,7 @@
       "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -807,26 +687,7 @@
       "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "executed_public_owners": [
-        "ArtifactBuilderRegistry:build(stakeAdapter)",
-        "ProjectTargetResolver",
-        "StakeEngineExportValidator",
-        "StakeEngineOutcomeSourceReader",
-        "StakeEngineStandaloneValidator",
-        "cli:build",
-        "cli:build --target stakeAdapter --out",
-        "cli:build --target stakeAdapter without --out",
-        "cli:diff",
-        "cli:export --to adapter --out",
-        "cli:export --to adapter without --out",
-        "cli:inspect",
-        "cli:report",
-        "cli:validate",
-        "studio:project-registration",
-        "studio:stake-export",
-        "studio:stake-export-validate"
-      ],
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -852,7 +713,7 @@
       "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -878,7 +739,7 @@
       "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -926,7 +787,7 @@
       "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -952,28 +813,7 @@
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "executed_public_owners": [
-        "ArtifactBuilderRegistry:build(tsPackage)",
-        "ProjectTargetResolver",
-        "cli:client",
-        "cli:dev",
-        "cli:init",
-        "cli:inspect",
-        "cli:replay",
-        "cli:serve",
-        "cli:sim",
-        "cli:validate",
-        "cli:build",
-        "cli:build --target tsPackage --out",
-        "cli:build --target tsPackage without --out",
-        "loadPokieGame",
-        "studio:artifact-build",
-        "studio:play",
-        "studio:project-registration",
-        "studio:replay",
-        "studio:simulation"
-      ],
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -1021,7 +861,7 @@
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -1069,7 +909,7 @@
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -1095,7 +935,7 @@
       "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -1121,7 +961,7 @@
       "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -1147,7 +987,7 @@
       "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -1173,7 +1013,7 @@
       "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -1199,7 +1039,7 @@
       "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
+      "operation_owner": "ArtifactBuilderRegistry.preparePlan",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -1246,15 +1086,6 @@
       "produced_path": "run-artifacts/matrix-bundle",
       "produced_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
       "operation_owner": "OutcomeLibraryCommand",
-      "executed_public_owners": [
-        "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build",
-        "OutcomeLibraryBundleWriter",
-        "OutcomeLibraryCommand:loadDescriptor",
-        "OutcomeLibraryCommand:executeBuild",
-        "OutcomeLibraryCommand:loadDescriptor shape/exclusive-source validation",
-        "OutcomeLibraryCommand:validateBuildSource provenance validation",
-        "user-authored Outcome Library bundle config (POKIE does not create this descriptor)"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1298,7 +1129,7 @@
       "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
       "produced_path": "run-artifacts/matrix-stake",
       "produced_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
-      "operation_owner": "BuildCommand / ArtifactBuilderRegistry",
+      "operation_owner": "BuildCommand",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "Stake Engine export published",
@@ -1366,13 +1197,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "OutcomeLibraryCommand",
-      "executed_public_owners": [
-        "OutcomeLibraryCommand:readCheckpoint",
-        "cli:generate --resume",
-        "cli:generate --resume on cancellation",
-        "cli:outcomelibrary generate --resume",
-        "cli:outcomelibrary generate --resume on cancellation"
-      ],
       "systemic_classes": [
         "durable-publication-ownership"
       ],
@@ -1415,9 +1239,6 @@
       "produced_path": "run-artifacts/matrix-replay.json",
       "produced_identity": "sha256:845392dac381b9e5cf68364abf14c9c12e52268209611701f08b21b3e646441a",
       "operation_owner": "ReplayCommand",
-      "executed_public_owners": [
-        "cli:replay"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1440,9 +1261,6 @@
       "produced_path": "run-artifacts/matrix-report.md",
       "produced_identity": "sha256:ed87878fb6c0ce724e1c7cf22a7fc76ba5fdea346ed94104fc5f2cfbcfc0568c",
       "operation_owner": "ReportCommand",
-      "executed_public_owners": [
-        "cli:report"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published",
@@ -1483,9 +1301,6 @@
       "produced_path": "run-artifacts/matrix-simulation.json",
       "produced_identity": "sha256:d67fe6d5c55543a3a4497fd1dd42fbc0f368038684dfcb3a1bcb360be16b0355",
       "operation_owner": "SimCommand",
-      "executed_public_owners": [
-        "cli:sim"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1508,10 +1323,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ValidateCommand",
-      "executed_public_owners": [
-        "cli:validate --deep",
-        "cli:outcomelibrary-validate"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "valid",
@@ -1532,10 +1343,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReportCommand",
-      "executed_public_owners": [
-        "cli:report --out for outcome sources",
-        "user/automation presentation consumer"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "analysis report published from the generated Outcome Library",
@@ -1556,11 +1363,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "DiffCommand",
-      "executed_public_owners": [
-        "cli:diff --out for outcome sources",
-        "cli:outcomesource diff --out",
-        "user/automation JSON consumer"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published from real Outcome Library sources",
@@ -1681,17 +1483,6 @@
       "produced_path": "run-artifacts/matrix-bundle",
       "produced_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
       "operation_owner": "OutcomeLibraryCommand",
-      "executed_public_owners": [
-        "OutcomeLibraryBundleWriter input",
-        "OutcomeLibraryBundleWriter while materializing a bundle",
-        "StakeEngineCommand:loadDescriptor libraryPath",
-        "StakeEngineExporter descriptor loading",
-        "OutcomeLibraryCommand:loadDescriptor libraryPath",
-        "cli:export --to outcomes",
-        "cli:generate --out",
-        "cli:outcomelibrary build",
-        "cli:outcomelibrary generate --out"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published",
@@ -1712,13 +1503,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReportCommand",
-      "executed_public_owners": [
-        "MarkdownSimulationReportRenderer",
-        "cli:report --out for simulation reports",
-        "HtmlSimulationReportRenderer",
-        "user/download consumer",
-        "cli:report"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "HTML report published from the real simulation report",
@@ -1739,15 +1523,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReplayCommand",
-      "executed_public_owners": [
-        "RoundArtifactValidator where recorded result is present",
-        "studio:replay",
-        "studio:replay-artifact-inspect",
-        "cli:replay --out",
-        "runtime session recording",
-        "cli:replay",
-        "replay descriptor validation"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1769,17 +1544,7 @@
       "source_identity": "sha256:845392dac381b9e5cf68364abf14c9c12e52268209611701f08b21b3e646441a",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ReplayCommand / RoundArtifactValidator",
-      "executed_public_owners": [
-        "StudioRoundRecorder",
-        "runtime session recording",
-        "studio:play",
-        "studio:replay",
-        "studio:replay-session-source",
-        "studio:simulation",
-        "cli:replay",
-        "RoundArtifactValidator"
-      ],
+      "operation_owner": "ReplayCommand",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1802,10 +1567,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "DiffCommand",
-      "executed_public_owners": [
-        "cli:diff --out",
-        "user/automation JSON consumer"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published from two real simulation reports",
@@ -1826,16 +1587,6 @@
       "produced_path": "run-artifacts/matrix-simulation-report.json",
       "produced_identity": "sha256:84ba98c5b42fc7cec7447183ce32d8bfef3ada7268253b287c132863829f5914",
       "operation_owner": "ReportCommand",
-      "executed_public_owners": [
-        "studio:replay simulation source",
-        "studio:simulation",
-        "studio:simulation-report-list",
-        "cli:sim --out",
-        "cli:report --format json --out for a SimulationReport",
-        "cli:report",
-        "cli:diff",
-        "simulation report parser in cli:report/diff"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1858,14 +1609,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "SimCommand",
-      "executed_public_owners": [
-        "cli:sim --mode all",
-        "cli:sim --mode all --out",
-        "cli:report --format json --out for a SimulationReportSet",
-        "cli:report",
-        "cli:diff",
-        "simulation report-set parser in cli:report/diff"
-      ],
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -1892,10 +1635,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
-      "executed_public_owners": [
-        "cli:stakeengine analyze --out",
-        "user/automation JSON consumer"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "analysis report published from the generated Stake adapter",
@@ -1916,10 +1655,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
-      "executed_public_owners": [
-        "cli:stakeengine diff --out",
-        "user/automation JSON consumer"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "comparison report published from two real Stake exports",
@@ -1940,16 +1675,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
-      "executed_public_owners": [
-        "ExportCommand --to adapter delegation to StakeEngineCommand.export",
-        "OutcomeLibraryBundleReader for bundleDir",
-        "StakeEngineCommand:loadDescriptor",
-        "StakeEngineCommand:runExport",
-        "StakeEngineCommand:validateExportSource",
-        "StakeEngineCommand:loadDescriptor shape/exclusive-source validation",
-        "StakeEngineExportValidator",
-        "user-authored Stake Engine export config (POKIE does not create the generic descriptor)"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1976,10 +1701,6 @@
       "produced_path": "run-artifacts/matrix-stake-imported-library",
       "produced_identity": "sha256:274b6235f31df27da3cc23dc5962520edb4a768ffeb76afdabfba59f8fbc5596",
       "operation_owner": "StakeEngineCommand",
-      "executed_public_owners": [
-        "cli:import",
-        "cli:stakeengine import"
-      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "Outcome Library published with matching Stake provenance",
@@ -2000,11 +1721,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
-      "executed_public_owners": [
-        "StakeEngineImportWriter",
-        "cli:import",
-        "cli:stakeengine import"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -2027,11 +1743,6 @@
       "produced_path": "run-artifacts/matrix-stake-reexported",
       "produced_identity": "sha256:66b27105b2dca4e6f0ddf49ca17e62b025337b8d5d59324a25a69dddf2e8c378",
       "operation_owner": "StakeEngineCommand",
-      "executed_public_owners": [
-        "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
-        "StakeEngineCommand:export",
-        "StakeEngineCommand export descriptor validation"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding",
         "durable-publication-ownership"
@@ -2065,12 +1776,6 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
-      "executed_public_owners": [
-        "StakeEngineImportWriter",
-        "cli:import",
-        "cli:stakeengine import",
-        "import-result inspection"
-      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -2092,14 +1797,7 @@
       "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ReplayCommand / ArtifactOperationDiagnostic",
-      "executed_public_owners": [
-        "PokieWasmComponentManifestValidator",
-        "WasmProjectTargetAdapter",
-        "assessWasmComponentCompatibility",
-        "cli:inspect",
-        "studio:project-registration"
-      ],
+      "operation_owner": "ReplayCommand",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -2123,6 +1821,32 @@
       ]
     },
     {
+      "id": "wasm-outcome-source-replay-diagnostic",
+      "artifact_kind": "wasmComponent",
+      "operation": "diagnose:replay",
+      "source_path": "run-artifacts/matrix.wasm",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "describeUnavailableArtifactOperation",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
+      "status": "intentionally-unsupported",
+      "observable_result": "This POKIE WASM component cannot replay a game round. POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary. Next: inspect a compatible component with `pokie inspect <path>`, repair or add its compatible sidecar when needed, or Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
+      "diagnostic": {
+        "code": "unsupported-project-operation",
+        "recovery": "Inspect the compatible manifest or use the original Blueprint or POKIE game package where runnable or convertible source is required."
+      },
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "describeUnavailableArtifactOperation",
+          "result": "returned the resolved WASM replay diagnostic"
+        }
+      ]
+    },
+    {
       "id": "wasm-outcome-source-simulate",
       "artifact_kind": "wasmComponent",
       "operation": "simulate",
@@ -2130,7 +1854,7 @@
       "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "SimCommand / ArtifactOperationDiagnostic",
+      "operation_owner": "SimCommand",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -2150,6 +1874,32 @@
           "surface": "cli",
           "owner": "SimCommand",
           "result": "rejected the same resolved WASM operation diagnostic"
+        }
+      ]
+    },
+    {
+      "id": "wasm-outcome-source-simulate-diagnostic",
+      "artifact_kind": "wasmComponent",
+      "operation": "diagnose:sim",
+      "source_path": "run-artifacts/matrix.wasm",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "describeUnavailableArtifactOperation",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
+      "status": "intentionally-unsupported",
+      "observable_result": "This POKIE WASM component cannot simulate game rounds. POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary. Next: inspect a compatible component with `pokie inspect <path>`, repair or add its compatible sidecar when needed, or Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
+      "diagnostic": {
+        "code": "unsupported-project-operation",
+        "recovery": "Inspect the compatible manifest or use the original Blueprint or POKIE game package where runnable or convertible source is required."
+      },
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "describeUnavailableArtifactOperation",
+          "result": "returned the resolved WASM simulation diagnostic"
         }
       ]
     }

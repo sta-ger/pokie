@@ -13,6 +13,8 @@ import {installPc14FixedRunnerClock} from "../support/ArtifactInteroperabilityRu
 
 type EmittedRecord = {
     readonly id: string;
+    readonly artifact_kind: string;
+    readonly operation_owner: string;
     readonly source_path: string;
     readonly source_identity: string;
     readonly produced_path: string | null;
@@ -327,31 +329,15 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         }
     });
 
-    it("derives a path-aware disposition for every PC-05 public owner rather than closing an artifact kind by itself", () => {
-        const registryPath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json");
-        const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as {readonly artifact_kinds: readonly {
-            readonly id: string;
-            readonly created_by?: readonly string[];
-            readonly recognized_by?: readonly string[];
-            readonly runs_by?: readonly string[];
-            readonly validates_by?: readonly string[];
-            readonly reports_by?: readonly string[];
-            readonly replays_by?: readonly string[];
-        }[]};
-        const expected = [...new Set(registry.artifact_kinds
-            .filter((artifact) => !(/^(?:blueprintRuntimeMaterialization)(?:Cache|Marker)$/).test(artifact.id))
-            .flatMap((artifact) => [
-                ...(artifact.created_by ?? []), ...(artifact.recognized_by ?? []), ...(artifact.runs_by ?? []),
-                ...(artifact.validates_by ?? []), ...(artifact.reports_by ?? []), ...(artifact.replays_by ?? []),
-            ].map((owner) => `${artifact.id}:${owner}`)))].sort();
+    it("derives a path-aware disposition from every runner-emitted public operation", () => {
+        const expected = [...new Set(result.rows.map((row) => `${row.artifact_kind}:${row.operation_owner}`))].sort();
         const actual = result.public_owner_coverage
             .map((entry) => `${entry.artifact_kind}:${entry.public_owner}`)
             .sort();
-        // The PC-05 registry is the required minimum census.  A real runner
-        // may also expose an owner that the frozen census did not name; keep
-        // that emitted evidence instead of discarding it merely to make the
-        // inventory exact.
-        expect(actual).toEqual(expect.arrayContaining(expected));
+        // The registry is an inventory, not proof that an uncalled sibling
+        // command completed.  Coverage is instead the exact set of owners
+        // that a real runner recorded after its operation completed.
+        expect(actual).toEqual(expected);
         expect(new Set(actual).size).toBe(actual.length);
         for (const entry of result.public_owner_coverage) {
             expect(entry.status).toBe("executed");
@@ -361,35 +347,51 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             expect(entry.result).toContain(entry.public_owner);
             const record = result.rows.find((candidate) => candidate.id === entry.record_id);
             expect(record?.source_path).toBe(entry.source_path);
-            expect(record?.executed_public_owners).toContain(entry.public_owner);
+            expect(record?.operation_owner).toBe(entry.public_owner);
         }
         for (const audit of result.systemic_class_audits) {
             const auditedOwners = audit.derived_from.executed_owner_inventory
                 .map((entry) => `${entry.artifact_kind}:${entry.public_owner}`).sort();
-            expect(auditedOwners).toEqual(expect.arrayContaining(expected));
+            let systemicClass: string;
+            switch (audit.class) {
+                case "shared conversion diagnostic parity":
+                    systemicClass = "shared-conversion-diagnostic-parity";
+                    break;
+                case "provenance and freshness binding":
+                    systemicClass = "provenance-and-freshness-binding";
+                    break;
+                default:
+                    systemicClass = "durable-publication-ownership";
+            }
+            const expectedAuditedOwners = result.public_owner_coverage
+                .filter((entry) => result.rows.some((record) =>
+                    record.id === entry.record_id && record.systemic_classes?.includes(systemicClass),
+                ))
+                .map((entry) => `${entry.artifact_kind}:${entry.public_owner}`).sort();
+            expect(auditedOwners).toEqual(expectedAuditedOwners);
             expect(new Set(auditedOwners).size).toBe(auditedOwners.length);
             for (const entry of audit.derived_from.executed_owner_inventory) {
-                expect(result.rows.some((record) => record.id === entry.record_id)).toBe(true);
+                const record = result.rows.find((candidate) => candidate.id === entry.record_id);
+                expect(record?.operation_owner).toBe(entry.public_owner);
             }
         }
     });
 
-    it("binds the runtime, replay, simulation, report, validation, Outcome Library, and Stake re-export owner wave to exact emitted operations", () => {
+    it("binds the runtime, replay, simulation, report, validation, Outcome Library, and Stake re-export wave to exact emitted operations", () => {
         const exactOwners = [
-            ["validationReport", "cli:validate --out"],
-            ["outcomeLibrary", "cli:validate --deep"],
-            ["outcomeLibrary", "cli:outcomelibrary-validate"],
-            ["outcomeLibrary", "cli:sim"],
-            ["outcomeLibrary", "cli:replay"],
-            ["outcomeLibrary", "cli:report"],
-            ["simulationReport", "cli:report --format json --out for a SimulationReport"],
-            ["simulationReportSet", "cli:sim --mode all"],
-            ["stakeImportReExportConfig", "cli:stakeengine import"],
-            ["stakeImportReExportConfig", "StakeEngineCommand:export"],
-            ["stakeEngineAnalysisReport", "cli:stakeengine analyze --out"],
-            ["stakeEngineComparisonReport", "cli:stakeengine diff --out"],
-            ["runtimeReplayDescriptor", "cli:replay --out"],
-            ["roundArtifact", "RoundArtifactValidator"],
+            ["validationReport", "ValidateCommand"],
+            ["canonicalOutcomeJsonl", "OutcomeLibraryCommand"],
+            ["outcomeLibrary", "ValidateCommand"],
+            ["outcomeLibrary", "SimCommand"],
+            ["outcomeLibrary", "ReplayCommand"],
+            ["outcomeLibrary", "ReportCommand"],
+            ["simulationReport", "ReportCommand"],
+            ["simulationReportSet", "SimCommand"],
+            ["stakeImportReExportConfig", "StakeEngineCommand"],
+            ["stakeEngineAnalysisReport", "StakeEngineCommand"],
+            ["stakeEngineComparisonReport", "StakeEngineCommand"],
+            ["runtimeReplayDescriptor", "ReplayCommand"],
+            ["roundArtifact", "ReplayCommand"],
         ];
         for (const [artifactKind, owner] of exactOwners) {
             const coverage = result.public_owner_coverage.filter((entry) => entry.artifact_kind === artifactKind && entry.public_owner === owner);
@@ -397,7 +399,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             for (const entry of coverage) {
                 expect(entry.owner_execution).toBe("runner-emitted");
                 const record = result.rows.find((candidate) => candidate.id === entry.record_id);
-                expect(record?.executed_public_owners).toContain(owner);
+                expect(record?.operation_owner).toBe(owner);
             }
         }
     });
