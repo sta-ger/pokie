@@ -127,6 +127,10 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(fs.existsSync(path.join(reexportedStakePath, "pokie-manifest.json"))).toBe(true);
     });
 
+    // This runner intentionally exercises every public artifact boundary and
+    // emits the evidence consumed by the clean-process remediation contract.
+    // It can exceed Jest's default minute when it shares the constrained
+    // changed-test workers with the Studio and evidence-regeneration suites.
     it("executes the provenance, drift, recovery and diagnostic matrix from public artifacts", async () => {
         const evidence = new ArtifactInteroperabilityRun(workDir);
         const blueprint: GameBlueprint = {
@@ -1370,5 +1374,5 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {"scenario_results": {execution: {assertions: string[]; observations: unknown[]}}[]}).scenario_results).toEqual(expect.arrayContaining([
             expect.objectContaining({execution: expect.objectContaining({assertions: expect.any(Array), observations: expect.any(Array)})}),
         ]));
-    });
+    }, 120000);
 });

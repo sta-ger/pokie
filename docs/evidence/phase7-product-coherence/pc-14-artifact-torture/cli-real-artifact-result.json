@@ -594,6 +594,153 @@
       ]
     },
     {
+      "id": "library-build-package",
+      "artifact_kind": "tsPackage",
+      "operation": "build",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-imported.blueprint.json",
+      "source_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
+      "produced_path": "run-artifacts/direct-library-package",
+      "produced_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "operation_owner": "ArtifactBuilderRegistry:build(tsPackage)",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct registry build published a TypeScript package",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ArtifactBuilderRegistry:build(tsPackage)",
+          "result": "build returned a published package"
+        }
+      ]
+    },
+    {
+      "id": "library-import-par-workbook",
+      "artifact_kind": "parWorkbook",
+      "operation": "validate",
+      "registry_operation": "validates_by",
+      "source_path": "run-artifacts/matrix.par.xlsx",
+      "source_identity": "sha256:95868490c4249a79d13e2768d1f8ec4bb382bbc09ac0fa4eb4f799f99a8ebea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "ParSheetImporter during import",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct PAR importer accepted the runner-produced workbook",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ParSheetImporter during import",
+          "result": "importFromFile returned no errors"
+        }
+      ]
+    },
+    {
+      "id": "library-read-outcome-library",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "recognize",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix-bundle",
+      "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "OutcomeLibraryBundleReader",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct bundle reader retained the produced Outcome Library manifest",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "OutcomeLibraryBundleReader",
+          "result": "readManifest returned the generated mode"
+        }
+      ]
+    },
+    {
+      "id": "library-read-stake-adapter",
+      "artifact_kind": "stakeAdapter",
+      "operation": "recognize",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix-stake",
+      "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StakeEngineOutcomeSourceReader",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct Stake reader reconstructed runner-produced outcome modes",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "StakeEngineOutcomeSourceReader",
+          "result": "readFromDirectory returned valid modes"
+        }
+      ]
+    },
+    {
+      "id": "library-resolve-direct-package",
+      "artifact_kind": "tsPackage",
+      "operation": "resolve",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/direct-library-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "ProjectTargetResolver",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct resolver recognized the registry-produced package",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ProjectTargetResolver",
+          "result": "resolve returned tsPackage"
+        }
+      ]
+    },
+    {
+      "id": "library-resolve-imported-blueprint",
+      "artifact_kind": "blueprint",
+      "operation": "resolve",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix-imported.blueprint.json",
+      "source_identity": "sha256:ef39050a7e98b4a62848dca741cb2e71936182321726420a51036a474b76a75d",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "ProjectTargetResolver",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct resolver recognized the runner-imported Blueprint",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ProjectTargetResolver",
+          "result": "resolve returned blueprint"
+        }
+      ]
+    },
+    {
+      "id": "library-validate-blueprint",
+      "artifact_kind": "blueprint",
+      "operation": "validate",
+      "registry_operation": "validates_by",
+      "source_path": "run-artifacts/matrix.blueprint.json",
+      "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "GameBlueprintValidator",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "direct Blueprint validator accepted the runner-produced Blueprint",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "GameBlueprintValidator",
+          "result": "validate returned no errors"
+        }
+      ]
+    },
+    {
       "id": "matrix-blueprint-blueprint-build",
       "artifact_kind": "blueprint",
       "operation": "build:blueprint",
