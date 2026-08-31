@@ -27,9 +27,71 @@ import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
-import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock} from "../support/ArtifactInteroperabilityRun.js";
+import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, type ArtifactInteroperabilityExecutedOwnerPaths} from "../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
+
+// Each list is attached to the operation which exercised the named owner
+// path.  The merger does not infer these identities from a command class or
+// from a registry row: a missing declaration fails evidence regeneration.
+const PC14_CLI_EXECUTED_OWNER_PATHS: ArtifactInteroperabilityExecutedOwnerPaths = {
+    "blueprint-build-package": [
+        "GameBlueprintValidator", "ProjectTargetResolver", "cli:create", "cli:create --out", "cli:create without --out",
+        "cli:edit --out", "cli:edit without --out", "cli:par import --out", "cli:par import without --out", "cli:import --out for an XLSX source", "cli:import XLSX without --out",
+        "cli:inspect", "cli:reel generate --apply without --out", "cli:reel generate --materialize without --out",
+        "cli:reel generate --out", "cli:validate", "studio:blueprint-check", "studio:blueprint-save", "studio:design-create", "studio:par-import", "studio:project-registration",
+    ],
+    "matrix-tsPackage-blueprint-build": [
+        "ArtifactBuilderRegistry:build(tsPackage)", "ProjectTargetResolver", "cli:client", "cli:dev", "cli:init", "cli:inspect",
+        "cli:replay", "cli:serve", "cli:sim", "cli:validate", "cli:build", "cli:build --target tsPackage --out", "cli:build --target tsPackage without --out", "loadPokieGame", "studio:artifact-build", "studio:play",
+        "studio:project-registration", "studio:replay", "studio:simulation",
+    ],
+    "raw-outcomes-build-bundle": [
+        "OutcomeLibraryBundleWriter input", "OutcomeLibraryBundleWriter while materializing a bundle", "StakeEngineCommand:loadDescriptor libraryPath",
+        "StakeEngineExporter descriptor loading", "OutcomeLibraryCommand:loadDescriptor libraryPath", "cli:export --to outcomes", "cli:generate --out", "cli:outcomelibrary build", "cli:outcomelibrary generate --out",
+    ],
+    "outcome-library-bundle-descriptor-build": [
+        "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build", "OutcomeLibraryBundleWriter", "OutcomeLibraryCommand:loadDescriptor", "OutcomeLibraryCommand:executeBuild", "OutcomeLibraryCommand:loadDescriptor shape/exclusive-source validation", "OutcomeLibraryCommand:validateBuildSource provenance validation", "user-authored Outcome Library bundle config (POKIE does not create this descriptor)",
+    ],
+    "bundle-canonical-outcomes": [
+        "ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build", "OutcomeLibraryBundleWriteValidator",
+        "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized", "OutcomeLibraryCommand:loadDescriptor outcomesPath", "OutcomeLibraryCommand:readStreamedOutcomes", "OutcomeLibraryCommand:streamOutcomes", "OutcomeLibraryCommand:readStreamedOutcomes JSONL parsing", "OutcomeLibraryCommand:validateCrossModeProvenance", "WeightedOutcomeLibraryValidator", "user/external canonical outcome-stream producer",
+    ],
+    "outcome-library-generation-checkpoint-resume": [
+        "OutcomeLibraryCommand:readCheckpoint", "cli:generate --resume", "cli:generate --resume on cancellation", "cli:outcomelibrary generate --resume", "cli:outcomelibrary generate --resume on cancellation",
+    ],
+    "matrix-outcomeLibrary-blueprint-build": [
+        "ArtifactBuilderRegistry:build(outcomeLibrary)", "OutcomeLibraryBundleReader", "ProjectTargetResolver", "cli:import --out", "cli:import Stake without --out",
+        "cli:build --target outcomeLibrary", "cli:build --target outcomeLibrary --out", "cli:build --target outcomeLibrary without --out", "cli:export --to outcomes --out", "cli:export --to outcomes without --out", "cli:inspect", "cli:outcomelibrary build", "cli:sample", "cli:serve", "studio:outcome-library-generate", "studio:outcome-library-registry", "studio:outcome-source-sample", "studio:replay", "studio:simulation",
+    ],
+    "stake-export-descriptor": [
+        "ExportCommand --to adapter delegation to StakeEngineCommand.export", "OutcomeLibraryBundleReader for bundleDir", "StakeEngineCommand:loadDescriptor", "StakeEngineCommand:runExport", "StakeEngineCommand:validateExportSource", "StakeEngineCommand:loadDescriptor shape/exclusive-source validation", "StakeEngineExportValidator",
+        "user-authored Stake Engine export config (POKIE does not create the generic descriptor)",
+    ],
+    "matrix-stakeAdapter-blueprint-build": [
+        "ArtifactBuilderRegistry:build(stakeAdapter)", "ProjectTargetResolver", "StakeEngineExportValidator", "StakeEngineOutcomeSourceReader", "StakeEngineStandaloneValidator",
+        "cli:build", "cli:build --target stakeAdapter --out", "cli:build --target stakeAdapter without --out", "cli:diff", "cli:export --to adapter --out",
+        "cli:export --to adapter without --out", "cli:inspect", "cli:report", "cli:validate", "studio:project-registration", "studio:stake-export", "studio:stake-export-validate",
+    ],
+    "import-par-blueprint-default": [
+        "ArtifactBuilderRegistry:build(parWorkbook)", "ParSheetImporter during import", "ProjectTargetResolver", "cli:par export --out", "cli:par export without --out", "cli:build --target parWorkbook --out",
+        "cli:build --target parWorkbook without --out", "cli:export --to workbook --out", "cli:export --to workbook without --out", "cli:inspect", "studio:par-export", "studio:project-registration",
+    ],
+    "wasm-outcome-source-replay": [
+        "PokieWasmComponentManifestValidator", "WasmProjectTargetAdapter", "assessWasmComponentCompatibility", "cli:inspect", "studio:project-registration",
+    ],
+    "round-artifact-replay-provenance": ["StudioRoundRecorder", "runtime session recording", "studio:play", "studio:replay", "studio:replay-session-source", "studio:simulation"],
+    "simulation-report-inspect": ["studio:replay simulation source", "studio:simulation", "studio:simulation-report-list"],
+    "rendered-simulation-report": ["MarkdownSimulationReportRenderer"],
+    "replay-descriptor-round-artifact": ["RoundArtifactValidator where recorded result is present", "studio:replay", "studio:replay-artifact-inspect"],
+    "certification-evidence-bundle": ["CertificationEvidenceBundleValidator", "CertificationEvidenceBundleVerifier", "cli:certification build", "cli:certification build --out", "cli:certification build without --out", "cli:certification verify", "studio:certification-build"],
+    "certification-build-descriptor-build": [
+        "CertificationEvidenceBundleBuilder:buildFromBundle", "CertificationCommand:loadDescriptor", "CertificationCommand:executeBuild", "CertificationCommand:loadDescriptor modes[] shape validation", "CertificationCommand:checkOutcomeLibrarySource", "cli:certification build", "studio:certification-build request supplies equivalent mode samples", "user-authored certification build config (POKIE does not create this descriptor)",
+    ],
+    "fairness-server-seed-commitment": ["FairnessServerSeedCommitmentValidator", "computeFairnessCommitment", "cli:fairness seed-commit", "cli:fairness seed-commit --out", "cli:fairness commit", "studio:fairness-configure"],
+    "fairness-round-commitment": ["FairnessCommitmentValidator", "cli:fairness commit", "cli:fairness commit --out", "cli:fairness reveal", "cli:fairness verify", "studio:fairness-configure", "studio:fairness-generate", "studio:fairness-verify"],
+    "fairness-round-proof": ["FairnessRoundProofValidator", "FairnessRoundProofVerifier", "cli:fairness reveal", "cli:fairness reveal --out", "cli:fairness verify", "studio:fairness-generate", "studio:fairness-verify"],
+};
 
 describe("PC-14 CLI real-artifact interoperability torture", () => {
     let workDir: string;
@@ -123,7 +185,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
     });
 
     it("executes the provenance, drift, recovery and diagnostic matrix from public artifacts", async () => {
-        const evidence = new ArtifactInteroperabilityRun(workDir);
+        const evidence = new ArtifactInteroperabilityRun(workDir, PC14_CLI_EXECUTED_OWNER_PATHS);
         const blueprint: GameBlueprint = {
             manifest: {id: "matrix-slot", name: "Matrix Slot", version: "1.0.0"},
             reels: 2,

@@ -46,7 +46,7 @@ type InteroperabilityResult = {
         readonly record_id: string;
         readonly source_path: string;
         readonly operation_owner: string;
-        readonly owner_execution: "runner-emitted" | "representative-pending-owner-wave";
+        readonly owner_execution: "runner-emitted";
         readonly result: string;
     }[];
     readonly planner_cells?: readonly {
@@ -356,6 +356,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             expect(entry.result).toContain(entry.public_owner);
             const record = result.rows.find((candidate) => candidate.id === entry.record_id);
             expect(record?.source_path).toBe(entry.source_path);
+            expect(record?.executed_public_owners).toContain(entry.public_owner);
         }
         for (const audit of result.systemic_class_audits) {
             expect(audit.derived_from.executed_owner_inventory.map((entry) => `${entry.artifact_kind}:${entry.public_owner}`).sort())

@@ -23,9 +23,43 @@ import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {GamePackagePreparer} from "../../../cli/prepare/GamePackagePreparer.js";
 import {PREPARATION_STATE_FILE} from "../../../cli/prepare/PreparationStateStore.js";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
-import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, mergeArtifactInteroperabilityRuns} from "../../support/ArtifactInteroperabilityRun.js";
+import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, mergeArtifactInteroperabilityRuns, type ArtifactInteroperabilityExecutedOwnerPaths} from "../../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
+
+const PC14_STUDIO_EXECUTED_OWNER_PATHS: ArtifactInteroperabilityExecutedOwnerPaths = {
+    "studio-symbol-artwork-materialize": [
+        "cli:client player renderPlayer artworkUrlForSymbol callback (shared renderer; no endpoint or declared-reference consumer)",
+        "studio:blueprint-save-managed/materializeSymbolArtwork", "studio:blueprint-save/materializeSymbolArtwork",
+        "studio:blueprint-symbol-artwork-import (temporary staging)", "studio:editor SymbolPresentation",
+        "studio:player CanonicalPlayerView (Studio adapter resolves declared references and supplies URLs)", "StudioBlueprintService:getSymbolArtwork", "StudioBlueprintService:resolveSymbolArtwork", "StudioBlueprintService:importSymbolArtwork PNG signature/size check", "StudioBlueprintService:resolveSymbolArtwork declared-reference/path/PNG check",
+    ],
+    "runtime-session-file-export": ["PokieDevServer", "StudioRoundRecorder", "cli:dev", "cli:serve", "studio:play", "studio:replay-session-source"],
+    "file-session-record-recovery": [
+        "FileSessionRepository:load/loadVersioned", "FileSessionRepository:readRecord JSON/version-envelope recognition", "PokieDevServer unknown-session 404 mapping",
+        "PokieDevServer:GET /sessions/:id", "PokieDevServer:POST /sessions via configured FileSessionRepository.save",
+        "SpinCommandHandler cache-miss session reconstruction after restart", "SpinCommandHandler:POST /sessions/:id/spin via configured FileSessionRepository.save/saveVersioned",
+        "VersionedSessionRepository optimistic-version check",
+    ],
+    "studio-project-registry-reopen": [
+        "FileStudioProjectRegistry JSON-array read", "FileStudioProjectRegistry:list/read", "FileStudioProjectRegistry:upsert atomically writes projects.json", "StudioProjectRegistrationService:registerManaged/registerExternal/recordOpened/relocate", "StudioProjectRegistrationService:list", "StudioProjectRegistrationService:recordOpened/remove/relocate", "StudioProjectRegistrationService:canonicalize realpath/absolute fallback", "StudioProjectRegistrationService:list fresh exists status",
+        "ProjectTargetResolver at registration/open/relocate", "Studio Projects dashboard after restart", "StudioServer Projects create/register/open/relocate flows",
+    ],
+    "package-preparation-marker-recovery": [
+        "GamePackagePreparer phase ordering", "GamePackagePreparer:prepare after dependencies/build", "GamePackagePreparer:prepare phase resume",
+        "GamePackagePreparer:runCreatePhase", "GamePackagePreparer:runCreatePhase retry", "PreparationStateStore JSON parse as PreparationState", "PreparationStateStore:readPreparationState",
+    ],
+    "studio-outcome-library-registry-index": ["OutcomeLibraryBundleReader manifest read", "Studio Outcome Library Registry panel after restart", "resolveProjectDirectory containment/realpath check", "StudioOutcomeLibraryGenerateService:recordDiscoveredBundleDir after successful generate", "StudioOutcomeLibraryGenerateService:readRegistryIndex", "StudioOutcomeLibraryGenerateService:registry", "StudioOutcomeLibraryGenerateService:isDirectory"],
+    "managed-outcome-project-registry-reuse": [
+        "ArtifactBuilderRegistry managed Outcome Library reuse", "ManagedOutcomeProjectService:registerAndOpen", "ManagedOutcomeProjectService:findCompatible legacy adoption", "ManagedOutcomeProjectService:findCompatible", "OutcomeLibraryBundleReader manifest read", "OutcomeProjectCompatibility exact comparison",
+        "ProjectTargetResolver", "cli/stake export managed-library lifecycle", "studio:managed-outcome-library lifecycle",
+    ],
+    "studio-outcome-library-selector-deployment": [
+        "OutcomeLibraryBundleReader", "StakeEngineImporter", "StudioDeploymentService", "Studio browser/request author (POKIE does not persist this selector)", "StudioStakeEngineExportService",
+        "loadOutcomeLibraryFromSelector", "loadWeightedOutcomeLibraryFromProjectFile JSON parse/containment", "validateOutcomeLibrarySelector", "validateOutcomeLibrarySelector request-shape validation",
+    ],
+    "studio-external-deployment-publication": ["ExternalArtifactValidator and built-in deployment validators", "ExternalDeploymentService", "studio:deployment-run", "target-defined validator"],
+};
 
 describe("PC-14 Studio real-artifact interoperability torture", () => {
     let workDir: string;
@@ -42,7 +76,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
     });
 
     it("uses the same prepared artifact chain for Studio build, generation, registry reuse and Stake export", async () => {
-        const evidence = new ArtifactInteroperabilityRun(workDir);
+        const evidence = new ArtifactInteroperabilityRun(workDir, PC14_STUDIO_EXECUTED_OWNER_PATHS);
         const blueprint: GameBlueprint = {
             manifest: {id: "studio-artifact-torture", name: "Studio Artifact Torture", version: "1.0.0"},
             // Keep the source small enough for the other real-artifact paths,

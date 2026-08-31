@@ -133,6 +133,14 @@ export type ArtifactInteroperabilityScenario = {
 };
 
 /**
+ * A runner may give a completed operation its complete PC-05 owner path at
+ * construction time.  Keeping this declaration with the runner (rather than
+ * reconstructing it from the registry in the merger) makes a missing owner
+ * fail at the operation that was meant to exercise it.
+ */
+export type ArtifactInteroperabilityExecutedOwnerPaths = Readonly<Record<string, readonly string[]>>;
+
+/**
  * The PC-14 runners use this ledger rather than a hand-written matrix row.
  * Recording is deliberately post-condition based: an operation cannot appear
  * in the saved result until its real source (and, when applicable, output)
@@ -144,9 +152,12 @@ export class ArtifactInteroperabilityRun {
     private readonly scenarios: ArtifactInteroperabilityScenario[] = [];
     private readonly plannerCells: ArtifactInteroperabilityPlannerCell[] = [];
     private readonly rootPath: string;
+    private readonly executedOwnerPaths: ArtifactInteroperabilityExecutedOwnerPaths;
+    private readonly recordedOwnerPathIds = new Set<string>();
 
-    public constructor(rootPath: string) {
+    public constructor(rootPath: string, executedOwnerPaths: ArtifactInteroperabilityExecutedOwnerPaths = {}) {
         this.rootPath = rootPath;
+        this.executedOwnerPaths = executedOwnerPaths;
     }
 
     public record(row: ArtifactInteroperabilityRunRow): void {
@@ -154,7 +165,7 @@ export class ArtifactInteroperabilityRun {
         if (row.producedPath !== undefined) this.assertExists(row.producedPath, "output");
         if (row.observations.length === 0) throw new Error(`${row.id} has no exercised public observation.`);
         if (row.systemicClasses !== undefined && row.systemicClasses.length === 0) throw new Error(`${row.id} has an empty systemic class assignment.`);
-        this.rows.push(row);
+        this.rows.push(this.withExecutedOwnerPath(row));
     }
 
     /**
@@ -171,7 +182,7 @@ export class ArtifactInteroperabilityRun {
         }
         if (row.observations.length === 0) throw new Error(`${row.id} has no exercised public observation.`);
         if (row.systemicClasses !== undefined && row.systemicClasses.length === 0) throw new Error(`${row.id} has an empty systemic class assignment.`);
-        this.rows.push({
+        this.rows.push(this.withExecutedOwnerPath({
             id: row.id,
             artifactKind: row.artifactKind,
             operation: row.operation,
@@ -183,7 +194,7 @@ export class ArtifactInteroperabilityRun {
             status: "intentionally-unsupported",
             diagnostic: {code: row.diagnostic.code, recovery: row.diagnostic.recovery},
             ...(row.systemicClasses === undefined ? {} : {systemicClasses: row.systemicClasses}),
-        });
+        }));
     }
 
     public recordPlannerCells(cells: readonly ArtifactInteroperabilityPlannerCell[]): void {
@@ -207,6 +218,9 @@ export class ArtifactInteroperabilityRun {
     }
 
     public write(outputPath: string): void {
+        for (const recordId of Object.keys(this.executedOwnerPaths)) {
+            if (!this.recordedOwnerPathIds.has(recordId)) throw new Error(`PC-14 runner declared an owner path for ${recordId}, but never emitted that operation.`);
+        }
         const rows = [...this.rows]
             .sort((left, right) => left.id.localeCompare(right.id))
             .map((row) => ({
@@ -257,6 +271,14 @@ export class ArtifactInteroperabilityRun {
 
     private assertExists(artifactPath: string, role: "source" | "output"): void {
         if (!fs.existsSync(artifactPath)) throw new Error(`Cannot record ${role}: ${artifactPath} was not produced or imported by this runner.`);
+    }
+
+    private withExecutedOwnerPath<Row extends ArtifactInteroperabilityRunRow>(row: Row): Row {
+        const declaredOwners = this.executedOwnerPaths[row.id];
+        if (declaredOwners === undefined) return row;
+        if (declaredOwners.length === 0) throw new Error(`${row.id} declared an empty public-owner path.`);
+        this.recordedOwnerPathIds.add(row.id);
+        return {...row, executedPublicOwners: [...new Set([...declaredOwners, ...(row.executedPublicOwners ?? [])])]} as Row;
     }
 
     private redact(artifactPath: string): string {
@@ -537,36 +559,19 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
                 ...(artifact.validates_by ?? []), ...(artifact.reports_by ?? []), ...(artifact.replays_by ?? []),
             ].filter((owner, index, owners) => owners.indexOf(owner) === index).sort();
             const artifactRecords = allRecords.filter((record) => recordArtifactKind(record) === artifact.id);
-            if (artifactRecords.length === 0) {
-                throw new Error(`PC-14 has no emitted real-artifact operation for public ${artifact.id} owners: ${publicOwners.join(", ")}.`);
-            }
+            if (artifactRecords.length === 0) throw new Error(`PC-14 has no emitted real-artifact operation for public ${artifact.id} owners: ${publicOwners.join(", ")}.`);
             return publicOwners.map((publicOwner) => {
-                // A registry owner is often an alias or a named phase within a
-                // public command/service (for example `cli:build --out` and
-                // `ArtifactBuilderRegistry:build(tsPackage)`).  The runner
-                // records the terminal operation once, then emits this
-                // owner-level projection from that completed call path.  It
-                // is deliberately not an unavailable fallback: every entry
-                // is anchored to a record that resolved a real source and
-                // reached a terminal public result.
                 const record = artifactRecords.find((candidate) => ownerMatchesRecord(publicOwner, candidate));
-                // Retain the earlier waves' representative linkage until
-                // their owner-specific runners land.  Newly added waves must
-                // provide an exact runner-emitted identity, which keeps this
-                // fallback from silently claiming a command alias was run.
-                const emittedOwnerRecord = record !== undefined;
-                const linkedRecord = record ?? artifactRecords[0]!;
+                if (record === undefined) throw new Error(`PC-14 has no runner-emitted public-owner operation for ${artifact.id}:${publicOwner}.`);
                 return {
                     "artifact_kind": artifact.id,
                     "public_owner": publicOwner,
                     status: "executed" as const,
-                    "record_id": recordId(linkedRecord),
-                    "source_path": (linkedRecord as {readonly source_path?: string}).source_path ?? null,
-                    "operation_owner": recordOwner(linkedRecord) ?? "unknown",
-                    "owner_execution": emittedOwnerRecord ? "runner-emitted" : "representative-pending-owner-wave",
-                    result: emittedOwnerRecord
-                        ? `Completed real-artifact operation ${recordId(linkedRecord)} reached ${publicOwner} in its public owner path.`
-                        : `Completed real-artifact operation ${recordId(linkedRecord)} produced the source retained for ${publicOwner}'s pending owner wave.`,
+                    "record_id": recordId(record),
+                    "source_path": (record as {readonly source_path?: string}).source_path ?? null,
+                    "operation_owner": recordOwner(record) ?? "unknown",
+                    "owner_execution": "runner-emitted",
+                    result: `Completed real-artifact operation ${recordId(record)} reached ${publicOwner} in its public owner path.`,
                 };
             });
         });
@@ -626,40 +631,7 @@ function ownerMatchesRecord(publicOwner: string, record: unknown): boolean {
         // each of its named phases was independently reached.
         if (Array.isArray(executedOwners)) return executedOwners.includes(publicOwner);
     }
-    const observations = recordObservations(record);
-    const operationOwner = recordOwner(record) ?? "";
-    const haystack = `${operationOwner} ${observations.map((observation) => observation.owner).join(" ")}`.toLowerCase();
-    const normalized = publicOwner.toLowerCase();
-    const commandOwners: Readonly<Record<string, string>> = {
-        "cli:build": "buildcommand",
-        "cli:export": "buildcommand",
-        "cli:par": "parcommand",
-        "cli:validate": "validatecommand",
-        "cli:inspect": "inspectcommand",
-        "cli:sample": "outcomesourcecommand",
-        "cli:sim": "simcommand",
-        "cli:replay": "replaycommand",
-        "cli:report": "reportcommand",
-        "cli:diff": "diffcommand",
-        "cli:stakeengine": "stakeenginecommand",
-        "cli:certification": "certificationcommand",
-        "cli:fairness": "fairnesscommand",
-        "studio:artifact-build": "studioartifactbuildservice",
-        "studio:outcome-library-generate": "studiooutcomelibrarygenerateservice",
-        "studio:stake-export": "studiostakeengineexportservice",
-        "studio:deployment-run": "studiodeploymentservice",
-    };
-    const command = Object.entries(commandOwners).find(([prefix]) => normalized.startsWith(prefix));
-    if (command !== undefined) return haystack.includes(command[1]);
-    // A command record is emitted only after its public operation reaches a
-    // terminal result.  The command's named public phases (for example,
-    // `StakeEngineCommand:loadDescriptor` and `StakeEngineCommand:export`)
-    // are therefore real owners in that operation's call path, rather than
-    // uninvoked aliases.  Keep this deliberately limited to command/service
-    // prefixes; validators and writers need their own direct observation.
-    const ownerType = normalized.split((/[:\s(]/), 1)[0]!.replace(/[^a-z0-9]/g, "");
-    if ((/(?:command|service)$/).test(ownerType)) return haystack.includes(ownerType);
-    return haystack.includes(normalized.replace(/[^a-z0-9]/g, ""));
+    return false;
 }
 
 function recordOwner(record: unknown): string | undefined {
