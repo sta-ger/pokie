@@ -137,13 +137,16 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             // real-artifact runners.  Studio's rendered Stake recovery adds
             // one publication/polling lifecycle, so leave enough headroom
             // for an otherwise healthy constrained CI worker instead of
-            // treating its fixed 150-second process budget as a product
-            // difference.
-            timeout: 210000,
+            // treating a constrained concurrent changed-test worker as a
+            // product difference. The three real-artifact runners normally
+            // finish well below this budget; the additional headroom keeps
+            // their clean-process proof reliable when another selected
+            // integration suite is using the second Jest worker.
+            timeout: 300000,
         });
         expect(result.error).toBeUndefined();
         if (result.status !== 0) throw new Error(`${result.stdout}\n${result.stderr}`);
-    }, 240000);
+    }, 330000);
 
     it("injects the fixed evidence clock into real writers instead of only normalising saved hashes", () => {
         const originalClock = process.env.PC14_FIXED_RUNNER_CLOCK;
