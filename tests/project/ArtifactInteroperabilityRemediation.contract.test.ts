@@ -9,7 +9,7 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     type PokieProject,
 } from "../../src/index.js";
-import {installPc14FixedRunnerClock} from "../support/ArtifactInteroperabilityRun.js";
+import {installPc14FixedRunnerClock, pc05PublicOwnerOperations} from "../support/ArtifactInteroperabilityRun.js";
 
 type EmittedRecord = {
     readonly id: string;
@@ -327,6 +327,23 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             expect(entry.disposition).toBe("executed");
             expect(entry.executed_regressions.length).toBeGreaterThan(0);
         }
+    });
+
+    it("derives the required owner/operation matrix from every non-internal PC-05 registry field", () => {
+        const registryPath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json");
+        const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as Parameters<typeof pc05PublicOwnerOperations>[0];
+        const required = pc05PublicOwnerOperations(registry);
+        expect(required).toEqual(expect.arrayContaining([
+            expect.objectContaining({artifactKind: "blueprint", registryOperation: "created_by", owner: "cli:create"}),
+            expect.objectContaining({artifactKind: "blueprint", registryOperation: "recognized_by", owner: "ProjectTargetResolver"}),
+            expect.objectContaining({artifactKind: "outcomeLibrary", registryOperation: "runs_by", owner: "studio:simulation"}),
+            expect.objectContaining({artifactKind: "fairnessProof", registryOperation: "validates_by", owner: "FairnessRoundProofVerifier"}),
+        ]));
+        expect(required.some((entry) => entry.artifactKind === "blueprintRuntimeMaterializationCache")).toBe(false);
+        expect(required.some((entry) => entry.artifactKind === "blueprintRuntimeMaterializationMarker")).toBe(false);
+        // Regression guard: this must remain the registry-sized matrix, not
+        // the smaller set that happened to have been emitted by one runner.
+        expect(required.length).toBeGreaterThan(200);
     });
 
     it("derives a path-aware disposition from every runner-emitted public operation", () => {

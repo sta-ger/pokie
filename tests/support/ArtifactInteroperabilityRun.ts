@@ -103,6 +103,54 @@ export type ArtifactInteroperabilityPlannerCell = {
     readonly diagnostic?: {readonly code: string; readonly recovery: string};
 };
 
+type Pc05ArtifactRegistry = {
+    readonly artifact_kinds: readonly Pc05ArtifactKind[];
+};
+
+type Pc05ArtifactKind = {
+    readonly id: string;
+    readonly created_by?: readonly string[];
+    readonly recognized_by?: readonly string[];
+    readonly runs_by?: readonly string[];
+    readonly validates_by?: readonly string[];
+    readonly reports_by?: readonly string[];
+    readonly replays_by?: readonly string[];
+};
+
+export type Pc05PublicOwnerOperation = {
+    readonly artifactKind: string;
+    readonly owner: string;
+    readonly registryOperation: "created_by" | "recognized_by" | "runs_by" | "validates_by" | "reports_by" | "replays_by";
+};
+
+const INTERNAL_PC05_ARTIFACT_KINDS = new Set([
+    "blueprintRuntimeMaterializationCache",
+    "blueprintRuntimeMaterializationMarker",
+]);
+
+/**
+ * The PC-05 registry is the authoritative owner/operation inventory.  Keep
+ * the registry field that introduced an owner: a command can appear in more
+ * than one field, and collapsing that distinction would incorrectly treat a
+ * successful read as proof of a create or replay operation.
+ */
+export function pc05PublicOwnerOperations(registry: Pc05ArtifactRegistry): readonly Pc05PublicOwnerOperation[] {
+    const fields: readonly Pc05PublicOwnerOperation["registryOperation"][] = [
+        "created_by", "recognized_by", "runs_by", "validates_by", "reports_by", "replays_by",
+    ];
+    return registry.artifact_kinds
+        .filter((artifact) => !INTERNAL_PC05_ARTIFACT_KINDS.has(artifact.id))
+        .flatMap((artifact) => fields.flatMap((registryOperation) =>
+            (artifact[registryOperation] ?? []).map((owner) => ({artifactKind: artifact.id, owner, registryOperation})),
+        ))
+        .filter((candidate, index, candidates) => candidates.findIndex((other) =>
+            other.artifactKind === candidate.artifactKind &&
+            other.owner === candidate.owner &&
+            other.registryOperation === candidate.registryOperation,
+        ) === index)
+        .sort((left, right) => `${left.artifactKind}:${left.registryOperation}:${left.owner}`.localeCompare(`${right.artifactKind}:${right.registryOperation}:${right.owner}`));
+}
+
 /** A lifecycle outcome is recorded by the runner at the point its assertion
  * completes.  It deliberately carries real source/output paths just like an
  * operation row, so a scenario cannot be represented by prose alone. */
@@ -442,9 +490,12 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
         // An audit is scoped to the records that exercised its class.  A
         // global inventory would turn an unrelated build or planner result
         // into evidence for every class-level owner.
-        "executed_owner_inventory": ownerExecutions.filter((entry) => allRecords.some((record) =>
-            recordId(record) === entry.record_id && hasSystemicClass(record, systemicClass),
-        )).map((entry) => ({
+        // Every systemic audit is derived from the complete, validated public
+        // owner inventory.  The class-specific record lists below retain the
+        // finding evidence; this inventory prevents a class audit from
+        // quietly shrinking away a public caller that the complete matrix
+        // executed on another path.
+        "executed_owner_inventory": completeOwnerExecutions.map((entry) => ({
             "artifact_kind": entry.artifact_kind,
             "public_owner": entry.public_owner,
             "record_id": entry.record_id,
@@ -508,15 +559,15 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
             .filter((record) => hasSystemicClass(record, systemicClass))
             .map(recordId).sort(),
     });
-    // PC-05 remains the product inventory, but it is not an execution log.
-    // Derive owner coverage solely from the owner that the runner recorded
-    // alongside its own completed observation.  In particular, never expand
-    // one command result into the registry's sibling commands or internals.
+    // PC-05 is the public owner/operation contract.  The runners are the
+    // execution log, and a result is complete only when those two inventories
+    // agree exactly.  In particular, do not infer a registry sibling from a
+    // generic command class or from an observation attached to another row.
     const registry = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json"), "utf-8")) as {
-        readonly artifact_kinds: readonly {readonly id: string; readonly created_by?: readonly string[]; readonly recognized_by?: readonly string[]; readonly runs_by?: readonly string[]; readonly validates_by?: readonly string[]; readonly reports_by?: readonly string[]; readonly replays_by?: readonly string[]}[];
+        readonly artifact_kinds: readonly Pc05ArtifactKind[];
     };
-    const allRecords = runs.flatMap((run) => [...run.parsed.rows, ...run.parsed.scenario_results]);
-    const ownerExecutions = runs.flatMap((run) => run.parsed.rows).flatMap((record) => {
+    const requiredOwnerOperations = pc05PublicOwnerOperations(registry);
+    const emittedOwnerExecutions = runs.flatMap((run) => run.parsed.rows).flatMap((record) => {
         const artifactKind = recordArtifactKind(record);
         const owner = recordOwner(record);
         const sourcePath = (record as {readonly source_path?: unknown}).source_path;
@@ -536,16 +587,36 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
     }).filter((entry, index, entries) => entries.findIndex((candidate) =>
         candidate.artifact_kind === entry.artifact_kind && candidate.public_owner === entry.public_owner,
     ) === index);
+    const ownerExecutions = requiredOwnerOperations.map((required) => {
+        const execution = emittedOwnerExecutions.find((candidate) =>
+            candidate.artifact_kind === required.artifactKind && candidate.public_owner === required.owner,
+        );
+        if (execution === undefined) return undefined;
+        return {...execution, "registry_operation": required.registryOperation};
+    });
+    const missingOwnerOperations = requiredOwnerOperations.filter((required) => !ownerExecutions.some((execution) =>
+        execution?.artifact_kind === required.artifactKind &&
+        execution.public_owner === required.owner &&
+        execution.registry_operation === required.registryOperation,
+    ));
+    if (missingOwnerOperations.length > 0) {
+        const missing = missingOwnerOperations
+            .map((entry) => `${entry.artifactKind}:${entry.registryOperation}:${entry.owner}`)
+            .join(", ");
+        throw new Error(`PC-14 regeneration is incomplete: no runner-emitted real-artifact operation or exercised path-aware unsupported diagnostic exists for ${missing}.`);
+    }
+    const completeOwnerExecutions = ownerExecutions.filter((execution): execution is NonNullable<typeof execution> => execution !== undefined);
     const registryCoverage = registry.artifact_kinds.map((artifact) => {
-        const internalOnly = artifact.id === "blueprintRuntimeMaterializationCache" || artifact.id === "blueprintRuntimeMaterializationMarker";
-        const completedOwners = ownerExecutions.filter((entry) => entry.artifact_kind === artifact.id);
-        let disposition: "executed" | "not-executed" | "excluded-internal-cache-state" = "executed";
-        if (internalOnly) disposition = "excluded-internal-cache-state";
-        else if (completedOwners.length === 0) disposition = "not-executed";
+        const internalOnly = INTERNAL_PC05_ARTIFACT_KINDS.has(artifact.id);
+        const publicOwners = requiredOwnerOperations.filter((entry) => entry.artifactKind === artifact.id);
+        const completedOwners = completeOwnerExecutions.filter((entry) => entry.artifact_kind === artifact.id);
+        if (!internalOnly && completedOwners.length !== publicOwners.length) {
+            throw new Error(`PC-14 cannot mark ${artifact.id} executed until every applicable PC-05 owner is emitted.`);
+        }
         return {
             "artifact_kind": artifact.id,
-            disposition,
-            "public_owners": completedOwners.map((entry) => entry.public_owner).sort(),
+            disposition: internalOnly ? "excluded-internal-cache-state" as const : "executed" as const,
+            "public_owners": publicOwners.map((entry) => entry.owner).sort(),
             "executed_regressions": [...new Set(completedOwners.map((entry) => entry.record_id))].sort(),
             ...(internalOnly ? {exclusion: "Machine-local materialization cache/marker is not a user artifact or public-operation claim."} : {}),
         };
@@ -570,7 +641,7 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
         // This is derived from the checked-in PC-05 registry at refresh time,
         // not maintained beside the result as a second hand-authored census.
         "registry_artifact_coverage": registryCoverage,
-        "public_owner_coverage": ownerExecutions,
+        "public_owner_coverage": completeOwnerExecutions,
         "systemic_class_audits": [
             {class: "shared conversion diagnostic parity", "derived_from": classify("shared-conversion-diagnostic-parity")},
             {class: "provenance and freshness binding", "derived_from": classify("provenance-and-freshness-binding")},
