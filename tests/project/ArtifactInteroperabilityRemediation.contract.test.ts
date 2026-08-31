@@ -352,17 +352,9 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 expect(entry.exclusion).toMatch(/Machine-local materialization cache/);
                 continue;
             }
-            // The registry is a product inventory, while this evidence is an
-            // execution ledger. An artifact remains not-executed until a real
-            // runner emits a complete owner/operation/surface observation.
-            expect(entry.disposition).toMatch(/^(?:executed|not-executed)$/);
-            if (entry.disposition === "executed") {
-                expect(entry.public_owners.length).toBeGreaterThan(0);
-                expect(entry.executed_regressions.length).toBeGreaterThan(0);
-            } else {
-                expect(entry.public_owners).toEqual([]);
-                expect(entry.executed_regressions).toEqual([]);
-            }
+            expect(entry.disposition).toBe("executed");
+            expect(entry.public_owners.length).toBeGreaterThan(0);
+            expect(entry.executed_regressions.length).toBeGreaterThan(0);
         }
     });
 
@@ -383,7 +375,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(required.length).toBeGreaterThan(200);
     });
 
-    it("maps every retained owner capability to an honest canonical, adapter, or diagnostic case", () => {
+    it("maps every retained owner capability to its own executed canonical case", () => {
         const required = pc05PublicOwnerOperations(JSON.parse(fs.readFileSync(
             path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json"), "utf-8",
         )) as Parameters<typeof pc05PublicOwnerOperations>[0]);
@@ -394,57 +386,30 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(actual).toEqual(expected);
         expect(new Set(actual).size).toBe(actual.length);
 
-        const canonicalByIdentity = new Map(result.capability_matrix
-            .filter((entry) => entry.disposition === "canonical-proof")
-            .map((entry) => [entry.capability_identity, entry]));
         for (const entry of result.capability_matrix) {
             expect(entry.capability_identity).toBe(JSON.stringify([
                 entry.artifact_kind, entry.registry_operation, entry.public_owner,
             ]));
-            switch (entry.disposition) {
-                case "canonical-proof": {
-                    expect(entry.canonical_proof).toMatchObject({
-                        "operation_owner": entry.public_owner,
-                        "record_id": expect.any(String),
-                        "source_path": expect.stringMatching(/^run-artifacts\//),
-                        "observable_result": expect.any(String),
-                    });
-                    expect(entry.adapter_proof).toBeUndefined();
-                    expect(entry.diagnostic).toBeUndefined();
-                    const record = result.rows.find((candidate) => candidate.id === entry.canonical_proof?.record_id);
-                    expect(record?.operation_owner).toBe(entry.public_owner);
-                    expect(record?.source_path).toBe(entry.canonical_proof?.source_path);
-                    break;
-                }
-                case "adapter-proof": {
-                    expect(entry.canonical_proof).toBeUndefined();
-                    expect(entry.diagnostic).toBeUndefined();
-                    expect(entry.adapter_proof?.reason).toMatch(/not an execution claim/);
-                    const canonical = canonicalByIdentity.get(entry.adapter_proof!.canonical_capability_identity);
-                    expect(canonical?.public_owner).toBe(entry.adapter_proof?.canonical_public_owner);
-                    expect(canonical?.canonical_proof?.record_id).toBe(entry.adapter_proof?.record_id);
-                    break;
-                }
-                case "unreachable-or-legacy-diagnostic":
-                    expect(entry.canonical_proof).toBeUndefined();
-                    expect(entry.adapter_proof).toBeUndefined();
-                    expect(entry.diagnostic).toEqual({
-                        code: "unreached-distinct-capability",
-                        recovery: expect.stringMatching(/not an execution claim/),
-                    });
-                    break;
-            }
+            expect(entry.disposition).toBe("canonical-proof");
+            expect(entry.canonical_proof).toMatchObject({
+                "operation_owner": entry.public_owner,
+                "record_id": expect.any(String),
+                "source_path": expect.stringMatching(/^run-artifacts\//),
+                "observable_result": expect.any(String),
+            });
+            expect(entry.adapter_proof).toBeUndefined();
+            expect(entry.diagnostic).toBeUndefined();
+            const record = result.rows.find((candidate) => candidate.id === entry.canonical_proof?.record_id);
+            expect(record?.operation_owner).toBe(entry.public_owner);
+            expect(record?.source_path).toBe(entry.canonical_proof?.source_path);
         }
-        expect(result.capability_matrix.some((entry) => entry.disposition === "canonical-proof")).toBe(true);
-        expect(result.capability_matrix.some((entry) => entry.disposition === "adapter-proof")).toBe(true);
-        expect(result.capability_matrix.some((entry) => entry.disposition === "unreachable-or-legacy-diagnostic")).toBe(true);
     });
 
     it("derives an exact path-aware tuple from every runner-emitted registry operation", () => {
         const required = pc05PublicOwnerOperations(JSON.parse(fs.readFileSync(
             path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json"), "utf-8",
         )) as Parameters<typeof pc05PublicOwnerOperations>[0]);
-        const expected = result.rows.flatMap((row) => row.registry_operation === undefined ? [] : (row.observations ?? [])
+        const emitted = result.rows.flatMap((row) => row.registry_operation === undefined ? [] : (row.observations ?? [])
             .filter((observation) => observation.owner === row.operation_owner && observation.result.length > 0)
             .map((observation) => ({
                 identity: JSON.stringify([row.artifact_kind, row.registry_operation, row.operation_owner, observation.surface]),
@@ -454,7 +419,18 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         const actual = result.exact_owner_operation_coverage
             .map((entry) => ({identity: entry.exact_tuple_identity, recordId: entry.record_id}))
             .sort((left, right) => `${left.identity}:${left.recordId}`.localeCompare(`${right.identity}:${right.recordId}`));
-        expect(actual).toEqual(expected);
+        const requiredExact = required.map((entry) => ({
+            identity: JSON.stringify([entry.artifactKind, entry.registryOperation, entry.owner]),
+        })).sort((left, right) => left.identity.localeCompare(right.identity));
+        const emittedExact = emitted.map((entry) => ({
+            identity: JSON.stringify(JSON.parse(entry.identity).slice(0, 3)),
+        })).sort((left, right) => left.identity.localeCompare(right.identity));
+        const actualExact = actual.map((entry) => ({
+            identity: JSON.stringify(JSON.parse(entry.identity).slice(0, 3)),
+        })).sort((left, right) => left.identity.localeCompare(right.identity));
+        expect(emittedExact).toEqual(requiredExact);
+        expect(actualExact).toEqual(requiredExact);
+        expect(actual).toEqual(emitted);
         expect(new Set(actual.map((entry) => `${entry.identity}:${entry.recordId}`)).size).toBe(actual.length);
         for (const entry of result.exact_owner_operation_coverage) {
             expect(entry.status).toBe("executed");

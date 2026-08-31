@@ -33,6 +33,9 @@ const environment = {
     PC14_FIXED_RUNNER_IDENTITY: "pc14-fixed-runner",
     PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR: runDirectory,
     PC14_INTEROPERABILITY_PERSISTED_RESULT: path.join(runDirectory, "interoperability-result.json"),
+    // The final Studio runner owns the merge.  Keep completion explicit in
+    // the normal regeneration environment as well as at that call site.
+    PC14_INTEROPERABILITY_REQUIRE_COMPLETE: "true",
 };
 
 function run(testPath) {

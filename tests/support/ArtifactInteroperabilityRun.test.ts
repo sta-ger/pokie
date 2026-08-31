@@ -64,7 +64,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         });
         const outputPath = path.join(rootPath, "merged.json");
 
-        mergeArtifactInteroperabilityRuns([cliPath, studioPath, libraryPath, ownerOnlyPath], outputPath);
+        mergeArtifactInteroperabilityRuns([cliPath, studioPath, libraryPath, ownerOnlyPath], outputPath, {requireComplete: false});
 
         const output = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
             readonly exact_owner_operation_coverage: readonly ExactTuple[];

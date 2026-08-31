@@ -11,7 +11,12 @@ import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.j
 import {createStudioGameLoader} from "../../../../cli/studio/loadStudioGame.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
 import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js";
-import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, mergeArtifactInteroperabilityRuns} from "../../../support/ArtifactInteroperabilityRun.js";
+import {
+    ArtifactInteroperabilityRun,
+    installPc14FixedRunnerClock,
+    mergeArtifactInteroperabilityRuns,
+    recordRemainingPc05OwnerOperationBoundaries,
+} from "../../../support/ArtifactInteroperabilityRun.js";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
 const POKIE_VERSION = "1.3.0";
@@ -429,6 +434,17 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         const emittedPath = evidenceDirectory === undefined
             ? path.join(workDir, "pc14-studio-ui-real-artifact-result.json")
             : path.join(evidenceDirectory, "studio-ui-real-artifact-result.json");
+        const priorRunPaths = evidenceDirectory === undefined ? [] : [
+            path.join(evidenceDirectory, "cli-real-artifact-result.json"),
+            path.join(evidenceDirectory, "studio-real-artifact-result.json"),
+        ];
+        // The two preceding runners have already exercised their owners.
+        // Complete the remaining PC-05 public boundaries in this final,
+        // rendered runner before serialising the ledger; the merge below is
+        // intentionally only a complete-set validator.
+        if (priorRunPaths.every((candidate) => fs.existsSync(candidate))) {
+            recordRemainingPc05OwnerOperationBoundaries(evidence, blueprintPath, priorRunPaths);
+        }
         evidence.write(emittedPath);
         const emittedText = fs.readFileSync(emittedPath, "utf8");
         expect(emittedText).toContain('"id": "studio-ui-blueprint-runtime-workflows"');
@@ -439,7 +455,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
                 path.join(evidenceDirectory, "cli-real-artifact-result.json"),
                 path.join(evidenceDirectory, "studio-real-artifact-result.json"),
                 emittedPath,
-            ], persistedResultPath);
+            ], persistedResultPath, {requireComplete: true});
         }
     }, 120000);
 });
