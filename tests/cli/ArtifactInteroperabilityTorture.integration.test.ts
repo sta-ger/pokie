@@ -8,9 +8,13 @@ import {
     BUILD_PRODUCT_MATRIX_TARGETS,
     computeBlueprintHash,
     describeUnavailableArtifactOperation,
+    GameBlueprintValidator,
+    OutcomeLibraryBundleReader,
+    ParSheetImporter,
     POKIE_WASM_CONTRACT_VERSION,
     type GameBlueprint,
     ProjectTargetResolver,
+    StakeEngineOutcomeSourceReader,
 } from "pokie";
 import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
@@ -417,7 +421,41 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         });
         const sourceProject = await resolver.resolve(importedBlueprintPath);
         if (sourceProject === undefined) throw new Error("Expected the imported Blueprint to resolve for the direct-library preflight.");
-        const directPlan = await registry.preparePlan(sourceProject, "tsPackage", {destinationPath: path.join(workDir, "direct-library-package")});
+        evidence.record({
+            id: "library-resolve-imported-blueprint", artifactKind: "blueprint", operation: "resolve", registryOperation: "recognized_by",
+            sourcePath: importedBlueprintPath, owner: "ProjectTargetResolver", result: "direct resolver recognized the runner-imported Blueprint",
+            observations: [{surface: "library", owner: "ProjectTargetResolver", result: "resolve returned blueprint"}],
+        });
+        expect(new GameBlueprintValidator().validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
+        evidence.record({
+            id: "library-validate-blueprint", artifactKind: "blueprint", operation: "validate", registryOperation: "validates_by",
+            sourcePath: blueprintPath, owner: "GameBlueprintValidator", result: "direct Blueprint validator accepted the runner-produced Blueprint",
+            observations: [{surface: "library", owner: "GameBlueprintValidator", result: "validate returned no errors"}],
+        });
+        const directPackagePath = path.join(workDir, "direct-library-package");
+        const directPackage = await registry.build("tsPackage", sourceProject, directPackagePath);
+        expect(fs.existsSync(directPackage.outputPath)).toBe(true);
+        evidence.record({
+            id: "library-build-package", artifactKind: "tsPackage", operation: "build", registryOperation: "created_by",
+            sourcePath: importedBlueprintPath, producedPath: directPackage.outputPath, owner: "ArtifactBuilderRegistry:build(tsPackage)",
+            result: "direct registry build published a TypeScript package",
+            observations: [{surface: "library", owner: "ArtifactBuilderRegistry:build(tsPackage)", result: "build returned a published package"}],
+        });
+        const directPackageProject = await resolver.resolve(directPackage.outputPath);
+        expect(directPackageProject?.type).toBe("tsPackage");
+        evidence.record({
+            id: "library-resolve-direct-package", artifactKind: "tsPackage", operation: "resolve", registryOperation: "recognized_by",
+            sourcePath: directPackage.outputPath, owner: "ProjectTargetResolver", result: "direct resolver recognized the registry-produced package",
+            observations: [{surface: "library", owner: "ProjectTargetResolver", result: "resolve returned tsPackage"}],
+        });
+        const directParImport = await new ParSheetImporter().importFromFile(workbookPath);
+        expect(directParImport.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        evidence.record({
+            id: "library-import-par-workbook", artifactKind: "parWorkbook", operation: "validate", registryOperation: "validates_by",
+            sourcePath: workbookPath, owner: "ParSheetImporter during import", result: "direct PAR importer accepted the runner-produced workbook",
+            observations: [{surface: "library", owner: "ParSheetImporter during import", result: "importFromFile returned no errors"}],
+        });
+        const directPlan = await registry.preparePlan(sourceProject, "tsPackage", {destinationPath: path.join(workDir, "direct-library-preflight-package")});
         expect(directPlan.status).toBe("planned");
         evidence.record({
             id: "blueprint-plan-package", artifactKind: "blueprint", operation: "build-preflight", sourcePath: importedBlueprintPath,
@@ -474,6 +512,13 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         };
         const bundleMode = bundleManifest.modes[0];
         expect(bundleMode).toBeDefined();
+        const directBundleManifest = await new OutcomeLibraryBundleReader().readManifest(bundlePath);
+        expect(directBundleManifest.modes).toHaveLength(1);
+        evidence.record({
+            id: "library-read-outcome-library", artifactKind: "outcomeLibrary", operation: "recognize", registryOperation: "recognized_by",
+            sourcePath: bundlePath, owner: "OutcomeLibraryBundleReader", result: "direct bundle reader retained the produced Outcome Library manifest",
+            observations: [{surface: "library", owner: "OutcomeLibraryBundleReader", result: "readManifest returned the generated mode"}],
+        });
         evidence.record({
             id: "bundle-canonical-outcomes", artifactKind: "canonicalOutcomeJsonl", operation: "validate", sourcePath: path.join(bundlePath, bundleMode.outcomesFile),
             owner: "OutcomeLibraryCommand", result: "published as the bundle's canonical outcome stream",
@@ -508,6 +553,13 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 {surface: "cli", owner: "BuildCommand", result: "exit 0"},
                 {surface: "library", owner: "ArtifactBuilderRegistry", result: "executed registry conversion"},
             ],
+        });
+        const directStakeRead = await new StakeEngineOutcomeSourceReader().readFromDirectory(stakePath);
+        expect(directStakeRead.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        evidence.record({
+            id: "library-read-stake-adapter", artifactKind: "stakeAdapter", operation: "recognize", registryOperation: "recognized_by",
+            sourcePath: stakePath, owner: "StakeEngineOutcomeSourceReader", result: "direct Stake reader reconstructed runner-produced outcome modes",
+            observations: [{surface: "library", owner: "StakeEngineOutcomeSourceReader", result: "readFromDirectory returned valid modes"}],
         });
         fs.writeFileSync(stakeDescriptorPath, JSON.stringify({modes: [{modeName: "base", cost: 1, bundleDir: path.basename(bundlePath), bundleModeName: "base"}]}));
         let stakeExportDiagnostic = "";
