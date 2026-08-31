@@ -528,9 +528,9 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(fs.existsSync(directWriterBundlePath)).toBe(true);
         evidence.record({
             id: "library-write-canonical-outcomes", artifactKind: "canonicalOutcomeJsonl", operation: "write", registryOperation: "created_by",
-            sourcePath: directBundle.outputPath, producedPath: directWriterBundlePath, owner: "OutcomeLibraryBundleWriter per-mode JSONL",
+            sourcePath: directBundle.outputPath, producedPath: directWriterBundlePath, owner: "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
             result: "direct bundle writer published canonical outcome JSONL from the reader-returned library",
-            observations: [{surface: "library", owner: "OutcomeLibraryBundleWriter per-mode JSONL", result: "writeToDirectory published the canonical outcome stream"}],
+            observations: [{surface: "library", owner: "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized", result: "writeToDirectory published the canonical outcome stream"}],
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
         });
 
