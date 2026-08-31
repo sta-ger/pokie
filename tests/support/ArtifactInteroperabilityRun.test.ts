@@ -189,7 +189,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         fs.writeFileSync(sourcePath, "source");
         const runner = new ArtifactInteroperabilityRun(rootPath);
 
-        const proxyOwnerRow = {
+        const proxyOwnerRow: Parameters<ArtifactInteroperabilityRun["record"]>[0] = {
             id: "proxy-owner", artifactKind: "blueprint", operation: "create", registryOperation: "created_by",
             sourcePath, owner: "cli:create", result: "created",
             observations: [{surface: "cli", owner: "cli:create", result: "created"}],
