@@ -652,7 +652,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const rawBundleManifest = await new OutcomeLibraryBundleReader().readManifest(bundlePath);
         expect(rawBundleManifest.modes).toHaveLength(1);
         evidence.record({
-            id: "library-read-outcome-library", artifactKind: "outcomeLibrary", operation: "recognize", registryOperation: "recognized_by",
+            id: "library-read-outcome-library", artifactKind: "outcomeLibrary", operation: "recognize",
             sourcePath: bundlePath, owner: "OutcomeLibraryBundleReader", result: "direct bundle reader retained the produced Outcome Library manifest",
             observations: [{surface: "library", owner: "OutcomeLibraryBundleReader", result: "readManifest returned the generated mode"}],
         });
