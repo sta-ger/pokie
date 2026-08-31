@@ -147,6 +147,48 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         })).toThrow("must bind exactly one actual surface observation from that owner");
     });
 
+    it("does not infer a thin adapter from a shared artifact operation", () => {
+        const runner = new ArtifactInteroperabilityRun(rootPath);
+        const sourcePath = path.join(rootPath, "outcomes.jsonl");
+        fs.writeFileSync(sourcePath, "{\"outcome\":\"canonical\"}\n");
+        runner.record({
+            id: "native-canonical-outcome-writer",
+            artifactKind: "canonicalOutcomeJsonl",
+            operation: "create",
+            registryOperation: "created_by",
+            sourcePath,
+            owner: "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
+            result: "native bundle writer published canonical outcomes",
+            observations: [{
+                surface: "library",
+                owner: "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
+                result: "native bundle writer published canonical outcomes",
+            }],
+        });
+        const runnerPath = path.join(rootPath, "canonical-outcomes.json");
+        const outputPath = path.join(rootPath, "merged.json");
+        runner.write(runnerPath);
+
+        mergeArtifactInteroperabilityRuns([runnerPath], outputPath, {requireComplete: false});
+
+        const output = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
+            readonly capability_matrix: readonly {
+                readonly capability_identity: string;
+                readonly disposition: string;
+                readonly diagnostic?: {readonly code: string};
+            }[];
+        };
+        const externalProducer = output.capability_matrix.find((entry) =>
+            entry.capability_identity === JSON.stringify([
+                "canonicalOutcomeJsonl", "created_by", "user/external canonical outcome-stream producer",
+            ]),
+        );
+        expect(externalProducer).toMatchObject({
+            disposition: "unreachable-or-legacy-diagnostic",
+            diagnostic: {code: "unreached-distinct-capability"},
+        });
+    });
+
     it("rejects missing PC-05 owner-operation evidence before writing merged evidence", () => {
         const sourcePath = path.join(rootPath, "source.json");
         fs.writeFileSync(sourcePath, "source");

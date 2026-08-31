@@ -164,6 +164,73 @@ type Pc14CapabilityMatrixEntry = {
     };
 };
 
+type Pc14ThinCapabilityAdapter = {
+    readonly canonicalOwner: string;
+    /** Documents the user-visible delegation, rather than inferring it from
+     * two owners happening to share an artifact type. */
+    readonly reason: string;
+};
+
+const capabilityKey = (artifactKind: string, registryOperation: Pc05PublicOwnerOperation["registryOperation"], owner: string): string =>
+    `${artifactKind}:${registryOperation}:${owner}`;
+
+/**
+ * Only named public delegations may borrow a canonical proof.  The PC-05
+ * inventory deliberately contains owners that share an artifact and verb
+ * while still exposing different user interactions (for example external
+ * producers and distinct reports).  Keeping this small registry explicit
+ * prevents the evidence merger from relabelling those interactions as thin
+ * adapters merely because a sibling happened to run.
+ */
+const PC14_THIN_CAPABILITY_ADAPTERS = new Map<string, Pc14ThinCapabilityAdapter>([
+    [capabilityKey("blueprint", "created_by", "cli:create --out"), {canonicalOwner: "cli:create", reason: "The explicit destination form is the create command's output option."}],
+    [capabilityKey("blueprint", "created_by", "cli:create without --out"), {canonicalOwner: "cli:create", reason: "The default destination form is the create command's output option."}],
+    [capabilityKey("blueprint", "recognized_by", "cli:inspect"), {canonicalOwner: "ProjectTargetResolver", reason: "Inspect delegates project recognition to the target resolver."}],
+    [capabilityKey("blueprint", "recognized_by", "cli:validate"), {canonicalOwner: "ProjectTargetResolver", reason: "Validate resolves the project before applying validation."}],
+    [capabilityKey("blueprint", "recognized_by", "studio:project-registration"), {canonicalOwner: "ProjectTargetResolver", reason: "Studio project registration delegates project recognition to the target resolver."}],
+    [capabilityKey("blueprint", "validates_by", "studio:blueprint-check"), {canonicalOwner: "GameBlueprintValidator", reason: "Studio's Blueprint check delegates the model check to the Blueprint validator."}],
+    [capabilityKey("outcomeLibrary", "created_by", "cli:build --target outcomeLibrary"), {canonicalOwner: "ArtifactBuilderRegistry:build(outcomeLibrary)", reason: "The target form delegates publication to the Outcome Library builder."}],
+    [capabilityKey("outcomeLibrary", "created_by", "cli:build --target outcomeLibrary --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(outcomeLibrary)", reason: "The explicit destination target form delegates publication to the Outcome Library builder."}],
+    [capabilityKey("outcomeLibrary", "created_by", "cli:build --target outcomeLibrary without --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(outcomeLibrary)", reason: "The default destination target form delegates publication to the Outcome Library builder."}],
+    [capabilityKey("outcomeLibrary", "created_by", "cli:export --to outcomes --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(outcomeLibrary)", reason: "Outcomes export delegates native bundle publication to the Outcome Library builder."}],
+    [capabilityKey("outcomeLibrary", "created_by", "cli:export --to outcomes without --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(outcomeLibrary)", reason: "Default outcomes export delegates native bundle publication to the Outcome Library builder."}],
+    [capabilityKey("outcomeLibrary", "created_by", "cli:import --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(outcomeLibrary)", reason: "The import handoff publishes the native library through the registered builder."}],
+    [capabilityKey("outcomeLibrary", "created_by", "cli:import Stake without --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(outcomeLibrary)", reason: "Default Stake import publishes the native library through the registered builder."}],
+    [capabilityKey("outcomeLibrary", "created_by", "cli:outcomelibrary build"), {canonicalOwner: "ArtifactBuilderRegistry:build(outcomeLibrary)", reason: "The Outcome Library command delegates publication to the registered builder."}],
+    [capabilityKey("outcomeLibrary", "created_by", "studio:outcome-library-generate"), {canonicalOwner: "ArtifactBuilderRegistry:build(outcomeLibrary)", reason: "Studio generation delegates native library publication to the registered builder."}],
+    [capabilityKey("outcomeLibrary", "recognized_by", "cli:inspect"), {canonicalOwner: "OutcomeLibraryBundleReader", reason: "Inspect delegates bundle recognition to the Outcome Library reader."}],
+    [capabilityKey("outcomeLibrary", "recognized_by", "studio:outcome-library-registry"), {canonicalOwner: "OutcomeLibraryBundleReader", reason: "Studio's library registry delegates bundle recognition to the reader."}],
+    [capabilityKey("outcomeLibrary", "validates_by", "cli:outcomelibrary-validate"), {canonicalOwner: "OutcomeLibraryBundleReader", reason: "Outcome Library validation delegates bundle parsing to the reader."}],
+    [capabilityKey("outcomeLibrary", "validates_by", "cli:validate --deep"), {canonicalOwner: "OutcomeLibraryBundleReader", reason: "Deep validation delegates bundle parsing to the reader."}],
+    [capabilityKey("parWorkbook", "created_by", "cli:build --target parWorkbook --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(parWorkbook)", reason: "The explicit PAR target delegates workbook publication to the registered builder."}],
+    [capabilityKey("parWorkbook", "created_by", "cli:build --target parWorkbook without --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(parWorkbook)", reason: "The default PAR target delegates workbook publication to the registered builder."}],
+    [capabilityKey("parWorkbook", "created_by", "cli:export --to workbook --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(parWorkbook)", reason: "Workbook export delegates publication to the PAR builder."}],
+    [capabilityKey("parWorkbook", "created_by", "cli:export --to workbook without --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(parWorkbook)", reason: "Default workbook export delegates publication to the PAR builder."}],
+    [capabilityKey("parWorkbook", "created_by", "cli:par export --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(parWorkbook)", reason: "PAR export delegates workbook publication to the registered builder."}],
+    [capabilityKey("parWorkbook", "created_by", "cli:par export without --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(parWorkbook)", reason: "Default PAR export delegates workbook publication to the registered builder."}],
+    [capabilityKey("parWorkbook", "created_by", "studio:par-export"), {canonicalOwner: "ArtifactBuilderRegistry:build(parWorkbook)", reason: "Studio PAR export delegates workbook publication to the registered builder."}],
+    [capabilityKey("parWorkbook", "recognized_by", "cli:inspect"), {canonicalOwner: "ProjectTargetResolver", reason: "Inspect delegates workbook recognition to the target resolver."}],
+    [capabilityKey("parWorkbook", "recognized_by", "studio:project-registration"), {canonicalOwner: "ProjectTargetResolver", reason: "Studio project registration delegates workbook recognition to the target resolver."}],
+    [capabilityKey("stakeAdapter", "created_by", "cli:build"), {canonicalOwner: "ArtifactBuilderRegistry:build(stakeAdapter)", reason: "Build delegates Stake adapter publication to the registered builder."}],
+    [capabilityKey("stakeAdapter", "created_by", "cli:build --target stakeAdapter --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(stakeAdapter)", reason: "The explicit Stake target delegates publication to the registered builder."}],
+    [capabilityKey("stakeAdapter", "created_by", "cli:build --target stakeAdapter without --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(stakeAdapter)", reason: "The default Stake target delegates publication to the registered builder."}],
+    [capabilityKey("stakeAdapter", "created_by", "cli:export --to adapter --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(stakeAdapter)", reason: "Adapter export delegates publication to the registered builder."}],
+    [capabilityKey("stakeAdapter", "created_by", "cli:export --to adapter without --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(stakeAdapter)", reason: "Default adapter export delegates publication to the registered builder."}],
+    [capabilityKey("stakeAdapter", "created_by", "studio:stake-export"), {canonicalOwner: "ArtifactBuilderRegistry:build(stakeAdapter)", reason: "Studio Stake export delegates publication to the registered builder."}],
+    [capabilityKey("stakeAdapter", "recognized_by", "cli:inspect"), {canonicalOwner: "ProjectTargetResolver", reason: "Inspect delegates Stake adapter recognition to the target resolver."}],
+    [capabilityKey("stakeAdapter", "recognized_by", "studio:project-registration"), {canonicalOwner: "ProjectTargetResolver", reason: "Studio project registration delegates Stake adapter recognition to the target resolver."}],
+    [capabilityKey("stakeAdapter", "validates_by", "cli:validate"), {canonicalOwner: "StakeEngineExportValidator", reason: "Validate delegates export-shape validation to the Stake export validator."}],
+    [capabilityKey("stakeAdapter", "validates_by", "studio:stake-export-validate"), {canonicalOwner: "StakeEngineExportValidator", reason: "Studio Stake validation delegates export-shape validation to the Stake export validator."}],
+    [capabilityKey("tsPackage", "created_by", "cli:build"), {canonicalOwner: "ArtifactBuilderRegistry:build(tsPackage)", reason: "Build delegates package publication to the registered builder."}],
+    [capabilityKey("tsPackage", "created_by", "cli:build --target tsPackage --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(tsPackage)", reason: "The explicit package target delegates publication to the registered builder."}],
+    [capabilityKey("tsPackage", "created_by", "cli:build --target tsPackage without --out"), {canonicalOwner: "ArtifactBuilderRegistry:build(tsPackage)", reason: "The default package target delegates publication to the registered builder."}],
+    [capabilityKey("tsPackage", "created_by", "cli:init"), {canonicalOwner: "ArtifactBuilderRegistry:build(tsPackage)", reason: "Init delegates initial package publication to the registered builder."}],
+    [capabilityKey("tsPackage", "created_by", "studio:artifact-build"), {canonicalOwner: "ArtifactBuilderRegistry:build(tsPackage)", reason: "Studio artifact build delegates package publication to the registered builder."}],
+    [capabilityKey("tsPackage", "recognized_by", "cli:inspect"), {canonicalOwner: "loadPokieGame", reason: "Inspect delegates package loading to the package loader."}],
+    [capabilityKey("tsPackage", "recognized_by", "studio:project-registration"), {canonicalOwner: "loadPokieGame", reason: "Studio project registration delegates package loading to the package loader."}],
+    [capabilityKey("tsPackage", "validates_by", "cli:validate"), {canonicalOwner: "loadPokieGame", reason: "Validate delegates package loading and validation to the package loader."}],
+]);
+
 const INTERNAL_PC05_ARTIFACT_KINDS = new Set([
     "blueprintRuntimeMaterializationCache",
     "blueprintRuntimeMaterializationMarker",
@@ -763,32 +830,33 @@ export function mergeArtifactInteroperabilityRuns(
             };
         }
         // A capability inventory is larger than an execution ledger. Reuse a
-        // real canonical operation only for an owner in the same artifact
-        // domain and registry operation; all other retained owners remain an
-        // explicit, unexecuted boundary. Neither disposition is an execution
-        // claim for the owner being described.
+        // real canonical operation only for a named, documented delegation.
+        // Sharing an artifact and registry operation is not sufficient: that
+        // is common for distinct public interactions and must remain visible
+        // as an explicit unexecuted capability case.
         if (options.requireComplete === false) {
-            const adapter = requiredOwnerOperations.find((candidate) =>
-                candidate.artifactKind === required.artifactKind &&
-                candidate.registryOperation === required.registryOperation &&
-                candidate.owner !== required.owner &&
-                directCapabilityProofs.has(`${candidate.artifactKind}:${candidate.registryOperation}:${candidate.owner}`),
-            );
-            if (adapter !== undefined) {
-                const adapterProof = directCapabilityProofs.get(`${adapter.artifactKind}:${adapter.registryOperation}:${adapter.owner}`)!;
-                return {
-                    "capability_identity": capabilityIdentity,
-                    "artifact_kind": required.artifactKind,
-                    "registry_operation": required.registryOperation,
-                    "public_owner": required.owner,
-                    disposition: "adapter-proof",
-                    "adapter_proof": {
-                        "canonical_capability_identity": JSON.stringify([adapter.artifactKind, adapter.registryOperation, adapter.owner]),
-                        "canonical_public_owner": adapter.owner,
-                        "record_id": adapterProof.record_id,
-                        reason: `Thin adapter over the runner-emitted ${adapter.owner} ${adapter.registryOperation} capability; ${required.owner} was not executed by this refresh.`,
-                    },
-                };
+            const declaredAdapter = PC14_THIN_CAPABILITY_ADAPTERS.get(tupleKey);
+            if (declaredAdapter !== undefined) {
+                const canonicalTupleKey = capabilityKey(required.artifactKind, required.registryOperation, declaredAdapter.canonicalOwner);
+                const adapterProof = directCapabilityProofs.get(canonicalTupleKey);
+                if (adapterProof !== undefined) {
+                    const canonicalCapabilityIdentity = JSON.stringify([
+                        required.artifactKind, required.registryOperation, declaredAdapter.canonicalOwner,
+                    ]);
+                    return {
+                        "capability_identity": capabilityIdentity,
+                        "artifact_kind": required.artifactKind,
+                        "registry_operation": required.registryOperation,
+                        "public_owner": required.owner,
+                        disposition: "adapter-proof",
+                        "adapter_proof": {
+                            "canonical_capability_identity": canonicalCapabilityIdentity,
+                            "canonical_public_owner": declaredAdapter.canonicalOwner,
+                            "record_id": adapterProof.record_id,
+                            reason: `${declaredAdapter.reason} ${required.owner} was not executed by this refresh.`,
+                        },
+                    };
+                }
             }
             return {
                 "capability_identity": capabilityIdentity,

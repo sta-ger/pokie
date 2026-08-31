@@ -4668,7 +4668,7 @@
         "canonical_capability_identity": "[\"blueprint\",\"recognized_by\",\"ProjectTargetResolver\"]",
         "canonical_public_owner": "ProjectTargetResolver",
         "record_id": "library-resolve-imported-blueprint",
-        "reason": "Thin adapter over the runner-emitted ProjectTargetResolver recognized_by capability; cli:inspect was not executed by this refresh."
+        "reason": "Inspect delegates project recognition to the target resolver. cli:inspect was not executed by this refresh."
       }
     },
     {
@@ -4681,7 +4681,7 @@
         "canonical_capability_identity": "[\"blueprint\",\"recognized_by\",\"ProjectTargetResolver\"]",
         "canonical_public_owner": "ProjectTargetResolver",
         "record_id": "library-resolve-imported-blueprint",
-        "reason": "Thin adapter over the runner-emitted ProjectTargetResolver recognized_by capability; cli:validate was not executed by this refresh."
+        "reason": "Validate resolves the project before applying validation. cli:validate was not executed by this refresh."
       }
     },
     {
@@ -4708,7 +4708,7 @@
         "canonical_capability_identity": "[\"blueprint\",\"recognized_by\",\"ProjectTargetResolver\"]",
         "canonical_public_owner": "ProjectTargetResolver",
         "record_id": "library-resolve-imported-blueprint",
-        "reason": "Thin adapter over the runner-emitted ProjectTargetResolver recognized_by capability; studio:project-registration was not executed by this refresh."
+        "reason": "Studio project registration delegates project recognition to the target resolver. studio:project-registration was not executed by this refresh."
       }
     },
     {
@@ -4735,7 +4735,7 @@
         "canonical_capability_identity": "[\"blueprint\",\"validates_by\",\"GameBlueprintValidator\"]",
         "canonical_public_owner": "GameBlueprintValidator",
         "record_id": "library-validate-blueprint",
-        "reason": "Thin adapter over the runner-emitted GameBlueprintValidator validates_by capability; studio:blueprint-check was not executed by this refresh."
+        "reason": "Studio's Blueprint check delegates the model check to the Blueprint validator. studio:blueprint-check was not executed by this refresh."
       }
     },
     {
@@ -4757,12 +4757,10 @@
       "artifact_kind": "canonicalOutcomeJsonl",
       "registry_operation": "created_by",
       "public_owner": "user/external canonical outcome-stream producer",
-      "disposition": "adapter-proof",
-      "adapter_proof": {
-        "canonical_capability_identity": "[\"canonicalOutcomeJsonl\",\"created_by\",\"OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized\"]",
-        "canonical_public_owner": "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
-        "record_id": "library-write-canonical-outcomes",
-        "reason": "Thin adapter over the runner-emitted OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized created_by capability; user/external canonical outcome-stream producer was not executed by this refresh."
+      "disposition": "unreachable-or-legacy-diagnostic",
+      "diagnostic": {
+        "code": "unreached-distinct-capability",
+        "recovery": "Exercise user/external canonical outcome-stream producer's created_by public boundary to replace this unexecuted capability diagnostic with a canonical proof."
       }
     },
     {
@@ -5537,7 +5535,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"created_by\",\"ArtifactBuilderRegistry:build(outcomeLibrary)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
         "record_id": "library-build-outcome-library",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(outcomeLibrary) created_by capability; cli:build --target outcomeLibrary was not executed by this refresh."
+        "reason": "The target form delegates publication to the Outcome Library builder. cli:build --target outcomeLibrary was not executed by this refresh."
       }
     },
     {
@@ -5550,7 +5548,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"created_by\",\"ArtifactBuilderRegistry:build(outcomeLibrary)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
         "record_id": "library-build-outcome-library",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(outcomeLibrary) created_by capability; cli:build --target outcomeLibrary --out was not executed by this refresh."
+        "reason": "The explicit destination target form delegates publication to the Outcome Library builder. cli:build --target outcomeLibrary --out was not executed by this refresh."
       }
     },
     {
@@ -5563,7 +5561,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"created_by\",\"ArtifactBuilderRegistry:build(outcomeLibrary)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
         "record_id": "library-build-outcome-library",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(outcomeLibrary) created_by capability; cli:build --target outcomeLibrary without --out was not executed by this refresh."
+        "reason": "The default destination target form delegates publication to the Outcome Library builder. cli:build --target outcomeLibrary without --out was not executed by this refresh."
       }
     },
     {
@@ -5576,7 +5574,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"created_by\",\"ArtifactBuilderRegistry:build(outcomeLibrary)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
         "record_id": "library-build-outcome-library",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(outcomeLibrary) created_by capability; cli:export --to outcomes --out was not executed by this refresh."
+        "reason": "Outcomes export delegates native bundle publication to the Outcome Library builder. cli:export --to outcomes --out was not executed by this refresh."
       }
     },
     {
@@ -5589,7 +5587,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"created_by\",\"ArtifactBuilderRegistry:build(outcomeLibrary)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
         "record_id": "library-build-outcome-library",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(outcomeLibrary) created_by capability; cli:export --to outcomes without --out was not executed by this refresh."
+        "reason": "Default outcomes export delegates native bundle publication to the Outcome Library builder. cli:export --to outcomes without --out was not executed by this refresh."
       }
     },
     {
@@ -5602,7 +5600,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"created_by\",\"ArtifactBuilderRegistry:build(outcomeLibrary)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
         "record_id": "library-build-outcome-library",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(outcomeLibrary) created_by capability; cli:import --out was not executed by this refresh."
+        "reason": "The import handoff publishes the native library through the registered builder. cli:import --out was not executed by this refresh."
       }
     },
     {
@@ -5615,7 +5613,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"created_by\",\"ArtifactBuilderRegistry:build(outcomeLibrary)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
         "record_id": "library-build-outcome-library",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(outcomeLibrary) created_by capability; cli:import Stake without --out was not executed by this refresh."
+        "reason": "Default Stake import publishes the native library through the registered builder. cli:import Stake without --out was not executed by this refresh."
       }
     },
     {
@@ -5628,7 +5626,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"created_by\",\"ArtifactBuilderRegistry:build(outcomeLibrary)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
         "record_id": "library-build-outcome-library",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(outcomeLibrary) created_by capability; cli:outcomelibrary build was not executed by this refresh."
+        "reason": "The Outcome Library command delegates publication to the registered builder. cli:outcomelibrary build was not executed by this refresh."
       }
     },
     {
@@ -5641,7 +5639,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"created_by\",\"ArtifactBuilderRegistry:build(outcomeLibrary)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(outcomeLibrary)",
         "record_id": "library-build-outcome-library",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(outcomeLibrary) created_by capability; studio:outcome-library-generate was not executed by this refresh."
+        "reason": "Studio generation delegates native library publication to the registered builder. studio:outcome-library-generate was not executed by this refresh."
       }
     },
     {
@@ -5654,7 +5652,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"recognized_by\",\"OutcomeLibraryBundleReader\"]",
         "canonical_public_owner": "OutcomeLibraryBundleReader",
         "record_id": "library-read-direct-outcome-library",
-        "reason": "Thin adapter over the runner-emitted OutcomeLibraryBundleReader recognized_by capability; cli:inspect was not executed by this refresh."
+        "reason": "Inspect delegates bundle recognition to the Outcome Library reader. cli:inspect was not executed by this refresh."
       }
     },
     {
@@ -5695,7 +5693,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"recognized_by\",\"OutcomeLibraryBundleReader\"]",
         "canonical_public_owner": "OutcomeLibraryBundleReader",
         "record_id": "library-read-direct-outcome-library",
-        "reason": "Thin adapter over the runner-emitted OutcomeLibraryBundleReader recognized_by capability; studio:outcome-library-registry was not executed by this refresh."
+        "reason": "Studio's library registry delegates bundle recognition to the reader. studio:outcome-library-registry was not executed by this refresh."
       }
     },
     {
@@ -5785,7 +5783,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"validates_by\",\"OutcomeLibraryBundleReader\"]",
         "canonical_public_owner": "OutcomeLibraryBundleReader",
         "record_id": "library-validate-direct-outcome-library",
-        "reason": "Thin adapter over the runner-emitted OutcomeLibraryBundleReader validates_by capability; cli:outcomelibrary-validate was not executed by this refresh."
+        "reason": "Outcome Library validation delegates bundle parsing to the reader. cli:outcomelibrary-validate was not executed by this refresh."
       }
     },
     {
@@ -5798,7 +5796,7 @@
         "canonical_capability_identity": "[\"outcomeLibrary\",\"validates_by\",\"OutcomeLibraryBundleReader\"]",
         "canonical_public_owner": "OutcomeLibraryBundleReader",
         "record_id": "library-validate-direct-outcome-library",
-        "reason": "Thin adapter over the runner-emitted OutcomeLibraryBundleReader validates_by capability; cli:validate --deep was not executed by this refresh."
+        "reason": "Deep validation delegates bundle parsing to the reader. cli:validate --deep was not executed by this refresh."
       }
     },
     {
@@ -6026,7 +6024,7 @@
         "canonical_capability_identity": "[\"parWorkbook\",\"created_by\",\"ArtifactBuilderRegistry:build(parWorkbook)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(parWorkbook)",
         "record_id": "library-build-par-workbook",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(parWorkbook) created_by capability; cli:build --target parWorkbook --out was not executed by this refresh."
+        "reason": "The explicit PAR target delegates workbook publication to the registered builder. cli:build --target parWorkbook --out was not executed by this refresh."
       }
     },
     {
@@ -6039,7 +6037,7 @@
         "canonical_capability_identity": "[\"parWorkbook\",\"created_by\",\"ArtifactBuilderRegistry:build(parWorkbook)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(parWorkbook)",
         "record_id": "library-build-par-workbook",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(parWorkbook) created_by capability; cli:build --target parWorkbook without --out was not executed by this refresh."
+        "reason": "The default PAR target delegates workbook publication to the registered builder. cli:build --target parWorkbook without --out was not executed by this refresh."
       }
     },
     {
@@ -6052,7 +6050,7 @@
         "canonical_capability_identity": "[\"parWorkbook\",\"created_by\",\"ArtifactBuilderRegistry:build(parWorkbook)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(parWorkbook)",
         "record_id": "library-build-par-workbook",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(parWorkbook) created_by capability; cli:export --to workbook --out was not executed by this refresh."
+        "reason": "Workbook export delegates publication to the PAR builder. cli:export --to workbook --out was not executed by this refresh."
       }
     },
     {
@@ -6065,7 +6063,7 @@
         "canonical_capability_identity": "[\"parWorkbook\",\"created_by\",\"ArtifactBuilderRegistry:build(parWorkbook)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(parWorkbook)",
         "record_id": "library-build-par-workbook",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(parWorkbook) created_by capability; cli:export --to workbook without --out was not executed by this refresh."
+        "reason": "Default workbook export delegates publication to the PAR builder. cli:export --to workbook without --out was not executed by this refresh."
       }
     },
     {
@@ -6078,7 +6076,7 @@
         "canonical_capability_identity": "[\"parWorkbook\",\"created_by\",\"ArtifactBuilderRegistry:build(parWorkbook)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(parWorkbook)",
         "record_id": "library-build-par-workbook",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(parWorkbook) created_by capability; cli:par export --out was not executed by this refresh."
+        "reason": "PAR export delegates workbook publication to the registered builder. cli:par export --out was not executed by this refresh."
       }
     },
     {
@@ -6091,7 +6089,7 @@
         "canonical_capability_identity": "[\"parWorkbook\",\"created_by\",\"ArtifactBuilderRegistry:build(parWorkbook)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(parWorkbook)",
         "record_id": "library-build-par-workbook",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(parWorkbook) created_by capability; cli:par export without --out was not executed by this refresh."
+        "reason": "Default PAR export delegates workbook publication to the registered builder. cli:par export without --out was not executed by this refresh."
       }
     },
     {
@@ -6104,7 +6102,7 @@
         "canonical_capability_identity": "[\"parWorkbook\",\"created_by\",\"ArtifactBuilderRegistry:build(parWorkbook)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(parWorkbook)",
         "record_id": "library-build-par-workbook",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(parWorkbook) created_by capability; studio:par-export was not executed by this refresh."
+        "reason": "Studio PAR export delegates workbook publication to the registered builder. studio:par-export was not executed by this refresh."
       }
     },
     {
@@ -6117,7 +6115,7 @@
         "canonical_capability_identity": "[\"parWorkbook\",\"recognized_by\",\"ProjectTargetResolver\"]",
         "canonical_public_owner": "ProjectTargetResolver",
         "record_id": "library-resolve-direct-par-workbook",
-        "reason": "Thin adapter over the runner-emitted ProjectTargetResolver recognized_by capability; cli:inspect was not executed by this refresh."
+        "reason": "Inspect delegates workbook recognition to the target resolver. cli:inspect was not executed by this refresh."
       }
     },
     {
@@ -6144,7 +6142,7 @@
         "canonical_capability_identity": "[\"parWorkbook\",\"recognized_by\",\"ProjectTargetResolver\"]",
         "canonical_public_owner": "ProjectTargetResolver",
         "record_id": "library-resolve-direct-par-workbook",
-        "reason": "Thin adapter over the runner-emitted ProjectTargetResolver recognized_by capability; studio:project-registration was not executed by this refresh."
+        "reason": "Studio project registration delegates workbook recognition to the target resolver. studio:project-registration was not executed by this refresh."
       }
     },
     {
@@ -6834,7 +6832,7 @@
         "canonical_capability_identity": "[\"stakeAdapter\",\"created_by\",\"ArtifactBuilderRegistry:build(stakeAdapter)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(stakeAdapter)",
         "record_id": "library-build-stake-adapter",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(stakeAdapter) created_by capability; cli:build was not executed by this refresh."
+        "reason": "Build delegates Stake adapter publication to the registered builder. cli:build was not executed by this refresh."
       }
     },
     {
@@ -6847,7 +6845,7 @@
         "canonical_capability_identity": "[\"stakeAdapter\",\"created_by\",\"ArtifactBuilderRegistry:build(stakeAdapter)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(stakeAdapter)",
         "record_id": "library-build-stake-adapter",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(stakeAdapter) created_by capability; cli:build --target stakeAdapter --out was not executed by this refresh."
+        "reason": "The explicit Stake target delegates publication to the registered builder. cli:build --target stakeAdapter --out was not executed by this refresh."
       }
     },
     {
@@ -6860,7 +6858,7 @@
         "canonical_capability_identity": "[\"stakeAdapter\",\"created_by\",\"ArtifactBuilderRegistry:build(stakeAdapter)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(stakeAdapter)",
         "record_id": "library-build-stake-adapter",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(stakeAdapter) created_by capability; cli:build --target stakeAdapter without --out was not executed by this refresh."
+        "reason": "The default Stake target delegates publication to the registered builder. cli:build --target stakeAdapter without --out was not executed by this refresh."
       }
     },
     {
@@ -6873,7 +6871,7 @@
         "canonical_capability_identity": "[\"stakeAdapter\",\"created_by\",\"ArtifactBuilderRegistry:build(stakeAdapter)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(stakeAdapter)",
         "record_id": "library-build-stake-adapter",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(stakeAdapter) created_by capability; cli:export --to adapter --out was not executed by this refresh."
+        "reason": "Adapter export delegates publication to the registered builder. cli:export --to adapter --out was not executed by this refresh."
       }
     },
     {
@@ -6886,7 +6884,7 @@
         "canonical_capability_identity": "[\"stakeAdapter\",\"created_by\",\"ArtifactBuilderRegistry:build(stakeAdapter)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(stakeAdapter)",
         "record_id": "library-build-stake-adapter",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(stakeAdapter) created_by capability; cli:export --to adapter without --out was not executed by this refresh."
+        "reason": "Default adapter export delegates publication to the registered builder. cli:export --to adapter without --out was not executed by this refresh."
       }
     },
     {
@@ -6899,7 +6897,7 @@
         "canonical_capability_identity": "[\"stakeAdapter\",\"created_by\",\"ArtifactBuilderRegistry:build(stakeAdapter)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(stakeAdapter)",
         "record_id": "library-build-stake-adapter",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(stakeAdapter) created_by capability; studio:stake-export was not executed by this refresh."
+        "reason": "Studio Stake export delegates publication to the registered builder. studio:stake-export was not executed by this refresh."
       }
     },
     {
@@ -6912,7 +6910,7 @@
         "canonical_capability_identity": "[\"stakeAdapter\",\"recognized_by\",\"ProjectTargetResolver\"]",
         "canonical_public_owner": "ProjectTargetResolver",
         "record_id": "library-resolve-direct-stake-adapter",
-        "reason": "Thin adapter over the runner-emitted ProjectTargetResolver recognized_by capability; cli:inspect was not executed by this refresh."
+        "reason": "Inspect delegates Stake adapter recognition to the target resolver. cli:inspect was not executed by this refresh."
       }
     },
     {
@@ -6953,7 +6951,7 @@
         "canonical_capability_identity": "[\"stakeAdapter\",\"recognized_by\",\"ProjectTargetResolver\"]",
         "canonical_public_owner": "ProjectTargetResolver",
         "record_id": "library-resolve-direct-stake-adapter",
-        "reason": "Thin adapter over the runner-emitted ProjectTargetResolver recognized_by capability; studio:project-registration was not executed by this refresh."
+        "reason": "Studio project registration delegates Stake adapter recognition to the target resolver. studio:project-registration was not executed by this refresh."
       }
     },
     {
@@ -6988,7 +6986,7 @@
         "canonical_capability_identity": "[\"stakeAdapter\",\"validates_by\",\"StakeEngineExportValidator\"]",
         "canonical_public_owner": "StakeEngineExportValidator",
         "record_id": "library-export-validate-direct-stake-adapter",
-        "reason": "Thin adapter over the runner-emitted StakeEngineExportValidator validates_by capability; cli:validate was not executed by this refresh."
+        "reason": "Validate delegates export-shape validation to the Stake export validator. cli:validate was not executed by this refresh."
       }
     },
     {
@@ -7029,7 +7027,7 @@
         "canonical_capability_identity": "[\"stakeAdapter\",\"validates_by\",\"StakeEngineExportValidator\"]",
         "canonical_public_owner": "StakeEngineExportValidator",
         "record_id": "library-export-validate-direct-stake-adapter",
-        "reason": "Thin adapter over the runner-emitted StakeEngineExportValidator validates_by capability; studio:stake-export-validate was not executed by this refresh."
+        "reason": "Studio Stake validation delegates export-shape validation to the Stake export validator. studio:stake-export-validate was not executed by this refresh."
       }
     },
     {
@@ -7705,7 +7703,7 @@
         "canonical_capability_identity": "[\"tsPackage\",\"created_by\",\"ArtifactBuilderRegistry:build(tsPackage)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(tsPackage)",
         "record_id": "library-build-package",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(tsPackage) created_by capability; cli:build was not executed by this refresh."
+        "reason": "Build delegates package publication to the registered builder. cli:build was not executed by this refresh."
       }
     },
     {
@@ -7718,7 +7716,7 @@
         "canonical_capability_identity": "[\"tsPackage\",\"created_by\",\"ArtifactBuilderRegistry:build(tsPackage)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(tsPackage)",
         "record_id": "library-build-package",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(tsPackage) created_by capability; cli:build --target tsPackage --out was not executed by this refresh."
+        "reason": "The explicit package target delegates publication to the registered builder. cli:build --target tsPackage --out was not executed by this refresh."
       }
     },
     {
@@ -7731,7 +7729,7 @@
         "canonical_capability_identity": "[\"tsPackage\",\"created_by\",\"ArtifactBuilderRegistry:build(tsPackage)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(tsPackage)",
         "record_id": "library-build-package",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(tsPackage) created_by capability; cli:build --target tsPackage without --out was not executed by this refresh."
+        "reason": "The default package target delegates publication to the registered builder. cli:build --target tsPackage without --out was not executed by this refresh."
       }
     },
     {
@@ -7744,7 +7742,7 @@
         "canonical_capability_identity": "[\"tsPackage\",\"created_by\",\"ArtifactBuilderRegistry:build(tsPackage)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(tsPackage)",
         "record_id": "library-build-package",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(tsPackage) created_by capability; cli:init was not executed by this refresh."
+        "reason": "Init delegates initial package publication to the registered builder. cli:init was not executed by this refresh."
       }
     },
     {
@@ -7757,7 +7755,7 @@
         "canonical_capability_identity": "[\"tsPackage\",\"created_by\",\"ArtifactBuilderRegistry:build(tsPackage)\"]",
         "canonical_public_owner": "ArtifactBuilderRegistry:build(tsPackage)",
         "record_id": "library-build-package",
-        "reason": "Thin adapter over the runner-emitted ArtifactBuilderRegistry:build(tsPackage) created_by capability; studio:artifact-build was not executed by this refresh."
+        "reason": "Studio artifact build delegates package publication to the registered builder. studio:artifact-build was not executed by this refresh."
       }
     },
     {
@@ -7770,7 +7768,7 @@
         "canonical_capability_identity": "[\"tsPackage\",\"recognized_by\",\"loadPokieGame\"]",
         "canonical_public_owner": "loadPokieGame",
         "record_id": "library-load-direct-package",
-        "reason": "Thin adapter over the runner-emitted loadPokieGame recognized_by capability; cli:inspect was not executed by this refresh."
+        "reason": "Inspect delegates package loading to the package loader. cli:inspect was not executed by this refresh."
       }
     },
     {
@@ -7811,7 +7809,7 @@
         "canonical_capability_identity": "[\"tsPackage\",\"recognized_by\",\"loadPokieGame\"]",
         "canonical_public_owner": "loadPokieGame",
         "record_id": "library-load-direct-package",
-        "reason": "Thin adapter over the runner-emitted loadPokieGame recognized_by capability; studio:project-registration was not executed by this refresh."
+        "reason": "Studio project registration delegates package loading to the package loader. studio:project-registration was not executed by this refresh."
       }
     },
     {
@@ -7912,7 +7910,7 @@
         "canonical_capability_identity": "[\"tsPackage\",\"validates_by\",\"loadPokieGame\"]",
         "canonical_public_owner": "loadPokieGame",
         "record_id": "library-validate-direct-package",
-        "reason": "Thin adapter over the runner-emitted loadPokieGame validates_by capability; cli:validate was not executed by this refresh."
+        "reason": "Validate delegates package loading and validation to the package loader. cli:validate was not executed by this refresh."
       }
     },
     {
