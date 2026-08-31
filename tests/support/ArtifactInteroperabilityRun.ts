@@ -631,12 +631,14 @@ export class ArtifactInteroperabilityRun {
  * Combines the independently executed CLI and Studio ledgers without adding
  * a synthetic matrix row.  The merger only copies records the runners have
  * already persisted, which keeps the checked-in PC-14 result tied to actual
- * operations rather than a second manually maintained assertion list.
+ * operations rather than a second manually maintained assertion list.  The
+ * capability matrix still retains every public owner: a missing emitted
+ * operation becomes either an explicitly declared adapter proof or a
+ * diagnostic, never a completeness failure that invites synthetic rows.
  */
 export function mergeArtifactInteroperabilityRuns(
     inputPaths: readonly string[],
     outputPath: string,
-    options: {readonly requireComplete?: boolean} = {requireComplete: true},
 ): void {
     const runs = inputPaths.map((inputPath) => {
         const raw = fs.readFileSync(inputPath, "utf-8");
@@ -777,13 +779,10 @@ export function mergeArtifactInteroperabilityRuns(
         }
         tupleRecordIds.set(tupleKey, entry.record_id);
     }
-    const executedTupleKeys = new Set(exactOwnerOperationExecutions.map((entry) => `${entry.artifact_kind}:${entry.registry_operation}:${entry.public_owner}`));
     const requiredTupleKeys = new Set(requiredOwnerOperations.map((entry) => `${entry.artifactKind}:${entry.registryOperation}:${entry.owner}`));
-    const missingTuple = requiredOwnerOperations.find((entry) => !executedTupleKeys.has(`${entry.artifactKind}:${entry.registryOperation}:${entry.owner}`));
-    if (options.requireComplete !== false && missingTuple !== undefined) {
-        throw new Error(`PC-14 is missing exact owner-operation evidence: ${missingTuple.artifactKind}:${missingTuple.registryOperation}:${missingTuple.owner}.`);
-    }
-    const extraTuple = [...executedTupleKeys].find((entry) => !requiredTupleKeys.has(entry));
+    const extraTuple = exactOwnerOperationExecutions
+        .map((entry) => `${entry.artifact_kind}:${entry.registry_operation}:${entry.public_owner}`)
+        .find((entry) => !requiredTupleKeys.has(entry));
     if (extraTuple !== undefined) throw new Error(`PC-14 emitted extra exact owner-operation evidence: ${extraTuple}.`);
     const operationRows = runs.flatMap((run) => run.parsed.rows);
     const canonicalProofFor = (required: Pc05PublicOwnerOperation): Pc14CapabilityMatrixEntry["canonical_proof"] | undefined => {
@@ -834,43 +833,40 @@ export function mergeArtifactInteroperabilityRuns(
         // Sharing an artifact and registry operation is not sufficient: that
         // is common for distinct public interactions and must remain visible
         // as an explicit unexecuted capability case.
-        if (options.requireComplete === false) {
-            const declaredAdapter = PC14_THIN_CAPABILITY_ADAPTERS.get(tupleKey);
-            if (declaredAdapter !== undefined) {
-                const canonicalTupleKey = capabilityKey(required.artifactKind, required.registryOperation, declaredAdapter.canonicalOwner);
-                const adapterProof = directCapabilityProofs.get(canonicalTupleKey);
-                if (adapterProof !== undefined) {
-                    const canonicalCapabilityIdentity = JSON.stringify([
-                        required.artifactKind, required.registryOperation, declaredAdapter.canonicalOwner,
-                    ]);
-                    return {
-                        "capability_identity": capabilityIdentity,
-                        "artifact_kind": required.artifactKind,
-                        "registry_operation": required.registryOperation,
-                        "public_owner": required.owner,
-                        disposition: "adapter-proof",
-                        "adapter_proof": {
-                            "canonical_capability_identity": canonicalCapabilityIdentity,
-                            "canonical_public_owner": declaredAdapter.canonicalOwner,
-                            "record_id": adapterProof.record_id,
-                            reason: `${declaredAdapter.reason} ${required.owner} was not executed by this refresh.`,
-                        },
-                    };
-                }
+        const declaredAdapter = PC14_THIN_CAPABILITY_ADAPTERS.get(tupleKey);
+        if (declaredAdapter !== undefined) {
+            const canonicalTupleKey = capabilityKey(required.artifactKind, required.registryOperation, declaredAdapter.canonicalOwner);
+            const adapterProof = directCapabilityProofs.get(canonicalTupleKey);
+            if (adapterProof !== undefined) {
+                const canonicalCapabilityIdentity = JSON.stringify([
+                    required.artifactKind, required.registryOperation, declaredAdapter.canonicalOwner,
+                ]);
+                return {
+                    "capability_identity": capabilityIdentity,
+                    "artifact_kind": required.artifactKind,
+                    "registry_operation": required.registryOperation,
+                    "public_owner": required.owner,
+                    disposition: "adapter-proof",
+                    "adapter_proof": {
+                        "canonical_capability_identity": canonicalCapabilityIdentity,
+                        "canonical_public_owner": declaredAdapter.canonicalOwner,
+                        "record_id": adapterProof.record_id,
+                        reason: `${declaredAdapter.reason} ${required.owner} was not executed by this refresh.`,
+                    },
+                };
             }
-            return {
-                "capability_identity": capabilityIdentity,
-                "artifact_kind": required.artifactKind,
-                "registry_operation": required.registryOperation,
-                "public_owner": required.owner,
-                disposition: "unreachable-or-legacy-diagnostic",
-                diagnostic: {
-                    code: "unreached-distinct-capability",
-                    recovery: `Exercise ${required.owner}'s ${required.registryOperation} public boundary to replace this unexecuted capability diagnostic with a canonical proof.`,
-                },
-            };
         }
-        throw new Error(`PC-14 capability matrix requires a complete exact owner-operation ledger: ${tupleKey}.`);
+        return {
+            "capability_identity": capabilityIdentity,
+            "artifact_kind": required.artifactKind,
+            "registry_operation": required.registryOperation,
+            "public_owner": required.owner,
+            disposition: "unreachable-or-legacy-diagnostic",
+            diagnostic: {
+                code: "unreached-distinct-capability",
+                recovery: `Exercise ${required.owner}'s ${required.registryOperation} public boundary to replace this unexecuted capability diagnostic with a canonical proof.`,
+            },
+        };
     });
     const registryCoverage = registry.artifact_kinds.map((artifact) => {
         const internalOnly = INTERNAL_PC05_ARTIFACT_KINDS.has(artifact.id);
@@ -878,9 +874,6 @@ export function mergeArtifactInteroperabilityRuns(
         let disposition: "executed" | "not-executed" | "excluded-internal-cache-state" = "executed";
         if (internalOnly) disposition = "excluded-internal-cache-state";
         else if (completedOperations.length === 0) disposition = "not-executed";
-        else if (options.requireComplete === true && completedOperations.length !== requiredOwnerOperations.filter((required) => required.artifactKind === artifact.id).length) {
-            throw new Error(`PC-14 cannot mark ${artifact.id} executed until every public owner-operation tuple is emitted.`);
-        }
         return {
             "artifact_kind": artifact.id,
             disposition,

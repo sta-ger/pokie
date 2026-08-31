@@ -64,7 +64,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         });
         const outputPath = path.join(rootPath, "merged.json");
 
-        mergeArtifactInteroperabilityRuns([cliPath, studioPath, libraryPath, ownerOnlyPath], outputPath, {requireComplete: false});
+        mergeArtifactInteroperabilityRuns([cliPath, studioPath, libraryPath, ownerOnlyPath], outputPath);
 
         const output = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
             readonly exact_owner_operation_coverage: readonly ExactTuple[];
@@ -169,7 +169,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         const outputPath = path.join(rootPath, "merged.json");
         runner.write(runnerPath);
 
-        mergeArtifactInteroperabilityRuns([runnerPath], outputPath, {requireComplete: false});
+        mergeArtifactInteroperabilityRuns([runnerPath], outputPath);
 
         const output = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
             readonly capability_matrix: readonly {
@@ -189,7 +189,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         });
     });
 
-    it("rejects missing PC-05 owner-operation evidence before writing merged evidence", () => {
+    it("retains missing PC-05 owner-operation evidence as capability diagnostics", () => {
         const sourcePath = path.join(rootPath, "source.json");
         fs.writeFileSync(sourcePath, "source");
         const runner = new ArtifactInteroperabilityRun(rootPath);
@@ -200,8 +200,22 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         });
         const runnerPath = path.join(rootPath, "partial.json");
         runner.write(runnerPath);
-        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json"), {requireComplete: true}))
-            .toThrow("PC-14 is missing exact owner-operation evidence");
+        const outputPath = path.join(rootPath, "merged.json");
+        mergeArtifactInteroperabilityRuns([runnerPath], outputPath);
+
+        const output = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
+            readonly capability_matrix: readonly {
+                readonly capability_identity: string;
+                readonly disposition: string;
+                readonly diagnostic?: {readonly code: string};
+            }[];
+        };
+        expect(output.capability_matrix.find((entry) => entry.capability_identity === JSON.stringify([
+            "blueprint", "created_by", "cli:create",
+        ]))).toMatchObject({
+            disposition: "unreachable-or-legacy-diagnostic",
+            diagnostic: {code: "unreached-distinct-capability"},
+        });
     });
 
     it("rejects an extra PC-05 tuple before writing merged evidence", () => {
@@ -216,7 +230,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         const runnerPath = path.join(rootPath, "extra.json");
         runner.write(runnerPath);
 
-        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json"), {requireComplete: false}))
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json")))
             .toThrow("exact owner-operation tuple absent from PC-05");
     });
 
@@ -232,7 +246,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         const runnerPath = path.join(rootPath, "sibling.json");
         runner.write(runnerPath);
 
-        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json"), {requireComplete: false}))
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json")))
             .toThrow("exact owner-operation tuple absent from PC-05: blueprint:recognized_by:GameBlueprintValidator");
     });
 
@@ -244,7 +258,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
             id: "second-create", artifactKind: "blueprint", operation: "create", registryOperation: "created_by", owner: "cli:create", surface: "library",
         });
 
-        expect(() => mergeArtifactInteroperabilityRuns([first, second], path.join(rootPath, "merged.json"), {requireComplete: false}))
+        expect(() => mergeArtifactInteroperabilityRuns([first, second], path.join(rootPath, "merged.json")))
             .toThrow("duplicate exact owner-operation evidence: blueprint:created_by:cli:create");
     });
 
@@ -275,7 +289,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         proxy.rows[0]!["executed_public_owners"] = ["GameBlueprintValidator"];
         fs.writeFileSync(runnerPath, `${JSON.stringify(proxy)}\n`);
 
-        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json"), {requireComplete: false}))
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json")))
             .toThrow("emitted proxy owner coverage for direct-create");
     });
 

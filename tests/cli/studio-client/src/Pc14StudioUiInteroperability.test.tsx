@@ -443,7 +443,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
                 path.join(evidenceDirectory, "cli-real-artifact-result.json"),
                 path.join(evidenceDirectory, "studio-real-artifact-result.json"),
                 emittedPath,
-            ], persistedResultPath, {requireComplete: false});
+            ], persistedResultPath);
         }
     }, 120000);
 });
