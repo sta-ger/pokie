@@ -13,6 +13,7 @@ import {
     StakeEngineExporting,
     StakeEngineExportModeInput,
     StakeEngineExportValidator,
+    isOutcomeLibraryGeneratorDiagnostics,
     StakeEngineImporter,
     StakeEngineImporting,
     StakeEngineImportWriter,
@@ -920,6 +921,13 @@ export class StakeEngineCommand implements CliCommandHandling {
             if (hasBundleDir && e.bundleModeName !== undefined && typeof e.bundleModeName !== "string") {
                 throw new Error(`"${configPath}": modes[${position}]'s "bundleModeName" must be a string when present. ${CONFIG_HINT}`);
             }
+            if (e.generator !== undefined && !isOutcomeLibraryGeneratorDiagnostics(e.generator)) {
+                throw new Error(
+                    `"${configPath}": modes[${position}]'s "generator" must be a complete Outcome Library generation descriptor ` +
+                    "(algorithm, exact/bounded-coverage strategy, decimal counts, game identity, POKIE version, and generatedAt; bounded coverage also requires seed). " +
+                    `${CONFIG_HINT}`,
+                );
+            }
 
             return {
                 modeName: e.modeName,
@@ -929,7 +937,7 @@ export class StakeEngineCommand implements CliCommandHandling {
                     : {
                         bundleDir: e.bundleDir as string,
                         bundleModeName: e.bundleModeName as string | undefined,
-                        ...(e.generator === undefined ? {} : {generator: e.generator as OutcomeLibraryGeneratorDiagnostics}),
+                        ...(e.generator === undefined ? {} : {generator: e.generator}),
                     }),
             };
         });

@@ -324,6 +324,63 @@ describe("StakeEngineCommand", () => {
             );
         });
 
+        it("rejects malformed imported generation semantics before the streaming exporter can publish", async () => {
+            const bundleStreamingExporter = createStubBundleStreamingExporter(successResult);
+            const loadJson = createStubJsonStore({
+                [CONFIG_PATH]: {
+                    modes: [{
+                        modeName: "base",
+                        cost: 1,
+                        bundleDir: "./bundle",
+                        generator: {
+                            algorithm: "exact enumeration",
+                            strategy: "exact",
+                            totalOutcomeSpaceSize: 4,
+                            sampledRawCount: 4,
+                            // Exact enumeration does not sample, so a seed
+                            // would falsely describe the durable artifact.
+                            seed: "not-valid-for-exact",
+                            pokieVersion: "1.3.0",
+                            game: {id: "slot", name: "Slot", version: "1.0.0"},
+                            maxExactOutcomeSpaceSize: 50_000,
+                            generatedAt: "2024-01-01T00:00:00.000Z",
+                        },
+                    }],
+                },
+            });
+            const command = new StakeEngineCommand("1.3.0", undefined, undefined, loadJson, undefined, undefined, bundleStreamingExporter);
+
+            await expect(command.run(["export", CONFIG_PATH])).rejects.toThrow(/generator.*exact\/bounded-coverage strategy/i);
+            expect(bundleStreamingExporter.calledWith).toBeUndefined();
+        });
+
+        it("preserves a complete imported generation descriptor for the bundle re-exporter", async () => {
+            const bundleStreamingExporter = createStubBundleStreamingExporter(successResult);
+            const generator = {
+                algorithm: "exact enumeration",
+                strategy: "exact" as const,
+                totalOutcomeSpaceSize: "4",
+                sampledRawCount: "4",
+                pokieVersion: "1.3.0",
+                game: {id: "slot", name: "Slot", version: "1.0.0"},
+                configHash: "sha256:configuration",
+                maxExactOutcomeSpaceSize: "50000",
+                compatibilityPolicyVersion: "v1",
+                generatedAt: "2024-01-01T00:00:00.000Z",
+            };
+            const loadJson = createStubJsonStore({
+                [CONFIG_PATH]: {
+                    modes: [{modeName: "base", cost: 1, bundleDir: "./bundle", generator}],
+                },
+            });
+            const command = new StakeEngineCommand("1.3.0", undefined, undefined, loadJson, undefined, undefined, bundleStreamingExporter);
+
+            expect(await command.run(["export", CONFIG_PATH])).toBe(0);
+            expect(bundleStreamingExporter.calledWith?.modes).toEqual([
+                expect.objectContaining({modeName: "base", generator}),
+            ]);
+        });
+
         it("streams the export directly from a canonical outcome-library bundle when every mode specifies bundleDir, resolved relative to the config file, defaulting bundleModeName to modeName", async () => {
             const bundleStreamingExporter = createStubBundleStreamingExporter(successResult);
             const loadJson = createStubJsonStore({
