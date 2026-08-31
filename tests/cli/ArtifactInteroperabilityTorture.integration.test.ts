@@ -151,6 +151,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const packageSimulationPath = path.join(workDir, "matrix-package-simulation.json");
         const packageComparisonSimulationPath = path.join(workDir, "matrix-package-comparison-simulation.json");
         const simulationDiffPath = path.join(workDir, "matrix-simulation-diff.json");
+        const simulationJsonReportPath = path.join(workDir, "matrix-simulation-report.json");
         const outcomeDiffPath = path.join(workDir, "matrix-outcome-diff.json");
         const renderedReportPath = path.join(workDir, "matrix-rendered-report.html");
         const replayPath = path.join(workDir, "matrix-replay.json");
@@ -394,11 +395,13 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "stake-engine-analysis-report", artifactKind: "stakeEngineAnalysisReport", operation: "analyze", sourcePath: stakeAnalysisPath,
             owner: "StakeEngineCommand", result: "analysis report published from the generated Stake adapter",
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "stakeengine analyze --out exit 0"}],
+            executedPublicOwners: ["cli:stakeengine analyze --out", "user/automation JSON consumer"],
         });
         evidence.record({
             id: "stake-engine-comparison-report", artifactKind: "stakeEngineComparisonReport", operation: "diff", sourcePath: stakeComparisonPath,
             owner: "StakeEngineCommand", result: "comparison report published from two real Stake exports",
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "stakeengine diff --out exit 0"}],
+            executedPublicOwners: ["cli:stakeengine diff --out", "user/automation JSON consumer"],
         });
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["import", stakePath, "--out", importedStakeLibraryPath])).toBe(0);
         const stakeManifest = JSON.parse(fs.readFileSync(path.join(stakePath, "pokie-manifest.json"), "utf-8"));
@@ -412,6 +415,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "stake-import-outcome-library", artifactKind: "stakeAdapter", operation: "import", sourcePath: stakePath,
             producedPath: importedStakeLibraryPath, owner: "StakeEngineCommand", result: "Outcome Library published with matching Stake provenance",
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 with matching game/config/version"}],
+            executedPublicOwners: ["cli:import", "cli:stakeengine import"],
         });
         const importConfigPath = path.join(importedStakeLibraryPath, "config.json");
         const importProvenancePath = path.join(importedStakeLibraryPath, "source-provenance.json");
@@ -421,12 +425,14 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "stake-import-reexport-config", artifactKind: "stakeImportReExportConfig", operation: "export", sourcePath: importConfigPath,
             owner: "StakeEngineCommand", result: "public import emitted a re-exportable Stake configuration",
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 wrote config.json"}],
+            executedPublicOwners: ["StakeEngineImportWriter", "cli:import", "cli:stakeengine import"],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "stake-import-source-provenance", artifactKind: "stakeImportSourceProvenance", operation: "inspect", sourcePath: importProvenancePath,
             owner: "StakeEngineCommand", result: "public import retained source manifest, index, and mode provenance",
             observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 wrote source-provenance.json"}],
+            executedPublicOwners: ["StakeEngineImportWriter", "cli:import", "cli:stakeengine import", "import-result inspection"],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         // A re-exportable import configuration is not itself a round trip.
@@ -459,6 +465,11 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 {surface: "cli", owner: "StakeEngineCommand", result: "stakeengine export imported config.json exit 0"},
                 {surface: "library", owner: "StakeEngineCommand", result: "re-exported Stake manifest retained the original generation semantics"},
                 {surface: "library", owner: "StakeEngineCommand", result: "re-exported Stake manifest retained the imported source-provenance manifest/index/mode hashes"},
+            ],
+            executedPublicOwners: [
+                "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
+                "StakeEngineCommand:export",
+                "StakeEngineCommand export descriptor validation",
             ],
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
         });
@@ -553,11 +564,13 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "blueprint-validation-report", artifactKind: "validationReport", operation: "inspect", sourcePath: validationPath,
             owner: "ValidateCommand", result: "published JSON validation report",
             observations: [{surface: "cli", owner: "ValidateCommand", result: "validate --out exit 0 wrote the report"}],
+            executedPublicOwners: ["cli:validate --out", "user/automation JSON consumer"],
         });
         expect(await new ValidateCommand().run([bundlePath, "--deep", "--format", "json"])).toBe(0);
         evidence.record({
             id: "outcome-library-validate", artifactKind: "outcomeLibrary", operation: "validate", sourcePath: bundlePath,
             owner: "ValidateCommand", result: "valid", observations: [{surface: "cli", owner: "ValidateCommand", result: "exit 0"}],
+            executedPublicOwners: ["cli:validate --deep", "cli:outcomelibrary-validate"],
         });
         expect(await new InspectCommand().run([bundlePath])).toBe(0);
         evidence.record({
@@ -565,10 +578,12 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             owner: "InspectCommand", result: "recognized", observations: [{surface: "cli", owner: "InspectCommand", result: "exit 0"}],
         });
         await new ReportCommand().run([bundlePath, "--format", "markdown", "--out", reportPath]);
+        await new ReportCommand().run([packageSimulationPath, "--format", "json", "--out", simulationJsonReportPath]);
         await new ReportCommand().run([packageSimulationPath, "--format", "html", "--out", renderedReportPath]);
         await new DiffCommand().run([packageSimulationPath, packageComparisonSimulationPath, "--out", simulationDiffPath]);
         await new DiffCommand().run([bundlePath, importedStakeLibraryPath, "--format", "json", "--out", outcomeDiffPath]);
         expect(fs.existsSync(renderedReportPath)).toBe(true);
+        expect(fs.existsSync(simulationJsonReportPath)).toBe(true);
         expect(fs.existsSync(simulationDiffPath)).toBe(true);
         expect(fs.existsSync(outcomeDiffPath)).toBe(true);
         const operationObservationPath = path.join(workDir, "pc-14-operation-observations.json");
@@ -586,33 +601,40 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         evidence.record({
             id: "outcome-library-simulate", artifactKind: "outcomeLibrary", operation: "simulate", sourcePath: bundlePath,
             producedPath: simulationPath, owner: "SimCommand", result: "published", observations: [{surface: "cli", owner: "SimCommand", result: "exit 0"}],
+            executedPublicOwners: ["cli:sim"],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "outcome-library-replay", artifactKind: "outcomeLibrary", operation: "replay", sourcePath: bundlePath,
             producedPath: replayPath, owner: "ReplayCommand", result: "published", observations: [{surface: "cli", owner: "ReplayCommand", result: "exit 0"}],
+            executedPublicOwners: ["cli:replay"],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "outcome-library-report", artifactKind: "outcomeLibrary", operation: "report", sourcePath: bundlePath,
             producedPath: reportPath, owner: "ReportCommand", result: "published", observations: [{surface: "cli", owner: "ReportCommand", result: "exit 0"}],
+            executedPublicOwners: ["cli:report"],
         });
         evidence.record({
             id: "outcome-source-analysis-report", artifactKind: "outcomeSourceAnalysisReport", operation: "report", sourcePath: reportPath,
             owner: "ReportCommand", result: "analysis report published from the generated Outcome Library",
             observations: [{surface: "cli", owner: "ReportCommand", result: "report --out exit 0 rendered the Outcome Source Report"}],
+            executedPublicOwners: ["cli:report --out for outcome sources", "user/automation presentation consumer"],
         });
         evidence.record({
             id: "simulation-comparison-report", artifactKind: "simulationComparisonReport", operation: "diff", sourcePath: simulationDiffPath,
             owner: "DiffCommand", result: "published from two real simulation reports", observations: [{surface: "cli", owner: "DiffCommand", result: "diff --out exit 0"}],
+            executedPublicOwners: ["cli:diff --out", "user/automation JSON consumer"],
         });
         evidence.record({
             id: "outcome-source-comparison-report", artifactKind: "outcomeSourceComparisonReport", operation: "diff", sourcePath: outcomeDiffPath,
             owner: "DiffCommand", result: "published from real Outcome Library sources", observations: [{surface: "cli", owner: "DiffCommand", result: "outcome-source diff --out exit 0"}],
+            executedPublicOwners: ["cli:diff --out for outcome sources", "cli:outcomesource diff --out", "user/automation JSON consumer"],
         });
         evidence.record({
             id: "rendered-simulation-report", artifactKind: "renderedReport", operation: "render", sourcePath: renderedReportPath,
             owner: "ReportCommand", result: "HTML report published from the real simulation report", observations: [{surface: "cli", owner: "ReportCommand", result: "report --format html --out exit 0"}],
+            executedPublicOwners: ["cli:report --out for simulation reports", "HtmlSimulationReportRenderer", "user/download consumer", "cli:report"],
         });
         fs.writeFileSync(certificationConfigPath, JSON.stringify({modes: [{modeName: "base", seed: "matrix-evidence", sampleCount: 4}]}));
         const certification = new CertificationCommand(POKIE_VERSION);
@@ -654,8 +676,12 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(proof.indexHash).toMatch(/^sha256:/);
         evidence.record({
             id: "simulation-report-inspect", artifactKind: "simulationReport", operation: "report", sourcePath: packageSimulationPath,
-            owner: "ReportCommand", result: "the real simulation output was consumed by the report owner",
-            observations: [{surface: "cli", owner: "ReportCommand", result: "simulation report was rendered"}],
+            producedPath: simulationJsonReportPath, owner: "ReportCommand", result: "the real simulation output was parsed and re-emitted as JSON by the report owner",
+            observations: [{surface: "cli", owner: "ReportCommand", result: "report --format json --out consumed and re-emitted the simulation report"}],
+            executedPublicOwners: [
+                "cli:sim --out", "cli:report --format json --out for a SimulationReport", "cli:report", "cli:diff",
+                "simulation report parser in cli:report/diff",
+            ],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.recordUnavailable({
@@ -666,18 +692,21 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 recovery: "Use a package that declares bet modes before requesting a per-mode simulation report set.",
             },
             observations: [{surface: "cli", owner: "SimCommand", result: "sim --mode all returned its concrete missing getBetModes diagnostic"}],
+            executedPublicOwners: ["cli:sim --mode all", "cli:sim --mode all --out", "cli:report --format json --out for a SimulationReportSet", "cli:report", "cli:diff", "simulation report-set parser in cli:report/diff"],
             systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
         evidence.record({
             id: "replay-descriptor-round-artifact", artifactKind: "runtimeReplayDescriptor", operation: "inspect", sourcePath: replayPath,
             owner: "ReplayCommand", result: "portable replay descriptor retained exact outcome-source provenance",
             observations: [{surface: "cli", owner: "ReplayCommand", result: "replay --out wrote the inspected descriptor"}],
+            executedPublicOwners: ["cli:replay --out", "runtime session recording", "cli:replay", "replay descriptor validation"],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "round-artifact-replay-provenance", artifactKind: "roundArtifact", operation: "validate", sourcePath: replayPath,
             owner: "ReplayCommand / RoundArtifactValidator", result: "recorded round artifact retained in the public replay descriptor",
             observations: [{surface: "cli", owner: "ReplayCommand", result: "replay --out published the descriptor containing the round artifact"}],
+            executedPublicOwners: ["cli:replay", "RoundArtifactValidator"],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({

@@ -10,7 +10,7 @@
   "runner_inputs": [
     {
       "file": "cli-real-artifact-result.json",
-      "sha256": "sha256:0be01ec1e7a7492e28705b1efaf7f7560c6e81afd31b11e02d61b4a821d90e7a",
+      "sha256": "sha256:16c5db8b9d4c153102ed17dd1939e6e74c764780ecdde35d7e12deafd3f42bbe",
       "rows": 82,
       "scenarios": 15
     },
@@ -197,6 +197,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ValidateCommand",
+      "executed_public_owners": [
+        "cli:validate --out",
+        "user/automation JSON consumer"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published JSON validation report",
@@ -1266,6 +1270,9 @@
       "produced_path": "run-artifacts/matrix-replay.json",
       "produced_identity": "sha256:845392dac381b9e5cf68364abf14c9c12e52268209611701f08b21b3e646441a",
       "operation_owner": "ReplayCommand",
+      "executed_public_owners": [
+        "cli:replay"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1288,6 +1295,9 @@
       "produced_path": "run-artifacts/matrix-report.md",
       "produced_identity": "sha256:ed87878fb6c0ce724e1c7cf22a7fc76ba5fdea346ed94104fc5f2cfbcfc0568c",
       "operation_owner": "ReportCommand",
+      "executed_public_owners": [
+        "cli:report"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published",
@@ -1328,6 +1338,9 @@
       "produced_path": "run-artifacts/matrix-simulation.json",
       "produced_identity": "sha256:d67fe6d5c55543a3a4497fd1dd42fbc0f368038684dfcb3a1bcb360be16b0355",
       "operation_owner": "SimCommand",
+      "executed_public_owners": [
+        "cli:sim"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1350,6 +1363,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ValidateCommand",
+      "executed_public_owners": [
+        "cli:validate --deep",
+        "cli:outcomelibrary-validate"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "valid",
@@ -1370,6 +1387,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReportCommand",
+      "executed_public_owners": [
+        "cli:report --out for outcome sources",
+        "user/automation presentation consumer"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "analysis report published from the generated Outcome Library",
@@ -1390,6 +1411,11 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "DiffCommand",
+      "executed_public_owners": [
+        "cli:diff --out for outcome sources",
+        "cli:outcomesource diff --out",
+        "user/automation JSON consumer"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published from real Outcome Library sources",
@@ -1530,6 +1556,12 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReportCommand",
+      "executed_public_owners": [
+        "cli:report --out for simulation reports",
+        "HtmlSimulationReportRenderer",
+        "user/download consumer",
+        "cli:report"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "HTML report published from the real simulation report",
@@ -1550,6 +1582,12 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReplayCommand",
+      "executed_public_owners": [
+        "cli:replay --out",
+        "runtime session recording",
+        "cli:replay",
+        "replay descriptor validation"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1572,6 +1610,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReplayCommand / RoundArtifactValidator",
+      "executed_public_owners": [
+        "cli:replay",
+        "RoundArtifactValidator"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1594,6 +1636,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "DiffCommand",
+      "executed_public_owners": [
+        "cli:diff --out",
+        "user/automation JSON consumer"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published from two real simulation reports",
@@ -1611,19 +1657,26 @@
       "operation": "report",
       "source_path": "run-artifacts/matrix-package-simulation.json",
       "source_identity": "sha256:84ba98c5b42fc7cec7447183ce32d8bfef3ada7268253b287c132863829f5914",
-      "produced_path": null,
-      "produced_identity": null,
+      "produced_path": "run-artifacts/matrix-simulation-report.json",
+      "produced_identity": "sha256:84ba98c5b42fc7cec7447183ce32d8bfef3ada7268253b287c132863829f5914",
       "operation_owner": "ReportCommand",
+      "executed_public_owners": [
+        "cli:sim --out",
+        "cli:report --format json --out for a SimulationReport",
+        "cli:report",
+        "cli:diff",
+        "simulation report parser in cli:report/diff"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
       "status": "supported",
-      "observable_result": "the real simulation output was consumed by the report owner",
+      "observable_result": "the real simulation output was parsed and re-emitted as JSON by the report owner",
       "observations": [
         {
           "surface": "cli",
           "owner": "ReportCommand",
-          "result": "simulation report was rendered"
+          "result": "report --format json --out consumed and re-emitted the simulation report"
         }
       ]
     },
@@ -1636,6 +1689,14 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "SimCommand",
+      "executed_public_owners": [
+        "cli:sim --mode all",
+        "cli:sim --mode all --out",
+        "cli:report --format json --out for a SimulationReportSet",
+        "cli:report",
+        "cli:diff",
+        "simulation report-set parser in cli:report/diff"
+      ],
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -1662,6 +1723,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
+      "executed_public_owners": [
+        "cli:stakeengine analyze --out",
+        "user/automation JSON consumer"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "analysis report published from the generated Stake adapter",
@@ -1682,6 +1747,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
+      "executed_public_owners": [
+        "cli:stakeengine diff --out",
+        "user/automation JSON consumer"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "comparison report published from two real Stake exports",
@@ -1728,6 +1797,10 @@
       "produced_path": "run-artifacts/matrix-stake-imported-library",
       "produced_identity": "sha256:274b6235f31df27da3cc23dc5962520edb4a768ffeb76afdabfba59f8fbc5596",
       "operation_owner": "StakeEngineCommand",
+      "executed_public_owners": [
+        "cli:import",
+        "cli:stakeengine import"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "Outcome Library published with matching Stake provenance",
@@ -1748,6 +1821,11 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
+      "executed_public_owners": [
+        "StakeEngineImportWriter",
+        "cli:import",
+        "cli:stakeengine import"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1770,6 +1848,11 @@
       "produced_path": "run-artifacts/matrix-stake-reexported",
       "produced_identity": "sha256:66b27105b2dca4e6f0ddf49ca17e62b025337b8d5d59324a25a69dddf2e8c378",
       "operation_owner": "StakeEngineCommand",
+      "executed_public_owners": [
+        "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
+        "StakeEngineCommand:export",
+        "StakeEngineCommand export descriptor validation"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding",
         "durable-publication-ownership"
@@ -1803,6 +1886,12 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
+      "executed_public_owners": [
+        "StakeEngineImportWriter",
+        "cli:import",
+        "cli:stakeengine import",
+        "import-result inspection"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -3549,7 +3638,8 @@
         "cli:stakeengine import"
       ],
       "executed_regressions": [
-        "stake-import-reexport-config"
+        "stake-import-reexport-config",
+        "stake-import-reexport-stake"
       ]
     },
     {
@@ -3756,7 +3846,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached GameBlueprintValidator in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for GameBlueprintValidator's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3765,7 +3856,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached ProjectTargetResolver in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for ProjectTargetResolver's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3774,7 +3866,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached cli:create in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for cli:create's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3783,7 +3876,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached cli:create --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for cli:create --out's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3792,7 +3886,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached cli:create without --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for cli:create without --out's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3801,7 +3896,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached cli:edit --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for cli:edit --out's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3810,7 +3906,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached cli:edit without --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for cli:edit without --out's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3819,7 +3916,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached cli:import --out for an XLSX source in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for cli:import --out for an XLSX source's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3828,7 +3926,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached cli:import XLSX without --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for cli:import XLSX without --out's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3837,7 +3936,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached cli:inspect in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for cli:inspect's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3846,6 +3946,7 @@
       "record_id": "blueprint-export-par",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "ParCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation blueprint-export-par reached cli:par import --out in its public owner path."
     },
     {
@@ -3855,6 +3956,7 @@
       "record_id": "blueprint-export-par",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "ParCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation blueprint-export-par reached cli:par import without --out in its public owner path."
     },
     {
@@ -3864,7 +3966,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached cli:reel generate --apply without --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for cli:reel generate --apply without --out's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3873,7 +3976,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached cli:reel generate --materialize without --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for cli:reel generate --materialize without --out's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3882,7 +3986,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached cli:reel generate --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for cli:reel generate --out's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3891,6 +3996,7 @@
       "record_id": "blueprint-validate",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "ValidateCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation blueprint-validate reached cli:validate in its public owner path."
     },
     {
@@ -3900,7 +4006,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached studio:blueprint-check in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for studio:blueprint-check's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3909,7 +4016,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached studio:blueprint-save in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for studio:blueprint-save's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3918,7 +4026,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached studio:design-create in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for studio:design-create's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3927,7 +4036,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached studio:par-import in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for studio:par-import's pending owner wave."
     },
     {
       "artifact_kind": "blueprint",
@@ -3936,7 +4046,8 @@
       "record_id": "blueprint-build-package",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "operation_owner": "BuildCommand",
-      "result": "Completed real-artifact operation blueprint-build-package reached studio:project-registration in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation blueprint-build-package produced the source retained for studio:project-registration's pending owner wave."
     },
     {
       "artifact_kind": "studioSymbolArtworkPng",
@@ -3945,6 +4056,7 @@
       "record_id": "studio-symbol-artwork-materialize",
       "source_path": "run-artifacts/symbol.png",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-symbol-artwork-materialize reached StudioBlueprintService:getSymbolArtwork in its public owner path."
     },
     {
@@ -3954,6 +4066,7 @@
       "record_id": "studio-symbol-artwork-materialize",
       "source_path": "run-artifacts/symbol.png",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-symbol-artwork-materialize reached StudioBlueprintService:importSymbolArtwork PNG signature/size check in its public owner path."
     },
     {
@@ -3963,6 +4076,7 @@
       "record_id": "studio-symbol-artwork-materialize",
       "source_path": "run-artifacts/symbol.png",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-symbol-artwork-materialize reached StudioBlueprintService:resolveSymbolArtwork in its public owner path."
     },
     {
@@ -3972,6 +4086,7 @@
       "record_id": "studio-symbol-artwork-materialize",
       "source_path": "run-artifacts/symbol.png",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-symbol-artwork-materialize reached StudioBlueprintService:resolveSymbolArtwork declared-reference/path/PNG check in its public owner path."
     },
     {
@@ -3981,7 +4096,8 @@
       "record_id": "studio-symbol-artwork-materialize",
       "source_path": "run-artifacts/symbol.png",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
-      "result": "Completed real-artifact operation studio-symbol-artwork-materialize reached cli:client player renderPlayer artworkUrlForSymbol callback (shared renderer; no endpoint or declared-reference consumer) in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-symbol-artwork-materialize produced the source retained for cli:client player renderPlayer artworkUrlForSymbol callback (shared renderer; no endpoint or declared-reference consumer)'s pending owner wave."
     },
     {
       "artifact_kind": "studioSymbolArtworkPng",
@@ -3990,7 +4106,8 @@
       "record_id": "studio-symbol-artwork-materialize",
       "source_path": "run-artifacts/symbol.png",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
-      "result": "Completed real-artifact operation studio-symbol-artwork-materialize reached studio:blueprint-save-managed/materializeSymbolArtwork in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-symbol-artwork-materialize produced the source retained for studio:blueprint-save-managed/materializeSymbolArtwork's pending owner wave."
     },
     {
       "artifact_kind": "studioSymbolArtworkPng",
@@ -3999,7 +4116,8 @@
       "record_id": "studio-symbol-artwork-materialize",
       "source_path": "run-artifacts/symbol.png",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
-      "result": "Completed real-artifact operation studio-symbol-artwork-materialize reached studio:blueprint-save/materializeSymbolArtwork in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-symbol-artwork-materialize produced the source retained for studio:blueprint-save/materializeSymbolArtwork's pending owner wave."
     },
     {
       "artifact_kind": "studioSymbolArtworkPng",
@@ -4008,7 +4126,8 @@
       "record_id": "studio-symbol-artwork-materialize",
       "source_path": "run-artifacts/symbol.png",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
-      "result": "Completed real-artifact operation studio-symbol-artwork-materialize reached studio:blueprint-symbol-artwork-import (temporary staging) in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-symbol-artwork-materialize produced the source retained for studio:blueprint-symbol-artwork-import (temporary staging)'s pending owner wave."
     },
     {
       "artifact_kind": "studioSymbolArtworkPng",
@@ -4017,7 +4136,8 @@
       "record_id": "studio-symbol-artwork-materialize",
       "source_path": "run-artifacts/symbol.png",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
-      "result": "Completed real-artifact operation studio-symbol-artwork-materialize reached studio:editor SymbolPresentation in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-symbol-artwork-materialize produced the source retained for studio:editor SymbolPresentation's pending owner wave."
     },
     {
       "artifact_kind": "studioSymbolArtworkPng",
@@ -4026,7 +4146,8 @@
       "record_id": "studio-symbol-artwork-materialize",
       "source_path": "run-artifacts/symbol.png",
       "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
-      "result": "Completed real-artifact operation studio-symbol-artwork-materialize reached studio:player CanonicalPlayerView (Studio adapter resolves declared references and supplies URLs) in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-symbol-artwork-materialize produced the source retained for studio:player CanonicalPlayerView (Studio adapter resolves declared references and supplies URLs)'s pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4035,7 +4156,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached ArtifactBuilderRegistry:build(tsPackage) in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for ArtifactBuilderRegistry:build(tsPackage)'s pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4044,7 +4166,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached ProjectTargetResolver in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for ProjectTargetResolver's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4053,6 +4176,7 @@
       "record_id": "package-build-outcome-library-default",
       "source_path": "run-artifacts/owner-aliases/build-default/tsPackage",
       "operation_owner": "cli:build --target outcomeLibrary without --out",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation package-build-outcome-library-default reached cli:build in its public owner path."
     },
     {
@@ -4062,6 +4186,7 @@
       "record_id": "package-build-outcome-library-default",
       "source_path": "run-artifacts/owner-aliases/build-default/tsPackage",
       "operation_owner": "cli:build --target outcomeLibrary without --out",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation package-build-outcome-library-default reached cli:build --target tsPackage --out in its public owner path."
     },
     {
@@ -4071,6 +4196,7 @@
       "record_id": "package-build-outcome-library-default",
       "source_path": "run-artifacts/owner-aliases/build-default/tsPackage",
       "operation_owner": "cli:build --target outcomeLibrary without --out",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation package-build-outcome-library-default reached cli:build --target tsPackage without --out in its public owner path."
     },
     {
@@ -4080,7 +4206,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached cli:client in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for cli:client's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4089,7 +4216,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached cli:dev in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for cli:dev's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4098,7 +4226,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached cli:init in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for cli:init's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4107,7 +4236,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached cli:inspect in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for cli:inspect's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4116,7 +4246,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached cli:replay in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for cli:replay's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4125,7 +4256,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached cli:serve in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for cli:serve's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4134,7 +4266,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached cli:sim in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for cli:sim's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4143,7 +4276,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached cli:validate in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for cli:validate's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4152,7 +4286,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached loadPokieGame in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for loadPokieGame's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4161,7 +4296,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached studio:artifact-build in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for studio:artifact-build's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4170,7 +4306,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached studio:play in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for studio:play's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4179,7 +4316,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached studio:project-registration in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for studio:project-registration's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4188,7 +4326,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached studio:replay in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for studio:replay's pending owner wave."
     },
     {
       "artifact_kind": "tsPackage",
@@ -4197,7 +4336,8 @@
       "record_id": "matrix-tsPackage-blueprint-build",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build reached studio:simulation in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-tsPackage-blueprint-build produced the source retained for studio:simulation's pending owner wave."
     },
     {
       "artifact_kind": "weightedOutcomeLibraryJson",
@@ -4206,7 +4346,8 @@
       "record_id": "raw-outcomes-build-bundle",
       "source_path": "run-artifacts/matrix-library.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation raw-outcomes-build-bundle reached OutcomeLibraryBundleWriter input in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation raw-outcomes-build-bundle produced the source retained for OutcomeLibraryBundleWriter input's pending owner wave."
     },
     {
       "artifact_kind": "weightedOutcomeLibraryJson",
@@ -4215,7 +4356,8 @@
       "record_id": "raw-outcomes-build-bundle",
       "source_path": "run-artifacts/matrix-library.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation raw-outcomes-build-bundle reached OutcomeLibraryBundleWriter while materializing a bundle in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation raw-outcomes-build-bundle produced the source retained for OutcomeLibraryBundleWriter while materializing a bundle's pending owner wave."
     },
     {
       "artifact_kind": "weightedOutcomeLibraryJson",
@@ -4224,6 +4366,7 @@
       "record_id": "raw-outcomes-build-bundle",
       "source_path": "run-artifacts/matrix-library.json",
       "operation_owner": "OutcomeLibraryCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation raw-outcomes-build-bundle reached OutcomeLibraryCommand:loadDescriptor libraryPath in its public owner path."
     },
     {
@@ -4233,7 +4376,8 @@
       "record_id": "raw-outcomes-build-bundle",
       "source_path": "run-artifacts/matrix-library.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation raw-outcomes-build-bundle reached StakeEngineCommand:loadDescriptor libraryPath in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation raw-outcomes-build-bundle produced the source retained for StakeEngineCommand:loadDescriptor libraryPath's pending owner wave."
     },
     {
       "artifact_kind": "weightedOutcomeLibraryJson",
@@ -4242,7 +4386,8 @@
       "record_id": "raw-outcomes-build-bundle",
       "source_path": "run-artifacts/matrix-library.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation raw-outcomes-build-bundle reached StakeEngineExporter descriptor loading in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation raw-outcomes-build-bundle produced the source retained for StakeEngineExporter descriptor loading's pending owner wave."
     },
     {
       "artifact_kind": "weightedOutcomeLibraryJson",
@@ -4251,7 +4396,8 @@
       "record_id": "raw-outcomes-build-bundle",
       "source_path": "run-artifacts/matrix-library.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation raw-outcomes-build-bundle reached cli:export --to outcomes in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation raw-outcomes-build-bundle produced the source retained for cli:export --to outcomes's pending owner wave."
     },
     {
       "artifact_kind": "weightedOutcomeLibraryJson",
@@ -4260,7 +4406,8 @@
       "record_id": "raw-outcomes-build-bundle",
       "source_path": "run-artifacts/matrix-library.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation raw-outcomes-build-bundle reached cli:generate --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation raw-outcomes-build-bundle produced the source retained for cli:generate --out's pending owner wave."
     },
     {
       "artifact_kind": "weightedOutcomeLibraryJson",
@@ -4269,7 +4416,8 @@
       "record_id": "raw-outcomes-build-bundle",
       "source_path": "run-artifacts/matrix-library.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation raw-outcomes-build-bundle reached cli:outcomelibrary build in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation raw-outcomes-build-bundle produced the source retained for cli:outcomelibrary build's pending owner wave."
     },
     {
       "artifact_kind": "weightedOutcomeLibraryJson",
@@ -4278,7 +4426,8 @@
       "record_id": "raw-outcomes-build-bundle",
       "source_path": "run-artifacts/matrix-library.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation raw-outcomes-build-bundle reached cli:outcomelibrary generate --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation raw-outcomes-build-bundle produced the source retained for cli:outcomelibrary generate --out's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibraryBundleDescriptor",
@@ -4287,7 +4436,8 @@
       "record_id": "outcome-library-bundle-descriptor-build",
       "source_path": "run-artifacts/matrix-bundle.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation outcome-library-bundle-descriptor-build reached ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation outcome-library-bundle-descriptor-build produced the source retained for ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibraryBundleDescriptor",
@@ -4296,7 +4446,8 @@
       "record_id": "outcome-library-bundle-descriptor-build",
       "source_path": "run-artifacts/matrix-bundle.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation outcome-library-bundle-descriptor-build reached OutcomeLibraryBundleWriter in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation outcome-library-bundle-descriptor-build produced the source retained for OutcomeLibraryBundleWriter's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibraryBundleDescriptor",
@@ -4305,6 +4456,7 @@
       "record_id": "outcome-library-bundle-descriptor-build",
       "source_path": "run-artifacts/matrix-bundle.json",
       "operation_owner": "OutcomeLibraryCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-bundle-descriptor-build reached OutcomeLibraryCommand:executeBuild in its public owner path."
     },
     {
@@ -4314,6 +4466,7 @@
       "record_id": "outcome-library-bundle-descriptor-build",
       "source_path": "run-artifacts/matrix-bundle.json",
       "operation_owner": "OutcomeLibraryCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-bundle-descriptor-build reached OutcomeLibraryCommand:loadDescriptor in its public owner path."
     },
     {
@@ -4323,6 +4476,7 @@
       "record_id": "outcome-library-bundle-descriptor-build",
       "source_path": "run-artifacts/matrix-bundle.json",
       "operation_owner": "OutcomeLibraryCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-bundle-descriptor-build reached OutcomeLibraryCommand:loadDescriptor shape/exclusive-source validation in its public owner path."
     },
     {
@@ -4332,6 +4486,7 @@
       "record_id": "outcome-library-bundle-descriptor-build",
       "source_path": "run-artifacts/matrix-bundle.json",
       "operation_owner": "OutcomeLibraryCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-bundle-descriptor-build reached OutcomeLibraryCommand:validateBuildSource provenance validation in its public owner path."
     },
     {
@@ -4341,7 +4496,8 @@
       "record_id": "outcome-library-bundle-descriptor-build",
       "source_path": "run-artifacts/matrix-bundle.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation outcome-library-bundle-descriptor-build reached user-authored Outcome Library bundle config (POKIE does not create this descriptor) in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation outcome-library-bundle-descriptor-build produced the source retained for user-authored Outcome Library bundle config (POKIE does not create this descriptor)'s pending owner wave."
     },
     {
       "artifact_kind": "canonicalOutcomeJsonl",
@@ -4350,7 +4506,8 @@
       "record_id": "bundle-canonical-outcomes",
       "source_path": "run-artifacts/matrix-bundle/outcomes_base.jsonl",
       "operation_owner": "OutcomeLibraryCommand / OutcomeLibraryBundleWriter",
-      "result": "Completed real-artifact operation bundle-canonical-outcomes reached ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation bundle-canonical-outcomes produced the source retained for ExportCommand --to outcomes delegation to OutcomeLibraryCommand.build's pending owner wave."
     },
     {
       "artifact_kind": "canonicalOutcomeJsonl",
@@ -4359,7 +4516,8 @@
       "record_id": "bundle-canonical-outcomes",
       "source_path": "run-artifacts/matrix-bundle/outcomes_base.jsonl",
       "operation_owner": "OutcomeLibraryCommand / OutcomeLibraryBundleWriter",
-      "result": "Completed real-artifact operation bundle-canonical-outcomes reached OutcomeLibraryBundleWriteValidator in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation bundle-canonical-outcomes produced the source retained for OutcomeLibraryBundleWriteValidator's pending owner wave."
     },
     {
       "artifact_kind": "canonicalOutcomeJsonl",
@@ -4368,7 +4526,8 @@
       "record_id": "bundle-canonical-outcomes",
       "source_path": "run-artifacts/matrix-bundle/outcomes_base.jsonl",
       "operation_owner": "OutcomeLibraryCommand / OutcomeLibraryBundleWriter",
-      "result": "Completed real-artifact operation bundle-canonical-outcomes reached OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation bundle-canonical-outcomes produced the source retained for OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized's pending owner wave."
     },
     {
       "artifact_kind": "canonicalOutcomeJsonl",
@@ -4377,6 +4536,7 @@
       "record_id": "bundle-canonical-outcomes",
       "source_path": "run-artifacts/matrix-bundle/outcomes_base.jsonl",
       "operation_owner": "OutcomeLibraryCommand / OutcomeLibraryBundleWriter",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation bundle-canonical-outcomes reached OutcomeLibraryCommand:loadDescriptor outcomesPath in its public owner path."
     },
     {
@@ -4386,6 +4546,7 @@
       "record_id": "bundle-canonical-outcomes",
       "source_path": "run-artifacts/matrix-bundle/outcomes_base.jsonl",
       "operation_owner": "OutcomeLibraryCommand / OutcomeLibraryBundleWriter",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation bundle-canonical-outcomes reached OutcomeLibraryCommand:readStreamedOutcomes in its public owner path."
     },
     {
@@ -4395,6 +4556,7 @@
       "record_id": "bundle-canonical-outcomes",
       "source_path": "run-artifacts/matrix-bundle/outcomes_base.jsonl",
       "operation_owner": "OutcomeLibraryCommand / OutcomeLibraryBundleWriter",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation bundle-canonical-outcomes reached OutcomeLibraryCommand:readStreamedOutcomes JSONL parsing in its public owner path."
     },
     {
@@ -4404,6 +4566,7 @@
       "record_id": "bundle-canonical-outcomes",
       "source_path": "run-artifacts/matrix-bundle/outcomes_base.jsonl",
       "operation_owner": "OutcomeLibraryCommand / OutcomeLibraryBundleWriter",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation bundle-canonical-outcomes reached OutcomeLibraryCommand:streamOutcomes in its public owner path."
     },
     {
@@ -4413,6 +4576,7 @@
       "record_id": "bundle-canonical-outcomes",
       "source_path": "run-artifacts/matrix-bundle/outcomes_base.jsonl",
       "operation_owner": "OutcomeLibraryCommand / OutcomeLibraryBundleWriter",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation bundle-canonical-outcomes reached OutcomeLibraryCommand:validateCrossModeProvenance in its public owner path."
     },
     {
@@ -4422,7 +4586,8 @@
       "record_id": "bundle-canonical-outcomes",
       "source_path": "run-artifacts/matrix-bundle/outcomes_base.jsonl",
       "operation_owner": "OutcomeLibraryCommand / OutcomeLibraryBundleWriter",
-      "result": "Completed real-artifact operation bundle-canonical-outcomes reached WeightedOutcomeLibraryValidator in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation bundle-canonical-outcomes produced the source retained for WeightedOutcomeLibraryValidator's pending owner wave."
     },
     {
       "artifact_kind": "canonicalOutcomeJsonl",
@@ -4431,7 +4596,8 @@
       "record_id": "bundle-canonical-outcomes",
       "source_path": "run-artifacts/matrix-bundle/outcomes_base.jsonl",
       "operation_owner": "OutcomeLibraryCommand / OutcomeLibraryBundleWriter",
-      "result": "Completed real-artifact operation bundle-canonical-outcomes reached user/external canonical outcome-stream producer in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation bundle-canonical-outcomes produced the source retained for user/external canonical outcome-stream producer's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibraryGenerationCheckpoint",
@@ -4440,6 +4606,7 @@
       "record_id": "outcome-library-generation-checkpoint-resume",
       "source_path": "run-artifacts/matrix-cancellation-checkpoint-observed.json",
       "operation_owner": "OutcomeLibraryCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-generation-checkpoint-resume reached OutcomeLibraryCommand:readCheckpoint in its public owner path."
     },
     {
@@ -4449,7 +4616,8 @@
       "record_id": "outcome-library-generation-checkpoint-resume",
       "source_path": "run-artifacts/matrix-cancellation-checkpoint-observed.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation outcome-library-generation-checkpoint-resume reached cli:generate --resume in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation outcome-library-generation-checkpoint-resume produced the source retained for cli:generate --resume's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibraryGenerationCheckpoint",
@@ -4458,7 +4626,8 @@
       "record_id": "outcome-library-generation-checkpoint-resume",
       "source_path": "run-artifacts/matrix-cancellation-checkpoint-observed.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation outcome-library-generation-checkpoint-resume reached cli:generate --resume on cancellation in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation outcome-library-generation-checkpoint-resume produced the source retained for cli:generate --resume on cancellation's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibraryGenerationCheckpoint",
@@ -4467,7 +4636,8 @@
       "record_id": "outcome-library-generation-checkpoint-resume",
       "source_path": "run-artifacts/matrix-cancellation-checkpoint-observed.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation outcome-library-generation-checkpoint-resume reached cli:outcomelibrary generate --resume in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation outcome-library-generation-checkpoint-resume produced the source retained for cli:outcomelibrary generate --resume's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibraryGenerationCheckpoint",
@@ -4476,7 +4646,8 @@
       "record_id": "outcome-library-generation-checkpoint-resume",
       "source_path": "run-artifacts/matrix-cancellation-checkpoint-observed.json",
       "operation_owner": "OutcomeLibraryCommand",
-      "result": "Completed real-artifact operation outcome-library-generation-checkpoint-resume reached cli:outcomelibrary generate --resume on cancellation in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation outcome-library-generation-checkpoint-resume produced the source retained for cli:outcomelibrary generate --resume on cancellation's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibrary",
@@ -4485,7 +4656,8 @@
       "record_id": "matrix-outcomeLibrary-blueprint-build",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached ArtifactBuilderRegistry:build(outcomeLibrary) in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build produced the source retained for ArtifactBuilderRegistry:build(outcomeLibrary)'s pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibrary",
@@ -4494,7 +4666,8 @@
       "record_id": "matrix-outcomeLibrary-blueprint-build",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached OutcomeLibraryBundleReader in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build produced the source retained for OutcomeLibraryBundleReader's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibrary",
@@ -4503,7 +4676,8 @@
       "record_id": "matrix-outcomeLibrary-blueprint-build",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached ProjectTargetResolver in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build produced the source retained for ProjectTargetResolver's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibrary",
@@ -4512,6 +4686,7 @@
       "record_id": "outcome-library-build-stake-default",
       "source_path": "run-artifacts/owner-aliases/build-default/outcomeLibrary",
       "operation_owner": "cli:build --target stakeAdapter without --out",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-build-stake-default reached cli:build --target outcomeLibrary in its public owner path."
     },
     {
@@ -4521,6 +4696,7 @@
       "record_id": "outcome-library-build-stake-default",
       "source_path": "run-artifacts/owner-aliases/build-default/outcomeLibrary",
       "operation_owner": "cli:build --target stakeAdapter without --out",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-build-stake-default reached cli:build --target outcomeLibrary --out in its public owner path."
     },
     {
@@ -4530,6 +4706,7 @@
       "record_id": "outcome-library-build-stake-default",
       "source_path": "run-artifacts/owner-aliases/build-default/outcomeLibrary",
       "operation_owner": "cli:build --target stakeAdapter without --out",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-build-stake-default reached cli:build --target outcomeLibrary without --out in its public owner path."
     },
     {
@@ -4539,6 +4716,7 @@
       "record_id": "outcome-library-build-stake-default",
       "source_path": "run-artifacts/owner-aliases/build-default/outcomeLibrary",
       "operation_owner": "cli:build --target stakeAdapter without --out",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-build-stake-default reached cli:export --to outcomes --out in its public owner path."
     },
     {
@@ -4548,6 +4726,7 @@
       "record_id": "outcome-library-build-stake-default",
       "source_path": "run-artifacts/owner-aliases/build-default/outcomeLibrary",
       "operation_owner": "cli:build --target stakeAdapter without --out",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-build-stake-default reached cli:export --to outcomes without --out in its public owner path."
     },
     {
@@ -4557,7 +4736,8 @@
       "record_id": "matrix-outcomeLibrary-blueprint-build",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached cli:import --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build produced the source retained for cli:import --out's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibrary",
@@ -4566,7 +4746,8 @@
       "record_id": "matrix-outcomeLibrary-blueprint-build",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached cli:import Stake without --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build produced the source retained for cli:import Stake without --out's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibrary",
@@ -4575,6 +4756,7 @@
       "record_id": "outcome-library-inspect",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "InspectCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-inspect reached cli:inspect in its public owner path."
     },
     {
@@ -4584,16 +4766,18 @@
       "record_id": "matrix-outcomeLibrary-blueprint-build",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached cli:outcomelibrary build in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build produced the source retained for cli:outcomelibrary build's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibrary",
       "public_owner": "cli:outcomelibrary-validate",
       "status": "executed",
-      "record_id": "matrix-outcomeLibrary-blueprint-build",
+      "record_id": "outcome-library-validate",
       "source_path": "run-artifacts/matrix-bundle",
-      "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached cli:outcomelibrary-validate in its public owner path."
+      "operation_owner": "ValidateCommand",
+      "owner_execution": "runner-emitted",
+      "result": "Completed real-artifact operation outcome-library-validate reached cli:outcomelibrary-validate in its public owner path."
     },
     {
       "artifact_kind": "outcomeLibrary",
@@ -4602,6 +4786,7 @@
       "record_id": "outcome-library-replay",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ReplayCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-replay reached cli:replay in its public owner path."
     },
     {
@@ -4611,6 +4796,7 @@
       "record_id": "outcome-library-sample",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "OutcomeSourceCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-sample reached cli:sample in its public owner path."
     },
     {
@@ -4620,7 +4806,8 @@
       "record_id": "matrix-outcomeLibrary-blueprint-build",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached cli:serve in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build produced the source retained for cli:serve's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibrary",
@@ -4629,6 +4816,7 @@
       "record_id": "outcome-library-simulate",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "SimCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-simulate reached cli:sim in its public owner path."
     },
     {
@@ -4638,6 +4826,7 @@
       "record_id": "outcome-library-validate",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ValidateCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-library-validate reached cli:validate --deep in its public owner path."
     },
     {
@@ -4647,7 +4836,8 @@
       "record_id": "matrix-outcomeLibrary-blueprint-build",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached studio:outcome-library-generate in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build produced the source retained for studio:outcome-library-generate's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibrary",
@@ -4656,7 +4846,8 @@
       "record_id": "matrix-outcomeLibrary-blueprint-build",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached studio:outcome-library-registry in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build produced the source retained for studio:outcome-library-registry's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibrary",
@@ -4665,7 +4856,8 @@
       "record_id": "matrix-outcomeLibrary-blueprint-build",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached studio:outcome-source-sample in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build produced the source retained for studio:outcome-source-sample's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibrary",
@@ -4674,7 +4866,8 @@
       "record_id": "matrix-outcomeLibrary-blueprint-build",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached studio:replay in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build produced the source retained for studio:replay's pending owner wave."
     },
     {
       "artifact_kind": "outcomeLibrary",
@@ -4683,7 +4876,8 @@
       "record_id": "matrix-outcomeLibrary-blueprint-build",
       "source_path": "run-artifacts/matrix-bundle",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build reached studio:simulation in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-outcomeLibrary-blueprint-build produced the source retained for studio:simulation's pending owner wave."
     },
     {
       "artifact_kind": "stakeEngineExportDescriptor",
@@ -4692,7 +4886,8 @@
       "record_id": "stake-export-descriptor",
       "source_path": "run-artifacts/matrix-stake-export.json",
       "operation_owner": "StakeEngineCommand",
-      "result": "Completed real-artifact operation stake-export-descriptor reached ExportCommand --to adapter delegation to StakeEngineCommand.export in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation stake-export-descriptor produced the source retained for ExportCommand --to adapter delegation to StakeEngineCommand.export's pending owner wave."
     },
     {
       "artifact_kind": "stakeEngineExportDescriptor",
@@ -4701,7 +4896,8 @@
       "record_id": "stake-export-descriptor",
       "source_path": "run-artifacts/matrix-stake-export.json",
       "operation_owner": "StakeEngineCommand",
-      "result": "Completed real-artifact operation stake-export-descriptor reached OutcomeLibraryBundleReader for bundleDir in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation stake-export-descriptor produced the source retained for OutcomeLibraryBundleReader for bundleDir's pending owner wave."
     },
     {
       "artifact_kind": "stakeEngineExportDescriptor",
@@ -4710,6 +4906,7 @@
       "record_id": "stake-export-descriptor",
       "source_path": "run-artifacts/matrix-stake-export.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-export-descriptor reached StakeEngineCommand:loadDescriptor in its public owner path."
     },
     {
@@ -4719,6 +4916,7 @@
       "record_id": "stake-export-descriptor",
       "source_path": "run-artifacts/matrix-stake-export.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-export-descriptor reached StakeEngineCommand:loadDescriptor shape/exclusive-source validation in its public owner path."
     },
     {
@@ -4728,6 +4926,7 @@
       "record_id": "stake-export-descriptor",
       "source_path": "run-artifacts/matrix-stake-export.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-export-descriptor reached StakeEngineCommand:runExport in its public owner path."
     },
     {
@@ -4737,6 +4936,7 @@
       "record_id": "stake-export-descriptor",
       "source_path": "run-artifacts/matrix-stake-export.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-export-descriptor reached StakeEngineCommand:validateExportSource in its public owner path."
     },
     {
@@ -4746,7 +4946,8 @@
       "record_id": "stake-export-descriptor",
       "source_path": "run-artifacts/matrix-stake-export.json",
       "operation_owner": "StakeEngineCommand",
-      "result": "Completed real-artifact operation stake-export-descriptor reached StakeEngineExportValidator in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation stake-export-descriptor produced the source retained for StakeEngineExportValidator's pending owner wave."
     },
     {
       "artifact_kind": "stakeEngineExportDescriptor",
@@ -4755,7 +4956,8 @@
       "record_id": "stake-export-descriptor",
       "source_path": "run-artifacts/matrix-stake-export.json",
       "operation_owner": "StakeEngineCommand",
-      "result": "Completed real-artifact operation stake-export-descriptor reached user-authored Stake Engine export config (POKIE does not create the generic descriptor) in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation stake-export-descriptor produced the source retained for user-authored Stake Engine export config (POKIE does not create the generic descriptor)'s pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4764,7 +4966,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached ArtifactBuilderRegistry:build(stakeAdapter) in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for ArtifactBuilderRegistry:build(stakeAdapter)'s pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4773,7 +4976,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached ProjectTargetResolver in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for ProjectTargetResolver's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4782,7 +4986,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached StakeEngineExportValidator in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for StakeEngineExportValidator's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4791,7 +4996,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached StakeEngineOutcomeSourceReader in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for StakeEngineOutcomeSourceReader's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4800,7 +5006,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached StakeEngineStandaloneValidator in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for StakeEngineStandaloneValidator's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4809,7 +5016,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached cli:build in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for cli:build's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4818,7 +5026,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached cli:build --target stakeAdapter --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for cli:build --target stakeAdapter --out's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4827,7 +5036,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached cli:build --target stakeAdapter without --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for cli:build --target stakeAdapter without --out's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4836,7 +5046,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached cli:diff in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for cli:diff's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4845,7 +5056,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached cli:export --to adapter --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for cli:export --to adapter --out's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4854,7 +5066,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached cli:export --to adapter without --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for cli:export --to adapter without --out's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4863,7 +5076,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached cli:inspect in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for cli:inspect's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4872,7 +5086,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached cli:report in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for cli:report's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4881,7 +5096,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached cli:validate in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for cli:validate's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4890,7 +5106,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached studio:project-registration in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for studio:project-registration's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4899,7 +5116,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached studio:stake-export in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for studio:stake-export's pending owner wave."
     },
     {
       "artifact_kind": "stakeAdapter",
@@ -4908,7 +5126,8 @@
       "record_id": "matrix-stakeAdapter-blueprint-build",
       "source_path": "run-artifacts/matrix-stake",
       "operation_owner": "ArtifactBuilderRegistry.preparePlan / ArtifactConversionPlanner",
-      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build reached studio:stake-export-validate in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation matrix-stakeAdapter-blueprint-build produced the source retained for studio:stake-export-validate's pending owner wave."
     },
     {
       "artifact_kind": "parWorkbook",
@@ -4917,7 +5136,8 @@
       "record_id": "import-par-blueprint-default",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "operation_owner": "cli:import XLSX without --out",
-      "result": "Completed real-artifact operation import-par-blueprint-default reached ArtifactBuilderRegistry:build(parWorkbook) in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation import-par-blueprint-default produced the source retained for ArtifactBuilderRegistry:build(parWorkbook)'s pending owner wave."
     },
     {
       "artifact_kind": "parWorkbook",
@@ -4926,7 +5146,8 @@
       "record_id": "import-par-blueprint-default",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "operation_owner": "cli:import XLSX without --out",
-      "result": "Completed real-artifact operation import-par-blueprint-default reached ParSheetImporter during import in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation import-par-blueprint-default produced the source retained for ParSheetImporter during import's pending owner wave."
     },
     {
       "artifact_kind": "parWorkbook",
@@ -4935,7 +5156,8 @@
       "record_id": "import-par-blueprint-default",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "operation_owner": "cli:import XLSX without --out",
-      "result": "Completed real-artifact operation import-par-blueprint-default reached ProjectTargetResolver in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation import-par-blueprint-default produced the source retained for ProjectTargetResolver's pending owner wave."
     },
     {
       "artifact_kind": "parWorkbook",
@@ -4944,7 +5166,8 @@
       "record_id": "import-par-blueprint-default",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "operation_owner": "cli:import XLSX without --out",
-      "result": "Completed real-artifact operation import-par-blueprint-default reached cli:build --target parWorkbook --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation import-par-blueprint-default produced the source retained for cli:build --target parWorkbook --out's pending owner wave."
     },
     {
       "artifact_kind": "parWorkbook",
@@ -4953,7 +5176,8 @@
       "record_id": "import-par-blueprint-default",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "operation_owner": "cli:import XLSX without --out",
-      "result": "Completed real-artifact operation import-par-blueprint-default reached cli:build --target parWorkbook without --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation import-par-blueprint-default produced the source retained for cli:build --target parWorkbook without --out's pending owner wave."
     },
     {
       "artifact_kind": "parWorkbook",
@@ -4962,7 +5186,8 @@
       "record_id": "import-par-blueprint-default",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "operation_owner": "cli:import XLSX without --out",
-      "result": "Completed real-artifact operation import-par-blueprint-default reached cli:export --to workbook --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation import-par-blueprint-default produced the source retained for cli:export --to workbook --out's pending owner wave."
     },
     {
       "artifact_kind": "parWorkbook",
@@ -4971,7 +5196,8 @@
       "record_id": "import-par-blueprint-default",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "operation_owner": "cli:import XLSX without --out",
-      "result": "Completed real-artifact operation import-par-blueprint-default reached cli:export --to workbook without --out in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation import-par-blueprint-default produced the source retained for cli:export --to workbook without --out's pending owner wave."
     },
     {
       "artifact_kind": "parWorkbook",
@@ -4980,7 +5206,8 @@
       "record_id": "import-par-blueprint-default",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "operation_owner": "cli:import XLSX without --out",
-      "result": "Completed real-artifact operation import-par-blueprint-default reached cli:inspect in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation import-par-blueprint-default produced the source retained for cli:inspect's pending owner wave."
     },
     {
       "artifact_kind": "parWorkbook",
@@ -4989,6 +5216,7 @@
       "record_id": "par-import-blueprint",
       "source_path": "run-artifacts/matrix.par.xlsx",
       "operation_owner": "ParCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation par-import-blueprint reached cli:par export --out in its public owner path."
     },
     {
@@ -4998,6 +5226,7 @@
       "record_id": "par-import-blueprint",
       "source_path": "run-artifacts/matrix.par.xlsx",
       "operation_owner": "ParCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation par-import-blueprint reached cli:par export without --out in its public owner path."
     },
     {
@@ -5007,7 +5236,8 @@
       "record_id": "import-par-blueprint-default",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "operation_owner": "cli:import XLSX without --out",
-      "result": "Completed real-artifact operation import-par-blueprint-default reached studio:par-export in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation import-par-blueprint-default produced the source retained for studio:par-export's pending owner wave."
     },
     {
       "artifact_kind": "parWorkbook",
@@ -5016,7 +5246,8 @@
       "record_id": "import-par-blueprint-default",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "operation_owner": "cli:import XLSX without --out",
-      "result": "Completed real-artifact operation import-par-blueprint-default reached studio:project-registration in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation import-par-blueprint-default produced the source retained for studio:project-registration's pending owner wave."
     },
     {
       "artifact_kind": "wasmComponent",
@@ -5025,7 +5256,8 @@
       "record_id": "wasm-outcome-source-replay",
       "source_path": "run-artifacts/matrix.wasm",
       "operation_owner": "ReplayCommand / ArtifactOperationDiagnostic",
-      "result": "Completed real-artifact operation wasm-outcome-source-replay reached PokieWasmComponentManifestValidator in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation wasm-outcome-source-replay produced the source retained for PokieWasmComponentManifestValidator's pending owner wave."
     },
     {
       "artifact_kind": "wasmComponent",
@@ -5034,7 +5266,8 @@
       "record_id": "wasm-outcome-source-replay",
       "source_path": "run-artifacts/matrix.wasm",
       "operation_owner": "ReplayCommand / ArtifactOperationDiagnostic",
-      "result": "Completed real-artifact operation wasm-outcome-source-replay reached WasmProjectTargetAdapter in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation wasm-outcome-source-replay produced the source retained for WasmProjectTargetAdapter's pending owner wave."
     },
     {
       "artifact_kind": "wasmComponent",
@@ -5043,7 +5276,8 @@
       "record_id": "wasm-outcome-source-replay",
       "source_path": "run-artifacts/matrix.wasm",
       "operation_owner": "ReplayCommand / ArtifactOperationDiagnostic",
-      "result": "Completed real-artifact operation wasm-outcome-source-replay reached assessWasmComponentCompatibility in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation wasm-outcome-source-replay produced the source retained for assessWasmComponentCompatibility's pending owner wave."
     },
     {
       "artifact_kind": "wasmComponent",
@@ -5052,7 +5286,8 @@
       "record_id": "wasm-outcome-source-replay",
       "source_path": "run-artifacts/matrix.wasm",
       "operation_owner": "ReplayCommand / ArtifactOperationDiagnostic",
-      "result": "Completed real-artifact operation wasm-outcome-source-replay reached cli:inspect in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation wasm-outcome-source-replay produced the source retained for cli:inspect's pending owner wave."
     },
     {
       "artifact_kind": "wasmComponent",
@@ -5061,7 +5296,8 @@
       "record_id": "wasm-outcome-source-replay",
       "source_path": "run-artifacts/matrix.wasm",
       "operation_owner": "ReplayCommand / ArtifactOperationDiagnostic",
-      "result": "Completed real-artifact operation wasm-outcome-source-replay reached studio:project-registration in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation wasm-outcome-source-replay produced the source retained for studio:project-registration's pending owner wave."
     },
     {
       "artifact_kind": "roundArtifact",
@@ -5070,6 +5306,7 @@
       "record_id": "round-artifact-replay-provenance",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand / RoundArtifactValidator",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation round-artifact-replay-provenance reached RoundArtifactValidator in its public owner path."
     },
     {
@@ -5079,7 +5316,8 @@
       "record_id": "round-artifact-replay-provenance",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand / RoundArtifactValidator",
-      "result": "Completed real-artifact operation round-artifact-replay-provenance reached StudioRoundRecorder in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation round-artifact-replay-provenance produced the source retained for StudioRoundRecorder's pending owner wave."
     },
     {
       "artifact_kind": "roundArtifact",
@@ -5088,6 +5326,7 @@
       "record_id": "round-artifact-replay-provenance",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand / RoundArtifactValidator",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation round-artifact-replay-provenance reached cli:replay in its public owner path."
     },
     {
@@ -5097,7 +5336,8 @@
       "record_id": "round-artifact-replay-provenance",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand / RoundArtifactValidator",
-      "result": "Completed real-artifact operation round-artifact-replay-provenance reached runtime session recording in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation round-artifact-replay-provenance produced the source retained for runtime session recording's pending owner wave."
     },
     {
       "artifact_kind": "roundArtifact",
@@ -5106,7 +5346,8 @@
       "record_id": "round-artifact-replay-provenance",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand / RoundArtifactValidator",
-      "result": "Completed real-artifact operation round-artifact-replay-provenance reached studio:play in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation round-artifact-replay-provenance produced the source retained for studio:play's pending owner wave."
     },
     {
       "artifact_kind": "roundArtifact",
@@ -5115,7 +5356,8 @@
       "record_id": "round-artifact-replay-provenance",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand / RoundArtifactValidator",
-      "result": "Completed real-artifact operation round-artifact-replay-provenance reached studio:replay in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation round-artifact-replay-provenance produced the source retained for studio:replay's pending owner wave."
     },
     {
       "artifact_kind": "roundArtifact",
@@ -5124,7 +5366,8 @@
       "record_id": "round-artifact-replay-provenance",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand / RoundArtifactValidator",
-      "result": "Completed real-artifact operation round-artifact-replay-provenance reached studio:replay-session-source in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation round-artifact-replay-provenance produced the source retained for studio:replay-session-source's pending owner wave."
     },
     {
       "artifact_kind": "roundArtifact",
@@ -5133,7 +5376,8 @@
       "record_id": "round-artifact-replay-provenance",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand / RoundArtifactValidator",
-      "result": "Completed real-artifact operation round-artifact-replay-provenance reached studio:simulation in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation round-artifact-replay-provenance produced the source retained for studio:simulation's pending owner wave."
     },
     {
       "artifact_kind": "runtimeSession",
@@ -5142,7 +5386,8 @@
       "record_id": "runtime-session-file-export",
       "source_path": "run-artifacts/package",
       "operation_owner": "FileSessionRepository.save",
-      "result": "Completed real-artifact operation runtime-session-file-export reached PokieDevServer in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation runtime-session-file-export produced the source retained for PokieDevServer's pending owner wave."
     },
     {
       "artifact_kind": "runtimeSession",
@@ -5151,7 +5396,8 @@
       "record_id": "runtime-session-file-export",
       "source_path": "run-artifacts/package",
       "operation_owner": "FileSessionRepository.save",
-      "result": "Completed real-artifact operation runtime-session-file-export reached StudioRoundRecorder in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation runtime-session-file-export produced the source retained for StudioRoundRecorder's pending owner wave."
     },
     {
       "artifact_kind": "runtimeSession",
@@ -5160,7 +5406,8 @@
       "record_id": "runtime-session-file-export",
       "source_path": "run-artifacts/package",
       "operation_owner": "FileSessionRepository.save",
-      "result": "Completed real-artifact operation runtime-session-file-export reached cli:dev in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation runtime-session-file-export produced the source retained for cli:dev's pending owner wave."
     },
     {
       "artifact_kind": "runtimeSession",
@@ -5169,7 +5416,8 @@
       "record_id": "runtime-session-file-export",
       "source_path": "run-artifacts/package",
       "operation_owner": "FileSessionRepository.save",
-      "result": "Completed real-artifact operation runtime-session-file-export reached cli:serve in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation runtime-session-file-export produced the source retained for cli:serve's pending owner wave."
     },
     {
       "artifact_kind": "runtimeSession",
@@ -5178,7 +5426,8 @@
       "record_id": "runtime-session-file-export",
       "source_path": "run-artifacts/package",
       "operation_owner": "FileSessionRepository.save",
-      "result": "Completed real-artifact operation runtime-session-file-export reached studio:play in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation runtime-session-file-export produced the source retained for studio:play's pending owner wave."
     },
     {
       "artifact_kind": "runtimeSession",
@@ -5187,7 +5436,8 @@
       "record_id": "runtime-session-file-export",
       "source_path": "run-artifacts/package",
       "operation_owner": "FileSessionRepository.save",
-      "result": "Completed real-artifact operation runtime-session-file-export reached studio:replay-session-source in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation runtime-session-file-export produced the source retained for studio:replay-session-source's pending owner wave."
     },
     {
       "artifact_kind": "fileSessionRepositoryRecord",
@@ -5196,7 +5446,8 @@
       "record_id": "file-session-record-recovery",
       "source_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
       "operation_owner": "FileSessionRepository.load",
-      "result": "Completed real-artifact operation file-session-record-recovery reached FileSessionRepository:load/loadVersioned in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation file-session-record-recovery produced the source retained for FileSessionRepository:load/loadVersioned's pending owner wave."
     },
     {
       "artifact_kind": "fileSessionRepositoryRecord",
@@ -5205,7 +5456,8 @@
       "record_id": "file-session-record-recovery",
       "source_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
       "operation_owner": "FileSessionRepository.load",
-      "result": "Completed real-artifact operation file-session-record-recovery reached FileSessionRepository:readRecord JSON/version-envelope recognition in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation file-session-record-recovery produced the source retained for FileSessionRepository:readRecord JSON/version-envelope recognition's pending owner wave."
     },
     {
       "artifact_kind": "fileSessionRepositoryRecord",
@@ -5214,7 +5466,8 @@
       "record_id": "file-session-record-recovery",
       "source_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
       "operation_owner": "FileSessionRepository.load",
-      "result": "Completed real-artifact operation file-session-record-recovery reached PokieDevServer unknown-session 404 mapping in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation file-session-record-recovery produced the source retained for PokieDevServer unknown-session 404 mapping's pending owner wave."
     },
     {
       "artifact_kind": "fileSessionRepositoryRecord",
@@ -5223,7 +5476,8 @@
       "record_id": "file-session-record-recovery",
       "source_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
       "operation_owner": "FileSessionRepository.load",
-      "result": "Completed real-artifact operation file-session-record-recovery reached PokieDevServer:GET /sessions/:id in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation file-session-record-recovery produced the source retained for PokieDevServer:GET /sessions/:id's pending owner wave."
     },
     {
       "artifact_kind": "fileSessionRepositoryRecord",
@@ -5232,7 +5486,8 @@
       "record_id": "file-session-record-recovery",
       "source_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
       "operation_owner": "FileSessionRepository.load",
-      "result": "Completed real-artifact operation file-session-record-recovery reached PokieDevServer:POST /sessions via configured FileSessionRepository.save in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation file-session-record-recovery produced the source retained for PokieDevServer:POST /sessions via configured FileSessionRepository.save's pending owner wave."
     },
     {
       "artifact_kind": "fileSessionRepositoryRecord",
@@ -5241,7 +5496,8 @@
       "record_id": "file-session-record-recovery",
       "source_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
       "operation_owner": "FileSessionRepository.load",
-      "result": "Completed real-artifact operation file-session-record-recovery reached SpinCommandHandler cache-miss session reconstruction after restart in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation file-session-record-recovery produced the source retained for SpinCommandHandler cache-miss session reconstruction after restart's pending owner wave."
     },
     {
       "artifact_kind": "fileSessionRepositoryRecord",
@@ -5250,7 +5506,8 @@
       "record_id": "file-session-record-recovery",
       "source_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
       "operation_owner": "FileSessionRepository.load",
-      "result": "Completed real-artifact operation file-session-record-recovery reached SpinCommandHandler:POST /sessions/:id/spin via configured FileSessionRepository.save/saveVersioned in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation file-session-record-recovery produced the source retained for SpinCommandHandler:POST /sessions/:id/spin via configured FileSessionRepository.save/saveVersioned's pending owner wave."
     },
     {
       "artifact_kind": "fileSessionRepositoryRecord",
@@ -5259,7 +5516,8 @@
       "record_id": "file-session-record-recovery",
       "source_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
       "operation_owner": "FileSessionRepository.load",
-      "result": "Completed real-artifact operation file-session-record-recovery reached VersionedSessionRepository optimistic-version check in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation file-session-record-recovery produced the source retained for VersionedSessionRepository optimistic-version check's pending owner wave."
     },
     {
       "artifact_kind": "simulationReport",
@@ -5268,6 +5526,7 @@
       "record_id": "simulation-report-inspect",
       "source_path": "run-artifacts/matrix-package-simulation.json",
       "operation_owner": "ReportCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-report-inspect reached cli:diff in its public owner path."
     },
     {
@@ -5277,6 +5536,7 @@
       "record_id": "simulation-report-inspect",
       "source_path": "run-artifacts/matrix-package-simulation.json",
       "operation_owner": "ReportCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-report-inspect reached cli:report in its public owner path."
     },
     {
@@ -5286,6 +5546,7 @@
       "record_id": "simulation-report-inspect",
       "source_path": "run-artifacts/matrix-package-simulation.json",
       "operation_owner": "ReportCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-report-inspect reached cli:report --format json --out for a SimulationReport in its public owner path."
     },
     {
@@ -5295,6 +5556,7 @@
       "record_id": "simulation-report-inspect",
       "source_path": "run-artifacts/matrix-package-simulation.json",
       "operation_owner": "ReportCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-report-inspect reached cli:sim --out in its public owner path."
     },
     {
@@ -5304,6 +5566,7 @@
       "record_id": "simulation-report-inspect",
       "source_path": "run-artifacts/matrix-package-simulation.json",
       "operation_owner": "ReportCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-report-inspect reached simulation report parser in cli:report/diff in its public owner path."
     },
     {
@@ -5313,7 +5576,8 @@
       "record_id": "simulation-report-inspect",
       "source_path": "run-artifacts/matrix-package-simulation.json",
       "operation_owner": "ReportCommand",
-      "result": "Completed real-artifact operation simulation-report-inspect reached studio:replay simulation source in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation simulation-report-inspect produced the source retained for studio:replay simulation source's pending owner wave."
     },
     {
       "artifact_kind": "simulationReport",
@@ -5322,7 +5586,8 @@
       "record_id": "simulation-report-inspect",
       "source_path": "run-artifacts/matrix-package-simulation.json",
       "operation_owner": "ReportCommand",
-      "result": "Completed real-artifact operation simulation-report-inspect reached studio:simulation in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation simulation-report-inspect produced the source retained for studio:simulation's pending owner wave."
     },
     {
       "artifact_kind": "simulationReport",
@@ -5331,7 +5596,8 @@
       "record_id": "simulation-report-inspect",
       "source_path": "run-artifacts/matrix-package-simulation.json",
       "operation_owner": "ReportCommand",
-      "result": "Completed real-artifact operation simulation-report-inspect reached studio:simulation-report-list in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation simulation-report-inspect produced the source retained for studio:simulation-report-list's pending owner wave."
     },
     {
       "artifact_kind": "simulationReportSet",
@@ -5340,6 +5606,7 @@
       "record_id": "simulation-report-set-mode-diagnostic",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "SimCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-report-set-mode-diagnostic reached cli:diff in its public owner path."
     },
     {
@@ -5349,6 +5616,7 @@
       "record_id": "simulation-report-set-mode-diagnostic",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "SimCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-report-set-mode-diagnostic reached cli:report in its public owner path."
     },
     {
@@ -5358,6 +5626,7 @@
       "record_id": "simulation-report-set-mode-diagnostic",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "SimCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-report-set-mode-diagnostic reached cli:report --format json --out for a SimulationReportSet in its public owner path."
     },
     {
@@ -5367,6 +5636,7 @@
       "record_id": "simulation-report-set-mode-diagnostic",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "SimCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-report-set-mode-diagnostic reached cli:sim --mode all in its public owner path."
     },
     {
@@ -5376,6 +5646,7 @@
       "record_id": "simulation-report-set-mode-diagnostic",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "SimCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-report-set-mode-diagnostic reached cli:sim --mode all --out in its public owner path."
     },
     {
@@ -5385,6 +5656,7 @@
       "record_id": "simulation-report-set-mode-diagnostic",
       "source_path": "run-artifacts/matrix-package",
       "operation_owner": "SimCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-report-set-mode-diagnostic reached simulation report-set parser in cli:report/diff in its public owner path."
     },
     {
@@ -5394,6 +5666,7 @@
       "record_id": "blueprint-validation-report",
       "source_path": "run-artifacts/matrix-validation.json",
       "operation_owner": "ValidateCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation blueprint-validation-report reached cli:validate --out in its public owner path."
     },
     {
@@ -5403,6 +5676,7 @@
       "record_id": "blueprint-validation-report",
       "source_path": "run-artifacts/matrix-validation.json",
       "operation_owner": "ValidateCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation blueprint-validation-report reached user/automation JSON consumer in its public owner path."
     },
     {
@@ -5412,6 +5686,7 @@
       "record_id": "simulation-comparison-report",
       "source_path": "run-artifacts/matrix-simulation-diff.json",
       "operation_owner": "DiffCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-comparison-report reached cli:diff --out in its public owner path."
     },
     {
@@ -5421,6 +5696,7 @@
       "record_id": "simulation-comparison-report",
       "source_path": "run-artifacts/matrix-simulation-diff.json",
       "operation_owner": "DiffCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation simulation-comparison-report reached user/automation JSON consumer in its public owner path."
     },
     {
@@ -5430,6 +5706,7 @@
       "record_id": "outcome-source-comparison-report",
       "source_path": "run-artifacts/matrix-outcome-diff.json",
       "operation_owner": "DiffCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-source-comparison-report reached cli:diff --out for outcome sources in its public owner path."
     },
     {
@@ -5439,6 +5716,7 @@
       "record_id": "outcome-source-comparison-report",
       "source_path": "run-artifacts/matrix-outcome-diff.json",
       "operation_owner": "DiffCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-source-comparison-report reached cli:outcomesource diff --out in its public owner path."
     },
     {
@@ -5448,6 +5726,7 @@
       "record_id": "outcome-source-comparison-report",
       "source_path": "run-artifacts/matrix-outcome-diff.json",
       "operation_owner": "DiffCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-source-comparison-report reached user/automation JSON consumer in its public owner path."
     },
     {
@@ -5457,6 +5736,7 @@
       "record_id": "stake-engine-analysis-report",
       "source_path": "run-artifacts/matrix-stake-analysis.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-engine-analysis-report reached cli:stakeengine analyze --out in its public owner path."
     },
     {
@@ -5466,6 +5746,7 @@
       "record_id": "stake-engine-analysis-report",
       "source_path": "run-artifacts/matrix-stake-analysis.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-engine-analysis-report reached user/automation JSON consumer in its public owner path."
     },
     {
@@ -5475,6 +5756,7 @@
       "record_id": "stake-engine-comparison-report",
       "source_path": "run-artifacts/matrix-stake-comparison.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-engine-comparison-report reached cli:stakeengine diff --out in its public owner path."
     },
     {
@@ -5484,6 +5766,7 @@
       "record_id": "stake-engine-comparison-report",
       "source_path": "run-artifacts/matrix-stake-comparison.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-engine-comparison-report reached user/automation JSON consumer in its public owner path."
     },
     {
@@ -5493,6 +5776,7 @@
       "record_id": "outcome-source-analysis-report",
       "source_path": "run-artifacts/matrix-report.md",
       "operation_owner": "ReportCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-source-analysis-report reached cli:report --out for outcome sources in its public owner path."
     },
     {
@@ -5502,6 +5786,7 @@
       "record_id": "outcome-source-analysis-report",
       "source_path": "run-artifacts/matrix-report.md",
       "operation_owner": "ReportCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation outcome-source-analysis-report reached user/automation presentation consumer in its public owner path."
     },
     {
@@ -5511,6 +5796,7 @@
       "record_id": "rendered-simulation-report",
       "source_path": "run-artifacts/matrix-rendered-report.html",
       "operation_owner": "ReportCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation rendered-simulation-report reached HtmlSimulationReportRenderer in its public owner path."
     },
     {
@@ -5520,7 +5806,8 @@
       "record_id": "rendered-simulation-report",
       "source_path": "run-artifacts/matrix-rendered-report.html",
       "operation_owner": "ReportCommand",
-      "result": "Completed real-artifact operation rendered-simulation-report reached MarkdownSimulationReportRenderer in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation rendered-simulation-report produced the source retained for MarkdownSimulationReportRenderer's pending owner wave."
     },
     {
       "artifact_kind": "renderedReport",
@@ -5529,6 +5816,7 @@
       "record_id": "rendered-simulation-report",
       "source_path": "run-artifacts/matrix-rendered-report.html",
       "operation_owner": "ReportCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation rendered-simulation-report reached cli:report in its public owner path."
     },
     {
@@ -5538,6 +5826,7 @@
       "record_id": "rendered-simulation-report",
       "source_path": "run-artifacts/matrix-rendered-report.html",
       "operation_owner": "ReportCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation rendered-simulation-report reached cli:report --out for simulation reports in its public owner path."
     },
     {
@@ -5547,6 +5836,7 @@
       "record_id": "rendered-simulation-report",
       "source_path": "run-artifacts/matrix-rendered-report.html",
       "operation_owner": "ReportCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation rendered-simulation-report reached user/download consumer in its public owner path."
     },
     {
@@ -5556,7 +5846,8 @@
       "record_id": "replay-descriptor-round-artifact",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand",
-      "result": "Completed real-artifact operation replay-descriptor-round-artifact reached RoundArtifactValidator where recorded result is present in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation replay-descriptor-round-artifact produced the source retained for RoundArtifactValidator where recorded result is present's pending owner wave."
     },
     {
       "artifact_kind": "runtimeReplayDescriptor",
@@ -5565,6 +5856,7 @@
       "record_id": "replay-descriptor-round-artifact",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation replay-descriptor-round-artifact reached cli:replay in its public owner path."
     },
     {
@@ -5574,6 +5866,7 @@
       "record_id": "replay-descriptor-round-artifact",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation replay-descriptor-round-artifact reached cli:replay --out in its public owner path."
     },
     {
@@ -5583,6 +5876,7 @@
       "record_id": "replay-descriptor-round-artifact",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation replay-descriptor-round-artifact reached replay descriptor validation in its public owner path."
     },
     {
@@ -5592,6 +5886,7 @@
       "record_id": "replay-descriptor-round-artifact",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation replay-descriptor-round-artifact reached runtime session recording in its public owner path."
     },
     {
@@ -5601,7 +5896,8 @@
       "record_id": "replay-descriptor-round-artifact",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand",
-      "result": "Completed real-artifact operation replay-descriptor-round-artifact reached studio:replay in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation replay-descriptor-round-artifact produced the source retained for studio:replay's pending owner wave."
     },
     {
       "artifact_kind": "runtimeReplayDescriptor",
@@ -5610,34 +5906,38 @@
       "record_id": "replay-descriptor-round-artifact",
       "source_path": "run-artifacts/matrix-replay.json",
       "operation_owner": "ReplayCommand",
-      "result": "Completed real-artifact operation replay-descriptor-round-artifact reached studio:replay-artifact-inspect in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation replay-descriptor-round-artifact produced the source retained for studio:replay-artifact-inspect's pending owner wave."
     },
     {
       "artifact_kind": "stakeImportReExportConfig",
       "public_owner": "StakeEngineCommand export descriptor validation",
       "status": "executed",
-      "record_id": "stake-import-reexport-config",
+      "record_id": "stake-import-reexport-stake",
       "source_path": "run-artifacts/matrix-stake-imported-library/config.json",
       "operation_owner": "StakeEngineCommand",
-      "result": "Completed real-artifact operation stake-import-reexport-config reached StakeEngineCommand export descriptor validation in its public owner path."
+      "owner_execution": "runner-emitted",
+      "result": "Completed real-artifact operation stake-import-reexport-stake reached StakeEngineCommand export descriptor validation in its public owner path."
     },
     {
       "artifact_kind": "stakeImportReExportConfig",
       "public_owner": "StakeEngineCommand:export",
       "status": "executed",
-      "record_id": "stake-import-reexport-config",
+      "record_id": "stake-import-reexport-stake",
       "source_path": "run-artifacts/matrix-stake-imported-library/config.json",
       "operation_owner": "StakeEngineCommand",
-      "result": "Completed real-artifact operation stake-import-reexport-config reached StakeEngineCommand:export in its public owner path."
+      "owner_execution": "runner-emitted",
+      "result": "Completed real-artifact operation stake-import-reexport-stake reached StakeEngineCommand:export in its public owner path."
     },
     {
       "artifact_kind": "stakeImportReExportConfig",
       "public_owner": "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
       "status": "executed",
-      "record_id": "stake-import-reexport-config",
+      "record_id": "stake-import-reexport-stake",
       "source_path": "run-artifacts/matrix-stake-imported-library/config.json",
       "operation_owner": "StakeEngineCommand",
-      "result": "Completed real-artifact operation stake-import-reexport-config reached StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization in its public owner path."
+      "owner_execution": "runner-emitted",
+      "result": "Completed real-artifact operation stake-import-reexport-stake reached StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization in its public owner path."
     },
     {
       "artifact_kind": "stakeImportReExportConfig",
@@ -5646,6 +5946,7 @@
       "record_id": "stake-import-reexport-config",
       "source_path": "run-artifacts/matrix-stake-imported-library/config.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-import-reexport-config reached StakeEngineImportWriter in its public owner path."
     },
     {
@@ -5655,6 +5956,7 @@
       "record_id": "stake-import-reexport-config",
       "source_path": "run-artifacts/matrix-stake-imported-library/config.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-import-reexport-config reached cli:import in its public owner path."
     },
     {
@@ -5664,6 +5966,7 @@
       "record_id": "stake-import-reexport-config",
       "source_path": "run-artifacts/matrix-stake-imported-library/config.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-import-reexport-config reached cli:stakeengine import in its public owner path."
     },
     {
@@ -5673,6 +5976,7 @@
       "record_id": "stake-import-source-provenance",
       "source_path": "run-artifacts/matrix-stake-imported-library/source-provenance.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-import-source-provenance reached StakeEngineImportWriter in its public owner path."
     },
     {
@@ -5682,6 +5986,7 @@
       "record_id": "stake-import-source-provenance",
       "source_path": "run-artifacts/matrix-stake-imported-library/source-provenance.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-import-source-provenance reached cli:import in its public owner path."
     },
     {
@@ -5691,6 +5996,7 @@
       "record_id": "stake-import-source-provenance",
       "source_path": "run-artifacts/matrix-stake-imported-library/source-provenance.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-import-source-provenance reached cli:stakeengine import in its public owner path."
     },
     {
@@ -5700,6 +6006,7 @@
       "record_id": "stake-import-source-provenance",
       "source_path": "run-artifacts/matrix-stake-imported-library/source-provenance.json",
       "operation_owner": "StakeEngineCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation stake-import-source-provenance reached import-result inspection in its public owner path."
     },
     {
@@ -5709,7 +6016,8 @@
       "record_id": "certification-evidence-bundle",
       "source_path": "run-artifacts/matrix-certification",
       "operation_owner": "CertificationCommand",
-      "result": "Completed real-artifact operation certification-evidence-bundle reached CertificationEvidenceBundleValidator in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation certification-evidence-bundle produced the source retained for CertificationEvidenceBundleValidator's pending owner wave."
     },
     {
       "artifact_kind": "certificationEvidenceBundle",
@@ -5718,7 +6026,8 @@
       "record_id": "certification-evidence-bundle",
       "source_path": "run-artifacts/matrix-certification",
       "operation_owner": "CertificationCommand",
-      "result": "Completed real-artifact operation certification-evidence-bundle reached CertificationEvidenceBundleVerifier in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation certification-evidence-bundle produced the source retained for CertificationEvidenceBundleVerifier's pending owner wave."
     },
     {
       "artifact_kind": "certificationEvidenceBundle",
@@ -5727,6 +6036,7 @@
       "record_id": "certification-evidence-bundle",
       "source_path": "run-artifacts/matrix-certification",
       "operation_owner": "CertificationCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation certification-evidence-bundle reached cli:certification build in its public owner path."
     },
     {
@@ -5736,6 +6046,7 @@
       "record_id": "certification-evidence-bundle",
       "source_path": "run-artifacts/matrix-certification",
       "operation_owner": "CertificationCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation certification-evidence-bundle reached cli:certification build --out in its public owner path."
     },
     {
@@ -5745,6 +6056,7 @@
       "record_id": "certification-evidence-bundle",
       "source_path": "run-artifacts/matrix-certification",
       "operation_owner": "CertificationCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation certification-evidence-bundle reached cli:certification build without --out in its public owner path."
     },
     {
@@ -5754,6 +6066,7 @@
       "record_id": "certification-evidence-bundle",
       "source_path": "run-artifacts/matrix-certification",
       "operation_owner": "CertificationCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation certification-evidence-bundle reached cli:certification verify in its public owner path."
     },
     {
@@ -5763,7 +6076,8 @@
       "record_id": "certification-evidence-bundle",
       "source_path": "run-artifacts/matrix-certification",
       "operation_owner": "CertificationCommand",
-      "result": "Completed real-artifact operation certification-evidence-bundle reached studio:certification-build in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation certification-evidence-bundle produced the source retained for studio:certification-build's pending owner wave."
     },
     {
       "artifact_kind": "certificationBuildDescriptor",
@@ -5772,6 +6086,7 @@
       "record_id": "certification-build-descriptor-build",
       "source_path": "run-artifacts/matrix-certification.json",
       "operation_owner": "CertificationCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation certification-build-descriptor-build reached CertificationCommand:checkOutcomeLibrarySource in its public owner path."
     },
     {
@@ -5781,6 +6096,7 @@
       "record_id": "certification-build-descriptor-build",
       "source_path": "run-artifacts/matrix-certification.json",
       "operation_owner": "CertificationCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation certification-build-descriptor-build reached CertificationCommand:executeBuild in its public owner path."
     },
     {
@@ -5790,6 +6106,7 @@
       "record_id": "certification-build-descriptor-build",
       "source_path": "run-artifacts/matrix-certification.json",
       "operation_owner": "CertificationCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation certification-build-descriptor-build reached CertificationCommand:loadDescriptor in its public owner path."
     },
     {
@@ -5799,6 +6116,7 @@
       "record_id": "certification-build-descriptor-build",
       "source_path": "run-artifacts/matrix-certification.json",
       "operation_owner": "CertificationCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation certification-build-descriptor-build reached CertificationCommand:loadDescriptor modes[] shape validation in its public owner path."
     },
     {
@@ -5808,7 +6126,8 @@
       "record_id": "certification-build-descriptor-build",
       "source_path": "run-artifacts/matrix-certification.json",
       "operation_owner": "CertificationCommand",
-      "result": "Completed real-artifact operation certification-build-descriptor-build reached CertificationEvidenceBundleBuilder:buildFromBundle in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation certification-build-descriptor-build produced the source retained for CertificationEvidenceBundleBuilder:buildFromBundle's pending owner wave."
     },
     {
       "artifact_kind": "certificationBuildDescriptor",
@@ -5817,6 +6136,7 @@
       "record_id": "certification-build-descriptor-build",
       "source_path": "run-artifacts/matrix-certification.json",
       "operation_owner": "CertificationCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation certification-build-descriptor-build reached cli:certification build in its public owner path."
     },
     {
@@ -5826,7 +6146,8 @@
       "record_id": "certification-build-descriptor-build",
       "source_path": "run-artifacts/matrix-certification.json",
       "operation_owner": "CertificationCommand",
-      "result": "Completed real-artifact operation certification-build-descriptor-build reached studio:certification-build request supplies equivalent mode samples in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation certification-build-descriptor-build produced the source retained for studio:certification-build request supplies equivalent mode samples's pending owner wave."
     },
     {
       "artifact_kind": "certificationBuildDescriptor",
@@ -5835,7 +6156,8 @@
       "record_id": "certification-build-descriptor-build",
       "source_path": "run-artifacts/matrix-certification.json",
       "operation_owner": "CertificationCommand",
-      "result": "Completed real-artifact operation certification-build-descriptor-build reached user-authored certification build config (POKIE does not create this descriptor) in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation certification-build-descriptor-build produced the source retained for user-authored certification build config (POKIE does not create this descriptor)'s pending owner wave."
     },
     {
       "artifact_kind": "fairnessServerSeedCommitment",
@@ -5844,7 +6166,8 @@
       "record_id": "fairness-server-seed-commitment",
       "source_path": "run-artifacts/matrix-seed-commitment.json",
       "operation_owner": "FairnessCommand",
-      "result": "Completed real-artifact operation fairness-server-seed-commitment reached FairnessServerSeedCommitmentValidator in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation fairness-server-seed-commitment produced the source retained for FairnessServerSeedCommitmentValidator's pending owner wave."
     },
     {
       "artifact_kind": "fairnessServerSeedCommitment",
@@ -5853,6 +6176,7 @@
       "record_id": "fairness-server-seed-commitment",
       "source_path": "run-artifacts/matrix-seed-commitment.json",
       "operation_owner": "FairnessCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation fairness-server-seed-commitment reached cli:fairness commit in its public owner path."
     },
     {
@@ -5862,6 +6186,7 @@
       "record_id": "fairness-server-seed-commitment",
       "source_path": "run-artifacts/matrix-seed-commitment.json",
       "operation_owner": "FairnessCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation fairness-server-seed-commitment reached cli:fairness seed-commit in its public owner path."
     },
     {
@@ -5871,6 +6196,7 @@
       "record_id": "fairness-server-seed-commitment",
       "source_path": "run-artifacts/matrix-seed-commitment.json",
       "operation_owner": "FairnessCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation fairness-server-seed-commitment reached cli:fairness seed-commit --out in its public owner path."
     },
     {
@@ -5880,7 +6206,8 @@
       "record_id": "fairness-server-seed-commitment",
       "source_path": "run-artifacts/matrix-seed-commitment.json",
       "operation_owner": "FairnessCommand",
-      "result": "Completed real-artifact operation fairness-server-seed-commitment reached computeFairnessCommitment in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation fairness-server-seed-commitment produced the source retained for computeFairnessCommitment's pending owner wave."
     },
     {
       "artifact_kind": "fairnessServerSeedCommitment",
@@ -5889,7 +6216,8 @@
       "record_id": "fairness-server-seed-commitment",
       "source_path": "run-artifacts/matrix-seed-commitment.json",
       "operation_owner": "FairnessCommand",
-      "result": "Completed real-artifact operation fairness-server-seed-commitment reached studio:fairness-configure in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation fairness-server-seed-commitment produced the source retained for studio:fairness-configure's pending owner wave."
     },
     {
       "artifact_kind": "fairnessCommitment",
@@ -5898,7 +6226,8 @@
       "record_id": "fairness-round-commitment",
       "source_path": "run-artifacts/matrix-commitment.json",
       "operation_owner": "FairnessCommand",
-      "result": "Completed real-artifact operation fairness-round-commitment reached FairnessCommitmentValidator in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation fairness-round-commitment produced the source retained for FairnessCommitmentValidator's pending owner wave."
     },
     {
       "artifact_kind": "fairnessCommitment",
@@ -5907,6 +6236,7 @@
       "record_id": "fairness-round-commitment",
       "source_path": "run-artifacts/matrix-commitment.json",
       "operation_owner": "FairnessCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation fairness-round-commitment reached cli:fairness commit in its public owner path."
     },
     {
@@ -5916,6 +6246,7 @@
       "record_id": "fairness-round-commitment",
       "source_path": "run-artifacts/matrix-commitment.json",
       "operation_owner": "FairnessCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation fairness-round-commitment reached cli:fairness commit --out in its public owner path."
     },
     {
@@ -5925,6 +6256,7 @@
       "record_id": "fairness-round-commitment",
       "source_path": "run-artifacts/matrix-commitment.json",
       "operation_owner": "FairnessCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation fairness-round-commitment reached cli:fairness reveal in its public owner path."
     },
     {
@@ -5934,6 +6266,7 @@
       "record_id": "fairness-round-commitment",
       "source_path": "run-artifacts/matrix-commitment.json",
       "operation_owner": "FairnessCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation fairness-round-commitment reached cli:fairness verify in its public owner path."
     },
     {
@@ -5943,7 +6276,8 @@
       "record_id": "fairness-round-commitment",
       "source_path": "run-artifacts/matrix-commitment.json",
       "operation_owner": "FairnessCommand",
-      "result": "Completed real-artifact operation fairness-round-commitment reached studio:fairness-configure in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation fairness-round-commitment produced the source retained for studio:fairness-configure's pending owner wave."
     },
     {
       "artifact_kind": "fairnessCommitment",
@@ -5952,7 +6286,8 @@
       "record_id": "fairness-round-commitment",
       "source_path": "run-artifacts/matrix-commitment.json",
       "operation_owner": "FairnessCommand",
-      "result": "Completed real-artifact operation fairness-round-commitment reached studio:fairness-generate in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation fairness-round-commitment produced the source retained for studio:fairness-generate's pending owner wave."
     },
     {
       "artifact_kind": "fairnessCommitment",
@@ -5961,7 +6296,8 @@
       "record_id": "fairness-round-commitment",
       "source_path": "run-artifacts/matrix-commitment.json",
       "operation_owner": "FairnessCommand",
-      "result": "Completed real-artifact operation fairness-round-commitment reached studio:fairness-verify in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation fairness-round-commitment produced the source retained for studio:fairness-verify's pending owner wave."
     },
     {
       "artifact_kind": "fairnessProof",
@@ -5970,7 +6306,8 @@
       "record_id": "fairness-round-proof",
       "source_path": "run-artifacts/matrix-proof.json",
       "operation_owner": "FairnessCommand",
-      "result": "Completed real-artifact operation fairness-round-proof reached FairnessRoundProofValidator in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation fairness-round-proof produced the source retained for FairnessRoundProofValidator's pending owner wave."
     },
     {
       "artifact_kind": "fairnessProof",
@@ -5979,7 +6316,8 @@
       "record_id": "fairness-round-proof",
       "source_path": "run-artifacts/matrix-proof.json",
       "operation_owner": "FairnessCommand",
-      "result": "Completed real-artifact operation fairness-round-proof reached FairnessRoundProofVerifier in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation fairness-round-proof produced the source retained for FairnessRoundProofVerifier's pending owner wave."
     },
     {
       "artifact_kind": "fairnessProof",
@@ -5988,6 +6326,7 @@
       "record_id": "fairness-round-proof",
       "source_path": "run-artifacts/matrix-proof.json",
       "operation_owner": "FairnessCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation fairness-round-proof reached cli:fairness reveal in its public owner path."
     },
     {
@@ -5997,6 +6336,7 @@
       "record_id": "fairness-round-proof",
       "source_path": "run-artifacts/matrix-proof.json",
       "operation_owner": "FairnessCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation fairness-round-proof reached cli:fairness reveal --out in its public owner path."
     },
     {
@@ -6006,6 +6346,7 @@
       "record_id": "fairness-round-proof",
       "source_path": "run-artifacts/matrix-proof.json",
       "operation_owner": "FairnessCommand",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation fairness-round-proof reached cli:fairness verify in its public owner path."
     },
     {
@@ -6015,7 +6356,8 @@
       "record_id": "fairness-round-proof",
       "source_path": "run-artifacts/matrix-proof.json",
       "operation_owner": "FairnessCommand",
-      "result": "Completed real-artifact operation fairness-round-proof reached studio:fairness-generate in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation fairness-round-proof produced the source retained for studio:fairness-generate's pending owner wave."
     },
     {
       "artifact_kind": "fairnessProof",
@@ -6024,7 +6366,8 @@
       "record_id": "fairness-round-proof",
       "source_path": "run-artifacts/matrix-proof.json",
       "operation_owner": "FairnessCommand",
-      "result": "Completed real-artifact operation fairness-round-proof reached studio:fairness-verify in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation fairness-round-proof produced the source retained for studio:fairness-verify's pending owner wave."
     },
     {
       "artifact_kind": "studioOutcomeLibrarySelector",
@@ -6033,7 +6376,8 @@
       "record_id": "studio-outcome-library-selector-deployment",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
-      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment reached OutcomeLibraryBundleReader in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment produced the source retained for OutcomeLibraryBundleReader's pending owner wave."
     },
     {
       "artifact_kind": "studioOutcomeLibrarySelector",
@@ -6042,7 +6386,8 @@
       "record_id": "studio-outcome-library-selector-deployment",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
-      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment reached StakeEngineImporter in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment produced the source retained for StakeEngineImporter's pending owner wave."
     },
     {
       "artifact_kind": "studioOutcomeLibrarySelector",
@@ -6051,7 +6396,8 @@
       "record_id": "studio-outcome-library-selector-deployment",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
-      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment reached Studio browser/request author (POKIE does not persist this selector) in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment produced the source retained for Studio browser/request author (POKIE does not persist this selector)'s pending owner wave."
     },
     {
       "artifact_kind": "studioOutcomeLibrarySelector",
@@ -6060,6 +6406,7 @@
       "record_id": "studio-outcome-library-selector-deployment",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-outcome-library-selector-deployment reached StudioDeploymentService in its public owner path."
     },
     {
@@ -6069,7 +6416,8 @@
       "record_id": "studio-outcome-library-selector-deployment",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
-      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment reached StudioStakeEngineExportService in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment produced the source retained for StudioStakeEngineExportService's pending owner wave."
     },
     {
       "artifact_kind": "studioOutcomeLibrarySelector",
@@ -6078,7 +6426,8 @@
       "record_id": "studio-outcome-library-selector-deployment",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
-      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment reached loadOutcomeLibraryFromSelector in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment produced the source retained for loadOutcomeLibraryFromSelector's pending owner wave."
     },
     {
       "artifact_kind": "studioOutcomeLibrarySelector",
@@ -6087,7 +6436,8 @@
       "record_id": "studio-outcome-library-selector-deployment",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
-      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment reached loadWeightedOutcomeLibraryFromProjectFile JSON parse/containment in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment produced the source retained for loadWeightedOutcomeLibraryFromProjectFile JSON parse/containment's pending owner wave."
     },
     {
       "artifact_kind": "studioOutcomeLibrarySelector",
@@ -6096,7 +6446,8 @@
       "record_id": "studio-outcome-library-selector-deployment",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
-      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment reached validateOutcomeLibrarySelector in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment produced the source retained for validateOutcomeLibrarySelector's pending owner wave."
     },
     {
       "artifact_kind": "studioOutcomeLibrarySelector",
@@ -6105,7 +6456,8 @@
       "record_id": "studio-outcome-library-selector-deployment",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
-      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment reached validateOutcomeLibrarySelector request-shape validation in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-outcome-library-selector-deployment produced the source retained for validateOutcomeLibrarySelector request-shape validation's pending owner wave."
     },
     {
       "artifact_kind": "externalDeploymentArtifact",
@@ -6114,7 +6466,8 @@
       "record_id": "studio-external-deployment-publication",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
-      "result": "Completed real-artifact operation studio-external-deployment-publication reached ExternalArtifactValidator and built-in deployment validators in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-external-deployment-publication produced the source retained for ExternalArtifactValidator and built-in deployment validators's pending owner wave."
     },
     {
       "artifact_kind": "externalDeploymentArtifact",
@@ -6123,7 +6476,8 @@
       "record_id": "studio-external-deployment-publication",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
-      "result": "Completed real-artifact operation studio-external-deployment-publication reached ExternalDeploymentService in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-external-deployment-publication produced the source retained for ExternalDeploymentService's pending owner wave."
     },
     {
       "artifact_kind": "externalDeploymentArtifact",
@@ -6132,6 +6486,7 @@
       "record_id": "studio-external-deployment-publication",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-external-deployment-publication reached studio:deployment-run in its public owner path."
     },
     {
@@ -6141,7 +6496,8 @@
       "record_id": "studio-external-deployment-publication",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "StudioDeploymentService.run",
-      "result": "Completed real-artifact operation studio-external-deployment-publication reached target-defined validator in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-external-deployment-publication produced the source retained for target-defined validator's pending owner wave."
     },
     {
       "artifact_kind": "managedOutcomeProjectsRegistry",
@@ -6150,7 +6506,8 @@
       "record_id": "managed-outcome-project-registry-reuse",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
-      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse reached ArtifactBuilderRegistry managed Outcome Library reuse in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse produced the source retained for ArtifactBuilderRegistry managed Outcome Library reuse's pending owner wave."
     },
     {
       "artifact_kind": "managedOutcomeProjectsRegistry",
@@ -6159,6 +6516,7 @@
       "record_id": "managed-outcome-project-registry-reuse",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation managed-outcome-project-registry-reuse reached ManagedOutcomeProjectService:findCompatible in its public owner path."
     },
     {
@@ -6168,6 +6526,7 @@
       "record_id": "managed-outcome-project-registry-reuse",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation managed-outcome-project-registry-reuse reached ManagedOutcomeProjectService:findCompatible legacy adoption in its public owner path."
     },
     {
@@ -6177,6 +6536,7 @@
       "record_id": "managed-outcome-project-registry-reuse",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation managed-outcome-project-registry-reuse reached ManagedOutcomeProjectService:registerAndOpen in its public owner path."
     },
     {
@@ -6186,7 +6546,8 @@
       "record_id": "managed-outcome-project-registry-reuse",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
-      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse reached OutcomeLibraryBundleReader manifest read in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse produced the source retained for OutcomeLibraryBundleReader manifest read's pending owner wave."
     },
     {
       "artifact_kind": "managedOutcomeProjectsRegistry",
@@ -6195,7 +6556,8 @@
       "record_id": "managed-outcome-project-registry-reuse",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
-      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse reached OutcomeProjectCompatibility exact comparison in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse produced the source retained for OutcomeProjectCompatibility exact comparison's pending owner wave."
     },
     {
       "artifact_kind": "managedOutcomeProjectsRegistry",
@@ -6204,7 +6566,8 @@
       "record_id": "managed-outcome-project-registry-reuse",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
-      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse reached ProjectTargetResolver in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse produced the source retained for ProjectTargetResolver's pending owner wave."
     },
     {
       "artifact_kind": "managedOutcomeProjectsRegistry",
@@ -6213,7 +6576,8 @@
       "record_id": "managed-outcome-project-registry-reuse",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
-      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse reached cli/stake export managed-library lifecycle in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse produced the source retained for cli/stake export managed-library lifecycle's pending owner wave."
     },
     {
       "artifact_kind": "managedOutcomeProjectsRegistry",
@@ -6222,7 +6586,8 @@
       "record_id": "managed-outcome-project-registry-reuse",
       "source_path": "run-artifacts/package/outcomelibrary",
       "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
-      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse reached studio:managed-outcome-library lifecycle in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation managed-outcome-project-registry-reuse produced the source retained for studio:managed-outcome-library lifecycle's pending owner wave."
     },
     {
       "artifact_kind": "studioOutcomeLibraryRegistryIndex",
@@ -6231,7 +6596,8 @@
       "record_id": "studio-outcome-library-registry-index",
       "source_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
       "operation_owner": "StudioOutcomeLibraryGenerateService.registry",
-      "result": "Completed real-artifact operation studio-outcome-library-registry-index reached OutcomeLibraryBundleReader manifest read in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-outcome-library-registry-index produced the source retained for OutcomeLibraryBundleReader manifest read's pending owner wave."
     },
     {
       "artifact_kind": "studioOutcomeLibraryRegistryIndex",
@@ -6240,7 +6606,8 @@
       "record_id": "studio-outcome-library-registry-index",
       "source_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
       "operation_owner": "StudioOutcomeLibraryGenerateService.registry",
-      "result": "Completed real-artifact operation studio-outcome-library-registry-index reached Studio Outcome Library Registry panel after restart in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-outcome-library-registry-index produced the source retained for Studio Outcome Library Registry panel after restart's pending owner wave."
     },
     {
       "artifact_kind": "studioOutcomeLibraryRegistryIndex",
@@ -6249,6 +6616,7 @@
       "record_id": "studio-outcome-library-registry-index",
       "source_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
       "operation_owner": "StudioOutcomeLibraryGenerateService.registry",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-outcome-library-registry-index reached StudioOutcomeLibraryGenerateService:isDirectory in its public owner path."
     },
     {
@@ -6258,6 +6626,7 @@
       "record_id": "studio-outcome-library-registry-index",
       "source_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
       "operation_owner": "StudioOutcomeLibraryGenerateService.registry",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-outcome-library-registry-index reached StudioOutcomeLibraryGenerateService:readRegistryIndex in its public owner path."
     },
     {
@@ -6267,6 +6636,7 @@
       "record_id": "studio-outcome-library-registry-index",
       "source_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
       "operation_owner": "StudioOutcomeLibraryGenerateService.registry",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-outcome-library-registry-index reached StudioOutcomeLibraryGenerateService:recordDiscoveredBundleDir after successful generate in its public owner path."
     },
     {
@@ -6276,6 +6646,7 @@
       "record_id": "studio-outcome-library-registry-index",
       "source_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
       "operation_owner": "StudioOutcomeLibraryGenerateService.registry",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-outcome-library-registry-index reached StudioOutcomeLibraryGenerateService:registry in its public owner path."
     },
     {
@@ -6285,7 +6656,8 @@
       "record_id": "studio-outcome-library-registry-index",
       "source_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
       "operation_owner": "StudioOutcomeLibraryGenerateService.registry",
-      "result": "Completed real-artifact operation studio-outcome-library-registry-index reached resolveProjectDirectory containment/realpath check in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-outcome-library-registry-index produced the source retained for resolveProjectDirectory containment/realpath check's pending owner wave."
     },
     {
       "artifact_kind": "studioProjectRegistryEntry",
@@ -6294,7 +6666,8 @@
       "record_id": "studio-project-registry-reopen",
       "source_path": "run-artifacts/package",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
-      "result": "Completed real-artifact operation studio-project-registry-reopen reached FileStudioProjectRegistry JSON-array read in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-project-registry-reopen produced the source retained for FileStudioProjectRegistry JSON-array read's pending owner wave."
     },
     {
       "artifact_kind": "studioProjectRegistryEntry",
@@ -6303,7 +6676,8 @@
       "record_id": "studio-project-registry-reopen",
       "source_path": "run-artifacts/package",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
-      "result": "Completed real-artifact operation studio-project-registry-reopen reached FileStudioProjectRegistry:list/read in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-project-registry-reopen produced the source retained for FileStudioProjectRegistry:list/read's pending owner wave."
     },
     {
       "artifact_kind": "studioProjectRegistryEntry",
@@ -6312,7 +6686,8 @@
       "record_id": "studio-project-registry-reopen",
       "source_path": "run-artifacts/package",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
-      "result": "Completed real-artifact operation studio-project-registry-reopen reached FileStudioProjectRegistry:upsert atomically writes projects.json in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-project-registry-reopen produced the source retained for FileStudioProjectRegistry:upsert atomically writes projects.json's pending owner wave."
     },
     {
       "artifact_kind": "studioProjectRegistryEntry",
@@ -6321,7 +6696,8 @@
       "record_id": "studio-project-registry-reopen",
       "source_path": "run-artifacts/package",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
-      "result": "Completed real-artifact operation studio-project-registry-reopen reached ProjectTargetResolver at registration/open/relocate in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-project-registry-reopen produced the source retained for ProjectTargetResolver at registration/open/relocate's pending owner wave."
     },
     {
       "artifact_kind": "studioProjectRegistryEntry",
@@ -6330,7 +6706,8 @@
       "record_id": "studio-project-registry-reopen",
       "source_path": "run-artifacts/package",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
-      "result": "Completed real-artifact operation studio-project-registry-reopen reached Studio Projects dashboard after restart in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-project-registry-reopen produced the source retained for Studio Projects dashboard after restart's pending owner wave."
     },
     {
       "artifact_kind": "studioProjectRegistryEntry",
@@ -6339,6 +6716,7 @@
       "record_id": "studio-project-registry-reopen",
       "source_path": "run-artifacts/package",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-project-registry-reopen reached StudioProjectRegistrationService:canonicalize realpath/absolute fallback in its public owner path."
     },
     {
@@ -6348,6 +6726,7 @@
       "record_id": "studio-project-registry-reopen",
       "source_path": "run-artifacts/package",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-project-registry-reopen reached StudioProjectRegistrationService:list in its public owner path."
     },
     {
@@ -6357,6 +6736,7 @@
       "record_id": "studio-project-registry-reopen",
       "source_path": "run-artifacts/package",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-project-registry-reopen reached StudioProjectRegistrationService:list fresh exists status in its public owner path."
     },
     {
@@ -6366,6 +6746,7 @@
       "record_id": "studio-project-registry-reopen",
       "source_path": "run-artifacts/package",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-project-registry-reopen reached StudioProjectRegistrationService:recordOpened/remove/relocate in its public owner path."
     },
     {
@@ -6375,6 +6756,7 @@
       "record_id": "studio-project-registry-reopen",
       "source_path": "run-artifacts/package",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
+      "owner_execution": "runner-emitted",
       "result": "Completed real-artifact operation studio-project-registry-reopen reached StudioProjectRegistrationService:registerManaged/registerExternal/recordOpened/relocate in its public owner path."
     },
     {
@@ -6384,7 +6766,8 @@
       "record_id": "studio-project-registry-reopen",
       "source_path": "run-artifacts/package",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
-      "result": "Completed real-artifact operation studio-project-registry-reopen reached StudioServer Projects create/register/open/relocate flows in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation studio-project-registry-reopen produced the source retained for StudioServer Projects create/register/open/relocate flows's pending owner wave."
     },
     {
       "artifact_kind": "preparationStateMarker",
@@ -6393,7 +6776,8 @@
       "record_id": "package-preparation-marker-recovery",
       "source_path": "run-artifacts/preparation/interrupted-package",
       "operation_owner": "GamePackagePreparer.prepare",
-      "result": "Completed real-artifact operation package-preparation-marker-recovery reached GamePackagePreparer phase ordering in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation package-preparation-marker-recovery produced the source retained for GamePackagePreparer phase ordering's pending owner wave."
     },
     {
       "artifact_kind": "preparationStateMarker",
@@ -6402,7 +6786,8 @@
       "record_id": "package-preparation-marker-recovery",
       "source_path": "run-artifacts/preparation/interrupted-package",
       "operation_owner": "GamePackagePreparer.prepare",
-      "result": "Completed real-artifact operation package-preparation-marker-recovery reached GamePackagePreparer:prepare after dependencies/build in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation package-preparation-marker-recovery produced the source retained for GamePackagePreparer:prepare after dependencies/build's pending owner wave."
     },
     {
       "artifact_kind": "preparationStateMarker",
@@ -6411,7 +6796,8 @@
       "record_id": "package-preparation-marker-recovery",
       "source_path": "run-artifacts/preparation/interrupted-package",
       "operation_owner": "GamePackagePreparer.prepare",
-      "result": "Completed real-artifact operation package-preparation-marker-recovery reached GamePackagePreparer:prepare phase resume in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation package-preparation-marker-recovery produced the source retained for GamePackagePreparer:prepare phase resume's pending owner wave."
     },
     {
       "artifact_kind": "preparationStateMarker",
@@ -6420,7 +6806,8 @@
       "record_id": "package-preparation-marker-recovery",
       "source_path": "run-artifacts/preparation/interrupted-package",
       "operation_owner": "GamePackagePreparer.prepare",
-      "result": "Completed real-artifact operation package-preparation-marker-recovery reached GamePackagePreparer:runCreatePhase in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation package-preparation-marker-recovery produced the source retained for GamePackagePreparer:runCreatePhase's pending owner wave."
     },
     {
       "artifact_kind": "preparationStateMarker",
@@ -6429,7 +6816,8 @@
       "record_id": "package-preparation-marker-recovery",
       "source_path": "run-artifacts/preparation/interrupted-package",
       "operation_owner": "GamePackagePreparer.prepare",
-      "result": "Completed real-artifact operation package-preparation-marker-recovery reached GamePackagePreparer:runCreatePhase retry in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation package-preparation-marker-recovery produced the source retained for GamePackagePreparer:runCreatePhase retry's pending owner wave."
     },
     {
       "artifact_kind": "preparationStateMarker",
@@ -6438,7 +6826,8 @@
       "record_id": "package-preparation-marker-recovery",
       "source_path": "run-artifacts/preparation/interrupted-package",
       "operation_owner": "GamePackagePreparer.prepare",
-      "result": "Completed real-artifact operation package-preparation-marker-recovery reached PreparationStateStore JSON parse as PreparationState in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation package-preparation-marker-recovery produced the source retained for PreparationStateStore JSON parse as PreparationState's pending owner wave."
     },
     {
       "artifact_kind": "preparationStateMarker",
@@ -6447,7 +6836,8 @@
       "record_id": "package-preparation-marker-recovery",
       "source_path": "run-artifacts/preparation/interrupted-package",
       "operation_owner": "GamePackagePreparer.prepare",
-      "result": "Completed real-artifact operation package-preparation-marker-recovery reached PreparationStateStore:readPreparationState in its public owner path."
+      "owner_execution": "representative-pending-owner-wave",
+      "result": "Completed real-artifact operation package-preparation-marker-recovery produced the source retained for PreparationStateStore:readPreparationState's pending owner wave."
     }
   ],
   "systemic_class_audits": [
@@ -6923,7 +7313,7 @@
           {
             "artifact_kind": "outcomeLibrary",
             "public_owner": "cli:outcomelibrary-validate",
-            "record_id": "matrix-outcomeLibrary-blueprint-build"
+            "record_id": "outcome-library-validate"
           },
           {
             "artifact_kind": "outcomeLibrary",
@@ -7493,17 +7883,17 @@
           {
             "artifact_kind": "stakeImportReExportConfig",
             "public_owner": "StakeEngineCommand export descriptor validation",
-            "record_id": "stake-import-reexport-config"
+            "record_id": "stake-import-reexport-stake"
           },
           {
             "artifact_kind": "stakeImportReExportConfig",
             "public_owner": "StakeEngineCommand:export",
-            "record_id": "stake-import-reexport-config"
+            "record_id": "stake-import-reexport-stake"
           },
           {
             "artifact_kind": "stakeImportReExportConfig",
             "public_owner": "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
-            "record_id": "stake-import-reexport-config"
+            "record_id": "stake-import-reexport-stake"
           },
           {
             "artifact_kind": "stakeImportReExportConfig",
@@ -8873,7 +9263,7 @@
           {
             "artifact_kind": "outcomeLibrary",
             "public_owner": "cli:outcomelibrary-validate",
-            "record_id": "matrix-outcomeLibrary-blueprint-build"
+            "record_id": "outcome-library-validate"
           },
           {
             "artifact_kind": "outcomeLibrary",
@@ -9443,17 +9833,17 @@
           {
             "artifact_kind": "stakeImportReExportConfig",
             "public_owner": "StakeEngineCommand export descriptor validation",
-            "record_id": "stake-import-reexport-config"
+            "record_id": "stake-import-reexport-stake"
           },
           {
             "artifact_kind": "stakeImportReExportConfig",
             "public_owner": "StakeEngineCommand:export",
-            "record_id": "stake-import-reexport-config"
+            "record_id": "stake-import-reexport-stake"
           },
           {
             "artifact_kind": "stakeImportReExportConfig",
             "public_owner": "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
-            "record_id": "stake-import-reexport-config"
+            "record_id": "stake-import-reexport-stake"
           },
           {
             "artifact_kind": "stakeImportReExportConfig",
@@ -10543,7 +10933,7 @@
           {
             "artifact_kind": "outcomeLibrary",
             "public_owner": "cli:outcomelibrary-validate",
-            "record_id": "matrix-outcomeLibrary-blueprint-build"
+            "record_id": "outcome-library-validate"
           },
           {
             "artifact_kind": "outcomeLibrary",
@@ -11113,17 +11503,17 @@
           {
             "artifact_kind": "stakeImportReExportConfig",
             "public_owner": "StakeEngineCommand export descriptor validation",
-            "record_id": "stake-import-reexport-config"
+            "record_id": "stake-import-reexport-stake"
           },
           {
             "artifact_kind": "stakeImportReExportConfig",
             "public_owner": "StakeEngineCommand:export",
-            "record_id": "stake-import-reexport-config"
+            "record_id": "stake-import-reexport-stake"
           },
           {
             "artifact_kind": "stakeImportReExportConfig",
             "public_owner": "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
-            "record_id": "stake-import-reexport-config"
+            "record_id": "stake-import-reexport-stake"
           },
           {
             "artifact_kind": "stakeImportReExportConfig",

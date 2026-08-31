@@ -170,6 +170,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ValidateCommand",
+      "executed_public_owners": [
+        "cli:validate --out",
+        "user/automation JSON consumer"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published JSON validation report",
@@ -1239,6 +1243,9 @@
       "produced_path": "run-artifacts/matrix-replay.json",
       "produced_identity": "sha256:845392dac381b9e5cf68364abf14c9c12e52268209611701f08b21b3e646441a",
       "operation_owner": "ReplayCommand",
+      "executed_public_owners": [
+        "cli:replay"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1261,6 +1268,9 @@
       "produced_path": "run-artifacts/matrix-report.md",
       "produced_identity": "sha256:ed87878fb6c0ce724e1c7cf22a7fc76ba5fdea346ed94104fc5f2cfbcfc0568c",
       "operation_owner": "ReportCommand",
+      "executed_public_owners": [
+        "cli:report"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published",
@@ -1301,6 +1311,9 @@
       "produced_path": "run-artifacts/matrix-simulation.json",
       "produced_identity": "sha256:d67fe6d5c55543a3a4497fd1dd42fbc0f368038684dfcb3a1bcb360be16b0355",
       "operation_owner": "SimCommand",
+      "executed_public_owners": [
+        "cli:sim"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1323,6 +1336,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ValidateCommand",
+      "executed_public_owners": [
+        "cli:validate --deep",
+        "cli:outcomelibrary-validate"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "valid",
@@ -1343,6 +1360,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReportCommand",
+      "executed_public_owners": [
+        "cli:report --out for outcome sources",
+        "user/automation presentation consumer"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "analysis report published from the generated Outcome Library",
@@ -1363,6 +1384,11 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "DiffCommand",
+      "executed_public_owners": [
+        "cli:diff --out for outcome sources",
+        "cli:outcomesource diff --out",
+        "user/automation JSON consumer"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published from real Outcome Library sources",
@@ -1503,6 +1529,12 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReportCommand",
+      "executed_public_owners": [
+        "cli:report --out for simulation reports",
+        "HtmlSimulationReportRenderer",
+        "user/download consumer",
+        "cli:report"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "HTML report published from the real simulation report",
@@ -1523,6 +1555,12 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReplayCommand",
+      "executed_public_owners": [
+        "cli:replay --out",
+        "runtime session recording",
+        "cli:replay",
+        "replay descriptor validation"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1545,6 +1583,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "ReplayCommand / RoundArtifactValidator",
+      "executed_public_owners": [
+        "cli:replay",
+        "RoundArtifactValidator"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1567,6 +1609,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "DiffCommand",
+      "executed_public_owners": [
+        "cli:diff --out",
+        "user/automation JSON consumer"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published from two real simulation reports",
@@ -1584,19 +1630,26 @@
       "operation": "report",
       "source_path": "run-artifacts/matrix-package-simulation.json",
       "source_identity": "sha256:84ba98c5b42fc7cec7447183ce32d8bfef3ada7268253b287c132863829f5914",
-      "produced_path": null,
-      "produced_identity": null,
+      "produced_path": "run-artifacts/matrix-simulation-report.json",
+      "produced_identity": "sha256:84ba98c5b42fc7cec7447183ce32d8bfef3ada7268253b287c132863829f5914",
       "operation_owner": "ReportCommand",
+      "executed_public_owners": [
+        "cli:sim --out",
+        "cli:report --format json --out for a SimulationReport",
+        "cli:report",
+        "cli:diff",
+        "simulation report parser in cli:report/diff"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
       "status": "supported",
-      "observable_result": "the real simulation output was consumed by the report owner",
+      "observable_result": "the real simulation output was parsed and re-emitted as JSON by the report owner",
       "observations": [
         {
           "surface": "cli",
           "owner": "ReportCommand",
-          "result": "simulation report was rendered"
+          "result": "report --format json --out consumed and re-emitted the simulation report"
         }
       ]
     },
@@ -1609,6 +1662,14 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "SimCommand",
+      "executed_public_owners": [
+        "cli:sim --mode all",
+        "cli:sim --mode all --out",
+        "cli:report --format json --out for a SimulationReportSet",
+        "cli:report",
+        "cli:diff",
+        "simulation report-set parser in cli:report/diff"
+      ],
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -1635,6 +1696,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
+      "executed_public_owners": [
+        "cli:stakeengine analyze --out",
+        "user/automation JSON consumer"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "analysis report published from the generated Stake adapter",
@@ -1655,6 +1720,10 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
+      "executed_public_owners": [
+        "cli:stakeengine diff --out",
+        "user/automation JSON consumer"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "comparison report published from two real Stake exports",
@@ -1701,6 +1770,10 @@
       "produced_path": "run-artifacts/matrix-stake-imported-library",
       "produced_identity": "sha256:274b6235f31df27da3cc23dc5962520edb4a768ffeb76afdabfba59f8fbc5596",
       "operation_owner": "StakeEngineCommand",
+      "executed_public_owners": [
+        "cli:import",
+        "cli:stakeengine import"
+      ],
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "Outcome Library published with matching Stake provenance",
@@ -1721,6 +1794,11 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
+      "executed_public_owners": [
+        "StakeEngineImportWriter",
+        "cli:import",
+        "cli:stakeengine import"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1743,6 +1821,11 @@
       "produced_path": "run-artifacts/matrix-stake-reexported",
       "produced_identity": "sha256:66b27105b2dca4e6f0ddf49ca17e62b025337b8d5d59324a25a69dddf2e8c378",
       "operation_owner": "StakeEngineCommand",
+      "executed_public_owners": [
+        "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
+        "StakeEngineCommand:export",
+        "StakeEngineCommand export descriptor validation"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding",
         "durable-publication-ownership"
@@ -1776,6 +1859,12 @@
       "produced_path": null,
       "produced_identity": null,
       "operation_owner": "StakeEngineCommand",
+      "executed_public_owners": [
+        "StakeEngineImportWriter",
+        "cli:import",
+        "cli:stakeengine import",
+        "import-result inspection"
+      ],
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],

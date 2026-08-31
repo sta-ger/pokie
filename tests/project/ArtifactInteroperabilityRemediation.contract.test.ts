@@ -19,6 +19,7 @@ type EmittedRecord = {
     readonly produced_identity: string | null;
     readonly observable_result: string;
     readonly observations?: readonly {readonly surface: string; readonly owner: string; readonly result: string}[];
+    readonly executed_public_owners?: readonly string[];
     readonly execution?: {readonly assertions: readonly string[]; readonly observations: readonly {readonly route: string; readonly result: string}[]};
     readonly diagnostic?: {readonly code: string; readonly recovery: string};
     readonly systemic_classes?: readonly string[];
@@ -45,6 +46,7 @@ type InteroperabilityResult = {
         readonly record_id: string;
         readonly source_path: string;
         readonly operation_owner: string;
+        readonly owner_execution: "runner-emitted" | "representative-pending-owner-wave";
         readonly result: string;
     }[];
     readonly planner_cells?: readonly {
@@ -360,6 +362,34 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 .toEqual(expected);
             for (const entry of audit.derived_from.executed_owner_inventory) {
                 expect(result.rows.some((record) => record.id === entry.record_id)).toBe(true);
+            }
+        }
+    });
+
+    it("binds the runtime, replay, simulation, report, validation, Outcome Library, and Stake re-export owner wave to exact emitted operations", () => {
+        const exactOwners = [
+            ["validationReport", "cli:validate --out"],
+            ["outcomeLibrary", "cli:validate --deep"],
+            ["outcomeLibrary", "cli:outcomelibrary-validate"],
+            ["outcomeLibrary", "cli:sim"],
+            ["outcomeLibrary", "cli:replay"],
+            ["outcomeLibrary", "cli:report"],
+            ["simulationReport", "cli:report --format json --out for a SimulationReport"],
+            ["simulationReportSet", "cli:sim --mode all"],
+            ["stakeImportReExportConfig", "cli:stakeengine import"],
+            ["stakeImportReExportConfig", "StakeEngineCommand:export"],
+            ["stakeEngineAnalysisReport", "cli:stakeengine analyze --out"],
+            ["stakeEngineComparisonReport", "cli:stakeengine diff --out"],
+            ["runtimeReplayDescriptor", "cli:replay --out"],
+            ["roundArtifact", "RoundArtifactValidator"],
+        ];
+        for (const [artifactKind, owner] of exactOwners) {
+            const coverage = result.public_owner_coverage.filter((entry) => entry.artifact_kind === artifactKind && entry.public_owner === owner);
+            expect(coverage.length).toBeGreaterThan(0);
+            for (const entry of coverage) {
+                expect(entry.owner_execution).toBe("runner-emitted");
+                const record = result.rows.find((candidate) => candidate.id === entry.record_id);
+                expect(record?.executed_public_owners).toContain(owner);
             }
         }
     });

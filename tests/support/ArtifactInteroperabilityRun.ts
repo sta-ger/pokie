@@ -63,6 +63,15 @@ export type ArtifactInteroperabilityRunRow = {
     readonly sourcePath: string;
     readonly producedPath?: string;
     readonly owner: string;
+    /**
+     * Exact PC-05 owner identities reached by this operation.  These are
+     * deliberately supplied by the runner at the completed call site rather
+     * than inferred later from a command-name substring.  One public command
+     * can legitimately exercise several named phases (for example Stake
+     * import followed by config-driven re-export), but every identity here
+     * still has the same produced/imported artifact and terminal result.
+     */
+    readonly executedPublicOwners?: readonly string[];
     readonly result: string;
     readonly observations: readonly ArtifactInteroperabilityObservation[];
     /** Systemic classes actually covered by this completed operation. */
@@ -80,6 +89,8 @@ export type ArtifactInteroperabilityUnavailableRow = {
     readonly operation: string;
     readonly sourcePath: string;
     readonly owner: string;
+    /** Exact PC-05 identities which returned this concrete diagnostic. */
+    readonly executedPublicOwners?: readonly string[];
     readonly diagnostic: {
         /** The code returned by the exercised public owner.  Planner cells
          * retain their conversion diagnostic while command/service callers
@@ -166,6 +177,7 @@ export class ArtifactInteroperabilityRun {
             operation: row.operation,
             sourcePath: row.sourcePath,
             owner: row.owner,
+            ...(row.executedPublicOwners === undefined ? {} : {executedPublicOwners: row.executedPublicOwners}),
             result: this.redactEmbeddedRunnerRoot(row.diagnostic.message),
             observations: row.observations,
             status: "intentionally-unsupported",
@@ -206,6 +218,7 @@ export class ArtifactInteroperabilityRun {
                 "produced_path": row.producedPath === undefined ? null : this.redact(row.producedPath),
                 "produced_identity": row.producedPath === undefined ? null : this.identity(row.producedPath),
                 "operation_owner": row.owner,
+                ...(row.executedPublicOwners === undefined ? {} : {"executed_public_owners": row.executedPublicOwners}),
                 "systemic_classes": row.systemicClasses ?? [],
                 status: row.status ?? "supported",
                 "observable_result": row.result,
@@ -536,15 +549,24 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
                 // is deliberately not an unavailable fallback: every entry
                 // is anchored to a record that resolved a real source and
                 // reached a terminal public result.
-                const record = artifactRecords.find((candidate) => ownerMatchesRecord(publicOwner, candidate)) ?? artifactRecords[0]!;
+                const record = artifactRecords.find((candidate) => ownerMatchesRecord(publicOwner, candidate));
+                // Retain the earlier waves' representative linkage until
+                // their owner-specific runners land.  Newly added waves must
+                // provide an exact runner-emitted identity, which keeps this
+                // fallback from silently claiming a command alias was run.
+                const emittedOwnerRecord = record !== undefined;
+                const linkedRecord = record ?? artifactRecords[0]!;
                 return {
                     "artifact_kind": artifact.id,
                     "public_owner": publicOwner,
                     status: "executed" as const,
-                    "record_id": recordId(record),
-                    "source_path": (record as {readonly source_path?: string}).source_path ?? null,
-                    "operation_owner": recordOwner(record) ?? "unknown",
-                    result: `Completed real-artifact operation ${recordId(record)} reached ${publicOwner} in its public owner path.`,
+                    "record_id": recordId(linkedRecord),
+                    "source_path": (linkedRecord as {readonly source_path?: string}).source_path ?? null,
+                    "operation_owner": recordOwner(linkedRecord) ?? "unknown",
+                    "owner_execution": emittedOwnerRecord ? "runner-emitted" : "representative-pending-owner-wave",
+                    result: emittedOwnerRecord
+                        ? `Completed real-artifact operation ${recordId(linkedRecord)} reached ${publicOwner} in its public owner path.`
+                        : `Completed real-artifact operation ${recordId(linkedRecord)} produced the source retained for ${publicOwner}'s pending owner wave.`,
                 };
             });
         });
@@ -596,6 +618,14 @@ export function mergeArtifactInteroperabilityRuns(inputPaths: readonly string[],
 }
 
 function ownerMatchesRecord(publicOwner: string, record: unknown): boolean {
+    if (typeof record === "object" && record !== null && "executed_public_owners" in record) {
+        const executedOwners = (record as {readonly executed_public_owners: unknown}).executed_public_owners;
+        // Once a runner writes this field it is the authoritative owner-path
+        // trace.  Do not fall through to a class-name heuristic: that would
+        // turn a generic StakeEngineCommand result into a false claim that
+        // each of its named phases was independently reached.
+        if (Array.isArray(executedOwners)) return executedOwners.includes(publicOwner);
+    }
     const observations = recordObservations(record);
     const operationOwner = recordOwner(record) ?? "";
     const haystack = `${operationOwner} ${observations.map((observation) => observation.owner).join(" ")}`.toLowerCase();
