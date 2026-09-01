@@ -1308,7 +1308,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
-            id: "fairness-round-commitment", artifactKind: "fairnessCommitment", operation: "reveal", sourcePath: commitmentPath,
+            id: "fairness-round-proof", artifactKind: "fairnessProof", operation: "reveal", sourcePath: commitmentPath,
             producedPath: proofPath, owner: "cli:fairness reveal --out", registryOperation: "created_by", result: "generated and verified fairness proof",
             observations: [{surface: "cli", owner: "cli:fairness reveal --out", result: "reveal --out exit 0"}],
             systemicClasses: ["provenance-and-freshness-binding"],
