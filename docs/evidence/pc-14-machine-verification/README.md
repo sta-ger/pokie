@@ -1,4 +1,9 @@
-# PC-14 independent host verification — finding
+# PC-14 independent host verification — historical finding
+
+> Historical/superseded: this host note describes the 2026-08-31 candidate
+> and its retired exact-owner counter.  It is retained as immutable audit
+> history; current PC-14 capability and lifecycle evidence is generated in
+> `docs/evidence/phase7-product-coherence/pc-14-artifact-torture/`.
 
 Candidate: `fb5dde46957ceb50143703dd0d465c2cb27b65ec`.
 

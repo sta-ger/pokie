@@ -73,7 +73,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         })).toThrow("must bind exactly one actual surface observation from that owner");
     });
 
-    it("maps a missing distinct owner to an explicit legacy diagnostic instead of inventing completion", () => {
+    it("keeps an out-of-run external boundary explicit instead of a legacy diagnostic", () => {
         const runner = new ArtifactInteroperabilityRun(rootPath);
         const sourcePath = path.join(rootPath, "blueprint.json");
         fs.writeFileSync(sourcePath, "{\"blueprint\":\"canonical\"}\n");
@@ -97,10 +97,10 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         const outputPath = path.join(rootPath, "merged.json");
         mergeArtifactInteroperabilityRuns([runnerPath], outputPath);
         const result = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
-            readonly capability_matrix: readonly {readonly public_owner: string; readonly disposition: string; readonly diagnostic?: {readonly code: string}}[];
+            readonly capability_matrix: readonly {readonly public_owner: string; readonly disposition: string; readonly boundary?: {readonly code: string; readonly recovery: string}}[];
         };
-        expect(result.capability_matrix.find((entry) => entry.public_owner === "GameBlueprintValidator"))
-            .toMatchObject({disposition: "unreachable-or-legacy-diagnostic", diagnostic: {code: "unreached-distinct-capability"}});
+        expect(result.capability_matrix.find((entry) => entry.public_owner === "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized"))
+            .toMatchObject({disposition: "external-boundary", boundary: {code: "external-producer", recovery: expect.any(String)}});
     });
 
     it("maps named thin wrappers to canonical parity proof instead of a second completion", () => {

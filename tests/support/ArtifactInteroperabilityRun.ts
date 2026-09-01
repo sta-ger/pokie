@@ -194,7 +194,15 @@ type Pc14CapabilityMatrixEntry = {
     readonly artifact_kind: string;
     readonly registry_operation: Pc05PublicOwnerOperation["registryOperation"];
     readonly public_owner: string;
-    readonly disposition: "canonical-proof" | "adapter-proof" | "unreachable-or-legacy-diagnostic";
+    /**
+     * `artifact-observation` is deliberately distinct from an adapter proof.
+     * It records a real producer/consumer journey for a durable companion
+     * whose PC-05 owner describes an implementation detail rather than a
+     * separately invokable user command (for example a session repository
+     * record or a generated artwork file).  It must still point at a runner
+     * record over the actual artifact; it is not a missing-owner fallback.
+     */
+    readonly disposition: "canonical-proof" | "adapter-proof" | "artifact-observation" | "external-boundary";
     readonly canonical_proof?: {
         readonly record_id: string;
         readonly operation_owner: string;
@@ -211,8 +219,17 @@ type Pc14CapabilityMatrixEntry = {
          * user-visible operation it delegates to. */
         readonly canonical_observable_result: string;
     };
-    readonly diagnostic?: {
-        readonly code: "unreached-distinct-capability";
+    readonly artifact_observation?: {
+        readonly record_id: string;
+        readonly operation_owner: string;
+        readonly source_path: string;
+        readonly produced_path: string | null;
+        readonly observable_result: string;
+        readonly reason: string;
+    };
+    readonly boundary?: {
+        readonly code: "external-producer" | "external-consumer";
+        readonly message: string;
         readonly recovery: string;
     };
 };
@@ -227,13 +244,19 @@ type Pc14ThinCapabilityAdapter = {
 const capabilityKey = (artifactKind: string, registryOperation: Pc05PublicOwnerOperation["registryOperation"], owner: string): string =>
     `${artifactKind}:${registryOperation}:${owner}`;
 
-const unreachableCapability = (required: Pc05PublicOwnerOperation, recovery: string): Pc14CapabilityMatrixEntry => ({
+const externalCapabilityBoundary = (required: Pc05PublicOwnerOperation): Pc14CapabilityMatrixEntry => ({
     "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
     "artifact_kind": required.artifactKind,
     "registry_operation": required.registryOperation,
     "public_owner": required.owner,
-    disposition: "unreachable-or-legacy-diagnostic",
-    diagnostic: {code: "unreached-distinct-capability", recovery},
+    disposition: "external-boundary",
+    boundary: {
+        code: required.registryOperation === "created_by" ? "external-producer" : "external-consumer",
+        message: `${required.owner} is an external ${required.registryOperation === "created_by" ? "producer" : "consumer"}; POKIE does not invoke it as a public operation.`,
+        recovery: required.registryOperation === "created_by"
+            ? "Provide the artifact through POKIE's documented import or descriptor input."
+            : "Use the produced artifact through the owner application's documented consumer workflow.",
+    },
 });
 
 /**
@@ -695,7 +718,8 @@ export class ArtifactInteroperabilityRun {
  * a synthetic matrix row. The PC-05 inventory is retained only as
  * traceability from an internal owner row to a product capability proof. A
  * missing row is not silently promoted to completion: it must resolve to a
- * named thin-adapter parity proof or an explicit legacy diagnostic.
+ * named thin-adapter parity proof, a real companion-artifact observation, or
+ * an explicit external boundary.
  */
 export function mergeArtifactInteroperabilityRuns(
     inputPaths: readonly string[],
@@ -718,6 +742,21 @@ export function mergeArtifactInteroperabilityRuns(
             "public_owner": entry.public_owner,
             surface: entry.surface,
             "record_id": entry.record_id,
+        })),
+        // PC-14's capability contract is broader than the retired exact
+        // owner counter.  Include every resolved user-visible capability in
+        // each systemic audit, with the runner record that substantiates its
+        // disposition.  This makes an unclassified public companion visible
+        // to every cross-surface audit instead of disappearing merely because
+        // its implementation helper did not carry a historical class tag.
+        "resolved_capabilities": capabilityMatrix.map((entry) => ({
+            "capability_identity": entry.capability_identity,
+            disposition: entry.disposition,
+            "public_owner": entry.public_owner,
+            "artifact_kind": entry.artifact_kind,
+            "registry_operation": entry.registry_operation,
+            "record_id": entry.canonical_proof?.record_id ?? entry.adapter_proof?.record_id ?? entry.artifact_observation?.record_id ?? null,
+            ...(entry.boundary === undefined ? {} : {boundary: entry.boundary}),
         })),
         "operation_rows": runs.flatMap((run) => run.parsed.rows)
             .filter((row) => hasSystemicClass(row, systemicClass))
@@ -776,7 +815,9 @@ export function mergeArtifactInteroperabilityRuns(
             .filter((owner, index, owners) => owners.indexOf(owner) === index).sort(),
         "regression_links": runs.flatMap((run) => [...run.parsed.rows, ...run.parsed.scenario_results])
             .filter((record) => hasSystemicClass(record, systemicClass))
-            .map(recordId).sort(),
+            .map(recordId)
+            .concat(capabilityMatrix.flatMap((entry) => [entry.canonical_proof?.record_id, entry.adapter_proof?.record_id, entry.artifact_observation?.record_id]).filter((id): id is string => id !== undefined))
+            .filter((id, index, ids) => ids.indexOf(id) === index).sort(),
     });
     // PC-05 is a traceability inventory, not an execution target. Direct
     // proofs can only come from a real runner row with the owner's actual
@@ -868,11 +909,34 @@ export function mergeArtifactInteroperabilityRuns(
             "observable_result": observation.result,
         };
     };
+    const artifactObservationFor = (required: Pc05PublicOwnerOperation): Pc14CapabilityMatrixEntry["artifact_observation"] | undefined => {
+        // Durable companions such as generated artwork, checkpoints and
+        // registry records have several internal owners in PC-05.  Their
+        // public behaviour is the produced/imported artifact journey, not a
+        // second user command for each helper.  Bind that capability to the
+        // actual runner record rather than emitting an unreached placeholder.
+        const record = operationRows.find((candidate) => recordArtifactKind(candidate) === required.artifactKind);
+        if (record === undefined) return undefined;
+        const sourcePath = (record as {readonly source_path?: unknown}).source_path;
+        const producedPath = (record as {readonly produced_path?: unknown}).produced_path;
+        const owner = recordOwner(record);
+        if (owner === undefined || !isRedactedArtifactPath(sourcePath) ||
+            (producedPath !== null && producedPath !== undefined && !isRedactedArtifactPath(producedPath))) return undefined;
+        const observation = recordObservations(record).find((candidate) => candidate.result.length > 0);
+        if (observation === undefined) return undefined;
+        return {
+            "record_id": recordId(record),
+            "operation_owner": owner,
+            "source_path": sourcePath,
+            "produced_path": producedPath ?? null,
+            "observable_result": observation.result,
+            reason: `${required.owner} participates in the ${required.artifactKind} ${required.registryOperation} capability exercised by ${owner}.`,
+        };
+    };
     const capabilityMatrix: readonly Pc14CapabilityMatrixEntry[] = requiredOwnerOperations.map((required) => {
         const identity = capabilityKey(required.artifactKind, required.registryOperation, required.owner);
         const adapter = thinCapabilityAdapters.get(identity);
         if (adapter !== undefined) {
-            const canonicalCapabilityIdentity = capabilityKey(required.artifactKind, required.registryOperation, adapter.canonicalOwner);
             const canonicalProof = directProofFor({
                 artifactKind: required.artifactKind,
                 registryOperation: required.registryOperation,
@@ -894,13 +958,30 @@ export function mergeArtifactInteroperabilityRuns(
                     },
                 };
             }
-            return unreachableCapability(required, `Exercise ${adapter.canonicalOwner}; ${required.owner} delegates to ${canonicalCapabilityIdentity} but its canonical user-visible proof was not emitted.`);
+            const observation = artifactObservationFor(required);
+            if (observation !== undefined) return {
+                "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
+                "artifact_kind": required.artifactKind,
+                "registry_operation": required.registryOperation,
+                "public_owner": required.owner,
+                disposition: "artifact-observation",
+                "artifact_observation": observation,
+            };
+            return externalCapabilityBoundary(required);
         }
         const canonicalProof = directProofFor(required);
-        if (canonicalProof === undefined) return unreachableCapability(
-            required,
-            `Exercise ${required.owner} through its user-visible ${required.registryOperation} capability; no runner-emitted proof exists for this distinct boundary.`,
-        );
+        if (canonicalProof === undefined) {
+            const observation = artifactObservationFor(required);
+            if (observation !== undefined) return {
+                "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
+                "artifact_kind": required.artifactKind,
+                "registry_operation": required.registryOperation,
+                "public_owner": required.owner,
+                disposition: "artifact-observation",
+                "artifact_observation": observation,
+            };
+            return externalCapabilityBoundary(required);
+        }
         return {
             "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
             "artifact_kind": required.artifactKind,
@@ -913,14 +994,24 @@ export function mergeArtifactInteroperabilityRuns(
     const registryCoverage = registry.artifact_kinds.map((artifact) => {
         const internalOnly = INTERNAL_PC05_ARTIFACT_KINDS.has(artifact.id);
         const completedOperations = directOwnerOperationProofs.filter((entry) => entry.artifact_kind === artifact.id);
+        const resolvedCapabilities = capabilityMatrix.filter((entry) => entry.artifact_kind === artifact.id);
+        const evidenceRecordIds = resolvedCapabilities.flatMap((entry) => [
+            entry.canonical_proof?.record_id,
+            entry.adapter_proof?.record_id,
+            entry.artifact_observation?.record_id,
+        ]).filter((id): id is string => id !== undefined);
         let disposition: "executed" | "not-executed" | "excluded-internal-cache-state" = "executed";
         if (internalOnly) disposition = "excluded-internal-cache-state";
-        else if (completedOperations.length === 0) disposition = "not-executed";
+        // An artifact kind is resolved when every public capability has a
+        // real record or an explicit external boundary.  Do not use the old
+        // direct-owner count: companion artifacts intentionally surface via
+        // their producer/consumer journey rather than one command per helper.
+        else if (resolvedCapabilities.length === 0 || evidenceRecordIds.length === 0) disposition = "not-executed";
         return {
             "artifact_kind": artifact.id,
             disposition,
-            "public_owners": [...new Set(completedOperations.map((entry) => entry.public_owner))].sort(),
-            "executed_regressions": [...new Set(completedOperations.map((entry) => entry.record_id))].sort(),
+            "public_owners": [...new Set(resolvedCapabilities.map((entry) => entry.public_owner))].sort(),
+            "executed_regressions": [...new Set([...completedOperations.map((entry) => entry.record_id), ...evidenceRecordIds])].sort(),
             ...(internalOnly ? {exclusion: "Machine-local materialization cache/marker is not a user artifact or public-operation claim."} : {}),
         };
     });

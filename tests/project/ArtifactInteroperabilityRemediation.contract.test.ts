@@ -52,7 +52,7 @@ type InteroperabilityResult = {
         readonly artifact_kind: string;
         readonly registry_operation: "created_by" | "recognized_by" | "runs_by" | "validates_by" | "reports_by" | "replays_by";
         readonly public_owner: string;
-        readonly disposition: "canonical-proof" | "adapter-proof" | "unreachable-or-legacy-diagnostic";
+        readonly disposition: "canonical-proof" | "adapter-proof" | "artifact-observation" | "external-boundary";
         readonly canonical_proof?: {
             readonly record_id: string;
             readonly operation_owner: string;
@@ -67,7 +67,15 @@ type InteroperabilityResult = {
             readonly reason: string;
             readonly canonical_observable_result: string;
         };
-        readonly diagnostic?: {readonly code: string; readonly recovery: string};
+        readonly artifact_observation?: {
+            readonly record_id: string;
+            readonly operation_owner: string;
+            readonly source_path: string;
+            readonly produced_path: string | null;
+            readonly observable_result: string;
+            readonly reason: string;
+        };
+        readonly boundary?: {readonly code: string; readonly message: string; readonly recovery: string};
     }[];
     readonly planner_cells?: readonly {
         readonly source_path: string;
@@ -366,7 +374,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             });
             const capability = result.capability_matrix.find((entry) => entry.capability_identity === identity);
             expect(capability).toBeDefined();
-            expect(["canonical-proof", "adapter-proof", "unreachable-or-legacy-diagnostic"])
+            expect(["canonical-proof", "adapter-proof", "artifact-observation", "external-boundary"])
                 .toContain(capability?.disposition);
             if (capability?.disposition === "canonical-proof") {
                 expect(capability.canonical_proof).toMatchObject({
@@ -379,10 +387,21 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                     "canonical_public_owner": expect.any(String), "record_id": expect.any(String),
                     "canonical_observable_result": expect.any(String), reason: expect.any(String),
                 });
+            } else if (capability?.disposition === "artifact-observation") {
+                expect(capability.artifact_observation).toMatchObject({
+                    "record_id": expect.any(String), "operation_owner": expect.any(String),
+                    "source_path": expect.stringMatching(/^run-artifacts\//),
+                    "observable_result": expect.any(String), reason: expect.any(String),
+                });
             } else {
-                expect(capability?.diagnostic).toMatchObject({code: "unreached-distinct-capability", recovery: expect.any(String)});
+                expect(capability?.boundary).toMatchObject({
+                    code: expect.stringMatching(/^external-(?:producer|consumer)$/),
+                    message: expect.any(String), recovery: expect.any(String),
+                });
             }
         }
+        expect(result.capability_matrix.some((entry) => entry.disposition === "unreachable-or-legacy-diagnostic")).toBe(false);
+        expect(result.registry_artifact_coverage.filter((entry) => entry.disposition === "not-executed")).toEqual([]);
         expect(result.rows.some((row) => row.id.startsWith("owner-operation-"))).toBe(false);
     });
 });
