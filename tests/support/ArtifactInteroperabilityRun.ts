@@ -876,63 +876,22 @@ export function mergeArtifactInteroperabilityRuns(
             "observable_result": observation.result,
         };
     };
-    const directCapabilityProofs = new Map<string, NonNullable<Pc14CapabilityMatrixEntry["canonical_proof"]>>();
-    for (const required of requiredOwnerOperations) {
-        const proof = canonicalProofFor(required);
-        if (proof !== undefined) directCapabilityProofs.set(`${required.artifactKind}:${required.registryOperation}:${required.owner}`, proof);
-    }
+    // Missing tuples are rejected before this point, so every retained
+    // capability is necessarily the exact runner-emitted public operation.
+    // Do not revive the former adapter/unreached fallback here: it could make
+    // one owner's action look like evidence for another owner.
     const capabilityMatrix: readonly Pc14CapabilityMatrixEntry[] = requiredOwnerOperations.map((required) => {
-        const capabilityIdentity = JSON.stringify([required.artifactKind, required.registryOperation, required.owner]);
-        const tupleKey = `${required.artifactKind}:${required.registryOperation}:${required.owner}`;
-        const canonicalProof = directCapabilityProofs.get(tupleKey);
-        if (canonicalProof !== undefined) {
-            return {
-                "capability_identity": capabilityIdentity,
-                "artifact_kind": required.artifactKind,
-                "registry_operation": required.registryOperation,
-                "public_owner": required.owner,
-                disposition: "canonical-proof",
-                "canonical_proof": canonicalProof,
-            };
-        }
-        // A capability inventory is larger than an execution ledger. Reuse a
-        // real canonical operation only for a named, documented delegation.
-        // Sharing an artifact and registry operation is not sufficient: that
-        // is common for distinct public interactions and must remain visible
-        // as an explicit unexecuted capability case.
-        const declaredAdapter = PC14_THIN_CAPABILITY_ADAPTERS.get(tupleKey);
-        if (declaredAdapter !== undefined) {
-            const canonicalTupleKey = capabilityKey(required.artifactKind, required.registryOperation, declaredAdapter.canonicalOwner);
-            const adapterProof = directCapabilityProofs.get(canonicalTupleKey);
-            if (adapterProof !== undefined) {
-                const canonicalCapabilityIdentity = JSON.stringify([
-                    required.artifactKind, required.registryOperation, declaredAdapter.canonicalOwner,
-                ]);
-                return {
-                    "capability_identity": capabilityIdentity,
-                    "artifact_kind": required.artifactKind,
-                    "registry_operation": required.registryOperation,
-                    "public_owner": required.owner,
-                    disposition: "adapter-proof",
-                    "adapter_proof": {
-                        "canonical_capability_identity": canonicalCapabilityIdentity,
-                        "canonical_public_owner": declaredAdapter.canonicalOwner,
-                        "record_id": adapterProof.record_id,
-                        reason: `${declaredAdapter.reason} ${required.owner} was not executed by this refresh.`,
-                    },
-                };
-            }
+        const canonicalProof = canonicalProofFor(required);
+        if (canonicalProof === undefined) {
+            throw new Error(`PC-14 missing canonical owner-operation proof: ${required.artifactKind}:${required.registryOperation}:${required.owner}.`);
         }
         return {
-            "capability_identity": capabilityIdentity,
+            "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
             "artifact_kind": required.artifactKind,
             "registry_operation": required.registryOperation,
             "public_owner": required.owner,
-            disposition: "unreachable-or-legacy-diagnostic",
-            diagnostic: {
-                code: "unreached-distinct-capability",
-                recovery: `Exercise ${required.owner}'s ${required.registryOperation} public boundary to replace this unexecuted capability diagnostic with a canonical proof.`,
-            },
+            disposition: "canonical-proof",
+            "canonical_proof": canonicalProof,
         };
     });
     const registryCoverage = registry.artifact_kinds.map((artifact) => {
