@@ -1,5 +1,6 @@
 import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {createLocalJsonExternalDeploymentTarget} from "pokie";
 import fs from "fs";
 import http from "http";
 import os from "os";
@@ -7,6 +8,7 @@ import path from "path";
 import {passthroughRuntimePackageResolver} from "../../../../cli/materialize/materializeRuntimePackage.js";
 import {StudioBlueprintService} from "../../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {BuildCommand} from "../../../../cli/commands/BuildCommand.js";
+import {StudioDeploymentService} from "../../../../cli/studio/deployment/StudioDeploymentService.js";
 import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.js";
 import {createStudioGameLoader} from "../../../../cli/studio/loadStudioGame.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
@@ -80,6 +82,16 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, home),
             loadGame: createStudioGameLoader(process.cwd()),
             resolveRuntimePackageRoot: passthroughRuntimePackageResolver,
+            deploymentService: new StudioDeploymentService(
+                undefined,
+                (outDir) => createLocalJsonExternalDeploymentTarget({id: "pc14-ui-delivery", outDir}),
+                undefined, undefined, undefined, undefined, () => Promise.resolve(["base"]), undefined,
+                POKIE_VERSION,
+                () => Promise.resolve([{
+                    modeName: "base",
+                    librarySelector: {kind: "bundle", bundleDir: "outcomes/bundle", modeName: "base"},
+                }]),
+            ),
             initialContext: {mode: "project", projectRoot: packagePath},
         });
         const address = await server.start();
@@ -103,6 +115,21 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         const buildSection = await screen.findByText("Build artifact");
         expect(buildSection.closest("fieldset")).not.toBeNull();
+
+        // Build/Export and remote delivery share this rendered surface.  Bind
+        // the local adapter to the real Outcome Library built above, then
+        // drive its compatibility gate and durable publication.  Selecting
+        // Build/Export alone would not establish either owner's workflow.
+        const remoteDeploymentSection = (await screen.findByText("Remote delivery")).closest("fieldset");
+        expect(remoteDeploymentSection).not.toBeNull();
+        const checkCompatibility = within(remoteDeploymentSection!).getByRole("button", {name: "Check compatibility"});
+        await waitFor(() => expect(checkCompatibility).toBeEnabled());
+        await user.click(checkCompatibility);
+        await screen.findByText("Compatible -- ready to publish.");
+        await user.click(screen.getByRole("button", {name: "Publish"}));
+        await screen.findByText("Published.");
+        const deployedPath = path.join(packagePath, "deployment", "local-json-example");
+        expect(fs.existsSync(deployedPath)).toBe(true);
 
         // These are browser-driven workflows over StudioServer's actual
         // runtime package.  The test used to select tabs only, which could
@@ -309,6 +336,26 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
                 {route: "POST /api/project/fairness/configure", result: "rendered both the path error and the recovered commitment result"},
                 {route: "POST /api/project/fairness/generate", result: "rendered the generated real round proof"},
                 {route: "POST /api/project/fairness/verify", result: "rendered the verified proof result"},
+            ],
+        });
+
+        evidence.recordScenario({
+            id: "studio-ui-build-export-deployment-output",
+            sourcePath: packagePath,
+            producedPath: deployedPath,
+            result: "the rendered Build/Export workflow checked and published the package's CLI-generated Outcome Library through the configured remote delivery adapter",
+            surface: "studio-ui",
+            owner: "ExportDeployTab / useDeploymentManager",
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+            assertions: [
+                "Build/Export retained the opened package's CLI-generated Outcome Library as the adapter prerequisite",
+                "the rendered remote delivery card checked the generated library's compatibility before exposing Publish",
+                "Publish wrote the local adapter's deployment output only after the successful compatibility result",
+            ],
+            observations: [
+                {route: "UI /project/:projectRoot/exportDeploy (Build/Export)", result: "used the opened package's generated Outcome Library as the remote delivery prerequisite"},
+                {route: "UI /project/:projectRoot/exportDeploy (Remote deployment)", result: "checked compatibility and published through the configured pc14-ui-delivery adapter"},
+                {route: "POST /api/project/deployment/runs", result: "returned the compatible preflight and then the durable published delivery result"},
             ],
         });
 
