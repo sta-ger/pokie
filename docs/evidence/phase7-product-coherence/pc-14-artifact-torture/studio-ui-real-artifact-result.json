@@ -4404,7 +4404,41 @@
   ],
   "scenario_results": [
     {
-      "id": "studio-ui-blueprint-output",
+      "id": "studio-ui-blueprint-par-output-error-recovery",
+      "source_path": "run-artifacts/studio-ui-edited.blueprint.json",
+      "source_identity": "sha256:5e740edc945ae153dab7732c6ba5b3fcdeceef12d88b53c2e9ea769aee5c40b3",
+      "produced_path": "run-artifacts/studio-ui-edited.par.xlsx",
+      "produced_identity": "sha256:dfd1c46119695b2735098084b878d69bd64c7cc2876d2872f78fedf8e4249aac",
+      "observable_result": "the rendered PAR panel preserved an occupied caller-owned destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "ParSheetImportExportPanel",
+        "assertions": [
+          "PAR export rejected an occupied caller-owned file without altering its bytes",
+          "correcting the destination published a real workbook which the rendered PAR importer diagnosed and previewed"
+        ],
+        "observations": [
+          {
+            "route": "UI /home/design (PAR Sheet Import / Export)",
+            "result": "rendered occupied-destination recovery, workbook publication, and import/preview"
+          },
+          {
+            "route": "POST /api/home/blueprints/par-export",
+            "result": "returned the occupied-file error then wrote the recovered workbook"
+          },
+          {
+            "route": "POST /api/home/blueprints/par-import",
+            "result": "read the UI-produced workbook into the canonical Blueprint model"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-blueprint-runtime-workflows",
       "source_path": "run-artifacts/studio-ui-edited.blueprint.json",
       "source_identity": "sha256:5e740edc945ae153dab7732c6ba5b3fcdeceef12d88b53c2e9ea769aee5c40b3",
       "produced_path": "run-artifacts/studio-ui-edited.blueprint.json",
@@ -4549,40 +4583,6 @@
           {
             "route": "POST /api/project/outcome-source/sample",
             "result": "returned the recorded seeded Outcome Library draw"
-          }
-        ]
-      },
-      "systemic_classes": [
-        "provenance-and-freshness-binding",
-        "durable-publication-ownership"
-      ]
-    },
-    {
-      "id": "studio-ui-par-output-error-recovery",
-      "source_path": "run-artifacts/studio-ui-edited.blueprint.json",
-      "source_identity": "sha256:5e740edc945ae153dab7732c6ba5b3fcdeceef12d88b53c2e9ea769aee5c40b3",
-      "produced_path": "run-artifacts/studio-ui-edited.par.xlsx",
-      "produced_identity": "sha256:dfd1c46119695b2735098084b878d69bd64c7cc2876d2872f78fedf8e4249aac",
-      "observable_result": "the rendered PAR panel preserved an occupied caller-owned destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
-      "execution": {
-        "surface": "studio-ui",
-        "owner": "ParSheetImportExportPanel",
-        "assertions": [
-          "PAR export rejected an occupied caller-owned file without altering its bytes",
-          "correcting the destination published a real workbook which the rendered PAR importer diagnosed and previewed"
-        ],
-        "observations": [
-          {
-            "route": "UI /home/design (PAR Sheet Import / Export)",
-            "result": "rendered occupied-destination recovery, workbook publication, and import/preview"
-          },
-          {
-            "route": "POST /api/home/blueprints/par-export",
-            "result": "returned the occupied-file error then wrote the recovered workbook"
-          },
-          {
-            "route": "POST /api/home/blueprints/par-import",
-            "result": "read the UI-produced workbook into the canonical Blueprint model"
           }
         ]
       },

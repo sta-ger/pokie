@@ -824,7 +824,28 @@
       ]
     },
     {
-      "id": "fairness-round-proof",
+      "id": "fairness-round-proof-default",
+      "artifact_kind": "fairnessProof",
+      "operation": "reveal:default-output",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-commitment.json",
+      "source_identity": "sha256:3128727aceebb13d3fa4b4c2aa471d893b8e362b1ee1f47ed4b7be311d4f2973",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:fairness reveal",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "printed the generated fairness proof without creating a durable output file",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:fairness reveal",
+          "result": "reveal without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "fairness-round-proof-recognition",
       "artifact_kind": "fairnessProof",
       "operation": "verify",
       "registry_operation": "recognized_by",
@@ -843,27 +864,6 @@
           "surface": "cli",
           "owner": "cli:fairness verify",
           "result": "verify exit 0"
-        }
-      ]
-    },
-    {
-      "id": "fairness-round-proof-default",
-      "artifact_kind": "fairnessProof",
-      "operation": "reveal:default-output",
-      "registry_operation": "created_by",
-      "source_path": "run-artifacts/matrix-commitment.json",
-      "source_identity": "sha256:3128727aceebb13d3fa4b4c2aa471d893b8e362b1ee1f47ed4b7be311d4f2973",
-      "produced_path": null,
-      "produced_identity": null,
-      "operation_owner": "cli:fairness reveal",
-      "systemic_classes": [],
-      "status": "supported",
-      "observable_result": "printed the generated fairness proof without creating a durable output file",
-      "observations": [
-        {
-          "surface": "cli",
-          "owner": "cli:fairness reveal",
-          "result": "reveal without --out exit 0"
         }
       ]
     },

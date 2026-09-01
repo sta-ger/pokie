@@ -1372,7 +1372,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
-            id: "fairness-round-proof", artifactKind: "fairnessProof", operation: "verify", sourcePath: proofPath,
+            id: "fairness-round-proof-recognition", artifactKind: "fairnessProof", operation: "verify", sourcePath: proofPath,
             owner: "cli:fairness verify", registryOperation: "recognized_by", result: "verified exact bundle/library provenance",
             observations: [{surface: "cli", owner: "cli:fairness verify", result: "verify exit 0"}],
             systemicClasses: ["provenance-and-freshness-binding"],

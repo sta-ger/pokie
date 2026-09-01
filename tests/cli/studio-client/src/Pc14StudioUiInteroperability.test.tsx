@@ -501,7 +501,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await screen.findByRole("button", {name: "Continue to Apply / Export"});
 
         evidence.recordScenario({
-            id: "studio-ui-blueprint-output",
+            id: "studio-ui-blueprint-runtime-workflows",
             sourcePath: savedBlueprintPath,
             producedPath: savedBlueprintPath,
             result: "the rendered Design Game editor saved the edited Blueprint through Studio's home workflow",
@@ -518,7 +518,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         });
 
         evidence.recordScenario({
-            id: "studio-ui-par-output-error-recovery",
+            id: "studio-ui-blueprint-par-output-error-recovery",
             sourcePath: savedBlueprintPath,
             producedPath: exportedParPath,
             result: "the rendered PAR panel preserved an occupied caller-owned destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
@@ -567,8 +567,8 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             }[];
         };
         for (const [id, owner] of [
-            ["studio-ui-blueprint-output", "BlueprintEditorPage"],
-            ["studio-ui-par-output-error-recovery", "ParSheetImportExportPanel"],
+            ["studio-ui-blueprint-runtime-workflows", "BlueprintEditorPage"],
+            ["studio-ui-blueprint-par-output-error-recovery", "ParSheetImportExportPanel"],
             ["studio-ui-build-export-output", "ExportDeployTab"],
             ["studio-ui-build-export-deployment-output", "useDeploymentManager"],
             ["studio-ui-outcome-source-output", "OutcomeSourceOverview"],

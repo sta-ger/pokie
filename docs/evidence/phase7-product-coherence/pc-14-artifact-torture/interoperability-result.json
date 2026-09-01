@@ -10,7 +10,7 @@
   "runner_inputs": [
     {
       "file": "cli-real-artifact-result.json",
-      "sha256": "sha256:2eec91515cb1c437378467c4b2b92c5462ff2f20b6a3c363887e8ea66f8d79f1",
+      "sha256": "sha256:67bb756e5b104a0afa8df437233f709e4daf162929bc9a0ad0c65cf2cb1bdd94",
       "rows": 166,
       "scenarios": 15
     },
@@ -22,7 +22,7 @@
     },
     {
       "file": "studio-ui-real-artifact-result.json",
-      "sha256": "sha256:1b3f350ea9143ba03c7d6d1bb75be2e19bdcba0b464c3c11541bffaacad0050a",
+      "sha256": "sha256:7db590fe2a752e0500ea2d51dda9bbc0d8b1eabe5fcdfe028757259cb599b7e5",
       "rows": 176,
       "scenarios": 11
     }
@@ -851,7 +851,28 @@
       ]
     },
     {
-      "id": "fairness-round-proof",
+      "id": "fairness-round-proof-default",
+      "artifact_kind": "fairnessProof",
+      "operation": "reveal:default-output",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-commitment.json",
+      "source_identity": "sha256:3128727aceebb13d3fa4b4c2aa471d893b8e362b1ee1f47ed4b7be311d4f2973",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:fairness reveal",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "printed the generated fairness proof without creating a durable output file",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:fairness reveal",
+          "result": "reveal without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "fairness-round-proof-recognition",
       "artifact_kind": "fairnessProof",
       "operation": "verify",
       "registry_operation": "recognized_by",
@@ -870,27 +891,6 @@
           "surface": "cli",
           "owner": "cli:fairness verify",
           "result": "verify exit 0"
-        }
-      ]
-    },
-    {
-      "id": "fairness-round-proof-default",
-      "artifact_kind": "fairnessProof",
-      "operation": "reveal:default-output",
-      "registry_operation": "created_by",
-      "source_path": "run-artifacts/matrix-commitment.json",
-      "source_identity": "sha256:3128727aceebb13d3fa4b4c2aa471d893b8e362b1ee1f47ed4b7be311d4f2973",
-      "produced_path": null,
-      "produced_identity": null,
-      "operation_owner": "cli:fairness reveal",
-      "systemic_classes": [],
-      "status": "supported",
-      "observable_result": "printed the generated fairness proof without creating a durable output file",
-      "observations": [
-        {
-          "surface": "cli",
-          "owner": "cli:fairness reveal",
-          "result": "reveal without --out exit 0"
         }
       ]
     },
@@ -9533,7 +9533,41 @@
       ]
     },
     {
-      "id": "studio-ui-blueprint-output",
+      "id": "studio-ui-blueprint-par-output-error-recovery",
+      "source_path": "run-artifacts/studio-ui-edited.blueprint.json",
+      "source_identity": "sha256:5e740edc945ae153dab7732c6ba5b3fcdeceef12d88b53c2e9ea769aee5c40b3",
+      "produced_path": "run-artifacts/studio-ui-edited.par.xlsx",
+      "produced_identity": "sha256:dfd1c46119695b2735098084b878d69bd64c7cc2876d2872f78fedf8e4249aac",
+      "observable_result": "the rendered PAR panel preserved an occupied caller-owned destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "ParSheetImportExportPanel",
+        "assertions": [
+          "PAR export rejected an occupied caller-owned file without altering its bytes",
+          "correcting the destination published a real workbook which the rendered PAR importer diagnosed and previewed"
+        ],
+        "observations": [
+          {
+            "route": "UI /home/design (PAR Sheet Import / Export)",
+            "result": "rendered occupied-destination recovery, workbook publication, and import/preview"
+          },
+          {
+            "route": "POST /api/home/blueprints/par-export",
+            "result": "returned the occupied-file error then wrote the recovered workbook"
+          },
+          {
+            "route": "POST /api/home/blueprints/par-import",
+            "result": "read the UI-produced workbook into the canonical Blueprint model"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-blueprint-runtime-workflows",
       "source_path": "run-artifacts/studio-ui-edited.blueprint.json",
       "source_identity": "sha256:5e740edc945ae153dab7732c6ba5b3fcdeceef12d88b53c2e9ea769aee5c40b3",
       "produced_path": "run-artifacts/studio-ui-edited.blueprint.json",
@@ -9678,40 +9712,6 @@
           {
             "route": "POST /api/project/outcome-source/sample",
             "result": "returned the recorded seeded Outcome Library draw"
-          }
-        ]
-      },
-      "systemic_classes": [
-        "provenance-and-freshness-binding",
-        "durable-publication-ownership"
-      ]
-    },
-    {
-      "id": "studio-ui-par-output-error-recovery",
-      "source_path": "run-artifacts/studio-ui-edited.blueprint.json",
-      "source_identity": "sha256:5e740edc945ae153dab7732c6ba5b3fcdeceef12d88b53c2e9ea769aee5c40b3",
-      "produced_path": "run-artifacts/studio-ui-edited.par.xlsx",
-      "produced_identity": "sha256:dfd1c46119695b2735098084b878d69bd64c7cc2876d2872f78fedf8e4249aac",
-      "observable_result": "the rendered PAR panel preserved an occupied caller-owned destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
-      "execution": {
-        "surface": "studio-ui",
-        "owner": "ParSheetImportExportPanel",
-        "assertions": [
-          "PAR export rejected an occupied caller-owned file without altering its bytes",
-          "correcting the destination published a real workbook which the rendered PAR importer diagnosed and previewed"
-        ],
-        "observations": [
-          {
-            "route": "UI /home/design (PAR Sheet Import / Export)",
-            "result": "rendered occupied-destination recovery, workbook publication, and import/preview"
-          },
-          {
-            "route": "POST /api/home/blueprints/par-export",
-            "result": "returned the occupied-file error then wrote the recovered workbook"
-          },
-          {
-            "route": "POST /api/home/blueprints/par-import",
-            "result": "read the UI-produced workbook into the canonical Blueprint model"
           }
         ]
       },
@@ -10656,6 +10656,7 @@
       "executed_regressions": [
         "fairness-round-proof",
         "fairness-round-proof-default",
+        "fairness-round-proof-recognition",
         "owner-operation-03f183ff8ef3ad4b",
         "owner-operation-219b298850c0fc04",
         "studio-fairness-proof",
@@ -11566,7 +11567,7 @@
       "public_owner": "cli:fairness verify",
       "surface": "cli",
       "status": "executed",
-      "record_id": "fairness-round-proof",
+      "record_id": "fairness-round-proof-recognition",
       "source_path": "run-artifacts/matrix-proof.json",
       "produced_path": null,
       "observable_result": "verify exit 0"
@@ -15480,7 +15481,7 @@
       "public_owner": "cli:fairness verify",
       "disposition": "canonical-proof",
       "canonical_proof": {
-        "record_id": "fairness-round-proof",
+        "record_id": "fairness-round-proof-recognition",
         "operation_owner": "cli:fairness verify",
         "source_path": "run-artifacts/matrix-proof.json",
         "produced_path": null,
@@ -21712,7 +21713,7 @@
             "registry_operation": "recognized_by",
             "public_owner": "cli:fairness verify",
             "surface": "cli",
-            "record_id": "fairness-round-proof"
+            "record_id": "fairness-round-proof-recognition"
           },
           {
             "artifact_kind": "fairnessProof",
@@ -22951,7 +22952,7 @@
           "fairness-commitment-verify-recognition",
           "fairness-round-commitment-publish",
           "fairness-round-proof",
-          "fairness-round-proof",
+          "fairness-round-proof-recognition",
           "fairness-server-seed-commitment-publish",
           "fairness-server-seed-commitment-recognition",
           "file-session-record-recovery",
@@ -23181,11 +23182,11 @@
           "raw-source-drift",
           "stake-outcome-library-round-trip",
           "studio-managed-reuse-compatibility",
-          "studio-ui-blueprint-output",
+          "studio-ui-blueprint-par-output-error-recovery",
+          "studio-ui-blueprint-runtime-workflows",
           "studio-ui-build-export-deployment-output",
           "studio-ui-certification-output-error-recovery",
           "studio-ui-outcome-source-output",
-          "studio-ui-par-output-error-recovery",
           "studio-ui-provably-fair-output-error-recovery",
           "studio-ui-stake-output-error-recovery"
         ],
@@ -23663,7 +23664,7 @@
           "fairness-commitment-verify-recognition",
           "fairness-round-commitment-publish",
           "fairness-round-proof",
-          "fairness-round-proof",
+          "fairness-round-proof-recognition",
           "fairness-server-seed-commitment-publish",
           "fairness-server-seed-commitment-recognition",
           "file-session-record-recovery",
@@ -23888,11 +23889,11 @@
           "studio-outcome-library-registry-index",
           "studio-outcome-library-selector-deployment",
           "studio-stake-selector-recognition",
-          "studio-ui-blueprint-output",
+          "studio-ui-blueprint-par-output-error-recovery",
+          "studio-ui-blueprint-runtime-workflows",
           "studio-ui-build-export-deployment-output",
           "studio-ui-certification-output-error-recovery",
           "studio-ui-outcome-source-output",
-          "studio-ui-par-output-error-recovery",
           "studio-ui-provably-fair-output-error-recovery",
           "studio-ui-stake-output-error-recovery"
         ]
@@ -25516,12 +25517,12 @@
           "studio-generation-cancellation",
           "studio-generation-recovery",
           "studio-simulation-replay-cancellation",
-          "studio-ui-blueprint-output",
+          "studio-ui-blueprint-par-output-error-recovery",
+          "studio-ui-blueprint-runtime-workflows",
           "studio-ui-build-export-deployment-output",
           "studio-ui-build-export-output",
           "studio-ui-certification-output-error-recovery",
           "studio-ui-outcome-source-output",
-          "studio-ui-par-output-error-recovery",
           "studio-ui-play-output-error-recovery",
           "studio-ui-provably-fair-output-error-recovery",
           "studio-ui-replay-output",
@@ -26185,12 +26186,12 @@
           "studio-project-registry-reopen",
           "studio-simulation-replay-cancellation",
           "studio-symbol-artwork-materialize",
-          "studio-ui-blueprint-output",
+          "studio-ui-blueprint-par-output-error-recovery",
+          "studio-ui-blueprint-runtime-workflows",
           "studio-ui-build-export-deployment-output",
           "studio-ui-build-export-output",
           "studio-ui-certification-output-error-recovery",
           "studio-ui-outcome-source-output",
-          "studio-ui-par-output-error-recovery",
           "studio-ui-play-output-error-recovery",
           "studio-ui-provably-fair-output-error-recovery",
           "studio-ui-replay-output",
