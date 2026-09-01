@@ -221,8 +221,8 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(await new ParCommand(POKIE_VERSION).run(["export", blueprintPath, "--out", workbookPath])).toBe(0);
         evidence.record({
             id: "blueprint-export-par", artifactKind: "parWorkbook", operation: "export", sourcePath: blueprintPath,
-            producedPath: workbookPath, owner: "cli:par export --out", result: "published",
-            observations: [{surface: "cli", owner: "ParCommand", result: "export exit 0"}],
+            producedPath: workbookPath, owner: "cli:par export --out", registryOperation: "created_by", result: "published",
+            observations: [{surface: "cli", owner: "cli:par export --out", result: "export exit 0"}],
         });
         expect(await new ParCommand(POKIE_VERSION).run(["import", workbookPath, "--out", importedBlueprintPath])).toBe(0);
         const parConversion = JSON.parse(fs.readFileSync(`${importedBlueprintPath}.conversion-evidence.json`, "utf-8"));
@@ -234,8 +234,8 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         });
         evidence.record({
             id: "par-import-blueprint", artifactKind: "blueprint", operation: "import", sourcePath: workbookPath,
-            producedPath: importedBlueprintPath, owner: "cli:par import --out", result: "lossless Blueprint published",
-            observations: [{surface: "cli", owner: "ParCommand", result: "import exit 0 with matching provenance hash"}],
+            producedPath: importedBlueprintPath, owner: "cli:par import --out", registryOperation: "created_by", result: "lossless Blueprint published",
+            observations: [{surface: "cli", owner: "cli:par import --out", result: "import exit 0 with matching provenance hash"}],
         });
 
         const resolver = new ProjectTargetResolver();
@@ -244,50 +244,50 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(await build.run([blueprintPath, "--target", "tsPackage", "--out", packagePath])).toBe(0);
         evidence.record({
             id: "blueprint-build-package", artifactKind: "tsPackage", operation: "build", sourcePath: blueprintPath,
-            producedPath: packagePath, owner: "cli:build --target tsPackage --out", result: "published",
-            observations: [{surface: "cli", owner: "BuildCommand", result: "exit 0"}],
+            producedPath: packagePath, owner: "cli:build --target tsPackage --out", registryOperation: "created_by", result: "published",
+            observations: [{surface: "cli", owner: "cli:build --target tsPackage --out", result: "exit 0"}],
         });
         const genericPackagePath = path.join(workDir, "matrix-generic-package");
         expect(await build.run([blueprintPath, "--target", "tsPackage", "--out", genericPackagePath])).toBe(0);
         evidence.record({
             id: "blueprint-build-package-generic", artifactKind: "tsPackage", operation: "build:tsPackage-generic", sourcePath: blueprintPath,
-            producedPath: genericPackagePath, owner: "cli:build", result: "the public build owner published its own package artifact",
-            observations: [{surface: "cli", owner: "BuildCommand", result: "build --target tsPackage --out exit 0"}],
+            producedPath: genericPackagePath, owner: "cli:build", registryOperation: "created_by", result: "the public build owner published its own package artifact",
+            observations: [{surface: "cli", owner: "cli:build", result: "build --target tsPackage --out exit 0"}],
         });
         const explicitBundlePath = path.join(workDir, "matrix-explicit-bundle");
         expect(await build.run([packagePath, "--target", "outcomeLibrary", "--out", explicitBundlePath])).toBe(0);
         evidence.record({
             id: "package-build-outcome-library-explicit-output", artifactKind: "outcomeLibrary", operation: "build:outcomeLibrary-explicit-output", sourcePath: packagePath,
-            producedPath: explicitBundlePath, owner: "cli:build --target outcomeLibrary --out", result: "public build published an Outcome Library at its explicit destination",
-            observations: [{surface: "cli", owner: "BuildCommand", result: "build --target outcomeLibrary --out exit 0"}],
+            producedPath: explicitBundlePath, owner: "cli:build --target outcomeLibrary --out", registryOperation: "created_by", result: "public build published an Outcome Library at its explicit destination",
+            observations: [{surface: "cli", owner: "cli:build --target outcomeLibrary --out", result: "build --target outcomeLibrary --out exit 0"}],
         });
         const genericBundlePath = path.join(workDir, "matrix-generic-bundle");
         expect(await build.run([packagePath, "--target", "outcomeLibrary", "--out", genericBundlePath])).toBe(0);
         evidence.record({
             id: "package-build-outcome-library-generic", artifactKind: "outcomeLibrary", operation: "build:outcomeLibrary-generic", sourcePath: packagePath,
-            producedPath: genericBundlePath, owner: "cli:build --target outcomeLibrary", result: "public build owner published its own Outcome Library artifact",
-            observations: [{surface: "cli", owner: "BuildCommand", result: "build --target outcomeLibrary --out exit 0"}],
+            producedPath: genericBundlePath, owner: "cli:build --target outcomeLibrary", registryOperation: "created_by", result: "public build owner published its own Outcome Library artifact",
+            observations: [{surface: "cli", owner: "cli:build --target outcomeLibrary", result: "build --target outcomeLibrary --out exit 0"}],
         });
         const explicitStakePath = path.join(workDir, "matrix-explicit-stake");
         expect(await build.run([explicitBundlePath, "--target", "stakeAdapter", "--out", explicitStakePath])).toBe(0);
         evidence.record({
             id: "outcome-library-build-stake-explicit-output", artifactKind: "stakeAdapter", operation: "build:stakeAdapter-explicit-output", sourcePath: explicitBundlePath,
-            producedPath: explicitStakePath, owner: "cli:build --target stakeAdapter --out", result: "public build published a Stake adapter at its explicit destination",
-            observations: [{surface: "cli", owner: "BuildCommand", result: "build --target stakeAdapter --out exit 0"}],
+            producedPath: explicitStakePath, owner: "cli:build --target stakeAdapter --out", registryOperation: "created_by", result: "public build published a Stake adapter at its explicit destination",
+            observations: [{surface: "cli", owner: "cli:build --target stakeAdapter --out", result: "build --target stakeAdapter --out exit 0"}],
         });
         const genericStakePath = path.join(workDir, "matrix-generic-stake");
         expect(await build.run([genericBundlePath, "--target", "stakeAdapter", "--out", genericStakePath])).toBe(0);
         evidence.record({
             id: "outcome-library-build-stake-generic", artifactKind: "stakeAdapter", operation: "build:stakeAdapter-generic", sourcePath: genericBundlePath,
-            producedPath: genericStakePath, owner: "cli:build --target stakeAdapter", result: "public build owner published its own Stake adapter artifact",
-            observations: [{surface: "cli", owner: "BuildCommand", result: "build --target stakeAdapter --out exit 0"}],
+            producedPath: genericStakePath, owner: "cli:build", registryOperation: "created_by", result: "public build owner published its own Stake adapter artifact",
+            observations: [{surface: "cli", owner: "cli:build", result: "build --target stakeAdapter --out exit 0"}],
         });
         const explicitParPath = path.join(workDir, "matrix-explicit.par.xlsx");
         expect(await build.run([blueprintPath, "--target", "parWorkbook", "--out", explicitParPath])).toBe(0);
         evidence.record({
             id: "blueprint-build-par-explicit-output", artifactKind: "parWorkbook", operation: "build:parWorkbook-explicit-output", sourcePath: blueprintPath,
-            producedPath: explicitParPath, owner: "cli:build --target parWorkbook --out", result: "public build published a PAR workbook at its explicit destination",
-            observations: [{surface: "cli", owner: "BuildCommand", result: "build --target parWorkbook --out exit 0"}],
+            producedPath: explicitParPath, owner: "cli:build --target parWorkbook --out", registryOperation: "created_by", result: "public build published a PAR workbook at its explicit destination",
+            observations: [{surface: "cli", owner: "cli:build --target parWorkbook --out", result: "build --target parWorkbook --out exit 0"}],
         });
 
         // The registry inventory deliberately distinguishes public aliases
@@ -305,16 +305,16 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(fs.existsSync(aliasParPath)).toBe(true);
         evidence.record({
             id: "blueprint-par-export-default", artifactKind: "parWorkbook", operation: "par-export-default", sourcePath: aliasBlueprintPath,
-            producedPath: aliasParPath, owner: "cli:par export without --out", result: "published at the documented sibling default",
-            observations: [{surface: "cli", owner: "ParCommand", result: "par export without --out exit 0"}],
+            producedPath: aliasParPath, owner: "cli:par export without --out", registryOperation: "created_by", result: "published at the documented sibling default",
+            observations: [{surface: "cli", owner: "cli:par export without --out", result: "par export without --out exit 0"}],
         });
         const aliasImportedBlueprintPath = path.join(ownerAliasRoot, "direct-par.par.blueprint.json");
         expect(await new ParCommand(POKIE_VERSION).run(["import", aliasParPath])).toBe(0);
         expect(fs.existsSync(aliasImportedBlueprintPath)).toBe(true);
         evidence.record({
             id: "par-import-blueprint-default", artifactKind: "blueprint", operation: "par-import-default", sourcePath: aliasParPath,
-            producedPath: aliasImportedBlueprintPath, owner: "cli:par import without --out", result: "published at the documented sibling default",
-            observations: [{surface: "cli", owner: "ParCommand", result: "par import without --out exit 0"}],
+            producedPath: aliasImportedBlueprintPath, owner: "cli:par import without --out", registryOperation: "created_by", result: "published at the documented sibling default",
+            observations: [{surface: "cli", owner: "cli:par import without --out", result: "par import without --out exit 0"}],
         });
 
         const dispatcherBlueprintPath = path.join(ownerAliasRoot, "dispatcher.blueprint.json");
@@ -326,15 +326,15 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(fs.existsSync(dispatcherImportedBlueprintPath)).toBe(true);
         evidence.record({
             id: "import-par-blueprint-default", artifactKind: "blueprint", operation: "import-default", sourcePath: dispatcherParPath,
-            producedPath: dispatcherImportedBlueprintPath, owner: "cli:import XLSX without --out", result: "generic public dispatcher published its documented Blueprint default",
-            observations: [{surface: "cli", owner: "ImportCommand", result: "import XLSX without --out exit 0"}],
+            producedPath: dispatcherImportedBlueprintPath, owner: "cli:import XLSX without --out", registryOperation: "created_by", result: "generic public dispatcher published its documented Blueprint default",
+            observations: [{surface: "cli", owner: "cli:import XLSX without --out", result: "import XLSX without --out exit 0"}],
         });
         const dispatcherExplicitBlueprintPath = path.join(ownerAliasRoot, "dispatcher-explicit.blueprint.json");
         expect(await new ImportCommand(POKIE_VERSION).run([dispatcherParPath, "--out", dispatcherExplicitBlueprintPath])).toBe(0);
         evidence.record({
             id: "import-par-blueprint-explicit-output", artifactKind: "blueprint", operation: "import:explicit-output", sourcePath: dispatcherParPath,
-            producedPath: dispatcherExplicitBlueprintPath, owner: "cli:import --out for an XLSX source", result: "generic public dispatcher published its Blueprint at the explicit destination",
-            observations: [{surface: "cli", owner: "ImportCommand", result: "import XLSX --out exit 0"}],
+            producedPath: dispatcherExplicitBlueprintPath, owner: "cli:import --out for an XLSX source", registryOperation: "created_by", result: "generic public dispatcher published its Blueprint at the explicit destination",
+            observations: [{surface: "cli", owner: "cli:import --out for an XLSX source", result: "import XLSX --out exit 0"}],
         });
 
         const defaultBuildRoot = path.join(ownerAliasRoot, "build-default");
@@ -347,32 +347,32 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(fs.existsSync(defaultPackagePath)).toBe(true);
         evidence.record({
             id: "blueprint-build-package-default", artifactKind: "tsPackage", operation: "build:tsPackage-default", sourcePath: defaultBuildBlueprintPath,
-            producedPath: defaultPackagePath, owner: "cli:build --target tsPackage without --out", result: "published at the documented target-named sibling",
-            observations: [{surface: "cli", owner: "BuildCommand", result: "build tsPackage without --out exit 0"}],
+            producedPath: defaultPackagePath, owner: "cli:build --target tsPackage without --out", registryOperation: "created_by", result: "published at the documented target-named sibling",
+            observations: [{surface: "cli", owner: "cli:build --target tsPackage without --out", result: "build tsPackage without --out exit 0"}],
         });
         const defaultBundlePath = path.join(defaultBuildRoot, "outcomeLibrary");
         expect(await defaultBuild.run([defaultPackagePath, "--target", "outcomeLibrary"])).toBe(0);
         expect(fs.existsSync(defaultBundlePath)).toBe(true);
         evidence.record({
             id: "package-build-outcome-library-default", artifactKind: "outcomeLibrary", operation: "build:outcomeLibrary-default", sourcePath: defaultPackagePath,
-            producedPath: defaultBundlePath, owner: "cli:build --target outcomeLibrary without --out", result: "published at the documented target-named sibling",
-            observations: [{surface: "cli", owner: "BuildCommand", result: "build outcomeLibrary without --out exit 0"}],
+            producedPath: defaultBundlePath, owner: "cli:build --target outcomeLibrary without --out", registryOperation: "created_by", result: "published at the documented target-named sibling",
+            observations: [{surface: "cli", owner: "cli:build --target outcomeLibrary without --out", result: "build outcomeLibrary without --out exit 0"}],
         });
         const defaultStakePath = path.join(defaultBuildRoot, "stakeAdapter");
         expect(await defaultBuild.run([defaultBundlePath, "--target", "stakeAdapter"])).toBe(0);
         expect(fs.existsSync(defaultStakePath)).toBe(true);
         evidence.record({
             id: "outcome-library-build-stake-default", artifactKind: "stakeAdapter", operation: "build:stakeAdapter-default", sourcePath: defaultBundlePath,
-            producedPath: defaultStakePath, owner: "cli:build --target stakeAdapter without --out", result: "published at the documented target-named sibling",
-            observations: [{surface: "cli", owner: "BuildCommand", result: "build stakeAdapter without --out exit 0"}],
+            producedPath: defaultStakePath, owner: "cli:build --target stakeAdapter without --out", registryOperation: "created_by", result: "published at the documented target-named sibling",
+            observations: [{surface: "cli", owner: "cli:build --target stakeAdapter without --out", result: "build stakeAdapter without --out exit 0"}],
         });
         const defaultParPath = path.join(defaultBuildRoot, "parWorkbook.xlsx");
         expect(await defaultBuild.run([defaultBuildBlueprintPath, "--target", "parWorkbook"])).toBe(0);
         expect(fs.existsSync(defaultParPath)).toBe(true);
         evidence.record({
             id: "blueprint-build-par-default", artifactKind: "parWorkbook", operation: "build:parWorkbook-default", sourcePath: defaultBuildBlueprintPath,
-            producedPath: defaultParPath, owner: "cli:build --target parWorkbook without --out", result: "published at the documented workbook sibling",
-            observations: [{surface: "cli", owner: "BuildCommand", result: "build parWorkbook without --out exit 0"}],
+            producedPath: defaultParPath, owner: "cli:build --target parWorkbook without --out", registryOperation: "created_by", result: "published at the documented workbook sibling",
+            observations: [{surface: "cli", owner: "cli:build --target parWorkbook without --out", result: "build parWorkbook without --out exit 0"}],
         });
 
         const exportRoot = path.join(ownerAliasRoot, "export-default");
@@ -387,46 +387,46 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(await exportCommand.run([exportPackagePath, "--to", "outcomes", "--out", explicitExportBundlePath])).toBe(0);
         evidence.record({
             id: "package-export-outcome-library-explicit-output", artifactKind: "outcomeLibrary", operation: "export:outcomes-explicit-output", sourcePath: exportPackagePath,
-            producedPath: explicitExportBundlePath, owner: "cli:export --to outcomes --out", result: "target-oriented export published an Outcome Library at its explicit destination",
-            observations: [{surface: "cli", owner: "ExportCommand", result: "export outcomes --out exit 0"}],
+            producedPath: explicitExportBundlePath, owner: "cli:export --to outcomes --out", registryOperation: "created_by", result: "target-oriented export published an Outcome Library at its explicit destination",
+            observations: [{surface: "cli", owner: "cli:export --to outcomes --out", result: "export outcomes --out exit 0"}],
         });
         const explicitExportStakePath = path.join(exportRoot, "explicit-adapter");
         expect(await exportCommand.run([explicitExportBundlePath, "--to", "adapter", "--out", explicitExportStakePath])).toBe(0);
         evidence.record({
             id: "outcome-library-export-stake-explicit-output", artifactKind: "stakeAdapter", operation: "export:adapter-explicit-output", sourcePath: explicitExportBundlePath,
-            producedPath: explicitExportStakePath, owner: "cli:export --to adapter --out", result: "target-oriented export published a Stake adapter at its explicit destination",
-            observations: [{surface: "cli", owner: "ExportCommand", result: "export adapter --out exit 0"}],
+            producedPath: explicitExportStakePath, owner: "cli:export --to adapter --out", registryOperation: "created_by", result: "target-oriented export published a Stake adapter at its explicit destination",
+            observations: [{surface: "cli", owner: "cli:export --to adapter --out", result: "export adapter --out exit 0"}],
         });
         const explicitExportWorkbookPath = path.join(exportRoot, "explicit-workbook.xlsx");
         expect(await exportCommand.run([exportBlueprintPath, "--to", "workbook", "--out", explicitExportWorkbookPath])).toBe(0);
         evidence.record({
             id: "blueprint-export-par-via-export-explicit-output", artifactKind: "parWorkbook", operation: "export:workbook-explicit-output", sourcePath: exportBlueprintPath,
-            producedPath: explicitExportWorkbookPath, owner: "cli:export --to workbook --out", result: "target-oriented export published a PAR workbook at its explicit destination",
-            observations: [{surface: "cli", owner: "ExportCommand", result: "export workbook --out exit 0"}],
+            producedPath: explicitExportWorkbookPath, owner: "cli:export --to workbook --out", registryOperation: "created_by", result: "target-oriented export published a PAR workbook at its explicit destination",
+            observations: [{surface: "cli", owner: "cli:export --to workbook --out", result: "export workbook --out exit 0"}],
         });
         const exportBundlePath = path.join(exportRoot, "outcomelibrary");
         expect(await exportCommand.run([exportPackagePath, "--to", "outcomes"])).toBe(0);
         expect(fs.existsSync(exportBundlePath)).toBe(true);
         evidence.record({
             id: "package-export-outcome-library-default", artifactKind: "outcomeLibrary", operation: "export:outcomes-default", sourcePath: exportPackagePath,
-            producedPath: exportBundlePath, owner: "cli:export --to outcomes without --out", result: "target-oriented export published its documented default",
-            observations: [{surface: "cli", owner: "ExportCommand", result: "export outcomes without --out exit 0"}],
+            producedPath: exportBundlePath, owner: "cli:export --to outcomes without --out", registryOperation: "created_by", result: "target-oriented export published its documented default",
+            observations: [{surface: "cli", owner: "cli:export --to outcomes without --out", result: "export outcomes without --out exit 0"}],
         });
         const exportStakePath = path.join(exportRoot, "stakeengine");
         expect(await exportCommand.run([exportBundlePath, "--to", "adapter"])).toBe(0);
         expect(fs.existsSync(exportStakePath)).toBe(true);
         evidence.record({
             id: "outcome-library-export-stake-default", artifactKind: "stakeAdapter", operation: "export:adapter-default", sourcePath: exportBundlePath,
-            producedPath: exportStakePath, owner: "cli:export --to adapter without --out", result: "target-oriented export published its documented default",
-            observations: [{surface: "cli", owner: "ExportCommand", result: "export adapter without --out exit 0"}],
+            producedPath: exportStakePath, owner: "cli:export --to adapter without --out", registryOperation: "created_by", result: "target-oriented export published its documented default",
+            observations: [{surface: "cli", owner: "cli:export --to adapter without --out", result: "export adapter without --out exit 0"}],
         });
         const exportWorkbookPath = path.join(exportRoot, "source.par.xlsx");
         expect(await exportCommand.run([exportBlueprintPath, "--to", "workbook"])).toBe(0);
         expect(fs.existsSync(exportWorkbookPath)).toBe(true);
         evidence.record({
             id: "blueprint-export-par-via-export-default", artifactKind: "parWorkbook", operation: "export:workbook-default", sourcePath: exportBlueprintPath,
-            producedPath: exportWorkbookPath, owner: "cli:export --to workbook without --out", result: "target-oriented export published its documented workbook default",
-            observations: [{surface: "cli", owner: "ExportCommand", result: "export workbook without --out exit 0"}],
+            producedPath: exportWorkbookPath, owner: "cli:export --to workbook without --out", registryOperation: "created_by", result: "target-oriented export published its documented workbook default",
+            observations: [{surface: "cli", owner: "cli:export --to workbook without --out", result: "export workbook without --out exit 0"}],
         });
         const sourceProject = await resolver.resolve(importedBlueprintPath);
         if (sourceProject === undefined) throw new Error("Expected the imported Blueprint to resolve for the direct-library preflight.");
@@ -603,22 +603,29 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             "generate", packagePath, "--sample", "8", "--seed", "matrix-generation", "--out", rawLibraryPath, "--format", "json",
         ])).toBe(0);
         evidence.record({
-            id: "package-generate-raw-outcomes", artifactKind: "tsPackage", operation: "generate", sourcePath: packagePath,
-            producedPath: rawLibraryPath, owner: "OutcomeLibraryCommand", result: "published",
-            observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "exit 0"}],
+            id: "package-generate-raw-outcomes", artifactKind: "weightedOutcomeLibraryJson", operation: "generate", sourcePath: packagePath,
+            producedPath: rawLibraryPath, owner: "cli:outcomelibrary generate --out", registryOperation: "created_by", result: "published",
+            observations: [{surface: "cli", owner: "cli:outcomelibrary generate --out", result: "exit 0"}],
         });
         fs.writeFileSync(descriptorPath, JSON.stringify({modes: [{modeName: "base", libraryPath: path.basename(rawLibraryPath)}]}));
         expect(await new OutcomeLibraryCommand(POKIE_VERSION).run(["build", descriptorPath, "--out", bundlePath])).toBe(0);
         evidence.record({
             id: "raw-outcomes-build-bundle", artifactKind: "weightedOutcomeLibraryJson", operation: "build", sourcePath: rawLibraryPath,
-            producedPath: bundlePath, owner: "OutcomeLibraryCommand", result: "published",
-            observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "exit 0"}],
+            producedPath: bundlePath, owner: "cli:outcomelibrary build", registryOperation: "recognized_by", result: "published",
+            observations: [{surface: "cli", owner: "cli:outcomelibrary build", result: "exit 0"}],
         });
         evidence.record({
             id: "outcome-library-bundle-descriptor-build", artifactKind: "outcomeLibraryBundleDescriptor", operation: "build", sourcePath: descriptorPath,
             producedPath: bundlePath, owner: "OutcomeLibraryCommand", result: "descriptor consumed by the published bundle",
             observations: [{surface: "cli", owner: "OutcomeLibraryCommand", result: "build exit 0 consumed the descriptor"}],
             systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "outcomelibrary-build-outcome-library", artifactKind: "outcomeLibrary", operation: "build", registryOperation: "created_by",
+            sourcePath: descriptorPath, producedPath: bundlePath, owner: "cli:outcomelibrary build",
+            result: "the public Outcome Library build published its bundle",
+            observations: [{surface: "cli", owner: "cli:outcomelibrary build", result: "build exit 0 published the Outcome Library"}],
+            systemicClasses: ["durable-publication-ownership"],
         });
         const delegatedExportBundlePath = path.join(workDir, "matrix-delegated-export-bundle");
         expect(await exportCommand.run([descriptorPath, "--to", "outcomes", "--out", delegatedExportBundlePath])).toBe(0);
@@ -627,8 +634,8 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         };
         evidence.record({
             id: "export-outcome-library-weighted-json", artifactKind: "weightedOutcomeLibraryJson", operation: "export:outcomes-delegation", sourcePath: rawLibraryPath,
-            producedPath: delegatedExportBundlePath, owner: "cli:export --to outcomes", result: "the exercised descriptor export published the weighted outcome JSONL consumed by its bundle",
-            observations: [{surface: "cli", owner: "ExportCommand", result: "export outcomes delegated to the Outcome Library writer"}],
+            producedPath: delegatedExportBundlePath, owner: "cli:export --to outcomes", registryOperation: "recognized_by", result: "the exercised descriptor export published the weighted outcome JSONL consumed by its bundle",
+            observations: [{surface: "cli", owner: "cli:export --to outcomes", result: "export outcomes delegated to the Outcome Library writer"}],
         });
         evidence.record({
             id: "export-outcome-library-descriptor", artifactKind: "outcomeLibraryBundleDescriptor", operation: "export:outcomes-delegation", sourcePath: descriptorPath,
@@ -719,14 +726,14 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
-            id: "stake-engine-analysis-report", artifactKind: "stakeEngineAnalysisReport", operation: "analyze", sourcePath: stakeAnalysisPath,
-            owner: "StakeEngineCommand", result: "analysis report published from the generated Stake adapter",
-            observations: [{surface: "cli", owner: "StakeEngineCommand", result: "stakeengine analyze --out exit 0"}],
+            id: "stake-engine-analysis-report", artifactKind: "stakeEngineAnalysisReport", operation: "analyze", registryOperation: "created_by", sourcePath: stakeAnalysisPath,
+            owner: "cli:stakeengine analyze --out", result: "analysis report published from the generated Stake adapter",
+            observations: [{surface: "cli", owner: "cli:stakeengine analyze --out", result: "stakeengine analyze --out exit 0"}],
         });
         evidence.record({
-            id: "stake-engine-comparison-report", artifactKind: "stakeEngineComparisonReport", operation: "diff", sourcePath: stakeComparisonPath,
-            owner: "StakeEngineCommand", result: "comparison report published from two real Stake exports",
-            observations: [{surface: "cli", owner: "StakeEngineCommand", result: "stakeengine diff --out exit 0"}],
+            id: "stake-engine-comparison-report", artifactKind: "stakeEngineComparisonReport", operation: "diff", registryOperation: "created_by", sourcePath: stakeComparisonPath,
+            owner: "cli:stakeengine diff --out", result: "comparison report published from two real Stake exports",
+            observations: [{surface: "cli", owner: "cli:stakeengine diff --out", result: "stakeengine diff --out exit 0"}],
         });
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["import", stakePath, "--out", importedStakeLibraryPath])).toBe(0);
         const stakeManifest = JSON.parse(fs.readFileSync(path.join(stakePath, "pokie-manifest.json"), "utf-8"));
@@ -746,15 +753,15 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(fs.existsSync(importConfigPath)).toBe(true);
         expect(fs.existsSync(importProvenancePath)).toBe(true);
         evidence.record({
-            id: "stake-import-reexport-config", artifactKind: "stakeImportReExportConfig", operation: "export", sourcePath: importConfigPath,
-            owner: "StakeEngineCommand", result: "public import emitted a re-exportable Stake configuration",
-            observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 wrote config.json"}],
+            id: "stake-import-reexport-config", artifactKind: "stakeImportReExportConfig", operation: "export", registryOperation: "created_by", sourcePath: importConfigPath,
+            owner: "cli:stakeengine import", result: "public import emitted a re-exportable Stake configuration",
+            observations: [{surface: "cli", owner: "cli:stakeengine import", result: "import exit 0 wrote config.json"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
-            id: "stake-import-source-provenance", artifactKind: "stakeImportSourceProvenance", operation: "inspect", sourcePath: importProvenancePath,
-            owner: "StakeEngineCommand", result: "public import retained source manifest, index, and mode provenance",
-            observations: [{surface: "cli", owner: "StakeEngineCommand", result: "import exit 0 wrote source-provenance.json"}],
+            id: "stake-import-source-provenance", artifactKind: "stakeImportSourceProvenance", operation: "inspect", registryOperation: "created_by", sourcePath: importProvenancePath,
+            owner: "cli:stakeengine import", result: "public import retained source manifest, index, and mode provenance",
+            observations: [{surface: "cli", owner: "cli:stakeengine import", result: "import exit 0 wrote source-provenance.json"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         const genericStakeImport = new ImportCommand(POKIE_VERSION);
@@ -762,26 +769,26 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(await genericStakeImport.run([stakePath, "--out", genericStakeExplicitPath])).toBe(0);
         evidence.record({
             id: "stake-import-outcome-library-explicit-output", artifactKind: "outcomeLibrary", operation: "import:stake-explicit-output", sourcePath: stakePath,
-            producedPath: genericStakeExplicitPath, owner: "cli:import --out", result: "generic public import published the Stake Outcome Library at its explicit destination",
-            observations: [{surface: "cli", owner: "ImportCommand", result: "import Stake --out exit 0"}],
+            producedPath: genericStakeExplicitPath, owner: "cli:import --out", registryOperation: "created_by", result: "generic public import published the Stake Outcome Library at its explicit destination",
+            observations: [{surface: "cli", owner: "cli:import --out", result: "import Stake --out exit 0"}],
         });
         evidence.record({
             id: "generic-import-reexport-config", artifactKind: "stakeImportReExportConfig", operation: "import:stake-config", sourcePath: path.join(genericStakeExplicitPath, "config.json"),
-            owner: "cli:import", result: "the exercised generic import published its re-exportable Stake configuration",
-            observations: [{surface: "cli", owner: "ImportCommand", result: "import Stake --out wrote config.json"}],
+            owner: "cli:import", registryOperation: "created_by", result: "the exercised generic import published its re-exportable Stake configuration",
+            observations: [{surface: "cli", owner: "cli:import", result: "import Stake --out wrote config.json"}],
         });
         evidence.record({
             id: "generic-import-source-provenance", artifactKind: "stakeImportSourceProvenance", operation: "import:stake-provenance", sourcePath: path.join(genericStakeExplicitPath, "source-provenance.json"),
-            owner: "cli:import", result: "the exercised generic import published its Stake source provenance",
-            observations: [{surface: "cli", owner: "ImportCommand", result: "import Stake --out wrote source-provenance.json"}],
+            owner: "cli:import", registryOperation: "created_by", result: "the exercised generic import published its Stake source provenance",
+            observations: [{surface: "cli", owner: "cli:import", result: "import Stake --out wrote source-provenance.json"}],
         });
         const genericStakeDefaultPath = `${stakePath}-imported`;
         expect(await genericStakeImport.run([stakePath])).toBe(0);
         expect(fs.existsSync(genericStakeDefaultPath)).toBe(true);
         evidence.record({
             id: "stake-import-outcome-library-default-output", artifactKind: "outcomeLibrary", operation: "import:stake-default-output", sourcePath: stakePath,
-            producedPath: genericStakeDefaultPath, owner: "cli:import Stake without --out", result: "generic public import published the Stake Outcome Library at its documented default destination",
-            observations: [{surface: "cli", owner: "ImportCommand", result: "import Stake without --out exit 0"}],
+            producedPath: genericStakeDefaultPath, owner: "cli:import Stake without --out", registryOperation: "created_by", result: "generic public import published the Stake Outcome Library at its documented default destination",
+            observations: [{surface: "cli", owner: "cli:import Stake without --out", result: "import Stake without --out exit 0"}],
         });
         // A re-exportable import configuration is not itself a round trip.
         // Exercise the config-driven public Stake owner, rather than the
@@ -814,6 +821,13 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 {surface: "library", owner: "StakeEngineCommand", result: "re-exported Stake manifest retained the original generation semantics"},
                 {surface: "library", owner: "StakeEngineCommand", result: "re-exported Stake manifest retained the imported source-provenance manifest/index/mode hashes"},
             ],
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+        });
+        evidence.record({
+            id: "stake-import-reexport-config-owner", artifactKind: "stakeImportReExportConfig", operation: "re-export", registryOperation: "recognized_by",
+            sourcePath: importConfigPath, producedPath: reexportedStakePath, owner: "StakeEngineCommand:export",
+            result: "Stake export consumed the imported re-export configuration and published the matching adapter",
+            observations: [{surface: "cli", owner: "StakeEngineCommand:export", result: "stakeengine export consumed imported config.json"}],
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
         });
         evidence.recordScenario({
@@ -900,23 +914,23 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const reportPath = path.join(workDir, "matrix-report.md");
         expect(await new ValidateCommand().run([blueprintPath, "--format", "json", "--out", validationPath])).toBe(0);
         evidence.record({
-            id: "blueprint-validate", artifactKind: "blueprint", operation: "validate", sourcePath: blueprintPath,
-            owner: "ValidateCommand", result: "valid", observations: [{surface: "cli", owner: "ValidateCommand", result: "exit 0"}],
+            id: "blueprint-validate", artifactKind: "blueprint", operation: "validate", registryOperation: "recognized_by", sourcePath: blueprintPath,
+            owner: "cli:validate", result: "valid", observations: [{surface: "cli", owner: "cli:validate", result: "exit 0"}],
         });
         evidence.record({
-            id: "blueprint-validation-report", artifactKind: "validationReport", operation: "inspect", sourcePath: validationPath,
-            owner: "ValidateCommand", result: "published JSON validation report",
-            observations: [{surface: "cli", owner: "ValidateCommand", result: "validate --out exit 0 wrote the report"}],
+            id: "blueprint-validation-report", artifactKind: "validationReport", operation: "inspect", registryOperation: "created_by", sourcePath: validationPath,
+            owner: "cli:validate --out", result: "published JSON validation report",
+            observations: [{surface: "cli", owner: "cli:validate --out", result: "validate --out exit 0 wrote the report"}],
         });
         expect(await new ValidateCommand().run([bundlePath, "--deep", "--format", "json"])).toBe(0);
         evidence.record({
-            id: "outcome-library-validate", artifactKind: "outcomeLibrary", operation: "validate", sourcePath: bundlePath,
-            owner: "ValidateCommand", result: "valid", observations: [{surface: "cli", owner: "ValidateCommand", result: "exit 0"}],
+            id: "outcome-library-validate", artifactKind: "outcomeLibrary", operation: "validate", registryOperation: "validates_by", sourcePath: bundlePath,
+            owner: "cli:validate --deep", result: "valid", observations: [{surface: "cli", owner: "cli:validate --deep", result: "exit 0"}],
         });
         expect(await new InspectCommand().run([bundlePath])).toBe(0);
         evidence.record({
-            id: "outcome-library-inspect", artifactKind: "outcomeLibrary", operation: "inspect", sourcePath: bundlePath,
-            owner: "InspectCommand", result: "recognized", observations: [{surface: "cli", owner: "InspectCommand", result: "exit 0"}],
+            id: "outcome-library-inspect", artifactKind: "outcomeLibrary", operation: "inspect", registryOperation: "recognized_by", sourcePath: bundlePath,
+            owner: "cli:inspect", result: "recognized", observations: [{surface: "cli", owner: "cli:inspect", result: "exit 0"}],
         });
         await new ReportCommand().run([bundlePath, "--format", "markdown", "--out", reportPath]);
         await new ReportCommand().run([packageSimulationPath, "--format", "json", "--out", simulationJsonReportPath]);
@@ -1485,6 +1499,54 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 id: "wasm-outcome-source-simulate", status: "intentionally-unsupported", "source_path": "run-artifacts/matrix.wasm",
                 diagnostic: expect.objectContaining({code: "unsupported-project-operation"}),
             }),
+        ]));
+        const emittedOwnerTuples = (JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {
+            rows: {artifact_kind: string; registry_operation?: string; operation_owner: string; observations: {owner: string}[]}[];
+        }).rows.flatMap((row) => row.registry_operation === undefined ? [] : row.observations
+            .filter((observation) => observation.owner === row.operation_owner)
+            .map(() => `${row.artifact_kind}:${row.registry_operation}:${row.operation_owner}`));
+        // The ledger is only owner evidence when its public observation names
+        // the command variant that actually ran. These aliases intentionally
+        // cover explicit and default destinations across every CLI authoring,
+        // import/export, recognition, and validation owner in this packet.
+        expect(emittedOwnerTuples).toEqual(expect.arrayContaining([
+            "blueprint:created_by:cli:par import --out",
+            "blueprint:created_by:cli:par import without --out",
+            "blueprint:created_by:cli:import --out for an XLSX source",
+            "blueprint:created_by:cli:import XLSX without --out",
+            "tsPackage:created_by:cli:build",
+            "tsPackage:created_by:cli:build --target tsPackage --out",
+            "tsPackage:created_by:cli:build --target tsPackage without --out",
+            "outcomeLibrary:created_by:cli:build --target outcomeLibrary",
+            "outcomeLibrary:created_by:cli:build --target outcomeLibrary --out",
+            "outcomeLibrary:created_by:cli:build --target outcomeLibrary without --out",
+            "outcomeLibrary:created_by:cli:export --to outcomes --out",
+            "outcomeLibrary:created_by:cli:export --to outcomes without --out",
+            "outcomeLibrary:created_by:cli:outcomelibrary build",
+            "outcomeLibrary:created_by:cli:import --out",
+            "outcomeLibrary:created_by:cli:import Stake without --out",
+            "stakeAdapter:created_by:cli:build",
+            "stakeAdapter:created_by:cli:build --target stakeAdapter --out",
+            "stakeAdapter:created_by:cli:build --target stakeAdapter without --out",
+            "stakeAdapter:created_by:cli:export --to adapter --out",
+            "stakeAdapter:created_by:cli:export --to adapter without --out",
+            "parWorkbook:created_by:cli:build --target parWorkbook --out",
+            "parWorkbook:created_by:cli:build --target parWorkbook without --out",
+            "parWorkbook:created_by:cli:par export --out",
+            "parWorkbook:created_by:cli:par export without --out",
+            "parWorkbook:created_by:cli:export --to workbook --out",
+            "parWorkbook:created_by:cli:export --to workbook without --out",
+            "weightedOutcomeLibraryJson:created_by:cli:outcomelibrary generate --out",
+            "outcomeLibrary:recognized_by:cli:inspect",
+            "outcomeLibrary:validates_by:cli:validate --deep",
+            "validationReport:created_by:cli:validate --out",
+            "stakeEngineAnalysisReport:created_by:cli:stakeengine analyze --out",
+            "stakeEngineComparisonReport:created_by:cli:stakeengine diff --out",
+            "stakeImportReExportConfig:created_by:cli:import",
+            "stakeImportReExportConfig:created_by:cli:stakeengine import",
+            "stakeImportReExportConfig:recognized_by:StakeEngineCommand:export",
+            "stakeImportSourceProvenance:created_by:cli:import",
+            "stakeImportSourceProvenance:created_by:cli:stakeengine import",
         ]));
         const emittedMatrixRows = (JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {
             rows: {id: string; status: string; diagnostic?: {code: string; recovery: string}}[];
