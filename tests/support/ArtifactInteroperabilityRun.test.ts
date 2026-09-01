@@ -99,11 +99,11 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         const result = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
             readonly capability_matrix: readonly {readonly public_owner: string; readonly disposition: string; readonly boundary?: {readonly code: string; readonly recovery: string}}[];
         };
-        expect(result.capability_matrix.find((entry) => entry.public_owner === "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized"))
+        expect(result.capability_matrix.find((entry) => entry.public_owner === "user/external canonical outcome-stream producer"))
             .toMatchObject({disposition: "external-boundary", boundary: {code: "external-producer", recovery: expect.any(String)}});
     });
 
-    it("does not turn a sibling artifact journey into proof for an unrun public owner", () => {
+    it("retains a produced companion observation instead of misclassifying its POKIE owner as external", () => {
         const runner = new ArtifactInteroperabilityRun(rootPath);
         const sourcePath = path.join(rootPath, "blueprint.json");
         fs.writeFileSync(sourcePath, "{\"blueprint\":\"canonical\"}\n");
@@ -123,10 +123,21 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         const outputPath = path.join(rootPath, "merged.json");
         mergeArtifactInteroperabilityRuns([runnerPath], outputPath);
         const result = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
-            readonly capability_matrix: readonly {readonly public_owner: string; readonly disposition: string; readonly boundary?: {readonly code: string}}[];
+            readonly capability_matrix: readonly {
+                readonly public_owner: string;
+                readonly disposition: string;
+                readonly "artifact_observation"?: {readonly "record_id": string; readonly "operation_owner": string; readonly "source_path": string};
+            }[];
         };
         expect(result.capability_matrix.find((entry) => entry.public_owner === "studio:blueprint-save"))
-            .toMatchObject({disposition: "external-boundary", boundary: {code: "external-producer"}});
+            .toMatchObject({
+                disposition: "artifact-observation",
+                "artifact_observation": {
+                    "record_id": "cli-created-blueprint",
+                    "operation_owner": "cli:create",
+                    "source_path": expect.stringMatching(/^run-artifacts\//),
+                },
+            });
     });
 
     it("maps named thin wrappers to canonical parity proof instead of a second completion", () => {
