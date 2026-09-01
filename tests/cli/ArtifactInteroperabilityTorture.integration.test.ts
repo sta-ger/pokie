@@ -24,14 +24,17 @@ import {
 import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
 import {DiffCommand} from "../../cli/commands/DiffCommand.js";
+import {EditCommand} from "../../cli/commands/EditCommand.js";
 import {ExportCommand} from "../../cli/commands/ExportCommand.js";
 import {FairnessCommand} from "../../cli/commands/FairnessCommand.js";
+import {GenerateCommand} from "../../cli/commands/GenerateCommand.js";
 import {InspectCommand} from "../../cli/commands/InspectCommand.js";
 import {ImportCommand} from "../../cli/commands/ImportCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
 import {OutcomeSourceCommand} from "../../cli/commands/OutcomeSourceCommand.js";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
+import {ReelCommand} from "../../cli/commands/ReelCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
@@ -190,15 +193,15 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(await create.run(["generic", "--random", "--seed", "101", "--out", createdGenericPath])).toBe(0);
         evidence.record({
             id: "blueprint-cli-create", artifactKind: "blueprint", operation: "create", sourcePath: createdGenericPath,
-            producedPath: createdGenericPath, owner: "cli:create", result: "public CLI authoring published a valid generated Blueprint",
-            observations: [{surface: "cli", owner: "CreateCommand", result: "create --random --out exit 0"}],
+            producedPath: createdGenericPath, owner: "cli:create", registryOperation: "created_by", result: "public CLI authoring published a valid generated Blueprint",
+            observations: [{surface: "cli", owner: "cli:create", result: "create --random --out exit 0"}],
         });
         const createdExplicitPath = path.join(authoringRoot, "explicit.blueprint.json");
         expect(await create.run(["explicit", "--random", "--seed", "102", "--out", createdExplicitPath])).toBe(0);
         evidence.record({
             id: "blueprint-cli-create-explicit-output", artifactKind: "blueprint", operation: "create:explicit-output", sourcePath: createdExplicitPath,
-            producedPath: createdExplicitPath, owner: "cli:create --out", result: "public CLI authoring published at its explicit destination",
-            observations: [{surface: "cli", owner: "CreateCommand", result: "create --random --out exit 0"}],
+            producedPath: createdExplicitPath, owner: "cli:create --out", registryOperation: "created_by", result: "public CLI authoring published at its explicit destination",
+            observations: [{surface: "cli", owner: "cli:create --out", result: "create --random --out exit 0"}],
         });
         const originalWorkingDirectory = process.cwd();
         process.chdir(authoringRoot);
@@ -211,8 +214,71 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(fs.existsSync(createdDefaultPath)).toBe(true);
         evidence.record({
             id: "blueprint-cli-create-default-output", artifactKind: "blueprint", operation: "create:default-output", sourcePath: createdDefaultPath,
-            producedPath: createdDefaultPath, owner: "cli:create without --out", result: "public CLI authoring published at its documented default destination",
-            observations: [{surface: "cli", owner: "CreateCommand", result: "create --random without --out exit 0"}],
+            producedPath: createdDefaultPath, owner: "cli:create without --out", registryOperation: "created_by", result: "public CLI authoring published at its documented default destination",
+            observations: [{surface: "cli", owner: "cli:create without --out", result: "create --random without --out exit 0"}],
+        });
+
+        // Edit is deliberately unavailable in this non-interactive runner.
+        // Keep both public destination forms as concrete diagnostics rather
+        // than letting their registry tuples borrow the create observation.
+        let editDiagnostic = "";
+        (console.error as jest.Mock).mockImplementation((message: unknown) => {
+            editDiagnostic += `${String(message)}\n`;
+        });
+        expect(await new EditCommand().run([createdGenericPath, "--out", path.join(authoringRoot, "edited.blueprint.json")])).toBe(1);
+        const explicitEditDiagnostic = editDiagnostic.trim();
+        editDiagnostic = "";
+        expect(await new EditCommand().run([createdGenericPath])).toBe(1);
+        const defaultEditDiagnostic = editDiagnostic.trim();
+        (console.error as jest.Mock).mockImplementation(() => undefined);
+        const editRecovery = "Re-run inside a terminal, or edit the Blueprint Project's JSON file directly, then validate the saved Blueprint.";
+        evidence.recordUnavailable({
+            id: "blueprint-cli-edit-explicit-output", artifactKind: "blueprint", operation: "edit:explicit-output", registryOperation: "created_by",
+            sourcePath: createdGenericPath, owner: "cli:edit --out",
+            diagnostic: {code: "unsupported-project-operation", message: explicitEditDiagnostic, recovery: editRecovery},
+            observations: [{surface: "cli", owner: "cli:edit --out", result: "edit --out returned the non-interactive recovery diagnostic"}],
+        });
+        evidence.recordUnavailable({
+            id: "blueprint-cli-edit-default-output", artifactKind: "blueprint", operation: "edit:default-output", registryOperation: "created_by",
+            sourcePath: createdGenericPath, owner: "cli:edit without --out",
+            diagnostic: {code: "unsupported-project-operation", message: defaultEditDiagnostic, recovery: editRecovery},
+            observations: [{surface: "cli", owner: "cli:edit without --out", result: "edit returned the non-interactive recovery diagnostic"}],
+        });
+
+        // Reel authoring needs a generated source.  Each persistence form is
+        // given a fresh Blueprint, so --apply and --materialize cannot reuse
+        // a sibling command's output.
+        const generatedReelBlueprint = {
+            ...blueprint,
+            reelStripGeneration: [
+                {type: "generated" as const, length: 4, symbolCounts: {A: 2, B: 2}, seed: 201},
+                {type: "generated" as const, length: 4, symbolCounts: {A: 2, B: 2}, seed: 202},
+            ],
+        };
+        const reelExplicitSourcePath = path.join(authoringRoot, "reel-explicit-source.blueprint.json");
+        const reelExplicitOutputPath = path.join(authoringRoot, "reel-explicit-output.blueprint.json");
+        fs.writeFileSync(reelExplicitSourcePath, JSON.stringify(generatedReelBlueprint));
+        expect(await new ReelCommand().run(["generate", reelExplicitSourcePath, "--apply", "--out", reelExplicitOutputPath])).toBe(0);
+        evidence.record({
+            id: "blueprint-cli-reel-generate-explicit-output", artifactKind: "blueprint", operation: "reel-generate:explicit-output", registryOperation: "created_by",
+            sourcePath: reelExplicitSourcePath, producedPath: reelExplicitOutputPath, owner: "cli:reel generate --out",
+            result: "reel generation published an explicitly addressed Blueprint", observations: [{surface: "cli", owner: "cli:reel generate --out", result: "reel generate --apply --out exit 0"}],
+        });
+        const reelApplySourcePath = path.join(authoringRoot, "reel-apply-source.blueprint.json");
+        fs.writeFileSync(reelApplySourcePath, JSON.stringify(generatedReelBlueprint));
+        expect(await new ReelCommand().run(["generate", reelApplySourcePath, "--apply"])).toBe(0);
+        evidence.record({
+            id: "blueprint-cli-reel-generate-apply-default", artifactKind: "blueprint", operation: "reel-generate:apply-default", registryOperation: "created_by",
+            sourcePath: reelApplySourcePath, producedPath: reelApplySourcePath, owner: "cli:reel generate --apply without --out",
+            result: "reel generation persisted its documented default Blueprint", observations: [{surface: "cli", owner: "cli:reel generate --apply without --out", result: "reel generate --apply exit 0"}],
+        });
+        const reelMaterializeSourcePath = path.join(authoringRoot, "reel-materialize-source.blueprint.json");
+        fs.writeFileSync(reelMaterializeSourcePath, JSON.stringify(generatedReelBlueprint));
+        expect(await new ReelCommand().run(["generate", reelMaterializeSourcePath, "--materialize"])).toBe(0);
+        evidence.record({
+            id: "blueprint-cli-reel-generate-materialize-default", artifactKind: "blueprint", operation: "reel-generate:materialize-default", registryOperation: "created_by",
+            sourcePath: reelMaterializeSourcePath, producedPath: reelMaterializeSourcePath, owner: "cli:reel generate --materialize without --out",
+            result: "reel materialization persisted its documented default Blueprint", observations: [{surface: "cli", owner: "cli:reel generate --materialize without --out", result: "reel generate --materialize exit 0"}],
         });
 
         // The workbook and imported Blueprint are both real public artifacts.
@@ -607,6 +673,15 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             producedPath: rawLibraryPath, owner: "cli:outcomelibrary generate --out", registryOperation: "created_by", result: "published",
             observations: [{surface: "cli", owner: "cli:outcomelibrary generate --out", result: "exit 0"}],
         });
+        const genericRawLibraryPath = path.join(workDir, "matrix-generic-library.json");
+        expect(await new GenerateCommand(POKIE_VERSION).run([
+            packagePath, "--sample", "8", "--seed", "matrix-generic-generation", "--out", genericRawLibraryPath, "--format", "json",
+        ])).toBe(0);
+        evidence.record({
+            id: "package-generate-raw-outcomes-generic", artifactKind: "weightedOutcomeLibraryJson", operation: "generate:generic", sourcePath: packagePath,
+            producedPath: genericRawLibraryPath, owner: "cli:generate --out", registryOperation: "created_by", result: "generic generation published a weighted Outcome Library JSON artifact",
+            observations: [{surface: "cli", owner: "cli:generate --out", result: "generate --out exit 0"}],
+        });
         fs.writeFileSync(descriptorPath, JSON.stringify({modes: [{modeName: "base", libraryPath: path.basename(rawLibraryPath)}]}));
         expect(await new OutcomeLibraryCommand(POKIE_VERSION).run(["build", descriptorPath, "--out", bundlePath])).toBe(0);
         evidence.record({
@@ -716,13 +791,13 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["analyze", stakePath, "--format", "json", "--out", stakeAnalysisPath])).toBe(0);
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["diff", stakePath, stakePath, "--format", "json", "--out", stakeComparisonPath])).toBe(0);
         evidence.recordUnavailable({
-            id: "stake-export-descriptor", artifactKind: "stakeEngineExportDescriptor", operation: "export", sourcePath: stakeDescriptorPath,
-            owner: "StakeEngineCommand", diagnostic: {
+            id: "stake-export-descriptor", artifactKind: "stakeEngineExportDescriptor", operation: "export", registryOperation: "validates_by", sourcePath: stakeDescriptorPath,
+            owner: "StakeEngineCommand export descriptor validation", diagnostic: {
                 code: "unsupported-project-operation",
                 message: stakeExportDiagnostic.trim(),
                 recovery: "Assign canonical integer outcome IDs in the Stake export descriptor or export the generated Outcome Library through the supported stakeAdapter build target.",
             },
-            observations: [{surface: "cli", owner: "StakeEngineCommand", result: "stakeengine export exit 1 retained the concrete canonical-ID diagnostic"}],
+            observations: [{surface: "cli", owner: "StakeEngineCommand export descriptor validation", result: "stakeengine export exit 1 retained the concrete canonical-ID diagnostic"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
@@ -830,6 +905,14 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             observations: [{surface: "cli", owner: "StakeEngineCommand:export", result: "stakeengine export consumed imported config.json"}],
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
         });
+        evidence.record({
+            id: "stake-import-reexport-config-descriptor", artifactKind: "stakeImportReExportConfig", operation: "load-descriptor", registryOperation: "recognized_by",
+            sourcePath: importConfigPath, producedPath: reexportedStakePath,
+            owner: "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
+            result: "Stake export loaded the imported bundle-directory re-export descriptor and published the matching adapter",
+            observations: [{surface: "cli", owner: "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization", result: "stakeengine export resolved imported config.json as its re-export descriptor"}],
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+        });
         evidence.recordScenario({
             id: "stake-outcome-library-round-trip", sourcePath: generatedBundlePath, producedPath: reexportedStakePath,
             result: "Outcome Library to Stake export, public import, and public re-export retain game identity, configuration hash, POKIE version, generation semantics, and source provenance",
@@ -922,15 +1005,40 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             owner: "cli:validate --out", result: "published JSON validation report",
             observations: [{surface: "cli", owner: "cli:validate --out", result: "validate --out exit 0 wrote the report"}],
         });
+        expect(await new InspectCommand().run([blueprintPath])).toBe(0);
+        evidence.record({
+            id: "blueprint-inspect", artifactKind: "blueprint", operation: "inspect", registryOperation: "recognized_by", sourcePath: blueprintPath,
+            owner: "cli:inspect", result: "recognized", observations: [{surface: "cli", owner: "cli:inspect", result: "inspect Blueprint exit 0"}],
+        });
+        expect(await new InspectCommand().run([workbookPath])).toBe(0);
+        evidence.record({
+            id: "par-workbook-inspect", artifactKind: "parWorkbook", operation: "inspect", registryOperation: "recognized_by", sourcePath: workbookPath,
+            owner: "cli:inspect", result: "recognized", observations: [{surface: "cli", owner: "cli:inspect", result: "inspect PAR workbook exit 0"}],
+        });
         expect(await new ValidateCommand().run([bundlePath, "--deep", "--format", "json"])).toBe(0);
         evidence.record({
             id: "outcome-library-validate", artifactKind: "outcomeLibrary", operation: "validate", registryOperation: "validates_by", sourcePath: bundlePath,
             owner: "cli:validate --deep", result: "valid", observations: [{surface: "cli", owner: "cli:validate --deep", result: "exit 0"}],
         });
+        expect(await new OutcomeLibraryCommand(POKIE_VERSION).run(["validate", bundlePath, "--deep"])).toBe(0);
+        evidence.record({
+            id: "outcome-library-command-validate", artifactKind: "outcomeLibrary", operation: "validate:outcomelibrary", registryOperation: "validates_by", sourcePath: bundlePath,
+            owner: "cli:outcomelibrary-validate", result: "valid", observations: [{surface: "cli", owner: "cli:outcomelibrary-validate", result: "outcomelibrary validate --deep exit 0"}],
+        });
         expect(await new InspectCommand().run([bundlePath])).toBe(0);
         evidence.record({
             id: "outcome-library-inspect", artifactKind: "outcomeLibrary", operation: "inspect", registryOperation: "recognized_by", sourcePath: bundlePath,
             owner: "cli:inspect", result: "recognized", observations: [{surface: "cli", owner: "cli:inspect", result: "exit 0"}],
+        });
+        expect(await new ValidateCommand().run([stakePath, "--format", "json"])).toBe(0);
+        evidence.record({
+            id: "stake-adapter-validate", artifactKind: "stakeAdapter", operation: "validate", registryOperation: "validates_by", sourcePath: stakePath,
+            owner: "cli:validate", result: "valid", observations: [{surface: "cli", owner: "cli:validate", result: "validate Stake adapter exit 0"}],
+        });
+        expect(await new InspectCommand().run([stakePath])).toBe(0);
+        evidence.record({
+            id: "stake-adapter-inspect", artifactKind: "stakeAdapter", operation: "inspect", registryOperation: "recognized_by", sourcePath: stakePath,
+            owner: "cli:inspect", result: "recognized", observations: [{surface: "cli", owner: "cli:inspect", result: "inspect Stake adapter exit 0"}],
         });
         await new ReportCommand().run([bundlePath, "--format", "markdown", "--out", reportPath]);
         await new ReportCommand().run([packageSimulationPath, "--format", "json", "--out", simulationJsonReportPath]);
