@@ -19,8 +19,25 @@ registration/documentation contract; the focused lifecycle, resolver, materializ
 and Studio parity suites listed in `CURRENT-RUN.md` own the corresponding workflow assertions.
 
 This evidence corrects the packaged-workflow finding against candidate
-`b6a2c8aa269617b7038fe10a6dbf4585a6a4401e`; the committed replacement remains subject to the exact
-whole-file closure declared in `CURRENT-RUN.md`.
+`b6a2c8aa269617b7038fe10a6dbf4585a6a4401e`.
+
+## Exact closure record
+
+On 2026-09-01, the repository at candidate
+`7af5424052968fcaf57cca20d6196ff35c56068d` ran the single whole-file command declared in
+`CURRENT-RUN.md` (all 20 paths, via `npm run test:targeted -- ...`).  Jest exited `0` with:
+
+```
+Test Suites: 20 passed, 20 total
+Tests:       1570 passed, 1570 total
+Snapshots:   0 total
+Time:        539.664 s
+```
+
+That invocation includes `tests/packaging/npmPackSmoke.test.ts`, which passed in 214.405 s.  Its
+fresh tarball installation executes the explicit 21-command and nine-nested-verb installed-binary
+workflow table, stops listener-backed children in `finally`, and removes the temporary workflow root
+in its `finally` cleanup.
 
 ## Complete command tree and workflows
 
