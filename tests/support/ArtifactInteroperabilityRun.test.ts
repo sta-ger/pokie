@@ -103,7 +103,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
             .toMatchObject({disposition: "external-boundary", boundary: {code: "external-producer", recovery: expect.any(String)}});
     });
 
-    it("retains a produced companion observation instead of misclassifying its POKIE owner as external", () => {
+    it("retains a produced companion in owner traceability while reviewing its canonical capability", () => {
         const runner = new ArtifactInteroperabilityRun(rootPath);
         const sourcePath = path.join(rootPath, "blueprint.json");
         fs.writeFileSync(sourcePath, "{\"blueprint\":\"canonical\"}\n");
@@ -126,21 +126,29 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
             readonly capability_matrix: readonly {
                 readonly public_owner: string;
                 readonly disposition: string;
-                readonly "artifact_observation"?: {readonly "record_id": string; readonly "operation_owner": string; readonly "source_path": string};
+                readonly "canonical_proof"?: {readonly "record_id": string; readonly "operation_owner": string; readonly "source_path": string};
             }[];
+            readonly owner_inventory_traceability: readonly {readonly public_owner: string; readonly capability_identity: string}[];
         };
-        expect(result.capability_matrix.find((entry) => entry.public_owner === "studio:blueprint-save"))
+        expect(result.owner_inventory_traceability).toContainEqual({
+            "artifact_kind": "blueprint",
+            "registry_operation": "created_by",
+            "public_owner": "studio:blueprint-save",
+            "capability_identity": "[\"blueprint\",\"created_by\",\"studio:blueprint-save\"]",
+        });
+        expect(result.capability_matrix.find((entry) => entry.public_owner === "cli:create"))
             .toMatchObject({
-                disposition: "artifact-observation",
-                "artifact_observation": {
+                disposition: "canonical-proof",
+                "canonical_proof": {
                     "record_id": "cli-created-blueprint",
                     "operation_owner": "cli:create",
                     "source_path": expect.stringMatching(/^run-artifacts\//),
                 },
             });
+        expect(result.capability_matrix.find((entry) => entry.public_owner === "studio:blueprint-save")).toBeUndefined();
     });
 
-    it("maps named thin wrappers to canonical parity proof instead of a second completion", () => {
+    it("keeps named thin wrappers as traceability while the canonical proof completes the capability", () => {
         const canonical = recordOperation("canonical", {
             id: "canonical-create", artifactKind: "blueprint", operation: "create", registryOperation: "created_by", owner: "cli:create", surface: "cli",
         });
@@ -153,13 +161,21 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
             readonly capability_matrix: readonly {
                 readonly public_owner: string;
                 readonly disposition: string;
-                readonly "adapter_proof"?: {readonly "record_id": string; readonly "canonical_public_owner": string; readonly "canonical_observable_result": string};
+                readonly "canonical_proof"?: {readonly "record_id": string; readonly "operation_owner": string; readonly "observable_result": string};
             }[];
+            readonly owner_inventory_traceability: readonly {readonly public_owner: string; readonly capability_identity: string}[];
         };
-        expect(result.capability_matrix.find((entry) => entry.public_owner === "cli:create --out")).toMatchObject({
-            disposition: "adapter-proof",
-            "adapter_proof": {"record_id": "canonical-create", "canonical_public_owner": "cli:create", "canonical_observable_result": expect.any(String)},
+        expect(result.owner_inventory_traceability).toContainEqual({
+            "artifact_kind": "blueprint",
+            "registry_operation": "created_by",
+            "public_owner": "cli:create --out",
+            "capability_identity": "[\"blueprint\",\"created_by\",\"cli:create --out\"]",
         });
+        expect(result.capability_matrix.find((entry) => entry.public_owner === "cli:create")).toMatchObject({
+            disposition: "canonical-proof",
+            "canonical_proof": {"record_id": "canonical-create", "operation_owner": "cli:create", "observable_result": expect.any(String)},
+        });
+        expect(result.capability_matrix.find((entry) => entry.public_owner === "cli:create --out")).toBeUndefined();
     });
 
     it("rejects an extra PC-05 tuple before writing merged evidence", () => {
