@@ -194,15 +194,7 @@ type Pc14CapabilityMatrixEntry = {
     readonly artifact_kind: string;
     readonly registry_operation: Pc05PublicOwnerOperation["registryOperation"];
     readonly public_owner: string;
-    /**
-     * `artifact-observation` is deliberately distinct from an adapter proof.
-     * It records a real producer/consumer journey for a durable companion
-     * whose PC-05 owner describes an implementation detail rather than a
-     * separately invokable user command (for example a session repository
-     * record or a generated artwork file).  It must still point at a runner
-     * record over the actual artifact; it is not a missing-owner fallback.
-     */
-    readonly disposition: "canonical-proof" | "adapter-proof" | "artifact-observation" | "external-boundary";
+    readonly disposition: "canonical-proof" | "adapter-proof" | "external-boundary";
     readonly canonical_proof?: {
         readonly record_id: string;
         readonly operation_owner: string;
@@ -218,14 +210,6 @@ type Pc14CapabilityMatrixEntry = {
         /** The adapter is parity evidence only; this is the completed
          * user-visible operation it delegates to. */
         readonly canonical_observable_result: string;
-    };
-    readonly artifact_observation?: {
-        readonly record_id: string;
-        readonly operation_owner: string;
-        readonly source_path: string;
-        readonly produced_path: string | null;
-        readonly observable_result: string;
-        readonly reason: string;
     };
     readonly boundary?: {
         readonly code: "external-producer" | "external-consumer";
@@ -718,8 +702,9 @@ export class ArtifactInteroperabilityRun {
  * a synthetic matrix row. The PC-05 inventory is retained only as
  * traceability from an internal owner row to a product capability proof. A
  * missing row is not silently promoted to completion: it must resolve to a
- * named thin-adapter parity proof, a real companion-artifact observation, or
- * an explicit external boundary.
+ * named thin-adapter parity proof or an explicit external boundary.  A
+ * record for the same artifact is not evidence for a different user's
+ * journey: it must never be used as a synthetic owner fallback.
  */
 export function mergeArtifactInteroperabilityRuns(
     inputPaths: readonly string[],
@@ -755,7 +740,7 @@ export function mergeArtifactInteroperabilityRuns(
             "public_owner": entry.public_owner,
             "artifact_kind": entry.artifact_kind,
             "registry_operation": entry.registry_operation,
-            "record_id": entry.canonical_proof?.record_id ?? entry.adapter_proof?.record_id ?? entry.artifact_observation?.record_id ?? null,
+            "record_id": entry.canonical_proof?.record_id ?? entry.adapter_proof?.record_id ?? null,
             ...(entry.boundary === undefined ? {} : {boundary: entry.boundary}),
         })),
         "operation_rows": runs.flatMap((run) => run.parsed.rows)
@@ -816,7 +801,7 @@ export function mergeArtifactInteroperabilityRuns(
         "regression_links": runs.flatMap((run) => [...run.parsed.rows, ...run.parsed.scenario_results])
             .filter((record) => hasSystemicClass(record, systemicClass))
             .map(recordId)
-            .concat(capabilityMatrix.flatMap((entry) => [entry.canonical_proof?.record_id, entry.adapter_proof?.record_id, entry.artifact_observation?.record_id]).filter((id): id is string => id !== undefined))
+            .concat(capabilityMatrix.flatMap((entry) => [entry.canonical_proof?.record_id, entry.adapter_proof?.record_id]).filter((id): id is string => id !== undefined))
             .filter((id, index, ids) => ids.indexOf(id) === index).sort(),
     });
     // PC-05 is a traceability inventory, not an execution target. Direct
@@ -909,30 +894,6 @@ export function mergeArtifactInteroperabilityRuns(
             "observable_result": observation.result,
         };
     };
-    const artifactObservationFor = (required: Pc05PublicOwnerOperation): Pc14CapabilityMatrixEntry["artifact_observation"] | undefined => {
-        // Durable companions such as generated artwork, checkpoints and
-        // registry records have several internal owners in PC-05.  Their
-        // public behaviour is the produced/imported artifact journey, not a
-        // second user command for each helper.  Bind that capability to the
-        // actual runner record rather than emitting an unreached placeholder.
-        const record = operationRows.find((candidate) => recordArtifactKind(candidate) === required.artifactKind);
-        if (record === undefined) return undefined;
-        const sourcePath = (record as {readonly source_path?: unknown}).source_path;
-        const producedPath = (record as {readonly produced_path?: unknown}).produced_path;
-        const owner = recordOwner(record);
-        if (owner === undefined || !isRedactedArtifactPath(sourcePath) ||
-            (producedPath !== null && producedPath !== undefined && !isRedactedArtifactPath(producedPath))) return undefined;
-        const observation = recordObservations(record).find((candidate) => candidate.result.length > 0);
-        if (observation === undefined) return undefined;
-        return {
-            "record_id": recordId(record),
-            "operation_owner": owner,
-            "source_path": sourcePath,
-            "produced_path": producedPath ?? null,
-            "observable_result": observation.result,
-            reason: `${required.owner} participates in the ${required.artifactKind} ${required.registryOperation} capability exercised by ${owner}.`,
-        };
-    };
     const capabilityMatrix: readonly Pc14CapabilityMatrixEntry[] = requiredOwnerOperations.map((required) => {
         const identity = capabilityKey(required.artifactKind, required.registryOperation, required.owner);
         const adapter = thinCapabilityAdapters.get(identity);
@@ -958,30 +919,10 @@ export function mergeArtifactInteroperabilityRuns(
                     },
                 };
             }
-            const observation = artifactObservationFor(required);
-            if (observation !== undefined) return {
-                "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
-                "artifact_kind": required.artifactKind,
-                "registry_operation": required.registryOperation,
-                "public_owner": required.owner,
-                disposition: "artifact-observation",
-                "artifact_observation": observation,
-            };
             return externalCapabilityBoundary(required);
         }
         const canonicalProof = directProofFor(required);
-        if (canonicalProof === undefined) {
-            const observation = artifactObservationFor(required);
-            if (observation !== undefined) return {
-                "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
-                "artifact_kind": required.artifactKind,
-                "registry_operation": required.registryOperation,
-                "public_owner": required.owner,
-                disposition: "artifact-observation",
-                "artifact_observation": observation,
-            };
-            return externalCapabilityBoundary(required);
-        }
+        if (canonicalProof === undefined) return externalCapabilityBoundary(required);
         return {
             "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
             "artifact_kind": required.artifactKind,
@@ -998,7 +939,6 @@ export function mergeArtifactInteroperabilityRuns(
         const evidenceRecordIds = resolvedCapabilities.flatMap((entry) => [
             entry.canonical_proof?.record_id,
             entry.adapter_proof?.record_id,
-            entry.artifact_observation?.record_id,
         ]).filter((id): id is string => id !== undefined);
         let disposition: "executed" | "not-executed" | "excluded-internal-cache-state" = "executed";
         if (internalOnly) disposition = "excluded-internal-cache-state";

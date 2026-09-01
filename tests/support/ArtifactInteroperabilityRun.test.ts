@@ -103,6 +103,32 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
             .toMatchObject({disposition: "external-boundary", boundary: {code: "external-producer", recovery: expect.any(String)}});
     });
 
+    it("does not turn a sibling artifact journey into proof for an unrun public owner", () => {
+        const runner = new ArtifactInteroperabilityRun(rootPath);
+        const sourcePath = path.join(rootPath, "blueprint.json");
+        fs.writeFileSync(sourcePath, "{\"blueprint\":\"canonical\"}\n");
+        runner.record({
+            id: "cli-created-blueprint",
+            artifactKind: "blueprint",
+            operation: "create",
+            registryOperation: "created_by",
+            sourcePath,
+            owner: "cli:create",
+            result: "CLI created the blueprint",
+            observations: [{surface: "cli", owner: "cli:create", result: "CLI created the blueprint"}],
+        });
+        const runnerPath = path.join(rootPath, "cli-created-blueprint.json");
+        runner.write(runnerPath);
+
+        const outputPath = path.join(rootPath, "merged.json");
+        mergeArtifactInteroperabilityRuns([runnerPath], outputPath);
+        const result = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
+            readonly capability_matrix: readonly {readonly public_owner: string; readonly disposition: string; readonly boundary?: {readonly code: string}}[];
+        };
+        expect(result.capability_matrix.find((entry) => entry.public_owner === "studio:blueprint-save"))
+            .toMatchObject({disposition: "external-boundary", boundary: {code: "external-producer"}});
+    });
+
     it("maps named thin wrappers to canonical parity proof instead of a second completion", () => {
         const canonical = recordOperation("canonical", {
             id: "canonical-create", artifactKind: "blueprint", operation: "create", registryOperation: "created_by", owner: "cli:create", surface: "cli",
