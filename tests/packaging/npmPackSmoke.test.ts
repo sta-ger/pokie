@@ -318,6 +318,32 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stderr).toBe("");
     });
 
+    it("runs every public command and nested-verb help page from the freshly installed binary without exposing legacy namespaces", () => {
+        const publicCommands = [
+            "build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "replay", "report", "sample", "serve", "sim", "validate",
+        ];
+        const nestedVerbs = [
+            ["certification", "build"], ["certification", "verify"], ["fairness", "commit"], ["fairness", "reveal"], ["fairness", "seed-commit"], ["fairness", "verify"], ["par", "export"], ["par", "import"], ["reel", "generate"],
+        ];
+
+        for (const command of publicCommands) {
+            const result = spawnSync(pokieBinPath, [command, "--help"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+            expect(result.status).toBe(0);
+            expect(result.stdout).toContain(`Usage: ${command}`);
+            expect(result.stdout).not.toMatch(/\b(?:__studio|outcomesource)\b/);
+        }
+        for (const [parent, child] of nestedVerbs) {
+            const result = spawnSync(pokieBinPath, [parent, child, "--help"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+            expect(result.status).toBe(0);
+            expect(result.stdout).toContain(`Usage: ${parent} ${child}`);
+        }
+
+        const implicitStudio = spawnSync(pokieBinPath, ["--no-open", "--help"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        expect(implicitStudio.status).toBe(0);
+        expect(implicitStudio.stdout).toContain("Usage: pokie [options] [projectRoot] [excess...]");
+        expect(implicitStudio.stdout).not.toContain("Usage: studio");
+    });
+
     it("`pokie <unrecognized command>` explains how to recover and exits 1", () => {
         const result = spawnSync(pokieBinPath, ["totally-bogus-pokie-command-xyz-12345"], {
             cwd: installDir,

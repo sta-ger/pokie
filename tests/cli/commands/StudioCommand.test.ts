@@ -49,6 +49,13 @@ describe("StudioCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
+    it("renders the implicit entry as `pokie`, never as a public studio verb", () => {
+        const command = new StudioCommand("1.0.0", "/fake/pokie/root");
+
+        expect(command.getCommanderCommand().helpInformation()).toContain("Usage: pokie [options] [projectRoot] [excess...]");
+        expect(command.getCommanderCommand().helpInformation()).not.toContain("Usage: studio");
+    });
+
     it("throws a descriptive error for an unknown option", async () => {
         const command = new StudioCommand("1.0.0", "/fake/pokie/root", {createServer: () => createStubServer({host: "127.0.0.1", port: 3200})});
 
