@@ -11,13 +11,22 @@ an existing project, a remembered Studio project, or an in-repository package pa
 
 `tests/packaging/npmPackSmoke.test.ts` owns that installed-binary sweep.  Its fixture cleans both the
 temporary npm-pack directory and installed working directory in `afterAll`, and each listener-backed
-Studio process is stopped in `finally`.  `tests/cli/PublicCliSweep.integration.test.ts` is the matching
+Studio process is stopped in `finally`.  Its data-driven public-workflow table executes a real command
+for each of the 21 public commands and nine nested verbs: successful rows record their input and
+produced/consumed artifact; parent/missing-input and non-interactive-edit rows record the actual exit
+status and actionable recovery.  `tests/cli/PublicCliSweep.integration.test.ts` is the matching
 registration/documentation contract; the focused lifecycle, resolver, materialization, cancellation,
 and Studio parity suites listed in `CURRENT-RUN.md` own the corresponding workflow assertions.
 
-## Complete command tree
+This evidence corrects the packaged-workflow finding against candidate
+`b6a2c8aa269617b7038fe10a6dbf4585a6a4401e`; the committed replacement remains subject to the exact
+whole-file closure declared in `CURRENT-RUN.md`.
 
-The installed binary verifies exit `0` and a command-specific `Usage:` line for each of these commands:
+## Complete command tree and workflows
+
+The installed binary verifies exit `0` and a command-specific `Usage:` line for each of these commands,
+then executes the command-specific workflow table below from its clean installation.  Help is therefore
+inventory coverage only, never the evidence for a command workflow.
 
 | Surface | Inputs |
 | --- | --- |
@@ -31,11 +40,13 @@ the implicit entry's executable help is `Usage: pokie ...`, never `Usage: studio
 
 ## Workflow, safety, and recovery evidence
 
-The installed sweep builds a real package from a Blueprint, validates and simulates the initialized
-package, consumes the emitted simulation report, then builds/validates/inspects/samples an Outcome
-Library Bundle.  It also verifies portable persisted package metadata by reinstalling and moving an
-initialized package.  The focused whole-file suite covers the remaining public artifact handoffs,
-default and explicit destinations, dry-runs, occupied-destination preservation, source/destination
+The installed sweep creates and validates a Blueprint; builds a package and Outcome Library; generates,
+samples, simulates, reports, diffs and replays its artifacts; imports and exports PAR workbooks; generates
+reels; completes the full fairness and certification verb workflows; exercises init, inspect, client,
+serve, dev, and the non-interactive edit recovery; and verifies cleanup by stopping every started server
+and removing the workflow directory.  It also verifies portable persisted package metadata by reinstalling
+and moving an initialized package.  The focused whole-file suite covers the remaining public artifact
+handoffs, default and explicit destinations, dry-runs, occupied-destination preservation, source/destination
 conflicts, malformed inputs, cancellation/checkpoint resume, stale-checkpoint rejection, SIGINT/server
 cleanup, and CLI–Studio shared-owner parity.  See `CURRENT-RUN.md` for the exact test-file closure.
 

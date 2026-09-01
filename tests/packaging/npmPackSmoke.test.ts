@@ -36,6 +36,14 @@ function buildPackageForSmoke(): void {
     run(node, [shx, "chmod", "+x", "dist/cli/pokie.js"]);
 }
 
+// The installed-binary sweep must keep a workflow row for every public parser surface.  These ids
+// deliberately mirror the public command tree rather than the private implementation commands.
+const PACKAGED_PUBLIC_WORKFLOW_SCENARIOS = [
+    "build", "certification", "certification build", "certification verify", "client", "create", "dev", "diff", "edit", "export",
+    "fairness", "fairness seed-commit", "fairness commit", "fairness reveal", "fairness verify", "generate", "import", "init",
+    "inspect", "par", "par export", "par import", "reel", "reel generate", "replay", "report", "sample", "serve", "sim", "validate",
+] as const;
+
 // One of two places in the suite where a CLI command is legitimately spawned as a real subprocess (see
 // the project's own "never spawn a CLI command as a subprocess" convention for Studio's in-process
 // features) — this test isn't exercising Studio internals, it's exercising *packaging*: whether the
@@ -611,6 +619,171 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             timeout: 60000,
         });
         expect(sample.status).toBe(0);
+    });
+
+    it("runs a data-driven, artifact-producing workflow for every public command and nested verb from the installed binary", async () => {
+        // This is intentionally not another recursive-help assertion.  Each row below is a command the
+        // tarball-installed executable actually runs with a concrete input, expected exit status, and a
+        // produced/consumed artifact (or, for the non-interactive edit boundary, its actionable recovery).
+        // Keep the list explicit: adding a public command or verb must add a meaningful clean-room workflow.
+        const workflowRoot = fs.mkdtempSync(path.join(installDir!, "all-public-workflows-"));
+        const blueprintPath = path.join(workflowRoot, "workflow.blueprint.json");
+        const packageRoot = path.join(workflowRoot, "workflow-package");
+        const libraryPath = path.join(workflowRoot, "workflow-library.json");
+        const bundlePath = path.join(workflowRoot, "workflow-bundle");
+        const simPath = path.join(workflowRoot, "workflow-sim.json");
+        const comparisonSimPath = path.join(workflowRoot, "workflow-sim-comparison.json");
+        const workflowIds: string[] = [];
+        const exercisedPublicWorkflows = new Set<string>();
+
+        const run = (id: string, args: string[], expectedStatus = 0): ReturnType<typeof spawnSync> => {
+            const result = spawnSync(pokieBinPath, args, {cwd: workflowRoot, encoding: "utf-8", timeout: 120000});
+            workflowIds.push(id);
+            const nestedVerb = args.slice(0, 2).join(" ");
+            exercisedPublicWorkflows.add(PACKAGED_PUBLIC_WORKFLOW_SCENARIOS.includes(nestedVerb as typeof PACKAGED_PUBLIC_WORKFLOW_SCENARIOS[number]) ? nestedVerb : args[0]);
+            expect(result.error).toBeUndefined();
+            expect(result.status).toBe(expectedStatus);
+            return result;
+        };
+        const expectFile = (filePath: string): void => expect(fs.existsSync(filePath)).toBe(true);
+        const expectDirectory = (directoryPath: string): void => expect(fs.statSync(directoryPath).isDirectory()).toBe(true);
+        const runListeningWorkflow = async (id: string, args: string[], assertion: (baseUrl: string) => Promise<void>): Promise<void> => {
+            const child = spawn(pokieBinPath, args, {cwd: workflowRoot}) as ChildProcessWithoutNullStreams;
+            workflowIds.push(id);
+            exercisedPublicWorkflows.add(args[0]);
+            try {
+                const port = await waitForListeningPort(child);
+                await assertion(`http://127.0.0.1:${port}`);
+                expect(child.exitCode).toBeNull();
+            } finally {
+                await stopChild(child);
+            }
+        };
+
+        try {
+            // Use a deliberately tiny source so every generated/consumed artifact is fast and inspectable.
+            fs.writeFileSync(
+                blueprintPath,
+                JSON.stringify({
+                    manifest: {id: "packed-workflow-slot", name: "Packed Workflow Slot", version: "1.0.0"},
+                    reels: 2,
+                    rows: 1,
+                    symbols: ["A", "B"],
+                    paytable: {A: {2: 5}},
+                    reelStrips: [["A", "A", "B"], ["A", "B"]],
+                }),
+            );
+
+            const createdBlueprintPath = path.join(workflowRoot, "created.blueprint.json");
+            run("create", ["create", "Packed Workflow", "--random", "--seed", "71", "--out", createdBlueprintPath]);
+            expectFile(createdBlueprintPath);
+            run("validate", ["validate", createdBlueprintPath, "--format", "json"]);
+
+            run("build", ["build", blueprintPath, "--target", "tsPackage", "--out", packageRoot]);
+            expectDirectory(packageRoot);
+            run("generate", ["generate", packageRoot, "--stake", "1", "--out", libraryPath, "--format", "json"]);
+            expectFile(libraryPath);
+            run("build-outcome-library", ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundlePath]);
+            expectDirectory(bundlePath);
+            run("inspect", ["inspect", bundlePath]);
+            run("sample", ["sample", bundlePath, "--mode", "base", "--seed", "workflow-seed"]);
+
+            run("sim", ["sim", packageRoot, "--rounds", "40", "--seed", "workflow-seed", "--out", simPath, "--format", "json"]);
+            expectFile(simPath);
+            run("sim-comparison", ["sim", packageRoot, "--rounds", "40", "--seed", "comparison-seed", "--out", comparisonSimPath, "--format", "json"]);
+            expectFile(comparisonSimPath);
+            const reportPath = path.join(workflowRoot, "workflow-report.md");
+            run("report", ["report", simPath, "--format", "markdown", "--out", reportPath]);
+            expectFile(reportPath);
+            const diffPath = path.join(workflowRoot, "workflow-diff.json");
+            run("diff", ["diff", simPath, comparisonSimPath, "--format", "json", "--out", diffPath]);
+            expectFile(diffPath);
+            const replayPath = path.join(workflowRoot, "workflow-replay.json");
+            run("replay", ["replay", packageRoot, "--round", "1", "--seed", "workflow-seed", "--out", replayPath]);
+            expectFile(replayPath);
+
+            const workbookPath = path.join(workflowRoot, "workflow.par.xlsx");
+            run("par export", ["par", "export", blueprintPath, "--out", workbookPath]);
+            expectFile(workbookPath);
+            const parImportedPath = path.join(workflowRoot, "par-imported.blueprint.json");
+            run("par import", ["par", "import", workbookPath, "--out", parImportedPath, "--format", "json"]);
+            expectFile(parImportedPath);
+            const exportedWorkbookPath = path.join(workflowRoot, "exported.par.xlsx");
+            run("export", ["export", blueprintPath, "--to", "workbook", "--out", exportedWorkbookPath]);
+            expectFile(exportedWorkbookPath);
+            const importedBlueprintPath = path.join(workflowRoot, "imported.blueprint.json");
+            run("import", ["import", exportedWorkbookPath, "--out", importedBlueprintPath, "--format", "json"]);
+            expectFile(importedBlueprintPath);
+
+            const reelBlueprintPath = path.join(workflowRoot, "generated-reels.blueprint.json");
+            fs.writeFileSync(
+                reelBlueprintPath,
+                JSON.stringify({
+                    manifest: {id: "packed-generated-reels", name: "Packed Generated Reels", version: "1.0.0"},
+                    reels: 2,
+                    rows: 1,
+                    symbols: ["A", "B"],
+                    paytable: {A: {2: 5}},
+                    reelStripGeneration: [
+                        {type: "generated", length: 4, symbolCounts: {A: 2, B: 2}, seed: 1},
+                        {type: "generated", length: 4, symbolCounts: {A: 2, B: 2}, seed: 2},
+                    ],
+                }),
+            );
+            const reelOutputPath = path.join(workflowRoot, "generated-reels-output.blueprint.json");
+            run("reel generate", ["reel", "generate", reelBlueprintPath, "--apply", "--out", reelOutputPath, "--format", "json"]);
+            expectFile(reelOutputPath);
+
+            const seedPath = path.join(workflowRoot, "server-seed.txt");
+            const seedCommitmentPath = path.join(workflowRoot, "server-seed-commitment.json");
+            const commitmentPath = path.join(workflowRoot, "round-commitment.json");
+            const proofPath = path.join(workflowRoot, "round-proof.json");
+            fs.writeFileSync(seedPath, "packed-workflow-server-seed\n");
+            run("fairness seed-commit", ["fairness", "seed-commit", seedPath, "--out", seedCommitmentPath]);
+            expectFile(seedCommitmentPath);
+            run("fairness commit", ["fairness", "commit", seedCommitmentPath, "--client-seed", "workflow-client", "--nonce", "0", "--source", bundlePath, "--mode", "base", "--out", commitmentPath]);
+            expectFile(commitmentPath);
+            run("fairness reveal", ["fairness", "reveal", commitmentPath, "--server-seed", seedPath, "--source", bundlePath, "--out", proofPath]);
+            expectFile(proofPath);
+            run("fairness verify", ["fairness", "verify", proofPath, "--commitment", commitmentPath, "--source", bundlePath]);
+
+            const certificationConfigPath = path.join(workflowRoot, "certification-config.json");
+            const certificationPath = path.join(workflowRoot, "certification");
+            fs.writeFileSync(certificationConfigPath, JSON.stringify({modes: [{modeName: "base", seed: "cert-seed", sampleCount: 4}]}));
+            run("certification build", ["certification", "build", bundlePath, certificationConfigPath, "--out", certificationPath]);
+            expectDirectory(certificationPath);
+            run("certification verify", ["certification", "verify", certificationPath, "--source", bundlePath]);
+
+            const initializedRoot = path.join(workflowRoot, "initialized");
+            run("init", ["init", initializedRoot, "--no-install", "--no-prepare"]);
+            expectFile(path.join(initializedRoot, "package.json"));
+            const edit = run("edit-noninteractive-recovery", ["edit", blueprintPath, "--out", path.join(workflowRoot, "edited.blueprint.json")], 1);
+            expect(`${edit.stdout}\n${edit.stderr}`).toMatch(/terminal|interactive|JSON/i);
+            for (const parent of ["certification", "fairness", "par", "reel"]) {
+                const missingVerb = run(`${parent}-missing-verb-recovery`, [parent], 1);
+                expect(`${missingVerb.stdout}\n${missingVerb.stderr}`).toContain("Usage:");
+            }
+
+            await runListeningWorkflow("client", ["client", packageRoot, "--port", "0", "--no-open"], async (baseUrl) => {
+                expect((await fetch(`${baseUrl}/`)).status).toBe(200);
+            });
+            await runListeningWorkflow("serve", ["serve", packageRoot, "--port", "0"], async (baseUrl) => {
+                expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
+            });
+            await runListeningWorkflow("dev", ["dev", packageRoot, "--port", "0", "--client-port", "0", "--no-open"], async (baseUrl) => {
+                expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
+            });
+
+            expect(workflowIds).toEqual([
+                "create", "validate", "build", "generate", "build-outcome-library", "inspect", "sample", "sim", "sim-comparison", "report", "diff", "replay",
+                "par export", "par import", "export", "import", "reel generate", "fairness seed-commit", "fairness commit", "fairness reveal", "fairness verify",
+                "certification build", "certification verify", "init", "edit-noninteractive-recovery", "certification-missing-verb-recovery", "fairness-missing-verb-recovery",
+                "par-missing-verb-recovery", "reel-missing-verb-recovery", "client", "serve", "dev",
+            ]);
+            expect([...exercisedPublicWorkflows].sort()).toEqual([...PACKAGED_PUBLIC_WORKFLOW_SCENARIOS].sort());
+        } finally {
+            fs.rmSync(workflowRoot, {recursive: true, force: true});
+        }
     });
 
     // A "pokie build" package (GamePackageGenerator's canonical output) carries none of the
