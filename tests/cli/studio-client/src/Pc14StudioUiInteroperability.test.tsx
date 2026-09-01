@@ -278,21 +278,35 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         expect(fs.existsSync(path.join(stakePath, "pokie-manifest.json"))).toBe(true);
 
         evidence.recordScenario({
-            id: "studio-ui-outcome-source-certification-output-error-recovery",
+            id: "studio-ui-outcome-source-output",
             sourcePath: outcomeLibraryPath,
-            producedPath: path.join(outcomeLibraryPath, "certification"),
-            result: "the rendered Outcome Source drew a recorded real outcome, while Certification rejected a missing source, recovered with the opened Outcome Library, and published inspectable certification evidence",
+            result: "the rendered Outcome Source drew and displayed a recorded outcome from the opened generated library",
             surface: "studio-ui",
-            owner: "OutcomeSourceOverview / CertificationTab",
+            owner: "OutcomeSourceOverview",
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
             assertions: [
                 "Outcome Source drew a deterministic real outcome from the opened generated library",
-                "Certification rendered the missing-source diagnostic before any evidence publication",
-                "correcting the source to the opened native library enabled validation, evidence publication, inspection, and export",
+                "the rendered draw result is the concrete outcome artifact returned by the native library",
             ],
             observations: [
                 {route: "UI /project/:projectRoot/overview (Outcome Source)", result: "drew and rendered a real round artifact from the generated Outcome Library"},
                 {route: "POST /api/project/outcome-source/sample", result: "returned the recorded seeded Outcome Library draw"},
+            ],
+        });
+
+        evidence.recordScenario({
+            id: "studio-ui-certification-output-error-recovery",
+            sourcePath: outcomeLibraryPath,
+            producedPath: path.join(outcomeLibraryPath, "certification"),
+            result: "the rendered Certification workflow rejected a missing source, recovered with the opened Outcome Library, and published inspectable certification evidence",
+            surface: "studio-ui",
+            owner: "CertificationTab",
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+            assertions: [
+                "Certification rendered the missing-source diagnostic before any evidence publication",
+                "correcting the source to the opened native library enabled validation, evidence publication, inspection, and export",
+            ],
+            observations: [
                 {route: "UI /project/:projectRoot/certification (Certification)", result: "completed source error, validation recovery, build, inspection, and export workflow"},
                 {route: "POST /api/project/certification/validate-source", result: "returned both the missing-path error and the recovered native-bundle validation"},
                 {route: "POST /api/project/certification/build", result: "published the real certification evidence bundle consumed by the rendered inspector"},
@@ -324,7 +338,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             sourcePath: outcomeLibraryPath,
             result: "the rendered Provably Fair workflow rejected a missing generated-artifact path, recovered with the real Outcome Library, and completed a generated proof verification",
             surface: "studio-ui",
-            owner: "ProjectDashboardPage / ProvablyFairTab",
+            owner: "ProvablyFairTab",
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
             assertions: [
                 "the UI returned the Studio endpoint's path-aware error for a missing Outcome Library",
@@ -345,7 +359,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             producedPath: deployedPath,
             result: "the rendered Build/Export workflow checked and published the package's CLI-generated Outcome Library through the configured remote delivery adapter",
             surface: "studio-ui",
-            owner: "ExportDeployTab / useDeploymentManager",
+            owner: "useDeploymentManager",
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
             assertions: [
                 "Build/Export retained the opened package's CLI-generated Outcome Library as the adapter prerequisite",
@@ -360,28 +374,66 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         });
 
         evidence.recordScenario({
-            id: "studio-ui-blueprint-runtime-workflows",
-            sourcePath: blueprintPath,
-            producedPath: packagePath,
-            result: "the rendered Studio dashboard opened the real CLI-produced package, emitted a real round artifact, and exported a completed simulation report",
+            id: "studio-ui-build-export-output",
+            sourcePath: outcomeLibraryPath,
+            producedPath: stakePath,
+            result: "the rendered Build/Export workflow recovered from an occupied destination and published its real Stake artifact",
             surface: "studio-ui",
-            owner: "ProjectDashboardPage / ExportDeployTab / PlayTab / SimulationTab / ReplayTab",
+            owner: "ExportDeployTab",
             systemicClasses: ["shared-conversion-diagnostic-parity", "durable-publication-ownership"],
             assertions: [
-                "the rendered Build/Export tab exposed the real package's server-owned artifact surface",
-                "the UI opened the CLI-produced package rather than a hand-authored browser fixture",
-                "Play rendered the generated package's unsupported free-games diagnostic without discarding the active session",
-                "the same rendered Play session recovered by spinning a completed real round after the unsupported scenario",
-                "Play used the real package runtime and rendered a completed round artifact",
-                "Simulation completed against the same package and exposed its real report download output",
-                "Provably Fair rejected a missing Outcome Library path, then generated and verified a proof against the real generated library",
+                "Build/Export rendered the server preflight conflict before enabling a durable publication",
+                "correcting the output path enabled the same rendered workflow to publish the Stake artifact",
             ],
             observations: [
-                {route: "UI /project/:projectRoot/exportDeploy (Build/Export)", result: "selected the rendered build/export workflow for the real produced package"},
+                {route: "UI /project/:projectRoot/exportDeploy (Build/Export)", result: "recovered from the occupied destination and published the real Stake export"},
+            ],
+        });
+
+        evidence.recordScenario({
+            id: "studio-ui-play-output-error-recovery",
+            sourcePath: packagePath,
+            result: "the rendered Play workflow retained its unsupported free-games diagnostic and then completed a real package round",
+            surface: "studio-ui",
+            owner: "PlayTab",
+            systemicClasses: ["shared-conversion-diagnostic-parity", "durable-publication-ownership"],
+            assertions: [
+                "Play rendered the generated package's unsupported free-games diagnostic without discarding the active session",
+                "the same rendered Play session recovered by spinning a completed real round artifact",
+            ],
+            observations: [
                 {route: "UI /project/:projectRoot/play (Play)", result: "created a session, rendered an unsupported free-games diagnostic, then recovered by spinning a completed round artifact"},
+            ],
+        });
+
+        evidence.recordScenario({
+            id: "studio-ui-simulation-output",
+            sourcePath: packagePath,
+            result: "the rendered Simulation workflow completed against the generated package and exported its real report",
+            surface: "studio-ui",
+            owner: "SimulationTab",
+            systemicClasses: ["shared-conversion-diagnostic-parity", "durable-publication-ownership"],
+            assertions: [
+                "Simulation completed against the same package and exposed its real report download output",
+            ],
+            observations: [
                 {route: "UI /project/:projectRoot/simulation (Simulation)", result: "ran two rounds, rendered the completed report, and exposed its JSON download"},
+            ],
+        });
+
+        evidence.recordScenario({
+            id: "studio-ui-replay-output",
+            sourcePath: packagePath,
+            result: "the rendered Replay workflow loaded the persisted Play round and displayed its replay inspector",
+            surface: "studio-ui",
+            owner: "ReplayTab",
+            systemicClasses: ["shared-conversion-diagnostic-parity", "durable-publication-ownership"],
+            assertions: [
+                "Replay consumed the Play workflow's persisted real round rather than a browser fixture",
+                "the rendered inspector displayed the recovered package round",
+            ],
+            observations: [
                 {route: "UI /project/:projectRoot/replay (Replay)", result: "selected the persisted Play round and rendered its replay artifact inspector"},
-                {route: "UI /project/:projectRoot/provablyFair (Provably Fair)", result: "completed the generated-proof output, error, and recovery workflow against the real Outcome Library"},
             ],
         });
 
@@ -449,21 +501,35 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await screen.findByRole("button", {name: "Continue to Apply / Export"});
 
         evidence.recordScenario({
-            id: "studio-ui-blueprint-par-output-error-recovery",
+            id: "studio-ui-blueprint-output",
             sourcePath: savedBlueprintPath,
-            producedPath: exportedParPath,
-            result: "the rendered Design Game editor saved an edited Blueprint, preserved an occupied caller-owned PAR destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
+            producedPath: savedBlueprintPath,
+            result: "the rendered Design Game editor saved the edited Blueprint through Studio's home workflow",
             surface: "studio-ui",
-            owner: "BlueprintEditorPage / ParSheetImportExportPanel",
+            owner: "BlueprintEditorPage",
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
             assertions: [
                 "editing the rendered Blueprint changed the persisted game name before save",
-                "PAR export rejected an occupied caller-owned file without altering its bytes",
-                "correcting the destination published a real workbook which the rendered PAR importer diagnosed and previewed",
             ],
             observations: [
                 {route: "UI /home/design (Blueprint editor)", result: "edited and saved a real Blueprint through Studio's home API"},
                 {route: "POST /api/home/blueprints/save", result: "persisted the edited Blueprint at the selected path"},
+            ],
+        });
+
+        evidence.recordScenario({
+            id: "studio-ui-par-output-error-recovery",
+            sourcePath: savedBlueprintPath,
+            producedPath: exportedParPath,
+            result: "the rendered PAR panel preserved an occupied caller-owned destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
+            surface: "studio-ui",
+            owner: "ParSheetImportExportPanel",
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+            assertions: [
+                "PAR export rejected an occupied caller-owned file without altering its bytes",
+                "correcting the destination published a real workbook which the rendered PAR importer diagnosed and previewed",
+            ],
+            observations: [
                 {route: "UI /home/design (PAR Sheet Import / Export)", result: "rendered occupied-destination recovery, workbook publication, and import/preview"},
                 {route: "POST /api/home/blueprints/par-export", result: "returned the occupied-file error then wrote the recovered workbook"},
                 {route: "POST /api/home/blueprints/par-import", result: "read the UI-produced workbook into the canonical Blueprint model"},
@@ -482,8 +548,35 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             : path.join(evidenceDirectory, "studio-ui-real-artifact-result.json");
         evidence.write(emittedPath);
         const emittedText = fs.readFileSync(emittedPath, "utf8");
-        expect(emittedText).toContain('"id": "studio-ui-blueprint-runtime-workflows"');
-        expect(emittedText).toContain('"produced_path": "run-artifacts/tsPackage"');
+        const emittedResult = JSON.parse(emittedText) as {
+            readonly scenario_results: readonly {
+                readonly id: string;
+                readonly execution: {
+                    readonly surface: string;
+                    readonly owner: string;
+                    readonly observations: readonly {readonly route: string}[];
+                };
+            }[];
+        };
+        for (const [id, owner] of [
+            ["studio-ui-blueprint-output", "BlueprintEditorPage"],
+            ["studio-ui-par-output-error-recovery", "ParSheetImportExportPanel"],
+            ["studio-ui-build-export-output", "ExportDeployTab"],
+            ["studio-ui-build-export-deployment-output", "useDeploymentManager"],
+            ["studio-ui-outcome-source-output", "OutcomeSourceOverview"],
+            ["studio-ui-play-output-error-recovery", "PlayTab"],
+            ["studio-ui-simulation-output", "SimulationTab"],
+            ["studio-ui-replay-output", "ReplayTab"],
+            ["studio-ui-certification-output-error-recovery", "CertificationTab"],
+            ["studio-ui-provably-fair-output-error-recovery", "ProvablyFairTab"],
+            ["studio-ui-stake-output-error-recovery", "ExportDeployTab"],
+        ]) {
+            const scenario = emittedResult.scenario_results.find((candidate) => candidate.id === id);
+            expect(scenario).toMatchObject({execution: {surface: "studio-ui", owner}});
+            expect(scenario?.execution.observations.some((observation) => observation.route.startsWith("UI "))).toBe(true);
+        }
+        expect(emittedText).toContain('"produced_path": "run-artifacts/studio-ui-edited.par.xlsx"');
+        expect(emittedText).toContain('"produced_path": "run-artifacts/studio-ui-stake"');
         const persistedResultPath = process.env.PC14_INTEROPERABILITY_PERSISTED_RESULT;
         if (persistedResultPath !== undefined && evidenceDirectory !== undefined) {
             mergeArtifactInteroperabilityRuns([
