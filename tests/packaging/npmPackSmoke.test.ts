@@ -8,6 +8,34 @@ import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOve
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 
+function buildPackageForSmoke(): void {
+    const run = (command: string, args: string[]): void => {
+        execFileSync(command, args, {cwd: REPO_ROOT, stdio: "inherit"});
+    };
+    const node = process.execPath;
+    const tsc = path.join(REPO_ROOT, "node_modules", "typescript", "bin", "tsc");
+    const shx = path.join(REPO_ROOT, "node_modules", "shx", "lib", "cli.js");
+    const vite = path.join(REPO_ROOT, "node_modules", "vite", "bin", "vite.js");
+
+    // Keep this real packaging boundary self-contained. The package script is a composition of
+    // these same commands, but invoking the compiler tools directly lets this named regression
+    // build the candidate without turning the test into an invocation of the release build gate.
+    run(node, [path.join(REPO_ROOT, "generate-barrels.js")]);
+    fs.rmSync(path.join(REPO_ROOT, "dist"), {recursive: true, force: true});
+    run(node, [tsc, "--project", "tsconfig.prod.json"]);
+    run(node, [shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
+    run(node, [tsc, "--project", "tsconfig.prod.json", "--module", "CommonJS", "--outDir", "dist/cjs"]);
+    run(node, [path.join(REPO_ROOT, "write-cjs-package-json.js")]);
+    run(node, [shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
+    run(node, [tsc, "--project", "tsconfig.cli.json"]);
+    run(node, [tsc, "--project", "tsconfig.client.json"]);
+    run(node, [shx, "cp", "cli/client/index.html", "cli/client/style.css", "dist/cli/client/"]);
+    run(node, [tsc, "--project", "cli/studio-client/tsconfig.json", "--noEmit"]);
+    run(node, [vite, "build", "--config", "cli/studio-client/vite.config.ts"]);
+    run(node, [shx, "test", "-f", "dist/cli/studio-client/index.html"]);
+    run(node, [shx, "chmod", "+x", "dist/cli/pokie.js"]);
+}
+
 // One of two places in the suite where a CLI command is legitimately spawned as a real subprocess (see
 // the project's own "never spawn a CLI command as a subprocess" convention for Studio's in-process
 // features) — this test isn't exercising Studio internals, it's exercising *packaging*: whether the
@@ -68,7 +96,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // `npm pack --json` includes one record per shipped file; once the package exceeded 8,000
         // files that output crossed execFileSync's default 1 MiB buffer and failed with ENOBUFS.
         // Silent non-JSON mode emits only the tarball filename and remains bounded as the package grows.
-        execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+        buildPackageForSmoke();
         packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
         const filename = execFileSync(
             "npm",

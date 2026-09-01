@@ -287,11 +287,15 @@ test("checks the freshly built production CLI against the complete public docume
         // This is the smallest fresh CLI build boundary: the command module plus the ESM/CJS
         // package entry points that its `pokie` imports resolve through. Browser assets are not
         // loaded by recursive `--help` collection.
-        runBuildStep([path.join(root, "generate-barrels.js")]);
+        runBuildStep([path.join(buildRoot, "generate-barrels.js")]);
         runBuildStep([tsc, "--project", "tsconfig.prod.json"]);
         runBuildStep([shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
+        // Several CLI command modules use their sibling compiled shared modules via `dist/src`.
+        // The complete package build supplies that tree; mirror it from this isolated ESM build
+        // before exercising the executable without pulling browser-asset compilation into help.
+        await cp(path.join(buildRoot, "dist", "esm"), path.join(buildRoot, "dist", "src"), {recursive: true});
         runBuildStep([tsc, "--project", "tsconfig.prod.json", "--module", "CommonJS", "--outDir", "dist/cjs"]);
-        runBuildStep([path.join(root, "write-cjs-package-json.js")]);
+        runBuildStep([path.join(buildRoot, "write-cjs-package-json.js")]);
         runBuildStep([shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
         runBuildStep([tsc, "--project", "tsconfig.cli.json"]);
         const evidenceDirectory = path.join(directory, "evidence");

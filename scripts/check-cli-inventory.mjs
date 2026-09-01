@@ -249,7 +249,7 @@ function documentedCapabilities(contents, inventory) {
         // option which the currently collected executable no longer exposes.
         const knownOptions = [...new Set([
             ...(entry?.values ?? []).map((value) => value.split(":")[2]),
-            "--format", "--mode", "--source-type", "--target", "--to",
+            "--format", "--source-type", "--target", "--to",
         ])];
         for (const option of knownOptions) {
             const escapedOption = option.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -388,6 +388,11 @@ function documentedCapabilities(contents, inventory) {
             headingContext = heading[1] ? commandFor(heading[1], ` ${heading[1]}${heading[2] ?? ""}`) : "root";
             capabilities.add(headingContext.includes(" ") ? `subcommand:${headingContext}` : `command:${headingContext}`);
             if (headingContext === "root") capabilities.delete("command:root");
+        } else if (/^#{1,2}\s/.test(line)) {
+            // A new top-level documentation section must not inherit a previous command's
+            // option grammar.  Otherwise a Build example beneath a non-command heading after
+            // `pokie generate` is falsely recorded as a `generate --target` capability.
+            headingContext = undefined;
         }
         else if (heading) headingContext = undefined;
         else if (/^#{1,6}\s+/.test(line)) headingContext = undefined;

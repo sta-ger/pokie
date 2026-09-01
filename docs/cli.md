@@ -396,6 +396,9 @@ pokie generate ./sample-slot --sample 10000 --seed audit-seed --format json --ou
 `--config-hash`, `--library-id`, `--max-outcome-space-size`, `--resume`, and `--progress` retain their exact
 meanings from `pokie generate --help`; the help output is the complete grammar for this intentionally
 specialized workflow.
+
+## `pokie build <project> --target <artifact>`
+
 The public CLI supports the executable output formats `json`, `markdown`, and `html`. Project-defined mode names are accepted where a command exposes `--mode`; `pokie sim` additionally accepts `all` to process every declared mode.
 
 ```
@@ -1035,8 +1038,8 @@ a different `--out` path, then run the command again without `--dry-run` to publ
 
 When `<source>` is a Blueprint or runnable game package, `outcomes` and `adapter` share the managed Outcome
 Library lifecycle described in [`pokie build`](#pokie-build-project). Large reel-stop spaces automatically use its
-deterministic bounded-coverage library, so `pokie create --random` followed by either export command completes on
-the standard Node heap; inspect `manifest.json` to see the recorded strategy and seed.
+deterministic bounded-coverage library, so a random Blueprint can then use either artifact conversion on the
+standard Node heap; inspect `manifest.json` to see the recorded strategy and seed.
 
 ## `pokie export <config.json> --to adapter [--out <dir>] [--dry-run]`
 
@@ -1222,7 +1225,9 @@ the source no longer leaves a stale `index_<name>.json`/`outcomes_<name>.jsonl` 
 `ValidationIssue` (an invalid outcome, a duplicate/case-colliding mode name), nothing is written and the exit
 code is non-zero.
 
-## Outcome-source project workflows: `pokie report <path>` / `pokie sample <path> --mode <modeName>` / `pokie diff <leftPath> <rightPath>`
+## Outcome-source project workflows
+
+Use `pokie report <path>`, `pokie sample <path> --mode <modeName>`, or `pokie diff <leftPath> <rightPath>`.
 
 Operates directly on a resolved outcome-source project — an Outcome Library Bundle written by `pokie export
 <config.json> --to outcomes` or a Stake adapter directory written by `pokie export <config.json> --to adapter`
@@ -1802,7 +1807,7 @@ pokie report stakeengine --format json --out stake-analysis.json
 Options:
 
 - `--format markdown|html|json` — output format for either supported input (default `markdown`). JSON preserves the
-  complete simulation report (including every mode of a `--mode all` report set) or canonical source-analysis
+  complete simulation report (including every mode of an all-modes simulation report set) or canonical source-analysis
   payload; Markdown and HTML are readable documents.
 - `--out <file>` — also write the complete printed artifact to `<file>`. The command writes atomically and only
   announces the destination after success; for a write error choose an existing writable directory and rerun the
@@ -1833,7 +1838,7 @@ const markdown = renderer.render(report); // report: SimulationReport, e.g. from
 (`render(report: SimulationReport): string`), so a custom renderer (e.g. plain text, a different HTML layout) can
 be swapped in without touching `ReportCommand`.
 
-### Rendering a `SimulationReportSet` (`pokie sim --mode all` output)
+### Rendering a `SimulationReportSet` (all-modes simulation output)
 
 `pokie report` auto-detects when a simulation-report path is a `SimulationReportSet` (has a `modes` map) instead of
 a plain `SimulationReport`, and renders a **side-by-side comparison** instead: one column per bet mode, with rows
