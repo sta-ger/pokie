@@ -4,6 +4,43 @@ import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
 import type {StakeEngineExportModeInput} from "./StakeEngineExportModeInput.js";
 import type {StakeEngineExportValidating} from "./StakeEngineExportValidating.js";
+import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js";
+
+/**
+ * Checks the persisted generation contract that an Outcome Library import
+ * places in a later Stake re-export descriptor.  This is deliberately
+ * exported because descriptor readers need to reject malformed untyped JSON
+ * before handing it to either exporter; the exporters only receive the
+ * already-typed mode input.
+ */
+export function isOutcomeLibraryGeneratorDiagnostics(value: unknown): value is OutcomeLibraryGeneratorDiagnostics {
+    if (typeof value !== "object" || value === null) return false;
+    const candidate = value as Record<string, unknown>;
+    const game = candidate.game;
+    const isDecimal = (decimal: unknown): boolean =>
+        (typeof decimal === "number" && Number.isFinite(decimal) && decimal >= 0) ||
+        (typeof decimal === "string" && (/^\d+$/).test(decimal));
+    const isNonEmptyString = (text: unknown): text is string => typeof text === "string" && text.trim().length > 0;
+    if (!isNonEmptyString(candidate.algorithm) ||
+        (candidate.strategy !== "exact" && candidate.strategy !== "bounded-coverage") ||
+        !isDecimal(candidate.totalOutcomeSpaceSize) ||
+        !isDecimal(candidate.sampledRawCount) ||
+        !isNonEmptyString(candidate.pokieVersion) ||
+        !isDecimal(candidate.maxExactOutcomeSpaceSize) ||
+        !isNonEmptyString(candidate.generatedAt) ||
+        typeof game !== "object" || game === null) {
+        return false;
+    }
+    const manifest = game as Record<string, unknown>;
+    if (!isNonEmptyString(manifest.id) || !isNonEmptyString(manifest.name) || !isNonEmptyString(manifest.version)) return false;
+    if (candidate.configHash !== undefined && !isNonEmptyString(candidate.configHash)) return false;
+    if (candidate.compatibilityPolicyVersion !== undefined && !isNonEmptyString(candidate.compatibilityPolicyVersion)) return false;
+    // Bounded coverage is reproducible only with its sampling seed. Exact
+    // enumeration has no sampling seed and retaining one would misstate its
+    // generation semantics.
+    if (candidate.strategy === "bounded-coverage") return isNonEmptyString(candidate.seed);
+    return candidate.seed === undefined;
+}
 
 // A single mode's provenance, read off its library's first outcome — used to check every mode in an export
 // shares the same underlying game/config/pokieVersion (betMode/stake are expected to differ per mode, that's

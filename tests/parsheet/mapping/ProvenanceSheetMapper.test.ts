@@ -22,6 +22,7 @@ describe("ProvenanceSheetMapper", () => {
             ["Exported At", "2026-01-01T00:00:00.000Z"],
             ["Source", "config.json"],
             ["Blueprint Hash", expect.stringMatching(/^sha256:[0-9a-f]{64}$/)],
+            ["Lossless Eligible", "true"],
         ]);
     });
 
@@ -48,6 +49,13 @@ describe("ProvenanceSheetMapper", () => {
         const {value} = mapper.fromRows(mapper.toRows(blueprint, "1.3.0", new Date("2026-01-01T00:00:00.000Z"), "source.blueprint.json"));
 
         expect(value.blueprintHash).toBe(computeBlueprintHash(blueprint));
+    });
+
+    it("persists an explicit non-lossless eligibility boundary through Meta mapping", () => {
+        const rows = mapper.toRows(blueprint, "1.3.0", new Date("2026-01-01T00:00:00.000Z"), "generated-reels.json", false);
+
+        expect(rows).toContainEqual(["Lossless Eligible", "false"]);
+        expect(mapper.fromRows(rows).value.losslessEligible).toBe(false);
     });
 
     it("returns no value and no issues for an empty sheet", () => {

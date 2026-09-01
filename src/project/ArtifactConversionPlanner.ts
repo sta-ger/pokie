@@ -42,6 +42,12 @@ export type ArtifactFilePublicationIdentity = Omit<ArtifactIdentity, "kind"> & {
 /** Configuration facts that make generated artifacts safe to reuse. */
 export type ArtifactConfigurationProvenance = {
     readonly configurationHash?: string;
+    /**
+     * Exact bytes consumed by a prepared operation.  Unlike configurationHash
+     * (which is portable compatibility metadata), this binds a particular
+     * descriptor, manifest, index, or runtime package tree until execution.
+     */
+    readonly inputBindingHash?: string;
     readonly pokieVersion?: string;
     readonly generationSemantics?: "exact" | "boundedSample";
     readonly gameId?: string;
@@ -76,9 +82,30 @@ export function computeArtifactConfigurationHash(contents: string | Buffer): str
  * symlinked inputs are represented explicitly so replacing either state is
  * detected by the operation's final source rebind.
  */
-export function computeArtifactInputBindingHash(inputPaths: readonly string[]): string {
+export function computeArtifactInputBindingHash(
+    inputPaths: readonly string[],
+    options: {
+        /** Ignore only these exact directory paths (including their contents). */
+        readonly ignoredDirectoryPaths?: readonly string[];
+        /** @deprecated Exact paths are safer for prepared executable inputs. */
+        readonly ignoredDirectoryNames?: readonly string[];
+    } = {},
+): string {
     const hash = crypto.createHash("sha256");
     const seen = new Set<string>();
+    const ignoredDirectoryNames = new Set(options.ignoredDirectoryNames);
+    // Resolve symlinks here as well as while visiting.  Generated packages
+    // link their local `pokie` dependency to a live runtime, so the configured
+    // cache path must still identify that one directory after traversal reaches
+    // the link target.
+    const ignoredDirectoryPaths = new Set((options.ignoredDirectoryPaths ?? []).flatMap((directory) => {
+        const resolved = path.resolve(directory);
+        try {
+            return [resolved, fs.realpathSync(resolved)];
+        } catch {
+            return [resolved];
+        }
+    }));
     const visit = (inputPath: string): void => {
         const resolved = path.resolve(inputPath);
         if (seen.has(resolved)) return;
@@ -90,8 +117,18 @@ export function computeArtifactInputBindingHash(inputPaths: readonly string[]): 
                 hash.update(`symlink:${fs.readlinkSync(resolved)}\0`);
                 visit(fs.realpathSync(resolved));
             } else if (stat.isDirectory()) {
+                if (ignoredDirectoryPaths.has(resolved)) {
+                    hash.update("ignored-directory-path\0");
+                    return;
+                }
                 hash.update("directory\0");
-                for (const entry of fs.readdirSync(resolved).sort()) visit(path.join(resolved, entry));
+                for (const entry of fs.readdirSync(resolved).sort()) {
+                    if (ignoredDirectoryNames.has(entry)) {
+                        hash.update(`ignored-directory:${entry}\0`);
+                        continue;
+                    }
+                    visit(path.join(resolved, entry));
+                }
             } else if (stat.isFile()) {
                 hash.update("file\0");
                 hash.update(fs.readFileSync(resolved));

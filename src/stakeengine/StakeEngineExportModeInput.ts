@@ -1,4 +1,6 @@
 import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLibrary.js";
+import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js";
+import type {StakeEngineImportSourceProvenance} from "./StakeEngineImportSourceProvenance.js";
 
 // One Stake Engine "mode" to export. A WeightedOutcomeLibrary is already homogeneous over one game/config/
 // pokieVersion and one betMode+stake (see buildWeightedOutcomeLibrary's own "library homogeneity" note) — that's
@@ -14,4 +16,12 @@ export type StakeEngineExportModeInput<T extends string | number = string> = {
     readonly modeName: string;
     readonly cost: number;
     readonly library: WeightedOutcomeLibrary<T>;
+    /**
+     * The generated library's sampling/exact-enumeration contract is part of
+     * its distribution identity.  Keep it when Stake is used as a durable
+     * interchange hop so an imported library can be safely re-exported.
+     */
+    readonly generator?: OutcomeLibraryGeneratorDiagnostics;
+    /** Exact Stake source bytes retained by a public import -> re-export. */
+    readonly sourceProvenance?: StakeEngineImportSourceProvenance;
 };

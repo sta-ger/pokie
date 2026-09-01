@@ -13,6 +13,7 @@ import {
     StakeEngineExporting,
     StakeEngineExportModeInput,
     StakeEngineExportValidator,
+    isOutcomeLibraryGeneratorDiagnostics,
     StakeEngineImporter,
     StakeEngineImporting,
     StakeEngineImportWriter,
@@ -35,6 +36,8 @@ import {
     STAKE_ENGINE_IMPORT_OPERATION,
     ValidationIssue,
     WeightedOutcomeLibrary,
+    OutcomeLibraryGeneratorDiagnostics,
+    StakeEngineImportSourceProvenance,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -96,8 +99,9 @@ type ExportDescriptorModeEntry = {
     libraryPath?: string;
     bundleDir?: string;
     bundleModeName?: string;
+    generator?: OutcomeLibraryGeneratorDiagnostics;
 };
-type ExportDescriptor = {modes: ExportDescriptorModeEntry[]};
+type ExportDescriptor = {modes: ExportDescriptorModeEntry[]; sourceProvenance?: StakeEngineImportSourceProvenance};
 
 function createCliImportCancellation(): {readonly signal: AbortSignal; readonly cleanup: () => void} {
     const controller = new AbortController();
@@ -231,6 +235,7 @@ export class StakeEngineCommand implements CliCommandHandling {
                     entry.libraryPath !== undefined
                         ? (this.loadJsonChecked(path.resolve(configDir, entry.libraryPath), `mode "${entry.modeName}"'s outcome library`) as WeightedOutcomeLibrary)
                         : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
+                ...(descriptor.sourceProvenance === undefined ? {} : {sourceProvenance: descriptor.sourceProvenance}),
             })),
         );
         const errors = new StakeEngineExportValidator().validate(modes).filter((issue) => issue.severity === "error");
@@ -466,6 +471,7 @@ export class StakeEngineCommand implements CliCommandHandling {
                         library: entry.libraryPath !== undefined
                             ? (this.loadJsonChecked(path.resolve(configDir, entry.libraryPath), `mode "${entry.modeName}"'s outcome library`) as WeightedOutcomeLibrary)
                             : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
+                        ...(descriptor.sourceProvenance === undefined ? {} : {sourceProvenance: descriptor.sourceProvenance}),
                     })),
                 );
                 return {descriptor, configDir, allBundleSourced, modes};
@@ -482,6 +488,8 @@ export class StakeEngineCommand implements CliCommandHandling {
                         cost: entry.cost,
                         bundleDir: path.resolve(read.configDir, entry.bundleDir as string),
                         bundleModeName: entry.bundleModeName ?? entry.modeName,
+                        ...(entry.generator === undefined ? {} : {generator: entry.generator}),
+                        ...(read.descriptor.sourceProvenance === undefined ? {} : {sourceProvenance: read.descriptor.sourceProvenance}),
                     })),
                     outDir,
                 )
@@ -892,11 +900,15 @@ export class StakeEngineCommand implements CliCommandHandling {
             throw new Error(`"${configPath}" is not a valid Stake Engine export config. ${CONFIG_HINT}`);
         }
 
+        const sourceProvenance = (parsed as {sourceProvenance?: unknown}).sourceProvenance;
+        if (sourceProvenance !== undefined && !isStakeEngineImportSourceProvenance(sourceProvenance)) {
+            throw new Error(`"${configPath}": sourceProvenance must retain SHA-256 hashes for the imported Stake source. ${CONFIG_HINT}`);
+        }
         const modes = (parsed as {modes: unknown[]}).modes.map((entry, position) => {
             if (typeof entry !== "object" || entry === null) {
                 throw new Error(`"${configPath}": modes[${position}] must be an object. ${CONFIG_HINT}`);
             }
-            const e = entry as {modeName?: unknown; cost?: unknown; libraryPath?: unknown; bundleDir?: unknown; bundleModeName?: unknown};
+            const e = entry as {modeName?: unknown; cost?: unknown; libraryPath?: unknown; bundleDir?: unknown; bundleModeName?: unknown; generator?: unknown};
             if (typeof e.modeName !== "string" || typeof e.cost !== "number") {
                 throw new Error(`"${configPath}": modes[${position}] must have a string "modeName" and a number "cost". ${CONFIG_HINT}`);
             }
@@ -909,17 +921,44 @@ export class StakeEngineCommand implements CliCommandHandling {
             if (hasBundleDir && e.bundleModeName !== undefined && typeof e.bundleModeName !== "string") {
                 throw new Error(`"${configPath}": modes[${position}]'s "bundleModeName" must be a string when present. ${CONFIG_HINT}`);
             }
+            if (e.generator !== undefined && !isOutcomeLibraryGeneratorDiagnostics(e.generator)) {
+                throw new Error(
+                    `"${configPath}": modes[${position}]'s "generator" must be a complete Outcome Library generation descriptor ` +
+                    "(algorithm, exact/bounded-coverage strategy, decimal counts, game identity, POKIE version, and generatedAt; bounded coverage also requires seed). " +
+                    `${CONFIG_HINT}`,
+                );
+            }
 
             return {
                 modeName: e.modeName,
                 cost: e.cost,
                 ...(hasLibraryPath
                     ? {libraryPath: e.libraryPath as string}
-                    : {bundleDir: e.bundleDir as string, bundleModeName: e.bundleModeName as string | undefined}),
+                    : {
+                        bundleDir: e.bundleDir as string,
+                        bundleModeName: e.bundleModeName as string | undefined,
+                        ...(e.generator === undefined ? {} : {generator: e.generator}),
+                    }),
             };
         });
 
-        return {modes};
+        return {modes, ...(sourceProvenance === undefined ? {} : {sourceProvenance})};
     }
 
+}
+
+function isStakeEngineImportSourceProvenance(value: unknown): value is StakeEngineImportSourceProvenance {
+    if (typeof value !== "object" || value === null) return false;
+    const provenance = value as {indexHash?: unknown; manifestHash?: unknown; modes?: unknown};
+    return typeof provenance.indexHash === "string" && (/^sha256:[a-f0-9]{64}$/).test(provenance.indexHash) &&
+        typeof provenance.manifestHash === "string" && (/^sha256:[a-f0-9]{64}$/).test(provenance.manifestHash) &&
+        Array.isArray(provenance.modes) && provenance.modes.every(isStakeEngineImportSourceProvenanceMode);
+}
+
+function isStakeEngineImportSourceProvenanceMode(value: unknown): boolean {
+    if (typeof value !== "object" || value === null) return false;
+    const mode = value as {modeName?: unknown; csvHash?: unknown; booksHash?: unknown};
+    return typeof mode.modeName === "string" &&
+        typeof mode.csvHash === "string" && (/^sha256:[a-f0-9]{64}$/).test(mode.csvHash) &&
+        typeof mode.booksHash === "string" && (/^sha256:[a-f0-9]{64}$/).test(mode.booksHash);
 }

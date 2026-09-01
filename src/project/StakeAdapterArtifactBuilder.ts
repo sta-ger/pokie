@@ -135,6 +135,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
                         schemaVersion: library.schemaVersion,
                         outcomes: library.outcomes.map((outcome, index) => ({...outcome, id: String(index)})),
                     }),
+                    ...(entry.generator === undefined ? {} : {generator: entry.generator}),
                 };
             }),
         );

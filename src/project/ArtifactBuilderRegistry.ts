@@ -100,6 +100,7 @@ function sameConfigurationProvenance(
     right: ArtifactConfigurationProvenance | undefined,
 ): boolean {
     return left?.configurationHash === right?.configurationHash &&
+        left?.inputBindingHash === right?.inputBindingHash &&
         left?.pokieVersion === right?.pokieVersion &&
         left?.generationSemantics === right?.generationSemantics &&
         left?.gameId === right?.gameId &&
@@ -260,6 +261,20 @@ export class ArtifactBuilderRegistry {
         // Bind PAR bytes here, at the registry's plan boundary, so execution's
         // drift guard always compares against a hash prepared for this plan.
         if (source.type === "parWorkbook") {
+            plannedSource = {
+                ...source,
+                configurationProvenance: {
+                    ...source.configurationProvenance,
+                    configurationHash: computeArtifactInputBindingHash([source.rootPath]),
+                },
+            };
+        }
+        // Package and PAR plans already bind their consumed source bytes at
+        // preflight. Bind a Blueprint's bytes for its direct package/workbook
+        // publications too: otherwise a caller could edit the Blueprint after
+        // preview and execute an old plan against a new model. Outcome/Stake
+        // take the more detailed managed-generation provenance path below.
+        if (source.type === "blueprint" && target !== "outcomeLibrary" && target !== "stakeAdapter") {
             plannedSource = {
                 ...source,
                 configurationProvenance: {
@@ -902,6 +917,15 @@ export class ArtifactBuilderRegistry {
             if (preparedHash === undefined || preparedHash !== currentHash) {
                 throw new Error("The PAR workbook changed after this conversion was prepared; prepare a new plan before executing it.");
             }
+        }
+        // Resolver-owned projects retain compatibility metadata such as a
+        // library config hash, but that metadata alone cannot notice a
+        // changed manifest or index which still advertises the same game.
+        // Rebind every resolved artifact tree that supplied an input hash
+        // before any writer is allowed to publish.
+        const preparedInputBindingHash = plan.source.configurationProvenance?.inputBindingHash;
+        if (preparedInputBindingHash !== undefined && computeArtifactInputBindingHash([source.rootPath]) !== preparedInputBindingHash) {
+            throw new Error("The source artifact bytes changed after this conversion was prepared; prepare a new plan before executing it.");
         }
         // Resolved Blueprint/package provenance is computed from the runnable
         // source, rather than copied from the project wrapper. Re-prepare it

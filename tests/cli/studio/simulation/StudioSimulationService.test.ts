@@ -392,7 +392,7 @@ describe("StudioSimulationService", () => {
             for (const [contents, expected] of cases) {
                 if (contents === undefined) fs.rmSync(sidecar, {force: true});
                 else fs.writeFileSync(sidecar, contents);
-                const result = service.start(wasmPath, {rounds: 5}, wasmProject);
+                const result = service.start(wasmPath, {rounds: 5});
                 expect(result).toMatchObject({status: "unsupported", message: expect.stringMatching(expected)});
                 expect(service.getActiveCount()).toBe(0);
             }

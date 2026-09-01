@@ -14,5 +14,12 @@ export type UnsupportedProjectOperationDiagnostic = {
     // no project type supports this operation yet (e.g. every "wasm.export" attempt today; see
     // ProjectType.ts's "wasm" doc comment).
     readonly alternatives: readonly ProjectType[];
+    /**
+     * The actionable part of `message`, exposed independently so CLI, Studio,
+     * and evidence writers never need to split or reword a human diagnostic.
+     */
+    // Optional for backwards-compatible diagnostic objects supplied by
+    // embedders; describeUnsupportedProjectOperation itself always provides it.
+    readonly recovery?: string;
     readonly message: string;
 };

@@ -1,6 +1,6 @@
 import {Command} from "commander";
 import {
-    describeUnsupportedProjectOperation,
+    describeUnavailableArtifactOperation,
     loadPokieGame,
     OutcomeSourceReplayResult,
     PokieGame,
@@ -111,7 +111,7 @@ export class ReplayCommand implements CliCommandHandling {
             return;
         }
         if (project?.type === "wasm") {
-            const diagnostic = describeUnsupportedProjectOperation(project, REPLAY_OPERATION);
+            const diagnostic = describeUnavailableArtifactOperation(project, REPLAY_OPERATION);
             if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
         }
 

@@ -1,5 +1,5 @@
 import {
-    describeUnsupportedProjectOperation,
+    describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
     isWasmComponentFile,
     loadPokieGame,
@@ -135,8 +135,12 @@ export class StudioSimulationService {
         // guard. A resolved component, or an actual unresolved WASM file, has
         // no runnable branch. A package directory named `game.wasm` remains a
         // normal project and must not be rejected from its pathname alone.
-        if (isWasmComponentFile(projectRoot) || outcomeSourceProject?.type === "wasm") {
-            return {status: "unsupported", message: describeWasmLifecycleBoundary(outcomeSourceProject?.type === "wasm" ? outcomeSourceProject.rootPath : projectRoot, "simulate game rounds")};
+        if (outcomeSourceProject?.type === "wasm") {
+            const diagnostic = describeUnavailableArtifactOperation(outcomeSourceProject, OUTCOME_SOURCE_SIMULATE_OPERATION);
+            return {status: "unsupported", message: diagnostic?.message ?? describeWasmLifecycleBoundary(outcomeSourceProject.rootPath, "simulate game rounds")};
+        }
+        if (isWasmComponentFile(projectRoot)) {
+            return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "simulate game rounds")};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
@@ -401,7 +405,7 @@ export class StudioSimulationService {
     // terminal job/report/listing carries the real mode this run sampled, never just "whatever the caller
     // happened to ask for".
     private async runOutcomeSourceSampling(record: StudioSimulationJobRecord, project: PokieProject): Promise<void> {
-        const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_SOURCE_SIMULATE_OPERATION);
+        const diagnostic = describeUnavailableArtifactOperation(project, OUTCOME_SOURCE_SIMULATE_OPERATION);
         if (diagnostic !== undefined) {
             this.fail(record, new Error(diagnostic.message));
             return;

@@ -25,6 +25,7 @@ export class StakeEngineImportWriter<T extends string | number = string> impleme
                 libraryId: mode.library.libraryId,
                 schemaVersion: mode.library.schemaVersion,
                 outcomes: mode.library.outcomes,
+                ...(mode.generator === undefined ? {} : {generator: mode.generator}),
             })),
             outDir,
             {
@@ -33,11 +34,13 @@ export class StakeEngineImportWriter<T extends string | number = string> impleme
                     {
                         fileName: "config.json",
                         contents: `${JSON.stringify({
+                            ...(importResult.sourceProvenance === undefined ? {} : {sourceProvenance: importResult.sourceProvenance}),
                             modes: importResult.modes.map((mode) => ({
                                 modeName: mode.modeName,
                                 cost: mode.cost,
                                 bundleDir: ".",
                                 bundleModeName: mode.modeName,
+                                ...(mode.generator === undefined ? {} : {generator: mode.generator}),
                             })),
                         }, null, 4)}\n`,
                     },

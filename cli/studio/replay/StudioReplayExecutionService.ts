@@ -3,7 +3,7 @@ import {
     captureInitialPokieSessionState,
     captureRoundPokieSessionState,
     captureScreen,
-    describeUnsupportedProjectOperation,
+    describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
     isWasmComponentFile,
     GameSessionHandling,
@@ -122,8 +122,12 @@ export class StudioReplayExecutionService {
         // Keep the no-job WASM boundary inside the shared lifecycle as well as
         // StudioServer. A direct caller must not be able to queue work that
         // can only fail after attempting runtime preparation.
-        if (isWasmComponentFile(projectRoot) || outcomeSourceProject?.type === "wasm") {
-            return {status: "unsupported", message: describeWasmLifecycleBoundary(outcomeSourceProject?.type === "wasm" ? outcomeSourceProject.rootPath : projectRoot, "replay a game round")};
+        if (outcomeSourceProject?.type === "wasm") {
+            const diagnostic = describeUnavailableArtifactOperation(outcomeSourceProject, OUTCOME_SOURCE_REPLAY_OPERATION);
+            return {status: "unsupported", message: diagnostic?.message ?? describeWasmLifecycleBoundary(outcomeSourceProject.rootPath, "replay a game round")};
+        }
+        if (isWasmComponentFile(projectRoot)) {
+            return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "replay a game round")};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
@@ -392,7 +396,7 @@ export class StudioReplayExecutionService {
     // actually-resolved value, mirroring StudioSimulationService.runOutcomeSourceSampling's own reasoning
     // -- every terminal job/list entry carries the real mode this run replayed against.
     private async runOutcomeSourceReplay(record: StudioReplayJobRecord, project: PokieProject): Promise<void> {
-        const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_SOURCE_REPLAY_OPERATION);
+        const diagnostic = describeUnavailableArtifactOperation(project, OUTCOME_SOURCE_REPLAY_OPERATION);
         if (diagnostic !== undefined) {
             this.fail(record, new Error(diagnostic.message));
             return;

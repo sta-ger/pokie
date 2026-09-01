@@ -7,7 +7,7 @@ import type {ProvenanceSheetMapping} from "./ProvenanceSheetMapping.js";
 import {cellToNumber, cellToText, isBlankRow} from "./sheetCellParsing.js";
 
 const COLUMNS = ["Key", "Value"];
-const KNOWN_KEYS = ["Schema Version", "Pokie Version", "Exported At", "Source", "Blueprint Hash"];
+const KNOWN_KEYS = ["Schema Version", "Pokie Version", "Exported At", "Source", "Blueprint Hash", "Lossless Eligible"];
 
 // A pure parse of the "Meta" sheet's Key/Value rows into ParSheetProvenance — no ValidationIssue of
 // its own, since every field here is optional/informational at the sheet-shape level (nothing here
@@ -62,11 +62,14 @@ export class ProvenanceSheetMapper implements ProvenanceSheetMapping {
         if (blueprintHash !== undefined) {
             provenance.blueprintHash = blueprintHash;
         }
+        const losslessEligible = values.get("Lossless Eligible");
+        if (losslessEligible === "true") provenance.losslessEligible = true;
+        if (losslessEligible === "false") provenance.losslessEligible = false;
 
         return {value: provenance, issues: []};
     }
 
-    public toRows(blueprint: GameBlueprint, pokieVersion: string, exportedAt: Date, sourcePath: string | undefined): SheetGrid {
+    public toRows(blueprint: GameBlueprint, pokieVersion: string, exportedAt: Date, sourcePath: string | undefined, losslessEligible = true): SheetGrid {
         return [
             COLUMNS,
             ["Schema Version", GAME_BLUEPRINT_SCHEMA_VERSION],
@@ -74,6 +77,7 @@ export class ProvenanceSheetMapper implements ProvenanceSheetMapping {
             ["Exported At", exportedAt.toISOString()],
             ["Source", sourcePath ?? ""],
             ["Blueprint Hash", computeBlueprintHash(blueprint)],
+            ["Lossless Eligible", String(losslessEligible)],
         ];
     }
 }

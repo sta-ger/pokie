@@ -34,6 +34,7 @@ describe("StakeEngineImportWriter", () => {
         expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).toEqual([]);
         expect(JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8"))).toMatchObject({generatedBy: "pokie stakeengine import"});
         expect(JSON.parse(fs.readFileSync(path.join(outDir, "config.json"), "utf-8"))).toEqual({
+            sourceProvenance: result.sourceProvenance,
             modes: [
                 {modeName: "base", cost: 1, bundleDir: ".", bundleModeName: "base"},
                 {modeName: "bonus", cost: 1, bundleDir: ".", bundleModeName: "bonus"},

@@ -603,13 +603,20 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         resolvedRequest: ResolvedOutcomeLibraryGenerationRequest,
     ) {
         const sourcePaths = [packageRoot, ...(options.resume === undefined ? [] : [options.resume])];
+        // A generated package receives a local node_modules/pokie symlink so
+        // it can run before npm install.  That linked runtime's Jest cache is
+        // non-product activity, but the package and every other dependency
+        // remain executable inputs and must stay bound to the preflight.
+        const sourceBindingHash = () => computeArtifactInputBindingHash(sourcePaths, {
+            ignoredDirectoryPaths: [path.join(packageRoot, "node_modules", "pokie", "node_modules", ".cache")],
+        });
         const currentSource = () => ({
             kind: "tsPackage" as const,
             canonicalLocation: path.resolve(packageRoot),
             recognitionProvenance: "CLI runnable POKIE package input",
             capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage,
             configurationProvenance: {
-                configurationHash: computeArtifactInputBindingHash(sourcePaths),
+                configurationHash: sourceBindingHash(),
                 pokieVersion: this.pokieVersion,
                 generationSemantics: resolvedRequest.preflight.strategy === "exact" ? "exact" as const : "boundedSample" as const,
                 ...(resolvedRequest.preflight.strategy === "exact" ? {} : {

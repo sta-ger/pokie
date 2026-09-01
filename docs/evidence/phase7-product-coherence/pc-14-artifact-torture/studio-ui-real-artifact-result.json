@@ -1,0 +1,346 @@
+{
+  "schema_version": 2,
+  "rows": [],
+  "scenario_results": [
+    {
+      "id": "studio-ui-blueprint-par-output-error-recovery",
+      "source_path": "run-artifacts/studio-ui-edited.blueprint.json",
+      "source_identity": "sha256:5e740edc945ae153dab7732c6ba5b3fcdeceef12d88b53c2e9ea769aee5c40b3",
+      "produced_path": "run-artifacts/studio-ui-edited.par.xlsx",
+      "produced_identity": "sha256:dfd1c46119695b2735098084b878d69bd64c7cc2876d2872f78fedf8e4249aac",
+      "observable_result": "the rendered PAR panel preserved an occupied caller-owned destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "ParSheetImportExportPanel",
+        "assertions": [
+          "PAR export rejected an occupied caller-owned file without altering its bytes",
+          "correcting the destination published a real workbook which the rendered PAR importer diagnosed and previewed"
+        ],
+        "observations": [
+          {
+            "route": "UI /home/design (PAR Sheet Import / Export)",
+            "result": "rendered occupied-destination recovery, workbook publication, and import/preview"
+          },
+          {
+            "route": "POST /api/home/blueprints/par-export",
+            "result": "returned the occupied-file error then wrote the recovered workbook"
+          },
+          {
+            "route": "POST /api/home/blueprints/par-import",
+            "result": "read the UI-produced workbook into the canonical Blueprint model"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-blueprint-runtime-workflows",
+      "source_path": "run-artifacts/studio-ui-edited.blueprint.json",
+      "source_identity": "sha256:5e740edc945ae153dab7732c6ba5b3fcdeceef12d88b53c2e9ea769aee5c40b3",
+      "produced_path": "run-artifacts/studio-ui-edited.blueprint.json",
+      "produced_identity": "sha256:5e740edc945ae153dab7732c6ba5b3fcdeceef12d88b53c2e9ea769aee5c40b3",
+      "observable_result": "the rendered Design Game editor saved the edited Blueprint through Studio's home workflow",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "BlueprintEditorPage",
+        "assertions": [
+          "editing the rendered Blueprint changed the persisted game name before save"
+        ],
+        "observations": [
+          {
+            "route": "UI /home/design (Blueprint editor)",
+            "result": "edited and saved a real Blueprint through Studio's home API"
+          },
+          {
+            "route": "POST /api/home/blueprints/save",
+            "result": "persisted the edited Blueprint at the selected path"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-build-export-deployment-output",
+      "source_path": "run-artifacts/tsPackage",
+      "source_identity": "sha256:7ec26567f343587eecf81d1899e3043fe9df92126b1532e692daff1258c63ad1",
+      "produced_path": "run-artifacts/tsPackage/deployment/local-json-example",
+      "produced_identity": "sha256:81fc74c99a1ce7b3914a2b7178d0c6726fc2c0422849c2fa7094a2df45321a8b",
+      "observable_result": "the rendered Build/Export workflow checked and published the package's CLI-generated Outcome Library through the configured remote delivery adapter",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "useDeploymentManager",
+        "assertions": [
+          "Build/Export retained the opened package's CLI-generated Outcome Library as the adapter prerequisite",
+          "the rendered remote delivery card checked the generated library's compatibility before exposing Publish",
+          "Publish wrote the local adapter's deployment output only after the successful compatibility result"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/exportDeploy (Build/Export)",
+            "result": "used the opened package's generated Outcome Library as the remote delivery prerequisite"
+          },
+          {
+            "route": "UI /project/:projectRoot/exportDeploy (Remote deployment)",
+            "result": "checked compatibility and published through the configured pc14-ui-delivery adapter"
+          },
+          {
+            "route": "POST /api/project/deployment/runs",
+            "result": "returned the compatible preflight and then the durable published delivery result"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-build-export-output",
+      "source_path": "run-artifacts/tsPackage/outcomes/bundle",
+      "source_identity": "sha256:0e42fa1b5ae3f1c87c72ff6a8e049ce791e2b0ae350ee4ba6dc7c32b5e9621f2",
+      "produced_path": "run-artifacts/studio-ui-stake",
+      "produced_identity": "sha256:f715d26dd1d78ccfc714779c1d97177d81d8d1946816b8e5c5fc643ba3bf4c89",
+      "observable_result": "the rendered Build/Export workflow recovered from an occupied destination and published its real Stake artifact",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "ExportDeployTab",
+        "assertions": [
+          "Build/Export rendered the server preflight conflict before enabling a durable publication",
+          "correcting the output path enabled the same rendered workflow to publish the Stake artifact"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/exportDeploy (Build/Export)",
+            "result": "recovered from the occupied destination and published the real Stake export"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-certification-output-error-recovery",
+      "source_path": "run-artifacts/tsPackage/outcomes/bundle",
+      "source_identity": "sha256:0e42fa1b5ae3f1c87c72ff6a8e049ce791e2b0ae350ee4ba6dc7c32b5e9621f2",
+      "produced_path": "run-artifacts/tsPackage/outcomes/bundle/certification",
+      "produced_identity": "sha256:d816fc200d7e90c27b69047d6b4d0643d5c81617e3bb6093b937f31912f458cb",
+      "observable_result": "the rendered Certification workflow rejected a missing source, recovered with the opened Outcome Library, and published inspectable certification evidence",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "CertificationTab",
+        "assertions": [
+          "Certification rendered the missing-source diagnostic before any evidence publication",
+          "correcting the source to the opened native library enabled validation, evidence publication, inspection, and export"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/certification (Certification)",
+            "result": "completed source error, validation recovery, build, inspection, and export workflow"
+          },
+          {
+            "route": "POST /api/project/certification/validate-source",
+            "result": "returned both the missing-path error and the recovered native-bundle validation"
+          },
+          {
+            "route": "POST /api/project/certification/build",
+            "result": "published the real certification evidence bundle consumed by the rendered inspector"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-outcome-source-output",
+      "source_path": "run-artifacts/tsPackage/outcomes/bundle",
+      "source_identity": "sha256:0e42fa1b5ae3f1c87c72ff6a8e049ce791e2b0ae350ee4ba6dc7c32b5e9621f2",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "the rendered Outcome Source drew and displayed a recorded outcome from the opened generated library",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "OutcomeSourceOverview",
+        "assertions": [
+          "Outcome Source drew a deterministic real outcome from the opened generated library",
+          "the rendered draw result is the concrete outcome artifact returned by the native library"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/overview (Outcome Source)",
+            "result": "drew and rendered a real round artifact from the generated Outcome Library"
+          },
+          {
+            "route": "POST /api/project/outcome-source/sample",
+            "result": "returned the recorded seeded Outcome Library draw"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-play-output-error-recovery",
+      "source_path": "run-artifacts/tsPackage",
+      "source_identity": "sha256:7ec26567f343587eecf81d1899e3043fe9df92126b1532e692daff1258c63ad1",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "the rendered Play workflow retained its unsupported free-games diagnostic and then completed a real package round",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "PlayTab",
+        "assertions": [
+          "Play rendered the generated package's unsupported free-games diagnostic without discarding the active session",
+          "the same rendered Play session recovered by spinning a completed real round artifact"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/play (Play)",
+            "result": "created a session, rendered an unsupported free-games diagnostic, then recovered by spinning a completed round artifact"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-provably-fair-output-error-recovery",
+      "source_path": "run-artifacts/tsPackage/outcomes/bundle",
+      "source_identity": "sha256:0e42fa1b5ae3f1c87c72ff6a8e049ce791e2b0ae350ee4ba6dc7c32b5e9621f2",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "the rendered Provably Fair workflow rejected a missing generated-artifact path, recovered with the real Outcome Library, and completed a generated proof verification",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "ProvablyFairTab",
+        "assertions": [
+          "the UI returned the Studio endpoint's path-aware error for a missing Outcome Library",
+          "correcting the source path retained the entered seeds and computed the real commitments",
+          "the same rendered workflow generated and verified a proof against the CLI-produced Outcome Library"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/provablyFair (Provably Fair)",
+            "result": "recovered from a missing bundle diagnostic and verified a generated proof against the real Outcome Library"
+          },
+          {
+            "route": "POST /api/project/fairness/configure",
+            "result": "rendered both the path error and the recovered commitment result"
+          },
+          {
+            "route": "POST /api/project/fairness/generate",
+            "result": "rendered the generated real round proof"
+          },
+          {
+            "route": "POST /api/project/fairness/verify",
+            "result": "rendered the verified proof result"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-replay-output",
+      "source_path": "run-artifacts/tsPackage",
+      "source_identity": "sha256:7ec26567f343587eecf81d1899e3043fe9df92126b1532e692daff1258c63ad1",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "the rendered Replay workflow loaded the persisted Play round and displayed its replay inspector",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "ReplayTab",
+        "assertions": [
+          "Replay consumed the Play workflow's persisted real round rather than a browser fixture",
+          "the rendered inspector displayed the recovered package round"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/replay (Replay)",
+            "result": "selected the persisted Play round and rendered its replay artifact inspector"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-simulation-output",
+      "source_path": "run-artifacts/tsPackage",
+      "source_identity": "sha256:7ec26567f343587eecf81d1899e3043fe9df92126b1532e692daff1258c63ad1",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "the rendered Simulation workflow completed against the generated package and exported its real report",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "SimulationTab",
+        "assertions": [
+          "Simulation completed against the same package and exposed its real report download output"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/simulation (Simulation)",
+            "result": "ran two rounds, rendered the completed report, and exposed its JSON download"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-ui-stake-output-error-recovery",
+      "source_path": "run-artifacts/tsPackage/outcomes/bundle",
+      "source_identity": "sha256:0e42fa1b5ae3f1c87c72ff6a8e049ce791e2b0ae350ee4ba6dc7c32b5e9621f2",
+      "produced_path": "run-artifacts/studio-ui-stake",
+      "produced_identity": "sha256:f715d26dd1d78ccfc714779c1d97177d81d8d1946816b8e5c5fc643ba3bf4c89",
+      "observable_result": "the rendered Build/Export Stake card preserved a caller-owned occupied destination, then published a real Stake export after the destination was corrected",
+      "execution": {
+        "surface": "studio-ui",
+        "owner": "ExportDeployTab",
+        "assertions": [
+          "the rendered Stake card received the server preflight conflict for an occupied caller-owned destination",
+          "the rejected destination retained its borrowed file unchanged",
+          "correcting the destination enabled the real Stake artifact publication and manifest output"
+        ],
+        "observations": [
+          {
+            "route": "UI /project/:projectRoot/exportDeploy (Stake Engine export)",
+            "result": "rendered the occupied-destination error and the recovered Stake publication"
+          },
+          {
+            "route": "POST /api/project/artifacts/preview",
+            "result": "returned the resolved occupied-destination conflict then the prepared Stake plan"
+          },
+          {
+            "route": "POST /api/project/artifacts/build",
+            "result": "published the real Stake Engine export after the corrected preflight"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    }
+  ],
+  "planner_cells": []
+}

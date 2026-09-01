@@ -140,6 +140,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
                 generatedAt: this.now().toISOString(),
                 game: firstOutcome.artifact.provenance.game,
                 configHash: firstOutcome.artifact.provenance.configHash,
+                ...(modes[0].sourceProvenance === undefined ? {} : {sourceProvenance: modes[0].sourceProvenance}),
                 modes: builtModes.map((builtMode) => builtMode.manifestEntry),
                 files: relativeFiles,
             };
@@ -295,6 +296,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             libraryHash: computeWeightedOutcomeLibraryHash(mode.library),
             events: `books_${mode.modeName}.jsonl.zst`,
             weights: `lookup_${mode.modeName}.csv`,
+            ...(mode.generator === undefined ? {} : {generator: mode.generator}),
         };
 
         return {

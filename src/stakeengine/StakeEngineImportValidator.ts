@@ -1,8 +1,11 @@
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
+import type {OutcomeLibraryGeneratorDiagnostics} from "../weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.js";
+import {isOutcomeLibraryGeneratorDiagnostics} from "./StakeEngineExportValidator.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
 import {resolveSafeStakeEngineFilePath} from "./internal/resolveSafeStakeEngineFilePath.js";
 import type {StakeEngineImportBookLineResult, StakeEngineImportBundle, StakeEngineImportModeFiles} from "./StakeEngineImportBundle.js";
 import type {StakeEngineImportValidating} from "./StakeEngineImportValidating.js";
+import type {StakeEngineImportSourceProvenance} from "./StakeEngineImportSourceProvenance.js";
 import type {StakeEngineIndex, StakeEngineIndexModeEntry} from "./StakeEngineIndex.js";
 import {STAKE_ENGINE_MANIFEST_SCHEMA_VERSION, type StakeEngineManifest, type StakeEngineManifestModeEntry} from "./StakeEngineManifest.js";
 
@@ -18,6 +21,22 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isFinitePositiveNumber(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isSourceProvenance(value: unknown): value is StakeEngineImportSourceProvenance {
+    if (typeof value !== "object" || value === null) return false;
+    const provenance = value as {indexHash?: unknown; manifestHash?: unknown; modes?: unknown};
+    return typeof provenance.indexHash === "string" && LIBRARY_HASH_PATTERN.test(provenance.indexHash) &&
+        typeof provenance.manifestHash === "string" && LIBRARY_HASH_PATTERN.test(provenance.manifestHash) &&
+        Array.isArray(provenance.modes) && provenance.modes.every(isSourceProvenanceMode);
+}
+
+function isSourceProvenanceMode(value: unknown): boolean {
+    if (typeof value !== "object" || value === null) return false;
+    const mode = value as {modeName?: unknown; csvHash?: unknown; booksHash?: unknown};
+    return isNonEmptyString(mode.modeName) &&
+        typeof mode.csvHash === "string" && LIBRARY_HASH_PATTERN.test(mode.csvHash) &&
+        typeof mode.booksHash === "string" && LIBRARY_HASH_PATTERN.test(mode.booksHash);
 }
 
 function isSafeNonNegativeInteger(value: unknown): value is number {
@@ -596,6 +615,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             generatedAt?: unknown;
             game?: unknown;
             configHash?: unknown;
+            sourceProvenance?: unknown;
             files?: unknown;
             modes: unknown[];
         };
@@ -625,6 +645,9 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
         }
         if (manifest.configHash !== undefined && typeof manifest.configHash !== "string") {
             fieldInvalid("configHash", "must be a string when present");
+        }
+        if (manifest.sourceProvenance !== undefined && !isSourceProvenance(manifest.sourceProvenance)) {
+            fieldInvalid("sourceProvenance", "must contain SHA-256 hashes for the imported Stake source when present");
         }
         if (
             manifest.files === undefined ||
@@ -661,6 +684,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 libraryHash?: unknown;
                 events?: unknown;
                 weights?: unknown;
+                generator?: unknown;
             };
 
             if (!this.validateModeName("pokie-manifest.json", mode.name, position, seenNames, issues)) {
@@ -729,6 +753,9 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             }
             const eventsOk = this.validateModeFilename(stakeDir, modeName, "events", mode.events, seenFiles, issues);
             const weightsOk = this.validateModeFilename(stakeDir, modeName, "weights", mode.weights, seenFiles, issues);
+            if (mode.generator !== undefined && !isOutcomeLibraryGeneratorDiagnostics(mode.generator)) {
+                modeFieldInvalid("generator", "must be a persisted Outcome Library generation diagnostic when present");
+            }
             if (!eventsOk || !weightsOk) {
                 sawError = true;
             }
@@ -753,6 +780,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                     libraryHash: mode.libraryHash,
                     events: mode.events as string,
                     weights: mode.weights as string,
+                    ...(mode.generator === undefined ? {} : {generator: mode.generator as OutcomeLibraryGeneratorDiagnostics}),
                 });
             }
         });
@@ -776,6 +804,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             generatedAt: manifest.generatedAt as string,
             game: game as {id: string; name: string; version: string},
             ...(manifest.configHash !== undefined ? {configHash: manifest.configHash as string} : {}),
+            ...(manifest.sourceProvenance === undefined ? {} : {sourceProvenance: manifest.sourceProvenance as StakeEngineImportSourceProvenance}),
             modes,
             files: manifest.files as string[],
         };

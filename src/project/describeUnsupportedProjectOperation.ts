@@ -4,7 +4,7 @@ import type {PokieProject} from "./PokieProject.js";
 import {describeProjectType} from "./ProjectPresentation.js";
 import type {ProjectType} from "./ProjectType.js";
 import type {UnsupportedProjectOperationDiagnostic} from "./UnsupportedProjectOperationDiagnostic.js";
-import {describeWasmUnsupportedOperation} from "./WasmProductContract.js";
+import {describeWasmRecovery, describeWasmUnsupportedOperation} from "./WasmProductContract.js";
 
 const ALL_PROJECT_TYPES = Object.keys(PROJECT_TYPE_CAPABILITIES) as ProjectType[];
 
@@ -73,19 +73,22 @@ export function describeUnsupportedProjectOperation(
             operation,
             missingCapability: requiredCapability,
             alternatives,
+            recovery: describeWasmRecovery(),
             message: describeWasmUnsupportedOperation(action),
         };
     }
-    const alternativesText =
+    const recovery =
         alternatives.length > 0
             ? ` You can ${action} with ${alternatives.map(describeProjectType).join(" or ")}.`
             : ` POKIE cannot ${action} for any project yet.`;
+    const inspectRecovery = ' Run "pokie inspect <path>" to see available next actions.';
 
     return {
         detectedType: project.type,
         operation,
         missingCapability: requiredCapability,
         alternatives,
-        message: `This ${describeProjectType(project.type)} cannot ${action}.${alternativesText} Run "pokie inspect <path>" to see available next actions.`,
+        recovery: `${recovery.trimStart()}${inspectRecovery}`,
+        message: `This ${describeProjectType(project.type)} cannot ${action}.${recovery}${inspectRecovery}`,
     };
 }

@@ -236,7 +236,13 @@ export class ParSheetExporter implements ParSheetExporting {
         addSheet(
             workbook,
             this.provenanceMapper.sheetName,
-            this.provenanceMapper.toRows(typedBlueprint, this.pokieVersion, this.now(), sourcePath),
+            this.provenanceMapper.toRows(
+                typedBlueprint,
+                this.pokieVersion,
+                this.now(),
+                sourcePath,
+                !issues.some((issue) => issue.details?.losslessEligible === false),
+            ),
         );
 
         options?.onProgress?.({message: "Serializing PAR workbook"});

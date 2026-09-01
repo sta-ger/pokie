@@ -72,7 +72,7 @@ export type OutcomeSourceSampleView =
           // consumes, rather than a UI-only approximation of the selected outcome.
           replay?: OutcomeSourceReplayDescriptorView;
       }
-    | {supported: false; diagnostic: {detectedType: StudioProjectType; operation: string; missingCapability: string; alternatives: StudioProjectType[]; message: string}};
+    | {supported: false; diagnostic: {detectedType: StudioProjectType; operation: string; missingCapability: string; alternatives: StudioProjectType[]; recovery?: string; message: string}};
 
 // The Project Dashboard's own read model — see cli/studio/ProjectDashboardContext.ts (the server's
 // copy of this same type; kept as a separate client-side copy, same convention as every other type

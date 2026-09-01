@@ -544,6 +544,48 @@ describe("OutcomeLibraryCommand", () => {
             }
         });
 
+        it("ignores only the linked runtime cache while rejecting executable dependency drift after preflight", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcome-generation-binding-"));
+            const packageRoot = path.join(workDir, "package");
+            const runtimeRoot = path.join(workDir, "runtime");
+            const cacheFile = path.join(runtimeRoot, "node_modules", ".cache", "jest-state");
+            const dependencyFile = path.join(runtimeRoot, "node_modules", "runtime-dependency", "index.js");
+            const preparePackage = () => {
+                fs.mkdirSync(path.dirname(cacheFile), {recursive: true});
+                fs.mkdirSync(path.dirname(dependencyFile), {recursive: true});
+                fs.mkdirSync(path.join(packageRoot, "node_modules"), {recursive: true});
+                fs.writeFileSync(path.join(packageRoot, "package.json"), "{}");
+                fs.writeFileSync(cacheFile, "initial cache");
+                fs.writeFileSync(dependencyFile, "module.exports = 1;");
+                fs.symlinkSync(runtimeRoot, path.join(packageRoot, "node_modules", "pokie"), "dir");
+            };
+            try {
+                preparePackage();
+                let loads = 0;
+                const cacheMutationCommand = createGenerateCommand({
+                    loadGame: () => {
+                        loads += 1;
+                        if (loads === 2) fs.writeFileSync(cacheFile, "concurrent Jest cache activity");
+                        return Promise.resolve(FAKE_GAME);
+                    },
+                });
+                await expect(cacheMutationCommand.run(["generate", packageRoot, "--out", path.join(workDir, "cache.json")])).resolves.toBe(0);
+
+                loads = 0;
+                const executableMutationCommand = createGenerateCommand({
+                    loadGame: () => {
+                        loads += 1;
+                        if (loads === 2) fs.writeFileSync(dependencyFile, "module.exports = 2;");
+                        return Promise.resolve(FAKE_GAME);
+                    },
+                });
+                await expect(executableMutationCommand.run(["generate", packageRoot, "--out", path.join(workDir, "dependency.json")]))
+                    .rejects.toThrow(/source changed after this operation was prepared/i);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
         it("--estimate reports the outcome space without invoking generation", async () => {
             const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
             const command = createGenerateCommand({generate});

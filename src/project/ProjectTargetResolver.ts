@@ -178,6 +178,7 @@ export class ProjectTargetResolver implements ProjectResolving {
                 const blueprint = loadGameBlueprint(rootPath) as {manifest: {id: string; version: string}};
                 return {
                     configurationHash: computeGameBlueprintHash(blueprint as never),
+                    inputBindingHash: computeArtifactInputBindingHash([rootPath]),
                     gameId: blueprint.manifest.id,
                     gameVersion: blueprint.manifest.version,
                     manifestIdentity: `${blueprint.manifest.id}@${blueprint.manifest.version}`,
@@ -187,6 +188,7 @@ export class ProjectTargetResolver implements ProjectResolving {
                 const manifest = await new OutcomeLibraryBundleReader().readManifest(rootPath);
                 return {
                     configurationHash: manifest.configHash,
+                    inputBindingHash: computeArtifactInputBindingHash([rootPath]),
                     pokieVersion: manifest.artifactPokieVersion,
                     gameId: manifest.game.id,
                     gameVersion: manifest.game.version,
@@ -199,12 +201,16 @@ export class ProjectTargetResolver implements ProjectResolving {
                 const configurationHash = game.getConfigHash?.();
                 return {
                     ...(configurationHash === undefined ? {} : {configurationHash}),
+                    inputBindingHash: computeArtifactInputBindingHash([rootPath]),
                     gameId: manifest.id,
                     gameVersion: manifest.version,
                     manifestIdentity: `${manifest.id}@${manifest.version}`,
                 };
             }
-            if (type === "parWorkbook") return {configurationHash: computeArtifactInputBindingHash([rootPath])};
+            if (type === "parWorkbook") {
+                const inputBindingHash = computeArtifactInputBindingHash([rootPath]);
+                return {configurationHash: inputBindingHash, inputBindingHash};
+            }
         } catch {
             // The type adapter has already supplied the authoritative recognition outcome. Missing or
             // malformed optional provenance must fail closed for reuse, not turn into invented metadata.

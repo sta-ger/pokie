@@ -86,6 +86,38 @@ describe("StakeEngineImportValidator", () => {
         expect(new StakeEngineImportValidator().validate(baseBundle())).toEqual([]);
     });
 
+    it("uses the shared generation-semantics validator for imported Stake manifests", () => {
+        const generator = {
+            algorithm: "enumerate-reel-stops-v1",
+            strategy: "exact",
+            totalOutcomeSpaceSize: 4,
+            sampledRawCount: 4,
+            pokieVersion: "1.3.0",
+            game: VALID_MANIFEST.game,
+            maxExactOutcomeSpaceSize: 50_000,
+            generatedAt: "2024-01-01T00:00:00.000Z",
+        };
+        const manifest = {
+            ...VALID_MANIFEST,
+            modes: [{...VALID_MANIFEST.modes[0], generator}],
+        };
+        expect(issueCodes({...baseBundle(), manifest: ok(manifest)})).toEqual([]);
+        expect(issueCodes({
+            ...baseBundle(),
+            manifest: ok({
+                ...manifest,
+                modes: [{...manifest.modes[0], generator: {...generator, seed: "invalid-for-exact"}}],
+            }),
+        })).toContain("stakeengine-import-manifest-mode-field-invalid");
+        expect(issueCodes({
+            ...baseBundle(),
+            manifest: ok({
+                ...manifest,
+                modes: [{...manifest.modes[0], generator: {...generator, strategy: "bounded-coverage"}}],
+            }),
+        })).toContain("stakeengine-import-manifest-mode-field-invalid");
+    });
+
     describe("index.json", () => {
         it("reports stakeengine-import-index-missing/unreadable/invalid-json for each file-read outcome", () => {
             expect(issueCodes({...baseBundle(), index: missing()})).toEqual(["stakeengine-import-index-missing"]);

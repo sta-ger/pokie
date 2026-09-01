@@ -129,6 +129,31 @@ describe("ParSheetImporter", () => {
         expect(result.conversionEvidence?.losslessEligible).toBe(false);
     });
 
+    it("enforces a persisted Meta non-lossless boundary even when the imported Blueprint hash matches", async () => {
+        const blueprint: GameBlueprint = {
+            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            reels: 2,
+            rows: 2,
+            symbols: ["A", "W"],
+            wilds: ["W"],
+            paytable: {A: {"2": 5}},
+            reelStrips: [["A", "W"], ["W", "A"]],
+        };
+        const exported = path.join(dir, "generated-reels.xlsx");
+        await new ParSheetExporter("1.0.0").exportToFile(blueprint, exported, "generated-reels.json");
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(exported);
+        const meta = workbook.getWorksheet("Meta")!;
+        const losslessRow = meta.getColumn(1).values.findIndex((value) => value === "Lossless Eligible");
+        meta.getRow(losslessRow).getCell(2).value = "false";
+        await workbook.xlsx.writeFile(filePath);
+
+        const result = await new ParSheetImporter().importFromFile(filePath);
+
+        expect(result.conversionEvidence).toMatchObject({provenanceHashMatches: true, losslessEligible: false});
+        expect(result.provenance?.losslessEligible).toBe(false);
+    });
+
     it("warns about an unrecognized sheet", async () => {
         await writeWorkbook({...validSheets, Notes: [["Anything"]]});
         const importer = new ParSheetImporter();

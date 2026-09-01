@@ -1,7 +1,7 @@
 import {Command} from "commander";
 import {
     BetMode,
-    describeUnsupportedProjectOperation,
+    describeUnavailableArtifactOperation,
     loadPokieGame,
     MAX_SIMULATION_WORKERS,
     OutcomeSourceSimulationReport,
@@ -321,7 +321,7 @@ export class SimCommand implements CliCommandHandling {
             return;
         }
         if (project?.type === "wasm") {
-            const diagnostic = describeUnsupportedProjectOperation(project, SIM_OPERATION);
+            const diagnostic = describeUnavailableArtifactOperation(project, SIM_OPERATION);
             if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
         }
 

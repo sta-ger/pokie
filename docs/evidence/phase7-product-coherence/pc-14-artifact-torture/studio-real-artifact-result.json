@@ -1,0 +1,1013 @@
+{
+  "schema_version": 2,
+  "rows": [
+    {
+      "id": "file-session-record-recovery",
+      "artifact_kind": "fileSessionRepositoryRecord",
+      "operation": "import",
+      "source_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
+      "source_identity": "sha256:59a8a55f57980d4a9cccbe69d35946fc7d0aed1d8970d90ea0edf50402747f50",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "FileSessionRepository.load",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "a reconstructed repository recovered the persisted versioned runtime-session record",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "FileSessionRepository.load",
+          "result": "reloaded the exact persisted session state"
+        }
+      ]
+    },
+    {
+      "id": "managed-outcome-project-registry-reuse",
+      "artifact_kind": "managedOutcomeProjectsRegistry",
+      "operation": "reuse",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": "run-artifacts/.pokie/managed-outcome-projects.json",
+      "produced_identity": "sha256:2cd4f8cb706bc491565f380e89bd7e22b87cc0895f2964861b68c86fe82cf6da",
+      "operation_owner": "ManagedOutcomeProjectService.registerAndOpen/findCompatible",
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "the compatible produced Outcome Library was durably registered and reopened through the shared managed registry",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "ManagedOutcomeProjectService.findCompatible",
+          "result": "returned the exact compatible bundle"
+        }
+      ]
+    },
+    {
+      "id": "package-preparation-marker-recovery",
+      "artifact_kind": "preparationStateMarker",
+      "operation": "recover",
+      "source_path": "run-artifacts/preparation/interrupted-package",
+      "source_identity": "sha256:c16ec95fad555120ed5bdb40393c7ac65ff05bbcbda09f984b7e76afe1e9bc1e",
+      "produced_path": "run-artifacts/preparation/interrupted-package/.pokie-prepare-state.json",
+      "produced_identity": "sha256:8ef794895094198a29524a53ea57971383115880383b232ebb4db41958c00b56",
+      "operation_owner": "GamePackagePreparer.prepare",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "an interrupted public package preparation retained its durable retry marker rather than reporting a partial success",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "GamePackagePreparer.prepare",
+          "result": "returned the actionable dependency retry failure with marker retained"
+        }
+      ]
+    },
+    {
+      "id": "runtime-session-file-export",
+      "artifact_kind": "runtimeSession",
+      "operation": "export",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
+      "produced_identity": "sha256:59a8a55f57980d4a9cccbe69d35946fc7d0aed1d8970d90ea0edf50402747f50",
+      "operation_owner": "FileSessionRepository.save",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "a real runtime-session state was captured through the durable server-session repository",
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "FileSessionRepository.save",
+          "result": "saved the live-session snapshot"
+        }
+      ]
+    },
+    {
+      "id": "studio-blueprint-build",
+      "artifact_kind": "tsPackage",
+      "operation": "build",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/source.blueprint.json",
+      "source_identity": "sha256:d39612600e6cbc73489e4ad637ae6de54ebf51818a759bc53c5dd49f34e09d95",
+      "produced_path": "run-artifacts/package",
+      "produced_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "operation_owner": "studio:artifact-build",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
+      "status": "supported",
+      "observable_result": "published",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:artifact-build",
+          "result": "StudioArtifactBuildService published the prepared package"
+        }
+      ]
+    },
+    {
+      "id": "studio-certification-build",
+      "artifact_kind": "certificationEvidenceBundle",
+      "operation": "build",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": "run-artifacts/package/certification",
+      "produced_identity": "sha256:1267cc2271c922b38af93a9607327d02b71b54ba440d4cd3884e6e929c00c742",
+      "operation_owner": "studio:certification-build",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio certification built and self-validated a real evidence bundle",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:certification-build",
+          "result": "StudioCertificationService wrote the certification bundle"
+        }
+      ]
+    },
+    {
+      "id": "studio-certification-request-samples",
+      "artifact_kind": "certificationBuildDescriptor",
+      "operation": "recognize",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:certification-build request supplies equivalent mode samples",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "the certification request supplied the exact mode sample that the real build consumed",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:certification-build request supplies equivalent mode samples",
+          "result": "mode base with deterministic sample inputs reached StudioCertificationService.build"
+        }
+      ]
+    },
+    {
+      "id": "studio-external-deployment-publication",
+      "artifact_kind": "externalDeploymentArtifact",
+      "operation": "deploy",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": "run-artifacts/package/deployment/local-json-example",
+      "produced_identity": "sha256:d0d6157d55f36628b391b44c395cf537390636b16119eae7db1f00e6bfb87721",
+      "operation_owner": "studio:deployment-run",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio's local deployment target published and validated an external deployment artifact from the selected compatible library",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:deployment-run",
+          "result": "StudioDeploymentService completed target-defined deployment publication"
+        }
+      ]
+    },
+    {
+      "id": "studio-fairness-commitment",
+      "artifact_kind": "fairnessCommitment",
+      "operation": "configure",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:fairness-configure",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Studio fairness configured the complete commitment bound to the library identity",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:fairness-configure",
+          "result": "StudioFairnessService returned the bundle-bound commitment"
+        }
+      ]
+    },
+    {
+      "id": "studio-fairness-proof",
+      "artifact_kind": "fairnessProof",
+      "operation": "generate",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:fairness-generate",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Studio fairness generated a proof from the configured real commitment",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:fairness-generate",
+          "result": "StudioFairnessService generated the proof"
+        }
+      ]
+    },
+    {
+      "id": "studio-fairness-proof-verify",
+      "artifact_kind": "fairnessProof",
+      "operation": "verify",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:fairness-verify",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Studio fairness verified the generated proof against the same bundle",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:fairness-verify",
+          "result": "StudioFairnessService returned no verification errors"
+        }
+      ]
+    },
+    {
+      "id": "studio-fairness-server-seed-commitment",
+      "artifact_kind": "fairnessServerSeedCommitment",
+      "operation": "configure",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:fairness-configure",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Studio fairness configured the server-seed commitment from the live bundle",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:fairness-configure",
+          "result": "StudioFairnessService returned the server-seed commitment"
+        }
+      ]
+    },
+    {
+      "id": "studio-outcome-library-generate",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "generate",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": "run-artifacts/package/outcomelibrary",
+      "produced_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "operation_owner": "studio:outcome-library-generate",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "resumed generation published the real Outcome Library bundle",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:outcome-library-generate",
+          "result": "StudioOutcomeLibraryGenerateService resumed and published the bundle"
+        }
+      ]
+    },
+    {
+      "id": "studio-outcome-library-registry-index",
+      "artifact_kind": "studioOutcomeLibraryRegistryIndex",
+      "operation": "inspect",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
+      "source_identity": "sha256:336e050759aa716685eb12baa33826f43e2180f98200810be2b0fe75db30e9c4",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StudioOutcomeLibraryGenerateService:registry",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Studio generated and then discovered the persisted bundle registry index",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioOutcomeLibraryGenerateService:registry",
+          "result": "registry returned the indexed compatible real bundle"
+        }
+      ]
+    },
+    {
+      "id": "studio-outcome-library-registry-index-write",
+      "artifact_kind": "studioOutcomeLibraryRegistryIndex",
+      "operation": "record",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
+      "produced_identity": "sha256:336e050759aa716685eb12baa33826f43e2180f98200810be2b0fe75db30e9c4",
+      "operation_owner": "StudioOutcomeLibraryGenerateService:recordDiscoveredBundleDir after successful generate",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "successful generation durably recorded the discoverable bundle directory",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioOutcomeLibraryGenerateService:recordDiscoveredBundleDir after successful generate",
+          "result": "generation wrote the registry index before it was reopened"
+        }
+      ]
+    },
+    {
+      "id": "studio-outcome-library-selector-deployment",
+      "artifact_kind": "studioOutcomeLibrarySelector",
+      "operation": "export",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": "run-artifacts/package/deployment/local-json-example",
+      "produced_identity": "sha256:d0d6157d55f36628b391b44c395cf537390636b16119eae7db1f00e6bfb87721",
+      "operation_owner": "StudioDeploymentService",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Studio resolved the current compatible bundle selector before deployment publication",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioDeploymentService",
+          "result": "resolved the verified bundle selector for base mode"
+        }
+      ]
+    },
+    {
+      "id": "studio-outcome-library-stake-export",
+      "artifact_kind": "stakeAdapter",
+      "operation": "export",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": "run-artifacts/package/stake",
+      "produced_identity": "sha256:0f18b5f4e0f574690407a2a592bebc0677204ef986ee9c25fff31921c2ecb862",
+      "operation_owner": "studio:stake-export",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "published",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:stake-export",
+          "result": "StudioStakeEngineExportService published the Stake adapter"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-play-round",
+      "artifact_kind": "roundArtifact",
+      "operation": "play",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:play",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "the live Studio play spin recorded its real round",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:play",
+          "result": "GET rounds returned the play session's recorded round"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-play-session",
+      "artifact_kind": "runtimeSession",
+      "operation": "play",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:play",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio created and spun a live runtime session from the prepared package",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:play",
+          "result": "POST play session and spin returned the live session"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-replay-descriptor",
+      "artifact_kind": "runtimeReplayDescriptor",
+      "operation": "replay",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:replay",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio completed a replay and exposed its downloadable descriptor",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:replay",
+          "result": "GET replay completed and download returned the descriptor"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-replay-round",
+      "artifact_kind": "roundArtifact",
+      "operation": "replay",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:replay",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio replay reproduced and recorded a real package round",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:replay",
+          "result": "completed replay retained the reproduced round descriptor"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-simulation-report",
+      "artifact_kind": "simulationReport",
+      "operation": "simulate",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:simulation",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio completed a seeded package simulation and retained its report",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:simulation",
+          "result": "POST simulation reached completed and GET reports returned it"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-simulation-report-list",
+      "artifact_kind": "simulationReport",
+      "operation": "list",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:simulation-report-list",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio listed the completed report from its owning simulation repository",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:simulation-report-list",
+          "result": "GET reports returned the completed simulation id"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-simulation-report-render",
+      "artifact_kind": "simulationReport",
+      "operation": "report",
+      "registry_operation": "reports_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:simulation",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio returned the completed simulation report detail",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:simulation",
+          "result": "GET report returned the persisted report view"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-simulation-round",
+      "artifact_kind": "roundArtifact",
+      "operation": "simulate",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:simulation",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "the completed simulation produced its real package round sequence",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:simulation",
+          "result": "completed simulation terminal result retained its sampled round data"
+        }
+      ]
+    },
+    {
+      "id": "studio-project-registry-reopen",
+      "artifact_kind": "studioProjectRegistryEntry",
+      "operation": "import",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": "run-artifacts/studio-app-data/projects.json",
+      "produced_identity": "sha256:021f8a28d09b5f1a5e1bca92bd7424f697ce6e64973b6569d644d6b17250815b",
+      "operation_owner": "StudioProjectRegistrationService.registerExternal",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio registered the produced package and a new registry service reopened its persisted project entry",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioProjectRegistrationService.list",
+          "result": "listed the persisted package registration after reconstruction"
+        }
+      ]
+    },
+    {
+      "id": "studio-stake-selector-recognition",
+      "artifact_kind": "studioOutcomeLibrarySelector",
+      "operation": "resolve",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StudioStakeEngineExportService",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Stake export resolved the selected compatible bundle",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioStakeEngineExportService",
+          "result": "accepted the bundle selector for the published Stake adapter"
+        }
+      ]
+    },
+    {
+      "id": "studio-symbol-artwork-materialize",
+      "artifact_kind": "studioSymbolArtworkPng",
+      "operation": "import",
+      "source_path": "run-artifacts/symbol.png",
+      "source_identity": "sha256:016777d7225e2367021e5af254179097e153ffe29d61ce49af3453e63e324c27",
+      "produced_path": "run-artifacts/assets/symbols/symbol-1704164645000-i.png",
+      "produced_identity": "sha256:016777d7225e2367021e5af254179097e153ffe29d61ce49af3453e63e324c27",
+      "operation_owner": "StudioBlueprintService.importSymbolArtwork/save",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio staged a selected PNG and materialized the declared project-relative artwork companion",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioBlueprintService.resolveSymbolArtwork",
+          "result": "resolved the persisted declared PNG"
+        }
+      ]
+    },
+    {
+      "id": "studio-wasm-outcome-source-replay",
+      "artifact_kind": "wasmComponent",
+      "operation": "replay",
+      "source_path": "run-artifacts/studio-component.wasm",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StudioReplayExecutionService.start",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
+      "status": "intentionally-unsupported",
+      "observable_result": "This POKIE WASM component cannot replay a pre-generated outcome. POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary. Next: inspect a compatible component with `pokie inspect <path>`, repair or add its compatible sidecar when needed, or Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
+      "diagnostic": {
+        "code": "unsupported-project-operation",
+        "recovery": "Inspect the compatible manifest or use the original Blueprint or POKIE game package where runnable or convertible source is required."
+      },
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "StudioReplayExecutionService.start",
+          "result": "returned the resolved outcome-source diagnostic"
+        }
+      ]
+    },
+    {
+      "id": "studio-wasm-outcome-source-simulate",
+      "artifact_kind": "wasmComponent",
+      "operation": "simulate",
+      "source_path": "run-artifacts/studio-component.wasm",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StudioSimulationService.start",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
+      "status": "intentionally-unsupported",
+      "observable_result": "This POKIE WASM component cannot simulate pre-generated outcomes. POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary. Next: inspect a compatible component with `pokie inspect <path>`, repair or add its compatible sidecar when needed, or Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
+      "diagnostic": {
+        "code": "unsupported-project-operation",
+        "recovery": "Inspect the compatible manifest or use the original Blueprint or POKIE game package where runnable or convertible source is required."
+      },
+      "observations": [
+        {
+          "surface": "library",
+          "owner": "StudioSimulationService.start",
+          "result": "returned the resolved outcome-source diagnostic"
+        }
+      ]
+    },
+    {
+      "id": "studio-wasm-replay",
+      "artifact_kind": "wasmComponent",
+      "operation": "replay",
+      "source_path": "run-artifacts/studio-component.wasm",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StudioServer POST /api/project/replays",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
+      "status": "intentionally-unsupported",
+      "observable_result": "This POKIE WASM component cannot replay a game round. POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary. Next: inspect a compatible component with `pokie inspect <path>`, repair or add its compatible sidecar when needed, or Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
+      "diagnostic": {
+        "code": "unsupported-project-operation",
+        "recovery": "Inspect the compatible manifest or use the original Blueprint or POKIE game package where runnable or convertible source is required."
+      },
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioServer POST /api/project/replays",
+          "result": "returned HTTP 409 with the resolved replay diagnostic"
+        }
+      ]
+    },
+    {
+      "id": "studio-wasm-simulate",
+      "artifact_kind": "wasmComponent",
+      "operation": "simulate",
+      "source_path": "run-artifacts/studio-component.wasm",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StudioServer POST /api/project/simulations",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ],
+      "status": "intentionally-unsupported",
+      "observable_result": "This POKIE WASM component cannot simulate game rounds. POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary. Next: inspect a compatible component with `pokie inspect <path>`, repair or add its compatible sidecar when needed, or Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
+      "diagnostic": {
+        "code": "unsupported-project-operation",
+        "recovery": "Inspect the compatible manifest or use the original Blueprint or POKIE game package where runnable or convertible source is required."
+      },
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioServer POST /api/project/simulations",
+          "result": "returned HTTP 409 with the resolved simulation diagnostic"
+        }
+      ]
+    }
+  ],
+  "scenario_results": [
+    {
+      "id": "managed-reuse-sampling-policy-incompatibility",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": "run-artifacts/.pokie/managed-outcome-projects.json",
+      "produced_identity": "sha256:2cd4f8cb706bc491565f380e89bd7e22b87cc0895f2964861b68c86fe82cf6da",
+      "observable_result": "the durable managed Outcome Library registry rejects reuse when the requested sampling policy differs, while retaining the compatible borrowed registration",
+      "execution": {
+        "surface": "library",
+        "owner": "ManagedOutcomeProjectService.findCompatible",
+        "assertions": [
+          "incompatible sampling policy returns no reusable project",
+          "existing compatible managed registration remains available"
+        ],
+        "observations": [
+          {
+            "route": "ManagedOutcomeProjectService.findCompatible",
+            "result": "policy-incompatible request did not borrow the managed Outcome Library"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-artifact-http-preflight",
+      "source_path": "run-artifacts/source.blueprint.json",
+      "source_identity": "sha256:d39612600e6cbc73489e4ad637ae6de54ebf51818a759bc53c5dd49f34e09d95",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "Studio HTTP context, inspection, validation, target discovery, preflight, polling, cancellation cleanup, and restart resolve the same real Blueprint before publication",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioServer / StudioArtifactBuildService",
+        "assertions": [
+          "GET context retains the real Blueprint",
+          "GET inspect and validate accept the real Blueprint",
+          "GET targets lists tsPackage",
+          "POST preview returns an executable tsPackage plan",
+          "POST build creates and GET job reaches the terminal published result",
+          "POST cancel removes the interrupted Outcome publication and leaves no managed registration",
+          "a later POST build completes to a fresh destination"
+        ],
+        "observations": [
+          {
+            "route": "GET /api/project/context",
+            "result": "returned the opened Blueprint context"
+          },
+          {
+            "route": "GET /api/project/inspect",
+            "result": "inspected the opened Blueprint"
+          },
+          {
+            "route": "GET /api/project/validate",
+            "result": "validated the opened Blueprint"
+          },
+          {
+            "route": "GET /api/project/artifacts/targets",
+            "result": "returned the supported Blueprint build target"
+          },
+          {
+            "route": "POST /api/project/artifacts/preview",
+            "result": "returned the prepared tsPackage operation"
+          },
+          {
+            "route": "POST /api/project/artifacts/build",
+            "result": "created the pollable tsPackage build job"
+          },
+          {
+            "route": "GET /api/project/artifacts/build/:id",
+            "result": "polled the completed job and observed its published output"
+          },
+          {
+            "route": "POST /api/project/artifacts/build/:id/cancel",
+            "result": "cancelled an active Outcome publication job and retained no partial destination"
+          },
+          {
+            "route": "POST /api/project/artifacts/build",
+            "result": "restarted a clean Outcome publication job after cancellation"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity",
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-destination-drift",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": "run-artifacts/package/outcomelibrary",
+      "produced_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "observable_result": "prepared generation reports a conflict after destination occupancy and preserves borrowed.txt",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioOutcomeLibraryGenerateService",
+        "assertions": [
+          "occupied borrowed.txt remains after the conflict"
+        ],
+        "observations": [
+          {
+            "route": "StudioOutcomeLibraryGenerateService.generate",
+            "result": "Studio preflight destination conflict returned"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-generation-cancellation",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "cancelled generation leaves no bundle publication and returns the resumable checkpoint",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioOutcomeLibraryGenerateService",
+        "assertions": [
+          "cancelled generation returns a checkpoint and no bundle directory"
+        ],
+        "observations": [
+          {
+            "route": "StudioOutcomeLibraryGenerateService.generate",
+            "result": "Studio generation returned cancelled"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-generation-recovery",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": "run-artifacts/package/outcomelibrary",
+      "produced_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "observable_result": "the cancellation checkpoint resumes into a published Outcome Library after the conflicting borrowed destination is removed",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioOutcomeLibraryGenerateService",
+        "assertions": [
+          "resumed generation returns ok and publishes its bundle"
+        ],
+        "observations": [
+          {
+            "route": "StudioOutcomeLibraryGenerateService.generate",
+            "result": "Studio generation recovered from checkpoint"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-managed-reuse-compatibility",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "Studio registry reuses only the matching managed library and classifies copied real libraries as stale for configuration/hash or POKIE-version drift and wrong for cross-game drift",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioOutcomeLibraryGenerateService.registry",
+        "assertions": [
+          "same package registry is compatible",
+          "changed configuration is stale",
+          "changed game id is wrong",
+          "new POKIE version is stale"
+        ],
+        "observations": [
+          {
+            "route": "StudioOutcomeLibraryGenerateService.registry",
+            "result": "real copied managed bundles were classified compatible, stale, wrong, and stale"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ]
+    },
+    {
+      "id": "studio-simulation-replay-cancellation",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "Studio HTTP cancellation transitions real simulation and replay jobs to terminal cancelled states without retaining a report or replay descriptor",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioServer / StudioSimulationService / StudioReplayExecutionService",
+        "assertions": [
+          "DELETE simulation reaches cancelled and report retrieval remains not-ready",
+          "DELETE replay reaches cancelled and replay download remains not-ready"
+        ],
+        "observations": [
+          {
+            "route": "POST /api/project/simulations",
+            "result": "created a real package simulation job"
+          },
+          {
+            "route": "DELETE /api/project/simulations/:id",
+            "result": "cancelled that job"
+          },
+          {
+            "route": "GET /api/project/simulations/:id",
+            "result": "polled terminal cancelled simulation"
+          },
+          {
+            "route": "POST /api/project/replays",
+            "result": "created a real package replay job"
+          },
+          {
+            "route": "DELETE /api/project/replays/:id",
+            "result": "cancelled that job"
+          },
+          {
+            "route": "GET /api/project/replays/:id",
+            "result": "polled terminal cancelled replay"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ]
+    },
+    {
+      "id": "studio-wasm-boundary",
+      "source_path": "run-artifacts/studio-component.wasm",
+      "source_identity": "sha256:2b9079cdd157863f4106b225bb74948b482074881ae0a048c52d7e6833c3a02c",
+      "produced_path": null,
+      "produced_identity": null,
+      "observable_result": "Studio HTTP simulation/replay and direct outcome-source services reject the resolved WASM component before creating a job, each retaining its concrete shared diagnostic recovery",
+      "execution": {
+        "surface": "studio-api",
+        "owner": "StudioSimulationService / StudioReplayExecutionService",
+        "assertions": [
+          "neither Studio HTTP route creates a job for the unavailable component",
+          "HTTP and direct outcome-source owners retain their operation-specific shared diagnostic message"
+        ],
+        "observations": [
+          {
+            "route": "POST /api/project/simulations",
+            "result": "Studio simulation service returned unsupported"
+          },
+          {
+            "route": "POST /api/project/replays",
+            "result": "Studio replay service returned unsupported"
+          }
+        ]
+      },
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity"
+      ]
+    }
+  ],
+  "planner_cells": []
+}
