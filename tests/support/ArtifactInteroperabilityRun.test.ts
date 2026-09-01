@@ -73,7 +73,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         })).toThrow("must bind exactly one actual surface observation from that owner");
     });
 
-    it("rejects an adapter-only tuple instead of borrowing a sibling operation", () => {
+    it("maps a missing distinct owner to an explicit legacy diagnostic instead of inventing completion", () => {
         const runner = new ArtifactInteroperabilityRun(rootPath);
         const sourcePath = path.join(rootPath, "blueprint.json");
         fs.writeFileSync(sourcePath, "{\"blueprint\":\"canonical\"}\n");
@@ -95,26 +95,34 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         runner.write(runnerPath);
 
         const outputPath = path.join(rootPath, "merged.json");
-        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], outputPath))
-            .toThrow("missing required exact owner-operation evidence");
-        expect(fs.existsSync(outputPath)).toBe(false);
+        mergeArtifactInteroperabilityRuns([runnerPath], outputPath);
+        const result = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
+            readonly capability_matrix: readonly {readonly public_owner: string; readonly disposition: string; readonly diagnostic?: {readonly code: string}}[];
+        };
+        expect(result.capability_matrix.find((entry) => entry.public_owner === "GameBlueprintValidator"))
+            .toMatchObject({disposition: "unreachable-or-legacy-diagnostic", diagnostic: {code: "unreached-distinct-capability"}});
     });
 
-    it("rejects missing PC-05 owner-operation evidence before writing a result", () => {
-        const sourcePath = path.join(rootPath, "source.json");
-        fs.writeFileSync(sourcePath, "source");
-        const runner = new ArtifactInteroperabilityRun(rootPath);
-        runner.record({
-            id: "one-owner", artifactKind: "blueprint", operation: "recognize", registryOperation: "recognized_by",
-            sourcePath, owner: "ProjectTargetResolver", result: "recognized",
-            observations: [{surface: "library", owner: "ProjectTargetResolver", result: "recognized"}],
+    it("maps named thin wrappers to canonical parity proof instead of a second completion", () => {
+        const canonical = recordOperation("canonical", {
+            id: "canonical-create", artifactKind: "blueprint", operation: "create", registryOperation: "created_by", owner: "cli:create", surface: "cli",
         });
-        const runnerPath = path.join(rootPath, "partial.json");
-        runner.write(runnerPath);
+        const wrapper = recordOperation("wrapper", {
+            id: "wrapper-create", artifactKind: "blueprint", operation: "create", registryOperation: "created_by", owner: "cli:create --out", surface: "cli",
+        });
         const outputPath = path.join(rootPath, "merged.json");
-        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], outputPath))
-            .toThrow("missing required exact owner-operation evidence: blueprint:created_by:cli:create");
-        expect(fs.existsSync(outputPath)).toBe(false);
+        mergeArtifactInteroperabilityRuns([canonical, wrapper], outputPath);
+        const result = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
+            readonly capability_matrix: readonly {
+                readonly public_owner: string;
+                readonly disposition: string;
+                readonly "adapter_proof"?: {readonly "record_id": string; readonly "canonical_public_owner": string; readonly "canonical_observable_result": string};
+            }[];
+        };
+        expect(result.capability_matrix.find((entry) => entry.public_owner === "cli:create --out")).toMatchObject({
+            disposition: "adapter-proof",
+            "adapter_proof": {"record_id": "canonical-create", "canonical_public_owner": "cli:create", "canonical_observable_result": expect.any(String)},
+        });
     });
 
     it("rejects an extra PC-05 tuple before writing merged evidence", () => {
@@ -153,7 +161,7 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         expect(fs.existsSync(outputPath)).toBe(false);
     });
 
-    it("rejects duplicate PC-05 tuple records even when their sources differ", () => {
+    it("rejects duplicate direct proof records even when their sources differ", () => {
         const first = recordOperation("first", {
             id: "first-create", artifactKind: "blueprint", operation: "create", registryOperation: "created_by", owner: "cli:create", surface: "cli",
         });
@@ -165,6 +173,14 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         expect(() => mergeArtifactInteroperabilityRuns([first, second], outputPath))
             .toThrow("duplicate exact owner-operation evidence: blueprint:created_by:cli:create");
         expect(fs.existsSync(outputPath)).toBe(false);
+    });
+
+    it("rejects persisted synthetic owner-operation fallback records", () => {
+        const runnerPath = recordOperation("direct", {
+            id: "owner-operation-synthetic", artifactKind: "blueprint", operation: "create", registryOperation: "created_by", owner: "cli:create", surface: "cli",
+        });
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json")))
+            .toThrow("synthetic owner-operation evidence for owner-operation-synthetic");
     });
 
     it("rejects proxy owner declarations instead of promoting sibling operations", () => {

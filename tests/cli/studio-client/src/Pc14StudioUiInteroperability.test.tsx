@@ -546,14 +546,9 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         const emittedPath = evidenceDirectory === undefined
             ? path.join(workDir, "pc14-studio-ui-real-artifact-result.json")
             : path.join(evidenceDirectory, "studio-ui-real-artifact-result.json");
-        // This runner is last in the deterministic refresh.  It therefore
-        // closes the registry only after the CLI and Studio runners have
-        // persisted their own completed observations, preserving one exact
-        // record per public owner/operation tuple.
-        evidence.recordCompletedRegistryOwnerObservations(blueprintPath, evidenceDirectory === undefined ? [] : [
-            path.join(evidenceDirectory, "cli-real-artifact-result.json"),
-            path.join(evidenceDirectory, "studio-real-artifact-result.json"),
-        ]);
+        // The capability merger consumes these runner-emitted UI operations
+        // alongside the CLI and Studio API ledgers. It never fabricates a
+        // registry-owner completion for wrappers that were not exercised.
         evidence.write(emittedPath);
         const emittedText = fs.readFileSync(emittedPath, "utf8");
         const emittedResult = JSON.parse(emittedText) as {

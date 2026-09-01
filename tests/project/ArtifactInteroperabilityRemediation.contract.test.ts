@@ -41,17 +41,11 @@ type InteroperabilityResult = {
         readonly executed_regressions: readonly string[];
         readonly exclusion?: string;
     }[];
-    readonly exact_owner_operation_coverage: readonly {
-        readonly exact_tuple_identity: string;
+    readonly owner_inventory_traceability: readonly {
         readonly artifact_kind: string;
         readonly registry_operation: "created_by" | "recognized_by" | "runs_by" | "validates_by" | "reports_by" | "replays_by";
         readonly public_owner: string;
-        readonly surface: string;
-        readonly status: "executed";
-        readonly record_id: string;
-        readonly source_path: string;
-        readonly produced_path: string | null;
-        readonly observable_result: string;
+        readonly capability_identity: string;
     }[];
     readonly capability_matrix: readonly {
         readonly capability_identity: string;
@@ -71,6 +65,7 @@ type InteroperabilityResult = {
             readonly canonical_public_owner: string;
             readonly record_id: string;
             readonly reason: string;
+            readonly canonical_observable_result: string;
         };
         readonly diagnostic?: {readonly code: string; readonly recovery: string};
     }[];
@@ -117,7 +112,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
     const result = JSON.parse(fs.readFileSync(evidencePath, "utf-8")) as InteroperabilityResult;
 
     it("retains only records emitted by the real CLI and Studio runners", () => {
-        expect(result).toMatchObject({"schema_version": 4, "step_id": "PC-14", "generated_by": "ArtifactInteroperabilityRun.mergeArtifactInteroperabilityRuns"});
+        expect(result).toMatchObject({"schema_version": 5, "step_id": "PC-14", "generated_by": "ArtifactInteroperabilityRun.mergeArtifactInteroperabilityRuns"});
         expect(result.runner_inputs).toEqual([
             expect.objectContaining({file: "cli-real-artifact-result.json", sha256: expect.stringMatching(/^sha256:/), rows: expect.any(Number), scenarios: expect.any(Number)}),
             expect.objectContaining({file: "studio-real-artifact-result.json", sha256: expect.stringMatching(/^sha256:/), rows: expect.any(Number), scenarios: expect.any(Number)}),
@@ -344,160 +339,50 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         ]));
     });
 
-    it("merges the saved runner set only when every PC-05 tuple has a direct completed observation", () => {
+    it("merges the saved runner set into capability proofs without synthetic owner completion", () => {
         const outputPath = path.join(process.cwd(), "node_modules/.cache/pokie-tmp/pc14-rejected-interoperability-result.json");
         expect(() => mergeArtifactInteroperabilityRuns(
             result.runner_inputs.map((input) => path.join(path.dirname(evidencePath), input.file)),
             outputPath,
         )).not.toThrow();
-        expect(JSON.parse(fs.readFileSync(outputPath, "utf-8"))).toMatchObject({"step_id": "PC-14"});
+        expect(JSON.parse(fs.readFileSync(outputPath, "utf-8"))).toMatchObject({"step_id": "PC-14", "schema_version": 5});
         fs.rmSync(outputPath, {force: true});
     });
 
-    it("derives the required owner/operation matrix from every non-internal PC-05 registry field", () => {
+    it("retains every non-internal PC-05 row only as traceability to a capability proof", () => {
         const registryPath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json");
         const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as Parameters<typeof pc05PublicOwnerOperations>[0];
         const required = pc05PublicOwnerOperations(registry);
-        expect(required).toEqual(expect.arrayContaining([
-            expect.objectContaining({artifactKind: "blueprint", registryOperation: "created_by", owner: "cli:create"}),
-            expect.objectContaining({artifactKind: "blueprint", registryOperation: "recognized_by", owner: "ProjectTargetResolver"}),
-            expect.objectContaining({artifactKind: "outcomeLibrary", registryOperation: "runs_by", owner: "studio:simulation"}),
-            expect.objectContaining({artifactKind: "fairnessProof", registryOperation: "validates_by", owner: "FairnessRoundProofVerifier"}),
-        ]));
-        expect(required.some((entry) => entry.artifactKind === "blueprintRuntimeMaterializationCache")).toBe(false);
-        expect(required.some((entry) => entry.artifactKind === "blueprintRuntimeMaterializationMarker")).toBe(false);
-        // The required inventory is the execution target. A saved capability
-        // classification cannot substitute for a runner-emitted exact tuple.
-    });
-
-    it("derives an exact path-aware tuple from every runner-emitted registry operation", () => {
-        const required = pc05PublicOwnerOperations(JSON.parse(fs.readFileSync(
-            path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json"), "utf-8",
-        )) as Parameters<typeof pc05PublicOwnerOperations>[0]);
-        const emitted = result.rows.flatMap((row) => row.registry_operation === undefined ? [] : (row.observations ?? [])
-            .filter((observation) => observation.owner === row.operation_owner && observation.result.length > 0)
-            .map((observation) => ({
-                identity: JSON.stringify([row.artifact_kind, row.registry_operation, row.operation_owner, observation.surface]),
-                recordId: row.id,
-            })))
-            .sort((left, right) => `${left.identity}:${left.recordId}`.localeCompare(`${right.identity}:${right.recordId}`));
-        const actual = result.exact_owner_operation_coverage
-            .map((entry) => ({identity: entry.exact_tuple_identity, recordId: entry.record_id}))
-            .sort((left, right) => `${left.identity}:${left.recordId}`.localeCompare(`${right.identity}:${right.recordId}`));
-        const emittedExact = emitted.map((entry) => ({
-            identity: JSON.stringify(JSON.parse(entry.identity).slice(0, 3)),
-        })).sort((left, right) => left.identity.localeCompare(right.identity));
-        const actualExact = actual.map((entry) => ({
-            identity: JSON.stringify(JSON.parse(entry.identity).slice(0, 3)),
-        })).sort((left, right) => left.identity.localeCompare(right.identity));
-        expect(emittedExact).toEqual(actualExact);
-        expect(actual).toEqual(emitted);
-        expect(actualExact).toEqual(required.map((entry) => ({
-            identity: JSON.stringify([entry.artifactKind, entry.registryOperation, entry.owner]),
-        })).sort((left, right) => left.identity.localeCompare(right.identity)));
-        expect(new Set(actual.map((entry) => `${entry.identity}:${entry.recordId}`)).size).toBe(actual.length);
-        for (const entry of result.exact_owner_operation_coverage) {
-            expect(entry.status).toBe("executed");
-            expect(entry.record_id).toEqual(expect.any(String));
-            expect(entry.source_path).toMatch(/^run-artifacts\//);
-            expect(entry.exact_tuple_identity).toBe(JSON.stringify([
-                entry.artifact_kind, entry.registry_operation, entry.public_owner, entry.surface,
-            ]));
-            expect(required).toContainEqual({
-                artifactKind: entry.artifact_kind,
-                registryOperation: entry.registry_operation,
-                owner: entry.public_owner,
+        expect(result.owner_inventory_traceability).toHaveLength(required.length);
+        expect(result.capability_matrix).toHaveLength(required.length);
+        expect(new Set(result.owner_inventory_traceability.map((entry) => entry.capability_identity)).size).toBe(required.length);
+        for (const requiredRow of required) {
+            const identity = JSON.stringify([requiredRow.artifactKind, requiredRow.registryOperation, requiredRow.owner]);
+            expect(result.owner_inventory_traceability).toContainEqual({
+                "artifact_kind": requiredRow.artifactKind,
+                "registry_operation": requiredRow.registryOperation,
+                "public_owner": requiredRow.owner,
+                "capability_identity": identity,
             });
-            const record = result.rows.find((candidate) => candidate.id === entry.record_id);
-            expect(record?.source_path).toBe(entry.source_path);
-            expect(record?.operation_owner).toBe(entry.public_owner);
-            expect(record?.produced_path ?? null).toBe(entry.produced_path);
-            expect(record?.observations).toContainEqual({
-                surface: entry.surface,
-                owner: entry.public_owner,
-                result: entry.observable_result,
-            });
-        }
-        for (const audit of result.systemic_class_audits) {
-            const auditedTuples = audit.derived_from.executed_operation_tuples
-                .map((entry) => `${entry.artifact_kind}:${entry.registry_operation}:${entry.public_owner}:${entry.surface}:${entry.record_id}`).sort();
-            let systemicClass: string;
-            switch (audit.class) {
-                case "shared conversion diagnostic parity":
-                    systemicClass = "shared-conversion-diagnostic-parity";
-                    break;
-                case "provenance and freshness binding":
-                    systemicClass = "provenance-and-freshness-binding";
-                    break;
-                default:
-                    systemicClass = "durable-publication-ownership";
-            }
-            const expectedAuditedTuples = result.exact_owner_operation_coverage
-                .filter((entry) => result.rows.some((record) => record.id === entry.record_id && record.systemic_classes?.includes(systemicClass)))
-                .map((entry) => `${entry.artifact_kind}:${entry.registry_operation}:${entry.public_owner}:${entry.surface}:${entry.record_id}`).sort();
-            expect(auditedTuples).toEqual(expectedAuditedTuples);
-            expect(new Set(auditedTuples).size).toBe(auditedTuples.length);
-            for (const entry of audit.derived_from.executed_operation_tuples) {
-                const record = result.rows.find((candidate) => candidate.id === entry.record_id);
-                expect(record?.operation_owner).toBe(entry.public_owner);
+            const capability = result.capability_matrix.find((entry) => entry.capability_identity === identity);
+            expect(capability).toBeDefined();
+            expect(["canonical-proof", "adapter-proof", "unreachable-or-legacy-diagnostic"])
+                .toContain(capability?.disposition);
+            if (capability?.disposition === "canonical-proof") {
+                expect(capability.canonical_proof).toMatchObject({
+                    "operation_owner": requiredRow.owner,
+                    "source_path": expect.stringMatching(/^run-artifacts\//),
+                    "observable_result": expect.any(String),
+                });
+            } else if (capability?.disposition === "adapter-proof") {
+                expect(capability.adapter_proof).toMatchObject({
+                    "canonical_public_owner": expect.any(String), "record_id": expect.any(String),
+                    "canonical_observable_result": expect.any(String), reason: expect.any(String),
+                });
+            } else {
+                expect(capability.diagnostic).toMatchObject({code: "unreached-distinct-capability", recovery: expect.any(String)});
             }
         }
-    });
-
-    it("binds every direct-library owner to its own real artifact boundary", () => {
-        // This is intentionally not a sample of the library ledger.  Each
-        // entry names a component boundary exercised by the CLI runner: the
-        // registry's four builders, project recognition of each produced
-        // format, bundle/PAR/Stake readers and validators, and package
-        // loading.  A CLI or Studio row cannot satisfy this list because the
-        // exact tuple retains the actual library observation and record id.
-        const exactOwners = [
-            ["blueprint", "recognized_by", "ProjectTargetResolver", "library-resolve-imported-blueprint"],
-            ["blueprint", "validates_by", "GameBlueprintValidator", "library-validate-blueprint"],
-            ["canonicalOutcomeJsonl", "created_by", "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized", "library-write-canonical-outcomes"],
-            ["outcomeLibrary", "created_by", "ArtifactBuilderRegistry:build(outcomeLibrary)", "library-build-outcome-library"],
-            ["outcomeLibrary", "recognized_by", "OutcomeLibraryBundleReader", "library-read-direct-outcome-library"],
-            ["outcomeLibrary", "recognized_by", "ProjectTargetResolver", "library-resolve-direct-outcome-library"],
-            ["outcomeLibrary", "validates_by", "OutcomeLibraryBundleReader", "library-validate-direct-outcome-library"],
-            ["parWorkbook", "created_by", "ArtifactBuilderRegistry:build(parWorkbook)", "library-build-par-workbook"],
-            ["parWorkbook", "recognized_by", "ProjectTargetResolver", "library-resolve-direct-par-workbook"],
-            ["parWorkbook", "validates_by", "ParSheetImporter during import", "library-import-par-workbook"],
-            ["stakeAdapter", "created_by", "ArtifactBuilderRegistry:build(stakeAdapter)", "library-build-stake-adapter"],
-            ["stakeAdapter", "recognized_by", "ProjectTargetResolver", "library-resolve-direct-stake-adapter"],
-            ["stakeAdapter", "recognized_by", "StakeEngineOutcomeSourceReader", "library-read-stake-adapter"],
-            ["stakeAdapter", "validates_by", "StakeEngineExportValidator", "library-export-validate-direct-stake-adapter"],
-            ["stakeAdapter", "validates_by", "StakeEngineStandaloneValidator", "library-validate-direct-stake-adapter"],
-            ["tsPackage", "created_by", "ArtifactBuilderRegistry:build(tsPackage)", "library-build-package"],
-            ["tsPackage", "recognized_by", "loadPokieGame", "library-load-direct-package"],
-            ["tsPackage", "recognized_by", "ProjectTargetResolver", "library-resolve-direct-package"],
-            ["tsPackage", "validates_by", "loadPokieGame", "library-validate-direct-package"],
-        ] as const;
-        for (const [artifactKind, registryOperation, owner, recordId] of exactOwners) {
-            const coverage = result.exact_owner_operation_coverage.filter((entry) =>
-                entry.artifact_kind === artifactKind && entry.registry_operation === registryOperation && entry.public_owner === owner,
-            );
-            expect(coverage).toHaveLength(1);
-            expect(coverage[0]).toMatchObject({surface: "library", "record_id": recordId, "source_path": expect.stringMatching(/^run-artifacts\//)});
-            const record = result.rows.find((candidate) => candidate.id === recordId);
-            expect(record).toMatchObject({"operation_owner": owner, "source_path": expect.stringMatching(/^run-artifacts\//)});
-            expect(record?.observations).toEqual(expect.arrayContaining([
-                expect.objectContaining({surface: "library", owner, result: expect.any(String)}),
-            ]));
-        }
-
-        // Durable writers must retain their actual destination, so a planner
-        // success or a reader result cannot stand in for publication.
-        for (const recordId of [
-            "library-build-package",
-            "library-build-outcome-library",
-            "library-write-canonical-outcomes",
-            "library-build-stake-adapter",
-            "library-build-par-workbook",
-        ]) {
-            expect(result.rows.find((candidate) => candidate.id === recordId)).toMatchObject({
-                "produced_path": expect.stringMatching(/^run-artifacts\//),
-                "produced_identity": expect.stringMatching(/^sha256:/),
-            });
-        }
+        expect(result.rows.some((row) => row.id.startsWith("owner-operation-"))).toBe(false);
     });
 });

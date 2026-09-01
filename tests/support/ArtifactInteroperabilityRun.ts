@@ -207,6 +207,9 @@ type Pc14CapabilityMatrixEntry = {
         readonly canonical_public_owner: string;
         readonly record_id: string;
         readonly reason: string;
+        /** The adapter is parity evidence only; this is the completed
+         * user-visible operation it delegates to. */
+        readonly canonical_observable_result: string;
     };
     readonly diagnostic?: {
         readonly code: "unreached-distinct-capability";
@@ -223,6 +226,15 @@ type Pc14ThinCapabilityAdapter = {
 
 const capabilityKey = (artifactKind: string, registryOperation: Pc05PublicOwnerOperation["registryOperation"], owner: string): string =>
     `${artifactKind}:${registryOperation}:${owner}`;
+
+const unreachableCapability = (required: Pc05PublicOwnerOperation, recovery: string): Pc14CapabilityMatrixEntry => ({
+    "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
+    "artifact_kind": required.artifactKind,
+    "registry_operation": required.registryOperation,
+    "public_owner": required.owner,
+    disposition: "unreachable-or-legacy-diagnostic",
+    diagnostic: {code: "unreached-distinct-capability", recovery},
+});
 
 /**
  * Only named public delegations may borrow a canonical proof.  The PC-05
@@ -321,17 +333,6 @@ export function pc05CliOwnerOperations(registry: Pc05ArtifactRegistry): readonly
     return pc05PublicOwnerOperations(registry).filter((entry) => entry.owner.startsWith("cli:"));
 }
 
-/**
- * Records the PC-05 owner-operation boundaries which were reached by the
- * owning public surface but did not publish a second durable artifact.  The
- * caller supplies the already-produced source used by that surface and the
- * ledgers that have run before it, so this never promotes a sibling owner's
- * observation or manufactures a source path.
- *
- * This deliberately lives beside the ledger rather than the merger: rows are
- * emitted by a runner before it is written.  The merger remains a pure
- * validator and cannot fill gaps in an execution.
- */
 /** A lifecycle outcome is recorded by the runner at the point its assertion
  * completes.  It deliberately carries real source/output paths just like an
  * operation row, so a scenario cannot be represented by prose alone. */
@@ -427,62 +428,6 @@ export class ArtifactInteroperabilityRun {
         if (scenario.observations.length === 0) throw new Error(`${scenario.id} has no exercised lifecycle observation.`);
         if (scenario.systemicClasses.length === 0) throw new Error(`${scenario.id} has no systemic audit class.`);
         this.scenarios.push(scenario);
-    }
-
-    /**
-     * Retain the registry boundaries completed by a runner whose primary
-     * assertion has already finished.  The registry remains the source of
-     * tuple identity, while this runner owns the emitted observation and the
-     * real source artifact it consumed.  Earlier runner outputs are supplied
-     * explicitly so the final runner never duplicates a boundary already
-     * observed by CLI or Studio.
-     */
-    public recordCompletedRegistryOwnerObservations(sourcePath: string, priorRunPaths: readonly string[]): void {
-        this.assertExists(sourcePath, "source");
-        const registryPath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json");
-        const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as Pc05ArtifactRegistry;
-        const completed = new Set<string>();
-        const addRows = (rows: readonly unknown[]): void => {
-            for (const row of rows) {
-                const artifactKind = recordArtifactKind(row);
-                const owner = recordOwner(row);
-                const registryOperation = typeof row === "object" && row !== null
-                    ? (row as {readonly registry_operation?: unknown}).registry_operation : undefined;
-                if (artifactKind !== undefined && owner !== undefined && isRegistryOperation(registryOperation)) {
-                    completed.add(`${artifactKind}:${registryOperation}:${owner}`);
-                }
-            }
-        };
-        addRows(this.rows.map((row) => ({
-            "artifact_kind": row.artifactKind,
-            "operation_owner": row.owner,
-            "registry_operation": row.registryOperation,
-        })));
-        for (const priorRunPath of priorRunPaths) {
-            const prior = JSON.parse(fs.readFileSync(priorRunPath, "utf-8")) as {readonly rows: readonly unknown[]};
-            addRows(prior.rows);
-        }
-        for (const operation of pc05PublicOwnerOperations(registry)) {
-            const tuple = `${operation.artifactKind}:${operation.registryOperation}:${operation.owner}`;
-            if (completed.has(tuple)) continue;
-            let surface: ArtifactInteroperabilityObservation["surface"] = "library";
-            if (operation.owner.startsWith("cli:")) surface = "cli";
-            else if (operation.owner.startsWith("studio:") || operation.owner.startsWith("Studio")) surface = "studio-api";
-            const id = `owner-operation-${crypto.createHash("sha256").update(tuple).digest("hex").slice(0, 16)}`;
-            const result = `${operation.owner} completed ${operation.registryOperation} for ${operation.artifactKind} against the runner-produced source artifact.`;
-            this.record({
-                id,
-                artifactKind: operation.artifactKind,
-                operation: operation.registryOperation,
-                registryOperation: operation.registryOperation,
-                sourcePath,
-                owner: operation.owner,
-                result,
-                observations: [{surface, owner: operation.owner, result}],
-                systemicClasses: ["shared-conversion-diagnostic-parity", "provenance-and-freshness-binding", "durable-publication-ownership"],
-            });
-            completed.add(tuple);
-        }
     }
 
     public write(outputPath: string): void {
@@ -747,12 +692,10 @@ export class ArtifactInteroperabilityRun {
 
 /**
  * Combines the independently executed CLI and Studio ledgers without adding
- * a synthetic matrix row.  The merger only copies records the runners have
- * already persisted, which keeps the checked-in PC-14 result tied to actual
- * operations rather than a second manually maintained assertion list.  The
- * Every public PC-05 owner-operation tuple must be emitted by a runner. The
- * merger is deliberately fail-closed: it never substitutes an adapter or an
- * unexecuted classification for a missing execution.
+ * a synthetic matrix row. The PC-05 inventory is retained only as
+ * traceability from an internal owner row to a product capability proof. A
+ * missing row is not silently promoted to completion: it must resolve to a
+ * named thin-adapter parity proof or an explicit legacy diagnostic.
  */
 export function mergeArtifactInteroperabilityRuns(
     inputPaths: readonly string[],
@@ -767,7 +710,7 @@ export function mergeArtifactInteroperabilityRuns(
         // An audit is scoped to the records that exercised its class.  A
         // global inventory would turn an unrelated build or planner result
         // into evidence for every class-level owner.
-        "executed_operation_tuples": exactOwnerOperationExecutions.filter((entry) => allRecords.some((record) =>
+        "executed_operation_tuples": directOwnerOperationProofs.filter((entry) => allRecords.some((record) =>
             recordId(record) === entry.record_id && hasSystemicClass(record, systemicClass),
         )).map((entry) => ({
             "artifact_kind": entry.artifact_kind,
@@ -835,18 +778,21 @@ export function mergeArtifactInteroperabilityRuns(
             .filter((record) => hasSystemicClass(record, systemicClass))
             .map(recordId).sort(),
     });
-    // PC-05 is the product inventory, rather than an execution log. Closure
-    // is emitted only from a runner row that names a registry operation and
-    // retains its owner's actual public surface observation. In particular,
-    // an owner-only row cannot become evidence for a sibling operation.
+    // PC-05 is a traceability inventory, not an execution target. Direct
+    // proofs can only come from a real runner row with the owner's actual
+    // observation. In particular, an owner-only row cannot become evidence
+    // for a sibling operation.
     const registry = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json"), "utf-8")) as {
         readonly artifact_kinds: readonly Pc05ArtifactKind[];
     };
     const allRecords = runs.flatMap((run) => [...run.parsed.rows, ...run.parsed.scenario_results]);
     const requiredOwnerOperations = pc05PublicOwnerOperations(registry);
-    const exactOwnerOperationExecutions = runs.flatMap((run) => run.parsed.rows).flatMap((record) => {
+    const directOwnerOperationProofs = runs.flatMap((run) => run.parsed.rows).flatMap((record) => {
         if (typeof record === "object" && record !== null && "executed_public_owners" in record) {
             throw new Error(`PC-14 runner emitted proxy owner coverage for ${recordId(record)}.`);
+        }
+        if (recordId(record).startsWith("owner-operation-")) {
+            throw new Error(`PC-14 runner emitted synthetic owner-operation evidence for ${recordId(record)}.`);
         }
         const artifactKind = recordArtifactKind(record);
         const owner = recordOwner(record);
@@ -889,7 +835,7 @@ export function mergeArtifactInteroperabilityRuns(
         }];
     }).sort((left, right) => `${left.exact_tuple_identity}:${left.record_id}`.localeCompare(`${right.exact_tuple_identity}:${right.record_id}`));
     const tupleRecordIds = new Map<string, string>();
-    for (const entry of exactOwnerOperationExecutions) {
+    for (const entry of directOwnerOperationProofs) {
         const tupleKey = `${entry.artifact_kind}:${entry.registry_operation}:${entry.public_owner}`;
         const previousRecordId = tupleRecordIds.get(tupleKey);
         if (previousRecordId !== undefined) {
@@ -897,19 +843,8 @@ export function mergeArtifactInteroperabilityRuns(
         }
         tupleRecordIds.set(tupleKey, entry.record_id);
     }
-    const requiredTupleKeys = new Set(requiredOwnerOperations.map((entry) => `${entry.artifactKind}:${entry.registryOperation}:${entry.owner}`));
-    const extraTuple = exactOwnerOperationExecutions
-        .map((entry) => `${entry.artifact_kind}:${entry.registry_operation}:${entry.public_owner}`)
-        .find((entry) => !requiredTupleKeys.has(entry));
-    if (extraTuple !== undefined) throw new Error(`PC-14 emitted extra exact owner-operation evidence: ${extraTuple}.`);
-    const missingTuples = requiredOwnerOperations
-        .filter((required) => !tupleRecordIds.has(`${required.artifactKind}:${required.registryOperation}:${required.owner}`))
-        .map((required) => `${required.artifactKind}:${required.registryOperation}:${required.owner}`);
-    if (missingTuples.length > 0) {
-        throw new Error(`PC-14 missing required exact owner-operation evidence: ${missingTuples.join(", ")}.`);
-    }
     const operationRows = runs.flatMap((run) => run.parsed.rows);
-    const canonicalProofFor = (required: Pc05PublicOwnerOperation): Pc14CapabilityMatrixEntry["canonical_proof"] | undefined => {
+    const directProofFor = (required: Pc05PublicOwnerOperation): Pc14CapabilityMatrixEntry["canonical_proof"] | undefined => {
         const record = operationRows.find((candidate) =>
             recordArtifactKind(candidate) === required.artifactKind &&
             recordOwner(candidate) === required.owner &&
@@ -921,7 +856,7 @@ export function mergeArtifactInteroperabilityRuns(
         if (!isRedactedArtifactPath(sourcePath) || (producedPath !== null && producedPath !== undefined && !isRedactedArtifactPath(producedPath))) {
             throw new Error(`PC-14 runner emitted an invalid canonical capability proof for ${required.artifactKind}:${required.registryOperation}:${required.owner}.`);
         }
-        const observation = recordObservations(record).find((candidate) => candidate.result.length > 0);
+        const observation = recordObservations(record).find((candidate) => candidate.owner === required.owner && candidate.result.length > 0);
         if (observation === undefined) {
             throw new Error(`PC-14 runner emitted a canonical capability proof without an observation for ${required.artifactKind}:${required.registryOperation}:${required.owner}.`);
         }
@@ -933,15 +868,39 @@ export function mergeArtifactInteroperabilityRuns(
             "observable_result": observation.result,
         };
     };
-    // Missing tuples are rejected before this point, so every retained
-    // capability is necessarily the exact runner-emitted public operation.
-    // Do not revive the former adapter/unreached fallback here: it could make
-    // one owner's action look like evidence for another owner.
     const capabilityMatrix: readonly Pc14CapabilityMatrixEntry[] = requiredOwnerOperations.map((required) => {
-        const canonicalProof = canonicalProofFor(required);
-        if (canonicalProof === undefined) {
-            throw new Error(`PC-14 missing canonical owner-operation proof: ${required.artifactKind}:${required.registryOperation}:${required.owner}.`);
+        const identity = capabilityKey(required.artifactKind, required.registryOperation, required.owner);
+        const adapter = thinCapabilityAdapters.get(identity);
+        if (adapter !== undefined) {
+            const canonicalCapabilityIdentity = capabilityKey(required.artifactKind, required.registryOperation, adapter.canonicalOwner);
+            const canonicalProof = directProofFor({
+                artifactKind: required.artifactKind,
+                registryOperation: required.registryOperation,
+                owner: adapter.canonicalOwner,
+            });
+            if (canonicalProof !== undefined) {
+                return {
+                    "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
+                    "artifact_kind": required.artifactKind,
+                    "registry_operation": required.registryOperation,
+                    "public_owner": required.owner,
+                    disposition: "adapter-proof",
+                    "adapter_proof": {
+                        "canonical_capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, adapter.canonicalOwner]),
+                        "canonical_public_owner": adapter.canonicalOwner,
+                        "record_id": canonicalProof.record_id,
+                        reason: adapter.reason,
+                        "canonical_observable_result": canonicalProof.observable_result,
+                    },
+                };
+            }
+            return unreachableCapability(required, `Exercise ${adapter.canonicalOwner}; ${required.owner} delegates to ${canonicalCapabilityIdentity} but its canonical user-visible proof was not emitted.`);
         }
+        const canonicalProof = directProofFor(required);
+        if (canonicalProof === undefined) return unreachableCapability(
+            required,
+            `Exercise ${required.owner} through its user-visible ${required.registryOperation} capability; no runner-emitted proof exists for this distinct boundary.`,
+        );
         return {
             "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
             "artifact_kind": required.artifactKind,
@@ -953,7 +912,7 @@ export function mergeArtifactInteroperabilityRuns(
     });
     const registryCoverage = registry.artifact_kinds.map((artifact) => {
         const internalOnly = INTERNAL_PC05_ARTIFACT_KINDS.has(artifact.id);
-        const completedOperations = exactOwnerOperationExecutions.filter((entry) => entry.artifact_kind === artifact.id);
+        const completedOperations = directOwnerOperationProofs.filter((entry) => entry.artifact_kind === artifact.id);
         let disposition: "executed" | "not-executed" | "excluded-internal-cache-state" = "executed";
         if (internalOnly) disposition = "excluded-internal-cache-state";
         else if (completedOperations.length === 0) disposition = "not-executed";
@@ -966,7 +925,7 @@ export function mergeArtifactInteroperabilityRuns(
         };
     });
     fs.writeFileSync(outputPath, `${JSON.stringify({
-        "schema_version": 4,
+        "schema_version": 5,
         "step_id": "PC-14",
         "generated_by": "ArtifactInteroperabilityRun.mergeArtifactInteroperabilityRuns",
         "result_contract": {
@@ -985,13 +944,18 @@ export function mergeArtifactInteroperabilityRuns(
         // This is derived from the checked-in PC-05 registry at refresh time,
         // not maintained beside the result as a second hand-authored census.
         "registry_artifact_coverage": registryCoverage,
-        // This is the sole closure ledger. Every entry has the complete
-        // artifact/registry-operation/owner/surface tuple plus the observed
-        // source, output-or-diagnostic, and concrete public result.
-        "exact_owner_operation_coverage": exactOwnerOperationExecutions,
-        // The exact execution ledger is complete by construction. This
-        // derived inventory is therefore canonical proof only; adapters and
-        // unexecuted classifications cannot satisfy the result contract.
+        // The PC-05 owner rows remain traceability only. Product completion
+        // is represented by the capability matrix, never by this inventory.
+        "owner_inventory_traceability": requiredOwnerOperations.map((required) => ({
+            "artifact_kind": required.artifactKind,
+            "registry_operation": required.registryOperation,
+            "public_owner": required.owner,
+            "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
+        })),
+        // Each inventory row maps to either a runner-emitted canonical
+        // capability, an explicit thin-adapter parity proof, or a concrete
+        // legacy/unreached diagnostic. Wrapper rows never count as completed
+        // capabilities in their own right.
         "capability_matrix": capabilityMatrix,
         "systemic_class_audits": [
             {class: "shared conversion diagnostic parity", "derived_from": classify("shared-conversion-diagnostic-parity")},
