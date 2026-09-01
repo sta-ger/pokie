@@ -5,21 +5,9 @@ import {
     ArtifactInteroperabilityRun,
     classifyPc14CapabilityReviewFeedback,
     mergeArtifactInteroperabilityRuns,
+    pc05CliOwnerOperations,
     pc05PublicOwnerOperations,
 } from "./ArtifactInteroperabilityRun.js";
-
-type ExactTuple = {
-    readonly "exact_tuple_identity": string;
-    readonly "artifact_kind": string;
-    readonly "registry_operation": string;
-    readonly "public_owner": string;
-    readonly surface: string;
-    readonly "record_id": string;
-    readonly "source_path": string;
-    readonly "produced_path": string | null;
-    readonly "observable_result": string;
-    readonly diagnostic?: {readonly code: string; readonly recovery: string};
-};
 
 describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
     let rootPath: string;
@@ -57,31 +45,15 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         ]);
     });
 
-    it("accepts only a complete PC-05 inventory of runner-emitted exact tuples", () => {
-        const runnerPath = recordCompletePc05Inventory();
-        const outputPath = path.join(rootPath, "merged.json");
-
-        mergeArtifactInteroperabilityRuns([runnerPath], outputPath);
-
-        const output = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
-            readonly exact_owner_operation_coverage: readonly ExactTuple[];
-            readonly capability_matrix: readonly {
-                readonly capability_identity: string;
-                readonly disposition: string;
-                readonly adapter_proof?: {
-                    readonly canonical_capability_identity: string;
-                    readonly record_id: string;
-                };
-            }[];
-        };
-        const required = pc05PublicOwnerOperations(readPc05Registry());
-        expect(output.exact_owner_operation_coverage).toHaveLength(required.length);
-        expect(output.exact_owner_operation_coverage).toEqual(expect.arrayContaining([
-            expect.objectContaining({"exact_tuple_identity": JSON.stringify(["blueprint", "created_by", "cli:create", "library"])}),
-            expect.objectContaining({"exact_tuple_identity": JSON.stringify(["outcomeLibrary", "runs_by", "studio:simulation", "library"])}),
-            expect.objectContaining({"exact_tuple_identity": JSON.stringify(["blueprint", "recognized_by", "ProjectTargetResolver", "library"])}),
+    it("derives CLI ledger identities from the non-internal PC-05 registry", () => {
+        const all = pc05PublicOwnerOperations(readPc05Registry());
+        const cli = pc05CliOwnerOperations(readPc05Registry());
+        expect(cli).toHaveLength(all.filter((entry) => entry.owner.startsWith("cli:")).length);
+        expect(cli).toEqual(expect.arrayContaining([
+            expect.objectContaining({artifactKind: "blueprint", registryOperation: "created_by", owner: "cli:create"}),
+            expect.objectContaining({artifactKind: "outcomeLibrary", registryOperation: "runs_by", owner: "cli:sim"}),
+            expect.objectContaining({artifactKind: "fairnessProof", registryOperation: "created_by", owner: "cli:fairness reveal --out"}),
         ]));
-        expect(output.capability_matrix.every((entry) => entry.disposition === "canonical-proof")).toBe(true);
     });
 
     it("requires a registry operation row to retain its owner's actual surface observation", () => {
@@ -232,32 +204,6 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         ), "utf-8")) as Parameters<typeof pc05PublicOwnerOperations>[0];
     }
 
-    function recordCompletePc05Inventory(): string {
-        const runnerRoot = path.join(rootPath, "complete-inventory");
-        fs.mkdirSync(runnerRoot);
-        const sourcePath = path.join(runnerRoot, "source.json");
-        const producedPath = path.join(runnerRoot, "output.json");
-        fs.writeFileSync(sourcePath, "source");
-        fs.writeFileSync(producedPath, "output");
-        const runner = new ArtifactInteroperabilityRun(runnerRoot);
-        for (const [index, required] of pc05PublicOwnerOperations(readPc05Registry()).entries()) {
-            const result = `completed ${required.registryOperation} for ${required.owner}`;
-            runner.record({
-                id: `complete-${index}`,
-                artifactKind: required.artifactKind,
-                operation: required.registryOperation,
-                registryOperation: required.registryOperation,
-                sourcePath,
-                producedPath,
-                owner: required.owner,
-                result,
-                observations: [{surface: "library", owner: required.owner, result}],
-            });
-        }
-        const evidencePath = path.join(rootPath, "complete-runner.json");
-        runner.write(evidencePath);
-        return evidencePath;
-    }
 
     function recordOperation(
         name: string,

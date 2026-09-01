@@ -310,6 +310,17 @@ export function pc05PublicOwnerOperations(registry: Pc05ArtifactRegistry): reado
 }
 
 /**
+ * The CLI ledger is a separately executable public surface.  Keep its
+ * expected tuples derived from PC-05, not from a second hand-written command
+ * list in the torture runner.  Callers still decide which entries can be
+ * exercised in a given run; this helper only preserves the registry identity
+ * of the rows they retain.
+ */
+export function pc05CliOwnerOperations(registry: Pc05ArtifactRegistry): readonly Pc05PublicOwnerOperation[] {
+    return pc05PublicOwnerOperations(registry).filter((entry) => entry.owner.startsWith("cli:"));
+}
+
+/**
  * Records the PC-05 owner-operation boundaries which were reached by the
  * owning public surface but did not publish a second durable artifact.  The
  * caller supplies the already-produced source used by that surface and the

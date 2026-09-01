@@ -41,7 +41,7 @@ import {ServeCommand} from "../../cli/commands/ServeCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
-import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock} from "../support/ArtifactInteroperabilityRun.js";
+import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, pc05CliOwnerOperations} from "../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
 
@@ -963,6 +963,15 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             allModesDiagnostic = error instanceof Error ? error.message : String(error);
         }
         expect(allModesDiagnostic).toMatch(/requires the game package to declare its bet modes via getBetModes/);
+        const allModesOutputPath = path.join(workDir, "matrix-all-modes-simulation.json");
+        let allModesOutputDiagnostic = "";
+        try {
+            await new SimCommand().run([packagePath, "--mode", "all", "--rounds", "2", "--seed", "matrix-all-modes-output", "--out", allModesOutputPath]);
+        } catch (error) {
+            allModesOutputDiagnostic = error instanceof Error ? error.message : String(error);
+        }
+        expect(allModesOutputDiagnostic).toMatch(/requires the game package to declare its bet modes via getBetModes/);
+        expect(fs.existsSync(allModesOutputPath)).toBe(false);
         await new ReplayCommand().run([bundlePath, "--mode", "base", "--round", "1", "--seed", "matrix-replay", "--out", replayPath]);
         expect(fs.existsSync(simulationPath)).toBe(true);
         expect(fs.existsSync(comparisonSimulationPath)).toBe(true);
@@ -1052,6 +1061,12 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             owner: "cli:serve", registryOperation: "runs_by", result: "started the native outcome-source local server route",
             observations: [{surface: "cli", owner: "cli:serve", result: "serve --mode base --port 0 started the outcome-source route"}],
             systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "runtime-session-serve", artifactKind: "runtimeSession", operation: "serve", sourcePath: packagePath,
+            owner: "cli:serve", registryOperation: "created_by", result: "started the public runtime session without retaining an orphaned listener",
+            observations: [{surface: "cli", owner: "cli:serve", result: "serve --port 0 started and returned its runtime session address"}],
+            systemicClasses: ["durable-publication-ownership"],
         });
 
         // Keep an operation-level record produced by the public owners.  This
@@ -1220,6 +1235,15 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             observations: [{surface: "cli", owner: "cli:certification build --out", result: "certification build --out exit 0"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
+        const defaultCertificationPath = path.join(workDir, "certification");
+        expect(await certification.run(["build", bundlePath, certificationConfigPath])).toBe(0);
+        expect(fs.existsSync(path.join(defaultCertificationPath, "manifest.json"))).toBe(true);
+        evidence.record({
+            id: "certification-evidence-default-publish", artifactKind: "certificationEvidenceBundle", operation: "build", sourcePath: bundlePath,
+            producedPath: defaultCertificationPath, owner: "cli:certification build without --out", registryOperation: "created_by", result: "published the certification evidence bundle at its documented default destination",
+            observations: [{surface: "cli", owner: "cli:certification build without --out", result: "certification build exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
+        });
         expect(await certification.run(["verify", certificationPath, "--source", bundlePath])).toBe(0);
         const certificationManifest = JSON.parse(fs.readFileSync(path.join(certificationPath, "manifest.json"), "utf-8")) as {
             game: {id: string; version: string}; sourceBundleManifestHash: string; modes: {libraryId: string; libraryHash: string}[];
@@ -1231,8 +1255,11 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         fs.writeFileSync(seedPath, "matrix-server-seed\n");
         const fairness = new FairnessCommand();
         expect(await fairness.run(["seed-commit", seedPath, "--out", seedCommitmentPath])).toBe(0);
+        expect(await fairness.run(["seed-commit", seedPath])).toBe(0);
         expect(await fairness.run(["commit", seedCommitmentPath, "--client-seed", "matrix-client", "--nonce", "1", "--source", bundlePath, "--mode", "base", "--out", commitmentPath])).toBe(0);
+        expect(await fairness.run(["commit", seedCommitmentPath, "--client-seed", "matrix-client-default", "--nonce", "2", "--source", bundlePath, "--mode", "base"])).toBe(0);
         expect(await fairness.run(["reveal", commitmentPath, "--server-seed", seedPath, "--source", bundlePath, "--out", proofPath])).toBe(0);
+        expect(await fairness.run(["reveal", commitmentPath, "--server-seed", seedPath, "--source", bundlePath])).toBe(0);
         expect(await fairness.run(["verify", proofPath, "--commitment", commitmentPath, "--source", bundlePath])).toBe(0);
         evidence.record({
             id: "outcome-library-fairness", artifactKind: "outcomeLibrary", operation: "fairness", sourcePath: bundlePath,
@@ -1259,6 +1286,16 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             observations: [{surface: "cli", owner: "cli:sim --mode all", result: "sim --mode all returned its concrete missing getBetModes diagnostic"}],
             systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
+        evidence.recordUnavailable({
+            id: "simulation-report-set-mode-output-diagnostic", artifactKind: "simulationReportSet", operation: "simulate:output", sourcePath: packagePath,
+            owner: "cli:sim --mode all --out", registryOperation: "created_by", diagnostic: {
+                code: "missing-capability",
+                message: allModesOutputDiagnostic,
+                recovery: "Use a package that declares bet modes before requesting a persisted per-mode simulation report set.",
+            },
+            observations: [{surface: "cli", owner: "cli:sim --mode all --out", result: "sim --mode all --out returned its concrete missing getBetModes diagnostic without creating output"}],
+            systemicClasses: ["shared-conversion-diagnostic-parity", "durable-publication-ownership"],
+        });
         evidence.record({
             id: "replay-descriptor-round-artifact", artifactKind: "runtimeReplayDescriptor", operation: "inspect", sourcePath: replayPath,
             owner: "cli:replay", registryOperation: "recognized_by", result: "portable replay descriptor retained exact outcome-source provenance",
@@ -1266,9 +1303,15 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
-            id: "round-artifact-replay-provenance", artifactKind: "roundArtifact", operation: "validate", sourcePath: replayPath,
-            owner: "ReplayCommand", result: "recorded round artifact retained in the public replay descriptor",
-            observations: [{surface: "cli", owner: "ReplayCommand", result: "replay --out published the descriptor containing the round artifact"}],
+            id: "round-artifact-replay-publish", artifactKind: "roundArtifact", operation: "create", sourcePath: replayPath,
+            owner: "cli:replay", registryOperation: "created_by", result: "recorded round artifact retained in the public replay descriptor",
+            observations: [{surface: "cli", owner: "cli:replay", result: "replay --out published the descriptor containing the round artifact"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "round-artifact-replay", artifactKind: "roundArtifact", operation: "replay", sourcePath: replayPath,
+            owner: "cli:replay", registryOperation: "replays_by", result: "replay returned the recorded round from the public descriptor",
+            observations: [{surface: "cli", owner: "cli:replay", result: "replay --out completed the recorded round operation"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
@@ -1278,16 +1321,31 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
+            id: "fairness-server-seed-commitment-default", artifactKind: "fairnessServerSeedCommitment", operation: "seed-commit:default-output", sourcePath: seedPath,
+            owner: "cli:fairness seed-commit", registryOperation: "created_by", result: "printed the computed server-seed commitment without creating a durable output file",
+            observations: [{surface: "cli", owner: "cli:fairness seed-commit", result: "seed-commit without --out exit 0"}],
+        });
+        evidence.record({
             id: "runtime-replay-descriptor-replay", artifactKind: "runtimeReplayDescriptor", operation: "replay", sourcePath: replayPath,
             owner: "cli:replay", registryOperation: "replays_by", result: "replayed the persisted descriptor's source with its recorded seed and round",
             observations: [{surface: "cli", owner: "cli:replay", result: "replay produced the persisted descriptor"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
+            id: "fairness-round-commitment-default", artifactKind: "fairnessCommitment", operation: "commit:default-output", sourcePath: seedCommitmentPath,
+            owner: "cli:fairness commit", registryOperation: "created_by", result: "printed the generated round commitment without creating a durable output file",
+            observations: [{surface: "cli", owner: "cli:fairness commit", result: "commit without --out exit 0"}],
+        });
+        evidence.record({
             id: "certification-evidence-bundle", artifactKind: "certificationEvidenceBundle", operation: "verify", sourcePath: certificationPath,
             owner: "cli:certification verify", registryOperation: "recognized_by", result: "verified against the generated Outcome Library",
             observations: [{surface: "cli", owner: "cli:certification verify", result: "verify exit 0"}],
             systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "fairness-round-proof-default", artifactKind: "fairnessProof", operation: "reveal:default-output", sourcePath: commitmentPath,
+            owner: "cli:fairness reveal", registryOperation: "created_by", result: "printed the generated fairness proof without creating a durable output file",
+            observations: [{surface: "cli", owner: "cli:fairness reveal", result: "reveal without --out exit 0"}],
         });
         evidence.record({
             id: "fairness-round-commitment-publish", artifactKind: "fairnessCommitment", operation: "commit", sourcePath: seedCommitmentPath,
@@ -1757,16 +1815,21 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
                 diagnostic: expect.objectContaining({code: "unsupported-project-operation"}),
             }),
         ]));
-        const emittedOwnerTuples = (JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {
+        const emittedExactOwnerTuples = (JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {
             rows: {artifact_kind: string; registry_operation?: string; operation_owner: string; observations: {owner: string}[]}[];
         }).rows.flatMap((row) => row.registry_operation === undefined ? [] : row.observations
             .filter((observation) => observation.owner === row.operation_owner)
             .map(() => `${row.artifact_kind}:${row.registry_operation}:${row.operation_owner}`));
+        const emittedOwnerTuples = emittedExactOwnerTuples.filter((tuple) => tuple.split(":").slice(2).join(":").startsWith("cli:"));
+        const cliRegistryTuples = new Set(pc05CliOwnerOperations(JSON.parse(fs.readFileSync(
+            path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json"), "utf-8"),
+        )).map((entry) => `${entry.artifactKind}:${entry.registryOperation}:${entry.owner}`));
+        expect(emittedOwnerTuples.every((tuple) => cliRegistryTuples.has(tuple))).toBe(true);
         // The ledger is only owner evidence when its public observation names
         // the command variant that actually ran. These aliases intentionally
         // cover explicit and default destinations across every CLI authoring,
         // import/export, recognition, and validation owner in this packet.
-        expect(emittedOwnerTuples).toEqual(expect.arrayContaining([
+        expect(emittedExactOwnerTuples).toEqual(expect.arrayContaining([
             "blueprint:created_by:cli:par import --out",
             "blueprint:created_by:cli:par import without --out",
             "blueprint:created_by:cli:import --out for an XLSX source",
