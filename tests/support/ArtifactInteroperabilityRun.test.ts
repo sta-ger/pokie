@@ -122,8 +122,10 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         const runnerPath = path.join(rootPath, "canonical-create.json");
         runner.write(runnerPath);
 
-        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json")))
+        const outputPath = path.join(rootPath, "merged.json");
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], outputPath))
             .toThrow("missing required exact owner-operation evidence");
+        expect(fs.existsSync(outputPath)).toBe(false);
     });
 
     it("rejects missing PC-05 owner-operation evidence before writing a result", () => {
@@ -137,8 +139,10 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         });
         const runnerPath = path.join(rootPath, "partial.json");
         runner.write(runnerPath);
-        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json")))
+        const outputPath = path.join(rootPath, "merged.json");
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], outputPath))
             .toThrow("missing required exact owner-operation evidence: blueprint:created_by:cli:create");
+        expect(fs.existsSync(outputPath)).toBe(false);
     });
 
     it("rejects an extra PC-05 tuple before writing merged evidence", () => {
@@ -153,8 +157,10 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         const runnerPath = path.join(rootPath, "extra.json");
         runner.write(runnerPath);
 
-        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json")))
+        const outputPath = path.join(rootPath, "merged.json");
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], outputPath))
             .toThrow("exact owner-operation tuple absent from PC-05");
+        expect(fs.existsSync(outputPath)).toBe(false);
     });
 
     it("rejects a known owner promoted to a sibling registry operation", () => {
@@ -169,8 +175,10 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         const runnerPath = path.join(rootPath, "sibling.json");
         runner.write(runnerPath);
 
-        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json")))
+        const outputPath = path.join(rootPath, "merged.json");
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], outputPath))
             .toThrow("exact owner-operation tuple absent from PC-05: blueprint:recognized_by:GameBlueprintValidator");
+        expect(fs.existsSync(outputPath)).toBe(false);
     });
 
     it("rejects duplicate PC-05 tuple records even when their sources differ", () => {
@@ -181,8 +189,10 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
             id: "second-create", artifactKind: "blueprint", operation: "create", registryOperation: "created_by", owner: "cli:create", surface: "library",
         });
 
-        expect(() => mergeArtifactInteroperabilityRuns([first, second], path.join(rootPath, "merged.json")))
+        const outputPath = path.join(rootPath, "merged.json");
+        expect(() => mergeArtifactInteroperabilityRuns([first, second], outputPath))
             .toThrow("duplicate exact owner-operation evidence: blueprint:created_by:cli:create");
+        expect(fs.existsSync(outputPath)).toBe(false);
     });
 
     it("rejects proxy owner declarations instead of promoting sibling operations", () => {
