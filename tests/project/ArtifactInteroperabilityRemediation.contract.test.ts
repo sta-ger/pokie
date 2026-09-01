@@ -400,7 +400,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 });
             }
         }
-        expect(result.capability_matrix.some((entry) => entry.disposition === "unreachable-or-legacy-diagnostic")).toBe(false);
+        expect(result.capability_matrix.some((entry) => String(entry.disposition) === "unreachable-or-legacy-diagnostic")).toBe(false);
         expect(result.registry_artifact_coverage.filter((entry) => entry.disposition === "not-executed")).toEqual([]);
         expect(result.rows.some((row) => row.id.startsWith("owner-operation-"))).toBe(false);
     });
