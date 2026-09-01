@@ -9,7 +9,7 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     type PokieProject,
 } from "../../src/index.js";
-import {installPc14FixedRunnerClock, pc05PublicOwnerOperations} from "../support/ArtifactInteroperabilityRun.js";
+import {installPc14FixedRunnerClock, mergeArtifactInteroperabilityRuns, pc05PublicOwnerOperations} from "../support/ArtifactInteroperabilityRun.js";
 
 type EmittedRecord = {
     readonly id: string;
@@ -147,10 +147,11 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
-    it("executes the clean-process regeneration byte comparison", () => {
-        // The child runs the same deterministic real-artifact runners and
-        // compares their fresh files with the checked-in evidence.  Its flag
-        // only prevents this contract from recursively starting itself.
+    it("fails clean-process regeneration until every PC-05 tuple is runner-emitted", () => {
+        // The child runs the real-artifact runners. The current runner set is
+        // intentionally incomplete, so a final evidence refresh must stop at
+        // the fail-closed tuple contract rather than retaining adapter or
+        // unexecuted capability classifications.
         if (process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1") return;
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const writeEvidence = process.env.PC14_INTEROPERABILITY_WRITE_EVIDENCE === "1";
@@ -170,7 +171,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             timeout: 300000,
         });
         expect(result.error).toBeUndefined();
-        if (result.status !== 0) throw new Error(`${result.stdout}\n${result.stderr}`);
+        expect(result.status).not.toBe(0);
+        expect(`${result.stdout}\n${result.stderr}`).toContain("missing required exact owner-operation evidence");
     }, 330000);
 
     it("injects the fixed evidence clock into real writers instead of only normalising saved hashes", () => {
@@ -346,29 +348,13 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         ]));
     });
 
-    it("retains the complete PC-05 registry census without promoting unexecuted capabilities", () => {
-        const registryPath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json");
-        const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as {readonly artifact_kinds: readonly {readonly id: string}[]};
-        expect(result.registry_artifact_coverage.map((entry) => entry.artifact_kind).sort())
-            .toEqual(registry.artifact_kinds.map((artifact) => artifact.id).sort());
-        for (const entry of result.registry_artifact_coverage) {
-            if (entry.disposition === "excluded-internal-cache-state") {
-                expect(entry.artifact_kind).toMatch(/^blueprintRuntimeMaterialization(?:Cache|Marker)$/);
-                expect(entry.exclusion).toMatch(/Machine-local materialization cache/);
-                continue;
-            }
-            const capabilities = result.capability_matrix.filter((capability) => capability.artifact_kind === entry.artifact_kind);
-            expect(capabilities.length).toBeGreaterThan(0);
-            if (entry.disposition === "executed") {
-                expect(entry.public_owners.length).toBeGreaterThan(0);
-                expect(entry.executed_regressions.length).toBeGreaterThan(0);
-                continue;
-            }
-            expect(entry.disposition).toBe("not-executed");
-            expect(entry.public_owners).toHaveLength(0);
-            expect(entry.executed_regressions).toHaveLength(0);
-            expect(capabilities.every((capability) => capability.disposition === "unreachable-or-legacy-diagnostic")).toBe(true);
-        }
+    it("rejects the saved runner set when a PC-05 tuple has only adapter or unexecuted classification", () => {
+        const outputPath = path.join(process.cwd(), "node_modules/.cache/pokie-tmp/pc14-rejected-interoperability-result.json");
+        expect(() => mergeArtifactInteroperabilityRuns(
+            result.runner_inputs.map((input) => path.join(path.dirname(evidencePath), input.file)),
+            outputPath,
+        )).toThrow("missing required exact owner-operation evidence");
+        expect(fs.existsSync(outputPath)).toBe(false);
     });
 
     it("derives the required owner/operation matrix from every non-internal PC-05 registry field", () => {
@@ -383,68 +369,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         ]));
         expect(required.some((entry) => entry.artifactKind === "blueprintRuntimeMaterializationCache")).toBe(false);
         expect(required.some((entry) => entry.artifactKind === "blueprintRuntimeMaterializationMarker")).toBe(false);
-        // The registry remains traceability input, not a numeric execution
-        // target. The capability-matrix equality below is the durable
-        // contract: every retained owner is classified by its user-visible
-        // capability without claiming that each owner ran in this refresh.
-    });
-
-    it("maps every retained owner capability to a canonical proof, thin adapter, or explicit unexecuted diagnostic", () => {
-        const required = pc05PublicOwnerOperations(JSON.parse(fs.readFileSync(
-            path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json"), "utf-8",
-        )) as Parameters<typeof pc05PublicOwnerOperations>[0]);
-        const expected = required.map((entry) => JSON.stringify([
-            entry.artifactKind, entry.registryOperation, entry.owner,
-        ])).sort();
-        const actual = result.capability_matrix.map((entry) => entry.capability_identity).sort();
-        expect(actual).toEqual(expected);
-        expect(new Set(actual).size).toBe(actual.length);
-
-        for (const entry of result.capability_matrix) {
-            expect(entry.capability_identity).toBe(JSON.stringify([
-                entry.artifact_kind, entry.registry_operation, entry.public_owner,
-            ]));
-            if (entry.disposition === "canonical-proof") {
-                expect(entry.canonical_proof).toMatchObject({
-                    "operation_owner": entry.public_owner,
-                    "record_id": expect.any(String),
-                    "source_path": expect.stringMatching(/^run-artifacts\//),
-                    "observable_result": expect.any(String),
-                });
-                expect(entry.adapter_proof).toBeUndefined();
-                expect(entry.diagnostic).toBeUndefined();
-                const record = result.rows.find((candidate) => candidate.id === entry.canonical_proof?.record_id);
-                expect(record?.operation_owner).toBe(entry.public_owner);
-                expect(record?.source_path).toBe(entry.canonical_proof?.source_path);
-                continue;
-            }
-            if (entry.disposition === "adapter-proof") {
-                expect(entry.canonical_proof).toBeUndefined();
-                expect(entry.diagnostic).toBeUndefined();
-                expect(entry.adapter_proof).toMatchObject({
-                    "record_id": expect.any(String),
-                    reason: expect.stringContaining("was not executed by this refresh"),
-                });
-                const canonical = result.capability_matrix.find((candidate) =>
-                    candidate.capability_identity === entry.adapter_proof?.canonical_capability_identity,
-                );
-                expect(canonical).toMatchObject({
-                    disposition: "canonical-proof",
-                    "artifact_kind": entry.artifact_kind,
-                    "registry_operation": entry.registry_operation,
-                    "public_owner": entry.adapter_proof?.canonical_public_owner,
-                });
-                expect(canonical?.canonical_proof?.record_id).toBe(entry.adapter_proof?.record_id);
-                continue;
-            }
-            expect(entry.disposition).toBe("unreachable-or-legacy-diagnostic");
-            expect(entry.canonical_proof).toBeUndefined();
-            expect(entry.adapter_proof).toBeUndefined();
-            expect(entry.diagnostic).toMatchObject({
-                code: "unreached-distinct-capability",
-                recovery: expect.stringContaining("Exercise "),
-            });
-        }
+        // The required inventory is the execution target. A saved capability
+        // classification cannot substitute for a runner-emitted exact tuple.
     });
 
     it("derives an exact path-aware tuple from every runner-emitted registry operation", () => {

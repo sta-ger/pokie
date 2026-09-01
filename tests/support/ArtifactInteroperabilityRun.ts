@@ -682,9 +682,9 @@ export class ArtifactInteroperabilityRun {
  * a synthetic matrix row.  The merger only copies records the runners have
  * already persisted, which keeps the checked-in PC-14 result tied to actual
  * operations rather than a second manually maintained assertion list.  The
- * capability matrix still retains every public owner: a missing emitted
- * operation becomes either an explicitly declared adapter proof or a
- * diagnostic, never a completeness failure that invites synthetic rows.
+ * Every public PC-05 owner-operation tuple must be emitted by a runner. The
+ * merger is deliberately fail-closed: it never substitutes an adapter or an
+ * unexecuted classification for a missing execution.
  */
 export function mergeArtifactInteroperabilityRuns(
     inputPaths: readonly string[],
@@ -834,6 +834,12 @@ export function mergeArtifactInteroperabilityRuns(
         .map((entry) => `${entry.artifact_kind}:${entry.registry_operation}:${entry.public_owner}`)
         .find((entry) => !requiredTupleKeys.has(entry));
     if (extraTuple !== undefined) throw new Error(`PC-14 emitted extra exact owner-operation evidence: ${extraTuple}.`);
+    const missingTuples = requiredOwnerOperations
+        .filter((required) => !tupleRecordIds.has(`${required.artifactKind}:${required.registryOperation}:${required.owner}`))
+        .map((required) => `${required.artifactKind}:${required.registryOperation}:${required.owner}`);
+    if (missingTuples.length > 0) {
+        throw new Error(`PC-14 missing required exact owner-operation evidence: ${missingTuples.join(", ")}.`);
+    }
     const operationRows = runs.flatMap((run) => run.parsed.rows);
     const canonicalProofFor = (required: Pc05PublicOwnerOperation): Pc14CapabilityMatrixEntry["canonical_proof"] | undefined => {
         const record = operationRows.find((candidate) =>
@@ -956,9 +962,9 @@ export function mergeArtifactInteroperabilityRuns(
         // artifact/registry-operation/owner/surface tuple plus the observed
         // source, output-or-diagnostic, and concrete public result.
         "exact_owner_operation_coverage": exactOwnerOperationExecutions,
-        // Complete retained-owner capability inventory. Unlike the exact
-        // execution ledger above, adapter and diagnostic entries intentionally
-        // do not claim their own public operation ran.
+        // The exact execution ledger is complete by construction. This
+        // derived inventory is therefore canonical proof only; adapters and
+        // unexecuted classifications cannot satisfy the result contract.
         "capability_matrix": capabilityMatrix,
         "systemic_class_audits": [
             {class: "shared conversion diagnostic parity", "derived_from": classify("shared-conversion-diagnostic-parity")},

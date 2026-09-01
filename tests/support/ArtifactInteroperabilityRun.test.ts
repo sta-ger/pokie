@@ -5,6 +5,7 @@ import {
     ArtifactInteroperabilityRun,
     classifyPc14CapabilityReviewFeedback,
     mergeArtifactInteroperabilityRuns,
+    pc05PublicOwnerOperations,
 } from "./ArtifactInteroperabilityRun.js";
 
 type ExactTuple = {
@@ -56,44 +57,11 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         ]);
     });
 
-    it("retains separate CLI, Studio, and library exact tuples with their observed artifacts", () => {
-        const cliPath = recordOperation("cli", {
-            id: "cli-create-blueprint",
-            artifactKind: "blueprint",
-            operation: "create",
-            registryOperation: "created_by",
-            owner: "cli:create",
-            surface: "cli",
-        });
-        const studioPath = recordOperation("studio", {
-            id: "studio-run-outcome-library",
-            artifactKind: "outcomeLibrary",
-            operation: "run",
-            registryOperation: "runs_by",
-            owner: "studio:simulation",
-            surface: "studio-api",
-        });
-        const libraryPath = recordOperation("library", {
-            id: "library-recognize-blueprint",
-            artifactKind: "blueprint",
-            operation: "recognize",
-            registryOperation: "recognized_by",
-            owner: "ProjectTargetResolver",
-            surface: "library",
-        });
-        // This owner is deliberately present in PC-05, but has no registry
-        // operation in this runner row. The merger must not infer one from
-        // the owner name or artifact kind.
-        const ownerOnlyPath = recordOperation("owner-only", {
-            id: "owner-only-validation",
-            artifactKind: "blueprint",
-            operation: "validate",
-            owner: "GameBlueprintValidator",
-            surface: "library",
-        });
+    it("accepts only a complete PC-05 inventory of runner-emitted exact tuples", () => {
+        const runnerPath = recordCompletePc05Inventory();
         const outputPath = path.join(rootPath, "merged.json");
 
-        mergeArtifactInteroperabilityRuns([cliPath, studioPath, libraryPath, ownerOnlyPath], outputPath);
+        mergeArtifactInteroperabilityRuns([runnerPath], outputPath);
 
         const output = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
             readonly exact_owner_operation_coverage: readonly ExactTuple[];
@@ -106,57 +74,14 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
                 };
             }[];
         };
-        expect(output.exact_owner_operation_coverage).toHaveLength(3);
+        const required = pc05PublicOwnerOperations(readPc05Registry());
+        expect(output.exact_owner_operation_coverage).toHaveLength(required.length);
         expect(output.exact_owner_operation_coverage).toEqual(expect.arrayContaining([
-            expect.objectContaining({
-                "exact_tuple_identity": JSON.stringify(["blueprint", "created_by", "cli:create", "cli"]),
-                "artifact_kind": "blueprint",
-                "registry_operation": "created_by",
-                "public_owner": "cli:create",
-                surface: "cli",
-                "record_id": "cli-create-blueprint",
-                "source_path": "run-artifacts/cli-source.json",
-                "produced_path": "run-artifacts/cli-output.json",
-                "observable_result": "cli completed create",
-            }),
-            expect.objectContaining({
-                "exact_tuple_identity": JSON.stringify(["outcomeLibrary", "runs_by", "studio:simulation", "studio-api"]),
-                "artifact_kind": "outcomeLibrary",
-                "registry_operation": "runs_by",
-                "public_owner": "studio:simulation",
-                surface: "studio-api",
-                "record_id": "studio-run-outcome-library",
-                "source_path": "run-artifacts/studio-source.json",
-                "produced_path": "run-artifacts/studio-output.json",
-                "observable_result": "studio completed run",
-            }),
-            expect.objectContaining({
-                "exact_tuple_identity": JSON.stringify(["blueprint", "recognized_by", "ProjectTargetResolver", "library"]),
-                "artifact_kind": "blueprint",
-                "registry_operation": "recognized_by",
-                "public_owner": "ProjectTargetResolver",
-                surface: "library",
-                "record_id": "library-recognize-blueprint",
-                "source_path": "run-artifacts/library-source.json",
-                "produced_path": "run-artifacts/library-output.json",
-                "observable_result": "library completed recognize",
-            }),
+            expect.objectContaining({"exact_tuple_identity": JSON.stringify(["blueprint", "created_by", "cli:create", "library"])}),
+            expect.objectContaining({"exact_tuple_identity": JSON.stringify(["outcomeLibrary", "runs_by", "studio:simulation", "library"])}),
+            expect.objectContaining({"exact_tuple_identity": JSON.stringify(["blueprint", "recognized_by", "ProjectTargetResolver", "library"])}),
         ]));
-        expect(output.exact_owner_operation_coverage.some((entry) => entry.public_owner === "GameBlueprintValidator")).toBe(false);
-        const createCapability = output.capability_matrix.find((entry) =>
-            entry.capability_identity === JSON.stringify(["blueprint", "created_by", "cli:create"]),
-        );
-        expect(createCapability?.disposition).toBe("canonical-proof");
-        const createAdapter = output.capability_matrix.find((entry) =>
-            entry.capability_identity === JSON.stringify(["blueprint", "created_by", "cli:create --out"]),
-        );
-        expect(createAdapter).toMatchObject({
-            disposition: "adapter-proof",
-            "adapter_proof": {
-                "canonical_capability_identity": JSON.stringify(["blueprint", "created_by", "cli:create"]),
-                "record_id": "cli-create-blueprint",
-            },
-        });
+        expect(output.capability_matrix.every((entry) => entry.disposition === "canonical-proof")).toBe(true);
     });
 
     it("requires a registry operation row to retain its owner's actual surface observation", () => {
@@ -176,49 +101,32 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         })).toThrow("must bind exactly one actual surface observation from that owner");
     });
 
-    it("does not infer a thin adapter from a shared artifact operation", () => {
+    it("rejects an adapter-only tuple instead of borrowing a sibling operation", () => {
         const runner = new ArtifactInteroperabilityRun(rootPath);
-        const sourcePath = path.join(rootPath, "outcomes.jsonl");
-        fs.writeFileSync(sourcePath, "{\"outcome\":\"canonical\"}\n");
+        const sourcePath = path.join(rootPath, "blueprint.json");
+        fs.writeFileSync(sourcePath, "{\"blueprint\":\"canonical\"}\n");
         runner.record({
-            id: "native-canonical-outcome-writer",
-            artifactKind: "canonicalOutcomeJsonl",
+            id: "canonical-create",
+            artifactKind: "blueprint",
             operation: "create",
             registryOperation: "created_by",
             sourcePath,
-            owner: "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
-            result: "native bundle writer published canonical outcomes",
+            owner: "cli:create",
+            result: "CLI created the blueprint",
             observations: [{
                 surface: "library",
-                owner: "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized",
-                result: "native bundle writer published canonical outcomes",
+                owner: "cli:create",
+                result: "CLI created the blueprint",
             }],
         });
-        const runnerPath = path.join(rootPath, "canonical-outcomes.json");
-        const outputPath = path.join(rootPath, "merged.json");
+        const runnerPath = path.join(rootPath, "canonical-create.json");
         runner.write(runnerPath);
 
-        mergeArtifactInteroperabilityRuns([runnerPath], outputPath);
-
-        const output = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
-            readonly capability_matrix: readonly {
-                readonly capability_identity: string;
-                readonly disposition: string;
-                readonly diagnostic?: {readonly code: string};
-            }[];
-        };
-        const externalProducer = output.capability_matrix.find((entry) =>
-            entry.capability_identity === JSON.stringify([
-                "canonicalOutcomeJsonl", "created_by", "user/external canonical outcome-stream producer",
-            ]),
-        );
-        expect(externalProducer).toMatchObject({
-            disposition: "unreachable-or-legacy-diagnostic",
-            diagnostic: {code: "unreached-distinct-capability"},
-        });
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json")))
+            .toThrow("missing required exact owner-operation evidence");
     });
 
-    it("retains missing PC-05 owner-operation evidence as capability diagnostics", () => {
+    it("rejects missing PC-05 owner-operation evidence before writing a result", () => {
         const sourcePath = path.join(rootPath, "source.json");
         fs.writeFileSync(sourcePath, "source");
         const runner = new ArtifactInteroperabilityRun(rootPath);
@@ -229,22 +137,8 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         });
         const runnerPath = path.join(rootPath, "partial.json");
         runner.write(runnerPath);
-        const outputPath = path.join(rootPath, "merged.json");
-        mergeArtifactInteroperabilityRuns([runnerPath], outputPath);
-
-        const output = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
-            readonly capability_matrix: readonly {
-                readonly capability_identity: string;
-                readonly disposition: string;
-                readonly diagnostic?: {readonly code: string};
-            }[];
-        };
-        expect(output.capability_matrix.find((entry) => entry.capability_identity === JSON.stringify([
-            "blueprint", "created_by", "cli:create",
-        ]))).toMatchObject({
-            disposition: "unreachable-or-legacy-diagnostic",
-            diagnostic: {code: "unreached-distinct-capability"},
-        });
+        expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json")))
+            .toThrow("missing required exact owner-operation evidence: blueprint:created_by:cli:create");
     });
 
     it("rejects an extra PC-05 tuple before writing merged evidence", () => {
@@ -321,6 +215,39 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
         expect(() => mergeArtifactInteroperabilityRuns([runnerPath], path.join(rootPath, "merged.json")))
             .toThrow("emitted proxy owner coverage for direct-create");
     });
+
+    function readPc05Registry(): Parameters<typeof pc05PublicOwnerOperations>[0] {
+        return JSON.parse(fs.readFileSync(path.resolve(
+            process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json",
+        ), "utf-8")) as Parameters<typeof pc05PublicOwnerOperations>[0];
+    }
+
+    function recordCompletePc05Inventory(): string {
+        const runnerRoot = path.join(rootPath, "complete-inventory");
+        fs.mkdirSync(runnerRoot);
+        const sourcePath = path.join(runnerRoot, "source.json");
+        const producedPath = path.join(runnerRoot, "output.json");
+        fs.writeFileSync(sourcePath, "source");
+        fs.writeFileSync(producedPath, "output");
+        const runner = new ArtifactInteroperabilityRun(runnerRoot);
+        for (const [index, required] of pc05PublicOwnerOperations(readPc05Registry()).entries()) {
+            const result = `completed ${required.registryOperation} for ${required.owner}`;
+            runner.record({
+                id: `complete-${index}`,
+                artifactKind: required.artifactKind,
+                operation: required.registryOperation,
+                registryOperation: required.registryOperation,
+                sourcePath,
+                producedPath,
+                owner: required.owner,
+                result,
+                observations: [{surface: "library", owner: required.owner, result}],
+            });
+        }
+        const evidencePath = path.join(rootPath, "complete-runner.json");
+        runner.write(evidencePath);
+        return evidencePath;
+    }
 
     function recordOperation(
         name: string,
