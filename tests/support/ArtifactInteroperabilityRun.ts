@@ -139,8 +139,15 @@ export type Pc05PublicOwnerOperation = {
  * other kinds describe independently observable product behaviour and must
  * remain blockers even when a review also mentions the retired counter.
  */
+export type Pc14CapabilityReviewFindingKind =
+    | "retired-pc05-owner-operation-counter"
+    | "user-visible-capability"
+    | "journey"
+    | "parity"
+    | "lifecycle";
+
 export type Pc14CapabilityReviewFinding = {
-    readonly kind: "retired-pc05-owner-operation-counter" | "user-visible-capability" | "journey" | "parity" | "lifecycle";
+    readonly kind: Pc14CapabilityReviewFindingKind;
     readonly detail: string;
 };
 
@@ -151,6 +158,10 @@ export type Pc14CapabilityReviewDecision = {
     /** Distinct user-visible defects remain controller blockers. */
     readonly blockers: readonly Pc14CapabilityReviewFinding[];
 };
+
+const PC14_CAPABILITY_BLOCKER_KINDS = new Set<Pc14CapabilityReviewFindingKind>([
+    "user-visible-capability", "journey", "parity", "lifecycle",
+]);
 
 /**
  * Separates the retired PC-05 execution-count concern from the capability
@@ -163,7 +174,7 @@ export function classifyPc14CapabilityReviewFeedback(
     findings: readonly Pc14CapabilityReviewFinding[],
 ): Pc14CapabilityReviewDecision {
     const retiredCounterFeedback = findings.filter((finding) => finding.kind === "retired-pc05-owner-operation-counter");
-    const blockers = findings.filter((finding) => finding.kind !== "retired-pc05-owner-operation-counter");
+    const blockers = findings.filter((finding) => PC14_CAPABILITY_BLOCKER_KINDS.has(finding.kind));
     return {
         disposition: blockers.length === 0 ? "retired-counter-feedback-rejected" : "blocked-by-distinct-capability-defect",
         retiredCounterFeedback,
