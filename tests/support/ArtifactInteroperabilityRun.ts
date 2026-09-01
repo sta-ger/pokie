@@ -133,6 +133,45 @@ export type Pc05PublicOwnerOperation = {
 };
 
 /**
+ * The controller consumes this small, explicit feedback vocabulary when it
+ * evaluates PC-14.  The retired PC-05 counter described how many inventory
+ * rows happened to execute; it is traceability, not a product defect.  The
+ * other kinds describe independently observable product behaviour and must
+ * remain blockers even when a review also mentions the retired counter.
+ */
+export type Pc14CapabilityReviewFinding = {
+    readonly kind: "retired-pc05-owner-operation-counter" | "user-visible-capability" | "journey" | "parity" | "lifecycle";
+    readonly detail: string;
+};
+
+export type Pc14CapabilityReviewDecision = {
+    readonly disposition: "retired-counter-feedback-rejected" | "blocked-by-distinct-capability-defect";
+    /** Counter-only feedback is rejected as a PC-14 blocker. */
+    readonly retiredCounterFeedback: readonly Pc14CapabilityReviewFinding[];
+    /** Distinct user-visible defects remain controller blockers. */
+    readonly blockers: readonly Pc14CapabilityReviewFinding[];
+};
+
+/**
+ * Separates the retired PC-05 execution-count concern from the capability
+ * contract enforced by the controller.  This is deliberately a classifier,
+ * rather than a boolean exemption: a mixed review cannot discard a real
+ * capability, journey, parity, or lifecycle defect by also citing the old
+ * counter.
+ */
+export function classifyPc14CapabilityReviewFeedback(
+    findings: readonly Pc14CapabilityReviewFinding[],
+): Pc14CapabilityReviewDecision {
+    const retiredCounterFeedback = findings.filter((finding) => finding.kind === "retired-pc05-owner-operation-counter");
+    const blockers = findings.filter((finding) => finding.kind !== "retired-pc05-owner-operation-counter");
+    return {
+        disposition: blockers.length === 0 ? "retired-counter-feedback-rejected" : "blocked-by-distinct-capability-defect",
+        retiredCounterFeedback,
+        blockers,
+    };
+}
+
+/**
  * The capability registry complements the exact execution ledger.  A
  * capability is never promoted to an executed operation merely because its
  * owner is retained in PC-05: it either points at a runner-emitted canonical

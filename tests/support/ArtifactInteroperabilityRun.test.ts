@@ -1,7 +1,11 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ArtifactInteroperabilityRun, mergeArtifactInteroperabilityRuns} from "./ArtifactInteroperabilityRun.js";
+import {
+    ArtifactInteroperabilityRun,
+    classifyPc14CapabilityReviewFeedback,
+    mergeArtifactInteroperabilityRuns,
+} from "./ArtifactInteroperabilityRun.js";
 
 type ExactTuple = {
     readonly "exact_tuple_identity": string;
@@ -25,6 +29,31 @@ describe("ArtifactInteroperabilityRun exact tuple ledger", () => {
 
     afterEach(() => {
         fs.rmSync(rootPath, {recursive: true, force: true});
+    });
+
+    it("rejects retired PC-05 counter feedback without suppressing capability blockers", () => {
+        const counterOnly = classifyPc14CapabilityReviewFeedback([{
+            kind: "retired-pc05-owner-operation-counter",
+            detail: "Only 12 of the former owner-operation target ran.",
+        }]);
+        expect(counterOnly.disposition).toBe("retired-counter-feedback-rejected");
+        expect(counterOnly.retiredCounterFeedback).toHaveLength(1);
+        expect(counterOnly.blockers).toEqual([]);
+
+        const mixedFeedback = classifyPc14CapabilityReviewFeedback([
+            {kind: "retired-pc05-owner-operation-counter", detail: "The prior row counter is incomplete."},
+            {kind: "user-visible-capability", detail: "The public outcome import has no usable recovery."},
+            {kind: "journey", detail: "The create-to-build journey cannot reach its published artifact."},
+            {kind: "parity", detail: "Studio and CLI return different conversion diagnostics."},
+            {kind: "lifecycle", detail: "A cancelled publication leaves an owned destination behind."},
+        ]);
+        expect(mixedFeedback.disposition).toBe("blocked-by-distinct-capability-defect");
+        expect(mixedFeedback.retiredCounterFeedback).toEqual([
+            {kind: "retired-pc05-owner-operation-counter", detail: "The prior row counter is incomplete."},
+        ]);
+        expect(mixedFeedback.blockers.map((finding) => finding.kind)).toEqual([
+            "user-visible-capability", "journey", "parity", "lifecycle",
+        ]);
     });
 
     it("retains separate CLI, Studio, and library exact tuples with their observed artifacts", () => {
