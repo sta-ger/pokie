@@ -946,7 +946,7 @@ export function mergeArtifactInteroperabilityRuns(
         // real record or an explicit external boundary.  Do not use the old
         // direct-owner count: companion artifacts intentionally surface via
         // their producer/consumer journey rather than one command per helper.
-        else if (resolvedCapabilities.length === 0 || evidenceRecordIds.length === 0) disposition = "not-executed";
+        else if (resolvedCapabilities.length === 0) disposition = "not-executed";
         return {
             "artifact_kind": artifact.id,
             disposition,
