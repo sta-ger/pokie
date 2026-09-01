@@ -37,6 +37,7 @@ import {ParCommand} from "../../cli/commands/ParCommand.js";
 import {ReelCommand} from "../../cli/commands/ReelCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
+import {ServeCommand} from "../../cli/commands/ServeCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
@@ -170,6 +171,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const simulationDiffPath = path.join(workDir, "matrix-simulation-diff.json");
         const simulationJsonReportPath = path.join(workDir, "matrix-simulation-report.json");
         const outcomeDiffPath = path.join(workDir, "matrix-outcome-diff.json");
+        const outcomeSourceCommandDiffPath = path.join(workDir, "matrix-outcomesource-diff.json");
         const renderedReportPath = path.join(workDir, "matrix-rendered-report.html");
         const replayPath = path.join(workDir, "matrix-replay.json");
         const packageReplayPath = path.join(workDir, "matrix-package-replay.json");
@@ -948,19 +950,37 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(await new OutcomeSourceCommand().run(["sample", bundlePath, "--mode", "base", "--seed", "matrix-sample"])).toBe(0);
         evidence.record({
             id: "outcome-library-sample", artifactKind: "outcomeLibrary", operation: "sample", sourcePath: bundlePath,
-            owner: "OutcomeSourceCommand", result: "sampled", observations: [{surface: "cli", owner: "OutcomeSourceCommand", result: "exit 0"}],
+            owner: "cli:sample", registryOperation: "runs_by", result: "sampled", observations: [{surface: "cli", owner: "cli:sample", result: "exit 0"}],
         });
         await new SimCommand().run([bundlePath, "--mode", "base", "--rounds", "4", "--seed", "matrix-sim", "--out", simulationPath]);
         await new SimCommand().run([bundlePath, "--mode", "base", "--rounds", "5", "--seed", "matrix-sim-comparison", "--out", comparisonSimulationPath]);
         await new SimCommand().run([packagePath, "--rounds", "4", "--seed", "matrix-package-sim", "--out", packageSimulationPath]);
         await new SimCommand().run([packagePath, "--rounds", "5", "--seed", "matrix-package-sim-comparison", "--out", packageComparisonSimulationPath]);
-        await expect(new SimCommand().run([packagePath, "--mode", "all", "--rounds", "2", "--seed", "matrix-all-modes"])).rejects.toThrow(/requires the game package to declare its bet modes via getBetModes/);
+        let allModesDiagnostic = "";
+        try {
+            await new SimCommand().run([packagePath, "--mode", "all", "--rounds", "2", "--seed", "matrix-all-modes"]);
+        } catch (error) {
+            allModesDiagnostic = error instanceof Error ? error.message : String(error);
+        }
+        expect(allModesDiagnostic).toMatch(/requires the game package to declare its bet modes via getBetModes/);
         await new ReplayCommand().run([bundlePath, "--mode", "base", "--round", "1", "--seed", "matrix-replay", "--out", replayPath]);
         expect(fs.existsSync(simulationPath)).toBe(true);
         expect(fs.existsSync(comparisonSimulationPath)).toBe(true);
         expect(fs.existsSync(packageSimulationPath)).toBe(true);
         expect(fs.existsSync(packageComparisonSimulationPath)).toBe(true);
         expect(fs.existsSync(replayPath)).toBe(true);
+        evidence.record({
+            id: "package-simulate", artifactKind: "tsPackage", operation: "simulate", sourcePath: packagePath,
+            producedPath: packageSimulationPath, owner: "cli:sim", registryOperation: "runs_by", result: "published a seeded runtime simulation report",
+            observations: [{surface: "cli", owner: "cli:sim", result: "sim --out exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "simulation-report-publish", artifactKind: "simulationReport", operation: "simulate", sourcePath: packagePath,
+            producedPath: packageSimulationPath, owner: "cli:sim --out", registryOperation: "created_by", result: "published a seeded simulation report from the generated package",
+            observations: [{surface: "cli", owner: "cli:sim --out", result: "sim --out exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
         const provenanceBundleManifest = JSON.parse(fs.readFileSync(path.join(bundlePath, "manifest.json"), "utf-8")) as {
             game: {id: string; version: string}; modes: {libraryId: string; libraryHash: string}[];
         };
@@ -992,6 +1012,47 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const packageReplay = JSON.parse(fs.readFileSync(packageReplayPath, "utf-8")) as {outcomeSource?: unknown; seed?: string | null};
         expect(packageReplay.outcomeSource).toBeUndefined();
         expect(packageReplay.seed).toBe("matrix-package-replay");
+        evidence.record({
+            id: "package-replay", artifactKind: "tsPackage", operation: "replay", sourcePath: packagePath,
+            producedPath: packageReplayPath, owner: "cli:replay", registryOperation: "runs_by", result: "published a seeded best-effort runtime replay",
+            observations: [{surface: "cli", owner: "cli:replay", result: "replay --out exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+
+        // Serve has deliberately separate runtime-package and native
+        // outcome-source routes. Exercise both generated artifacts while
+        // retaining the command's start result without leaving an HTTP
+        // listener open in this bounded CLI runner.
+        const servedPaths: string[] = [];
+        const servingStub = {
+            start: () => Promise.resolve({host: "127.0.0.1", port: 0}),
+        } as unknown as import("pokie").PokieDevServerHandling;
+        expect(await new ServeCommand(loadPokieGame, () => {
+            servedPaths.push("tsPackage");
+            return servingStub;
+        }).run([packagePath, "--port", "0"])).toBeUndefined();
+        expect(await new ServeCommand(
+            loadPokieGame,
+            undefined,
+            undefined,
+            new ProjectTargetResolver(),
+            (project, modeName) => {
+                servedPaths.push(`${project.type}:${modeName}`);
+                return servingStub;
+            },
+        ).run([bundlePath, "--mode", "base", "--port", "0"])).toBeUndefined();
+        expect(servedPaths).toEqual(["tsPackage", "outcomeLibrary:base"]);
+        evidence.record({
+            id: "package-serve", artifactKind: "tsPackage", operation: "serve", sourcePath: packagePath,
+            owner: "cli:serve", registryOperation: "runs_by", result: "started the runtime-package local server route",
+            observations: [{surface: "cli", owner: "cli:serve", result: "serve --port 0 started the package route"}],
+        });
+        evidence.record({
+            id: "outcome-library-serve", artifactKind: "outcomeLibrary", operation: "serve", sourcePath: bundlePath,
+            owner: "cli:serve", registryOperation: "runs_by", result: "started the native outcome-source local server route",
+            observations: [{surface: "cli", owner: "cli:serve", result: "serve --mode base --port 0 started the outcome-source route"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
 
         // Keep an operation-level record produced by the public owners.  This
         // is intentionally written only after each command has completed: it
@@ -1048,10 +1109,12 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         await new ReportCommand().run([packageSimulationPath, "--format", "html", "--out", renderedReportPath]);
         await new DiffCommand().run([packageSimulationPath, packageComparisonSimulationPath, "--out", simulationDiffPath]);
         await new DiffCommand().run([bundlePath, importedStakeLibraryPath, "--format", "json", "--out", outcomeDiffPath]);
+        expect(await new OutcomeSourceCommand().run(["diff", bundlePath, importedStakeLibraryPath, "--format", "json", "--out", outcomeSourceCommandDiffPath])).toBe(0);
         expect(fs.existsSync(renderedReportPath)).toBe(true);
         expect(fs.existsSync(simulationJsonReportPath)).toBe(true);
         expect(fs.existsSync(simulationDiffPath)).toBe(true);
         expect(fs.existsSync(outcomeDiffPath)).toBe(true);
+        expect(fs.existsSync(outcomeSourceCommandDiffPath)).toBe(true);
         const operationObservationPath = path.join(workDir, "pc-14-operation-observations.json");
         const operationObservations = [
             {id: "blueprint:validate", sourcePath: blueprintPath, producedPath: null, owner: "ValidateCommand", result: "valid"},
@@ -1066,12 +1129,12 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(fs.readFileSync(reportPath, "utf-8")).toContain("Outcome Source Report");
         evidence.record({
             id: "outcome-library-simulate", artifactKind: "outcomeLibrary", operation: "simulate", sourcePath: bundlePath,
-            producedPath: simulationPath, owner: "SimCommand", result: "published", observations: [{surface: "cli", owner: "SimCommand", result: "exit 0"}],
+            producedPath: simulationPath, owner: "cli:sim", registryOperation: "runs_by", result: "published", observations: [{surface: "cli", owner: "cli:sim", result: "exit 0"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "outcome-library-replay", artifactKind: "outcomeLibrary", operation: "replay", sourcePath: bundlePath,
-            producedPath: replayPath, owner: "ReplayCommand", result: "published", observations: [{surface: "cli", owner: "ReplayCommand", result: "exit 0"}],
+            producedPath: replayPath, owner: "cli:replay", registryOperation: "runs_by", result: "published", observations: [{surface: "cli", owner: "cli:replay", result: "exit 0"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
@@ -1080,34 +1143,81 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         });
         evidence.record({
             id: "outcome-source-analysis-report", artifactKind: "outcomeSourceAnalysisReport", operation: "report", sourcePath: reportPath,
-            owner: "ReportCommand", result: "analysis report published from the generated Outcome Library",
-            observations: [{surface: "cli", owner: "ReportCommand", result: "report --out exit 0 rendered the Outcome Source Report"}],
+            owner: "cli:report --out for outcome sources", registryOperation: "created_by", result: "analysis report published from the generated Outcome Library",
+            observations: [{surface: "cli", owner: "cli:report --out for outcome sources", result: "report --out exit 0 rendered the Outcome Source Report"}],
         });
         evidence.record({
             id: "simulation-comparison-report", artifactKind: "simulationComparisonReport", operation: "diff", sourcePath: simulationDiffPath,
-            owner: "DiffCommand", result: "published from two real simulation reports", observations: [{surface: "cli", owner: "DiffCommand", result: "diff --out exit 0"}],
+            owner: "cli:diff --out", registryOperation: "created_by", result: "published from two real simulation reports", observations: [{surface: "cli", owner: "cli:diff --out", result: "diff --out exit 0"}],
         });
         evidence.record({
             id: "outcome-source-comparison-report", artifactKind: "outcomeSourceComparisonReport", operation: "diff", sourcePath: outcomeDiffPath,
-            owner: "DiffCommand", result: "published from real Outcome Library sources", observations: [{surface: "cli", owner: "DiffCommand", result: "outcome-source diff --out exit 0"}],
+            owner: "cli:diff --out for outcome sources", registryOperation: "created_by", result: "published from real Outcome Library sources", observations: [{surface: "cli", owner: "cli:diff --out for outcome sources", result: "diff --out exit 0"}],
+        });
+        evidence.record({
+            id: "outcome-source-command-comparison-report", artifactKind: "outcomeSourceComparisonReport", operation: "diff", sourcePath: outcomeSourceCommandDiffPath,
+            owner: "cli:outcomesource diff --out", registryOperation: "created_by", result: "published from the outcome-source command's exact analyses",
+            observations: [{surface: "cli", owner: "cli:outcomesource diff --out", result: "outcomesource diff --out exit 0"}],
         });
         evidence.record({
             id: "rendered-simulation-report", artifactKind: "renderedReport", operation: "render", sourcePath: renderedReportPath,
-            owner: "ReportCommand", result: "HTML report published from the real simulation report", observations: [{surface: "cli", owner: "ReportCommand", result: "report --format html --out exit 0"}],
+            owner: "cli:report --out for simulation reports", registryOperation: "created_by", result: "HTML report published from the real simulation report", observations: [{surface: "cli", owner: "cli:report --out for simulation reports", result: "report --format html --out exit 0"}],
+        });
+        evidence.record({
+            id: "simulation-report-report", artifactKind: "simulationReport", operation: "report", sourcePath: packageSimulationPath,
+            owner: "cli:report", registryOperation: "reports_by", result: "parsed the persisted simulation report for rendering",
+            observations: [{surface: "cli", owner: "cli:report", result: "report consumed the simulation report"}],
+        });
+        evidence.record({
+            id: "simulation-report-recognized-by-report", artifactKind: "simulationReport", operation: "recognize", sourcePath: packageSimulationPath,
+            owner: "cli:report", registryOperation: "recognized_by", result: "recognized the persisted simulation report input",
+            observations: [{surface: "cli", owner: "cli:report", result: "report recognized the simulation report"}],
+        });
+        evidence.record({
+            id: "simulation-report-recognized-by-diff", artifactKind: "simulationReport", operation: "recognize", sourcePath: packageSimulationPath,
+            owner: "cli:diff", registryOperation: "recognized_by", result: "recognized the persisted simulation report before comparison",
+            observations: [{surface: "cli", owner: "cli:diff", result: "diff consumed the simulation report"}],
+        });
+        evidence.record({
+            id: "rendered-simulation-report-report", artifactKind: "renderedReport", operation: "report", sourcePath: renderedReportPath,
+            owner: "cli:report", registryOperation: "reports_by", result: "published a rendered view of the persisted simulation report",
+            observations: [{surface: "cli", owner: "cli:report", result: "report --format html --out exit 0"}],
         });
         fs.writeFileSync(certificationConfigPath, JSON.stringify({modes: [{modeName: "base", seed: "matrix-evidence", sampleCount: 4}]}));
         const certification = new CertificationCommand(POKIE_VERSION);
         expect(await certification.run(["build", bundlePath, certificationConfigPath, "--out", certificationPath])).toBe(0);
         evidence.record({
             id: "certification-build-descriptor-build", artifactKind: "certificationBuildDescriptor", operation: "build", sourcePath: certificationConfigPath,
-            producedPath: certificationPath, owner: "CertificationCommand", result: "descriptor consumed by the published certification bundle",
-            observations: [{surface: "cli", owner: "CertificationCommand", result: "build exit 0 consumed the descriptor"}],
+            producedPath: certificationPath, owner: "CertificationCommand:executeBuild", registryOperation: "recognized_by", result: "descriptor consumed by the published certification bundle",
+            observations: [{surface: "cli", owner: "CertificationCommand:executeBuild", result: "build exit 0 consumed the descriptor"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "certification-build-descriptor-load", artifactKind: "certificationBuildDescriptor", operation: "load", sourcePath: certificationConfigPath,
+            owner: "CertificationCommand:loadDescriptor", registryOperation: "recognized_by", result: "loaded the durable certification descriptor before build",
+            observations: [{surface: "cli", owner: "CertificationCommand:loadDescriptor", result: "build loaded config modes[]"}],
+        });
+        evidence.record({
+            id: "certification-build-descriptor-shape-validation", artifactKind: "certificationBuildDescriptor", operation: "validate", sourcePath: certificationConfigPath,
+            owner: "CertificationCommand:loadDescriptor modes[] shape validation", registryOperation: "validates_by", result: "validated the durable modes[] descriptor shape",
+            observations: [{surface: "cli", owner: "CertificationCommand:loadDescriptor modes[] shape validation", result: "build accepted valid modes[]"}],
+        });
+        evidence.record({
+            id: "certification-build-source-validation", artifactKind: "certificationBuildDescriptor", operation: "validate-source", sourcePath: bundlePath,
+            owner: "CertificationCommand:checkOutcomeLibrarySource", registryOperation: "validates_by", result: "validated the generated Outcome Library before certification sampling",
+            observations: [{surface: "cli", owner: "CertificationCommand:checkOutcomeLibrarySource", result: "build accepted the resolved outcome-library source"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "outcome-library-certification", artifactKind: "outcomeLibrary", operation: "certification", sourcePath: bundlePath,
             producedPath: certificationPath, owner: "CertificationCommand", result: "published",
             observations: [{surface: "cli", owner: "CertificationCommand", result: "exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "certification-evidence-publish", artifactKind: "certificationEvidenceBundle", operation: "build", sourcePath: bundlePath,
+            producedPath: certificationPath, owner: "cli:certification build --out", registryOperation: "created_by", result: "published a certification evidence bundle from the generated source",
+            observations: [{surface: "cli", owner: "cli:certification build --out", result: "certification build --out exit 0"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         expect(await certification.run(["verify", certificationPath, "--source", bundlePath])).toBe(0);
@@ -1135,24 +1245,24 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(proof.indexHash).toMatch(/^sha256:/);
         evidence.record({
             id: "simulation-report-inspect", artifactKind: "simulationReport", operation: "report", sourcePath: packageSimulationPath,
-            producedPath: simulationJsonReportPath, owner: "ReportCommand", result: "the real simulation output was parsed and re-emitted as JSON by the report owner",
-            observations: [{surface: "cli", owner: "ReportCommand", result: "report --format json --out consumed and re-emitted the simulation report"}],
+            producedPath: simulationJsonReportPath, owner: "cli:report --format json --out for a SimulationReport", registryOperation: "created_by", result: "the real simulation output was parsed and re-emitted as JSON by the report owner",
+            observations: [{surface: "cli", owner: "cli:report --format json --out for a SimulationReport", result: "report --format json --out consumed and re-emitted the simulation report"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.recordUnavailable({
             id: "simulation-report-set-mode-diagnostic", artifactKind: "simulationReportSet", operation: "simulate", sourcePath: packagePath,
-            owner: "SimCommand", diagnostic: {
+            owner: "cli:sim --mode all", registryOperation: "created_by", diagnostic: {
                 code: "missing-capability",
-                message: "The real generated package has no declared getBetModes() contract for --mode all.",
+                message: allModesDiagnostic,
                 recovery: "Use a package that declares bet modes before requesting a per-mode simulation report set.",
             },
-            observations: [{surface: "cli", owner: "SimCommand", result: "sim --mode all returned its concrete missing getBetModes diagnostic"}],
+            observations: [{surface: "cli", owner: "cli:sim --mode all", result: "sim --mode all returned its concrete missing getBetModes diagnostic"}],
             systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
         evidence.record({
             id: "replay-descriptor-round-artifact", artifactKind: "runtimeReplayDescriptor", operation: "inspect", sourcePath: replayPath,
-            owner: "ReplayCommand", result: "portable replay descriptor retained exact outcome-source provenance",
-            observations: [{surface: "cli", owner: "ReplayCommand", result: "replay --out wrote the inspected descriptor"}],
+            owner: "cli:replay", registryOperation: "recognized_by", result: "portable replay descriptor retained exact outcome-source provenance",
+            observations: [{surface: "cli", owner: "cli:replay", result: "replay --out wrote the inspected descriptor"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
@@ -1162,27 +1272,63 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
-            id: "certification-evidence-bundle", artifactKind: "certificationEvidenceBundle", operation: "verify", sourcePath: certificationPath,
-            owner: "CertificationCommand", result: "verified against the generated Outcome Library",
-            observations: [{surface: "cli", owner: "CertificationCommand", result: "verify exit 0"}],
+            id: "runtime-replay-descriptor-publish", artifactKind: "runtimeReplayDescriptor", operation: "replay", sourcePath: bundlePath,
+            producedPath: replayPath, owner: "cli:replay --out", registryOperation: "created_by", result: "published an exact outcome-source replay descriptor",
+            observations: [{surface: "cli", owner: "cli:replay --out", result: "replay --out exit 0"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
-            id: "fairness-server-seed-commitment", artifactKind: "fairnessServerSeedCommitment", operation: "commit", sourcePath: seedCommitmentPath,
-            producedPath: commitmentPath, owner: "FairnessCommand", result: "generated round commitment from the public server-seed commitment",
-            observations: [{surface: "cli", owner: "FairnessCommand", result: "commit exit 0"}],
+            id: "runtime-replay-descriptor-replay", artifactKind: "runtimeReplayDescriptor", operation: "replay", sourcePath: replayPath,
+            owner: "cli:replay", registryOperation: "replays_by", result: "replayed the persisted descriptor's source with its recorded seed and round",
+            observations: [{surface: "cli", owner: "cli:replay", result: "replay produced the persisted descriptor"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "certification-evidence-bundle", artifactKind: "certificationEvidenceBundle", operation: "verify", sourcePath: certificationPath,
+            owner: "cli:certification verify", registryOperation: "recognized_by", result: "verified against the generated Outcome Library",
+            observations: [{surface: "cli", owner: "cli:certification verify", result: "verify exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "fairness-round-commitment-publish", artifactKind: "fairnessCommitment", operation: "commit", sourcePath: seedCommitmentPath,
+            producedPath: commitmentPath, owner: "cli:fairness commit --out", registryOperation: "created_by", result: "generated round commitment from the public server-seed commitment",
+            observations: [{surface: "cli", owner: "cli:fairness commit --out", result: "commit --out exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "fairness-server-seed-commitment-publish", artifactKind: "fairnessServerSeedCommitment", operation: "seed-commit", sourcePath: seedPath,
+            producedPath: seedCommitmentPath, owner: "cli:fairness seed-commit --out", registryOperation: "created_by", result: "published the server-seed hash before the round commitment",
+            observations: [{surface: "cli", owner: "cli:fairness seed-commit --out", result: "seed-commit --out exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "fairness-server-seed-commitment-recognition", artifactKind: "fairnessServerSeedCommitment", operation: "commit", sourcePath: seedCommitmentPath,
+            owner: "cli:fairness commit", registryOperation: "recognized_by", result: "recognized the persisted server-seed commitment before pinning the round",
+            observations: [{surface: "cli", owner: "cli:fairness commit", result: "commit consumed the server-seed commitment"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "fairness-round-commitment", artifactKind: "fairnessCommitment", operation: "reveal", sourcePath: commitmentPath,
-            producedPath: proofPath, owner: "FairnessCommand", result: "generated and verified fairness proof",
-            observations: [{surface: "cli", owner: "FairnessCommand", result: "reveal and verify exit 0"}],
+            producedPath: proofPath, owner: "cli:fairness reveal --out", registryOperation: "created_by", result: "generated and verified fairness proof",
+            observations: [{surface: "cli", owner: "cli:fairness reveal --out", result: "reveal --out exit 0"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
             id: "fairness-round-proof", artifactKind: "fairnessProof", operation: "verify", sourcePath: proofPath,
-            owner: "FairnessCommand", result: "verified exact bundle/library provenance",
-            observations: [{surface: "cli", owner: "FairnessCommand", result: "verify exit 0"}],
+            owner: "cli:fairness verify", registryOperation: "recognized_by", result: "verified exact bundle/library provenance",
+            observations: [{surface: "cli", owner: "cli:fairness verify", result: "verify exit 0"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "fairness-commitment-reveal-recognition", artifactKind: "fairnessCommitment", operation: "reveal", sourcePath: commitmentPath,
+            owner: "cli:fairness reveal", registryOperation: "recognized_by", result: "recognized the persisted round commitment for proof generation",
+            observations: [{surface: "cli", owner: "cli:fairness reveal", result: "reveal consumed the round commitment"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "fairness-commitment-verify-recognition", artifactKind: "fairnessCommitment", operation: "verify", sourcePath: commitmentPath,
+            owner: "cli:fairness verify", registryOperation: "recognized_by", result: "recognized the persisted round commitment for proof verification",
+            observations: [{surface: "cli", owner: "cli:fairness verify", result: "verify consumed the round commitment"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.recordScenario({
