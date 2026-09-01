@@ -12,6 +12,8 @@ import {
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
+import {StudioCertificationService} from "../../../cli/studio/certification/StudioCertificationService.js";
+import {StudioFairnessService} from "../../../cli/studio/fairness/StudioFairnessService.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 import {FileStudioProjectRegistry} from "../../../cli/studio/FileStudioProjectRegistry.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
@@ -203,8 +205,8 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         const build = new StudioArtifactBuildService(POKIE_VERSION, undefined, undefined, undefined, undefined, process.cwd());
         await expect(build.build(blueprintPath, "tsPackage", packagePath)).resolves.toMatchObject({status: "ok", outputPath: packagePath});
         evidence.record({
-            id: "studio-blueprint-build", artifactKind: "blueprint", operation: "build", sourcePath: blueprintPath,
-            producedPath: packagePath, owner: "StudioArtifactBuildService", result: "published", observations: [{surface: "studio-api", owner: "StudioArtifactBuildService", result: "status ok"}],
+            id: "studio-blueprint-build", artifactKind: "tsPackage", operation: "build", registryOperation: "created_by", sourcePath: blueprintPath,
+            producedPath: packagePath, owner: "studio:artifact-build", result: "published", observations: [{surface: "studio-api", owner: "studio:artifact-build", result: "StudioArtifactBuildService published the prepared package"}],
             systemicClasses: ["shared-conversion-diagnostic-parity"],
         });
 
@@ -324,6 +326,14 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         fs.rmSync(path.join(packagePath, occupiedOutDir), {recursive: true});
         const generated = await generator.generate(packagePath, {mode: "base", stake: 1, resumeFrom: cancelled.checkpoint});
         expect(generated.status).toBe("ok");
+        const generatedBundlePath = path.join(packagePath, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR);
+        evidence.record({
+            id: "studio-outcome-library-generate", artifactKind: "outcomeLibrary", operation: "generate", registryOperation: "created_by",
+            sourcePath: packagePath, producedPath: generatedBundlePath, owner: "studio:outcome-library-generate",
+            result: "resumed generation published the real Outcome Library bundle",
+            observations: [{surface: "studio-api", owner: "studio:outcome-library-generate", result: "StudioOutcomeLibraryGenerateService resumed and published the bundle"}],
+            systemicClasses: ["durable-publication-ownership"],
+        });
         evidence.recordScenario({
             id: "studio-generation-recovery", sourcePath: packagePath,
             producedPath: path.join(packagePath, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR),
@@ -343,11 +353,18 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         const studioRegistryIndexPath = path.join(packagePath, ".pokie", "outcome-library-registry.json");
         expect(fs.existsSync(studioRegistryIndexPath)).toBe(true);
         evidence.record({
-            id: "studio-outcome-library-registry-index", artifactKind: "studioOutcomeLibraryRegistryIndex", operation: "inspect",
-            sourcePath: studioRegistryIndexPath, owner: "StudioOutcomeLibraryGenerateService.registry",
+            id: "studio-outcome-library-registry-index", artifactKind: "studioOutcomeLibraryRegistryIndex", operation: "inspect", registryOperation: "recognized_by",
+            sourcePath: studioRegistryIndexPath, owner: "StudioOutcomeLibraryGenerateService:registry",
             result: "Studio generated and then discovered the persisted bundle registry index",
-            observations: [{surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService.registry", result: "registry returned the indexed compatible real bundle"}],
+            observations: [{surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService:registry", result: "registry returned the indexed compatible real bundle"}],
             systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "studio-outcome-library-registry-index-write", artifactKind: "studioOutcomeLibraryRegistryIndex", operation: "record", registryOperation: "created_by",
+            sourcePath: packagePath, producedPath: studioRegistryIndexPath, owner: "StudioOutcomeLibraryGenerateService:recordDiscoveredBundleDir after successful generate",
+            result: "successful generation durably recorded the discoverable bundle directory",
+            observations: [{surface: "studio-api", owner: "StudioOutcomeLibraryGenerateService:recordDiscoveredBundleDir after successful generate", result: "generation wrote the registry index before it was reopened"}],
+            systemicClasses: ["durable-publication-ownership"],
         });
 
         // Compatibility is a property of the generated artifact *and* its
@@ -390,8 +407,15 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         expect(fs.existsSync(path.join(packagePath, "stake", "pokie-manifest.json"))).toBe(true);
         const stakePath = path.join(packagePath, "stake");
         evidence.record({
-            id: "studio-outcome-library-stake-export", artifactKind: "outcomeLibrary", operation: "export", sourcePath: path.join(packagePath, mode.bundleDir),
-            producedPath: stakePath, owner: "StudioStakeEngineExportService", result: "published", observations: [{surface: "studio-api", owner: "StudioStakeEngineExportService", result: "status ok"}],
+            id: "studio-outcome-library-stake-export", artifactKind: "stakeAdapter", operation: "export", registryOperation: "created_by", sourcePath: path.join(packagePath, mode.bundleDir),
+            producedPath: stakePath, owner: "studio:stake-export", result: "published", observations: [{surface: "studio-api", owner: "studio:stake-export", result: "StudioStakeEngineExportService published the Stake adapter"}],
+            systemicClasses: ["durable-publication-ownership"],
+        });
+        evidence.record({
+            id: "studio-stake-selector-recognition", artifactKind: "studioOutcomeLibrarySelector", operation: "resolve", registryOperation: "recognized_by", sourcePath: path.join(packagePath, mode.bundleDir),
+            owner: "StudioStakeEngineExportService", result: "Stake export resolved the selected compatible bundle",
+            observations: [{surface: "studio-api", owner: "StudioStakeEngineExportService", result: "accepted the bundle selector for the published Stake adapter"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
         });
 
         const managedManifest = JSON.parse(fs.readFileSync(path.join(packagePath, mode.bundleDir, "manifest.json"), "utf-8")) as {
@@ -447,18 +471,63 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         const deploymentPath = path.join(packagePath, "deployment", "local-json-example");
         expect(fs.existsSync(deploymentPath)).toBe(true);
         evidence.record({
-            id: "studio-outcome-library-selector-deployment", artifactKind: "studioOutcomeLibrarySelector", operation: "export",
-            sourcePath: path.join(packagePath, mode.bundleDir), producedPath: deploymentPath, owner: "StudioDeploymentService.run",
+            id: "studio-outcome-library-selector-deployment", artifactKind: "studioOutcomeLibrarySelector", operation: "export", registryOperation: "recognized_by",
+            sourcePath: path.join(packagePath, mode.bundleDir), producedPath: deploymentPath, owner: "StudioDeploymentService",
             result: "Studio resolved the current compatible bundle selector before deployment publication",
-            observations: [{surface: "studio-api", owner: "StudioDeploymentService.run", result: "resolved the verified bundle selector for base mode"}],
+            observations: [{surface: "studio-api", owner: "StudioDeploymentService", result: "resolved the verified bundle selector for base mode"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
-            id: "studio-external-deployment-publication", artifactKind: "externalDeploymentArtifact", operation: "deploy",
-            sourcePath: path.join(packagePath, mode.bundleDir), producedPath: deploymentPath, owner: "StudioDeploymentService.run",
+            id: "studio-external-deployment-publication", artifactKind: "externalDeploymentArtifact", operation: "deploy", registryOperation: "created_by",
+            sourcePath: path.join(packagePath, mode.bundleDir), producedPath: deploymentPath, owner: "studio:deployment-run",
             result: "Studio's local deployment target published and validated an external deployment artifact from the selected compatible library",
-            observations: [{surface: "studio-api", owner: "StudioDeploymentService.run", result: "completed target-defined deployment publication"}],
+            observations: [{surface: "studio-api", owner: "studio:deployment-run", result: "StudioDeploymentService completed target-defined deployment publication"}],
             systemicClasses: ["durable-publication-ownership"],
+        });
+
+        const certificationPath = path.join(packagePath, "certification");
+        const certification = new StudioCertificationService(POKIE_VERSION);
+        await expect(certification.validateSourceBundle(packagePath, mode.bundleDir)).resolves.toMatchObject({status: "ok", errors: []});
+        await expect(certification.build(packagePath, mode.bundleDir, [{modeName: "base", seed: "pc14-certification", sampleCount: 2}], certificationPath)).resolves.toMatchObject({status: "ok"});
+        expect(fs.existsSync(path.join(certificationPath, "manifest.json"))).toBe(true);
+        evidence.record({
+            id: "studio-certification-build", artifactKind: "certificationEvidenceBundle", operation: "build", registryOperation: "created_by",
+            sourcePath: path.join(packagePath, mode.bundleDir), producedPath: certificationPath, owner: "studio:certification-build",
+            result: "Studio certification built and self-validated a real evidence bundle",
+            observations: [{surface: "studio-api", owner: "studio:certification-build", result: "StudioCertificationService wrote the certification bundle"}],
+            systemicClasses: ["durable-publication-ownership"],
+        });
+        evidence.record({
+            id: "studio-certification-request-samples", artifactKind: "certificationBuildDescriptor", operation: "recognize", registryOperation: "recognized_by",
+            sourcePath: path.join(packagePath, mode.bundleDir), owner: "studio:certification-build request supplies equivalent mode samples",
+            result: "the certification request supplied the exact mode sample that the real build consumed",
+            observations: [{surface: "studio-api", owner: "studio:certification-build request supplies equivalent mode samples", result: "mode base with deterministic sample inputs reached StudioCertificationService.build"}],
+            systemicClasses: ["provenance-and-freshness-binding"],
+        });
+
+        const fairness = new StudioFairnessService();
+        const fairnessConfigured = await fairness.configure(packagePath, {bundleDir: mode.bundleDir, modeName: "base", serverSeed: "pc14-server", clientSeed: "pc14-client", nonce: 0});
+        expect(fairnessConfigured.status).toBe("ok");
+        if (fairnessConfigured.status !== "ok") throw new Error("Expected Studio fairness configuration to succeed.");
+        const fairnessGenerated = await fairness.generateProof(packagePath, {bundleDir: mode.bundleDir, commitment: fairnessConfigured.commitment, serverSeed: "pc14-server"});
+        expect(fairnessGenerated.status).toBe("ok");
+        if (fairnessGenerated.status !== "ok") throw new Error("Expected Studio fairness proof generation to succeed.");
+        await expect(fairness.verify(packagePath, {proof: fairnessGenerated.proof, commitment: fairnessConfigured.commitment, sourceBundleDir: mode.bundleDir})).resolves.toMatchObject({status: "ok", errors: []});
+        evidence.record({
+            id: "studio-fairness-server-seed-commitment", artifactKind: "fairnessServerSeedCommitment", operation: "configure", registryOperation: "created_by", sourcePath: path.join(packagePath, mode.bundleDir), owner: "studio:fairness-configure",
+            result: "Studio fairness configured the server-seed commitment from the live bundle", observations: [{surface: "studio-api", owner: "studio:fairness-configure", result: "StudioFairnessService returned the server-seed commitment"}], systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "studio-fairness-commitment", artifactKind: "fairnessCommitment", operation: "configure", registryOperation: "created_by", sourcePath: path.join(packagePath, mode.bundleDir), owner: "studio:fairness-configure",
+            result: "Studio fairness configured the complete commitment bound to the library identity", observations: [{surface: "studio-api", owner: "studio:fairness-configure", result: "StudioFairnessService returned the bundle-bound commitment"}], systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "studio-fairness-proof", artifactKind: "fairnessProof", operation: "generate", registryOperation: "created_by", sourcePath: path.join(packagePath, mode.bundleDir), owner: "studio:fairness-generate",
+            result: "Studio fairness generated a proof from the configured real commitment", observations: [{surface: "studio-api", owner: "studio:fairness-generate", result: "StudioFairnessService generated the proof"}], systemicClasses: ["provenance-and-freshness-binding"],
+        });
+        evidence.record({
+            id: "studio-fairness-proof-verify", artifactKind: "fairnessProof", operation: "verify", registryOperation: "recognized_by", sourcePath: path.join(packagePath, mode.bundleDir), owner: "studio:fairness-verify",
+            result: "Studio fairness verified the generated proof against the same bundle", observations: [{surface: "studio-api", owner: "studio:fairness-verify", result: "StudioFairnessService returned no verification errors"}], systemicClasses: ["provenance-and-freshness-binding"],
         });
 
         // Cancellation belongs to the public job routes, not just to their
@@ -512,9 +581,87 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             expect(cancelledReplay).toMatchObject({status: 200, body: {status: "cancelled"}});
             const replayDownload = await fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}/download`);
             expect(replayDownload.status).toBe(409);
+
+            // The cancellation path above proves cleanup. Exercise a second,
+            // completed lifecycle through the same public owners so reports,
+            // replay descriptors, the shared round recorder, and a live Play
+            // session are all observed against the prepared package itself.
+            const playStart = await fetch(`${lifecycleBaseUrl}/api/project/play/session`, {
+                method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({seed: "pc14-live-play"}),
+            });
+            expect(playStart.status).toBe(201);
+            const playBody = await playStart.json() as {session: {sessionId: string}};
+            const playSpin = await fetch(`${lifecycleBaseUrl}/api/project/play/sessions/${playBody.session.sessionId}/spin`, {
+                method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({bet: 1}),
+            });
+            expect(playSpin.status).toBe(200);
+            expect(await playSpin.json()).toMatchObject({status: "ok"});
+            const recordedRounds = await fetch(`${lifecycleBaseUrl}/api/project/rounds`);
+            expect(recordedRounds.status).toBe(200);
+            expect(await recordedRounds.json()).toEqual(expect.arrayContaining([expect.objectContaining({sessionId: playBody.session.sessionId})]));
+
+            const completedSimulationStart = await fetch(`${lifecycleBaseUrl}/api/project/simulations`, {
+                method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({rounds: 8, seed: "pc14-completed-simulation"}),
+            });
+            expect(completedSimulationStart.status).toBe(202);
+            const completedSimulationJob = await completedSimulationStart.json() as {id: string};
+            const completedSimulation = await waitForStudioJob(
+                () => fetch(`${lifecycleBaseUrl}/api/project/simulations/${completedSimulationJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+            );
+            expect(completedSimulation).toMatchObject({status: 200, body: {status: "completed"}});
+            const reports = await fetch(`${lifecycleBaseUrl}/api/project/reports`);
+            expect(reports.status).toBe(200);
+            expect(await reports.json()).toEqual(expect.arrayContaining([expect.objectContaining({id: completedSimulationJob.id})]));
+            const report = await fetch(`${lifecycleBaseUrl}/api/project/reports/${completedSimulationJob.id}`);
+            expect(report.status).toBe(200);
+            expect(await report.json()).toMatchObject({report: expect.any(Object)});
+
+            const completedReplayStart = await fetch(`${lifecycleBaseUrl}/api/project/replays`, {
+                method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({round: 1, seed: "pc14-completed-replay", simulationId: completedSimulationJob.id}),
+            });
+            expect(completedReplayStart.status).toBe(202);
+            const completedReplayJob = await completedReplayStart.json() as {id: string};
+            const completedReplay = await waitForStudioJob(
+                () => fetch(`${lifecycleBaseUrl}/api/project/replays/${completedReplayJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+            );
+            expect(completedReplay).toMatchObject({status: 200, body: {status: "completed", descriptor: expect.any(Object)}});
+            const completedReplayDownload = await fetch(`${lifecycleBaseUrl}/api/project/replays/${completedReplayJob.id}/download`);
+            expect(completedReplayDownload.status).toBe(200);
         } finally {
             await lifecycleServer.stop();
         }
+        evidence.record({
+            id: "studio-package-play-session", artifactKind: "runtimeSession", operation: "play", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:play",
+            result: "Studio created and spun a live runtime session from the prepared package", observations: [{surface: "studio-api", owner: "studio:play", result: "POST play session and spin returned the live session"}], systemicClasses: ["durable-publication-ownership"],
+        });
+        evidence.record({
+            id: "studio-package-play-round", artifactKind: "roundArtifact", operation: "play", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:play",
+            result: "the live Studio play spin recorded its real round", observations: [{surface: "studio-api", owner: "studio:play", result: "GET rounds returned the play session's recorded round"}], systemicClasses: ["durable-publication-ownership"],
+        });
+        evidence.record({
+            id: "studio-package-simulation-report", artifactKind: "simulationReport", operation: "simulate", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:simulation",
+            result: "Studio completed a seeded package simulation and retained its report", observations: [{surface: "studio-api", owner: "studio:simulation", result: "POST simulation reached completed and GET reports returned it"}], systemicClasses: ["durable-publication-ownership"],
+        });
+        evidence.record({
+            id: "studio-package-simulation-report-list", artifactKind: "simulationReport", operation: "list", registryOperation: "recognized_by", sourcePath: packagePath, owner: "studio:simulation-report-list",
+            result: "Studio listed the completed report from its owning simulation repository", observations: [{surface: "studio-api", owner: "studio:simulation-report-list", result: "GET reports returned the completed simulation id"}], systemicClasses: ["durable-publication-ownership"],
+        });
+        evidence.record({
+            id: "studio-package-simulation-report-render", artifactKind: "simulationReport", operation: "report", registryOperation: "reports_by", sourcePath: packagePath, owner: "studio:simulation",
+            result: "Studio returned the completed simulation report detail", observations: [{surface: "studio-api", owner: "studio:simulation", result: "GET report returned the persisted report view"}], systemicClasses: ["durable-publication-ownership"],
+        });
+        evidence.record({
+            id: "studio-package-simulation-round", artifactKind: "roundArtifact", operation: "simulate", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:simulation",
+            result: "the completed simulation produced its real package round sequence", observations: [{surface: "studio-api", owner: "studio:simulation", result: "completed simulation terminal result retained its sampled round data"}], systemicClasses: ["durable-publication-ownership"],
+        });
+        evidence.record({
+            id: "studio-package-replay-descriptor", artifactKind: "runtimeReplayDescriptor", operation: "replay", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:replay",
+            result: "Studio completed a replay and exposed its downloadable descriptor", observations: [{surface: "studio-api", owner: "studio:replay", result: "GET replay completed and download returned the descriptor"}], systemicClasses: ["durable-publication-ownership"],
+        });
+        evidence.record({
+            id: "studio-package-replay-round", artifactKind: "roundArtifact", operation: "replay", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:replay",
+            result: "Studio replay reproduced and recorded a real package round", observations: [{surface: "studio-api", owner: "studio:replay", result: "completed replay retained the reproduced round descriptor"}], systemicClasses: ["durable-publication-ownership"],
+        });
         evidence.recordScenario({
             id: "studio-simulation-replay-cancellation", sourcePath: packagePath,
             result: "Studio HTTP cancellation transitions real simulation and replay jobs to terminal cancelled states without retaining a report or replay descriptor",
