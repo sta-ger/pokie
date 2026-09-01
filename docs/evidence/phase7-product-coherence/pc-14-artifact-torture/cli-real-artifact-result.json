@@ -5,6 +5,7 @@
       "id": "blueprint-build-package",
       "artifact_kind": "tsPackage",
       "operation": "build",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
       "produced_path": "run-artifacts/matrix-package",
@@ -16,7 +17,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "BuildCommand",
+          "owner": "cli:build --target tsPackage --out",
           "result": "exit 0"
         }
       ]
@@ -25,6 +26,7 @@
       "id": "blueprint-build-package-default",
       "artifact_kind": "tsPackage",
       "operation": "build:tsPackage-default",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/build-default/source.blueprint.json",
       "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
       "produced_path": "run-artifacts/owner-aliases/build-default/tsPackage",
@@ -36,7 +38,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "BuildCommand",
+          "owner": "cli:build --target tsPackage without --out",
           "result": "build tsPackage without --out exit 0"
         }
       ]
@@ -45,6 +47,7 @@
       "id": "blueprint-build-package-generic",
       "artifact_kind": "tsPackage",
       "operation": "build:tsPackage-generic",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
       "produced_path": "run-artifacts/matrix-generic-package",
@@ -56,7 +59,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "BuildCommand",
+          "owner": "cli:build",
           "result": "build --target tsPackage --out exit 0"
         }
       ]
@@ -65,6 +68,7 @@
       "id": "blueprint-build-par-default",
       "artifact_kind": "parWorkbook",
       "operation": "build:parWorkbook-default",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/build-default/source.blueprint.json",
       "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
       "produced_path": "run-artifacts/owner-aliases/build-default/parWorkbook.xlsx",
@@ -76,7 +80,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "BuildCommand",
+          "owner": "cli:build --target parWorkbook without --out",
           "result": "build parWorkbook without --out exit 0"
         }
       ]
@@ -85,6 +89,7 @@
       "id": "blueprint-build-par-explicit-output",
       "artifact_kind": "parWorkbook",
       "operation": "build:parWorkbook-explicit-output",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
       "produced_path": "run-artifacts/matrix-explicit.par.xlsx",
@@ -96,7 +101,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "BuildCommand",
+          "owner": "cli:build --target parWorkbook --out",
           "result": "build --target parWorkbook --out exit 0"
         }
       ]
@@ -105,6 +110,7 @@
       "id": "blueprint-cli-create",
       "artifact_kind": "blueprint",
       "operation": "create",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/cli-authoring/generic.blueprint.json",
       "source_identity": "sha256:ddb9ecc78d757d9ed6d7859249ec340f82701eaf8332497ea851e609e7a7885f",
       "produced_path": "run-artifacts/cli-authoring/generic.blueprint.json",
@@ -116,7 +122,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "CreateCommand",
+          "owner": "cli:create",
           "result": "create --random --out exit 0"
         }
       ]
@@ -125,6 +131,7 @@
       "id": "blueprint-cli-create-default-output",
       "artifact_kind": "blueprint",
       "operation": "create:default-output",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/cli-authoring/default.blueprint.json",
       "source_identity": "sha256:36593696841e1064b4f135b92df5f2609a3c65ca0956bf9a2a36516590276bee",
       "produced_path": "run-artifacts/cli-authoring/default.blueprint.json",
@@ -136,7 +143,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "CreateCommand",
+          "owner": "cli:create without --out",
           "result": "create --random without --out exit 0"
         }
       ]
@@ -145,6 +152,7 @@
       "id": "blueprint-cli-create-explicit-output",
       "artifact_kind": "blueprint",
       "operation": "create:explicit-output",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/cli-authoring/explicit.blueprint.json",
       "source_identity": "sha256:f6134042db50bafc955de3c593345e5f536e404259d23bca039e55334db45bf6",
       "produced_path": "run-artifacts/cli-authoring/explicit.blueprint.json",
@@ -156,8 +164,121 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "CreateCommand",
+          "owner": "cli:create --out",
           "result": "create --random --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-cli-edit-default-output",
+      "artifact_kind": "blueprint",
+      "operation": "edit:default-output",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/cli-authoring/generic.blueprint.json",
+      "source_identity": "sha256:ddb9ecc78d757d9ed6d7859249ec340f82701eaf8332497ea851e609e7a7885f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:edit without --out",
+      "systemic_classes": [],
+      "status": "intentionally-unsupported",
+      "observable_result": "pokie edit needs an interactive terminal to run, and this one is not connected to one. Re-run inside a terminal, or edit the Blueprint Project's JSON file directly, then check that saved Blueprint with \"pokie validate <project>\" or \"pokie build <blueprint> --target tsPackage --out <dir> --dry-run\".",
+      "diagnostic": {
+        "code": "unsupported-project-operation",
+        "recovery": "Re-run inside a terminal, or edit the Blueprint Project's JSON file directly, then validate the saved Blueprint."
+      },
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:edit without --out",
+          "result": "edit returned the non-interactive recovery diagnostic"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-cli-edit-explicit-output",
+      "artifact_kind": "blueprint",
+      "operation": "edit:explicit-output",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/cli-authoring/generic.blueprint.json",
+      "source_identity": "sha256:ddb9ecc78d757d9ed6d7859249ec340f82701eaf8332497ea851e609e7a7885f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:edit --out",
+      "systemic_classes": [],
+      "status": "intentionally-unsupported",
+      "observable_result": "pokie edit needs an interactive terminal to run, and this one is not connected to one. Re-run inside a terminal, or edit the Blueprint Project's JSON file directly, then check that saved Blueprint with \"pokie validate <project>\" or \"pokie build <blueprint> --target tsPackage --out <dir> --dry-run\".",
+      "diagnostic": {
+        "code": "unsupported-project-operation",
+        "recovery": "Re-run inside a terminal, or edit the Blueprint Project's JSON file directly, then validate the saved Blueprint."
+      },
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:edit --out",
+          "result": "edit --out returned the non-interactive recovery diagnostic"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-cli-reel-generate-apply-default",
+      "artifact_kind": "blueprint",
+      "operation": "reel-generate:apply-default",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/cli-authoring/reel-apply-source.blueprint.json",
+      "source_identity": "sha256:2e824d768301d448fa7a5dae45e0029fdaffc5c656b753f034a80f20b7467698",
+      "produced_path": "run-artifacts/cli-authoring/reel-apply-source.blueprint.json",
+      "produced_identity": "sha256:2e824d768301d448fa7a5dae45e0029fdaffc5c656b753f034a80f20b7467698",
+      "operation_owner": "cli:reel generate --apply without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "reel generation persisted its documented default Blueprint",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:reel generate --apply without --out",
+          "result": "reel generate --apply exit 0"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-cli-reel-generate-explicit-output",
+      "artifact_kind": "blueprint",
+      "operation": "reel-generate:explicit-output",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/cli-authoring/reel-explicit-source.blueprint.json",
+      "source_identity": "sha256:0f646e6abf26ceebe81e7c2f8427f108d773a130832146b8d0a2bb36163a1cce",
+      "produced_path": "run-artifacts/cli-authoring/reel-explicit-output.blueprint.json",
+      "produced_identity": "sha256:2e824d768301d448fa7a5dae45e0029fdaffc5c656b753f034a80f20b7467698",
+      "operation_owner": "cli:reel generate --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "reel generation published an explicitly addressed Blueprint",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:reel generate --out",
+          "result": "reel generate --apply --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-cli-reel-generate-materialize-default",
+      "artifact_kind": "blueprint",
+      "operation": "reel-generate:materialize-default",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/cli-authoring/reel-materialize-source.blueprint.json",
+      "source_identity": "sha256:c585623f5f23e46a0d46d59f7f003903bc5f51ae34b60b5b967b1b99343bea1e",
+      "produced_path": "run-artifacts/cli-authoring/reel-materialize-source.blueprint.json",
+      "produced_identity": "sha256:c585623f5f23e46a0d46d59f7f003903bc5f51ae34b60b5b967b1b99343bea1e",
+      "operation_owner": "cli:reel generate --materialize without --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "reel materialization persisted its documented default Blueprint",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:reel generate --materialize without --out",
+          "result": "reel generate --materialize exit 0"
         }
       ]
     },
@@ -165,6 +286,7 @@
       "id": "blueprint-export-par",
       "artifact_kind": "parWorkbook",
       "operation": "export",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
       "produced_path": "run-artifacts/matrix.par.xlsx",
@@ -176,7 +298,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ParCommand",
+          "owner": "cli:par export --out",
           "result": "export exit 0"
         }
       ]
@@ -185,6 +307,7 @@
       "id": "blueprint-export-par-via-export-default",
       "artifact_kind": "parWorkbook",
       "operation": "export:workbook-default",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/export-default/source.blueprint.json",
       "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
       "produced_path": "run-artifacts/owner-aliases/export-default/source.par.xlsx",
@@ -196,7 +319,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ExportCommand",
+          "owner": "cli:export --to workbook without --out",
           "result": "export workbook without --out exit 0"
         }
       ]
@@ -205,6 +328,7 @@
       "id": "blueprint-export-par-via-export-explicit-output",
       "artifact_kind": "parWorkbook",
       "operation": "export:workbook-explicit-output",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/export-default/source.blueprint.json",
       "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
       "produced_path": "run-artifacts/owner-aliases/export-default/explicit-workbook.xlsx",
@@ -216,8 +340,29 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ExportCommand",
+          "owner": "cli:export --to workbook --out",
           "result": "export workbook --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "blueprint-inspect",
+      "artifact_kind": "blueprint",
+      "operation": "inspect",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix.blueprint.json",
+      "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:inspect",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "recognized",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:inspect",
+          "result": "inspect Blueprint exit 0"
         }
       ]
     },
@@ -225,6 +370,7 @@
       "id": "blueprint-par-export-default",
       "artifact_kind": "parWorkbook",
       "operation": "par-export-default",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/direct-par.blueprint.json",
       "source_identity": "sha256:e80a15d930a305913669dda7d0602252f3c493d7ea1c25e56ae5d9069638304b",
       "produced_path": "run-artifacts/owner-aliases/direct-par.par.xlsx",
@@ -236,7 +382,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ParCommand",
+          "owner": "cli:par export without --out",
           "result": "par export without --out exit 0"
         }
       ]
@@ -265,18 +411,19 @@
       "id": "blueprint-validate",
       "artifact_kind": "blueprint",
       "operation": "validate",
+      "registry_operation": "recognized_by",
       "source_path": "run-artifacts/matrix.blueprint.json",
       "source_identity": "sha256:2c2bafa7fda953ffb8b64a1a5345fe61600ce2da329c29266057ea82ce768f9e",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ValidateCommand",
+      "operation_owner": "cli:validate",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "valid",
       "observations": [
         {
           "surface": "cli",
-          "owner": "ValidateCommand",
+          "owner": "cli:validate",
           "result": "exit 0"
         }
       ]
@@ -285,18 +432,19 @@
       "id": "blueprint-validation-report",
       "artifact_kind": "validationReport",
       "operation": "inspect",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-validation.json",
       "source_identity": "sha256:f703110cb968bb8ac349db67953ecfac44601a45446dc2a4ecb0dd2769af944e",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ValidateCommand",
+      "operation_owner": "cli:validate --out",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published JSON validation report",
       "observations": [
         {
           "surface": "cli",
-          "owner": "ValidateCommand",
+          "owner": "cli:validate --out",
           "result": "validate --out exit 0 wrote the report"
         }
       ]
@@ -327,11 +475,12 @@
       "id": "certification-build-descriptor-build",
       "artifact_kind": "certificationBuildDescriptor",
       "operation": "build",
+      "registry_operation": "recognized_by",
       "source_path": "run-artifacts/matrix-certification.json",
       "source_identity": "sha256:08de1787a88ade621131af771585b21320fa6731b68340e5c287312965c03b94",
       "produced_path": "run-artifacts/matrix-certification",
       "produced_identity": "sha256:ce151586c51d5a8db3f4b1f7edf0aea960a9b44002db6619b8fb15f6b73128b5",
-      "operation_owner": "CertificationCommand",
+      "operation_owner": "CertificationCommand:executeBuild",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -340,8 +489,73 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "CertificationCommand",
+          "owner": "CertificationCommand:executeBuild",
           "result": "build exit 0 consumed the descriptor"
+        }
+      ]
+    },
+    {
+      "id": "certification-build-descriptor-load",
+      "artifact_kind": "certificationBuildDescriptor",
+      "operation": "load",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix-certification.json",
+      "source_identity": "sha256:08de1787a88ade621131af771585b21320fa6731b68340e5c287312965c03b94",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "CertificationCommand:loadDescriptor",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "loaded the durable certification descriptor before build",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "CertificationCommand:loadDescriptor",
+          "result": "build loaded config modes[]"
+        }
+      ]
+    },
+    {
+      "id": "certification-build-descriptor-shape-validation",
+      "artifact_kind": "certificationBuildDescriptor",
+      "operation": "validate",
+      "registry_operation": "validates_by",
+      "source_path": "run-artifacts/matrix-certification.json",
+      "source_identity": "sha256:08de1787a88ade621131af771585b21320fa6731b68340e5c287312965c03b94",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "CertificationCommand:loadDescriptor modes[] shape validation",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "validated the durable modes[] descriptor shape",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "CertificationCommand:loadDescriptor modes[] shape validation",
+          "result": "build accepted valid modes[]"
+        }
+      ]
+    },
+    {
+      "id": "certification-build-source-validation",
+      "artifact_kind": "certificationBuildDescriptor",
+      "operation": "validate-source",
+      "registry_operation": "validates_by",
+      "source_path": "run-artifacts/matrix-bundle",
+      "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "CertificationCommand:checkOutcomeLibrarySource",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "validated the generated Outcome Library before certification sampling",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "CertificationCommand:checkOutcomeLibrarySource",
+          "result": "build accepted the resolved outcome-library source"
         }
       ]
     },
@@ -349,11 +563,12 @@
       "id": "certification-evidence-bundle",
       "artifact_kind": "certificationEvidenceBundle",
       "operation": "verify",
+      "registry_operation": "recognized_by",
       "source_path": "run-artifacts/matrix-certification",
       "source_identity": "sha256:ce151586c51d5a8db3f4b1f7edf0aea960a9b44002db6619b8fb15f6b73128b5",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "CertificationCommand",
+      "operation_owner": "cli:certification verify",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -362,8 +577,55 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "CertificationCommand",
+          "owner": "cli:certification verify",
           "result": "verify exit 0"
+        }
+      ]
+    },
+    {
+      "id": "certification-evidence-default-publish",
+      "artifact_kind": "certificationEvidenceBundle",
+      "operation": "build",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-bundle",
+      "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
+      "produced_path": "run-artifacts/certification",
+      "produced_identity": "sha256:ce151586c51d5a8db3f4b1f7edf0aea960a9b44002db6619b8fb15f6b73128b5",
+      "operation_owner": "cli:certification build without --out",
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "published the certification evidence bundle at its documented default destination",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:certification build without --out",
+          "result": "certification build exit 0"
+        }
+      ]
+    },
+    {
+      "id": "certification-evidence-publish",
+      "artifact_kind": "certificationEvidenceBundle",
+      "operation": "build",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-bundle",
+      "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
+      "produced_path": "run-artifacts/matrix-certification",
+      "produced_identity": "sha256:ce151586c51d5a8db3f4b1f7edf0aea960a9b44002db6619b8fb15f6b73128b5",
+      "operation_owner": "cli:certification build --out",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "published a certification evidence bundle from the generated source",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:certification build --out",
+          "result": "certification build --out exit 0"
         }
       ]
     },
@@ -411,6 +673,7 @@
       "id": "export-outcome-library-weighted-json",
       "artifact_kind": "weightedOutcomeLibraryJson",
       "operation": "export:outcomes-delegation",
+      "registry_operation": "recognized_by",
       "source_path": "run-artifacts/matrix-library.json",
       "source_identity": "sha256:57fe0e0758dc028de17d648b7275c8d172a7c0915d83e98252405aa805568bf8",
       "produced_path": "run-artifacts/matrix-delegated-export-bundle",
@@ -422,7 +685,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ExportCommand",
+          "owner": "cli:export --to outcomes",
           "result": "export outcomes delegated to the Outcome Library writer"
         }
       ]
@@ -448,58 +711,82 @@
       ]
     },
     {
-      "id": "fairness-round-commitment",
+      "id": "fairness-commitment-reveal-recognition",
       "artifact_kind": "fairnessCommitment",
       "operation": "reveal",
+      "registry_operation": "recognized_by",
       "source_path": "run-artifacts/matrix-commitment.json",
       "source_identity": "sha256:3128727aceebb13d3fa4b4c2aa471d893b8e362b1ee1f47ed4b7be311d4f2973",
-      "produced_path": "run-artifacts/matrix-proof.json",
-      "produced_identity": "sha256:dd95cf2f4cf439401815593ae1c5d562cf64d4a28157e7d22a98ae5ff2b21ca4",
-      "operation_owner": "FairnessCommand",
-      "systemic_classes": [
-        "provenance-and-freshness-binding"
-      ],
-      "status": "supported",
-      "observable_result": "generated and verified fairness proof",
-      "observations": [
-        {
-          "surface": "cli",
-          "owner": "FairnessCommand",
-          "result": "reveal and verify exit 0"
-        }
-      ]
-    },
-    {
-      "id": "fairness-round-proof",
-      "artifact_kind": "fairnessProof",
-      "operation": "verify",
-      "source_path": "run-artifacts/matrix-proof.json",
-      "source_identity": "sha256:dd95cf2f4cf439401815593ae1c5d562cf64d4a28157e7d22a98ae5ff2b21ca4",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "FairnessCommand",
+      "operation_owner": "cli:fairness reveal",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
       "status": "supported",
-      "observable_result": "verified exact bundle/library provenance",
+      "observable_result": "recognized the persisted round commitment for proof generation",
       "observations": [
         {
           "surface": "cli",
-          "owner": "FairnessCommand",
-          "result": "verify exit 0"
+          "owner": "cli:fairness reveal",
+          "result": "reveal consumed the round commitment"
         }
       ]
     },
     {
-      "id": "fairness-server-seed-commitment",
-      "artifact_kind": "fairnessServerSeedCommitment",
+      "id": "fairness-commitment-verify-recognition",
+      "artifact_kind": "fairnessCommitment",
+      "operation": "verify",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix-commitment.json",
+      "source_identity": "sha256:3128727aceebb13d3fa4b4c2aa471d893b8e362b1ee1f47ed4b7be311d4f2973",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:fairness verify",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "recognized the persisted round commitment for proof verification",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:fairness verify",
+          "result": "verify consumed the round commitment"
+        }
+      ]
+    },
+    {
+      "id": "fairness-round-commitment-default",
+      "artifact_kind": "fairnessCommitment",
+      "operation": "commit:default-output",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-seed-commitment.json",
+      "source_identity": "sha256:9b6f2b247b77d85360dcf5ba73bf95a50d8a09a0eff4cc96878e07c5e7383f32",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:fairness commit",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "printed the generated round commitment without creating a durable output file",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:fairness commit",
+          "result": "commit without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "fairness-round-commitment-publish",
+      "artifact_kind": "fairnessCommitment",
       "operation": "commit",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-seed-commitment.json",
       "source_identity": "sha256:9b6f2b247b77d85360dcf5ba73bf95a50d8a09a0eff4cc96878e07c5e7383f32",
       "produced_path": "run-artifacts/matrix-commitment.json",
       "produced_identity": "sha256:3128727aceebb13d3fa4b4c2aa471d893b8e362b1ee1f47ed4b7be311d4f2973",
-      "operation_owner": "FairnessCommand",
+      "operation_owner": "cli:fairness commit --out",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -508,8 +795,142 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "FairnessCommand",
-          "result": "commit exit 0"
+          "owner": "cli:fairness commit --out",
+          "result": "commit --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "fairness-round-proof",
+      "artifact_kind": "fairnessProof",
+      "operation": "reveal",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-commitment.json",
+      "source_identity": "sha256:3128727aceebb13d3fa4b4c2aa471d893b8e362b1ee1f47ed4b7be311d4f2973",
+      "produced_path": "run-artifacts/matrix-proof.json",
+      "produced_identity": "sha256:dd95cf2f4cf439401815593ae1c5d562cf64d4a28157e7d22a98ae5ff2b21ca4",
+      "operation_owner": "cli:fairness reveal --out",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "generated and verified fairness proof",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:fairness reveal --out",
+          "result": "reveal --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "fairness-round-proof",
+      "artifact_kind": "fairnessProof",
+      "operation": "verify",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix-proof.json",
+      "source_identity": "sha256:dd95cf2f4cf439401815593ae1c5d562cf64d4a28157e7d22a98ae5ff2b21ca4",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:fairness verify",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "verified exact bundle/library provenance",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:fairness verify",
+          "result": "verify exit 0"
+        }
+      ]
+    },
+    {
+      "id": "fairness-round-proof-default",
+      "artifact_kind": "fairnessProof",
+      "operation": "reveal:default-output",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-commitment.json",
+      "source_identity": "sha256:3128727aceebb13d3fa4b4c2aa471d893b8e362b1ee1f47ed4b7be311d4f2973",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:fairness reveal",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "printed the generated fairness proof without creating a durable output file",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:fairness reveal",
+          "result": "reveal without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "fairness-server-seed-commitment-default",
+      "artifact_kind": "fairnessServerSeedCommitment",
+      "operation": "seed-commit:default-output",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-server-seed.txt",
+      "source_identity": "sha256:a61c4900b71d3bbcc011edad5b1cc6b248e96638c8bdbc98563bbb5119d70021",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:fairness seed-commit",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "printed the computed server-seed commitment without creating a durable output file",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:fairness seed-commit",
+          "result": "seed-commit without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "fairness-server-seed-commitment-publish",
+      "artifact_kind": "fairnessServerSeedCommitment",
+      "operation": "seed-commit",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-server-seed.txt",
+      "source_identity": "sha256:a61c4900b71d3bbcc011edad5b1cc6b248e96638c8bdbc98563bbb5119d70021",
+      "produced_path": "run-artifacts/matrix-seed-commitment.json",
+      "produced_identity": "sha256:9b6f2b247b77d85360dcf5ba73bf95a50d8a09a0eff4cc96878e07c5e7383f32",
+      "operation_owner": "cli:fairness seed-commit --out",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "published the server-seed hash before the round commitment",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:fairness seed-commit --out",
+          "result": "seed-commit --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "fairness-server-seed-commitment-recognition",
+      "artifact_kind": "fairnessServerSeedCommitment",
+      "operation": "commit",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix-seed-commitment.json",
+      "source_identity": "sha256:9b6f2b247b77d85360dcf5ba73bf95a50d8a09a0eff4cc96878e07c5e7383f32",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:fairness commit",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "recognized the persisted server-seed commitment before pinning the round",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:fairness commit",
+          "result": "commit consumed the server-seed commitment"
         }
       ]
     },
@@ -517,6 +938,7 @@
       "id": "generic-import-reexport-config",
       "artifact_kind": "stakeImportReExportConfig",
       "operation": "import:stake-config",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-generic-stake-import/config.json",
       "source_identity": "sha256:e5d68c59278cd9af66dd16b6be4bef613283fbfd68823c846e62bc8c8b53dcdb",
       "produced_path": null,
@@ -528,7 +950,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ImportCommand",
+          "owner": "cli:import",
           "result": "import Stake --out wrote config.json"
         }
       ]
@@ -537,6 +959,7 @@
       "id": "generic-import-source-provenance",
       "artifact_kind": "stakeImportSourceProvenance",
       "operation": "import:stake-provenance",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-generic-stake-import/source-provenance.json",
       "source_identity": "sha256:14b5f390f3f4bee1bc80afafbe51bbd9ec6e89cfac08f584da4d768d1fbe6747",
       "produced_path": null,
@@ -548,7 +971,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ImportCommand",
+          "owner": "cli:import",
           "result": "import Stake --out wrote source-provenance.json"
         }
       ]
@@ -557,6 +980,7 @@
       "id": "import-par-blueprint-default",
       "artifact_kind": "blueprint",
       "operation": "import-default",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "source_identity": "sha256:cbdf86f3b6a333dde806ec8d0340d9feac62387d016964acb3d26cf562a3223e",
       "produced_path": "run-artifacts/owner-aliases/dispatcher.par.blueprint.json",
@@ -568,7 +992,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ImportCommand",
+          "owner": "cli:import XLSX without --out",
           "result": "import XLSX without --out exit 0"
         }
       ]
@@ -577,6 +1001,7 @@
       "id": "import-par-blueprint-explicit-output",
       "artifact_kind": "blueprint",
       "operation": "import:explicit-output",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/dispatcher.par.xlsx",
       "source_identity": "sha256:cbdf86f3b6a333dde806ec8d0340d9feac62387d016964acb3d26cf562a3223e",
       "produced_path": "run-artifacts/owner-aliases/dispatcher-explicit.blueprint.json",
@@ -588,7 +1013,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ImportCommand",
+          "owner": "cli:import --out for an XLSX source",
           "result": "import XLSX --out exit 0"
         }
       ]
@@ -1752,6 +2177,7 @@
       "id": "outcome-library-build-stake-default",
       "artifact_kind": "stakeAdapter",
       "operation": "build:stakeAdapter-default",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/build-default/outcomeLibrary",
       "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
       "produced_path": "run-artifacts/owner-aliases/build-default/stakeAdapter",
@@ -1763,7 +2189,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "BuildCommand",
+          "owner": "cli:build --target stakeAdapter without --out",
           "result": "build stakeAdapter without --out exit 0"
         }
       ]
@@ -1772,6 +2198,7 @@
       "id": "outcome-library-build-stake-explicit-output",
       "artifact_kind": "stakeAdapter",
       "operation": "build:stakeAdapter-explicit-output",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-explicit-bundle",
       "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
       "produced_path": "run-artifacts/matrix-explicit-stake",
@@ -1783,7 +2210,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "BuildCommand",
+          "owner": "cli:build --target stakeAdapter --out",
           "result": "build --target stakeAdapter --out exit 0"
         }
       ]
@@ -1792,18 +2219,19 @@
       "id": "outcome-library-build-stake-generic",
       "artifact_kind": "stakeAdapter",
       "operation": "build:stakeAdapter-generic",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-generic-bundle",
       "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
       "produced_path": "run-artifacts/matrix-generic-stake",
       "produced_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
-      "operation_owner": "cli:build --target stakeAdapter",
+      "operation_owner": "cli:build",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "public build owner published its own Stake adapter artifact",
       "observations": [
         {
           "surface": "cli",
-          "owner": "BuildCommand",
+          "owner": "cli:build",
           "result": "build --target stakeAdapter --out exit 0"
         }
       ]
@@ -1853,6 +2281,27 @@
       ]
     },
     {
+      "id": "outcome-library-command-validate",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "validate:outcomelibrary",
+      "registry_operation": "validates_by",
+      "source_path": "run-artifacts/matrix-bundle",
+      "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:outcomelibrary-validate",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "valid",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:outcomelibrary-validate",
+          "result": "outcomelibrary validate --deep exit 0"
+        }
+      ]
+    },
+    {
       "id": "outcome-library-export-stake",
       "artifact_kind": "outcomeLibrary",
       "operation": "export",
@@ -1881,6 +2330,7 @@
       "id": "outcome-library-export-stake-default",
       "artifact_kind": "stakeAdapter",
       "operation": "export:adapter-default",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/export-default/outcomelibrary",
       "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
       "produced_path": "run-artifacts/owner-aliases/export-default/stakeengine",
@@ -1892,7 +2342,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ExportCommand",
+          "owner": "cli:export --to adapter without --out",
           "result": "export adapter without --out exit 0"
         }
       ]
@@ -1901,6 +2351,7 @@
       "id": "outcome-library-export-stake-explicit-output",
       "artifact_kind": "stakeAdapter",
       "operation": "export:adapter-explicit-output",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/export-default/explicit-outcomes",
       "source_identity": "sha256:4e4c7b23e1766cd0545bfb2496c45529a796c81f6954b059395b85a95a79b2c9",
       "produced_path": "run-artifacts/owner-aliases/export-default/explicit-adapter",
@@ -1912,7 +2363,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ExportCommand",
+          "owner": "cli:export --to adapter --out",
           "result": "export adapter --out exit 0"
         }
       ]
@@ -1965,18 +2416,19 @@
       "id": "outcome-library-inspect",
       "artifact_kind": "outcomeLibrary",
       "operation": "inspect",
+      "registry_operation": "recognized_by",
       "source_path": "run-artifacts/matrix-bundle",
       "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "InspectCommand",
+      "operation_owner": "cli:inspect",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "recognized",
       "observations": [
         {
           "surface": "cli",
-          "owner": "InspectCommand",
+          "owner": "cli:inspect",
           "result": "exit 0"
         }
       ]
@@ -1985,11 +2437,12 @@
       "id": "outcome-library-replay",
       "artifact_kind": "outcomeLibrary",
       "operation": "replay",
+      "registry_operation": "runs_by",
       "source_path": "run-artifacts/matrix-bundle",
       "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
       "produced_path": "run-artifacts/matrix-replay.json",
       "produced_identity": "sha256:845392dac381b9e5cf68364abf14c9c12e52268209611701f08b21b3e646441a",
-      "operation_owner": "ReplayCommand",
+      "operation_owner": "cli:replay",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -1998,7 +2451,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ReplayCommand",
+          "owner": "cli:replay",
           "result": "exit 0"
         }
       ]
@@ -2027,19 +2480,43 @@
       "id": "outcome-library-sample",
       "artifact_kind": "outcomeLibrary",
       "operation": "sample",
+      "registry_operation": "runs_by",
       "source_path": "run-artifacts/matrix-bundle",
       "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "OutcomeSourceCommand",
+      "operation_owner": "cli:sample",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "sampled",
       "observations": [
         {
           "surface": "cli",
-          "owner": "OutcomeSourceCommand",
+          "owner": "cli:sample",
           "result": "exit 0"
+        }
+      ]
+    },
+    {
+      "id": "outcome-library-serve",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "serve",
+      "registry_operation": "runs_by",
+      "source_path": "run-artifacts/matrix-bundle",
+      "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:serve",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "started the native outcome-source local server route",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:serve",
+          "result": "serve --mode base --port 0 started the outcome-source route"
         }
       ]
     },
@@ -2047,11 +2524,12 @@
       "id": "outcome-library-simulate",
       "artifact_kind": "outcomeLibrary",
       "operation": "simulate",
+      "registry_operation": "runs_by",
       "source_path": "run-artifacts/matrix-bundle",
       "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
       "produced_path": "run-artifacts/matrix-simulation.json",
       "produced_identity": "sha256:d67fe6d5c55543a3a4497fd1dd42fbc0f368038684dfcb3a1bcb360be16b0355",
-      "operation_owner": "SimCommand",
+      "operation_owner": "cli:sim",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -2060,7 +2538,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "SimCommand",
+          "owner": "cli:sim",
           "result": "exit 0"
         }
       ]
@@ -2069,18 +2547,19 @@
       "id": "outcome-library-validate",
       "artifact_kind": "outcomeLibrary",
       "operation": "validate",
+      "registry_operation": "validates_by",
       "source_path": "run-artifacts/matrix-bundle",
       "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ValidateCommand",
+      "operation_owner": "cli:validate --deep",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "valid",
       "observations": [
         {
           "surface": "cli",
-          "owner": "ValidateCommand",
+          "owner": "cli:validate --deep",
           "result": "exit 0"
         }
       ]
@@ -2089,19 +2568,41 @@
       "id": "outcome-source-analysis-report",
       "artifact_kind": "outcomeSourceAnalysisReport",
       "operation": "report",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-report.md",
       "source_identity": "sha256:ed87878fb6c0ce724e1c7cf22a7fc76ba5fdea346ed94104fc5f2cfbcfc0568c",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ReportCommand",
+      "operation_owner": "cli:report --out for outcome sources",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "analysis report published from the generated Outcome Library",
       "observations": [
         {
           "surface": "cli",
-          "owner": "ReportCommand",
+          "owner": "cli:report --out for outcome sources",
           "result": "report --out exit 0 rendered the Outcome Source Report"
+        }
+      ]
+    },
+    {
+      "id": "outcome-source-command-comparison-report",
+      "artifact_kind": "outcomeSourceComparisonReport",
+      "operation": "diff",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-outcomesource-diff.json",
+      "source_identity": "sha256:260ac595d573db5814a500aa2894af3bc6181784b49a04a419d0a7b5e70e508e",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:outcomesource diff --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "published from the outcome-source command's exact analyses",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:outcomesource diff --out",
+          "result": "outcomesource diff --out exit 0"
         }
       ]
     },
@@ -2109,19 +2610,43 @@
       "id": "outcome-source-comparison-report",
       "artifact_kind": "outcomeSourceComparisonReport",
       "operation": "diff",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-outcome-diff.json",
       "source_identity": "sha256:260ac595d573db5814a500aa2894af3bc6181784b49a04a419d0a7b5e70e508e",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "DiffCommand",
+      "operation_owner": "cli:diff --out for outcome sources",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published from real Outcome Library sources",
       "observations": [
         {
           "surface": "cli",
-          "owner": "DiffCommand",
-          "result": "outcome-source diff --out exit 0"
+          "owner": "cli:diff --out for outcome sources",
+          "result": "diff --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "outcomelibrary-build-outcome-library",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "build",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-bundle.json",
+      "source_identity": "sha256:7fcd8de6952d71dbc513b6bdb2de32543c633640b393b09a688892adf31d84ed",
+      "produced_path": "run-artifacts/matrix-bundle",
+      "produced_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
+      "operation_owner": "cli:outcomelibrary build",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "the public Outcome Library build published its bundle",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:outcomelibrary build",
+          "result": "build exit 0 published the Outcome Library"
         }
       ]
     },
@@ -2129,6 +2654,7 @@
       "id": "package-build-outcome-library-default",
       "artifact_kind": "outcomeLibrary",
       "operation": "build:outcomeLibrary-default",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/build-default/tsPackage",
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
       "produced_path": "run-artifacts/owner-aliases/build-default/outcomeLibrary",
@@ -2140,7 +2666,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "BuildCommand",
+          "owner": "cli:build --target outcomeLibrary without --out",
           "result": "build outcomeLibrary without --out exit 0"
         }
       ]
@@ -2149,6 +2675,7 @@
       "id": "package-build-outcome-library-explicit-output",
       "artifact_kind": "outcomeLibrary",
       "operation": "build:outcomeLibrary-explicit-output",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-package",
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
       "produced_path": "run-artifacts/matrix-explicit-bundle",
@@ -2160,7 +2687,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "BuildCommand",
+          "owner": "cli:build --target outcomeLibrary --out",
           "result": "build --target outcomeLibrary --out exit 0"
         }
       ]
@@ -2169,6 +2696,7 @@
       "id": "package-build-outcome-library-generic",
       "artifact_kind": "outcomeLibrary",
       "operation": "build:outcomeLibrary-generic",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-package",
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
       "produced_path": "run-artifacts/matrix-generic-bundle",
@@ -2180,7 +2708,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "BuildCommand",
+          "owner": "cli:build --target outcomeLibrary",
           "result": "build --target outcomeLibrary --out exit 0"
         }
       ]
@@ -2189,6 +2717,7 @@
       "id": "package-export-outcome-library-default",
       "artifact_kind": "outcomeLibrary",
       "operation": "export:outcomes-default",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/export-default/package",
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
       "produced_path": "run-artifacts/owner-aliases/export-default/outcomelibrary",
@@ -2200,7 +2729,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ExportCommand",
+          "owner": "cli:export --to outcomes without --out",
           "result": "export outcomes without --out exit 0"
         }
       ]
@@ -2209,6 +2738,7 @@
       "id": "package-export-outcome-library-explicit-output",
       "artifact_kind": "outcomeLibrary",
       "operation": "export:outcomes-explicit-output",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/export-default/package",
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
       "produced_path": "run-artifacts/owner-aliases/export-default/explicit-outcomes",
@@ -2220,28 +2750,117 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ExportCommand",
+          "owner": "cli:export --to outcomes --out",
           "result": "export outcomes --out exit 0"
         }
       ]
     },
     {
       "id": "package-generate-raw-outcomes",
-      "artifact_kind": "tsPackage",
+      "artifact_kind": "weightedOutcomeLibraryJson",
       "operation": "generate",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-package",
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
       "produced_path": "run-artifacts/matrix-library.json",
       "produced_identity": "sha256:57fe0e0758dc028de17d648b7275c8d172a7c0915d83e98252405aa805568bf8",
-      "operation_owner": "OutcomeLibraryCommand",
+      "operation_owner": "cli:outcomelibrary generate --out",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published",
       "observations": [
         {
           "surface": "cli",
-          "owner": "OutcomeLibraryCommand",
+          "owner": "cli:outcomelibrary generate --out",
           "result": "exit 0"
+        }
+      ]
+    },
+    {
+      "id": "package-generate-raw-outcomes-generic",
+      "artifact_kind": "weightedOutcomeLibraryJson",
+      "operation": "generate:generic",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": "run-artifacts/matrix-generic-library.json",
+      "produced_identity": "sha256:284fc66c1540634a3a83729e566706ffc205859e5bf476b480ef433a30d45778",
+      "operation_owner": "cli:generate --out",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "generic generation published a weighted Outcome Library JSON artifact",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:generate --out",
+          "result": "generate --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "package-replay",
+      "artifact_kind": "tsPackage",
+      "operation": "replay",
+      "registry_operation": "runs_by",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": "run-artifacts/matrix-package-replay.json",
+      "produced_identity": "sha256:9980329d5d622d9fbadbfcaf489d1554a52a71ddd485125f12740e093e30695b",
+      "operation_owner": "cli:replay",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "published a seeded best-effort runtime replay",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:replay",
+          "result": "replay --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "package-serve",
+      "artifact_kind": "tsPackage",
+      "operation": "serve",
+      "registry_operation": "runs_by",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:serve",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "started the runtime-package local server route",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:serve",
+          "result": "serve --port 0 started the package route"
+        }
+      ]
+    },
+    {
+      "id": "package-simulate",
+      "artifact_kind": "tsPackage",
+      "operation": "simulate",
+      "registry_operation": "runs_by",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": "run-artifacts/matrix-package-simulation.json",
+      "produced_identity": "sha256:84ba98c5b42fc7cec7447183ce32d8bfef3ada7268253b287c132863829f5914",
+      "operation_owner": "cli:sim",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "published a seeded runtime simulation report",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:sim",
+          "result": "sim --out exit 0"
         }
       ]
     },
@@ -2249,6 +2868,7 @@
       "id": "par-import-blueprint",
       "artifact_kind": "blueprint",
       "operation": "import",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix.par.xlsx",
       "source_identity": "sha256:95868490c4249a79d13e2768d1f8ec4bb382bbc09ac0fa4eb4f799f99a8ebea3",
       "produced_path": "run-artifacts/matrix-imported.blueprint.json",
@@ -2260,7 +2880,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ParCommand",
+          "owner": "cli:par import --out",
           "result": "import exit 0 with matching provenance hash"
         }
       ]
@@ -2269,6 +2889,7 @@
       "id": "par-import-blueprint-default",
       "artifact_kind": "blueprint",
       "operation": "par-import-default",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/owner-aliases/direct-par.par.xlsx",
       "source_identity": "sha256:ae7552b668f4cf57a0eb19df4ec9800f1ed6e1e301a2f296f7d8c80cea927493",
       "produced_path": "run-artifacts/owner-aliases/direct-par.par.blueprint.json",
@@ -2280,8 +2901,29 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ParCommand",
+          "owner": "cli:par import without --out",
           "result": "par import without --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "par-workbook-inspect",
+      "artifact_kind": "parWorkbook",
+      "operation": "inspect",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix.par.xlsx",
+      "source_identity": "sha256:95868490c4249a79d13e2768d1f8ec4bb382bbc09ac0fa4eb4f799f99a8ebea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:inspect",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "recognized",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:inspect",
+          "result": "inspect PAR workbook exit 0"
         }
       ]
     },
@@ -2289,18 +2931,19 @@
       "id": "raw-outcomes-build-bundle",
       "artifact_kind": "weightedOutcomeLibraryJson",
       "operation": "build",
+      "registry_operation": "recognized_by",
       "source_path": "run-artifacts/matrix-library.json",
       "source_identity": "sha256:57fe0e0758dc028de17d648b7275c8d172a7c0915d83e98252405aa805568bf8",
       "produced_path": "run-artifacts/matrix-bundle",
       "produced_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
-      "operation_owner": "OutcomeLibraryCommand",
+      "operation_owner": "cli:outcomelibrary build",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published",
       "observations": [
         {
           "surface": "cli",
-          "owner": "OutcomeLibraryCommand",
+          "owner": "cli:outcomelibrary build",
           "result": "exit 0"
         }
       ]
@@ -2309,18 +2952,40 @@
       "id": "rendered-simulation-report",
       "artifact_kind": "renderedReport",
       "operation": "render",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-rendered-report.html",
       "source_identity": "sha256:19250c1334fe648d7068691d1bb43cfac9bb5cb28e5d984a3dec9bffa1ec109d",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ReportCommand",
+      "operation_owner": "cli:report --out for simulation reports",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "HTML report published from the real simulation report",
       "observations": [
         {
           "surface": "cli",
-          "owner": "ReportCommand",
+          "owner": "cli:report --out for simulation reports",
+          "result": "report --format html --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "rendered-simulation-report-report",
+      "artifact_kind": "renderedReport",
+      "operation": "report",
+      "registry_operation": "reports_by",
+      "source_path": "run-artifacts/matrix-rendered-report.html",
+      "source_identity": "sha256:19250c1334fe648d7068691d1bb43cfac9bb5cb28e5d984a3dec9bffa1ec109d",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:report",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "published a rendered view of the persisted simulation report",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:report",
           "result": "report --format html --out exit 0"
         }
       ]
@@ -2329,11 +2994,12 @@
       "id": "replay-descriptor-round-artifact",
       "artifact_kind": "runtimeReplayDescriptor",
       "operation": "inspect",
+      "registry_operation": "recognized_by",
       "source_path": "run-artifacts/matrix-replay.json",
       "source_identity": "sha256:845392dac381b9e5cf68364abf14c9c12e52268209611701f08b21b3e646441a",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ReplayCommand",
+      "operation_owner": "cli:replay",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -2342,20 +3008,44 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ReplayCommand",
+          "owner": "cli:replay",
           "result": "replay --out wrote the inspected descriptor"
         }
       ]
     },
     {
-      "id": "round-artifact-replay-provenance",
+      "id": "round-artifact-replay",
       "artifact_kind": "roundArtifact",
-      "operation": "validate",
+      "operation": "replay",
+      "registry_operation": "replays_by",
       "source_path": "run-artifacts/matrix-replay.json",
       "source_identity": "sha256:845392dac381b9e5cf68364abf14c9c12e52268209611701f08b21b3e646441a",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "ReplayCommand",
+      "operation_owner": "cli:replay",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "replay returned the recorded round from the public descriptor",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:replay",
+          "result": "replay --out completed the recorded round operation"
+        }
+      ]
+    },
+    {
+      "id": "round-artifact-replay-publish",
+      "artifact_kind": "roundArtifact",
+      "operation": "create",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-replay.json",
+      "source_identity": "sha256:845392dac381b9e5cf68364abf14c9c12e52268209611701f08b21b3e646441a",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:replay",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -2364,8 +3054,77 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ReplayCommand",
+          "owner": "cli:replay",
           "result": "replay --out published the descriptor containing the round artifact"
+        }
+      ]
+    },
+    {
+      "id": "runtime-replay-descriptor-publish",
+      "artifact_kind": "runtimeReplayDescriptor",
+      "operation": "replay",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-bundle",
+      "source_identity": "sha256:3b2461cda27034646fffa86add14deda465dd4329a67a5cab460f911a511b6a7",
+      "produced_path": "run-artifacts/matrix-replay.json",
+      "produced_identity": "sha256:845392dac381b9e5cf68364abf14c9c12e52268209611701f08b21b3e646441a",
+      "operation_owner": "cli:replay --out",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "published an exact outcome-source replay descriptor",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:replay --out",
+          "result": "replay --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "runtime-replay-descriptor-replay",
+      "artifact_kind": "runtimeReplayDescriptor",
+      "operation": "replay",
+      "registry_operation": "replays_by",
+      "source_path": "run-artifacts/matrix-replay.json",
+      "source_identity": "sha256:845392dac381b9e5cf68364abf14c9c12e52268209611701f08b21b3e646441a",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:replay",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "replayed the persisted descriptor's source with its recorded seed and round",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:replay",
+          "result": "replay produced the persisted descriptor"
+        }
+      ]
+    },
+    {
+      "id": "runtime-session-serve",
+      "artifact_kind": "runtimeSession",
+      "operation": "serve",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:serve",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "started the public runtime session without retaining an orphaned listener",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:serve",
+          "result": "serve --port 0 started and returned its runtime session address"
         }
       ]
     },
@@ -2373,18 +3132,19 @@
       "id": "simulation-comparison-report",
       "artifact_kind": "simulationComparisonReport",
       "operation": "diff",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-simulation-diff.json",
       "source_identity": "sha256:dbc27ed5f44975deffcfb2891dee0bb14c131a050224cf98f1608a5bdebe71b2",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "DiffCommand",
+      "operation_owner": "cli:diff --out",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "published from two real simulation reports",
       "observations": [
         {
           "surface": "cli",
-          "owner": "DiffCommand",
+          "owner": "cli:diff --out",
           "result": "diff --out exit 0"
         }
       ]
@@ -2393,11 +3153,12 @@
       "id": "simulation-report-inspect",
       "artifact_kind": "simulationReport",
       "operation": "report",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-package-simulation.json",
       "source_identity": "sha256:84ba98c5b42fc7cec7447183ce32d8bfef3ada7268253b287c132863829f5914",
       "produced_path": "run-artifacts/matrix-simulation-report.json",
       "produced_identity": "sha256:84ba98c5b42fc7cec7447183ce32d8bfef3ada7268253b287c132863829f5914",
-      "operation_owner": "ReportCommand",
+      "operation_owner": "cli:report --format json --out for a SimulationReport",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -2406,8 +3167,94 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ReportCommand",
+          "owner": "cli:report --format json --out for a SimulationReport",
           "result": "report --format json --out consumed and re-emitted the simulation report"
+        }
+      ]
+    },
+    {
+      "id": "simulation-report-publish",
+      "artifact_kind": "simulationReport",
+      "operation": "simulate",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": "run-artifacts/matrix-package-simulation.json",
+      "produced_identity": "sha256:84ba98c5b42fc7cec7447183ce32d8bfef3ada7268253b287c132863829f5914",
+      "operation_owner": "cli:sim --out",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "published a seeded simulation report from the generated package",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:sim --out",
+          "result": "sim --out exit 0"
+        }
+      ]
+    },
+    {
+      "id": "simulation-report-recognized-by-diff",
+      "artifact_kind": "simulationReport",
+      "operation": "recognize",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix-package-simulation.json",
+      "source_identity": "sha256:84ba98c5b42fc7cec7447183ce32d8bfef3ada7268253b287c132863829f5914",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:diff",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "recognized the persisted simulation report before comparison",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:diff",
+          "result": "diff consumed the simulation report"
+        }
+      ]
+    },
+    {
+      "id": "simulation-report-recognized-by-report",
+      "artifact_kind": "simulationReport",
+      "operation": "recognize",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix-package-simulation.json",
+      "source_identity": "sha256:84ba98c5b42fc7cec7447183ce32d8bfef3ada7268253b287c132863829f5914",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:report",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "recognized the persisted simulation report input",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:report",
+          "result": "report recognized the simulation report"
+        }
+      ]
+    },
+    {
+      "id": "simulation-report-report",
+      "artifact_kind": "simulationReport",
+      "operation": "report",
+      "registry_operation": "reports_by",
+      "source_path": "run-artifacts/matrix-package-simulation.json",
+      "source_identity": "sha256:84ba98c5b42fc7cec7447183ce32d8bfef3ada7268253b287c132863829f5914",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:report",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "parsed the persisted simulation report for rendering",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:report",
+          "result": "report consumed the simulation report"
         }
       ]
     },
@@ -2415,16 +3262,17 @@
       "id": "simulation-report-set-mode-diagnostic",
       "artifact_kind": "simulationReportSet",
       "operation": "simulate",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-package",
       "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "SimCommand",
+      "operation_owner": "cli:sim --mode all",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
       "status": "intentionally-unsupported",
-      "observable_result": "The real generated package has no declared getBetModes() contract for --mode all.",
+      "observable_result": "--mode all requires the game package to declare its bet modes via getBetModes() -- \"<pc14-run-root>/matrix-package\" doesn't. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
       "diagnostic": {
         "code": "missing-capability",
         "recovery": "Use a package that declares bet modes before requesting a per-mode simulation report set."
@@ -2432,8 +3280,78 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "SimCommand",
+          "owner": "cli:sim --mode all",
           "result": "sim --mode all returned its concrete missing getBetModes diagnostic"
+        }
+      ]
+    },
+    {
+      "id": "simulation-report-set-mode-output-diagnostic",
+      "artifact_kind": "simulationReportSet",
+      "operation": "simulate:output",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/matrix-package",
+      "source_identity": "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:sim --mode all --out",
+      "systemic_classes": [
+        "shared-conversion-diagnostic-parity",
+        "durable-publication-ownership"
+      ],
+      "status": "intentionally-unsupported",
+      "observable_result": "--mode all requires the game package to declare its bet modes via getBetModes() -- \"<pc14-run-root>/matrix-package\" doesn't. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+      "diagnostic": {
+        "code": "missing-capability",
+        "recovery": "Use a package that declares bet modes before requesting a persisted per-mode simulation report set."
+      },
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:sim --mode all --out",
+          "result": "sim --mode all --out returned its concrete missing getBetModes diagnostic without creating output"
+        }
+      ]
+    },
+    {
+      "id": "stake-adapter-inspect",
+      "artifact_kind": "stakeAdapter",
+      "operation": "inspect",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix-stake",
+      "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:inspect",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "recognized",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:inspect",
+          "result": "inspect Stake adapter exit 0"
+        }
+      ]
+    },
+    {
+      "id": "stake-adapter-validate",
+      "artifact_kind": "stakeAdapter",
+      "operation": "validate",
+      "registry_operation": "validates_by",
+      "source_path": "run-artifacts/matrix-stake",
+      "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "cli:validate",
+      "systemic_classes": [],
+      "status": "supported",
+      "observable_result": "valid",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "cli:validate",
+          "result": "validate Stake adapter exit 0"
         }
       ]
     },
@@ -2441,18 +3359,19 @@
       "id": "stake-engine-analysis-report",
       "artifact_kind": "stakeEngineAnalysisReport",
       "operation": "analyze",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-stake-analysis.json",
       "source_identity": "sha256:95add6a010cb29c0ea87fd41910eb3697774fb054a395ce33efdece66b11cf36",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "StakeEngineCommand",
+      "operation_owner": "cli:stakeengine analyze --out",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "analysis report published from the generated Stake adapter",
       "observations": [
         {
           "surface": "cli",
-          "owner": "StakeEngineCommand",
+          "owner": "cli:stakeengine analyze --out",
           "result": "stakeengine analyze --out exit 0"
         }
       ]
@@ -2461,18 +3380,19 @@
       "id": "stake-engine-comparison-report",
       "artifact_kind": "stakeEngineComparisonReport",
       "operation": "diff",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-stake-comparison.json",
       "source_identity": "sha256:b8ac95fa1cb2857e82bf28ea5babc7a410eea67f2c7865cdd1244f5488f64b82",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "StakeEngineCommand",
+      "operation_owner": "cli:stakeengine diff --out",
       "systemic_classes": [],
       "status": "supported",
       "observable_result": "comparison report published from two real Stake exports",
       "observations": [
         {
           "surface": "cli",
-          "owner": "StakeEngineCommand",
+          "owner": "cli:stakeengine diff --out",
           "result": "stakeengine diff --out exit 0"
         }
       ]
@@ -2527,6 +3447,7 @@
       "id": "stake-import-outcome-library-default-output",
       "artifact_kind": "outcomeLibrary",
       "operation": "import:stake-default-output",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-stake",
       "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
       "produced_path": "run-artifacts/matrix-stake-imported",
@@ -2538,7 +3459,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ImportCommand",
+          "owner": "cli:import Stake without --out",
           "result": "import Stake without --out exit 0"
         }
       ]
@@ -2547,6 +3468,7 @@
       "id": "stake-import-outcome-library-explicit-output",
       "artifact_kind": "outcomeLibrary",
       "operation": "import:stake-explicit-output",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-stake",
       "source_identity": "sha256:df69a41a130f0f2812deddc8106651fdb9790c1b33209d933f037cf9eb502b76",
       "produced_path": "run-artifacts/matrix-generic-stake-import",
@@ -2558,7 +3480,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "ImportCommand",
+          "owner": "cli:import --out",
           "result": "import Stake --out exit 0"
         }
       ]
@@ -2567,11 +3489,12 @@
       "id": "stake-import-reexport-config",
       "artifact_kind": "stakeImportReExportConfig",
       "operation": "export",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-stake-imported-library/config.json",
       "source_identity": "sha256:e5d68c59278cd9af66dd16b6be4bef613283fbfd68823c846e62bc8c8b53dcdb",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "StakeEngineCommand",
+      "operation_owner": "cli:stakeengine import",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -2580,8 +3503,56 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "StakeEngineCommand",
+          "owner": "cli:stakeengine import",
           "result": "import exit 0 wrote config.json"
+        }
+      ]
+    },
+    {
+      "id": "stake-import-reexport-config-descriptor",
+      "artifact_kind": "stakeImportReExportConfig",
+      "operation": "load-descriptor",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix-stake-imported-library/config.json",
+      "source_identity": "sha256:e5d68c59278cd9af66dd16b6be4bef613283fbfd68823c846e62bc8c8b53dcdb",
+      "produced_path": "run-artifacts/matrix-stake-reexported",
+      "produced_identity": "sha256:66b27105b2dca4e6f0ddf49ca17e62b025337b8d5d59324a25a69dddf2e8c378",
+      "operation_owner": "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Stake export loaded the imported bundle-directory re-export descriptor and published the matching adapter",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "StakeEngineCommand:loadDescriptor as a bundleDir-only re-export specialization",
+          "result": "stakeengine export resolved imported config.json as its re-export descriptor"
+        }
+      ]
+    },
+    {
+      "id": "stake-import-reexport-config-owner",
+      "artifact_kind": "stakeImportReExportConfig",
+      "operation": "re-export",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/matrix-stake-imported-library/config.json",
+      "source_identity": "sha256:e5d68c59278cd9af66dd16b6be4bef613283fbfd68823c846e62bc8c8b53dcdb",
+      "produced_path": "run-artifacts/matrix-stake-reexported",
+      "produced_identity": "sha256:66b27105b2dca4e6f0ddf49ca17e62b025337b8d5d59324a25a69dddf2e8c378",
+      "operation_owner": "StakeEngineCommand:export",
+      "systemic_classes": [
+        "provenance-and-freshness-binding",
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Stake export consumed the imported re-export configuration and published the matching adapter",
+      "observations": [
+        {
+          "surface": "cli",
+          "owner": "StakeEngineCommand:export",
+          "result": "stakeengine export consumed imported config.json"
         }
       ]
     },
@@ -2622,11 +3593,12 @@
       "id": "stake-import-source-provenance",
       "artifact_kind": "stakeImportSourceProvenance",
       "operation": "inspect",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/matrix-stake-imported-library/source-provenance.json",
       "source_identity": "sha256:14b5f390f3f4bee1bc80afafbe51bbd9ec6e89cfac08f584da4d768d1fbe6747",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "StakeEngineCommand",
+      "operation_owner": "cli:stakeengine import",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -2635,7 +3607,7 @@
       "observations": [
         {
           "surface": "cli",
-          "owner": "StakeEngineCommand",
+          "owner": "cli:stakeengine import",
           "result": "import exit 0 wrote source-provenance.json"
         }
       ]

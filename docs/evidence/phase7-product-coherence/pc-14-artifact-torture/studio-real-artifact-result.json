@@ -73,7 +73,7 @@
       "artifact_kind": "runtimeSession",
       "operation": "export",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
       "produced_path": "run-artifacts/session-state/8e1049d67f8168c9f1ad6200c135e8d77c852688d90d51d9ca2b588118c46b07.json",
       "produced_identity": "sha256:59a8a55f57980d4a9cccbe69d35946fc7d0aed1d8970d90ea0edf50402747f50",
       "operation_owner": "FileSessionRepository.save",
@@ -92,13 +92,14 @@
     },
     {
       "id": "studio-blueprint-build",
-      "artifact_kind": "blueprint",
+      "artifact_kind": "tsPackage",
       "operation": "build",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/source.blueprint.json",
       "source_identity": "sha256:d39612600e6cbc73489e4ad637ae6de54ebf51818a759bc53c5dd49f34e09d95",
       "produced_path": "run-artifacts/package",
-      "produced_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
-      "operation_owner": "StudioArtifactBuildService",
+      "produced_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "operation_owner": "studio:artifact-build",
       "systemic_classes": [
         "shared-conversion-diagnostic-parity"
       ],
@@ -107,8 +108,54 @@
       "observations": [
         {
           "surface": "studio-api",
-          "owner": "StudioArtifactBuildService",
-          "result": "status ok"
+          "owner": "studio:artifact-build",
+          "result": "StudioArtifactBuildService published the prepared package"
+        }
+      ]
+    },
+    {
+      "id": "studio-certification-build",
+      "artifact_kind": "certificationEvidenceBundle",
+      "operation": "build",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": "run-artifacts/package/certification",
+      "produced_identity": "sha256:1267cc2271c922b38af93a9607327d02b71b54ba440d4cd3884e6e929c00c742",
+      "operation_owner": "studio:certification-build",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio certification built and self-validated a real evidence bundle",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:certification-build",
+          "result": "StudioCertificationService wrote the certification bundle"
+        }
+      ]
+    },
+    {
+      "id": "studio-certification-request-samples",
+      "artifact_kind": "certificationBuildDescriptor",
+      "operation": "recognize",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:certification-build request supplies equivalent mode samples",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "the certification request supplied the exact mode sample that the real build consumed",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:certification-build request supplies equivalent mode samples",
+          "result": "mode base with deterministic sample inputs reached StudioCertificationService.build"
         }
       ]
     },
@@ -116,11 +163,12 @@
       "id": "studio-external-deployment-publication",
       "artifact_kind": "externalDeploymentArtifact",
       "operation": "deploy",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/package/outcomelibrary",
       "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "produced_path": "run-artifacts/package/deployment/local-json-example",
       "produced_identity": "sha256:d0d6157d55f36628b391b44c395cf537390636b16119eae7db1f00e6bfb87721",
-      "operation_owner": "StudioDeploymentService.run",
+      "operation_owner": "studio:deployment-run",
       "systemic_classes": [
         "durable-publication-ownership"
       ],
@@ -129,8 +177,123 @@
       "observations": [
         {
           "surface": "studio-api",
-          "owner": "StudioDeploymentService.run",
-          "result": "completed target-defined deployment publication"
+          "owner": "studio:deployment-run",
+          "result": "StudioDeploymentService completed target-defined deployment publication"
+        }
+      ]
+    },
+    {
+      "id": "studio-fairness-commitment",
+      "artifact_kind": "fairnessCommitment",
+      "operation": "configure",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:fairness-configure",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Studio fairness configured the complete commitment bound to the library identity",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:fairness-configure",
+          "result": "StudioFairnessService returned the bundle-bound commitment"
+        }
+      ]
+    },
+    {
+      "id": "studio-fairness-proof",
+      "artifact_kind": "fairnessProof",
+      "operation": "generate",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:fairness-generate",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Studio fairness generated a proof from the configured real commitment",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:fairness-generate",
+          "result": "StudioFairnessService generated the proof"
+        }
+      ]
+    },
+    {
+      "id": "studio-fairness-proof-verify",
+      "artifact_kind": "fairnessProof",
+      "operation": "verify",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:fairness-verify",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Studio fairness verified the generated proof against the same bundle",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:fairness-verify",
+          "result": "StudioFairnessService returned no verification errors"
+        }
+      ]
+    },
+    {
+      "id": "studio-fairness-server-seed-commitment",
+      "artifact_kind": "fairnessServerSeedCommitment",
+      "operation": "configure",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:fairness-configure",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Studio fairness configured the server-seed commitment from the live bundle",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:fairness-configure",
+          "result": "StudioFairnessService returned the server-seed commitment"
+        }
+      ]
+    },
+    {
+      "id": "studio-outcome-library-generate",
+      "artifact_kind": "outcomeLibrary",
+      "operation": "generate",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": "run-artifacts/package/outcomelibrary",
+      "produced_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "operation_owner": "studio:outcome-library-generate",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "resumed generation published the real Outcome Library bundle",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:outcome-library-generate",
+          "result": "StudioOutcomeLibraryGenerateService resumed and published the bundle"
         }
       ]
     },
@@ -138,11 +301,12 @@
       "id": "studio-outcome-library-registry-index",
       "artifact_kind": "studioOutcomeLibraryRegistryIndex",
       "operation": "inspect",
+      "registry_operation": "recognized_by",
       "source_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
       "source_identity": "sha256:336e050759aa716685eb12baa33826f43e2180f98200810be2b0fe75db30e9c4",
       "produced_path": null,
       "produced_identity": null,
-      "operation_owner": "StudioOutcomeLibraryGenerateService.registry",
+      "operation_owner": "StudioOutcomeLibraryGenerateService:registry",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -151,8 +315,31 @@
       "observations": [
         {
           "surface": "studio-api",
-          "owner": "StudioOutcomeLibraryGenerateService.registry",
+          "owner": "StudioOutcomeLibraryGenerateService:registry",
           "result": "registry returned the indexed compatible real bundle"
+        }
+      ]
+    },
+    {
+      "id": "studio-outcome-library-registry-index-write",
+      "artifact_kind": "studioOutcomeLibraryRegistryIndex",
+      "operation": "record",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": "run-artifacts/package/.pokie/outcome-library-registry.json",
+      "produced_identity": "sha256:336e050759aa716685eb12baa33826f43e2180f98200810be2b0fe75db30e9c4",
+      "operation_owner": "StudioOutcomeLibraryGenerateService:recordDiscoveredBundleDir after successful generate",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "successful generation durably recorded the discoverable bundle directory",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioOutcomeLibraryGenerateService:recordDiscoveredBundleDir after successful generate",
+          "result": "generation wrote the registry index before it was reopened"
         }
       ]
     },
@@ -160,11 +347,12 @@
       "id": "studio-outcome-library-selector-deployment",
       "artifact_kind": "studioOutcomeLibrarySelector",
       "operation": "export",
+      "registry_operation": "recognized_by",
       "source_path": "run-artifacts/package/outcomelibrary",
       "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "produced_path": "run-artifacts/package/deployment/local-json-example",
       "produced_identity": "sha256:d0d6157d55f36628b391b44c395cf537390636b16119eae7db1f00e6bfb87721",
-      "operation_owner": "StudioDeploymentService.run",
+      "operation_owner": "StudioDeploymentService",
       "systemic_classes": [
         "provenance-and-freshness-binding"
       ],
@@ -173,28 +361,215 @@
       "observations": [
         {
           "surface": "studio-api",
-          "owner": "StudioDeploymentService.run",
+          "owner": "StudioDeploymentService",
           "result": "resolved the verified bundle selector for base mode"
         }
       ]
     },
     {
       "id": "studio-outcome-library-stake-export",
-      "artifact_kind": "outcomeLibrary",
+      "artifact_kind": "stakeAdapter",
       "operation": "export",
+      "registry_operation": "created_by",
       "source_path": "run-artifacts/package/outcomelibrary",
       "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "produced_path": "run-artifacts/package/stake",
       "produced_identity": "sha256:0f18b5f4e0f574690407a2a592bebc0677204ef986ee9c25fff31921c2ecb862",
-      "operation_owner": "StudioStakeEngineExportService",
-      "systemic_classes": [],
+      "operation_owner": "studio:stake-export",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
       "status": "supported",
       "observable_result": "published",
       "observations": [
         {
           "surface": "studio-api",
-          "owner": "StudioStakeEngineExportService",
-          "result": "status ok"
+          "owner": "studio:stake-export",
+          "result": "StudioStakeEngineExportService published the Stake adapter"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-play-round",
+      "artifact_kind": "roundArtifact",
+      "operation": "play",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:play",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "the live Studio play spin recorded its real round",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:play",
+          "result": "GET rounds returned the play session's recorded round"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-play-session",
+      "artifact_kind": "runtimeSession",
+      "operation": "play",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:play",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio created and spun a live runtime session from the prepared package",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:play",
+          "result": "POST play session and spin returned the live session"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-replay-descriptor",
+      "artifact_kind": "runtimeReplayDescriptor",
+      "operation": "replay",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:replay",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio completed a replay and exposed its downloadable descriptor",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:replay",
+          "result": "GET replay completed and download returned the descriptor"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-replay-round",
+      "artifact_kind": "roundArtifact",
+      "operation": "replay",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:replay",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio replay reproduced and recorded a real package round",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:replay",
+          "result": "completed replay retained the reproduced round descriptor"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-simulation-report",
+      "artifact_kind": "simulationReport",
+      "operation": "simulate",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:simulation",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio completed a seeded package simulation and retained its report",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:simulation",
+          "result": "POST simulation reached completed and GET reports returned it"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-simulation-report-list",
+      "artifact_kind": "simulationReport",
+      "operation": "list",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:simulation-report-list",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio listed the completed report from its owning simulation repository",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:simulation-report-list",
+          "result": "GET reports returned the completed simulation id"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-simulation-report-render",
+      "artifact_kind": "simulationReport",
+      "operation": "report",
+      "registry_operation": "reports_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:simulation",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "Studio returned the completed simulation report detail",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:simulation",
+          "result": "GET report returned the persisted report view"
+        }
+      ]
+    },
+    {
+      "id": "studio-package-simulation-round",
+      "artifact_kind": "roundArtifact",
+      "operation": "simulate",
+      "registry_operation": "created_by",
+      "source_path": "run-artifacts/package",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "studio:simulation",
+      "systemic_classes": [
+        "durable-publication-ownership"
+      ],
+      "status": "supported",
+      "observable_result": "the completed simulation produced its real package round sequence",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "studio:simulation",
+          "result": "completed simulation terminal result retained its sampled round data"
         }
       ]
     },
@@ -203,7 +578,7 @@
       "artifact_kind": "studioProjectRegistryEntry",
       "operation": "import",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
       "produced_path": "run-artifacts/studio-app-data/projects.json",
       "produced_identity": "sha256:021f8a28d09b5f1a5e1bca92bd7424f697ce6e64973b6569d644d6b17250815b",
       "operation_owner": "StudioProjectRegistrationService.registerExternal",
@@ -217,6 +592,29 @@
           "surface": "studio-api",
           "owner": "StudioProjectRegistrationService.list",
           "result": "listed the persisted package registration after reconstruction"
+        }
+      ]
+    },
+    {
+      "id": "studio-stake-selector-recognition",
+      "artifact_kind": "studioOutcomeLibrarySelector",
+      "operation": "resolve",
+      "registry_operation": "recognized_by",
+      "source_path": "run-artifacts/package/outcomelibrary",
+      "source_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
+      "produced_path": null,
+      "produced_identity": null,
+      "operation_owner": "StudioStakeEngineExportService",
+      "systemic_classes": [
+        "provenance-and-freshness-binding"
+      ],
+      "status": "supported",
+      "observable_result": "Stake export resolved the selected compatible bundle",
+      "observations": [
+        {
+          "surface": "studio-api",
+          "owner": "StudioStakeEngineExportService",
+          "result": "accepted the bundle selector for the published Stake adapter"
         }
       ]
     },
@@ -440,7 +838,7 @@
     {
       "id": "studio-destination-drift",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
       "produced_path": "run-artifacts/package/outcomelibrary",
       "produced_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "observable_result": "prepared generation reports a conflict after destination occupancy and preserves borrowed.txt",
@@ -464,7 +862,7 @@
     {
       "id": "studio-generation-cancellation",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "cancelled generation leaves no bundle publication and returns the resumable checkpoint",
@@ -488,7 +886,7 @@
     {
       "id": "studio-generation-recovery",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
       "produced_path": "run-artifacts/package/outcomelibrary",
       "produced_identity": "sha256:a33ecc1ad65ea2dbee2e272806be20eddfe9b535ddd4d6f81769f2dfb6c0a57f",
       "observable_result": "the cancellation checkpoint resumes into a published Outcome Library after the conflicting borrowed destination is removed",
@@ -539,7 +937,7 @@
     {
       "id": "studio-simulation-replay-cancellation",
       "source_path": "run-artifacts/package",
-      "source_identity": "sha256:d57d313cb3065783b87e88b5012dc2478fd837addae2fc624100991a95c95328",
+      "source_identity": "sha256:32379b0212d244a12ddc190d499b2989e5f5ae8b6a44668b9526f6aa0c099ea3",
       "produced_path": null,
       "produced_identity": null,
       "observable_result": "Studio HTTP cancellation transitions real simulation and replay jobs to terminal cancelled states without retaining a report or replay descriptor",

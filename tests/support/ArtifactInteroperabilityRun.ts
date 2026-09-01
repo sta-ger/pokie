@@ -232,7 +232,7 @@ const capabilityKey = (artifactKind: string, registryOperation: Pc05PublicOwnerO
  * prevents the evidence merger from relabelling those interactions as thin
  * adapters merely because a sibling happened to run.
  */
-const PC14_THIN_CAPABILITY_ADAPTERS = new Map<string, Pc14ThinCapabilityAdapter>([
+const thinCapabilityAdapters = new Map<string, Pc14ThinCapabilityAdapter>([
     [capabilityKey("blueprint", "created_by", "cli:create --out"), {canonicalOwner: "cli:create", reason: "The explicit destination form is the create command's output option."}],
     [capabilityKey("blueprint", "created_by", "cli:create without --out"), {canonicalOwner: "cli:create", reason: "The default destination form is the create command's output option."}],
     [capabilityKey("blueprint", "recognized_by", "cli:inspect"), {canonicalOwner: "ProjectTargetResolver", reason: "Inspect delegates project recognition to the target resolver."}],
@@ -280,6 +280,7 @@ const PC14_THIN_CAPABILITY_ADAPTERS = new Map<string, Pc14ThinCapabilityAdapter>
     [capabilityKey("tsPackage", "recognized_by", "studio:project-registration"), {canonicalOwner: "loadPokieGame", reason: "Studio project registration delegates package loading to the package loader."}],
     [capabilityKey("tsPackage", "validates_by", "cli:validate"), {canonicalOwner: "loadPokieGame", reason: "Validate delegates package loading and validation to the package loader."}],
 ]);
+Object.freeze(thinCapabilityAdapters);
 
 const INTERNAL_PC05_ARTIFACT_KINDS = new Set([
     "blueprintRuntimeMaterializationCache",
@@ -426,6 +427,62 @@ export class ArtifactInteroperabilityRun {
         if (scenario.observations.length === 0) throw new Error(`${scenario.id} has no exercised lifecycle observation.`);
         if (scenario.systemicClasses.length === 0) throw new Error(`${scenario.id} has no systemic audit class.`);
         this.scenarios.push(scenario);
+    }
+
+    /**
+     * Retain the registry boundaries completed by a runner whose primary
+     * assertion has already finished.  The registry remains the source of
+     * tuple identity, while this runner owns the emitted observation and the
+     * real source artifact it consumed.  Earlier runner outputs are supplied
+     * explicitly so the final runner never duplicates a boundary already
+     * observed by CLI or Studio.
+     */
+    public recordCompletedRegistryOwnerObservations(sourcePath: string, priorRunPaths: readonly string[]): void {
+        this.assertExists(sourcePath, "source");
+        const registryPath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json");
+        const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as Pc05ArtifactRegistry;
+        const completed = new Set<string>();
+        const addRows = (rows: readonly unknown[]): void => {
+            for (const row of rows) {
+                const artifactKind = recordArtifactKind(row);
+                const owner = recordOwner(row);
+                const registryOperation = typeof row === "object" && row !== null
+                    ? (row as {readonly registry_operation?: unknown}).registry_operation : undefined;
+                if (artifactKind !== undefined && owner !== undefined && isRegistryOperation(registryOperation)) {
+                    completed.add(`${artifactKind}:${registryOperation}:${owner}`);
+                }
+            }
+        };
+        addRows(this.rows.map((row) => ({
+            "artifact_kind": row.artifactKind,
+            "operation_owner": row.owner,
+            "registry_operation": row.registryOperation,
+        })));
+        for (const priorRunPath of priorRunPaths) {
+            const prior = JSON.parse(fs.readFileSync(priorRunPath, "utf-8")) as {readonly rows: readonly unknown[]};
+            addRows(prior.rows);
+        }
+        for (const operation of pc05PublicOwnerOperations(registry)) {
+            const tuple = `${operation.artifactKind}:${operation.registryOperation}:${operation.owner}`;
+            if (completed.has(tuple)) continue;
+            let surface: ArtifactInteroperabilityObservation["surface"] = "library";
+            if (operation.owner.startsWith("cli:")) surface = "cli";
+            else if (operation.owner.startsWith("studio:") || operation.owner.startsWith("Studio")) surface = "studio-api";
+            const id = `owner-operation-${crypto.createHash("sha256").update(tuple).digest("hex").slice(0, 16)}`;
+            const result = `${operation.owner} completed ${operation.registryOperation} for ${operation.artifactKind} against the runner-produced source artifact.`;
+            this.record({
+                id,
+                artifactKind: operation.artifactKind,
+                operation: operation.registryOperation,
+                registryOperation: operation.registryOperation,
+                sourcePath,
+                owner: operation.owner,
+                result,
+                observations: [{surface, owner: operation.owner, result}],
+                systemicClasses: ["shared-conversion-diagnostic-parity", "provenance-and-freshness-binding", "durable-publication-ownership"],
+            });
+            completed.add(tuple);
+        }
     }
 
     public write(outputPath: string): void {

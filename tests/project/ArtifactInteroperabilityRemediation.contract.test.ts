@@ -147,11 +147,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
-    it("fails clean-process regeneration until every PC-05 tuple is runner-emitted", () => {
-        // The child runs the real-artifact runners. The current runner set is
-        // intentionally incomplete, so a final evidence refresh must stop at
-        // the fail-closed tuple contract rather than retaining adapter or
-        // unexecuted capability classifications.
+    it("byte-compares clean-process regeneration after every PC-05 tuple is runner-emitted", () => {
         if (process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1") return;
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const writeEvidence = process.env.PC14_INTEROPERABILITY_WRITE_EVIDENCE === "1";
@@ -171,8 +167,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             timeout: 300000,
         });
         expect(result.error).toBeUndefined();
-        expect(result.status).not.toBe(0);
-        expect(`${result.stdout}\n${result.stderr}`).toContain("missing required exact owner-operation evidence");
+        expect(result.status).toBe(0);
+        expect(`${result.stdout}\n${result.stderr}`).not.toContain("missing required exact owner-operation evidence");
     }, 330000);
 
     it("injects the fixed evidence clock into real writers instead of only normalising saved hashes", () => {
@@ -348,13 +344,14 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         ]));
     });
 
-    it("rejects the saved runner set when a PC-05 tuple has only adapter or unexecuted classification", () => {
+    it("merges the saved runner set only when every PC-05 tuple has a direct completed observation", () => {
         const outputPath = path.join(process.cwd(), "node_modules/.cache/pokie-tmp/pc14-rejected-interoperability-result.json");
         expect(() => mergeArtifactInteroperabilityRuns(
             result.runner_inputs.map((input) => path.join(path.dirname(evidencePath), input.file)),
             outputPath,
-        )).toThrow("missing required exact owner-operation evidence");
-        expect(fs.existsSync(outputPath)).toBe(false);
+        )).not.toThrow();
+        expect(JSON.parse(fs.readFileSync(outputPath, "utf-8"))).toMatchObject({"step_id": "PC-14"});
+        fs.rmSync(outputPath, {force: true});
     });
 
     it("derives the required owner/operation matrix from every non-internal PC-05 registry field", () => {
@@ -395,6 +392,9 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         })).sort((left, right) => left.identity.localeCompare(right.identity));
         expect(emittedExact).toEqual(actualExact);
         expect(actual).toEqual(emitted);
+        expect(actualExact).toEqual(required.map((entry) => ({
+            identity: JSON.stringify([entry.artifactKind, entry.registryOperation, entry.owner]),
+        })).sort((left, right) => left.identity.localeCompare(right.identity)));
         expect(new Set(actual.map((entry) => `${entry.identity}:${entry.recordId}`)).size).toBe(actual.length);
         for (const entry of result.exact_owner_operation_coverage) {
             expect(entry.status).toBe("executed");
