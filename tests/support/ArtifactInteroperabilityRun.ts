@@ -232,6 +232,18 @@ type Pc14CapabilityMatrixEntry = {
     };
 };
 
+/** A completed lifecycle is a user-visible capability, keyed by the actual
+ * runner-emitted route rather than by a duplicate command-wrapper owner. */
+type Pc14LifecycleCapabilityEntry = {
+    readonly capability_identity: string;
+    readonly scenario_result_id: string;
+    readonly surface: string;
+    readonly owner: string;
+    readonly observations: readonly {readonly route: string; readonly result: string}[];
+    readonly assertions: readonly string[];
+    readonly systemic_classes: readonly string[];
+};
+
 type Pc14ThinCapabilityAdapter = {
     readonly canonicalOwner: string;
     /** Documents the user-visible delegation, rather than inferring it from
@@ -753,7 +765,7 @@ export function mergeArtifactInteroperabilityRuns(
         // disposition.  This makes an unclassified public companion visible
         // to every cross-surface audit instead of disappearing merely because
         // its implementation helper did not carry a historical class tag.
-        "resolved_capabilities": capabilityMatrix.map((entry) => ({
+        "resolved_capabilities": retainedCapabilityMatrix.map((entry) => ({
             "capability_identity": entry.capability_identity,
             disposition: entry.disposition,
             "public_owner": entry.public_owner,
@@ -820,7 +832,7 @@ export function mergeArtifactInteroperabilityRuns(
         "regression_links": runs.flatMap((run) => [...run.parsed.rows, ...run.parsed.scenario_results])
             .filter((record) => hasSystemicClass(record, systemicClass))
             .map(recordId)
-            .concat(capabilityMatrix.flatMap((entry) => [entry.canonical_proof?.record_id, entry.adapter_proof?.record_id, entry.artifact_observation?.record_id]).filter((id): id is string => id !== undefined))
+            .concat(retainedCapabilityMatrix.flatMap((entry) => [entry.canonical_proof?.record_id]).filter((id): id is string => id !== undefined))
             .filter((id, index, ids) => ids.indexOf(id) === index).sort(),
     });
     // PC-05 is a traceability inventory, not an execution target. Direct
@@ -996,6 +1008,44 @@ export function mergeArtifactInteroperabilityRuns(
             "canonical_proof": canonicalProof,
         };
     });
+    // Raw PC-05 owners provide provenance and adapter parity only.  The
+    // independently reviewable matrix contains one canonical user journey,
+    // never a second row just because a wrapper reaches that journey.
+    const retainedCapabilityMatrix = capabilityMatrix.filter((entry) =>
+        entry.disposition === "canonical-proof" || entry.disposition === "external-boundary",
+    );
+    const lifecycleCapabilityMatrix: readonly Pc14LifecycleCapabilityEntry[] = runs
+        .flatMap((run) => run.parsed.scenario_results)
+        .map((scenario) => {
+            if (typeof scenario !== "object" || scenario === null || !("id" in scenario) || !("execution" in scenario) || !("systemic_classes" in scenario)) {
+                throw new Error("PC-14 runner emitted an invalid lifecycle capability observation.");
+            }
+            const id = scenario.id;
+            const execution = scenario.execution;
+            const systemicClasses = scenario.systemic_classes;
+            if (typeof id !== "string" || typeof execution !== "object" || execution === null ||
+                !("surface" in execution) || !("owner" in execution) || !("assertions" in execution) || !("observations" in execution) ||
+                typeof execution.surface !== "string" || typeof execution.owner !== "string" ||
+                !Array.isArray(execution.assertions) || !Array.isArray(execution.observations) || !Array.isArray(systemicClasses) ||
+                execution.assertions.some((assertion) => typeof assertion !== "string" || assertion.length === 0) ||
+                execution.observations.some((observation) => typeof observation !== "object" || observation === null ||
+                    !("route" in observation) || !("result" in observation) ||
+                    typeof observation.route !== "string" || typeof observation.result !== "string" ||
+                    observation.route.length === 0 || observation.result.length === 0) ||
+                systemicClasses.some((systemicClass) => typeof systemicClass !== "string" || systemicClass.length === 0)) {
+                throw new Error(`PC-14 runner emitted an incomplete lifecycle capability observation for ${String(id)}.`);
+            }
+            return {
+                "capability_identity": JSON.stringify(["lifecycle", execution.surface, execution.owner, id]),
+                "scenario_result_id": id,
+                surface: execution.surface,
+                owner: execution.owner,
+                observations: execution.observations.map((observation) => ({route: observation.route, result: observation.result})),
+                assertions: execution.assertions,
+                "systemic_classes": systemicClasses,
+            };
+        })
+        .sort((left, right) => left.capability_identity.localeCompare(right.capability_identity));
     const registryCoverage = registry.artifact_kinds.map((artifact) => {
         const internalOnly = INTERNAL_PC05_ARTIFACT_KINDS.has(artifact.id);
         const completedOperations = directOwnerOperationProofs.filter((entry) => entry.artifact_kind === artifact.id);
@@ -1021,7 +1071,7 @@ export function mergeArtifactInteroperabilityRuns(
         };
     });
     fs.writeFileSync(outputPath, `${JSON.stringify({
-        "schema_version": 5,
+        "schema_version": 6,
         "step_id": "PC-14",
         "generated_by": "ArtifactInteroperabilityRun.mergeArtifactInteroperabilityRuns",
         "result_contract": {
@@ -1048,11 +1098,17 @@ export function mergeArtifactInteroperabilityRuns(
             "public_owner": required.owner,
             "capability_identity": JSON.stringify([required.artifactKind, required.registryOperation, required.owner]),
         })),
-        // Each inventory row maps to either a runner-emitted canonical
-        // capability, an explicit thin-adapter parity proof, or a concrete
-        // legacy/unreached diagnostic. Wrapper rows never count as completed
-        // capabilities in their own right.
-        "capability_matrix": capabilityMatrix,
+        // The retained capability matrix excludes wrapper and companion
+        // provenance rows. Those remain available through the inventory and
+        // are deliberately not an execution-count target.
+        "capability_matrix": retainedCapabilityMatrix,
+        "lifecycle_capability_matrix": lifecycleCapabilityMatrix,
+        "independent_review_contract": {
+            mode: "capability_based_user_authorised_v1",
+            "raw_owner_rows": "traceability-only",
+            "duplicate_wrapper_counter": "not-applicable",
+            "adapter_parity": "Named wrapper owners remain traceability links to their canonical proof; they do not add a capability-matrix row.",
+        },
         "systemic_class_audits": [
             {class: "shared conversion diagnostic parity", "derived_from": classify("shared-conversion-diagnostic-parity")},
             {class: "provenance and freshness binding", "derived_from": classify("provenance-and-freshness-binding")},

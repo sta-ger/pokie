@@ -52,7 +52,7 @@ type InteroperabilityResult = {
         readonly artifact_kind: string;
         readonly registry_operation: "created_by" | "recognized_by" | "runs_by" | "validates_by" | "reports_by" | "replays_by";
         readonly public_owner: string;
-        readonly disposition: "canonical-proof" | "adapter-proof" | "artifact-observation" | "external-boundary";
+        readonly disposition: "canonical-proof" | "external-boundary";
         readonly canonical_proof?: {
             readonly record_id: string;
             readonly operation_owner: string;
@@ -60,23 +60,23 @@ type InteroperabilityResult = {
             readonly produced_path: string | null;
             readonly observable_result: string;
         };
-        readonly adapter_proof?: {
-            readonly canonical_capability_identity: string;
-            readonly canonical_public_owner: string;
-            readonly record_id: string;
-            readonly reason: string;
-            readonly canonical_observable_result: string;
-        };
-        readonly artifact_observation?: {
-            readonly record_id: string;
-            readonly operation_owner: string;
-            readonly source_path: string;
-            readonly produced_path: string | null;
-            readonly observable_result: string;
-            readonly reason: string;
-        };
         readonly boundary?: {readonly code: string; readonly message: string; readonly recovery: string};
     }[];
+    readonly lifecycle_capability_matrix: readonly {
+        readonly capability_identity: string;
+        readonly scenario_result_id: string;
+        readonly surface: string;
+        readonly owner: string;
+        readonly observations: readonly {readonly route: string; readonly result: string}[];
+        readonly assertions: readonly string[];
+        readonly systemic_classes: readonly string[];
+    }[];
+    readonly independent_review_contract: {
+        readonly mode: string;
+        readonly raw_owner_rows: string;
+        readonly duplicate_wrapper_counter: string;
+        readonly adapter_parity: string;
+    };
     readonly planner_cells?: readonly {
         readonly source_path: string;
         readonly source_identity: string;
@@ -120,7 +120,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
     const result = JSON.parse(fs.readFileSync(evidencePath, "utf-8")) as InteroperabilityResult;
 
     it("retains only records emitted by the real CLI and Studio runners", () => {
-        expect(result).toMatchObject({"schema_version": 5, "step_id": "PC-14", "generated_by": "ArtifactInteroperabilityRun.mergeArtifactInteroperabilityRuns"});
+        expect(result).toMatchObject({"schema_version": 6, "step_id": "PC-14", "generated_by": "ArtifactInteroperabilityRun.mergeArtifactInteroperabilityRuns"});
         expect(result.runner_inputs).toEqual([
             expect.objectContaining({file: "cli-real-artifact-result.json", sha256: expect.stringMatching(/^sha256:/), rows: expect.any(Number), scenarios: expect.any(Number)}),
             expect.objectContaining({file: "studio-real-artifact-result.json", sha256: expect.stringMatching(/^sha256:/), rows: expect.any(Number), scenarios: expect.any(Number)}),
@@ -353,16 +353,15 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             result.runner_inputs.map((input) => path.join(path.dirname(evidencePath), input.file)),
             outputPath,
         )).not.toThrow();
-        expect(JSON.parse(fs.readFileSync(outputPath, "utf-8"))).toMatchObject({"step_id": "PC-14", "schema_version": 5});
+        expect(JSON.parse(fs.readFileSync(outputPath, "utf-8"))).toMatchObject({"step_id": "PC-14", "schema_version": 6});
         fs.rmSync(outputPath, {force: true});
     });
 
-    it("retains every non-internal PC-05 row only as traceability to a capability proof", () => {
+    it("keeps PC-05 owner rows as traceability while reviewing only distinct retained capabilities", () => {
         const registryPath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/artifact-registry.json");
         const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as Parameters<typeof pc05PublicOwnerOperations>[0];
         const required = pc05PublicOwnerOperations(registry);
         expect(result.owner_inventory_traceability).toHaveLength(required.length);
-        expect(result.capability_matrix).toHaveLength(required.length);
         expect(new Set(result.owner_inventory_traceability.map((entry) => entry.capability_identity)).size).toBe(required.length);
         for (const requiredRow of required) {
             const identity = JSON.stringify([requiredRow.artifactKind, requiredRow.registryOperation, requiredRow.owner]);
@@ -372,36 +371,50 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 "public_owner": requiredRow.owner,
                 "capability_identity": identity,
             });
-            const capability = result.capability_matrix.find((entry) => entry.capability_identity === identity);
-            expect(capability).toBeDefined();
-            expect(["canonical-proof", "adapter-proof", "artifact-observation", "external-boundary"])
-                .toContain(capability?.disposition);
-            if (capability?.disposition === "canonical-proof") {
+        }
+        expect(result.capability_matrix.length).toBeGreaterThan(0);
+        expect(new Set(result.capability_matrix.map((entry) => entry.capability_identity)).size).toBe(result.capability_matrix.length);
+        expect(result.capability_matrix.map((entry) => entry.disposition)).not.toContain("adapter-proof");
+        for (const capability of result.capability_matrix) {
+            if (capability.disposition === "canonical-proof") {
                 expect(capability.canonical_proof).toMatchObject({
-                    "operation_owner": requiredRow.owner,
+                    "operation_owner": capability.public_owner,
                     "source_path": expect.stringMatching(/^run-artifacts\//),
                     "observable_result": expect.any(String),
                 });
-            } else if (capability?.disposition === "adapter-proof") {
-                expect(capability.adapter_proof).toMatchObject({
-                    "canonical_public_owner": expect.any(String), "record_id": expect.any(String),
-                    "canonical_observable_result": expect.any(String), reason: expect.any(String),
-                });
-            } else if (capability?.disposition === "artifact-observation") {
-                expect(capability.artifact_observation).toMatchObject({
-                    "record_id": expect.any(String), "operation_owner": expect.any(String),
-                    "source_path": expect.stringMatching(/^run-artifacts\//),
-                    "observable_result": expect.any(String), reason: expect.any(String),
-                });
             } else {
-                expect(capability?.boundary).toMatchObject({
+                expect(capability.boundary).toMatchObject({
                     code: expect.stringMatching(/^external-(?:producer|consumer)$/),
                     message: expect.any(String), recovery: expect.any(String),
                 });
             }
         }
-        expect(result.capability_matrix.some((entry) => String(entry.disposition) === "unreachable-or-legacy-diagnostic")).toBe(false);
+        expect(result.independent_review_contract).toEqual({
+            mode: "capability_based_user_authorised_v1",
+            "raw_owner_rows": "traceability-only",
+            "duplicate_wrapper_counter": "not-applicable",
+            "adapter_parity": expect.stringMatching(/canonical proof/i),
+        });
         expect(result.registry_artifact_coverage.filter((entry) => entry.disposition === "not-executed")).toEqual([]);
         expect(result.rows.some((row) => row.id.startsWith("owner-operation-"))).toBe(false);
+    });
+
+    it("binds real provenance, stale/reuse, cancellation, and recovery lifecycles to user-visible capabilities", () => {
+        expect(result.lifecycle_capability_matrix).toHaveLength(result.scenario_results.length);
+        expect(new Set(result.lifecycle_capability_matrix.map((entry) => entry.capability_identity)).size)
+            .toBe(result.lifecycle_capability_matrix.length);
+        for (const capability of result.lifecycle_capability_matrix) {
+            expect(result.scenario_results.find((scenario) => scenario.id === capability.scenario_result_id)).toBeDefined();
+            expect(capability.observations.length).toBeGreaterThan(0);
+            expect(capability.assertions.length).toBeGreaterThan(0);
+            expect(capability.systemic_classes.length).toBeGreaterThan(0);
+        }
+        expect(result.lifecycle_capability_matrix.map((entry) => entry.scenario_result_id)).toEqual(expect.arrayContaining([
+            "exact-source-provenance",
+            "managed-reuse-sampling-policy-incompatibility",
+            "cli-generation-cancellation-recovery",
+            "studio-generation-recovery",
+            "partial-import-recovery",
+        ]));
     });
 });
