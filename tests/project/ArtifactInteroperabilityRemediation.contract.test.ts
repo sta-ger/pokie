@@ -380,7 +380,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                     "canonical_observable_result": expect.any(String), reason: expect.any(String),
                 });
             } else {
-                expect(capability.diagnostic).toMatchObject({code: "unreached-distinct-capability", recovery: expect.any(String)});
+                expect(capability?.diagnostic).toMatchObject({code: "unreached-distinct-capability", recovery: expect.any(String)});
             }
         }
         expect(result.rows.some((row) => row.id.startsWith("owner-operation-"))).toBe(false);
