@@ -444,25 +444,60 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         }
     });
 
-    it("binds direct library owners to complete emitted registry-operation tuples", () => {
+    it("binds every direct-library owner to its own real artifact boundary", () => {
+        // This is intentionally not a sample of the library ledger.  Each
+        // entry names a component boundary exercised by the CLI runner: the
+        // registry's four builders, project recognition of each produced
+        // format, bundle/PAR/Stake readers and validators, and package
+        // loading.  A CLI or Studio row cannot satisfy this list because the
+        // exact tuple retains the actual library observation and record id.
         const exactOwners = [
-            ["blueprint", "recognized_by", "ProjectTargetResolver"],
-            ["blueprint", "validates_by", "GameBlueprintValidator"],
-            ["outcomeLibrary", "recognized_by", "OutcomeLibraryBundleReader"],
-            ["parWorkbook", "validates_by", "ParSheetImporter during import"],
-            ["stakeAdapter", "recognized_by", "StakeEngineOutcomeSourceReader"],
-            ["tsPackage", "created_by", "ArtifactBuilderRegistry:build(tsPackage)"],
-            ["tsPackage", "recognized_by", "ProjectTargetResolver"],
-        ];
-        for (const [artifactKind, registryOperation, owner] of exactOwners) {
+            ["blueprint", "recognized_by", "ProjectTargetResolver", "library-resolve-imported-blueprint"],
+            ["blueprint", "validates_by", "GameBlueprintValidator", "library-validate-blueprint"],
+            ["canonicalOutcomeJsonl", "created_by", "OutcomeLibraryBundleWriter per-mode JSONL when a native bundle is later materialized", "library-write-canonical-outcomes"],
+            ["outcomeLibrary", "created_by", "ArtifactBuilderRegistry:build(outcomeLibrary)", "library-build-outcome-library"],
+            ["outcomeLibrary", "recognized_by", "OutcomeLibraryBundleReader", "library-read-direct-outcome-library"],
+            ["outcomeLibrary", "recognized_by", "ProjectTargetResolver", "library-resolve-direct-outcome-library"],
+            ["outcomeLibrary", "validates_by", "OutcomeLibraryBundleReader", "library-validate-direct-outcome-library"],
+            ["parWorkbook", "created_by", "ArtifactBuilderRegistry:build(parWorkbook)", "library-build-par-workbook"],
+            ["parWorkbook", "recognized_by", "ProjectTargetResolver", "library-resolve-direct-par-workbook"],
+            ["parWorkbook", "validates_by", "ParSheetImporter during import", "library-import-par-workbook"],
+            ["stakeAdapter", "created_by", "ArtifactBuilderRegistry:build(stakeAdapter)", "library-build-stake-adapter"],
+            ["stakeAdapter", "recognized_by", "ProjectTargetResolver", "library-resolve-direct-stake-adapter"],
+            ["stakeAdapter", "recognized_by", "StakeEngineOutcomeSourceReader", "library-read-stake-adapter"],
+            ["stakeAdapter", "validates_by", "StakeEngineExportValidator", "library-export-validate-direct-stake-adapter"],
+            ["stakeAdapter", "validates_by", "StakeEngineStandaloneValidator", "library-validate-direct-stake-adapter"],
+            ["tsPackage", "created_by", "ArtifactBuilderRegistry:build(tsPackage)", "library-build-package"],
+            ["tsPackage", "recognized_by", "loadPokieGame", "library-load-direct-package"],
+            ["tsPackage", "recognized_by", "ProjectTargetResolver", "library-resolve-direct-package"],
+            ["tsPackage", "validates_by", "loadPokieGame", "library-validate-direct-package"],
+        ] as const;
+        for (const [artifactKind, registryOperation, owner, recordId] of exactOwners) {
             const coverage = result.exact_owner_operation_coverage.filter((entry) =>
                 entry.artifact_kind === artifactKind && entry.registry_operation === registryOperation && entry.public_owner === owner,
             );
-            expect(coverage.length).toBeGreaterThan(0);
-            for (const entry of coverage) {
-                const record = result.rows.find((candidate) => candidate.id === entry.record_id);
-                expect(record?.operation_owner).toBe(owner);
-            }
+            expect(coverage).toHaveLength(1);
+            expect(coverage[0]).toMatchObject({surface: "library", "record_id": recordId, "source_path": expect.stringMatching(/^run-artifacts\//)});
+            const record = result.rows.find((candidate) => candidate.id === recordId);
+            expect(record).toMatchObject({"operation_owner": owner, "source_path": expect.stringMatching(/^run-artifacts\//)});
+            expect(record?.observations).toEqual(expect.arrayContaining([
+                expect.objectContaining({surface: "library", owner, result: expect.any(String)}),
+            ]));
+        }
+
+        // Durable writers must retain their actual destination, so a planner
+        // success or a reader result cannot stand in for publication.
+        for (const recordId of [
+            "library-build-package",
+            "library-build-outcome-library",
+            "library-write-canonical-outcomes",
+            "library-build-stake-adapter",
+            "library-build-par-workbook",
+        ]) {
+            expect(result.rows.find((candidate) => candidate.id === recordId)).toMatchObject({
+                "produced_path": expect.stringMatching(/^run-artifacts\//),
+                "produced_identity": expect.stringMatching(/^sha256:/),
+            });
         }
     });
 });
