@@ -791,13 +791,16 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["analyze", stakePath, "--format", "json", "--out", stakeAnalysisPath])).toBe(0);
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["diff", stakePath, stakePath, "--format", "json", "--out", stakeComparisonPath])).toBe(0);
         evidence.recordUnavailable({
-            id: "stake-export-descriptor", artifactKind: "stakeEngineExportDescriptor", operation: "export", registryOperation: "validates_by", sourcePath: stakeDescriptorPath,
-            owner: "StakeEngineCommand export descriptor validation", diagnostic: {
+            // This is the generic user-authored descriptor. Its failure is a
+            // real CLI observation, but its owner is not the distinct
+            // `stakeImportReExportConfig` validation tuple in PC-05.
+            id: "stake-export-descriptor", artifactKind: "stakeEngineExportDescriptor", operation: "export", sourcePath: stakeDescriptorPath,
+            owner: "StakeEngineCommand", diagnostic: {
                 code: "unsupported-project-operation",
                 message: stakeExportDiagnostic.trim(),
                 recovery: "Assign canonical integer outcome IDs in the Stake export descriptor or export the generated Outcome Library through the supported stakeAdapter build target.",
             },
-            observations: [{surface: "cli", owner: "StakeEngineCommand export descriptor validation", result: "stakeengine export exit 1 retained the concrete canonical-ID diagnostic"}],
+            observations: [{surface: "cli", owner: "StakeEngineCommand", result: "stakeengine export exit 1 retained the concrete canonical-ID diagnostic"}],
             systemicClasses: ["provenance-and-freshness-binding"],
         });
         evidence.record({
