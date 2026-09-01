@@ -5,7 +5,7 @@ import {registerCliCommands} from "../../cli/registerCliCommands.js";
 
 const ROOT = path.join(__dirname, "..", "..");
 const PUBLIC_COMMANDS = [
-    "build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "init", "import", "inspect", "par", "reel", "replay", "report", "serve", "sample", "sim", "validate",
+    "build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "replay", "report", "sample", "serve", "sim", "validate",
 ];
 const NESTED_VERBS = [
     "certification build", "certification verify", "fairness commit", "fairness reveal", "fairness seed-commit", "fairness verify", "par export", "par import", "reel generate",

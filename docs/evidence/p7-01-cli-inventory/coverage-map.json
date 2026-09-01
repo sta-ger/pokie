@@ -21,7 +21,7 @@
     ]
   },
   "initialInventory": {
-    "rootCommands": ["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "init", "import", "inspect", "par", "reel", "replay", "report", "serve", "sample", "sim", "validate"],
+    "rootCommands": ["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "replay", "report", "sample", "serve", "sim", "validate"],
     "nestedVerbs": ["certification build", "certification verify", "fairness commit", "fairness reveal", "fairness seed-commit", "fairness verify", "par export", "par import", "reel generate"]
   },
   "findings": {
