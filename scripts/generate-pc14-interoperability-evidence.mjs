@@ -64,16 +64,18 @@ function boundedValue(value) {
 function componentIdentity(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
     const identity = Object.fromEntries(Object.entries(value).filter(([key]) => [
-        "id", "file", "sha256", "source_path", "source_identity", "produced_path", "produced_identity",
+        "id", "file", "sha256", "artifact_kind", "operation_owner", "public_owner", "capability_identity",
+        "source_path", "source_identity", "produced_path", "produced_identity",
     ].includes(key)));
     return Object.keys(identity).length === 0 ? undefined : identity;
 }
 
 function componentAtPath(value, location) {
-    const match = /^\$\.(runner_inputs|rows|scenario_results)\[(\d+)\]/.exec(location);
+    const match = /^\.([A-Za-z_$][A-Za-z0-9_$]*)\[(\d+)\]/.exec(location.slice(1));
     if (match === null || value === null || typeof value !== "object") return undefined;
     const component = value[match[1]];
-    return Array.isArray(component) ? component[Number(match[2])] : undefined;
+    if (!Array.isArray(component)) return undefined;
+    return {path: `$.${match[1]}[${match[2]}]`, value: component[Number(match[2])]};
 }
 
 export function pc14EvidenceDifferenceProvenance(resultFile, freshBytes, committedBytes) {
@@ -84,11 +86,14 @@ export function pc14EvidenceDifferenceProvenance(resultFile, freshBytes, committ
         const committed = JSON.parse(committedBytes.toString("utf-8"));
         const difference = firstJsonDifference(fresh, committed);
         if (difference === undefined) return `result_file=${resultFile} ${byteProvenance} json_path=<formatting-only-byte-difference>`;
-        const freshComponent = componentIdentity(componentAtPath(fresh, difference.location));
-        const committedComponent = componentIdentity(componentAtPath(committed, difference.location));
-        const componentProvenance = freshComponent === undefined && committedComponent === undefined
+        const freshComponent = componentAtPath(fresh, difference.location);
+        const committedComponent = componentAtPath(committed, difference.location);
+        const freshIdentity = componentIdentity(freshComponent?.value);
+        const committedIdentity = componentIdentity(committedComponent?.value);
+        const componentPath = freshComponent?.path ?? committedComponent?.path;
+        const componentProvenance = freshIdentity === undefined && committedIdentity === undefined
             ? ""
-            : ` fresh_component=${boundedValue(freshComponent)} committed_component=${boundedValue(committedComponent)}`;
+            : ` component_path=${componentPath} fresh_component=${boundedValue(freshIdentity)} committed_component=${boundedValue(committedIdentity)}`;
         return `result_file=${resultFile} ${byteProvenance} json_path=${difference.location}${componentProvenance} fresh_value=${boundedValue(difference.fresh)} committed_value=${boundedValue(difference.committed)}`;
     } catch {
         return `result_file=${resultFile} ${byteProvenance} json_path=<unavailable-invalid-json>`;
