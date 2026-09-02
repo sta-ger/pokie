@@ -111,11 +111,11 @@ function generatePc14InteroperabilityEvidence() {
         // these fixed values keep any runner-owned identity strings stable.
         PC14_FIXED_RUNNER_CLOCK: "2024-01-02T03:04:05.000Z",
         // Built TypeScript packages link their locally installed runtime.  The
-        // link target is machine transport state, so the runner records the
-        // original PC-14 runtime identity rather than this disposable worktree.
+        // link target is machine transport state, so the runner uses the
+        // committed PC-14 runner input rather than this disposable worktree.
         // This is intentionally narrower than normalising emitted evidence: the
         // artifact bytes and every runner-input hash remain exact comparisons.
-        PC14_FIXED_RUNNER_IDENTITY: "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-14-20260830075634",
+        PC14_FIXED_RUNNER_IDENTITY: "pc14-fixed-runner",
         PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR: runDirectory,
         PC14_INTEROPERABILITY_PERSISTED_RESULT: path.join(runDirectory, "interoperability-result.json"),
     };
