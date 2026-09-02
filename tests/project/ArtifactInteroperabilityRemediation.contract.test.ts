@@ -154,6 +154,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         const script = fs.readFileSync(path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs"), "utf-8");
         expect(script).toContain("if (!fresh.equals(committed))");
         expect(script).not.toContain("normaliseEvidenceIdentitySnapshot");
+        expect(script).not.toContain("<artifact-identity>");
+        expect(script).not.toContain("<runner-identity>");
     });
 
     it("byte-compares clean-process regeneration after every PC-05 tuple is runner-emitted", () => {
