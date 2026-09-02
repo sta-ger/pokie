@@ -158,6 +158,28 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(script).not.toContain("<runner-identity>");
     });
 
+    it("reports the first exact difference with the owning runner input or artifact component", () => {
+        const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
+        const source = `import {pc14EvidenceDifferenceProvenance} from ${JSON.stringify(new URL(`file://${scriptPath}`).href)};
+const runnerDifference = pc14EvidenceDifferenceProvenance("interoperability-result.json", Buffer.from('{"runner_inputs":[{"file":"cli-real-artifact-result.json","sha256":"sha256:fresh"}]}'), Buffer.from('{"runner_inputs":[{"file":"cli-real-artifact-result.json","sha256":"sha256:committed"}]}'));
+const artifactDifference = pc14EvidenceDifferenceProvenance("cli-real-artifact-result.json", Buffer.from('{"rows":[{"id":"blueprint-build-package","source_path":"run-artifacts/source.json","source_identity":"sha256:fresh","produced_path":"run-artifacts/package","produced_identity":"sha256:produced"}]}'), Buffer.from('{"rows":[{"id":"blueprint-build-package","source_path":"run-artifacts/source.json","source_identity":"sha256:committed","produced_path":"run-artifacts/package","produced_identity":"sha256:produced"}]}'));
+console.log(JSON.stringify({runnerDifference, artifactDifference}));`;
+        const diagnostic = spawnSync(process.execPath, ["--input-type=module", "--eval", source], {cwd: process.cwd(), encoding: "utf-8"});
+        expect(diagnostic.error).toBeUndefined();
+        expect(diagnostic.status).toBe(0);
+        const {runnerDifference, artifactDifference} = JSON.parse(diagnostic.stdout) as {readonly runnerDifference: string; readonly artifactDifference: string};
+        expect(runnerDifference).toContain("result_file=interoperability-result.json");
+        expect(runnerDifference).toContain("json_path=$.runner_inputs[0].sha256");
+        expect(runnerDifference).toContain('"file":"cli-real-artifact-result.json"');
+        expect(runnerDifference).toContain('"sha256":"sha256:fresh"');
+        expect(runnerDifference).toContain('"sha256":"sha256:committed"');
+        expect(artifactDifference).toContain("result_file=cli-real-artifact-result.json");
+        expect(artifactDifference).toContain("json_path=$.rows[0].source_identity");
+        expect(artifactDifference).toContain('"id":"blueprint-build-package"');
+        expect(artifactDifference).toContain('"source_identity":"sha256:fresh"');
+        expect(artifactDifference).toContain('"source_identity":"sha256:committed"');
+    });
+
     it("byte-compares clean-process regeneration after every PC-05 tuple is runner-emitted", () => {
         if (process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1") return;
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
