@@ -150,6 +150,12 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
+    it("compares the unmodified runner output with the immutable PC-14 results", () => {
+        const script = fs.readFileSync(path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs"), "utf-8");
+        expect(script).toContain("if (!fresh.equals(committed))");
+        expect(script).not.toContain("normaliseEvidenceIdentitySnapshot");
+    });
+
     it("byte-compares clean-process regeneration after every PC-05 tuple is runner-emitted", () => {
         if (process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1") return;
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
