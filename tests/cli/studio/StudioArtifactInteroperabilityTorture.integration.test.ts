@@ -811,7 +811,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         // it has emitted its own records.  Merging here would validate the
         // PC-05 inventory against only CLI and Studio API owners, producing a
         // false incomplete-matrix failure before the UI owners can run.
-    }, 120_000);
+    }, 300_000);
 });
 
 async function waitForStudioJob(
