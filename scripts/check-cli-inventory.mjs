@@ -227,6 +227,14 @@ function normalizedDocumentationPattern(pattern) {
     return normalized;
 }
 
+function documentationRootFor(coverage, coveragePath) {
+    if (!coverage.documentationRoot) return repositoryRoot;
+    const root = coverage.documentationRoot.replaceAll("\\", "/");
+    const segments = root.split("/");
+    if (path.isAbsolute(coverage.documentationRoot) || segments.some((segment) => segment === ".." || NON_DOCUMENT_TREE_SEGMENTS.has(segment))) fail(`documentation root must not enter a dependency, build, cache, or temporary tree: ${coverage.documentationRoot}`);
+    return path.resolve(path.dirname(coveragePath), root);
+}
+
 async function filesForDocumentationCandidate(root, pattern) {
     const normalized = normalizedDocumentationPattern(pattern);
     const directory = path.posix.dirname(normalized);
@@ -441,7 +449,7 @@ function documentedCapabilities(contents, inventory) {
 
 export async function documentationCapabilities(coverage, inventory, coveragePath = DEFAULT_COVERAGE) {
     const capabilities = new Set();
-    const root = coverage.documentationRoot ? path.resolve(path.dirname(coveragePath), coverage.documentationRoot) : repositoryRoot;
+    const root = documentationRootFor(coverage, coveragePath);
     const files = await configuredDocumentationFiles(coverage, root);
     for (const configuredFile of files) {
         const contents = await readFile(path.resolve(root, configuredFile), "utf8");

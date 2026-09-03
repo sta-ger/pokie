@@ -163,7 +163,7 @@ test("limits discovery to maintained-document candidates despite nested dependen
     const {directory, cli, coverage} = await fixture();
     const cacheDirectory = path.join(directory, ".cache");
     try {
-        const ignoredRoots = ["node_modules/dependency", "dist/generated", ".cache/tool", "tmp/worktree"];
+        const ignoredRoots = ["node_modules/dependency", "dist/generated", "build/generated", ".cache/tool", "cache/tool", "tmp/worktree", "temp/worktree"];
         for (const ignoredRoot of ignoredRoots) {
             let nested = path.join(directory, ignoredRoot);
             for (let index = 0; index < 80; index += 1) {
@@ -180,6 +180,18 @@ test("limits discovery to maintained-document candidates despite nested dependen
         const inventory = JSON.parse(await readFile(path.join(directory, "evidence/inventory.json"), "utf8"));
         assert.deepEqual(inventory.rootCommands, ["build"]);
         assert.match(await readFile(path.join(directory, "evidence/collector-transcript.txt"), "utf8"), /INDEPENDENT_RERUN/);
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        map.documentationScope.include = ["**/*.md"];
+        await writeFile(coverage, JSON.stringify(map));
+        const broadCandidate = run(cli, coverage, path.join(directory, "broad-candidate"));
+        assert.equal(broadCandidate.status, 1);
+        assert.match(broadCandidate.stderr, /documentation candidate must name one maintained directory/);
+        map.documentationScope.include = ["docs.md"];
+        map.documentationRoot = "node_modules";
+        await writeFile(coverage, JSON.stringify(map));
+        const dependencyRoot = run(cli, coverage, path.join(directory, "dependency-root"));
+        assert.equal(dependencyRoot.status, 1);
+        assert.match(dependencyRoot.stderr, /documentation root must not enter a dependency, build, cache, or temporary tree/);
     } finally {
         await chmod(cacheDirectory, 0o700).catch(() => {});
         await rm(directory, {recursive: true, force: true});
