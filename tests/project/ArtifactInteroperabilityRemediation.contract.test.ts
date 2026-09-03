@@ -113,6 +113,12 @@ type InteroperabilityResult = {
 };
 
 const evidencePath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-14-artifact-torture/interoperability-result.json");
+// The clean process runs the three real-artifact suites serially. Its budget
+// covers their measured constrained-worker workload; leave a larger parent
+// deadline so Jest can collect the child process's terminal comparison.
+const cleanProcessRegenerationTimeout = 420000;
+const cleanProcessContractTimeout = 450000;
+
 function exactComparisonResult(scriptPath: string, resultFile: string, freshBytes: Buffer, committedBytes: Buffer) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-exact-comparison-"));
     const freshPath = path.join(directory, "fresh.json");
@@ -173,33 +179,37 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
-    it("validates the immutable PC-14 snapshot without trying to regenerate historical runtime artifacts", () => {
+    it("uses the published PC-14 driver with its isolated fixed runner inputs", () => {
         const script = fs.readFileSync(path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs"), "utf-8");
-        const interpolation = String.fromCharCode(36);
         expect(script).toContain('const publishedPc14Revision = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b"');
-        expect(script).toContain(`"show", \`${interpolation}{publishedPc14Revision}:docs/evidence/phase7-product-coherence/pc-14-artifact-torture/${interpolation}{file}`);
+        expect(script).toContain('git(["worktree", "add", "--detach", historicalSourceDirectory, resolvedPc14Revision])');
+        expect(script).toContain('"scripts", "generate-pc14-interoperability-evidence.mjs"');
+        expect(script).toContain('PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"');
         expect(script).toContain('for (const file of committedFiles)');
-        expect(script).toContain('assertExactPc14Evidence(file, published, committed)');
+        expect(script).toContain('assertExactPc14Evidence(file, fresh, committed)');
         expect(script).toContain("if (!freshBytes.equals(committedBytes))");
-        expect(script).not.toContain('git(["worktree", "add"');
-        expect(script).not.toContain("PC14_INTEROPERABILITY_REGENERATION_CHILD");
         expect(script).not.toContain("normaliseEvidenceIdentitySnapshot");
         expect(script).not.toContain("<artifact-identity>");
         expect(script).not.toContain("<runner-identity>");
     });
 
-    it("byte-compares every versioned runner result to the immutable PC-14 snapshot", () => {
+    it("byte-compares every versioned runner result to immutable PC-14 evidence", () => {
+        if (process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1") return;
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const result = spawnSync(process.execPath, [scriptPath], {
             cwd: process.cwd(),
+            env: {...process.env, PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"},
             encoding: "utf-8",
+            timeout: cleanProcessRegenerationTimeout,
         });
         expect(result.error).toBeUndefined();
         const output = `${result.stdout}\n${result.stderr}`;
         if (result.status !== 0) throw new Error(output);
-        expect(output).toContain("PASS PC-14 immutable evidence matches published revision");
+        expect(output).toContain("PASS tests/cli/ArtifactInteroperabilityTorture.integration.test.ts");
+        expect(output).toContain("PASS tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts");
+        expect(output).toContain("PASS tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx");
         expect(output).not.toContain("PC-14 evidence is not reproducible");
-    });
+    }, cleanProcessContractTimeout);
 
     it("retains the committed generated-package source identity for every matrix tsPackage consumer", () => {
         const cliResultPath = path.join(path.dirname(evidencePath), "cli-real-artifact-result.json");
