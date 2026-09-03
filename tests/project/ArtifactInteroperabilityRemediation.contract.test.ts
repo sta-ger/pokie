@@ -155,23 +155,22 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
-    it("runs the untouched PC-14 driver from a disposable published worktree", () => {
+    it("runs the current real artifact runners with fixed public inputs", () => {
         const script = fs.readFileSync(path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs"), "utf-8");
-        expect(script).toContain('const publishedPc14Sha = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b"');
-        expect(script).toContain('mkdtempSync(path.join(repositoryRoot, ".pc14-evidence-"))');
-        expect(script).toContain('git(["worktree", "add", "--detach", historicalSourceDirectory, publishedPc14Sha])');
-        expect(script).toContain('cwd: historicalSourceDirectory');
-        expect(script).toContain('git(["worktree", "remove", "--force", historicalSourceDirectory])');
-        expect(script).toContain('path.join(historicalSourceDirectory, "scripts", "generate-pc14-interoperability-evidence.mjs")');
-        expect(script).not.toContain("task_PC-14-20260830075634");
-        expect(script).not.toContain("pc14EvidenceDifferenceProvenance");
-        expect(script).not.toContain("PC14_FIXED_RUNNER_IDENTITY");
+        expect(script).toContain('PC14_FIXED_RUNNER_CLOCK: "2024-01-02T03:04:05.000Z"');
+        expect(script).toContain('PC14_FIXED_RUNNER_IDENTITY: "pc14-fixed-runner"');
+        expect(script).toContain('run("tests/cli/ArtifactInteroperabilityTorture.integration.test.ts")');
+        expect(script).toContain('run("tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts")');
+        expect(script).toContain('run("tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx")');
+        expect(script).toContain("if (!fresh.equals(committed))");
+        expect(script).not.toContain("worktree");
+        expect(script).not.toContain("jest shim");
         expect(script).not.toContain("normaliseEvidenceIdentitySnapshot");
         expect(script).not.toContain("<artifact-identity>");
         expect(script).not.toContain("<runner-identity>");
     });
 
-    it("preserves the published driver's raw byte failure after every PC-05 tuple is runner-emitted", () => {
+    it("byte-compares every fresh current-runner result to immutable PC-14 evidence", () => {
         if (process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1") return;
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const result = spawnSync(process.execPath, [scriptPath], {
@@ -181,11 +180,12 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             timeout: cleanProcessRegenerationTimeout,
         });
         expect(result.error).toBeUndefined();
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(0);
         const output = `${result.stdout}\n${result.stderr}`;
-        expect(output).toContain("PC-14 evidence is not reproducible");
-        expect(output).toContain("fresh cli-real-artifact-result.json differs from the committed result");
-        expect(output).not.toContain("missing required exact owner-operation evidence");
+        expect(output).toContain("PASS tests/cli/ArtifactInteroperabilityTorture.integration.test.ts");
+        expect(output).toContain("PASS tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts");
+        expect(output).toContain("PASS tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx");
+        expect(output).not.toContain("PC-14 evidence is not reproducible");
     }, cleanProcessContractTimeout);
 
     it("injects the fixed evidence clock into real writers instead of only normalising saved hashes", () => {

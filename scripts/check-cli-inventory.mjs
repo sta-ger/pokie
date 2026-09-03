@@ -217,13 +217,25 @@ function globExpression(pattern) {
     return new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\//g, "(?:.*/)?").replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*")}$`);
 }
 
-async function allFiles(root, relative = "") {
-    const entries = await readdir(path.join(root, relative), {withFileTypes: true});
+async function allFiles(root) {
+    // Documentation scopes can start at a package root.  Keep the collection
+    // iterative so an installed dependency tree cannot turn a documentation
+    // check into recursive JavaScript calls until the production binary
+    // overflows its stack.
+    const directories = [""];
     const files = [];
-    for (const entry of entries) {
-        const child = path.join(relative, entry.name);
-        if (entry.isDirectory()) files.push(...await allFiles(root, child));
-        else if (entry.isFile()) files.push(child.replaceAll(path.sep, "/"));
+    while (directories.length > 0) {
+        const relative = directories.pop();
+        const entries = await readdir(path.join(root, relative), {withFileTypes: true});
+        for (const entry of entries) {
+            const child = path.join(relative, entry.name);
+            // Installed dependencies, generated output, and VCS metadata are
+            // never maintained public documentation.  Apart from avoiding
+            // needless work, this prevents a nested package tree from being
+            // treated as a recursive documentation source.
+            if (entry.isDirectory() && ![".git", "dist", "node_modules"].includes(entry.name)) directories.push(child);
+            else if (entry.isFile()) files.push(child.replaceAll(path.sep, "/"));
+        }
     }
     return files;
 }

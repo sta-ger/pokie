@@ -724,7 +724,14 @@ export class ArtifactInteroperabilityRun {
     }
 
     private redactEmbeddedRunnerRoot(value: string): string {
-        return value.split(this.rootPath).join("<pc14-run-root>");
+        const runnerRoot = value.split(this.rootPath).join("<pc14-run-root>");
+        const fixedRuntimeIdentity = process.env.PC14_FIXED_RUNNER_IDENTITY;
+        if (fixedRuntimeIdentity === undefined) return runnerRoot;
+        // Generated packages retain `node_modules/pokie` as a local symlink.
+        // Its target identifies the disposable runner checkout, not the
+        // artifact; bind that transport-only target to the fixed public input
+        // before hashing the otherwise unmodified artifact bytes.
+        return runnerRoot.split(process.cwd()).join(fixedRuntimeIdentity);
     }
 }
 
