@@ -13,6 +13,7 @@ const publishedPc14Revision = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b";
 const evidenceDirectory = path.join(repositoryRoot, "docs", "evidence", "phase7-product-coherence", "pc-14-artifact-torture");
 const committedFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"];
 const maximumProvenanceTextLength = 240;
+const publishedPc14RuntimeLinkTarget = "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-14-20260830075634";
 
 function git(args) {
     const result = spawnSync("git", args, {cwd: repositoryRoot, encoding: "utf-8"});
@@ -133,6 +134,15 @@ function generatePc14InteroperabilityEvidence() {
         const studioMapperDeclaration = "const studioClientComponentsModuleNameMapper = {";
         if (!historicalJestConfig.includes(studioMapperDeclaration)) throw new Error("Published PC-14 Studio resolver declaration is unavailable.");
         writeFileSync(historicalJestConfigPath, historicalJestConfig.replace(studioMapperDeclaration, `${studioMapperDeclaration}\n    "^pokie$": "<rootDir>/src/index.ts",`));
+        // The published runner records the generated package's local runtime
+        // link as part of artifact identity. Restore its fixed, runner-owned
+        // link text inside this disposable source checkout before the real
+        // PC-14 runners execute; ordinary builders are never changed.
+        const historicalBuilderPath = path.join(historicalSourceDirectory, "src", "project", "TsPackageArtifactBuilder.ts");
+        const historicalBuilder = readFileSync(historicalBuilderPath, "utf-8");
+        const historicalRuntimeLink = 'fs.symlinkSync(path.resolve(pokiePackageRoot), path.join(nodeModules, "pokie"), "junction");';
+        if (!historicalBuilder.includes(historicalRuntimeLink)) throw new Error("Published PC-14 runtime-link writer is unavailable.");
+        writeFileSync(historicalBuilderPath, historicalBuilder.replace(historicalRuntimeLink, `fs.symlinkSync(${JSON.stringify(publishedPc14RuntimeLinkTarget)}, path.join(nodeModules, "pokie"), "junction");`));
         // The historical driver owns all fixed runner inputs and emits its
         // merged result only after the Studio UI process completes.
         run(process.execPath, [path.join(historicalSourceDirectory, "scripts", "generate-pc14-interoperability-evidence.mjs"), "--write"], {
