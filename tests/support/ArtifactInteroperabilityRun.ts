@@ -724,15 +724,7 @@ export class ArtifactInteroperabilityRun {
     }
 
     private redactEmbeddedRunnerRoot(value: string): string {
-        const runnerRoot = value.split(this.rootPath).join("<pc14-run-root>");
-        const fixedRuntimeIdentity = process.env.PC14_FIXED_RUNNER_IDENTITY;
-        if (fixedRuntimeIdentity === undefined) return runnerRoot;
-        // Generated packages retain `node_modules/pokie` as a local symlink
-        // while the real runners exercise their runtime.  Its absolute target
-        // is a disposable worktree location, not package content.  Bind that
-        // transport-only link to the fixed PC-14 runtime identity before it
-        // enters an artifact digest; every actual emitted file stays hashed.
-        return runnerRoot.split(process.cwd()).join(fixedRuntimeIdentity);
+        return value.split(this.rootPath).join("<pc14-run-root>");
     }
 }
 
