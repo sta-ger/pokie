@@ -204,7 +204,9 @@ test("allows historical-document exclusions without expanding bounded candidates
         await mkdir(path.join(directory, "docs/phase6-archive"), {recursive: true});
         await writeFile(path.join(directory, "docs/phase6-archive/legacy.md"), "pokie deploy --target obsolete\n");
         const map = JSON.parse(await readFile(coverage, "utf8"));
-        map.documentationScope.include = ["docs.md", "docs/*.md"];
+        // The historical file is an otherwise valid exact candidate. Its stale command claim
+        // proves the exclusion filters candidates rather than merely accepting an unused glob.
+        map.documentationScope.include = ["docs.md", "docs/*.md", "docs/phase6-archive/legacy.md"];
         map.documentationScope.exclude = ["docs/phase6-*/**"];
         await writeFile(coverage, JSON.stringify(map));
         const result = run(cli, coverage, path.join(directory, "evidence"));
