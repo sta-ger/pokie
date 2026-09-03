@@ -227,6 +227,16 @@ function normalizedDocumentationPattern(pattern) {
     return normalized;
 }
 
+function normalizedDocumentationExclusionPattern(pattern) {
+    const normalized = pattern.replaceAll("\\", "/");
+    const segments = normalized.split("/");
+    // Exclusions filter the already bounded candidate list; unlike includes,
+    // they never select a directory to traverse. Historical-document globs
+    // are therefore safe and remain part of the configured public contract.
+    if (path.isAbsolute(pattern) || segments.some((segment) => segment === ".." || NON_DOCUMENT_TREE_SEGMENTS.has(segment))) fail(`documentation exclusion must not name an absolute, dependency, build, cache, or temporary path: ${pattern}`);
+    return normalized;
+}
+
 function documentationRootFor(coverage, coveragePath) {
     if (!coverage.documentationRoot) return repositoryRoot;
     const root = coverage.documentationRoot.replaceAll("\\", "/");
@@ -261,7 +271,7 @@ async function filesForDocumentationCandidate(root, pattern) {
 
 async function configuredDocumentationFiles(coverage, root) {
     if (!coverage.documentationScope) return coverage.documentationFiles;
-    const excluded = (coverage.documentationScope.exclude ?? []).map((pattern) => globExpression(normalizedDocumentationPattern(pattern)));
+    const excluded = (coverage.documentationScope.exclude ?? []).map((pattern) => globExpression(normalizedDocumentationExclusionPattern(pattern)));
     const files = await Promise.all(coverage.documentationScope.include.map((pattern) => filesForDocumentationCandidate(root, pattern)));
     return [...new Set(files.flat())].filter((file) => !excluded.some((expression) => expression.test(file))).sort();
 }

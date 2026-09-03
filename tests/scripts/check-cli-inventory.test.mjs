@@ -198,6 +198,20 @@ test("limits discovery to maintained-document candidates despite nested dependen
     }
 });
 
+test("allows historical-document exclusions without expanding bounded candidates", async () => {
+    const {directory, cli, coverage} = await fixture();
+    try {
+        await mkdir(path.join(directory, "docs/phase6-archive"), {recursive: true});
+        await writeFile(path.join(directory, "docs/phase6-archive/legacy.md"), "pokie deploy --target obsolete\n");
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        map.documentationScope.include = ["docs.md", "docs/*.md"];
+        map.documentationScope.exclude = ["docs/phase6-*/**"];
+        await writeFile(coverage, JSON.stringify(map));
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 0, result.stderr);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
 test("keeps command context for ordinary claims below a CLI heading", async () => {
     const {directory, cli, coverage} = await fixture("", "## pokie build\n\nUse --target futureTarget.\n");
     try {
@@ -340,17 +354,19 @@ test("checks the freshly built production CLI against the complete public docume
         runBuildStep([path.join(buildRoot, "write-cjs-package-json.js")]);
         runBuildStep([shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
         runBuildStep([tsc, "--project", "tsconfig.cli.json"]);
-        const evidenceDirectory = path.join(directory, "evidence");
-        const result = spawnSync(process.execPath, [
-            checker,
-            "--cli", path.join(buildRoot, "dist/cli/pokie.js"),
-            "--coverage", path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"),
-            "--evidence-dir", evidenceDirectory,
-        ], {cwd: buildRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
-        assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-        const inventory = JSON.parse(await readFile(path.join(evidenceDirectory, "inventory.json"), "utf8"));
-        assert.equal(inventory.rootCommands.length, 21);
-        assert.equal(inventory.commands.filter((command) => command.path.includes(" ")).length, 9);
-        assert.match(await readFile(path.join(evidenceDirectory, "collector-transcript.txt"), "utf8"), /INDEPENDENT_RERUN/);
+        for (const runId of ["first", "second"]) {
+            const evidenceDirectory = path.join(directory, `evidence-${runId}`);
+            const result = spawnSync(process.execPath, [
+                checker,
+                "--cli", path.join(buildRoot, "dist/cli/pokie.js"),
+                "--coverage", path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"),
+                "--evidence-dir", evidenceDirectory,
+            ], {cwd: buildRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
+            assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+            const inventory = JSON.parse(await readFile(path.join(evidenceDirectory, "inventory.json"), "utf8"));
+            assert.equal(inventory.rootCommands.length, 21);
+            assert.equal(inventory.commands.filter((command) => command.path.includes(" ")).length, 9);
+            assert.match(await readFile(path.join(evidenceDirectory, "collector-transcript.txt"), "utf8"), /INDEPENDENT_RERUN/);
+        }
     } finally { await rm(directory, {recursive: true, force: true}); }
-}, 180000);
+}, 300000);
