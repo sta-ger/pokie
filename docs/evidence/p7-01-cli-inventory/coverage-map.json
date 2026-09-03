@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "documentationScope": {
-    "description": "The public surface is the repository README and maintained top-level docs. Immutable evidence, phase inventories, and closeout reports are historical audit records rather than current public CLI guidance.",
+    "description": "The public surface is the repository README and maintained top-level docs. Each include is a bounded maintained-document candidate: the collector only reads an exact file or one named directory level, never dependency, build, cache, or temporary worktree trees. Immutable evidence, phase inventories, and closeout reports are historical audit records rather than current public CLI guidance.",
     "include": ["README.md", "docs/*.md"],
     "exclude": [
       "docs/evidence/**",

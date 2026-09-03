@@ -1,6 +1,6 @@
 const assert = process.getBuiltinModule("node:assert/strict");
 const {spawnSync} = process.getBuiltinModule("node:child_process");
-const {cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile} = process.getBuiltinModule("node:fs/promises");
+const {chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile} = process.getBuiltinModule("node:fs/promises");
 const os = process.getBuiltinModule("node:os");
 const path = process.getBuiltinModule("node:path");
 
@@ -19,7 +19,7 @@ process.stdout.write(help);
     await writeFile(path.join(directory, "docs.md"), documentation);
     await writeFile(coverage, JSON.stringify({
         documentationRoot: ".",
-        documentationScope: {include: ["**/*.md"]},
+        documentationScope: {include: ["docs.md"]},
         initialInventory: {rootCommands: ["build"], nestedVerbs: []},
         findings: {
             versionHelp: {helpExitCode: 0, versionExitCode: 0, versionOutputIncludes: "Usage: pokie build"},
@@ -149,11 +149,41 @@ test("discovers narrative documentation and rejects command-scoped stale claims"
     try {
         await mkdir(path.join(directory, "public-guides"));
         await writeFile(path.join(directory, "public-guides/narrative.md"), "A stale example is npx pokie build --source-type rogue-source --target supported --mode base -x.\n");
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        map.documentationScope.include.push("public-guides/*.md");
+        await writeFile(coverage, JSON.stringify(map));
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 1);
         assert.match(result.stderr, /stale documented capability value:build:--source-type:rogue-source/);
         assert.match(result.stderr, /stale documented capability alias:build:-x/);
     } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("limits discovery to maintained-document candidates despite nested dependency, build, cache, and temporary trees", async () => {
+    const {directory, cli, coverage} = await fixture();
+    const cacheDirectory = path.join(directory, ".cache");
+    try {
+        const ignoredRoots = ["node_modules/dependency", "dist/generated", ".cache/tool", "tmp/worktree"];
+        for (const ignoredRoot of ignoredRoots) {
+            let nested = path.join(directory, ignoredRoot);
+            for (let index = 0; index < 80; index += 1) {
+                nested = path.join(nested, `nested-${index}`);
+                await mkdir(nested, {recursive: true});
+            }
+            await writeFile(path.join(nested, "stale-public-command.md"), "pokie deploy --target experimental\n");
+        }
+        // A whole-tree collector would try to open this irrelevant cache directory.  Candidate
+        // collection must not touch it at all, even though it contains a deeply nested .md file.
+        await chmod(cacheDirectory, 0o000);
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 0, result.stderr);
+        const inventory = JSON.parse(await readFile(path.join(directory, "evidence/inventory.json"), "utf8"));
+        assert.deepEqual(inventory.rootCommands, ["build"]);
+        assert.match(await readFile(path.join(directory, "evidence/collector-transcript.txt"), "utf8"), /INDEPENDENT_RERUN/);
+    } finally {
+        await chmod(cacheDirectory, 0o700).catch(() => {});
+        await rm(directory, {recursive: true, force: true});
+    }
 });
 
 test("keeps command context for ordinary claims below a CLI heading", async () => {
@@ -252,7 +282,7 @@ process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? stud
 `);
         await writeFile(coverage, JSON.stringify({
             documentationRoot: ".",
-            documentationScope: {include: ["**/*.md"]},
+            documentationScope: {include: ["docs.md"]},
             initialInventory: {rootCommands: ["create", "init"], nestedVerbs: []},
             findings: {
                 versionHelp: {helpExitCode: 0, versionExitCode: 0, versionOutputIncludes: "Usage: pokie init [directory]"},

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Collect the executable CLI contract and the configured public documentation contract. */
-import {mkdtemp, mkdir, readFile, readdir, rm, writeFile} from "node:fs/promises";
+import {mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import {spawnSync} from "node:child_process";
 import {createHash} from "node:crypto";
@@ -217,34 +217,45 @@ function globExpression(pattern) {
     return new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\//g, "(?:.*/)?").replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*")}$`);
 }
 
-async function allFiles(root) {
-    // Documentation scopes can start at a package root.  Keep the collection
-    // iterative so an installed dependency tree cannot turn a documentation
-    // check into recursive JavaScript calls until the production binary
-    // overflows its stack.
-    const directories = [""];
-    const files = [];
-    while (directories.length > 0) {
-        const relative = directories.pop();
-        const entries = await readdir(path.join(root, relative), {withFileTypes: true});
-        for (const entry of entries) {
-            const child = path.join(relative, entry.name);
-            // Installed dependencies, generated output, and VCS metadata are
-            // never maintained public documentation.  Apart from avoiding
-            // needless work, this prevents a nested package tree from being
-            // treated as a recursive documentation source.
-            if (entry.isDirectory() && ![".git", "dist", "node_modules"].includes(entry.name)) directories.push(child);
-            else if (entry.isFile()) files.push(child.replaceAll(path.sep, "/"));
+const NON_DOCUMENT_TREE_SEGMENTS = new Set([".cache", ".git", "build", "cache", "dist", "node_modules", "temp", "tmp"]);
+
+function normalizedDocumentationPattern(pattern) {
+    const normalized = pattern.replaceAll("\\", "/");
+    const segments = normalized.split("/");
+    if (path.isAbsolute(pattern) || segments.some((segment) => segment === ".." || NON_DOCUMENT_TREE_SEGMENTS.has(segment))) fail(`documentation candidate must not enter a dependency, build, cache, or temporary tree: ${pattern}`);
+    if (segments.slice(0, -1).some((segment) => /[*?[]/.test(segment))) fail(`documentation candidate must name one maintained directory: ${pattern}`);
+    return normalized;
+}
+
+async function filesForDocumentationCandidate(root, pattern) {
+    const normalized = normalizedDocumentationPattern(pattern);
+    const directory = path.posix.dirname(normalized);
+    const basename = path.posix.basename(normalized);
+    const candidateDirectory = path.join(root, directory === "." ? "" : directory);
+    if (!/[*?[]/.test(basename)) {
+        try {
+            return (await stat(path.join(root, normalized))).isFile() ? [normalized] : [];
+        } catch (error) {
+            if (error?.code === "ENOENT") return [];
+            throw error;
         }
     }
-    return files;
+    let entries;
+    try {
+        entries = await readdir(candidateDirectory, {withFileTypes: true});
+    } catch (error) {
+        if (error?.code === "ENOENT") return [];
+        throw error;
+    }
+    const expression = globExpression(normalized);
+    return entries.filter((entry) => entry.isFile()).map((entry) => path.posix.join(directory === "." ? "" : directory, entry.name)).filter((file) => expression.test(file));
 }
 
 async function configuredDocumentationFiles(coverage, root) {
     if (!coverage.documentationScope) return coverage.documentationFiles;
-    const included = coverage.documentationScope.include.map(globExpression);
-    const excluded = (coverage.documentationScope.exclude ?? []).map(globExpression);
-    return (await allFiles(root)).filter((file) => included.some((expression) => expression.test(file)) && !excluded.some((expression) => expression.test(file))).sort();
+    const excluded = (coverage.documentationScope.exclude ?? []).map((pattern) => globExpression(normalizedDocumentationPattern(pattern)));
+    const files = await Promise.all(coverage.documentationScope.include.map((pattern) => filesForDocumentationCandidate(root, pattern)));
+    return [...new Set(files.flat())].filter((file) => !excluded.some((expression) => expression.test(file))).sort();
 }
 
 function documentedCapabilities(contents, inventory) {
