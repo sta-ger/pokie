@@ -67,27 +67,13 @@ describe("TsPackageArtifactBuilder", () => {
         await expect(loadPokieGame(destinationDir)).resolves.toMatchObject({getManifest: expect.any(Function)});
     });
 
-    it("keeps a supplied current runtime link when no runner-scoped link target is configured", async () => {
+    it("keeps the supplied current runtime link", async () => {
         const runtimeRoot = path.join(dir, "current-runtime");
         fs.mkdirSync(runtimeRoot);
 
         await new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(runtimeRoot).build(blueprintProjectOf(blueprintPath), destinationDir);
 
         expect(fs.readlinkSync(path.join(destinationDir, "node_modules", "pokie"))).toBe(runtimeRoot);
-    });
-
-    it("uses a runner-scoped runtime link without changing the supplied runtime root", async () => {
-        const runtimeRoot = path.join(dir, "current-runtime");
-        const evidenceRuntimeRoot = path.join(dir, "pc14-runtime");
-        fs.mkdirSync(runtimeRoot);
-        fs.mkdirSync(evidenceRuntimeRoot);
-
-        await new TsPackageArtifactBuilder("1.3.0")
-            .withRuntimePackageRoot(runtimeRoot)
-            .withRuntimePackageLinkTarget(evidenceRuntimeRoot)
-            .build(blueprintProjectOf(blueprintPath), destinationDir);
-
-        expect(fs.readlinkSync(path.join(destinationDir, "node_modules", "pokie"))).toBe(evidenceRuntimeRoot);
     });
 
     it("throws ArtifactBuildConflictError rather than overwriting an existing, non-empty destination", async () => {

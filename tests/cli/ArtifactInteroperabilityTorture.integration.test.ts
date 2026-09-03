@@ -41,17 +41,9 @@ import {ServeCommand} from "../../cli/commands/ServeCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
-import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, pc14RuntimePackageLinkTarget, pc05CliOwnerOperations} from "../support/ArtifactInteroperabilityRun.js";
+import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, pc05CliOwnerOperations} from "../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
-
-function pc14ArtifactBuilderRegistry(): ArtifactBuilderRegistry {
-    const registry = new ArtifactBuilderRegistry(POKIE_VERSION)
-        .withRuntimePackageRoot(process.cwd());
-    const runtimePackageLinkTarget = pc14RuntimePackageLinkTarget();
-    if (runtimePackageLinkTarget !== undefined) registry.withRuntimePackageLinkTarget(runtimePackageLinkTarget);
-    return registry;
-}
 
 describe("PC-14 CLI real-artifact interoperability torture", () => {
     let workDir: string;
@@ -97,7 +89,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         });
 
         const resolver = new ProjectTargetResolver();
-        const registry = pc14ArtifactBuilderRegistry();
+        const registry = new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(process.cwd());
         const build = new BuildCommand(POKIE_VERSION, undefined, undefined, resolver, registry);
         const packagePath = path.join(workDir, "package");
         const libraryPath = path.join(workDir, "library");
@@ -315,7 +307,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         });
 
         const resolver = new ProjectTargetResolver();
-        const registry = pc14ArtifactBuilderRegistry();
+        const registry = new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(process.cwd());
         const build = new BuildCommand(POKIE_VERSION, undefined, undefined, resolver, registry);
         expect(await build.run([blueprintPath, "--target", "tsPackage", "--out", packagePath])).toBe(0);
         evidence.record({
@@ -417,7 +409,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         fs.mkdirSync(defaultBuildRoot);
         const defaultBuildBlueprintPath = path.join(defaultBuildRoot, "source.blueprint.json");
         fs.copyFileSync(blueprintPath, defaultBuildBlueprintPath);
-        const defaultBuild = new BuildCommand(POKIE_VERSION, undefined, undefined, new ProjectTargetResolver(), pc14ArtifactBuilderRegistry());
+        const defaultBuild = new BuildCommand(POKIE_VERSION, undefined, undefined, new ProjectTargetResolver(), new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(process.cwd()));
         const defaultPackagePath = path.join(defaultBuildRoot, "tsPackage");
         expect(await defaultBuild.run([defaultBuildBlueprintPath, "--target", "tsPackage"])).toBe(0);
         expect(fs.existsSync(defaultPackagePath)).toBe(true);
@@ -455,7 +447,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         fs.mkdirSync(exportRoot);
         const exportBlueprintPath = path.join(exportRoot, "source.blueprint.json");
         fs.copyFileSync(blueprintPath, exportBlueprintPath);
-        const exportBuild = new BuildCommand(POKIE_VERSION, undefined, undefined, new ProjectTargetResolver(), pc14ArtifactBuilderRegistry());
+        const exportBuild = new BuildCommand(POKIE_VERSION, undefined, undefined, new ProjectTargetResolver(), new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(process.cwd()));
         const exportPackagePath = path.join(exportRoot, "package");
         expect(await exportBuild.run([exportBlueprintPath, "--target", "tsPackage", "--out", exportPackagePath])).toBe(0);
         const exportCommand = new ExportCommand(POKIE_VERSION);

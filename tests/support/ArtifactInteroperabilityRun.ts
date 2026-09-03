@@ -4,21 +4,6 @@ import path from "path";
 import {inflateRawSync} from "zlib";
 
 /**
- * The isolated evidence driver supplies this input to its real runners. It
- * stays at the runner boundary so ordinary package builders never consult an
- * ambient process setting when choosing a runtime link.
- */
-const PC14_RUNTIME_PACKAGE_LINK_INPUT_FILE = ".pc14-runtime-package-link";
-
-export function pc14RuntimePackageLinkTarget(): string | undefined {
-    const inputPath = path.join(process.cwd(), PC14_RUNTIME_PACKAGE_LINK_INPUT_FILE);
-    if (!fs.existsSync(inputPath)) return undefined;
-    const runtimePackageLinkTarget = fs.readFileSync(inputPath, "utf-8").trim();
-    if (runtimePackageLinkTarget.length === 0) throw new Error("PC-14 runtime package-link input is empty.");
-    return runtimePackageLinkTarget;
-}
-
-/**
  * Makes the real artifact writers deterministic during the dedicated PC-14
  * evidence refresh.  This is deliberately an opt-in test seam: production
  * writers continue to receive the host clock, while the refresh process
