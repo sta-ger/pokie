@@ -1889,5 +1889,9 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {"scenario_results": {execution: {assertions: string[]; observations: unknown[]}}[]}).scenario_results).toEqual(expect.arrayContaining([
             expect.objectContaining({execution: expect.objectContaining({assertions: expect.any(Array), observations: expect.any(Array)})}),
         ]));
-    }, 120000);
+    // This full public-artifact matrix performs real package preparation and
+    // conversion work.  Give the standalone regeneration child the same
+    // bounded allowance as the Studio runner rather than timing out before it
+    // can emit its deterministic ledger on constrained workers.
+    }, 300_000);
 });

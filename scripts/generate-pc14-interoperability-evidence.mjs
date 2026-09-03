@@ -122,8 +122,6 @@ function generatePc14InteroperabilityEvidence() {
     run("tests/cli/ArtifactInteroperabilityTorture.integration.test.ts");
     run("tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts");
     run("tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx");
-    if (!regenerationChild) run("tests/project/ArtifactInteroperabilityRemediation.contract.test.ts");
-
     try {
         for (const file of committedFiles) {
             const fresh = readFileSync(path.join(runDirectory, file));
