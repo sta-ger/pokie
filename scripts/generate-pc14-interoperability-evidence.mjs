@@ -125,6 +125,10 @@ function generatePc14InteroperabilityEvidence() {
     try {
         git(["worktree", "add", "--detach", historicalSourceDirectory, resolvedPc14Revision]);
         worktreeAdded = true;
+        const historicalHeadRevision = git(["-C", historicalSourceDirectory, "rev-parse", "HEAD"]);
+        if (historicalHeadRevision !== resolvedPc14Revision) {
+            throw new Error(`PC-14 historical worktree did not resolve to ${resolvedPc14Revision}.`);
+        }
         // Give the detached checkout its own dependency directory.  Hard
         // links preserve the installed package bytes without a mutable module
         // resolver walking back into the current source checkout; excluding

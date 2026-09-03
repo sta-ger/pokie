@@ -185,6 +185,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(script).toContain('const publishedPc14Revision = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b"');
         expect(script).toContain(`git(["rev-parse", "--verify", \`${publishedRevisionReference}^{commit}\`])`);
         expect(script).toContain('git(["worktree", "add", "--detach", historicalSourceDirectory, resolvedPc14Revision])');
+        expect(script).toContain('git(["-C", historicalSourceDirectory, "rev-parse", "HEAD"])');
+        expect(script).toContain('if (historicalHeadRevision !== resolvedPc14Revision)');
         expect(script).toContain('path.join(historicalSourceDirectory, "node_modules")');
         expect(script).toContain('run("cp", ["-al", path.join(repositoryRoot, "node_modules", entry)');
         expect(script).toContain('"^pokie$": "<rootDir>/src/index.ts"');
