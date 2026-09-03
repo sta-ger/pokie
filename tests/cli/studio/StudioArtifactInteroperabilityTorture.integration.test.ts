@@ -203,11 +203,11 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             await server.stop();
         }
 
-        const registry = new ArtifactBuilderRegistry(POKIE_VERSION)
+        const artifactBuildRegistry = new ArtifactBuilderRegistry(POKIE_VERSION)
             .withRuntimePackageRoot(process.cwd());
         const runtimePackageLinkTarget = pc14RuntimePackageLinkTarget();
-        if (runtimePackageLinkTarget !== undefined) registry.withRuntimePackageLinkTarget(runtimePackageLinkTarget);
-        const build = new StudioArtifactBuildService(POKIE_VERSION, registry);
+        if (runtimePackageLinkTarget !== undefined) artifactBuildRegistry.withRuntimePackageLinkTarget(runtimePackageLinkTarget);
+        const build = new StudioArtifactBuildService(POKIE_VERSION, artifactBuildRegistry);
         await expect(build.build(blueprintPath, "tsPackage", packagePath)).resolves.toMatchObject({status: "ok", outputPath: packagePath});
         evidence.record({
             id: "studio-blueprint-build", artifactKind: "tsPackage", operation: "build", registryOperation: "created_by", sourcePath: blueprintPath,
