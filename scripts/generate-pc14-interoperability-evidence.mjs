@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-// PC-14 evidence is an immutable audit record. Current runners have moved on
-// since that completed step, so validate the checked-in bytes against the
-// published PC-14 snapshot instead of mutating a disposable checkout to
-// imitate its historical runtime environment.
-import {readFileSync} from "node:fs";
+// PC-14 evidence is an immutable audit record. Its real runners belong to
+// the published PC-14 revision, so run that revision in an isolated checkout
+// and compare its fresh output without changing the completed evidence.
+import {mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
@@ -22,11 +21,10 @@ function git(args) {
     return result.stdout.trim();
 }
 
-function publishedEvidence(file) {
-    const result = spawnSync("git", ["show", `${publishedPc14Revision}:docs/evidence/phase7-product-coherence/pc-14-artifact-torture/${file}`], {cwd: repositoryRoot});
+function run(command, args, options) {
+    const result = spawnSync(command, args, {stdio: "inherit", ...options});
     if (result.error !== undefined) throw result.error;
-    if (result.status !== 0) throw new Error(`Published PC-14 evidence file is unavailable: ${file}.`);
-    return Buffer.from(result.stdout);
+    if (result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed with status ${result.status ?? 1}.`);
 }
 
 function firstDifferentByte(fresh, committed) {
@@ -118,12 +116,73 @@ function generatePc14InteroperabilityEvidence() {
     if (process.argv.includes("--write")) throw new Error("PC-14 evidence is immutable; this command only validates the published result.");
     const resolvedPc14Revision = git(["rev-parse", "--verify", `${publishedPc14Revision}^{commit}`]);
     if (resolvedPc14Revision !== publishedPc14Revision) throw new Error(`PC-14 source did not resolve to ${publishedPc14Revision}.`);
-    for (const file of committedFiles) {
-        const published = publishedEvidence(file);
-        const committed = readFileSync(path.join(evidenceDirectory, file));
-        assertExactPc14Evidence(file, published, committed);
+    const worktreeParentDirectory = mkdtempSync(path.join(repositoryRoot, ".pc14-evidence-"));
+    const historicalSourceDirectory = path.join(worktreeParentDirectory, "source");
+    const freshOutputDirectory = path.join(worktreeParentDirectory, "fresh-output");
+    let worktreeAdded = false;
+    try {
+        git(["worktree", "add", "--detach", historicalSourceDirectory, resolvedPc14Revision]);
+        worktreeAdded = true;
+        if (git(["-C", historicalSourceDirectory, "rev-parse", "HEAD"]) !== resolvedPc14Revision) {
+            throw new Error(`PC-14 historical worktree did not resolve to ${resolvedPc14Revision}.`);
+        }
+
+        // The detached source must resolve its dependencies locally, never
+        // through this PC-15 checkout. Hard links keep setup bounded while
+        // preserving the installed package bytes required by the old suite.
+        const historicalNodeModulesDirectory = path.join(historicalSourceDirectory, "node_modules");
+        mkdirSync(historicalNodeModulesDirectory);
+        for (const entry of readdirSync(path.join(repositoryRoot, "node_modules"))) {
+            if (entry !== ".cache") run("cp", ["-al", path.join(repositoryRoot, "node_modules", entry), path.join(historicalNodeModulesDirectory, entry)], {cwd: historicalSourceDirectory});
+        }
+
+        // This resolver repair is local to the disposable historical checkout.
+        // It lets its Studio UI runner import the exact historical source;
+        // neither PC-14 evidence nor the current checkout is changed.
+        const historicalJestConfigPath = path.join(historicalSourceDirectory, "jest.config.mjs");
+        const historicalJestConfig = readFileSync(historicalJestConfigPath, "utf-8");
+        const studioMapperDeclaration = "const studioClientComponentsModuleNameMapper = {";
+        if (!historicalJestConfig.includes(studioMapperDeclaration)) throw new Error("Published PC-14 Studio resolver declaration is unavailable.");
+        writeFileSync(historicalJestConfigPath, historicalJestConfig.replace(studioMapperDeclaration, `${studioMapperDeclaration}\n    \"^pokie$\": \"<rootDir>/src/index.ts\",`));
+
+        mkdirSync(freshOutputDirectory);
+        const historicalTemporaryDirectory = path.join(historicalNodeModulesDirectory, ".cache", "pokie-tmp");
+        mkdirSync(historicalTemporaryDirectory, {recursive: true});
+        const environment = {
+            ...process.env,
+            TMPDIR: historicalTemporaryDirectory,
+            PC14_FIXED_RUNNER_CLOCK: "2024-01-02T03:04:05.000Z",
+            PC14_FIXED_RUNNER_IDENTITY: "pc14-fixed-runner",
+            PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR: freshOutputDirectory,
+            PC14_INTEROPERABILITY_PERSISTED_RESULT: path.join(freshOutputDirectory, "interoperability-result.json"),
+        };
+        const historicalJestPath = path.join(historicalNodeModulesDirectory, "jest", "bin", "jest.js");
+        const runRunner = (testPath) => run(process.execPath, [
+            "--experimental-vm-modules",
+            "--max-old-space-size=1408",
+            historicalJestPath,
+            "--runInBand",
+            "--no-cache",
+            "--runTestsByPath",
+            testPath,
+        ], {cwd: historicalSourceDirectory, env: environment});
+
+        runRunner("tests/cli/ArtifactInteroperabilityTorture.integration.test.ts");
+        runRunner("tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts");
+        // The UI runner is deliberately last: it consumes the preceding two
+        // fresh ledgers and is the only runner that emits their merge.
+        runRunner("tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx");
+
+        for (const file of committedFiles) {
+            const fresh = readFileSync(path.join(freshOutputDirectory, file));
+            const committed = readFileSync(path.join(evidenceDirectory, file));
+            assertExactPc14Evidence(file, fresh, committed);
+        }
+    } finally {
+        if (worktreeAdded) git(["worktree", "remove", "--force", historicalSourceDirectory]);
+        rmSync(worktreeParentDirectory, {recursive: true, force: true});
     }
-    process.stdout.write(`PASS PC-14 immutable evidence matches published revision ${publishedPc14Revision}.\n`);
+    process.stdout.write(`PASS PC-14 real runners at ${publishedPc14Revision} reproduced immutable evidence.\n`);
 }
 
 if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) generatePc14InteroperabilityEvidence();

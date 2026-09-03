@@ -173,33 +173,42 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
-    it("validates the immutable PC-14 snapshot without trying to regenerate historical runtime artifacts", () => {
+    it("executes the isolated historical CLI, Studio API, and UI runners before exact comparison", () => {
         const script = fs.readFileSync(path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs"), "utf-8");
-        const interpolation = String.fromCharCode(36);
         expect(script).toContain('const publishedPc14Revision = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b"');
-        expect(script).toContain(`"show", \`${interpolation}{publishedPc14Revision}:docs/evidence/phase7-product-coherence/pc-14-artifact-torture/${interpolation}{file}`);
+        expect(script).toContain('git(["worktree", "add", "--detach", historicalSourceDirectory, resolvedPc14Revision])');
+        expect(script).toContain('PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR: freshOutputDirectory');
+        expect(script).toContain('PC14_INTEROPERABILITY_PERSISTED_RESULT: path.join(freshOutputDirectory, "interoperability-result.json")');
+        const cliRunner = 'runRunner("tests/cli/ArtifactInteroperabilityTorture.integration.test.ts")';
+        const studioRunner = 'runRunner("tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts")';
+        const uiRunner = 'runRunner("tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx")';
+        expect(script).toContain(cliRunner);
+        expect(script).toContain(studioRunner);
+        expect(script).toContain(uiRunner);
+        expect(script.indexOf(cliRunner)).toBeLessThan(script.indexOf(studioRunner));
+        expect(script.indexOf(studioRunner)).toBeLessThan(script.indexOf(uiRunner));
         expect(script).toContain('for (const file of committedFiles)');
-        expect(script).toContain('assertExactPc14Evidence(file, published, committed)');
+        expect(script).toContain('assertExactPc14Evidence(file, fresh, committed)');
         expect(script).toContain("if (!freshBytes.equals(committedBytes))");
-        expect(script).not.toContain('git(["worktree", "add"');
-        expect(script).not.toContain("PC14_INTEROPERABILITY_REGENERATION_CHILD");
+        expect(script).not.toContain("git show");
         expect(script).not.toContain("normaliseEvidenceIdentitySnapshot");
         expect(script).not.toContain("<artifact-identity>");
         expect(script).not.toContain("<runner-identity>");
     });
 
-    it("byte-compares every versioned runner result to the immutable PC-14 snapshot", () => {
+    it("byte-compares every fresh historical runner result to immutable PC-14 evidence", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const result = spawnSync(process.execPath, [scriptPath], {
             cwd: process.cwd(),
             encoding: "utf-8",
+            timeout: 300000,
         });
         expect(result.error).toBeUndefined();
         const output = `${result.stdout}\n${result.stderr}`;
         if (result.status !== 0) throw new Error(output);
-        expect(output).toContain("PASS PC-14 immutable evidence matches published revision");
+        expect(output).toContain("PASS PC-14 real runners at 2288476da74448ddcd2e3bfb1d5a29f6bde4a75b reproduced immutable evidence");
         expect(output).not.toContain("PC-14 evidence is not reproducible");
-    });
+    }, 330000);
 
     it("retains the committed generated-package source identity for every matrix tsPackage consumer", () => {
         const cliResultPath = path.join(path.dirname(evidencePath), "cli-real-artifact-result.json");
@@ -228,9 +237,11 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         const cliResult = JSON.parse(cliResultBytes.toString("utf-8")) as InteroperabilityResult;
         const sourceIdentityDrift = structuredClone(cliResult);
         const producedIdentityDrift = structuredClone(cliResult);
+        const runnerOutputDrift = structuredClone(cliResult);
         const mergedResultBytes = fs.readFileSync(evidencePath);
         const mergedResult = JSON.parse(mergedResultBytes.toString("utf-8")) as InteroperabilityResult;
         const runnerInputDrift = structuredClone(mergedResult);
+        const mergeResultDrift = structuredClone(mergedResult);
 
         const sourceRow = sourceIdentityDrift.rows.find((row) => row.id === "matrix-tsPackage-blueprint-build");
         const producedRow = producedIdentityDrift.rows.find((row) => row.id === "blueprint-build-package");
@@ -238,18 +249,26 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(producedRow).toBeDefined();
         (sourceRow as unknown as Record<string, string>)["source_identity"] = "sha256:changed-source-identity";
         (producedRow as unknown as Record<string, string | null>)["produced_identity"] = "sha256:changed-produced-identity";
+        (runnerOutputDrift.rows[0] as unknown as Record<string, string>)["observable_result"] = "changed-runner-output";
         (runnerInputDrift.runner_inputs[0] as {sha256: string}).sha256 = "sha256:changed-runner-input";
+        (mergeResultDrift as unknown as Record<string, string>)["generated_by"] = "changed-merge-result";
 
         const sourceIdentityResult = exactComparisonResult(scriptPath, "cli-real-artifact-result.json", Buffer.from(`${JSON.stringify(sourceIdentityDrift, null, 2)}\n`), cliResultBytes);
         const producedIdentityResult = exactComparisonResult(scriptPath, "cli-real-artifact-result.json", Buffer.from(`${JSON.stringify(producedIdentityDrift, null, 2)}\n`), cliResultBytes);
+        const runnerOutputResult = exactComparisonResult(scriptPath, "cli-real-artifact-result.json", Buffer.from(`${JSON.stringify(runnerOutputDrift, null, 2)}\n`), cliResultBytes);
         const runnerInputResult = exactComparisonResult(scriptPath, "interoperability-result.json", Buffer.from(`${JSON.stringify(runnerInputDrift, null, 2)}\n`), mergedResultBytes);
+        const mergeResult = exactComparisonResult(scriptPath, "interoperability-result.json", Buffer.from(`${JSON.stringify(mergeResultDrift, null, 2)}\n`), mergedResultBytes);
 
         expect(sourceIdentityResult.status).toBe(1);
         expect(sourceIdentityResult.stderr).toMatch(/json_path=\$\.rows\[.*\]\.source_identity/);
         expect(producedIdentityResult.status).toBe(1);
         expect(producedIdentityResult.stderr).toMatch(/json_path=\$\.rows\[.*\]\.produced_identity/);
+        expect(runnerOutputResult.status).toBe(1);
+        expect(runnerOutputResult.stderr).toMatch(/json_path=\$\.rows\[0\]\.observable_result/);
         expect(runnerInputResult.status).toBe(1);
         expect(runnerInputResult.stderr).toMatch(/json_path=\$\.runner_inputs\[0\]\.sha256/);
+        expect(mergeResult.status).toBe(1);
+        expect(mergeResult.stderr).toMatch(/json_path=\$\.generated_by/);
     });
 
     it("injects the fixed evidence clock into real writers instead of only normalising saved hashes", () => {
