@@ -193,6 +193,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(script).not.toContain("normaliseEvidenceIdentitySnapshot");
         expect(script).not.toContain("<artifact-identity>");
         expect(script).not.toContain("<runner-identity>");
+        expect(script).not.toContain("PC14_FIXED_RUNNER_IDENTITY");
     });
 
     it("byte-compares every fresh current-runner result to immutable PC-14 evidence", () => {

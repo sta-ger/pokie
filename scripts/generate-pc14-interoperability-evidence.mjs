@@ -108,11 +108,11 @@ function generatePc14InteroperabilityEvidence() {
     const environment = {
         ...process.env,
         TMPDIR: temporaryDirectory,
-        // Fixed public runner inputs. The writer seam normalises only the
-        // transport target of generated local symlinks; all emitted bytes,
-        // artifact identities, and runner-input hashes remain exact.
+        // Fixed public runner inputs. The package producer receives the
+        // historical local-runtime link target, so the real package source is
+        // deterministic before its identity is recorded.
         PC14_FIXED_RUNNER_CLOCK: "2024-01-02T03:04:05.000Z",
-        PC14_FIXED_RUNNER_IDENTITY: "pc14-fixed-runner",
+        PC14_FIXED_RUNTIME_PACKAGE_LINK_TARGET: "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-14-20260830075634",
         PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR: runDirectory,
         PC14_INTEROPERABILITY_PERSISTED_RESULT: path.join(runDirectory, "interoperability-result.json"),
     };

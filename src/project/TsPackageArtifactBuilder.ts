@@ -116,6 +116,11 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
         // The CLI/Studio entry point supplies the running POKIE root. This bounded link makes that
         // just-built package executable immediately, before a user has to run npm. It is ignored by
         // npm packing, and a later npm install resolves package.json's released runtime range instead.
-        fs.symlinkSync(path.resolve(pokiePackageRoot), path.join(nodeModules, "pokie"), "junction");
+        // PC-14 fixes the emitted local-link target at the producer boundary.
+        // The evidence runner still exercises this real generated package, but
+        // its disposable checkout must not become part of the package source
+        // identity. Ordinary builds always retain their live runtime link.
+        const runtimeLinkTarget = process.env.PC14_FIXED_RUNTIME_PACKAGE_LINK_TARGET ?? path.resolve(pokiePackageRoot);
+        fs.symlinkSync(runtimeLinkTarget, path.join(nodeModules, "pokie"), "junction");
     }
 }
