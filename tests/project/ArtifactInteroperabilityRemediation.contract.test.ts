@@ -182,18 +182,18 @@ describe("PC-14 artifact interoperability remediation contract", () => {
     it("runs the current real artifact runners with fixed public inputs", () => {
         const script = fs.readFileSync(path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs"), "utf-8");
         expect(script).toContain('PC14_FIXED_RUNNER_CLOCK: "2024-01-02T03:04:05.000Z"');
-        expect(script).toContain('PC14_FIXED_RUNNER_IDENTITY: "pc14-fixed-runner"');
+        expect(script).not.toContain("PC14_FIXED_RUNTIME_PACKAGE_LINK_TARGET");
         expect(script).toContain('run("tests/cli/ArtifactInteroperabilityTorture.integration.test.ts")');
         expect(script).toContain('run("tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts")');
         expect(script).toContain('run("tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx")');
         expect(script).toContain("assertExactPc14Evidence(file, fresh, committed)");
         expect(script).toContain("if (!freshBytes.equals(committedBytes))");
-        expect(script).not.toContain("worktree");
         expect(script).not.toContain("jest shim");
         expect(script).not.toContain("normaliseEvidenceIdentitySnapshot");
         expect(script).not.toContain("<artifact-identity>");
         expect(script).not.toContain("<runner-identity>");
         expect(script).not.toContain("PC14_FIXED_RUNNER_IDENTITY");
+        expect(script).not.toContain("task_PC-14-");
     });
 
     it("byte-compares every fresh current-runner result to immutable PC-14 evidence", () => {
@@ -206,8 +206,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             timeout: cleanProcessRegenerationTimeout,
         });
         expect(result.error).toBeUndefined();
-        expect(result.status).toBe(0);
         const output = `${result.stdout}\n${result.stderr}`;
+        if (result.status !== 0) throw new Error(output);
         expect(output).toContain("PASS tests/cli/ArtifactInteroperabilityTorture.integration.test.ts");
         expect(output).toContain("PASS tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts");
         expect(output).toContain("PASS tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx");

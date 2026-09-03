@@ -21,11 +21,6 @@ function blueprintProjectOf(rootPath: string): PokieProject {
     } as PokieProject;
 }
 
-function restoreFixedRuntimePackageLinkTarget(value: string | undefined): void {
-    if (value === undefined) Reflect.deleteProperty(process.env, "PC14_FIXED_RUNTIME_PACKAGE_LINK_TARGET");
-    else process.env.PC14_FIXED_RUNTIME_PACKAGE_LINK_TARGET = value;
-}
-
 const blueprint: GameBlueprint = {
     manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     reels: 2,
@@ -72,16 +67,13 @@ describe("TsPackageArtifactBuilder", () => {
         await expect(loadPokieGame(destinationDir)).resolves.toMatchObject({getManifest: expect.any(Function)});
     });
 
-    it("uses the fixed PC-14 runtime link target in the generated package source", async () => {
-        const originalTarget = process.env.PC14_FIXED_RUNTIME_PACKAGE_LINK_TARGET;
-        process.env.PC14_FIXED_RUNTIME_PACKAGE_LINK_TARGET = "/pc14/fixed-runtime";
-        try {
-            await new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(process.cwd()).build(blueprintProjectOf(blueprintPath), destinationDir);
+    it("keeps a supplied current runtime link when no runner-scoped link target is configured", async () => {
+        const runtimeRoot = path.join(dir, "current-runtime");
+        fs.mkdirSync(runtimeRoot);
 
-            expect(fs.readlinkSync(path.join(destinationDir, "node_modules", "pokie"))).toBe("/pc14/fixed-runtime");
-        } finally {
-            restoreFixedRuntimePackageLinkTarget(originalTarget);
-        }
+        await new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(runtimeRoot).build(blueprintProjectOf(blueprintPath), destinationDir);
+
+        expect(fs.readlinkSync(path.join(destinationDir, "node_modules", "pokie"))).toBe(runtimeRoot);
     });
 
     it("throws ArtifactBuildConflictError rather than overwriting an existing, non-empty destination", async () => {

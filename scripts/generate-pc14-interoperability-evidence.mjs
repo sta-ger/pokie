@@ -108,11 +108,10 @@ function generatePc14InteroperabilityEvidence() {
     const environment = {
         ...process.env,
         TMPDIR: temporaryDirectory,
-        // Fixed public runner inputs. The package producer receives the
-        // historical local-runtime link target, so the real package source is
-        // deterministic before its identity is recorded.
+        // Fixed public runner inputs. The runners themselves own their
+        // package-link input, so this process never changes shared builder
+        // behaviour through ambient environment state.
         PC14_FIXED_RUNNER_CLOCK: "2024-01-02T03:04:05.000Z",
-        PC14_FIXED_RUNTIME_PACKAGE_LINK_TARGET: "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-14-20260830075634",
         PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR: runDirectory,
         PC14_INTEROPERABILITY_PERSISTED_RESULT: path.join(runDirectory, "interoperability-result.json"),
     };

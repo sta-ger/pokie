@@ -35,6 +35,7 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
     private readonly validator: GameBlueprintValidating;
     private readonly generator: GamePackageGenerating;
     private pokiePackageRoot: string | undefined;
+    private runtimePackageLinkTarget: string | undefined;
 
     constructor(
         pokieVersion: string,
@@ -49,6 +50,17 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
 
     public withRuntimePackageRoot(pokiePackageRoot: string): this {
         this.pokiePackageRoot = pokiePackageRoot;
+        return this;
+    }
+
+    /**
+     * Overrides only the link text emitted by this builder instance.  The
+     * runtime root remains the caller's live root; dedicated evidence runners
+     * can supply their own stable, runner-scoped link input without changing
+     * ordinary builder calls or consulting ambient process state.
+     */
+    public withRuntimePackageLinkTarget(runtimePackageLinkTarget: string): this {
+        this.runtimePackageLinkTarget = runtimePackageLinkTarget;
         return this;
     }
 
@@ -95,7 +107,7 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
                         message: progress.message,
                     }),
             });
-            if (this.pokiePackageRoot !== undefined) this.linkRuntime(result.projectRoot, this.pokiePackageRoot);
+            if (this.pokiePackageRoot !== undefined) this.linkRuntime(result.projectRoot, this.pokiePackageRoot, this.runtimePackageLinkTarget);
             assertArtifactBuildNotCancelled(options);
             reportArtifactBuildProgress(options, {status: "completed"});
             return {outputPath: result.projectRoot};
@@ -110,17 +122,13 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
         }
     }
 
-    private linkRuntime(packageRoot: string, pokiePackageRoot: string): void {
+    private linkRuntime(packageRoot: string, pokiePackageRoot: string, runtimePackageLinkTarget?: string): void {
         const nodeModules = path.join(packageRoot, "node_modules");
         fs.mkdirSync(nodeModules, {recursive: true});
         // The CLI/Studio entry point supplies the running POKIE root. This bounded link makes that
         // just-built package executable immediately, before a user has to run npm. It is ignored by
         // npm packing, and a later npm install resolves package.json's released runtime range instead.
-        // PC-14 fixes the emitted local-link target at the producer boundary.
-        // The evidence runner still exercises this real generated package, but
-        // its disposable checkout must not become part of the package source
-        // identity. Ordinary builds always retain their live runtime link.
-        const runtimeLinkTarget = process.env.PC14_FIXED_RUNTIME_PACKAGE_LINK_TARGET ?? path.resolve(pokiePackageRoot);
+        const runtimeLinkTarget = runtimePackageLinkTarget ?? path.resolve(pokiePackageRoot);
         fs.symlinkSync(runtimeLinkTarget, path.join(nodeModules, "pokie"), "junction");
     }
 }
