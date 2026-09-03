@@ -95,11 +95,22 @@ export const runPackageCommand: PackageCommandRunning = (command, args, cwd, opt
             return;
         }
 
+        // A generated package normally only needs versions this running checkout has already
+        // installed (notably TypeScript for its first build). Prefer npm's local cache before
+        // asking the registry again: it keeps `pokie init` responsive in offline or slow-network
+        // environments while retaining npm's normal registry fallback for a genuinely missing
+        // package. Audit/funding lookups do not contribute to preparing the package and can turn a
+        // successful dependency resolution into an unrelated network wait.
+        const effectiveArgs =
+            command === "npm" && args[0] === "install"
+                ? [...args, "--prefer-offline", "--no-audit", "--no-fund"]
+                : args;
+
         // Unlike spawn(), execFile does not forward `detached` to its child,
         // which would leave npm in this process's own group. Use spawn here
         // so POSIX can address npm and every inherited lifecycle descendant
         // as one private process group.
-        const child = spawn(command, args, {cwd, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"]});
+        const child = spawn(command, effectiveArgs, {cwd, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"]});
         let stdout = "";
         let stderr = "";
         let spawnError: Error | undefined;
@@ -129,7 +140,7 @@ export const runPackageCommand: PackageCommandRunning = (command, args, cwd, opt
                 return;
             }
             if (code !== 0) {
-                const error = Object.assign(new Error(`${command} ${args.join(" ")} exited with ${signal ?? code}.`), {stderr});
+                const error = Object.assign(new Error(`${command} ${effectiveArgs.join(" ")} exited with ${signal ?? code}.`), {stderr});
                 reject(error);
                 return;
             }
