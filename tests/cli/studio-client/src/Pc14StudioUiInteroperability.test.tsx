@@ -1,6 +1,6 @@
 import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {createLocalJsonExternalDeploymentTarget} from "pokie";
+import {ArtifactBuilderRegistry, createLocalJsonExternalDeploymentTarget} from "pokie";
 import fs from "fs";
 import http from "http";
 import os from "os";
@@ -17,10 +17,18 @@ import {
     ArtifactInteroperabilityRun,
     installPc14FixedRunnerClock,
     mergeArtifactInteroperabilityRuns,
+    PC14_RUNTIME_PACKAGE_LINK_TARGET,
 } from "../../../support/ArtifactInteroperabilityRun.js";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
 const POKIE_VERSION = "1.3.0";
+
+function pc14BuildCommand(): BuildCommand {
+    const registry = new ArtifactBuilderRegistry(POKIE_VERSION)
+        .withRuntimePackageRoot(process.cwd())
+        .withRuntimePackageLinkTarget(PC14_RUNTIME_PACKAGE_LINK_TARGET);
+    return new BuildCommand(POKIE_VERSION, undefined, undefined, undefined, registry);
+}
 
 function writeStudioAssets(root: string): void {
     fs.writeFileSync(path.join(root, "index.html"), "<html>Studio</html>");
@@ -72,7 +80,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             reelStrips: [["A", "B"], ["A", "B"]], availableBets: [1],
         }));
         packagePath = path.join(workDir, "tsPackage");
-        expect(await new BuildCommand(POKIE_VERSION).run([blueprintPath, "--target", "tsPackage", "--out", packagePath])).toBe(0);
+        expect(await pc14BuildCommand().run([blueprintPath, "--target", "tsPackage", "--out", packagePath])).toBe(0);
         outcomeLibraryPath = path.join(packagePath, "outcomes", "bundle");
         expect(await new BuildCommand(POKIE_VERSION).run([blueprintPath, "--target", "outcomeLibrary", "--out", outcomeLibraryPath])).toBe(0);
         const home = new StudioHomeService(POKIE_VERSION);
