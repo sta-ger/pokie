@@ -89,6 +89,18 @@ export function pc14EvidenceDifferenceProvenance(resultFile, freshBytes, committ
     }
 }
 
+/**
+ * The comparison is intentionally exact: artifact identities and the hashes
+ * that bind each real runner to the merged result are evidence, rather than
+ * presentation fields.  Keep this boundary reusable by the contract test so
+ * a future change cannot make one of those fields cosmetic again.
+ */
+export function assertExactPc14Evidence(resultFile, freshBytes, committedBytes) {
+    if (!freshBytes.equals(committedBytes)) {
+        throw new Error(`PC-14 evidence is not reproducible: ${pc14EvidenceDifferenceProvenance(resultFile, freshBytes, committedBytes)}.`);
+    }
+}
+
 function generatePc14InteroperabilityEvidence() {
     if (process.argv.includes("--write")) throw new Error("PC-14 evidence is immutable; this command only validates fresh current-runner output.");
     mkdirSync(temporaryDirectory, {recursive: true});
@@ -126,9 +138,7 @@ function generatePc14InteroperabilityEvidence() {
         for (const file of committedFiles) {
             const fresh = readFileSync(path.join(runDirectory, file));
             const committed = readFileSync(path.join(evidenceDirectory, file));
-            if (!fresh.equals(committed)) {
-                throw new Error(`PC-14 evidence is not reproducible: ${pc14EvidenceDifferenceProvenance(file, fresh, committed)}.`);
-            }
+            assertExactPc14Evidence(file, fresh, committed);
         }
     } finally {
         rmSync(runDirectory, {recursive: true, force: true});

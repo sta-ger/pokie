@@ -188,6 +188,53 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(output).not.toContain("PC-14 evidence is not reproducible");
     }, cleanProcessContractTimeout);
 
+    it("retains the committed generated-package source identity for every matrix tsPackage consumer", () => {
+        const cliResultPath = path.join(path.dirname(evidencePath), "cli-real-artifact-result.json");
+        const cliResult = JSON.parse(fs.readFileSync(cliResultPath, "utf-8")) as InteroperabilityResult;
+        const matrixPackageIdentity = "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b";
+        const matrixPackageRows = cliResult.rows.filter((row) => row.source_path === "run-artifacts/matrix-package");
+
+        expect(matrixPackageRows.map((row) => row.id)).toEqual(expect.arrayContaining([
+            "matrix-tsPackage-blueprint-build",
+            "matrix-tsPackage-outcomeLibrary-build",
+            "matrix-tsPackage-stakeAdapter-build",
+            "package-generate-raw-outcomes",
+            "package-replay",
+            "package-simulate",
+        ]));
+        expect(matrixPackageRows).toEqual(expect.arrayContaining([
+            expect.objectContaining({id: "matrix-tsPackage-blueprint-build", "source_identity": matrixPackageIdentity}),
+        ]));
+        expect(matrixPackageRows.every((row) => row.source_identity === matrixPackageIdentity)).toBe(true);
+    });
+
+    it("rejects identity and runner-input drift instead of treating provenance as cosmetic", async () => {
+        const {assertExactPc14Evidence} = await import("../../scripts/generate-pc14-interoperability-evidence.mjs");
+        const cliResultPath = path.join(path.dirname(evidencePath), "cli-real-artifact-result.json");
+        const cliResultBytes = fs.readFileSync(cliResultPath);
+        const cliResult = JSON.parse(cliResultBytes.toString("utf-8")) as InteroperabilityResult;
+        const sourceIdentityDrift = structuredClone(cliResult);
+        const producedIdentityDrift = structuredClone(cliResult);
+        const mergedResultBytes = fs.readFileSync(evidencePath);
+        const mergedResult = JSON.parse(mergedResultBytes.toString("utf-8")) as InteroperabilityResult;
+        const runnerInputDrift = structuredClone(mergedResult);
+
+        const sourceRow = sourceIdentityDrift.rows.find((row) => row.id === "matrix-tsPackage-blueprint-build");
+        const producedRow = producedIdentityDrift.rows.find((row) => row.id === "blueprint-build-package");
+        expect(sourceRow).toBeDefined();
+        expect(producedRow).toBeDefined();
+        (sourceRow as unknown as Record<string, string>)["source_identity"] = "sha256:changed-source-identity";
+        (producedRow as unknown as Record<string, string | null>)["produced_identity"] = "sha256:changed-produced-identity";
+        (runnerInputDrift.runner_inputs[0] as {sha256: string}).sha256 = "sha256:changed-runner-input";
+
+        expect(() => assertExactPc14Evidence("cli-real-artifact-result.json", Buffer.from(`${JSON.stringify(sourceIdentityDrift, null, 2)}\n`), cliResultBytes))
+            .toThrow(/json_path=\$\.rows\[.*\]\.source_identity/);
+        expect(() => assertExactPc14Evidence("cli-real-artifact-result.json", Buffer.from(`${JSON.stringify(producedIdentityDrift, null, 2)}\n`), cliResultBytes))
+            .toThrow(/json_path=\$\.rows\[.*\]\.produced_identity/);
+        expect(() => assertExactPc14Evidence("interoperability-result.json", Buffer.from(`${JSON.stringify(runnerInputDrift, null, 2)}\n`), mergedResultBytes))
+            .toThrow(/json_path=\$\.runner_inputs\[0\]\.sha256/);
+    });
+
     it("injects the fixed evidence clock into real writers instead of only normalising saved hashes", () => {
         const originalClock = process.env.PC14_FIXED_RUNNER_CLOCK;
         process.env.PC14_FIXED_RUNNER_CLOCK = "2024-01-02T03:04:05.000Z";
