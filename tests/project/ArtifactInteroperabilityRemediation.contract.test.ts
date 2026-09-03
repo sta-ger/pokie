@@ -179,12 +179,12 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
-    it("uses the published PC-14 driver with its isolated fixed runner inputs", () => {
+    it("runs current real artifact runners with fixed PC-14 inputs", () => {
         const script = fs.readFileSync(path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs"), "utf-8");
-        expect(script).toContain('const publishedPc14Revision = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b"');
-        expect(script).toContain('git(["worktree", "add", "--detach", historicalSourceDirectory, resolvedPc14Revision])');
-        expect(script).toContain('"scripts", "generate-pc14-interoperability-evidence.mjs"');
-        expect(script).toContain('PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"');
+        expect(script).toContain('PC14_FIXED_RUNNER_CLOCK: "2024-01-02T03:04:05.000Z"');
+        expect(script).toContain('run("tests/cli/ArtifactInteroperabilityTorture.integration.test.ts")');
+        expect(script).toContain('run("tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts")');
+        expect(script).toContain('run("tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx")');
         expect(script).toContain('for (const file of committedFiles)');
         expect(script).toContain('assertExactPc14Evidence(file, fresh, committed)');
         expect(script).toContain("if (!freshBytes.equals(committedBytes))");
@@ -194,11 +194,9 @@ describe("PC-14 artifact interoperability remediation contract", () => {
     });
 
     it("byte-compares every versioned runner result to immutable PC-14 evidence", () => {
-        if (process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1") return;
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const result = spawnSync(process.execPath, [scriptPath], {
             cwd: process.cwd(),
-            env: {...process.env, PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"},
             encoding: "utf-8",
             timeout: cleanProcessRegenerationTimeout,
         });
