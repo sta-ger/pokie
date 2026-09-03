@@ -187,10 +187,13 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(script).toContain('git(["worktree", "add", "--detach", historicalSourceDirectory, resolvedPc14Revision])');
         expect(script).toContain('git(["-C", historicalSourceDirectory, "rev-parse", "HEAD"])');
         expect(script).toContain('if (historicalHeadRevision !== resolvedPc14Revision)');
+        expect(script).toContain('const runtimeSourceRevision = git(["-C", historicalSourceDirectory, "rev-parse", "HEAD"])');
+        expect(script).toContain('if (runtimeSourceRevision !== resolvedPc14Revision)');
         expect(script).toContain('path.join(historicalSourceDirectory, "node_modules")');
         expect(script).toContain('run("cp", ["-al", path.join(repositoryRoot, "node_modules", entry)');
         expect(script).toContain('"^pokie$": "<rootDir>/src/index.ts"');
         expect(script).toContain('path.join(historicalSourceDirectory, "scripts", "generate-pc14-interoperability-evidence.mjs"), "--write"');
+        expect(script).toContain('writeFileSync(path.join(historicalSourceDirectory, ".pc14-runtime-package-link"), historicalSourceDirectory)');
         expect(script).toContain('for (const file of committedFiles)');
         expect(script).toContain('assertExactPc14Evidence(file, fresh, committed)');
         expect(script).toContain('git(["worktree", "remove", "--force", historicalSourceDirectory])');
@@ -199,6 +202,8 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(script).not.toContain("<artifact-identity>");
         expect(script).not.toContain("<runner-identity>");
         expect(script).not.toContain("PC14_FIXED_RUNNER_IDENTITY");
+        expect(script).not.toContain("PC14_FIXED_RUNTIME_PACKAGE_LINK_TARGET");
+        expect(script).not.toContain("PC14_INTEROPERABILITY_RUNTIME_LINK_TARGET");
         expect(script).not.toContain("task_PC-14-");
         expect(script).not.toContain("/home/stager/");
     });

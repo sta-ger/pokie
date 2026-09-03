@@ -76,6 +76,20 @@ describe("TsPackageArtifactBuilder", () => {
         expect(fs.readlinkSync(path.join(destinationDir, "node_modules", "pokie"))).toBe(runtimeRoot);
     });
 
+    it("uses a runner-scoped runtime link without changing the supplied runtime root", async () => {
+        const runtimeRoot = path.join(dir, "current-runtime");
+        const evidenceRuntimeRoot = path.join(dir, "pc14-runtime");
+        fs.mkdirSync(runtimeRoot);
+        fs.mkdirSync(evidenceRuntimeRoot);
+
+        await new TsPackageArtifactBuilder("1.3.0")
+            .withRuntimePackageRoot(runtimeRoot)
+            .withRuntimePackageLinkTarget(evidenceRuntimeRoot)
+            .build(blueprintProjectOf(blueprintPath), destinationDir);
+
+        expect(fs.readlinkSync(path.join(destinationDir, "node_modules", "pokie"))).toBe(evidenceRuntimeRoot);
+    });
+
     it("throws ArtifactBuildConflictError rather than overwriting an existing, non-empty destination", async () => {
         fs.mkdirSync(destinationDir);
         fs.writeFileSync(path.join(destinationDir, "unrelated.txt"), "not ours");

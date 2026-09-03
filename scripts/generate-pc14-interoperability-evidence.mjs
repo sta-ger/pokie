@@ -129,6 +129,13 @@ function generatePc14InteroperabilityEvidence() {
         if (historicalHeadRevision !== resolvedPc14Revision) {
             throw new Error(`PC-14 historical worktree did not resolve to ${resolvedPc14Revision}.`);
         }
+        // This clean checkout is the only runtime source supplied to the
+        // isolated runners. Validate its revision before exposing its path as
+        // a runner-scoped package-link input.
+        const runtimeSourceRevision = git(["-C", historicalSourceDirectory, "rev-parse", "HEAD"]);
+        if (runtimeSourceRevision !== resolvedPc14Revision) {
+            throw new Error(`PC-14 runtime source did not resolve to ${resolvedPc14Revision}.`);
+        }
         // Give the detached checkout its own dependency directory.  Hard
         // links preserve the installed package bytes without a mutable module
         // resolver walking back into the current source checkout; excluding
@@ -146,13 +153,20 @@ function generatePc14InteroperabilityEvidence() {
         const studioMapperDeclaration = "const studioClientComponentsModuleNameMapper = {";
         if (!historicalJestConfig.includes(studioMapperDeclaration)) throw new Error("Published PC-14 Studio resolver declaration is unavailable.");
         writeFileSync(historicalJestConfigPath, historicalJestConfig.replace(studioMapperDeclaration, `${studioMapperDeclaration}\n    "^pokie$": "<rootDir>/src/index.ts",`));
+        // This runner-local file is deliberately the sole link input. The
+        // generated-package builder receives it through the real runner, not
+        // through an ambient process override.
+        writeFileSync(path.join(historicalSourceDirectory, ".pc14-runtime-package-link"), historicalSourceDirectory);
         // --write only updates the disposable checkout.  The parent retains
         // ownership of the immutable evidence comparison, so it can report
         // the first byte and identity provenance without weakening the raw
         // result bytes emitted by the published driver.
         run(process.execPath, [path.join(historicalSourceDirectory, "scripts", "generate-pc14-interoperability-evidence.mjs"), "--write"], {
             cwd: historicalSourceDirectory,
-            env: {...process.env, PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"},
+            env: {
+                ...process.env,
+                PC14_INTEROPERABILITY_REGENERATION_CHILD: "1",
+            },
         });
         for (const file of committedFiles) {
             const fresh = readFileSync(path.join(historicalSourceDirectory, "docs", "evidence", "phase7-product-coherence", "pc-14-artifact-torture", file));

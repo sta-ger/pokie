@@ -41,13 +41,16 @@ import {ServeCommand} from "../../cli/commands/ServeCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
-import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, pc05CliOwnerOperations} from "../support/ArtifactInteroperabilityRun.js";
+import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, pc14RuntimePackageLinkTarget, pc05CliOwnerOperations} from "../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
 
 function pc14ArtifactBuilderRegistry(): ArtifactBuilderRegistry {
-    return new ArtifactBuilderRegistry(POKIE_VERSION)
+    const registry = new ArtifactBuilderRegistry(POKIE_VERSION)
         .withRuntimePackageRoot(process.cwd());
+    const runtimePackageLinkTarget = pc14RuntimePackageLinkTarget();
+    if (runtimePackageLinkTarget !== undefined) registry.withRuntimePackageLinkTarget(runtimePackageLinkTarget);
+    return registry;
 }
 
 describe("PC-14 CLI real-artifact interoperability torture", () => {
