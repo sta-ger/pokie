@@ -245,12 +245,16 @@ function documentationRootFor(coverage, coveragePath) {
     return path.resolve(path.dirname(coveragePath), root);
 }
 
-async function filesForDocumentationCandidate(root, pattern) {
+async function filesForDocumentationCandidate(root, pattern, excluded = []) {
     const normalized = normalizedDocumentationPattern(pattern);
     const directory = path.posix.dirname(normalized);
     const basename = path.posix.basename(normalized);
     const candidateDirectory = path.join(root, directory === "." ? "" : directory);
     if (!/[*?[]/.test(basename)) {
+        // An exclusion is a filter, not another candidate to inspect.  In particular, an
+        // exact historical path covered by a recursive exclusion must not be stat'ed merely
+        // because a map retains it alongside the maintained documentation candidates.
+        if (excluded.some((expression) => expression.test(normalized))) return [];
         try {
             return (await stat(path.join(root, normalized))).isFile() ? [normalized] : [];
         } catch (error) {
@@ -266,13 +270,13 @@ async function filesForDocumentationCandidate(root, pattern) {
         throw error;
     }
     const expression = globExpression(normalized);
-    return entries.filter((entry) => entry.isFile()).map((entry) => path.posix.join(directory === "." ? "" : directory, entry.name)).filter((file) => expression.test(file));
+    return entries.filter((entry) => entry.isFile()).map((entry) => path.posix.join(directory === "." ? "" : directory, entry.name)).filter((file) => expression.test(file) && !excluded.some((excludedExpression) => excludedExpression.test(file)));
 }
 
 async function configuredDocumentationFiles(coverage, root) {
     if (!coverage.documentationScope) return coverage.documentationFiles;
     const excluded = (coverage.documentationScope.exclude ?? []).map((pattern) => globExpression(normalizedDocumentationExclusionPattern(pattern)));
-    const files = await Promise.all(coverage.documentationScope.include.map((pattern) => filesForDocumentationCandidate(root, pattern)));
+    const files = await Promise.all(coverage.documentationScope.include.map((pattern) => filesForDocumentationCandidate(root, pattern, excluded)));
     return [...new Set(files.flat())].filter((file) => !excluded.some((expression) => expression.test(file))).sort();
 }
 

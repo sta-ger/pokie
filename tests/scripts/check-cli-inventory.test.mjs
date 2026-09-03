@@ -200,18 +200,25 @@ test("limits discovery to maintained-document candidates despite nested dependen
 
 test("allows historical-document exclusions without expanding bounded candidates", async () => {
     const {directory, cli, coverage} = await fixture();
+    const historicalDirectory = path.join(directory, "docs/phase6-archive");
     try {
-        await mkdir(path.join(directory, "docs/phase6-archive"), {recursive: true});
-        await writeFile(path.join(directory, "docs/phase6-archive/legacy.md"), "pokie deploy --target obsolete\n");
+        await mkdir(historicalDirectory, {recursive: true});
+        await writeFile(path.join(historicalDirectory, "legacy.md"), "pokie deploy --target obsolete\n");
         const map = JSON.parse(await readFile(coverage, "utf8"));
         // The historical file is an otherwise valid exact candidate. Its stale command claim
         // proves the exclusion filters candidates rather than merely accepting an unused glob.
+        // Make its directory unreadable to prove filtering occurs before inspecting the exact
+        // excluded candidate.
         map.documentationScope.include = ["docs.md", "docs/*.md", "docs/phase6-archive/legacy.md"];
         map.documentationScope.exclude = ["docs/phase6-*/**"];
         await writeFile(coverage, JSON.stringify(map));
+        await chmod(historicalDirectory, 0o000);
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 0, result.stderr);
-    } finally { await rm(directory, {recursive: true, force: true}); }
+    } finally {
+        await chmod(historicalDirectory, 0o700).catch(() => {});
+        await rm(directory, {recursive: true, force: true});
+    }
 });
 
 test("keeps command context for ordinary claims below a CLI heading", async () => {
