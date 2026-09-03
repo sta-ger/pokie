@@ -1,20 +1,31 @@
 #!/usr/bin/env node
-// PC-14 evidence is deliberately a by-product of the current real artifact
-// runners. Keep the suites in separate clean Jest processes: the Studio UI
-// runner merges the CLI and Studio API ledgers only after real operations end.
-import {mkdtempSync, mkdirSync, readFileSync, rmSync} from "node:fs";
+// PC-14 evidence belongs to the published PC-14 source revision.  The
+// versioned driver owns its CLI, Studio API, Studio UI and raw-byte proof;
+// current PC-15 runners must not be used to regenerate historical evidence.
+import {mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
 import {spawnSync} from "node:child_process";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const publishedPc14Revision = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b";
 const evidenceDirectory = path.join(repositoryRoot, "docs", "evidence", "phase7-product-coherence", "pc-14-artifact-torture");
-const jestPath = path.join(repositoryRoot, "node_modules", "jest", "bin", "jest.js");
-const temporaryDirectory = path.join(repositoryRoot, "node_modules", ".cache", "pokie-tmp");
 const committedFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"];
-const regenerationChild = process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1";
 const maximumProvenanceTextLength = 240;
+
+function git(args) {
+    const result = spawnSync("git", args, {cwd: repositoryRoot, encoding: "utf-8"});
+    if (result.error !== undefined) throw result.error;
+    if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr.trim()}`);
+    return result.stdout.trim();
+}
+
+function run(command, args, options) {
+    const result = spawnSync(command, args, {stdio: "inherit", ...options});
+    if (result.error !== undefined) throw result.error;
+    if (result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed with status ${result.status ?? 1}.`);
+}
 
 function firstDifferentByte(fresh, committed) {
     const comparedLength = Math.min(fresh.length, committed.length);
@@ -102,45 +113,51 @@ export function assertExactPc14Evidence(resultFile, freshBytes, committedBytes) 
 }
 
 function generatePc14InteroperabilityEvidence() {
-    if (process.argv.includes("--write")) throw new Error("PC-14 evidence is immutable; this command only validates fresh current-runner output.");
-    mkdirSync(temporaryDirectory, {recursive: true});
-    const runDirectory = mkdtempSync(path.join(temporaryDirectory, "pc14-evidence-"));
-    const environment = {
-        ...process.env,
-        TMPDIR: temporaryDirectory,
-        // Fixed public runner inputs. The runners themselves own their
-        // package-link input, so this process never changes shared builder
-        // behaviour through ambient environment state.
-        PC14_FIXED_RUNNER_CLOCK: "2024-01-02T03:04:05.000Z",
-        PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR: runDirectory,
-        PC14_INTEROPERABILITY_PERSISTED_RESULT: path.join(runDirectory, "interoperability-result.json"),
-    };
-
-    function run(testPath) {
-        const result = spawnSync(process.execPath, [
-            "--experimental-vm-modules",
-            "--max-old-space-size=1408",
-            jestPath,
-            "--runInBand",
-            "--no-cache",
-            "--runTestsByPath",
-            testPath,
-        ], {cwd: repositoryRoot, env: environment, stdio: "inherit"});
-        if (result.error !== undefined) throw result.error;
-        if (result.status !== 0) process.exit(result.status ?? 1);
-    }
-
-    run("tests/cli/ArtifactInteroperabilityTorture.integration.test.ts");
-    run("tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts");
-    run("tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx");
+    if (process.argv.includes("--write")) throw new Error("PC-14 evidence is immutable; this command only validates the published result.");
+    const resolvedPc14Revision = git(["rev-parse", "--verify", `${publishedPc14Revision}^{commit}`]);
+    if (resolvedPc14Revision !== publishedPc14Revision) throw new Error(`PC-14 source did not resolve to ${publishedPc14Revision}.`);
+    // TMPDIR can be nested below node_modules in the targeted-test lane;
+    // Jest deliberately ignores test paths there.  This prefix is still a
+    // unique disposable directory, never a saved worktree location.
+    const worktreeParentDirectory = mkdtempSync(path.join(repositoryRoot, ".pc14-evidence-"));
+    const historicalSourceDirectory = path.join(worktreeParentDirectory, "source");
+    let worktreeAdded = false;
     try {
+        git(["worktree", "add", "--detach", historicalSourceDirectory, resolvedPc14Revision]);
+        worktreeAdded = true;
+        // Give the detached checkout its own dependency directory.  Hard
+        // links preserve the installed package bytes without a mutable module
+        // resolver walking back into the current source checkout; excluding
+        // cache output keeps every invocation disposable.
+        const historicalNodeModulesDirectory = path.join(historicalSourceDirectory, "node_modules");
+        mkdirSync(historicalNodeModulesDirectory);
+        for (const entry of readdirSync(path.join(repositoryRoot, "node_modules"))) {
+            if (entry !== ".cache") run("cp", ["-al", path.join(repositoryRoot, "node_modules", entry), path.join(historicalNodeModulesDirectory, entry)], {cwd: historicalSourceDirectory});
+        }
+        // The Studio-components project predates the source mapper that its
+        // package-name import needs.  Add that resolver only to this
+        // disposable checkout, pointing at this exact detached revision.
+        const historicalJestConfigPath = path.join(historicalSourceDirectory, "jest.config.mjs");
+        const historicalJestConfig = readFileSync(historicalJestConfigPath, "utf-8");
+        const studioMapperDeclaration = "const studioClientComponentsModuleNameMapper = {";
+        if (!historicalJestConfig.includes(studioMapperDeclaration)) throw new Error("Published PC-14 Studio resolver declaration is unavailable.");
+        writeFileSync(historicalJestConfigPath, historicalJestConfig.replace(studioMapperDeclaration, `${studioMapperDeclaration}\n    "^pokie$": "<rootDir>/src/index.ts",`));
+        // --write only updates the disposable checkout.  The parent retains
+        // ownership of the immutable evidence comparison, so it can report
+        // the first byte and identity provenance without weakening the raw
+        // result bytes emitted by the published driver.
+        run(process.execPath, [path.join(historicalSourceDirectory, "scripts", "generate-pc14-interoperability-evidence.mjs"), "--write"], {
+            cwd: historicalSourceDirectory,
+            env: {...process.env, PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"},
+        });
         for (const file of committedFiles) {
-            const fresh = readFileSync(path.join(runDirectory, file));
+            const fresh = readFileSync(path.join(historicalSourceDirectory, "docs", "evidence", "phase7-product-coherence", "pc-14-artifact-torture", file));
             const committed = readFileSync(path.join(evidenceDirectory, file));
             assertExactPc14Evidence(file, fresh, committed);
         }
     } finally {
-        rmSync(runDirectory, {recursive: true, force: true});
+        if (worktreeAdded) git(["worktree", "remove", "--force", historicalSourceDirectory]);
+        rmSync(worktreeParentDirectory, {recursive: true, force: true});
     }
 }
 

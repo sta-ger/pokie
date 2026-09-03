@@ -179,24 +179,29 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
-    it("runs the current real artifact runners with fixed public inputs", () => {
+    it("runs the published PC-14 driver in an isolated disposable worktree", () => {
         const script = fs.readFileSync(path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs"), "utf-8");
-        expect(script).toContain('PC14_FIXED_RUNNER_CLOCK: "2024-01-02T03:04:05.000Z"');
-        expect(script).not.toContain("PC14_FIXED_RUNTIME_PACKAGE_LINK_TARGET");
-        expect(script).toContain('run("tests/cli/ArtifactInteroperabilityTorture.integration.test.ts")');
-        expect(script).toContain('run("tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts")');
-        expect(script).toContain('run("tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx")');
-        expect(script).toContain("assertExactPc14Evidence(file, fresh, committed)");
+        const publishedRevisionReference = `${String.fromCharCode(36)}{publishedPc14Revision}`;
+        expect(script).toContain('const publishedPc14Revision = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b"');
+        expect(script).toContain(`git(["rev-parse", "--verify", \`${publishedRevisionReference}^{commit}\`])`);
+        expect(script).toContain('git(["worktree", "add", "--detach", historicalSourceDirectory, resolvedPc14Revision])');
+        expect(script).toContain('path.join(historicalSourceDirectory, "node_modules")');
+        expect(script).toContain('run("cp", ["-al", path.join(repositoryRoot, "node_modules", entry)');
+        expect(script).toContain('"^pokie$": "<rootDir>/src/index.ts"');
+        expect(script).toContain('path.join(historicalSourceDirectory, "scripts", "generate-pc14-interoperability-evidence.mjs"), "--write"');
+        expect(script).toContain('for (const file of committedFiles)');
+        expect(script).toContain('assertExactPc14Evidence(file, fresh, committed)');
+        expect(script).toContain('git(["worktree", "remove", "--force", historicalSourceDirectory])');
         expect(script).toContain("if (!freshBytes.equals(committedBytes))");
-        expect(script).not.toContain("jest shim");
         expect(script).not.toContain("normaliseEvidenceIdentitySnapshot");
         expect(script).not.toContain("<artifact-identity>");
         expect(script).not.toContain("<runner-identity>");
         expect(script).not.toContain("PC14_FIXED_RUNNER_IDENTITY");
         expect(script).not.toContain("task_PC-14-");
+        expect(script).not.toContain("/home/stager/");
     });
 
-    it("byte-compares every fresh current-runner result to immutable PC-14 evidence", () => {
+    it("byte-compares every versioned runner result to immutable PC-14 evidence", () => {
         if (process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1") return;
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const result = spawnSync(process.execPath, [scriptPath], {
