@@ -1,6 +1,9 @@
 import fs from "fs";
 import crypto from "crypto";
+import os from "os";
 import path from "path";
+import {spawnSync} from "child_process";
+import {pathToFileURL} from "url";
 import {
     ArtifactConversionPlanner,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
@@ -110,6 +113,33 @@ type InteroperabilityResult = {
 };
 
 const evidencePath = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-14-artifact-torture/interoperability-result.json");
+// The clean process runs the three real-artifact suites serially. Its budget
+// covers their measured constrained-worker workload; leave a larger parent
+// deadline so Jest can collect the child process's terminal comparison.
+const cleanProcessRegenerationTimeout = 420000;
+const cleanProcessContractTimeout = 450000;
+
+function exactComparisonResult(scriptPath: string, resultFile: string, freshBytes: Buffer, committedBytes: Buffer) {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-exact-comparison-"));
+    const freshPath = path.join(directory, "fresh.json");
+    const committedPath = path.join(directory, "committed.json");
+    fs.writeFileSync(freshPath, freshBytes);
+    fs.writeFileSync(committedPath, committedBytes);
+    const program = [
+        `import {assertExactPc14Evidence} from ${JSON.stringify(pathToFileURL(scriptPath).href)};`,
+        'import fs from "node:fs";',
+        "const [freshPath, committedPath] = process.argv.slice(1);",
+        "const fresh = fs.readFileSync(freshPath);",
+        "const committed = fs.readFileSync(committedPath);",
+        `try { assertExactPc14Evidence(${JSON.stringify(resultFile)}, fresh, committed); }`,
+        "catch (error) { process.stderr.write(error instanceof Error ? error.message : String(error)); process.exitCode = 1; }",
+    ].join("\n");
+    try {
+        return spawnSync(process.execPath, ["--input-type=module", "--eval", program, freshPath, committedPath], {encoding: "utf-8"});
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+}
 
 function project(type: PokieProject["type"]): PokieProject {
     return {type, rootPath: `/artifacts/${type}`, provenance: "torture-contract", capabilities: PROJECT_TYPE_CAPABILITIES[type]} as PokieProject;
@@ -140,6 +170,96 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             expect(emitted.rows).toHaveLength(input.rows);
             expect(emitted.scenario_results).toHaveLength(input.scenarios);
         }
+    });
+
+    it("has a reproducible runner-owned regeneration entry point", () => {
+        const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
+        const packageJson = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf-8")) as {readonly scripts: Record<string, string>};
+        expect(packageJson.scripts["evidence:pc14-interoperability"]).toBe("node scripts/generate-pc14-interoperability-evidence.mjs");
+        expect(fs.existsSync(scriptPath)).toBe(true);
+    }, 120000);
+
+    it("uses the published PC-14 driver with its isolated fixed runner inputs", () => {
+        const script = fs.readFileSync(path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs"), "utf-8");
+        expect(script).toContain('const publishedPc14Revision = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b"');
+        expect(script).toContain('git(["worktree", "add", "--detach", historicalSourceDirectory, resolvedPc14Revision])');
+        expect(script).toContain('"scripts", "generate-pc14-interoperability-evidence.mjs"');
+        expect(script).toContain('PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"');
+        expect(script).toContain('for (const file of committedFiles)');
+        expect(script).toContain('assertExactPc14Evidence(file, fresh, committed)');
+        expect(script).toContain("if (!freshBytes.equals(committedBytes))");
+        expect(script).not.toContain("normaliseEvidenceIdentitySnapshot");
+        expect(script).not.toContain("<artifact-identity>");
+        expect(script).not.toContain("<runner-identity>");
+    });
+
+    it("byte-compares every versioned runner result to immutable PC-14 evidence", () => {
+        if (process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1") return;
+        const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
+        const result = spawnSync(process.execPath, [scriptPath], {
+            cwd: process.cwd(),
+            env: {...process.env, PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"},
+            encoding: "utf-8",
+            timeout: cleanProcessRegenerationTimeout,
+        });
+        expect(result.error).toBeUndefined();
+        const output = `${result.stdout}\n${result.stderr}`;
+        if (result.status !== 0) throw new Error(output);
+        expect(output).toContain("PASS tests/cli/ArtifactInteroperabilityTorture.integration.test.ts");
+        expect(output).toContain("PASS tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts");
+        expect(output).toContain("PASS tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx");
+        expect(output).not.toContain("PC-14 evidence is not reproducible");
+    }, cleanProcessContractTimeout);
+
+    it("retains the committed generated-package source identity for every matrix tsPackage consumer", () => {
+        const cliResultPath = path.join(path.dirname(evidencePath), "cli-real-artifact-result.json");
+        const cliResult = JSON.parse(fs.readFileSync(cliResultPath, "utf-8")) as InteroperabilityResult;
+        const matrixPackageIdentity = "sha256:b38ac173331260829e56ed9c4f7073b36aaa640652ff40a307116f71e520106b";
+        const matrixPackageRows = cliResult.rows.filter((row) => row.source_path === "run-artifacts/matrix-package");
+
+        expect(matrixPackageRows.map((row) => row.id)).toEqual(expect.arrayContaining([
+            "matrix-tsPackage-blueprint-build",
+            "matrix-tsPackage-outcomeLibrary-build",
+            "matrix-tsPackage-stakeAdapter-build",
+            "package-generate-raw-outcomes",
+            "package-replay",
+            "package-simulate",
+        ]));
+        expect(matrixPackageRows).toEqual(expect.arrayContaining([
+            expect.objectContaining({id: "matrix-tsPackage-blueprint-build", "source_identity": matrixPackageIdentity}),
+        ]));
+        expect(matrixPackageRows.every((row) => row.source_identity === matrixPackageIdentity)).toBe(true);
+    });
+
+    it("rejects identity and runner-input drift instead of treating provenance as cosmetic", () => {
+        const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
+        const cliResultPath = path.join(path.dirname(evidencePath), "cli-real-artifact-result.json");
+        const cliResultBytes = fs.readFileSync(cliResultPath);
+        const cliResult = JSON.parse(cliResultBytes.toString("utf-8")) as InteroperabilityResult;
+        const sourceIdentityDrift = structuredClone(cliResult);
+        const producedIdentityDrift = structuredClone(cliResult);
+        const mergedResultBytes = fs.readFileSync(evidencePath);
+        const mergedResult = JSON.parse(mergedResultBytes.toString("utf-8")) as InteroperabilityResult;
+        const runnerInputDrift = structuredClone(mergedResult);
+
+        const sourceRow = sourceIdentityDrift.rows.find((row) => row.id === "matrix-tsPackage-blueprint-build");
+        const producedRow = producedIdentityDrift.rows.find((row) => row.id === "blueprint-build-package");
+        expect(sourceRow).toBeDefined();
+        expect(producedRow).toBeDefined();
+        (sourceRow as unknown as Record<string, string>)["source_identity"] = "sha256:changed-source-identity";
+        (producedRow as unknown as Record<string, string | null>)["produced_identity"] = "sha256:changed-produced-identity";
+        (runnerInputDrift.runner_inputs[0] as {sha256: string}).sha256 = "sha256:changed-runner-input";
+
+        const sourceIdentityResult = exactComparisonResult(scriptPath, "cli-real-artifact-result.json", Buffer.from(`${JSON.stringify(sourceIdentityDrift, null, 2)}\n`), cliResultBytes);
+        const producedIdentityResult = exactComparisonResult(scriptPath, "cli-real-artifact-result.json", Buffer.from(`${JSON.stringify(producedIdentityDrift, null, 2)}\n`), cliResultBytes);
+        const runnerInputResult = exactComparisonResult(scriptPath, "interoperability-result.json", Buffer.from(`${JSON.stringify(runnerInputDrift, null, 2)}\n`), mergedResultBytes);
+
+        expect(sourceIdentityResult.status).toBe(1);
+        expect(sourceIdentityResult.stderr).toMatch(/json_path=\$\.rows\[.*\]\.source_identity/);
+        expect(producedIdentityResult.status).toBe(1);
+        expect(producedIdentityResult.stderr).toMatch(/json_path=\$\.rows\[.*\]\.produced_identity/);
+        expect(runnerInputResult.status).toBe(1);
+        expect(runnerInputResult.stderr).toMatch(/json_path=\$\.runner_inputs\[0\]\.sha256/);
     });
 
     it("injects the fixed evidence clock into real writers instead of only normalising saved hashes", () => {
