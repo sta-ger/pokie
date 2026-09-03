@@ -231,9 +231,10 @@ function normalizedDocumentationExclusionPattern(pattern) {
     const normalized = pattern.replaceAll("\\", "/");
     const segments = normalized.split("/");
     // Exclusions filter the already bounded candidate list; unlike includes,
-    // they never select a directory to traverse. Historical-document globs
-    // are therefore safe and remain part of the configured public contract.
-    if (path.isAbsolute(pattern) || segments.some((segment) => segment === ".." || NON_DOCUMENT_TREE_SEGMENTS.has(segment))) fail(`documentation exclusion must not name an absolute, dependency, build, cache, or temporary path: ${pattern}`);
+    // they never select a directory to traverse. They may therefore name
+    // historical, dependency, build, cache, or temporary paths to filter
+    // without making any of those trees documentation candidates.
+    if (path.isAbsolute(pattern) || segments.includes("..")) fail(`documentation exclusion must not name an absolute or parent path: ${pattern}`);
     return normalized;
 }
 

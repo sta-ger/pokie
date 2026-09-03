@@ -210,7 +210,9 @@ test("allows historical-document exclusions without expanding bounded candidates
         // Make its directory unreadable to prove filtering occurs before inspecting the exact
         // excluded candidate.
         map.documentationScope.include = ["docs.md", "docs/*.md", "docs/phase6-archive/legacy.md"];
-        map.documentationScope.exclude = ["docs/phase6-*/**"];
+        // Filters may name unmaintained trees. They remain filters: the bounded include list
+        // above is still the only source of filesystem candidates.
+        map.documentationScope.exclude = ["docs/phase6-*/**", "node_modules/**", "build/**", "cache/**", "tmp/**", "temp/**"];
         await writeFile(coverage, JSON.stringify(map));
         await chmod(historicalDirectory, 0o000);
         const result = run(cli, coverage, path.join(directory, "evidence"));
