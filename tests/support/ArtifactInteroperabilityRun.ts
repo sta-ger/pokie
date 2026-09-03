@@ -4,12 +4,6 @@ import path from "path";
 import {inflateRawSync} from "zlib";
 
 /**
- * Immutable PC-14 runner input. It is supplied only to the dedicated
- * evidence registry; production builders keep their caller-provided root.
- */
-export const PC14_RUNTIME_PACKAGE_LINK_TARGET = "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-14-20260830075634";
-
-/**
  * Makes the real artifact writers deterministic during the dedicated PC-14
  * evidence refresh.  This is deliberately an opt-in test seam: production
  * writers continue to receive the host clock, while the refresh process

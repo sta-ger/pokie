@@ -187,16 +187,6 @@ export class ArtifactBuilderRegistry {
         return this;
     }
 
-    /** Applies an explicit generated-package link target to this registry's
-     * TypeScript-package builder only. */
-    public withRuntimePackageLinkTarget(runtimePackageLinkTarget: string): this {
-        const tsPackageBuilder = this.builders.get("tsPackage");
-        if (tsPackageBuilder instanceof TsPackageArtifactBuilder) {
-            tsPackageBuilder.withRuntimePackageLinkTarget(runtimePackageLinkTarget);
-        }
-        return this;
-    }
-
     public listTargets(): readonly ArtifactTargetType[] {
         // A caller may inject a deliberately small builder set for an embedded use or a focused test.
         // Do not let that make the registry advertise a target it cannot actually produce: the default
