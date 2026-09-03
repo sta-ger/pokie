@@ -2,7 +2,6 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-    ArtifactBuilderRegistry,
     describeUnavailableArtifactOperation,
     FileSessionRepository,
     ManagedOutcomeProjectService,
@@ -26,7 +25,7 @@ import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {GamePackagePreparer} from "../../../cli/prepare/GamePackagePreparer.js";
 import {PREPARATION_STATE_FILE} from "../../../cli/prepare/PreparationStateStore.js";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
-import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, PC14_RUNTIME_PACKAGE_LINK_TARGET} from "../../support/ArtifactInteroperabilityRun.js";
+import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock} from "../../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
 
@@ -203,12 +202,7 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             await server.stop();
         }
 
-        const build = new StudioArtifactBuildService(
-            POKIE_VERSION,
-            new ArtifactBuilderRegistry(POKIE_VERSION)
-                .withRuntimePackageRoot(process.cwd())
-                .withRuntimePackageLinkTarget(PC14_RUNTIME_PACKAGE_LINK_TARGET),
-        );
+        const build = new StudioArtifactBuildService(POKIE_VERSION, undefined, undefined, undefined, undefined, process.cwd());
         await expect(build.build(blueprintPath, "tsPackage", packagePath)).resolves.toMatchObject({status: "ok", outputPath: packagePath});
         evidence.record({
             id: "studio-blueprint-build", artifactKind: "tsPackage", operation: "build", registryOperation: "created_by", sourcePath: blueprintPath,
