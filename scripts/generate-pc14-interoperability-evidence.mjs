@@ -10,6 +10,12 @@ import {spawnSync} from "node:child_process";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publishedPc14Revision = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b";
+// The published runner generated packages with its checkout-local runtime
+// link. That locator is part of the immutable package identity, so replay it
+// as a runner input while executing the historical source in its disposable
+// checkout. It is not a current-runtime dependency and is never applied to
+// production builders.
+const publishedPc14RuntimePackageLinkTarget = "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-14-20260830075634";
 const evidenceDirectory = path.join(repositoryRoot, "docs", "evidence", "phase7-product-coherence", "pc-14-artifact-torture");
 const committedFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"];
 const maximumProvenanceTextLength = 240;
@@ -25,6 +31,18 @@ function run(command, args, options) {
     const result = spawnSync(command, args, {stdio: "inherit", ...options});
     if (result.error !== undefined) throw result.error;
     if (result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed with status ${result.status ?? 1}.`);
+}
+
+function installPublishedPc14RuntimeLinkInput(historicalSourceDirectory) {
+    const builderPath = path.join(historicalSourceDirectory, "src", "project", "TsPackageArtifactBuilder.ts");
+    const builder = readFileSync(builderPath, "utf-8");
+    const historicalLink = "fs.symlinkSync(path.resolve(pokiePackageRoot), path.join(nodeModules, \"pokie\"), \"junction\");";
+    if (!builder.includes(historicalLink)) throw new Error("Published PC-14 runtime-link writer is unavailable.");
+    // This is a local, single-purpose input injection into the detached
+    // revision. The actual CLI, Studio API, and UI runners still execute the
+    // published implementation; only its recorded historical link locator is
+    // made reproducible outside the retired PC-14 worktree path.
+    writeFileSync(builderPath, builder.replace(historicalLink, `fs.symlinkSync(${JSON.stringify(publishedPc14RuntimePackageLinkTarget)}, path.join(nodeModules, "pokie"), "junction");`));
 }
 
 function firstDifferentByte(fresh, committed) {
@@ -126,6 +144,7 @@ function generatePc14InteroperabilityEvidence() {
         if (git(["-C", historicalSourceDirectory, "rev-parse", "HEAD"]) !== resolvedPc14Revision) {
             throw new Error(`PC-14 historical worktree did not resolve to ${resolvedPc14Revision}.`);
         }
+        installPublishedPc14RuntimeLinkInput(historicalSourceDirectory);
 
         // The detached source must resolve its dependencies locally, never
         // through this PC-15 checkout. Hard links keep setup bounded while
