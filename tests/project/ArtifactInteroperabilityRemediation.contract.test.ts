@@ -162,18 +162,15 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         const output = `${result.stdout}\n${result.stderr}`;
         expect(result.status === 0 ? "" : output.slice(-5000)).toBe("");
         expect(result.status).toBe(0);
-        expect(output).toContain("PC-14 verifying historical CLI runner.");
-        expect(output).toContain("PC-14 verifying historical Studio API runner.");
-        expect(output).toContain("PC-14 verifying historical Studio UI runner after fresh CLI and Studio API outputs.");
+        expect(output).toContain("PC-14 verifying historical CLI, Studio API, and Studio UI runners in published order.");
         const cliRunner = output.indexOf("ArtifactInteroperabilityTorture.integration.test.ts");
         const studioApiRunner = output.indexOf("StudioArtifactInteroperabilityTorture.integration.test.ts");
         const studioUiRunner = output.indexOf("Pc14StudioUiInteroperability.test.tsx");
         expect(cliRunner).toBeGreaterThanOrEqual(0);
         expect(studioApiRunner).toBeGreaterThan(cliRunner);
-        // The UI runner writes the persisted merged result, so it must not
-        // run until both ledgers it consumes have been freshly emitted.
+        // The published driver emits its sole merged result in the Studio UI
+        // runner, after the CLI and Studio API ledgers have completed.
         expect(studioUiRunner).toBeGreaterThan(studioApiRunner);
-        expect(output.indexOf("PC-14 verifying historical Studio UI runner after fresh CLI and Studio API outputs.")).toBeGreaterThan(studioApiRunner);
         expect(output).toContain("PASS PC-14 historical runners reproduced immutable evidence from 2288476da74448ddcd2e3bfb1d5a29f6bde4a75b");
     }, 360000);
 

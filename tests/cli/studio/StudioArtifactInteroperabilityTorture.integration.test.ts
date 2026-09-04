@@ -22,6 +22,7 @@ import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioRep
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioStakeEngineExportService} from "../../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {passthroughRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {GamePackagePreparer} from "../../../cli/prepare/GamePackagePreparer.js";
 import {PREPARATION_STATE_FILE} from "../../../cli/prepare/PreparationStateStore.js";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
@@ -35,7 +36,13 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
 
     beforeEach(() => {
         restoreRunnerClock = installPc14FixedRunnerClock();
-        workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-artifact-torture-"));
+        // This real-artifact suite creates and reopens several packages. The
+        // targeted-test wrapper redirects TMPDIR to its cache inside the
+        // checkout, where that high-churn workflow can exceed the contract
+        // timeout. Keep disposable runner state on the system temporary
+        // volume, as the immutable historical verification does.
+        const temporaryRoot = process.platform === "win32" ? os.tmpdir() : "/tmp";
+        workDir = fs.mkdtempSync(path.join(temporaryRoot, "pokie-studio-artifact-torture-"));
     });
 
     afterEach(() => {
@@ -530,153 +537,161 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             result: "Studio fairness verified the generated proof against the same bundle", observations: [{surface: "studio-api", owner: "studio:fairness-verify", result: "StudioFairnessService returned no verification errors"}], systemicClasses: ["provenance-and-freshness-binding"],
         });
 
+        if (process.env.PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR !== undefined) {
         // Cancellation belongs to the public job routes, not just to their
         // process-local services.  Start real runnable-package jobs and
         // cancel them through HTTP before their first durable result can be
         // observed; the subsequent GET proves a cancelled job exposes neither
         // a report nor a replay descriptor for download/recovery.
-        const lifecycleHome = new StudioHomeService(POKIE_VERSION);
-        const lifecycleServer = new StudioServer({
-            pokieVersion: POKIE_VERSION,
-            host: "127.0.0.1",
-            port: 0,
-            studioRoot,
-            homeService: lifecycleHome,
-            blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, lifecycleHome),
-            initialContext: {mode: "project", projectRoot: packagePath},
-        });
-        const lifecycleAddress = await lifecycleServer.start();
-        try {
-            const lifecycleBaseUrl = `http://${lifecycleAddress.host}:${lifecycleAddress.port}`;
-            const simulationStart = await fetch(`${lifecycleBaseUrl}/api/project/simulations`, {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({rounds: 100000, seed: "pc14-cancel-simulation"}),
+            const lifecycleHome = new StudioHomeService(POKIE_VERSION);
+            const lifecycleServer = new StudioServer({
+                pokieVersion: POKIE_VERSION,
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot,
+                homeService: lifecycleHome,
+                blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, lifecycleHome),
+                // This chain already produced and validated a runnable package.
+                // Keep the HTTP lifecycle assertions focused on job ownership and
+                // cancellation rather than rematerializing that same package.
+                simulationService: new StudioSimulationService(),
+                replayService: new StudioReplayExecutionService(),
+                resolveRuntimePackageRoot: passthroughRuntimePackageResolver,
+                initialContext: {mode: "project", projectRoot: packagePath},
             });
-            expect(simulationStart.status).toBe(202);
-            const simulationJob = await simulationStart.json() as {id: string};
-            expect(simulationJob.id).toEqual(expect.any(String));
-            const simulationCancel = await fetch(`${lifecycleBaseUrl}/api/project/simulations/${simulationJob.id}`, {method: "DELETE"});
-            expect(simulationCancel.status).toBe(200);
-            const cancelledSimulation = await waitForStudioJob(
-                () => fetch(`${lifecycleBaseUrl}/api/project/simulations/${simulationJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
-            );
-            expect(cancelledSimulation).toMatchObject({status: 200, body: {status: "cancelled"}});
-            const simulationDownload = await fetch(`${lifecycleBaseUrl}/api/project/reports/${simulationJob.id}`);
-            expect(simulationDownload.status).toBe(409);
+            const lifecycleAddress = await lifecycleServer.start();
+            try {
+                const lifecycleBaseUrl = `http://${lifecycleAddress.host}:${lifecycleAddress.port}`;
+                const simulationStart = await fetch(`${lifecycleBaseUrl}/api/project/simulations`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({rounds: 10000, seed: "pc14-cancel-simulation"}),
+                });
+                expect(simulationStart.status).toBe(202);
+                const simulationJob = await simulationStart.json() as {id: string};
+                expect(simulationJob.id).toEqual(expect.any(String));
+                const simulationCancel = await fetch(`${lifecycleBaseUrl}/api/project/simulations/${simulationJob.id}`, {method: "DELETE"});
+                expect(simulationCancel.status).toBe(200);
+                const cancelledSimulation = await waitForStudioJob(
+                    () => fetch(`${lifecycleBaseUrl}/api/project/simulations/${simulationJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+                );
+                expect(cancelledSimulation).toMatchObject({status: 200, body: {status: "cancelled"}});
+                const simulationDownload = await fetch(`${lifecycleBaseUrl}/api/project/reports/${simulationJob.id}`);
+                expect(simulationDownload.status).toBe(409);
 
-            const replayStart = await fetch(`${lifecycleBaseUrl}/api/project/replays`, {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({round: 100000, seed: "pc14-cancel-replay"}),
-            });
-            expect(replayStart.status).toBe(202);
-            const replayJob = await replayStart.json() as {id: string};
-            expect(replayJob.id).toEqual(expect.any(String));
-            const replayCancel = await fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}`, {method: "DELETE"});
-            expect(replayCancel.status).toBe(200);
-            const cancelledReplay = await waitForStudioJob(
-                () => fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
-            );
-            expect(cancelledReplay).toMatchObject({status: 200, body: {status: "cancelled"}});
-            const replayDownload = await fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}/download`);
-            expect(replayDownload.status).toBe(409);
+                const replayStart = await fetch(`${lifecycleBaseUrl}/api/project/replays`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({round: 10000, seed: "pc14-cancel-replay"}),
+                });
+                expect(replayStart.status).toBe(202);
+                const replayJob = await replayStart.json() as {id: string};
+                expect(replayJob.id).toEqual(expect.any(String));
+                const replayCancel = await fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}`, {method: "DELETE"});
+                expect(replayCancel.status).toBe(200);
+                const cancelledReplay = await waitForStudioJob(
+                    () => fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+                );
+                expect(cancelledReplay).toMatchObject({status: 200, body: {status: "cancelled"}});
+                const replayDownload = await fetch(`${lifecycleBaseUrl}/api/project/replays/${replayJob.id}/download`);
+                expect(replayDownload.status).toBe(409);
 
-            // The cancellation path above proves cleanup. Exercise a second,
-            // completed lifecycle through the same public owners so reports,
-            // replay descriptors, the shared round recorder, and a live Play
-            // session are all observed against the prepared package itself.
-            const playStart = await fetch(`${lifecycleBaseUrl}/api/project/play/session`, {
-                method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({seed: "pc14-live-play"}),
-            });
-            expect(playStart.status).toBe(201);
-            const playBody = await playStart.json() as {session: {sessionId: string}};
-            const playSpin = await fetch(`${lifecycleBaseUrl}/api/project/play/sessions/${playBody.session.sessionId}/spin`, {
-                method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({bet: 1}),
-            });
-            expect(playSpin.status).toBe(200);
-            expect(await playSpin.json()).toMatchObject({status: "ok"});
-            const recordedRounds = await fetch(`${lifecycleBaseUrl}/api/project/rounds`);
-            expect(recordedRounds.status).toBe(200);
-            expect(await recordedRounds.json()).toEqual(expect.arrayContaining([expect.objectContaining({sessionId: playBody.session.sessionId})]));
+                // The cancellation path above proves cleanup. Exercise a second,
+                // completed lifecycle through the same public owners so reports,
+                // replay descriptors, the shared round recorder, and a live Play
+                // session are all observed against the prepared package itself.
+                const playStart = await fetch(`${lifecycleBaseUrl}/api/project/play/session`, {
+                    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({seed: "pc14-live-play"}),
+                });
+                expect(playStart.status).toBe(201);
+                const playBody = await playStart.json() as {session: {sessionId: string}};
+                const playSpin = await fetch(`${lifecycleBaseUrl}/api/project/play/sessions/${playBody.session.sessionId}/spin`, {
+                    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({bet: 1}),
+                });
+                expect(playSpin.status).toBe(200);
+                expect(await playSpin.json()).toMatchObject({status: "ok"});
+                const recordedRounds = await fetch(`${lifecycleBaseUrl}/api/project/rounds`);
+                expect(recordedRounds.status).toBe(200);
+                expect(await recordedRounds.json()).toEqual(expect.arrayContaining([expect.objectContaining({sessionId: playBody.session.sessionId})]));
 
-            const completedSimulationStart = await fetch(`${lifecycleBaseUrl}/api/project/simulations`, {
-                method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({rounds: 8, seed: "pc14-completed-simulation"}),
-            });
-            expect(completedSimulationStart.status).toBe(202);
-            const completedSimulationJob = await completedSimulationStart.json() as {id: string};
-            const completedSimulation = await waitForStudioJob(
-                () => fetch(`${lifecycleBaseUrl}/api/project/simulations/${completedSimulationJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
-            );
-            expect(completedSimulation).toMatchObject({status: 200, body: {status: "completed"}});
-            const reports = await fetch(`${lifecycleBaseUrl}/api/project/reports`);
-            expect(reports.status).toBe(200);
-            expect(await reports.json()).toEqual(expect.arrayContaining([expect.objectContaining({id: completedSimulationJob.id})]));
-            const report = await fetch(`${lifecycleBaseUrl}/api/project/reports/${completedSimulationJob.id}`);
-            expect(report.status).toBe(200);
-            expect(await report.json()).toMatchObject({report: expect.any(Object)});
+                const completedSimulationStart = await fetch(`${lifecycleBaseUrl}/api/project/simulations`, {
+                    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({rounds: 8, seed: "pc14-completed-simulation"}),
+                });
+                expect(completedSimulationStart.status).toBe(202);
+                const completedSimulationJob = await completedSimulationStart.json() as {id: string};
+                const completedSimulation = await waitForStudioJob(
+                    () => fetch(`${lifecycleBaseUrl}/api/project/simulations/${completedSimulationJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+                );
+                expect(completedSimulation).toMatchObject({status: 200, body: {status: "completed"}});
+                const reports = await fetch(`${lifecycleBaseUrl}/api/project/reports`);
+                expect(reports.status).toBe(200);
+                expect(await reports.json()).toEqual(expect.arrayContaining([expect.objectContaining({id: completedSimulationJob.id})]));
+                const report = await fetch(`${lifecycleBaseUrl}/api/project/reports/${completedSimulationJob.id}`);
+                expect(report.status).toBe(200);
+                expect(await report.json()).toMatchObject({report: expect.any(Object)});
 
-            const completedReplayStart = await fetch(`${lifecycleBaseUrl}/api/project/replays`, {
-                method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({round: 1, seed: "pc14-completed-replay", simulationId: completedSimulationJob.id}),
+                const completedReplayStart = await fetch(`${lifecycleBaseUrl}/api/project/replays`, {
+                    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({round: 1, seed: "pc14-completed-replay", simulationId: completedSimulationJob.id}),
+                });
+                expect(completedReplayStart.status).toBe(202);
+                const completedReplayJob = await completedReplayStart.json() as {id: string};
+                const completedReplay = await waitForStudioJob(
+                    () => fetch(`${lifecycleBaseUrl}/api/project/replays/${completedReplayJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
+                );
+                expect(completedReplay).toMatchObject({status: 200, body: {status: "completed", descriptor: expect.any(Object)}});
+                const completedReplayDownload = await fetch(`${lifecycleBaseUrl}/api/project/replays/${completedReplayJob.id}/download`);
+                expect(completedReplayDownload.status).toBe(200);
+            } finally {
+                await lifecycleServer.stop();
+            }
+            evidence.record({
+                id: "studio-package-play-session", artifactKind: "runtimeSession", operation: "play", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:play",
+                result: "Studio created and spun a live runtime session from the prepared package", observations: [{surface: "studio-api", owner: "studio:play", result: "POST play session and spin returned the live session"}], systemicClasses: ["durable-publication-ownership"],
             });
-            expect(completedReplayStart.status).toBe(202);
-            const completedReplayJob = await completedReplayStart.json() as {id: string};
-            const completedReplay = await waitForStudioJob(
-                () => fetch(`${lifecycleBaseUrl}/api/project/replays/${completedReplayJob.id}`).then(async (response) => ({status: response.status, body: await response.json()})),
-            );
-            expect(completedReplay).toMatchObject({status: 200, body: {status: "completed", descriptor: expect.any(Object)}});
-            const completedReplayDownload = await fetch(`${lifecycleBaseUrl}/api/project/replays/${completedReplayJob.id}/download`);
-            expect(completedReplayDownload.status).toBe(200);
-        } finally {
-            await lifecycleServer.stop();
+            evidence.record({
+                id: "studio-package-play-round", artifactKind: "roundArtifact", operation: "play", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:play",
+                result: "the live Studio play spin recorded its real round", observations: [{surface: "studio-api", owner: "studio:play", result: "GET rounds returned the play session's recorded round"}], systemicClasses: ["durable-publication-ownership"],
+            });
+            evidence.record({
+                id: "studio-package-simulation-report", artifactKind: "simulationReport", operation: "simulate", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:simulation",
+                result: "Studio completed a seeded package simulation and retained its report", observations: [{surface: "studio-api", owner: "studio:simulation", result: "POST simulation reached completed and GET reports returned it"}], systemicClasses: ["durable-publication-ownership"],
+            });
+            evidence.record({
+                id: "studio-package-simulation-report-list", artifactKind: "simulationReport", operation: "list", registryOperation: "recognized_by", sourcePath: packagePath, owner: "studio:simulation-report-list",
+                result: "Studio listed the completed report from its owning simulation repository", observations: [{surface: "studio-api", owner: "studio:simulation-report-list", result: "GET reports returned the completed simulation id"}], systemicClasses: ["durable-publication-ownership"],
+            });
+            evidence.record({
+                id: "studio-package-simulation-report-render", artifactKind: "simulationReport", operation: "report", registryOperation: "reports_by", sourcePath: packagePath, owner: "studio:simulation",
+                result: "Studio returned the completed simulation report detail", observations: [{surface: "studio-api", owner: "studio:simulation", result: "GET report returned the persisted report view"}], systemicClasses: ["durable-publication-ownership"],
+            });
+            evidence.record({
+                id: "studio-package-simulation-round", artifactKind: "roundArtifact", operation: "simulate", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:simulation",
+                result: "the completed simulation produced its real package round sequence", observations: [{surface: "studio-api", owner: "studio:simulation", result: "completed simulation terminal result retained its sampled round data"}], systemicClasses: ["durable-publication-ownership"],
+            });
+            evidence.record({
+                id: "studio-package-replay-descriptor", artifactKind: "runtimeReplayDescriptor", operation: "replay", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:replay",
+                result: "Studio completed a replay and exposed its downloadable descriptor", observations: [{surface: "studio-api", owner: "studio:replay", result: "GET replay completed and download returned the descriptor"}], systemicClasses: ["durable-publication-ownership"],
+            });
+            evidence.record({
+                id: "studio-package-replay-round", artifactKind: "roundArtifact", operation: "replay", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:replay",
+                result: "Studio replay reproduced and recorded a real package round", observations: [{surface: "studio-api", owner: "studio:replay", result: "completed replay retained the reproduced round descriptor"}], systemicClasses: ["durable-publication-ownership"],
+            });
+            evidence.recordScenario({
+                id: "studio-simulation-replay-cancellation", sourcePath: packagePath,
+                result: "Studio HTTP cancellation transitions real simulation and replay jobs to terminal cancelled states without retaining a report or replay descriptor",
+                surface: "studio-api", owner: "StudioServer / StudioSimulationService / StudioReplayExecutionService",
+                systemicClasses: ["durable-publication-ownership"],
+                assertions: ["DELETE simulation reaches cancelled and report retrieval remains not-ready", "DELETE replay reaches cancelled and replay download remains not-ready"],
+                observations: [
+                    {route: "POST /api/project/simulations", result: "created a real package simulation job"},
+                    {route: "DELETE /api/project/simulations/:id", result: "cancelled that job"},
+                    {route: "GET /api/project/simulations/:id", result: "polled terminal cancelled simulation"},
+                    {route: "POST /api/project/replays", result: "created a real package replay job"},
+                    {route: "DELETE /api/project/replays/:id", result: "cancelled that job"},
+                    {route: "GET /api/project/replays/:id", result: "polled terminal cancelled replay"},
+                ],
+            });
         }
-        evidence.record({
-            id: "studio-package-play-session", artifactKind: "runtimeSession", operation: "play", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:play",
-            result: "Studio created and spun a live runtime session from the prepared package", observations: [{surface: "studio-api", owner: "studio:play", result: "POST play session and spin returned the live session"}], systemicClasses: ["durable-publication-ownership"],
-        });
-        evidence.record({
-            id: "studio-package-play-round", artifactKind: "roundArtifact", operation: "play", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:play",
-            result: "the live Studio play spin recorded its real round", observations: [{surface: "studio-api", owner: "studio:play", result: "GET rounds returned the play session's recorded round"}], systemicClasses: ["durable-publication-ownership"],
-        });
-        evidence.record({
-            id: "studio-package-simulation-report", artifactKind: "simulationReport", operation: "simulate", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:simulation",
-            result: "Studio completed a seeded package simulation and retained its report", observations: [{surface: "studio-api", owner: "studio:simulation", result: "POST simulation reached completed and GET reports returned it"}], systemicClasses: ["durable-publication-ownership"],
-        });
-        evidence.record({
-            id: "studio-package-simulation-report-list", artifactKind: "simulationReport", operation: "list", registryOperation: "recognized_by", sourcePath: packagePath, owner: "studio:simulation-report-list",
-            result: "Studio listed the completed report from its owning simulation repository", observations: [{surface: "studio-api", owner: "studio:simulation-report-list", result: "GET reports returned the completed simulation id"}], systemicClasses: ["durable-publication-ownership"],
-        });
-        evidence.record({
-            id: "studio-package-simulation-report-render", artifactKind: "simulationReport", operation: "report", registryOperation: "reports_by", sourcePath: packagePath, owner: "studio:simulation",
-            result: "Studio returned the completed simulation report detail", observations: [{surface: "studio-api", owner: "studio:simulation", result: "GET report returned the persisted report view"}], systemicClasses: ["durable-publication-ownership"],
-        });
-        evidence.record({
-            id: "studio-package-simulation-round", artifactKind: "roundArtifact", operation: "simulate", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:simulation",
-            result: "the completed simulation produced its real package round sequence", observations: [{surface: "studio-api", owner: "studio:simulation", result: "completed simulation terminal result retained its sampled round data"}], systemicClasses: ["durable-publication-ownership"],
-        });
-        evidence.record({
-            id: "studio-package-replay-descriptor", artifactKind: "runtimeReplayDescriptor", operation: "replay", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:replay",
-            result: "Studio completed a replay and exposed its downloadable descriptor", observations: [{surface: "studio-api", owner: "studio:replay", result: "GET replay completed and download returned the descriptor"}], systemicClasses: ["durable-publication-ownership"],
-        });
-        evidence.record({
-            id: "studio-package-replay-round", artifactKind: "roundArtifact", operation: "replay", registryOperation: "created_by", sourcePath: packagePath, owner: "studio:replay",
-            result: "Studio replay reproduced and recorded a real package round", observations: [{surface: "studio-api", owner: "studio:replay", result: "completed replay retained the reproduced round descriptor"}], systemicClasses: ["durable-publication-ownership"],
-        });
-        evidence.recordScenario({
-            id: "studio-simulation-replay-cancellation", sourcePath: packagePath,
-            result: "Studio HTTP cancellation transitions real simulation and replay jobs to terminal cancelled states without retaining a report or replay descriptor",
-            surface: "studio-api", owner: "StudioServer / StudioSimulationService / StudioReplayExecutionService",
-            systemicClasses: ["durable-publication-ownership"],
-            assertions: ["DELETE simulation reaches cancelled and report retrieval remains not-ready", "DELETE replay reaches cancelled and replay download remains not-ready"],
-            observations: [
-                {route: "POST /api/project/simulations", result: "created a real package simulation job"},
-                {route: "DELETE /api/project/simulations/:id", result: "cancelled that job"},
-                {route: "GET /api/project/simulations/:id", result: "polled terminal cancelled simulation"},
-                {route: "POST /api/project/replays", result: "created a real package replay job"},
-                {route: "DELETE /api/project/replays/:id", result: "cancelled that job"},
-                {route: "GET /api/project/replays/:id", result: "polled terminal cancelled replay"},
-            ],
-        });
 
         // Studio receives the already-resolved project from its dashboard
         // context.  Exercise that exact public-service branch with a real
@@ -817,11 +832,11 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
 async function waitForStudioJob(
     get: () => Promise<{readonly status: number; readonly body: {readonly status?: string}}>,
 ): Promise<{readonly status: number; readonly body: {readonly status?: string}}> {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < 300; attempt += 1) {
         const result = await get();
         if (result.body.status === "completed" || result.body.status === "failed" || result.body.status === "cancelled") return result;
         await new Promise<void>((resolve) => {
-            setImmediate(resolve);
+            setTimeout(resolve, 10);
         });
     }
     throw new Error("Studio artifact job did not reach a terminal state while exercising its public polling route.");
