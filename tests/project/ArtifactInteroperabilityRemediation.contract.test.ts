@@ -215,7 +215,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
                 `assertFreshEvidenceMatchesImmutable(${JSON.stringify(freshEvidenceDirectory)}, ${JSON.stringify(freshEvidenceDirectory)});`,
             ].join("\n")], {cwd: process.cwd(), encoding: "utf-8"});
             expect(verifier.status).toBe(1);
-            expect(`${verifier.stdout}\n${verifier.stderr}`).toContain("fresh cli-real-artifact-result.json differs byte-for-byte");
+            expect(`${verifier.stdout}\n${verifier.stderr}`).toContain("PC-14 evidence provenance is fixed");
         } finally {
             fs.rmSync(freshEvidenceDirectory, {recursive: true, force: true});
         }

@@ -20,7 +20,10 @@ function run(command, arguments_, options) {
 }
 
 /** Reject a proposed output whose raw bytes, including provenance, drift. */
-export function assertFreshEvidenceMatchesImmutable(freshEvidenceDirectory) {
+export function assertFreshEvidenceMatchesImmutable(freshEvidenceDirectory, ...provenanceSubstitutes) {
+    if (provenanceSubstitutes.length > 0) {
+        throw new Error("PC-14 evidence provenance is fixed; callers cannot substitute the immutable evidence directory.");
+    }
     for (const file of committedFiles) {
         const fresh = readFileSync(path.join(freshEvidenceDirectory, file));
         const immutable = readFileSync(path.join(evidenceDirectory, file));
