@@ -1,7 +1,9 @@
 import fs from "fs";
 import crypto from "crypto";
+import os from "os";
 import path from "path";
 import {spawnSync} from "child_process";
+import {pathToFileURL} from "url";
 import {
     ArtifactConversionPlanner,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
@@ -171,8 +173,34 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         // The published driver emits its sole merged result in the Studio UI
         // runner, after the CLI and Studio API ledgers have completed.
         expect(studioUiRunner).toBeGreaterThan(studioApiRunner);
+        expect(output).toContain("PC-14 byte-compared four fresh runner outputs with immutable evidence.");
         expect(output).toContain("PASS PC-14 historical runners reproduced immutable evidence from 2288476da74448ddcd2e3bfb1d5a29f6bde4a75b");
     }, 360000);
+
+    it("rejects fresh runner identity and provenance drift without rewriting completed evidence", async () => {
+        const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
+        const evidenceDirectory = path.dirname(evidencePath);
+        const completedEvidenceHashes = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"]
+            .map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex"));
+        const freshEvidenceDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-fresh-drift-"));
+        try {
+            fs.cpSync(evidenceDirectory, freshEvidenceDirectory, {recursive: true});
+            const freshCliPath = path.join(freshEvidenceDirectory, "cli-real-artifact-result.json");
+            const freshCli = JSON.parse(fs.readFileSync(freshCliPath, "utf-8")) as {readonly rows: Record<string, string>[]};
+            freshCli.rows[0]!["source_identity"] = "sha256:provenance-drift";
+            fs.writeFileSync(freshCliPath, `${JSON.stringify(freshCli, undefined, 2)}\n`);
+            const verifier = await import(pathToFileURL(scriptPath).href) as {
+                readonly assertFreshEvidenceMatchesImmutable: (freshDirectory: string, immutableDirectory: string) => void;
+            };
+            expect(() => verifier.assertFreshEvidenceMatchesImmutable(freshEvidenceDirectory, evidenceDirectory))
+                .toThrow("fresh cli-real-artifact-result.json differs byte-for-byte");
+            expect(["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"]
+                .map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex")))
+                .toEqual(completedEvidenceHashes);
+        } finally {
+            fs.rmSync(freshEvidenceDirectory, {recursive: true, force: true});
+        }
+    });
 
     it("rejects attempts to rewrite the completed PC-14 evidence", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");

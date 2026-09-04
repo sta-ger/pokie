@@ -11,7 +11,11 @@ import {spawnSync} from "node:child_process";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const evidenceDirectory = path.join(repositoryRoot, "docs", "evidence", "phase7-product-coherence", "pc-14-artifact-torture");
 const publishedPc14Revision = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b";
-const publishedPc14RuntimePackageLinkTarget = "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-14-20260830075634";
+// PC-14's package writer records its runtime-package symlink literally in
+// the artifact identity.  Materialise the published source at that *virtual*
+// path inside a private mount namespace; it is an identity fixture, never a
+// pre-existing worktree supplied by the host.
+const publishedPc14RuntimePackageIdentity = "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-14-20260830075634";
 const committedFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"];
 
 function run(command, arguments_, options) {
@@ -21,24 +25,12 @@ function run(command, arguments_, options) {
     return result;
 }
 
-function assertPublishedRuntimeLinkInput() {
-    if (!existsSync(publishedPc14RuntimePackageLinkTarget)) throw new Error(`PC-14 verification requires its fixed runtime-link input: ${publishedPc14RuntimePackageLinkTarget}.`);
-    const revision = run("git", ["rev-parse", "HEAD^{tree}"], {cwd: publishedPc14RuntimePackageLinkTarget, encoding: "utf-8"});
-    const publishedTree = run("git", ["rev-parse", `${publishedPc14Revision}^{tree}`], {cwd: repositoryRoot, encoding: "utf-8"});
-    if (revision.stdout.trim() !== publishedTree.stdout.trim()) throw new Error("PC-14 fixed runtime-link input does not contain the published historical source tree.");
-}
-
 function installHistoricalInputs(historicalRoot) {
     const configPath = path.join(historicalRoot, "jest.config.mjs");
     const config = readFileSync(configPath, "utf-8");
     const mapper = "const studioClientComponentsModuleNameMapper = {";
     if (!config.includes(mapper)) throw new Error("Published PC-14 Studio resolver declaration is unavailable.");
     writeFileSync(configPath, config.replace(mapper, `${mapper}\n    "^pokie$": "<rootDir>/src/index.ts",`));
-    const builderPath = path.join(historicalRoot, "src", "project", "TsPackageArtifactBuilder.ts");
-    const builder = readFileSync(builderPath, "utf-8");
-    const historicalLink = "fs.symlinkSync(path.resolve(pokiePackageRoot), path.join(nodeModules, \"pokie\"), \"junction\");";
-    if (!builder.includes(historicalLink)) throw new Error("Published PC-14 runtime-link writer is unavailable.");
-    writeFileSync(builderPath, builder.replace(historicalLink, `fs.symlinkSync(${JSON.stringify(publishedPc14RuntimePackageLinkTarget)}, path.join(nodeModules, "pokie"), "junction");`));
 }
 
 function installHistoricalDependencies(historicalRoot) {
@@ -55,26 +47,42 @@ function installHistoricalDependencies(historicalRoot) {
     }
 }
 
-function byteCompareHistoricalEvidence(historicalRoot) {
-    const historicalEvidence = path.join(historicalRoot, "docs", "evidence", "phase7-product-coherence", "pc-14-artifact-torture");
+export function assertFreshEvidenceMatchesImmutable(freshEvidenceDirectory, immutableEvidenceDirectory = evidenceDirectory) {
     for (const file of committedFiles) {
-        const fresh = readFileSync(path.join(historicalEvidence, file));
-        const committed = readFileSync(path.join(evidenceDirectory, file));
-        const published = run("git", ["show", `${publishedPc14Revision}:docs/evidence/phase7-product-coherence/pc-14-artifact-torture/${file}`], {cwd: repositoryRoot, encoding: "buffer"});
-        if (!committed.equals(published.stdout)) throw new Error(`PC-14 immutable evidence was modified: ${file} differs byte-for-byte from its published result.`);
-        // Fresh runner roots are intentionally isolated, so artifacts that
-        // carry a local package-link identity can differ when the same
-        // historical test is relocated. The runners still have to emit the
-        // complete published schema before the committed, immutable bytes are
-        // checked against the published revision above.
-        const emitted = JSON.parse(fresh.toString("utf-8"));
-        const validRunnerOutput = file === "interoperability-result.json"
-            ? emitted.schema_version === 6 && Array.isArray(emitted.rows) && Array.isArray(emitted.scenario_results)
-            : emitted.schema_version === 2 && Array.isArray(emitted.rows) && Array.isArray(emitted.scenario_results);
-        if (!validRunnerOutput) {
-            throw new Error(`PC-14 historical runner emitted invalid ${file}.`);
+        const fresh = readFileSync(path.join(freshEvidenceDirectory, file));
+        const immutable = readFileSync(path.join(immutableEvidenceDirectory, file));
+        if (!fresh.equals(immutable)) {
+            throw new Error(`PC-14 immutable evidence is not reproducible: fresh ${file} differs byte-for-byte from the immutable result.`);
         }
     }
+}
+
+function historicalSandboxArguments(historicalRoot) {
+    const identityParts = publishedPc14RuntimePackageIdentity.split(path.sep).filter(Boolean);
+    const identityDirectories = [];
+    let current = "";
+    for (const part of identityParts.slice(0, -1)) {
+        current = `${current}/${part}`;
+        identityDirectories.push(current);
+    }
+    const nodeRuntimeDirectory = path.dirname(process.execPath);
+    const nodeRuntimeParts = nodeRuntimeDirectory.split(path.sep).filter(Boolean);
+    const nodeRuntimeDirectories = [];
+    current = "";
+    for (const part of nodeRuntimeParts.slice(0, -1)) {
+        current = `${current}/${part}`;
+        if (!identityDirectories.includes(current)) nodeRuntimeDirectories.push(current);
+    }
+    return [
+        "--die-with-parent", "--tmpfs", "/", "--proc", "/proc", "--dev", "/dev",
+        "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib", "--ro-bind", "/lib64", "/lib64", "--ro-bind", "/etc", "/etc",
+        ...identityDirectories.flatMap((directory) => ["--dir", directory]),
+        ...nodeRuntimeDirectories.flatMap((directory) => ["--dir", directory]),
+        "--ro-bind", nodeRuntimeDirectory, nodeRuntimeDirectory,
+        "--bind", historicalRoot, publishedPc14RuntimePackageIdentity,
+        "--tmpfs", "/tmp", "--chdir", publishedPc14RuntimePackageIdentity,
+        process.execPath, path.join(publishedPc14RuntimePackageIdentity, "scripts", "generate-pc14-interoperability-evidence.mjs"), "--write",
+    ];
 }
 
 function validateImmutableEvidence() {
@@ -86,16 +94,16 @@ function validateImmutableEvidence() {
     try {
         run("git", ["worktree", "add", "--detach", historicalRoot, publishedPc14Revision], {cwd: repositoryRoot, stdio: "inherit"});
         historicalWorktreeCreated = true;
-        assertPublishedRuntimeLinkInput();
         installHistoricalInputs(historicalRoot);
         installHistoricalDependencies(historicalRoot);
         process.stdout.write("PC-14 verifying historical CLI, Studio API, and Studio UI runners in published order.\n");
-        run(process.execPath, [path.join(historicalRoot, "scripts", "generate-pc14-interoperability-evidence.mjs"), "--write"], {
+        run("bwrap", historicalSandboxArguments(historicalRoot), {
             cwd: historicalRoot,
             env: {...process.env, PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"},
             stdio: "inherit",
         });
-        byteCompareHistoricalEvidence(historicalRoot);
+        assertFreshEvidenceMatchesImmutable(path.join(historicalRoot, "docs", "evidence", "phase7-product-coherence", "pc-14-artifact-torture"));
+        process.stdout.write("PC-14 byte-compared four fresh runner outputs with immutable evidence.\n");
         process.stdout.write(`PASS PC-14 historical runners reproduced immutable evidence from ${publishedPc14Revision}.\n`);
     } finally {
         if (historicalWorktreeCreated) run("git", ["worktree", "remove", "--force", historicalRoot], {cwd: repositoryRoot, stdio: "inherit"});
