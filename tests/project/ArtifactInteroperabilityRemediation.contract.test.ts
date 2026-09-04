@@ -189,13 +189,33 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             fs.writeFileSync(freshCliPath, `${JSON.stringify(freshCli, undefined, 2)}\n`);
             const verifier = spawnSync(process.execPath, ["--input-type=module", "--eval", [
                 `import {assertFreshEvidenceMatchesImmutable} from ${JSON.stringify(pathToFileURL(scriptPath).href)};`,
-                `assertFreshEvidenceMatchesImmutable(${JSON.stringify(freshEvidenceDirectory)}, ${JSON.stringify(evidenceDirectory)});`,
+                `assertFreshEvidenceMatchesImmutable(${JSON.stringify(freshEvidenceDirectory)});`,
             ].join("\n")], {cwd: process.cwd(), encoding: "utf-8"});
             expect(verifier.status).toBe(1);
             expect(`${verifier.stdout}\n${verifier.stderr}`).toContain("fresh cli-real-artifact-result.json differs byte-for-byte");
             expect(["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"]
                 .map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex")))
                 .toEqual(completedEvidenceHashes);
+        } finally {
+            fs.rmSync(freshEvidenceDirectory, {recursive: true, force: true});
+        }
+    });
+
+    it("rejects a caller-supplied substitute for completed PC-14 provenance", () => {
+        const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
+        const freshEvidenceDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-provenance-substitute-"));
+        try {
+            fs.cpSync(path.dirname(evidencePath), freshEvidenceDirectory, {recursive: true});
+            const freshCliPath = path.join(freshEvidenceDirectory, "cli-real-artifact-result.json");
+            const freshCli = JSON.parse(fs.readFileSync(freshCliPath, "utf-8")) as {readonly rows: Record<string, string>[]};
+            freshCli.rows[0]!["source_identity"] = "sha256:substituted-provenance";
+            fs.writeFileSync(freshCliPath, `${JSON.stringify(freshCli, undefined, 2)}\n`);
+            const verifier = spawnSync(process.execPath, ["--input-type=module", "--eval", [
+                `import {assertFreshEvidenceMatchesImmutable} from ${JSON.stringify(pathToFileURL(scriptPath).href)};`,
+                `assertFreshEvidenceMatchesImmutable(${JSON.stringify(freshEvidenceDirectory)}, ${JSON.stringify(freshEvidenceDirectory)});`,
+            ].join("\n")], {cwd: process.cwd(), encoding: "utf-8"});
+            expect(verifier.status).toBe(1);
+            expect(`${verifier.stdout}\n${verifier.stderr}`).toContain("fresh cli-real-artifact-result.json differs byte-for-byte");
         } finally {
             fs.rmSync(freshEvidenceDirectory, {recursive: true, force: true});
         }

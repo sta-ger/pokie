@@ -20,10 +20,10 @@ function run(command, arguments_, options) {
 }
 
 /** Reject a proposed output whose raw bytes, including provenance, drift. */
-export function assertFreshEvidenceMatchesImmutable(freshEvidenceDirectory, immutableEvidenceDirectory = evidenceDirectory) {
+export function assertFreshEvidenceMatchesImmutable(freshEvidenceDirectory) {
     for (const file of committedFiles) {
         const fresh = readFileSync(path.join(freshEvidenceDirectory, file));
-        const immutable = readFileSync(path.join(immutableEvidenceDirectory, file));
+        const immutable = readFileSync(path.join(evidenceDirectory, file));
         if (!fresh.equals(immutable)) {
             throw new Error(`PC-14 immutable evidence is not reproducible: fresh ${file} differs byte-for-byte from the immutable result.`);
         }
