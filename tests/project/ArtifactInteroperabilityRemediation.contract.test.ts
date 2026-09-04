@@ -152,13 +152,16 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
-    it("guards immutable PC-14 evidence without making a successor checkout replay its historical runners", () => {
+    it("runs provenance-bound historical runners without mutating completed PC-14 evidence", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const script = fs.readFileSync(scriptPath, "utf-8");
+        const evidenceDirectory = path.dirname(evidencePath);
+        const evidenceFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"];
+        const evidenceHashes = evidenceFiles.map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex"));
         const result = spawnSync(process.execPath, [scriptPath], {
             cwd: process.cwd(),
             encoding: "utf-8",
-            timeout: 30000,
+            timeout: 360000,
             maxBuffer: 16 * 1024 * 1024,
         });
         expect(result.error).toBeUndefined();
@@ -167,13 +170,22 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(result.status).toBe(0);
         expect(script).toContain("assertImmutableEvidenceMatchesPublishedRevision");
         expect(script).toContain("assertFreshEvidenceMatchesImmutable");
-        expect(script).not.toContain("worktree");
-        expect(script).not.toContain("bwrap");
-        expect(script).not.toContain("npmCli");
-        expect(script).not.toContain("--write");
-        expect(script).not.toContain("/home/stager/Work/sta-ger/agents/worktrees");
-        expect(output).toContain("PASS PC-14 immutable evidence matches published revision 2288476da74448ddcd2e3bfb1d5a29f6bde4a75b.");
-    });
+        expect(script).toContain("publishedPc14RuntimePackageIdentity");
+        expect(script).toContain("publishedPc14LockfileSha256");
+        expect(script).toContain("PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR");
+        expect(script).not.toContain('"--write"');
+        expect(script).not.toContain("normalise");
+        expect(output).toContain("PC-14 verifying historical CLI, Studio API, and Studio UI runners in published order.");
+        const cliRunner = output.indexOf("ArtifactInteroperabilityTorture.integration.test.ts");
+        const studioApiRunner = output.indexOf("StudioArtifactInteroperabilityTorture.integration.test.ts");
+        const studioUiRunner = output.indexOf("Pc14StudioUiInteroperability.test.tsx");
+        expect(cliRunner).toBeGreaterThanOrEqual(0);
+        expect(studioApiRunner).toBeGreaterThan(cliRunner);
+        expect(studioUiRunner).toBeGreaterThan(studioApiRunner);
+        expect(output).toContain("PC-14 byte-compared four fresh runner outputs with immutable evidence.");
+        expect(output).toContain("PASS PC-14 historical runners reproduced immutable evidence from 2288476da74448ddcd2e3bfb1d5a29f6bde4a75b.");
+        expect(evidenceFiles.map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex"))).toEqual(evidenceHashes);
+    }, 390000);
 
     it("rejects fresh runner identity and provenance drift without rewriting completed evidence", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
