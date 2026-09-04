@@ -169,6 +169,9 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(script).toContain("publishedPc14LockfileSha256");
         expect(script).not.toContain('path.join(repositoryRoot, "node_modules")');
         expect(script).toContain("assertImmutableEvidenceMatchesPublishedRevision");
+        expect(script).toContain("publishedPc14RuntimePackageWorktreeName");
+        expect(script).toContain("path.dirname(repositoryRoot)");
+        expect(script).not.toContain("/home/stager/Work/sta-ger/agents/worktrees");
         expect(output).toContain("PC-14 verifying historical CLI, Studio API, and Studio UI runners in published order.");
         expect(output).toContain("PC-14 installed the published lockfile dependency graph (sha256:755c40dc3a866cc206cd2548b151c1de8e96b102b4bee8aac5682ffaed1fef54).");
         const cliRunner = output.indexOf("ArtifactInteroperabilityTorture.integration.test.ts");

@@ -14,10 +14,11 @@ const evidenceDirectory = path.join(repositoryRoot, "docs", "evidence", "phase7-
 const publishedPc14Revision = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b";
 const publishedPc14LockfileSha256 = "sha256:755c40dc3a866cc206cd2548b151c1de8e96b102b4bee8aac5682ffaed1fef54";
 // PC-14's package writer records its runtime-package symlink literally in
-// the artifact identity.  Materialise the published source at that *virtual*
-// path inside a private mount namespace; it is an identity fixture, never a
-// pre-existing worktree supplied by the host.
-const publishedPc14RuntimePackageIdentity = "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-14-20260830075634";
+// the artifact identity. This is the published worktree *name*, not a host
+// path. Materialise the disposable source at its sibling virtual location in
+// a private mount namespace, so the verifier never consults a retained PC-14
+// checkout while retaining the provenance that the published output records.
+const publishedPc14RuntimePackageWorktreeName = "task_PC-14-20260830075634";
 const committedFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"];
 
 function run(command, arguments_, options) {
@@ -84,8 +85,12 @@ function assertImmutableEvidenceMatchesPublishedRevision() {
     }
 }
 
-function historicalSandboxArguments(historicalRoot) {
-    const identityParts = publishedPc14RuntimePackageIdentity.split(path.sep).filter(Boolean);
+function publishedPc14RuntimePackageIdentity() {
+    return path.join(path.dirname(repositoryRoot), publishedPc14RuntimePackageWorktreeName);
+}
+
+function historicalSandboxArguments(historicalRoot, runtimePackageIdentity) {
+    const identityParts = runtimePackageIdentity.split(path.sep).filter(Boolean);
     const identityDirectories = [];
     let current = "";
     for (const part of identityParts.slice(0, -1)) {
@@ -106,9 +111,9 @@ function historicalSandboxArguments(historicalRoot) {
         ...identityDirectories.flatMap((directory) => ["--dir", directory]),
         ...nodeRuntimeDirectories.flatMap((directory) => ["--dir", directory]),
         "--ro-bind", nodeRuntimeDirectory, nodeRuntimeDirectory,
-        "--bind", historicalRoot, publishedPc14RuntimePackageIdentity,
-        "--tmpfs", "/tmp", "--chdir", publishedPc14RuntimePackageIdentity,
-        process.execPath, path.join(publishedPc14RuntimePackageIdentity, "scripts", "generate-pc14-interoperability-evidence.mjs"), "--write",
+        "--bind", historicalRoot, runtimePackageIdentity,
+        "--tmpfs", "/tmp", "--chdir", runtimePackageIdentity,
+        process.execPath, path.join(runtimePackageIdentity, "scripts", "generate-pc14-interoperability-evidence.mjs"), "--write",
     ];
 }
 
@@ -125,7 +130,7 @@ function validateImmutableEvidence() {
         installHistoricalDependencies(historicalRoot, path.join(executionDirectory, "npm-cache"));
         installHistoricalInputs(historicalRoot);
         process.stdout.write("PC-14 verifying historical CLI, Studio API, and Studio UI runners in published order.\n");
-        run("bwrap", historicalSandboxArguments(historicalRoot), {
+        run("bwrap", historicalSandboxArguments(historicalRoot, publishedPc14RuntimePackageIdentity()), {
             cwd: historicalRoot,
             env: {...process.env, PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"},
             stdio: "inherit",
