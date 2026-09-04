@@ -16,9 +16,9 @@ const publishedPc14Revision = "2288476da74448ddcd2e3bfb1d5a29f6bde4a75b";
 const publishedPc14RuntimePackageLinkTarget = "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-14-20260830075634";
 const committedFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"];
 const runnerTests = [
-    "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
-    "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
-    "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
+    {name: "CLI", path: "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts", output: "cli-real-artifact-result.json"},
+    {name: "Studio API", path: "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts", output: "studio-real-artifact-result.json"},
+    {name: "Studio UI", path: "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx", output: "studio-ui-real-artifact-result.json"},
 ];
 
 function run(command, arguments_, options) {
@@ -35,6 +35,11 @@ function byteCompareFreshEvidence(outputDirectory) {
             throw new Error(`PC-14 immutable evidence is not reproducible: fresh ${file} differs byte-for-byte from the committed result.`);
         }
     }
+}
+
+function requireFreshOutput(outputDirectory, file) {
+    const outputPath = path.join(outputDirectory, file);
+    if (!existsSync(outputPath)) throw new Error(`PC-14 historical runner did not emit fresh ${file}.`);
 }
 
 function writeHistoricalJestConfig(executionDirectory, historicalRoot) {
@@ -62,6 +67,25 @@ function installPublishedRuntimeLinkInput(historicalRoot) {
     writeFileSync(builderPath, builder.replace(historicalLink, `fs.symlinkSync(${JSON.stringify(publishedPc14RuntimePackageLinkTarget)}, path.join(nodeModules, "pokie"), "junction");`));
 }
 
+function assertPublishedRuntimeLinkInput() {
+    if (!existsSync(publishedPc14RuntimePackageLinkTarget)) {
+        throw new Error(`PC-14 verification requires its fixed runtime-link input: ${publishedPc14RuntimePackageLinkTarget}.`);
+    }
+    const revision = spawnSync("git", ["rev-parse", "HEAD^{tree}"], {
+        cwd: publishedPc14RuntimePackageLinkTarget,
+        encoding: "utf-8",
+    });
+    if (revision.error !== undefined) throw revision.error;
+    const publishedTree = spawnSync("git", ["rev-parse", `${publishedPc14Revision}^{tree}`], {
+        cwd: repositoryRoot,
+        encoding: "utf-8",
+    });
+    if (publishedTree.error !== undefined) throw publishedTree.error;
+    if (revision.status !== 0 || publishedTree.status !== 0 || revision.stdout.trim() !== publishedTree.stdout.trim()) {
+        throw new Error("PC-14 fixed runtime-link input does not contain the published historical source tree.");
+    }
+}
+
 function validateImmutableEvidence() {
     if (process.argv.slice(2).length > 0) {
         throw new Error("PC-14 evidence is immutable; this command only verifies it and never rewrites it.");
@@ -79,6 +103,7 @@ function validateImmutableEvidence() {
     try {
         run("git", ["worktree", "add", "--detach", historicalRoot, publishedPc14Revision], {cwd: repositoryRoot, stdio: "inherit"});
         historicalWorktreeCreated = true;
+        assertPublishedRuntimeLinkInput();
         installPublishedRuntimeLinkInput(historicalRoot);
         // package-lock.json is identical at the historical revision. Reuse
         // this clone's installed dependencies while executing only the
@@ -98,13 +123,23 @@ function validateImmutableEvidence() {
         };
         const jestPath = path.join(historicalRoot, "node_modules", "jest", "bin", "jest.js");
         const historicalJestConfig = writeHistoricalJestConfig(executionDirectory, historicalRoot);
-        for (const testPath of runnerTests) {
-            run(process.execPath, ["--experimental-vm-modules", "--max-old-space-size=1408", jestPath, "--config", historicalJestConfig, "--runInBand", "--no-cache", "--runTestsByPath", testPath], {
+        for (const runner of runnerTests) {
+            // The Studio UI runner performs the sole combined-result merge.
+            // Require both input ledgers before starting it, so a separately
+            // green UI test can never borrow a stale or absent CLI/API record.
+            if (runner.name === "Studio UI") {
+                requireFreshOutput(outputDirectory, "cli-real-artifact-result.json");
+                requireFreshOutput(outputDirectory, "studio-real-artifact-result.json");
+                process.stdout.write("PC-14 verifying historical Studio UI runner after fresh CLI and Studio API outputs.\n");
+            } else process.stdout.write(`PC-14 verifying historical ${runner.name} runner.\n`);
+            run(process.execPath, ["--experimental-vm-modules", "--max-old-space-size=1408", jestPath, "--config", historicalJestConfig, "--runInBand", "--no-cache", "--runTestsByPath", runner.path], {
                 cwd: historicalRoot,
                 env: environment,
                 stdio: "inherit",
             });
+            requireFreshOutput(outputDirectory, runner.output);
         }
+        requireFreshOutput(outputDirectory, "interoperability-result.json");
         byteCompareFreshEvidence(outputDirectory);
         process.stdout.write(`PASS PC-14 historical runners reproduced immutable evidence from ${publishedPc14Revision}.\n`);
     } finally {
