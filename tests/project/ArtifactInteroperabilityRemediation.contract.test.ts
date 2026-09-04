@@ -150,23 +150,37 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
-    it("byte-compares the immutable PC-14 evidence snapshot without regenerating it from PC-15", () => {
+    it("runs the historical CLI, Studio API, and UI runners before byte-comparing immutable PC-14 evidence", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const result = spawnSync(process.execPath, [scriptPath], {
             cwd: process.cwd(),
             encoding: "utf-8",
+            timeout: 330000,
+            maxBuffer: 16 * 1024 * 1024,
         });
         expect(result.error).toBeUndefined();
+        const output = `${result.stdout}\n${result.stderr}`;
+        expect(result.status === 0 ? "" : output.slice(-5000)).toBe("");
         expect(result.status).toBe(0);
-        expect(`${result.stdout}\n${result.stderr}`).toContain("PASS PC-14 immutable evidence matches published revision");
-    });
+        expect(output).toContain("ArtifactInteroperabilityTorture.integration.test.ts");
+        expect(output).toContain("StudioArtifactInteroperabilityTorture.integration.test.ts");
+        expect(output).toContain("Pc14StudioUiInteroperability.test.tsx");
+        expect(output).toContain("PASS PC-14 historical runners reproduced immutable evidence from 2288476da74448ddcd2e3bfb1d5a29f6bde4a75b");
+    }, 360000);
 
     it("rejects attempts to rewrite the completed PC-14 evidence", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
+        const evidenceFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"];
+        const evidenceHashes = evidenceFiles.map((file) => crypto.createHash("sha256").update(fs.readFileSync(
+            path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-14-artifact-torture", file),
+        )).digest("hex"));
         const result = spawnSync(process.execPath, [scriptPath, "--write"], {cwd: process.cwd(), encoding: "utf-8"});
         expect(result.error).toBeUndefined();
         expect(result.status).toBe(1);
         expect(`${result.stdout}\n${result.stderr}`).toContain("PC-14 evidence is immutable");
+        expect(evidenceFiles.map((file) => crypto.createHash("sha256").update(fs.readFileSync(
+            path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-14-artifact-torture", file),
+        )).digest("hex"))).toEqual(evidenceHashes);
     });
 
     it("injects the fixed evidence clock into real writers instead of only normalising saved hashes", () => {
