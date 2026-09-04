@@ -169,6 +169,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(result.status === 0 ? "" : output.slice(-5000)).toBe("");
         expect(result.status).toBe(0);
         expect(script).toContain("assertImmutableEvidenceMatchesPublishedRevision");
+        expect(script).toContain("assertImmutableEvidenceWasNotRewritten");
         expect(script).toContain("assertFreshEvidenceMatchesImmutable");
         expect(script).toContain("publishedPc14RuntimePackageIdentity");
         expect(script).toContain("publishedPc14LockfileSha256");

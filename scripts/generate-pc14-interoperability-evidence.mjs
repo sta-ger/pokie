@@ -31,6 +31,18 @@ function sha256(bytes) {
     return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
 
+function readImmutableEvidenceSnapshot() {
+    return new Map(committedFiles.map((file) => [file, readFileSync(path.join(evidenceDirectory, file))]));
+}
+
+function assertImmutableEvidenceWasNotRewritten(snapshot) {
+    for (const file of committedFiles) {
+        if (!readFileSync(path.join(evidenceDirectory, file)).equals(snapshot.get(file))) {
+            throw new Error(`PC-14 immutable evidence was rewritten while verifying it: ${file}.`);
+        }
+    }
+}
+
 /** Reject a proposed output whose raw bytes, including provenance, drift. */
 export function assertFreshEvidenceMatchesImmutable(freshEvidenceDirectory, ...provenanceSubstitutes) {
     if (provenanceSubstitutes.length > 0) {
@@ -126,6 +138,7 @@ function validateImmutableEvidence() {
     if (process.argv.slice(2).length > 0) throw new Error("PC-14 evidence is immutable; this command only verifies it and never rewrites it.");
     run("git", ["rev-parse", "--verify", `${publishedPc14Revision}^{commit}`], {cwd: repositoryRoot, stdio: "inherit"});
     assertImmutableEvidenceMatchesPublishedRevision();
+    const immutableEvidenceSnapshot = readImmutableEvidenceSnapshot();
     const executionDirectory = mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-evidence-"));
     const historicalRoot = path.join(executionDirectory, "historical-pc14");
     let historicalWorktreeCreated = false;
@@ -157,8 +170,12 @@ function validateImmutableEvidence() {
         process.stdout.write("PC-14 byte-compared four fresh runner outputs with immutable evidence.\n");
         process.stdout.write(`PASS PC-14 historical runners reproduced immutable evidence from ${publishedPc14Revision}.\n`);
     } finally {
-        if (historicalWorktreeCreated) run("git", ["worktree", "remove", "--force", historicalRoot], {cwd: repositoryRoot, stdio: "inherit"});
-        rmSync(executionDirectory, {recursive: true, force: true});
+        try {
+            assertImmutableEvidenceWasNotRewritten(immutableEvidenceSnapshot);
+        } finally {
+            if (historicalWorktreeCreated) run("git", ["worktree", "remove", "--force", historicalRoot], {cwd: repositoryRoot, stdio: "inherit"});
+            rmSync(executionDirectory, {recursive: true, force: true});
+        }
     }
 }
 
