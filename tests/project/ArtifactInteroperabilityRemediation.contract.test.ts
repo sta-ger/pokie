@@ -152,7 +152,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
-    it("guards completed PC-14 evidence without replaying predecessor runners from this successor checkout", () => {
+    it("runs the provenance-bound PC-14 runners without changing completed evidence", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const script = fs.readFileSync(scriptPath, "utf-8");
         const evidenceDirectory = path.dirname(evidencePath);
@@ -161,7 +161,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         const result = spawnSync(process.execPath, [scriptPath], {
             cwd: process.cwd(),
             encoding: "utf-8",
-            timeout: 30000,
+            timeout: 300000,
             maxBuffer: 16 * 1024 * 1024,
         });
         expect(result.error).toBeUndefined();
@@ -171,12 +171,13 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(script).toContain("assertImmutableEvidenceMatchesPublishedRevision");
         expect(script).toContain("assertFreshEvidenceMatchesImmutable");
         expect(script).toContain("publishedPc14Revision");
-        expect(script).not.toContain("worktree");
-        expect(script).not.toContain("bwrap");
-        expect(script).not.toContain("PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR");
+        expect(script).toContain('run("git", ["worktree", "add"');
+        expect(script).toContain("bwrap");
+        expect(script).toContain("PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR");
         expect(script).not.toContain('"--write"');
         expect(script).not.toContain("normalise");
-        expect(output).toContain("PASS PC-14 immutable evidence matches published revision 4731f5f6fbfed54b89006988accd72067532f67d.");
+        expect(output).toContain("PC-14 verifying historical CLI, Studio API, and Studio UI runners in published order.");
+        expect(output).toContain("PASS PC-14 historical runners reproduced immutable evidence from 4731f5f6fbfed54b89006988accd72067532f67d.");
         expect(evidenceFiles.map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex"))).toEqual(evidenceHashes);
     });
 
