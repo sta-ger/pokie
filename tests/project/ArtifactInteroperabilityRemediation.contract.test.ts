@@ -154,6 +154,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
 
     it("runs the historical CLI, Studio API, and UI runners before byte-comparing immutable PC-14 evidence", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
+        const script = fs.readFileSync(scriptPath, "utf-8");
         const result = spawnSync(process.execPath, [scriptPath], {
             cwd: process.cwd(),
             encoding: "utf-8",
@@ -164,7 +165,12 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         const output = `${result.stdout}\n${result.stderr}`;
         expect(result.status === 0 ? "" : output.slice(-5000)).toBe("");
         expect(result.status).toBe(0);
+        expect(script).toContain('npmCli, "ci", "--no-audit"');
+        expect(script).toContain("publishedPc14LockfileSha256");
+        expect(script).not.toContain('path.join(repositoryRoot, "node_modules")');
+        expect(script).toContain("assertImmutableEvidenceMatchesPublishedRevision");
         expect(output).toContain("PC-14 verifying historical CLI, Studio API, and Studio UI runners in published order.");
+        expect(output).toContain("PC-14 installed the published lockfile dependency graph (sha256:755c40dc3a866cc206cd2548b151c1de8e96b102b4bee8aac5682ffaed1fef54).");
         const cliRunner = output.indexOf("ArtifactInteroperabilityTorture.integration.test.ts");
         const studioApiRunner = output.indexOf("StudioArtifactInteroperabilityTorture.integration.test.ts");
         const studioUiRunner = output.indexOf("Pc14StudioUiInteroperability.test.tsx");
@@ -177,7 +183,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(output).toContain("PASS PC-14 historical runners reproduced immutable evidence from 2288476da74448ddcd2e3bfb1d5a29f6bde4a75b");
     }, 360000);
 
-    it("rejects fresh runner identity and provenance drift without rewriting completed evidence", async () => {
+    it("rejects fresh runner identity and provenance drift without rewriting completed evidence", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const evidenceDirectory = path.dirname(evidencePath);
         const completedEvidenceHashes = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"]
@@ -189,11 +195,12 @@ describe("PC-14 artifact interoperability remediation contract", () => {
             const freshCli = JSON.parse(fs.readFileSync(freshCliPath, "utf-8")) as {readonly rows: Record<string, string>[]};
             freshCli.rows[0]!["source_identity"] = "sha256:provenance-drift";
             fs.writeFileSync(freshCliPath, `${JSON.stringify(freshCli, undefined, 2)}\n`);
-            const verifier = await import(pathToFileURL(scriptPath).href) as {
-                readonly assertFreshEvidenceMatchesImmutable: (freshDirectory: string, immutableDirectory: string) => void;
-            };
-            expect(() => verifier.assertFreshEvidenceMatchesImmutable(freshEvidenceDirectory, evidenceDirectory))
-                .toThrow("fresh cli-real-artifact-result.json differs byte-for-byte");
+            const verifier = spawnSync(process.execPath, ["--input-type=module", "--eval", [
+                `import {assertFreshEvidenceMatchesImmutable} from ${JSON.stringify(pathToFileURL(scriptPath).href)};`,
+                `assertFreshEvidenceMatchesImmutable(${JSON.stringify(freshEvidenceDirectory)}, ${JSON.stringify(evidenceDirectory)});`,
+            ].join("\n")], {cwd: process.cwd(), encoding: "utf-8"});
+            expect(verifier.status).toBe(1);
+            expect(`${verifier.stdout}\n${verifier.stderr}`).toContain("fresh cli-real-artifact-result.json differs byte-for-byte");
             expect(["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"]
                 .map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex")))
                 .toEqual(completedEvidenceHashes);
