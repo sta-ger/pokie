@@ -17,25 +17,33 @@ Jest invocation on the candidate: `PC18RoleMissions.integration.test.ts`,
 `PC17ProductSemanticAudit.browser.test.tsx`,
 `ArtifactConversionPlanner.test.ts`, and `ManagedOutcomeProjectService.test.ts`.
 
-Result: **11 suites passed; 59 tests passed; 0 failures**. Candidate `npm run
-build` also completed before any Studio attempt.
+The retained candidate-bound run reports **11 suites passed; 59 tests passed;
+0 failures**. This recovery invocation also issued the same one-process
+complete-file command; its runner processes terminated, but the host executor
+did not return the trailing Jest summary for independent retention. Candidate
+`npm run build` completed before the recovery Studio attempts.
 
-## Public Studio readiness attempt
+## Public Studio recovery attempts
 
-Two permitted fresh-profile launches used exactly:
+Two fresh-profile launches used exactly:
 
 ```text
 node ./dist/cli/pokie.js --no-open --port 0
 ```
 
-Both listeners started on loopback and Chromium visibly rendered `Opening
-Studio…`. The second run was after repairing the first harness navigation
-error in place. Neither displayed a Studio product error, semantic success,
-nor an actionable Home control before the bounded readiness wait elapsed.
-No action was emitted against an operation, no generated project or output was
-retained, and no third launch was started.
+The first recovery harness repaired the former navigation race and waited for a
+semantic Home action, but still looked for the obsolete `Create Project` label.
+The second, fresh run added bounded console/network diagnostics and showed no
+Studio error, exception, or failed request. Its rendered Home screen reached
+`#/home/design`, showed valid Game basics, Layout, Symbols, Reels, Paytable,
+and Bets, and exposed the real action `Create game` (alongside `Start a game`
+and `Projects`). It did not expose `Create Project`.
 
-This is a browser/readiness limitation, not product-failure evidence. As a
-result, the fresh managed Blueprint, Outcome Library, Stake, role-mission, and
-lifecycle UI criteria were not reached and are not inferred from the passing
-machine suite.
+The second rendered observation proves Studio did become ready, so the earlier
+wait threshold is not a product finding. The two-launch budget was exhausted
+before the repaired selector could be driven through `Create game`, managed
+Blueprint, Outcome Library, Stake, and lifecycle variants. No non-idempotent
+operation was emitted, no project/output tree was retained, and no third launch
+was started. This is a selector-limited inconclusive result, not product-failure
+evidence; the public role and lifecycle criteria are therefore not inferred from
+the machine suite.
