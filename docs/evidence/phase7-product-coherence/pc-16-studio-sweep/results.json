@@ -1,0 +1,272 @@
+{
+  "candidateSha": "8c52757cf8610a4e330e2e13d1bb12de1d406d31",
+  "checkoutHead": "3a97a6d188ca1d189e3945a06e63b45d646b36b4",
+  "cliLaunch": "node ./dist/cli/pokie.js --no-open",
+  "profiles": [
+    "profile-a",
+    "profile-b"
+  ],
+  "actions": [
+    {
+      "name": "Projects navigation for pc16-alpha",
+      "status": "success",
+      "latencyMs": 140,
+      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects No games yet. Start a game or add one you already have. Create your first game Add a game you already have Choose a game folder, saved game design, or PAR spreadsheet (.xlsx). Studio checks it first, so nothing is added until you confirm. Game location Browse… Browse PAR sheet… Check game Enter a game location or use Browse to check it before adding it. Documentation Docs index Getting started CLI reference",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Enter pc16-alpha artifact path",
+      "status": "success",
+      "latencyMs": 27,
+      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects No games yet. Start a game or add one you already have. Create your first game Add a game you already have Choose a game folder, saved game design, or PAR spreadsheet (.xlsx). Studio checks it first, so nothing is added until you confirm. Game location Browse… Browse PAR sheet… Resolving… Check game Documentation Docs index Getting started CLI reference",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Check pc16-alpha generated package",
+      "status": "success",
+      "latencyMs": 222,
+      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects No games yet. Start a game or add one you already have. Create your first game Add a game you already have Choose a game folder, saved game design, or PAR spreadsheet (.xlsx). Studio checks it first, so nothing is added until you confirm. Game location Browse… Browse PAR sheet… Resolves to: /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-m2gmfhqp/pokie-pc16-verifier-KYfz8n/artifacts/pc16-alp",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Register pc16-alpha generated package",
+      "status": "success",
+      "latencyMs": 122,
+      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects Search projects Game type Availability Name Type Added to Studio Last opened Actions Available projects pc16-alpha-package /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-m2gmfhqp/pokie-pc16-verifier-KYfz8n/artifacts/pc16-alpha-package Playable game Added from your computer 9/5/2026, 1:20:40 PM Open Remove Showing 1–1 of 1 projects Add a game you already have Choose a game folder, saved game",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Open pc16-alpha through Projects",
+      "status": "success",
+      "latencyMs": 131,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Overview Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Start by playing a round Open Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine. Open Play ID pc16-alpha Version 0.1.0 Game format Playable game Added to Studio Added from your computer Location /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-veri",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Play tab opens",
+      "status": "success",
+      "latencyMs": 133,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Play Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Play prepares this game for a real round and creates a session in Studio. Nothing else needs to be set up. Start Play Show advanced details (seed) New Play session",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Play session starts",
+      "status": "success",
+      "latencyMs": 159,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Play Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Play Spin Scenarios Scenario searches use real settled spins and leave their final round in this Play session. Find any win Find symbol win Find free games Symbol The symbol Find symbol win searches for in a real, already-evaluated win. Session Show advanced details (seed) Reset Play session Bet: 1 1 2 5 10 Credits 1000",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Play spin settles",
+      "status": "success",
+      "latencyMs": 168,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Play Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Play Spin Scenarios Scenario searches use real settled spins and leave their final round in this Play session. Find any win Find symbol win Find free games Symbol The symbol Find symbol win searches for in a real, already-evaluated win. Session Show advanced details (seed) Reset Play session Round complete — no win this round. Bet: 1 1 2 5 10 Q 8 J 10 8 Q 7 A 8 10 10 J Credits 999 Total win 0.00 Payout multiplier 0.00 Paylines / ways Paytable Inspect round artifact",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Simulation tab opens",
+      "status": "success",
+      "latencyMs": 151,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Simulation Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project 1 Configure Set rounds 2 Run Watch progress 3 Review See results 4 Export Download report Simulation plays many rounds of this game to estimate RTP, win frequency, and the largest win. When it finishes, review the summary here or export the full report. Rounds * Run Simulation Show advanced details (seed, workers) Recent runs Refresh No completed simulations yet.",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Simulation rounds entered",
+      "status": "success",
+      "latencyMs": 77,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Simulation Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project 1 Configure Set rounds 2 Run Watch progress 3 Review See results 4 Export Download report Simulation plays many rounds of this game to estimate RTP, win frequency, and the largest win. When it finishes, review the summary here or export the full report. Rounds * Run Simulation Show advanced details (seed, workers) Recent runs Refresh No completed simulations yet.",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Simulation launch is accepted",
+      "status": "success",
+      "latencyMs": 82,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Simulation Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Configure Set rounds 2 Run Watch progress 3 Review See results 4 Export Download report queued — 0/2 rounds — elapsed 0.0s Cancel Recent runs Refresh No completed simulations yet.",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Simulation reaches terminal",
+      "status": "success",
+      "latencyMs": 0,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Simulation Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Configure Set rounds Run Watch progress 3 Review See results 4 Export Download report RTP 50.00% Hit frequency 50.00% Volatility 0.50 Max win 1.00 Duration 0.0s Convergence RTP 95% CI: -19.30% – 119.30% Warnings No seed was provided — this run is not reproducible. Requested rounds (2) is low — RTP/hit-frequency estimates may be noisy. Recommendation: Run with --seed <seed> (e.g. --seed demo) to make this simulation reproducible. Open full report Compare with another run Repeat simulation Recent runs Ref",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Simulation review is visibly available",
+      "status": "success",
+      "latencyMs": 0,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Simulation Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Configure Set rounds Run Watch progress 3 Review See results 4 Export Download report RTP 50.00% Hit frequency 50.00% Volatility 0.50 Max win 1.00 Duration 0.0s Convergence RTP 95% CI: -19.30% – 119.30% Warnings No seed was provided — this run is not reproducible. Requested rounds (2) is low — RTP/hit-frequency estimates may be noisy. Recommendation: Run with --seed <seed> (e.g. --seed demo) to make this simulation reproducible. Open full report Compare with another run Repeat simulation Recent runs Ref",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Replay tab opens",
+      "status": "success",
+      "latencyMs": 131,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Replay Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round. To inspect a round you just played, choose Session Spin and select it from the list. Once a round is loaded, its grid, wins, paylines, paytable, and export download are available below. Recreate from seed Replay Artifact Session Spin Recent Simu",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Replay seed target loads",
+      "status": "success",
+      "latencyMs": 71,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Replay Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round. To inspect a round you just played, choose Session Spin and select it from the list. Once a round is loaded, its grid, wins, paylines, paytable, and export download are available below. Recreate from seed Replay Artifact Session Spin Recent Simu",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Replay launch is accepted",
+      "status": "success",
+      "latencyMs": 86,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Replay Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round. To inspect a round you just played, choose Session Spin and select it from the list. Once a round is loaded, its grid, wins, paylines, paytable, and export download are available below. Recreate from seed Replay Artifact Session Spin Recent Simu",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Replay reaches terminal",
+      "status": "success",
+      "latencyMs": 0,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Replay Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round. To inspect a round you just played, choose Session Spin and select it from the list. Once a round is loaded, its grid, wins, paylines, paytable, and export download are available below. Recreate from seed Replay Artifact Session Spin Recent Simu",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Build Export tab opens",
+      "status": "success",
+      "latencyMs": 135,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Build/Export Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Build game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them. Refresh registered targets Outcome libraries Create the game outcomes used by the export and delivery options below. Outcome library generator THIS COMPUTER Purpose: Create or refresh an Outcome Library for advanced inspection and delivery workflows. Destination: Choose a local folder for the ou",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Build Export outcome generation settles",
+      "status": "success",
+      "latencyMs": 6163,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Build/Export Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Build game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them. Refresh registered targets Outcome libraries Create the game outcomes used by the export and delivery options below. Outcome library generator THIS COMPUTER Purpose: Create or refresh an Outcome Library for advanced inspection and delivery workflows. Destination: Choose a local folder for the ou",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Build Export remote delivery recovery",
+      "status": "owned_recovery",
+      "latencyMs": 0,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Build/Export Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Build game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them. Refresh registered targets Outcome libraries Create the game outcomes used by the export and delivery options below. Outcome library generator THIS COMPUTER Purpose: Create or refresh an Outcome Library for advanced inspection and delivery workflows. Destination: Choose a local folder for the ou",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Retired deployment deep-link recovery",
+      "status": "success",
+      "latencyMs": 0,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Build/Export Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Deployment has moved into Build/Export. Choose Remote delivery there to preview or publish to a configured target. Build game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them. Refresh registered targets Outcome libraries Create the game outcomes used by the export and delivery options below. Outcome library generator THIS COMPUTER Purpose: Create or refre",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Browser history restores alpha project",
+      "status": "success",
+      "latencyMs": 0,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Overview Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Start by playing a round Open Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine. Open Play ID pc16-alpha Version 0.1.0 Game format Playable game Added to Studio Added from your computer Location /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-veri",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Projects navigation for pc16-beta",
+      "status": "success",
+      "latencyMs": 112,
+      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects Search projects Game type Availability Name Type Added to Studio Last opened Actions Available projects Pc16 Alpha /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-m2gmfhqp/pokie-pc16-verifier-KYfz8n/artifacts/pc16-alpha-package Playable game Added from your computer 9/5/2026, 1:20:40 PM Open Remove Showing 1–1 of 1 projects Add a game you already have Choose a game folder, saved game design,",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Enter pc16-beta artifact path",
+      "status": "success",
+      "latencyMs": 46,
+      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects Search projects Game type Availability Name Type Added to Studio Last opened Actions Available projects Pc16 Alpha /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-m2gmfhqp/pokie-pc16-verifier-KYfz8n/artifacts/pc16-alpha-package Playable game Added from your computer 9/5/2026, 1:20:40 PM Open Remove Showing 1–1 of 1 projects Add a game you already have Choose a game folder, saved game design,",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Check pc16-beta generated package",
+      "status": "success",
+      "latencyMs": 132,
+      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects Search projects Game type Availability Name Type Added to Studio Last opened Actions Available projects Pc16 Alpha /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-m2gmfhqp/pokie-pc16-verifier-KYfz8n/artifacts/pc16-alpha-package Playable game Added from your computer 9/5/2026, 1:20:40 PM Open Remove Showing 1–1 of 1 projects Add a game you already have Choose a game folder, saved game design,",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Register pc16-beta generated package",
+      "status": "success",
+      "latencyMs": 141,
+      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects Search projects Game type Availability Name Type Added to Studio Last opened Actions Available projects pc16-beta-package /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-m2gmfhqp/pokie-pc16-verifier-KYfz8n/artifacts/pc16-beta-package Playable game Added from your computer 9/5/2026, 1:20:49 PM Open Remove Pc16 Alpha /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Open pc16-beta through Projects",
+      "status": "success",
+      "latencyMs": 165,
+      "visible": "POKIE Studio / Your projects / Pc16 Beta / Overview Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Beta pc16-beta · v0.1.0 Show project location Close project Start by playing a round Open Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine. Open Play ID pc16-beta Version 0.1.0 Game format Playable game Added to Studio Added from your computer Location /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Project switch resets alpha context for beta",
+      "status": "success",
+      "latencyMs": 0,
+      "visible": "POKIE Studio / Your projects / Pc16 Beta / Overview Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Beta pc16-beta · v0.1.0 Show project location Close project Start by playing a round Open Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine. Open Play ID pc16-beta Version 0.1.0 Game format Playable game Added to Studio Added from your computer Location /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Fresh-profile beta deep-link opens exact project",
+      "status": "success",
+      "latencyMs": 0,
+      "visible": "POKIE Studio / Your projects / Pc16 Beta / Overview Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Beta pc16-beta · v0.1.0 Show project location Close project Start by playing a round Open Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine. Open Play ID pc16-beta Version 0.1.0 Game format Playable game Added to Studio Added from your computer Location /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Fresh profile recovers to registered Projects",
+      "status": "success",
+      "latencyMs": 0,
+      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects Loading your projects… Add a game you already have Choose a game folder, saved game design, or PAR spreadsheet (.xlsx). Studio checks it first, so nothing is added until you confirm. Game location Browse… Browse PAR sheet… Check game Enter a game location or use Browse to check it before adding it. Documentation Docs index Getting started CLI reference",
+      "consoleFailures": [],
+      "networkFailures": []
+    }
+  ],
+  "consoleEvents": [],
+  "networkEvents": [],
+  "screenshots": [
+    {
+      "name": "profile-a-play.png",
+      "sha256": "2d158deb2ba30eb741c44834d83899f150a22ddc807ac7b56b66abda8265f569"
+    },
+    {
+      "name": "profile-a-simulation.png",
+      "sha256": "ef7f44e58ab16a6c9d5081120d0e10ea4d191f0000335648f074a9a2a3a0d16d"
+    },
+    {
+      "name": "profile-a-retired-route.png",
+      "sha256": "070ab4c3e19399dd146cd6a414ae899b326a925afe1d3222d4917e65c9f4d38d"
+    },
+    {
+      "name": "profile-b-history.png",
+      "sha256": "f42246431c02322167bb3793b8202964038ae93970c80afe6c96b7e69f3d8290"
+    }
+  ],
+  "cleanup": "Studio and both Chromium profile processes received SIGTERM; isolated runtime removed."
+}
