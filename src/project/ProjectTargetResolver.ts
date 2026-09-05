@@ -17,7 +17,7 @@ import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
 import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
-import {computeArtifactInputBindingHash, type ArtifactConfigurationProvenance} from "./ArtifactConversionPlanner.js";
+import {computeArtifactInputBindingHash, computeProjectInputBindingHash, type ArtifactConfigurationProvenance} from "./ArtifactConversionPlanner.js";
 import {recognizeParWorkbookFile} from "./internal/looksLikeParWorkbookFile.js";
 import {describeWasmSidecarFailure} from "./WasmProductContract.js";
 
@@ -201,7 +201,7 @@ export class ProjectTargetResolver implements ProjectResolving {
                 const configurationHash = game.getConfigHash?.();
                 return {
                     ...(configurationHash === undefined ? {} : {configurationHash}),
-                    inputBindingHash: computeArtifactInputBindingHash([rootPath]),
+                    inputBindingHash: computeProjectInputBindingHash({type, rootPath}),
                     gameId: manifest.id,
                     gameVersion: manifest.version,
                     manifestIdentity: `${manifest.id}@${manifest.version}`,

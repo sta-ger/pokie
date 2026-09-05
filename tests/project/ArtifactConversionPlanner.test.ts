@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ArtifactConversionPlanner, computeArtifactInputBindingHash, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type PokieProject} from "../../src/index.js";
+import {ArtifactConversionPlanner, computeArtifactInputBindingHash, computeProjectInputBindingHash, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type PokieProject} from "../../src/index.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 
 function project(type: PokieProject["type"]): PokieProject {
@@ -50,6 +50,31 @@ describe("ArtifactConversionPlanner", () => {
             expect(computeArtifactInputBindingHash([packageRoot], options)).toBe(prepared);
             fs.writeFileSync(executableDependency, "module.exports = 2;");
             expect(computeArtifactInputBindingHash([packageRoot], options)).not.toBe(prepared);
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("binds a tsPackage's authored files without traversing its installed runtime", () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-package-binding-"));
+        const packageRoot = path.join(directory, "package");
+        const runtime = path.join(directory, "runtime");
+        const entry = path.join(packageRoot, "dist", "index.js");
+        const runtimeFile = path.join(runtime, "dist", "index.js");
+        try {
+            fs.mkdirSync(path.dirname(entry), {recursive: true});
+            fs.mkdirSync(path.dirname(runtimeFile), {recursive: true});
+            fs.mkdirSync(path.join(packageRoot, "node_modules"), {recursive: true});
+            fs.writeFileSync(path.join(packageRoot, "package.json"), '{"pokie":{"entry":"./dist/index.js"}}');
+            fs.writeFileSync(entry, "module.exports = {version: 1};");
+            fs.writeFileSync(runtimeFile, "module.exports = {runtime: 1};");
+            fs.symlinkSync(runtime, path.join(packageRoot, "node_modules", "pokie"), "dir");
+            const prepared = computeProjectInputBindingHash({type: "tsPackage", rootPath: packageRoot});
+
+            fs.writeFileSync(runtimeFile, "module.exports = {runtime: 2};");
+            expect(computeProjectInputBindingHash({type: "tsPackage", rootPath: packageRoot})).toBe(prepared);
+            fs.writeFileSync(entry, "module.exports = {version: 2};");
+            expect(computeProjectInputBindingHash({type: "tsPackage", rootPath: packageRoot})).not.toBe(prepared);
         } finally {
             fs.rmSync(directory, {recursive: true, force: true});
         }
