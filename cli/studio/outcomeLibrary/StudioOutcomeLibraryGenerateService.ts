@@ -480,16 +480,6 @@ export class StudioOutcomeLibraryGenerateService {
                 assertDestinationAvailable: async () => {
                     const current = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
                     if (current.status === "planned") return;
-                    // A managed Blueprint retry already has a source/configuration
-                    // binding from its refreshed preflight.  Cancellation cleanup
-                    // can briefly make a subsequent source-recognition probe
-                    // unavailable even though neither that binding nor the
-                    // destination changed.  That probe is not destination
-                    // evidence, so retain the prepared plan and let the writer's
-                    // normal destination boundary decide publication. Other
-                    // planner failures (including a real destination conflict)
-                    // remain terminal.
-                    if (tokenBoundBlueprintPlan !== undefined && current.diagnostic?.code === "unrecognized-source") return;
                     throw new Error(current.diagnostic?.message ?? "The Outcome Library destination is unavailable.");
                 },
                 publish: (read) => {

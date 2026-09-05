@@ -37,8 +37,8 @@ describe("StudioArtifactConversionPlanningService", () => {
         const service = new StudioArtifactConversionPlanningService("1.3.0", resolver, registry);
 
         await expect(service.prepare(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"))).resolves.toMatchObject({status: "planned"});
-        expect(resolver.resolve).toHaveBeenNthCalledWith(1, projectRoot);
-        expect(resolver.resolve).toHaveBeenNthCalledWith(2, blueprintPath);
+        expect(resolver.resolve).toHaveBeenCalledTimes(1);
+        expect(resolver.resolve).toHaveBeenCalledWith(blueprintPath);
         expect(registry.preparePlan).toHaveBeenCalledWith(
             expect.objectContaining({type: "blueprint", rootPath: blueprintPath}),
             "outcomeLibrary",
@@ -62,8 +62,29 @@ describe("StudioArtifactConversionPlanningService", () => {
         const service = new StudioArtifactConversionPlanningService("1.3.0", resolver, registry);
 
         await expect(service.prepare(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"))).resolves.toMatchObject({status: "planned"});
-        expect(resolver.resolve).toHaveBeenNthCalledWith(1, projectRoot);
-        expect(resolver.resolve).toHaveBeenNthCalledWith(2, blueprintPath);
+        expect(resolver.resolve).toHaveBeenCalledTimes(1);
+        expect(resolver.resolve).toHaveBeenCalledWith(blueprintPath);
+        expect(registry.preparePlan).toHaveBeenCalledWith(
+            expect.objectContaining({type: "blueprint", rootPath: blueprintPath}),
+            "outcomeLibrary",
+            {destinationPath: path.join(projectRoot, "outcomelibrary")},
+        );
+    });
+
+    it("keeps the managed Blueprint source when its directory also resolves as a package", async () => {
+        const blueprintPath = path.join(projectRoot, "blueprint.json");
+        const resolver = {
+            resolve: jest.fn((location: string) => Promise.resolve(location === blueprintPath
+                ? {type: "blueprint" as const, rootPath: blueprintPath, capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export"] as const, provenance: "recognized managed blueprint"}
+                : {type: "tsPackage" as const, rootPath: projectRoot, capabilities: ["runtime.execute", "outcomeLibrary.generate", "stakeAdapter.export"] as const, provenance: "generated package sibling"})),
+        } as ProjectResolving;
+        const registry = {preparePlan: jest.fn(() => ({status: "planned"}))} as unknown as ArtifactBuilderRegistry;
+        const service = new StudioArtifactConversionPlanningService("1.3.0", resolver, registry);
+
+        await expect(service.prepare(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"))).resolves.toMatchObject({status: "planned"});
+
+        expect(resolver.resolve).toHaveBeenCalledTimes(1);
+        expect(resolver.resolve).toHaveBeenCalledWith(blueprintPath);
         expect(registry.preparePlan).toHaveBeenCalledWith(
             expect.objectContaining({type: "blueprint", rootPath: blueprintPath}),
             "outcomeLibrary",

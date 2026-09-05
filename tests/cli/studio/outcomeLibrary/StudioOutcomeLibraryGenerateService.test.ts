@@ -186,7 +186,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
         });
 
-        it("publishes a managed Blueprint retry when the destination check's source probe is unavailable after cancellation", async () => {
+        it("publishes a managed Blueprint retry after cancellation with the same recognized source plan", async () => {
             const blueprintPath = path.join(projectRoot, "blueprint.json");
             fs.writeFileSync(blueprintPath, "{}");
             const destination = path.join(projectRoot, "outcomelibrary");
@@ -203,25 +203,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                     capabilities: ["outcome-library-read"],
                 },
             };
-            const unavailableSourcePlan: ArtifactConversionPlan = {
-                ...managedBlueprintPlan,
-                status: "unavailable",
-                steps: [],
-                diagnostic: {
-                    code: "unrecognized-source",
-                    failedEdge: {from: "tsPackage", to: "outcomeLibrary"},
-                    message: "This Studio source is not an independently recognized POKIE artifact and cannot be used for conversion planning.",
-                    recovery: "Open or generate a recognized POKIE Outcome Library bundle, then retry the action.",
-                },
-            };
-            let plannerCalls = 0;
-            const planning = {prepare: jest.fn(() => {
-                plannerCalls += 1;
-                // The initial and refreshed preflights recognize the managed
-                // Blueprint. The execution-time destination probe reproduces
-                // the cancellation-cleanup recognition race from Studio.
-                return Promise.resolve(plannerCalls < 3 ? managedBlueprintPlan : unavailableSourcePlan);
-            })};
+            const planning = {prepare: jest.fn(() => Promise.resolve(managedBlueprintPlan))};
             let generationCalls = 0;
             const svc = new StudioOutcomeLibraryGenerateService(
                 POKIE_VERSION,

@@ -29,6 +29,19 @@ export async function resolveStudioProjectSource(
     resolver: ProjectResolving,
     projectRoot: string,
 ): Promise<PokieProject | undefined> {
+    const managedBlueprintPath = path.join(projectRoot, "blueprint.json");
+    // Studio-managed projects own blueprint.json as their editable source.
+    // Resolve it before the enclosing directory: a generated or partially
+    // cleaned-up sibling must never change a managed Blueprint operation into
+    // a different source kind between preflight and retry.
+    try {
+        const managedBlueprint = await resolver.resolve(managedBlueprintPath);
+        if (managedBlueprint?.type === "blueprint") return managedBlueprint;
+    } catch {
+        // A malformed sibling must not prevent direct file/package projects
+        // from retaining their normal resolver path below.
+    }
+
     try {
         const direct = await resolver.resolve(projectRoot);
         if (direct !== undefined) return direct;
@@ -38,11 +51,7 @@ export async function resolveStudioProjectSource(
         // durable blueprint.json source it created and registered there.
     }
 
-    try {
-        return await resolver.resolve(path.join(projectRoot, "blueprint.json"));
-    } catch {
-        return undefined;
-    }
+    return undefined;
 }
 
 /**
