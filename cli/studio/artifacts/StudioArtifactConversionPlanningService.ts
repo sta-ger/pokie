@@ -29,9 +29,20 @@ export async function resolveStudioProjectSource(
     resolver: ProjectResolving,
     projectRoot: string,
 ): Promise<PokieProject | undefined> {
-    const direct = await resolver.resolve(projectRoot);
-    if (direct !== undefined) return direct;
-    return resolver.resolve(path.join(projectRoot, "blueprint.json"));
+    try {
+        const direct = await resolver.resolve(projectRoot);
+        if (direct !== undefined) return direct;
+    } catch {
+        // A managed Blueprint's enclosing directory can contain an unrelated
+        // malformed artifact candidate. That must not make Studio forget the
+        // durable blueprint.json source it created and registered there.
+    }
+
+    try {
+        return await resolver.resolve(path.join(projectRoot, "blueprint.json"));
+    } catch {
+        return undefined;
+    }
 }
 
 /**

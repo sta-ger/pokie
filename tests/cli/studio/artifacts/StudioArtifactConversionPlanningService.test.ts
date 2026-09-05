@@ -46,6 +46,31 @@ describe("StudioArtifactConversionPlanningService", () => {
         );
     });
 
+    it("keeps a managed Blueprint source available when its enclosing directory has an unrelated malformed artifact candidate", async () => {
+        const blueprintPath = path.join(projectRoot, "blueprint.json");
+        const resolver = {
+            resolve: jest.fn((location: string) => {
+                if (location === projectRoot) return Promise.reject(new Error("malformed package manifest"));
+                return Promise.resolve(location === blueprintPath
+                    ? {type: "blueprint" as const, rootPath: blueprintPath, capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export"] as const, provenance: "recognized managed blueprint"}
+                    : undefined);
+            }),
+        } as ProjectResolving;
+        const registry = {
+            preparePlan: jest.fn(() => ({status: "planned"})),
+        } as unknown as ArtifactBuilderRegistry;
+        const service = new StudioArtifactConversionPlanningService("1.3.0", resolver, registry);
+
+        await expect(service.prepare(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"))).resolves.toMatchObject({status: "planned"});
+        expect(resolver.resolve).toHaveBeenNthCalledWith(1, projectRoot);
+        expect(resolver.resolve).toHaveBeenNthCalledWith(2, blueprintPath);
+        expect(registry.preparePlan).toHaveBeenCalledWith(
+            expect.objectContaining({type: "blueprint", rootPath: blueprintPath}),
+            "outcomeLibrary",
+            {destinationPath: path.join(projectRoot, "outcomelibrary")},
+        );
+    });
+
     it("returns a structured unavailable plan when Studio cannot recognize the selected source", async () => {
         const resolver: ProjectResolving = {resolve: jest.fn(() => Promise.resolve(undefined))};
         const registry = {preparePlan: jest.fn()} as unknown as ArtifactBuilderRegistry;
