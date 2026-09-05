@@ -294,8 +294,9 @@ export class StudioOutcomeLibraryGenerateService {
      * Revalidates a supplied preflight at the HTTP launch boundary.  A job is
      * deliberately not the first consumer of this check: otherwise a stale
      * browser request is observable as a queued job before it is rejected by
-     * generate().  Re-estimating here also proves that the source identity and
-     * resolved publication destination still describe the immutable snapshot.
+     * generate(). Package sources are re-estimated here; a managed Blueprint
+     * token instead rechecks its loaded runtime/configuration/destination
+     * against its already-recognized canonical source snapshot.
      */
     public async validatePreflightBinding(
         projectRoot: string,
@@ -304,6 +305,47 @@ export class StudioOutcomeLibraryGenerateService {
     ): Promise<string | undefined> {
         if (generationRequestKey(request) !== binding.requestKey) {
             return "The generation request no longer matches the immutable preflight. Refresh the displayed preflight before generating.";
+        }
+        const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
+        // A managed Blueprint preflight already holds the canonical source
+        // identity. Re-resolving that source here adds a third planner probe
+        // between the refreshed visible preflight and the token-bound job;
+        // cancellation cleanup can make that probe transiently unavailable
+        // even though the loaded Blueprint has not changed. Keep checking the
+        // runtime/configuration/destination contract, but leave source
+        // recognition to the immutable snapshot that generate() consumes.
+        if (snapshot?.plan.source.kind === "blueprint") {
+            if (
+                snapshot.binding.requestKey !== binding.requestKey ||
+                snapshot.binding.gameId !== binding.gameId ||
+                snapshot.binding.gameVersion !== binding.gameVersion ||
+                snapshot.binding.configHash !== binding.configHash ||
+                snapshot.binding.destination !== binding.destination ||
+                snapshot.binding.requiresBounded !== binding.requiresBounded
+            ) {
+                return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+            }
+            try {
+                const game = await this.loadGame(projectRoot);
+                const preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(
+                    game,
+                    request,
+                    request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR,
+                    projectRoot,
+                ));
+                if (
+                    game.getManifest().id !== binding.gameId ||
+                    game.getManifest().version !== binding.gameVersion ||
+                    game.getConfigHash?.() !== binding.configHash ||
+                    preparedRequest.preflight.destination?.path !== binding.destination ||
+                    preparedRequest.preflight.requiresSampledOptIn !== binding.requiresBounded
+                ) {
+                    return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+                }
+                return undefined;
+            } catch {
+                return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+            }
         }
         const preflight = await this.estimate(projectRoot, request);
         if (preflight.status !== "ok") {

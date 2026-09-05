@@ -257,6 +257,19 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(refreshedPreflight.status).toBe("ok");
             if (refreshedPreflight.status !== "ok") return;
 
+            // HTTP validates a displayed token before creating its job. That
+            // boundary must retain the refreshed managed Blueprint identity
+            // too: a third source-planner probe is the cancellation/retry
+            // failure this regression covers.
+            const binding = svc.getPreflightBinding(refreshedPreflight.preflightToken);
+            expect(binding).toBeDefined();
+            if (binding === undefined) return;
+            await expect(svc.validatePreflightBinding(
+                blueprintPath,
+                {generation: "exact", preflightToken: refreshedPreflight.preflightToken},
+                binding,
+            )).resolves.toBeUndefined();
+
             const generated = await svc.generate(blueprintPath, {generation: "exact", preflightToken: refreshedPreflight.preflightToken});
 
             expect(generated).toMatchObject({status: "ok", plan: managedBlueprintPlan});
