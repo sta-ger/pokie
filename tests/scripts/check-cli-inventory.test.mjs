@@ -223,6 +223,57 @@ test("allows historical-document exclusions without expanding bounded candidates
     }
 });
 
+test("rejects lexical and realpath escapes for roots, legacy files, candidates, parents, and final reads", async () => {
+    const {directory, cli, coverage} = await fixture();
+    const outside = await mkdtemp(path.join(os.tmpdir(), "pokie-inventory-outside-"));
+    try {
+        await writeFile(path.join(outside, "escape.md"), "pokie deploy --target escape\n");
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        map.documentationRoot = "../outside";
+        await writeFile(coverage, JSON.stringify(map));
+        let result = run(cli, coverage, path.join(directory, "root-traversal"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /documentation root must not enter/);
+
+        map.documentationRoot = "C:\\outside";
+        await writeFile(coverage, JSON.stringify(map));
+        result = run(cli, coverage, path.join(directory, "drive-root"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /drive/);
+
+        map.documentationRoot = "//server/share";
+        await writeFile(coverage, JSON.stringify(map));
+        result = run(cli, coverage, path.join(directory, "unc-root"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /UNC/);
+
+        map.documentationRoot = ".";
+        delete map.documentationScope;
+        map.documentationFiles = ["../escape.md"];
+        await writeFile(coverage, JSON.stringify(map));
+        result = run(cli, coverage, path.join(directory, "legacy-traversal"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /documentation candidate must not enter/);
+
+        await symlink(outside, path.join(directory, "linked-docs"), "dir");
+        map.documentationFiles = ["linked-docs/escape.md"];
+        await writeFile(coverage, JSON.stringify(map));
+        result = run(cli, coverage, path.join(directory, "legacy-symlink"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /escapes its documentation root through a symlink/);
+
+        map.documentationScope = {include: ["linked-docs/*.md"]};
+        delete map.documentationFiles;
+        await writeFile(coverage, JSON.stringify(map));
+        result = run(cli, coverage, path.join(directory, "glob-parent-symlink"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /escapes its documentation root through a symlink/);
+    } finally {
+        await rm(directory, {recursive: true, force: true});
+        await rm(outside, {recursive: true, force: true});
+    }
+});
+
 test("keeps command context for ordinary claims below a CLI heading", async () => {
     const {directory, cli, coverage} = await fixture("", "## pokie build\n\nUse --target futureTarget.\n");
     try {

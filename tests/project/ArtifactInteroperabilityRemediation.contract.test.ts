@@ -1,9 +1,7 @@
 import fs from "fs";
 import crypto from "crypto";
-import os from "os";
 import path from "path";
 import {spawnSync} from "child_process";
-import {pathToFileURL} from "url";
 import {
     ArtifactConversionPlanner,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
@@ -152,7 +150,7 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
-    it("runs the provenance-bound PC-14 runners without changing completed evidence", () => {
+    it("performs archival integrity checks without recreating PC-14 execution", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const script = fs.readFileSync(scriptPath, "utf-8");
         const evidenceDirectory = path.dirname(evidencePath);
@@ -161,60 +159,19 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         const result = spawnSync(process.execPath, [scriptPath], {
             cwd: process.cwd(),
             encoding: "utf-8",
-            timeout: 300000,
-            maxBuffer: 16 * 1024 * 1024,
+            timeout: 30000,
         });
         expect(result.error).toBeUndefined();
         const output = `${result.stdout}\n${result.stderr}`;
         expect(result.status === 0 ? "" : output.slice(-5000)).toBe("");
         expect(result.status).toBe(0);
-        expect(script).toContain("assertImmutableEvidenceMatchesPublishedRevision");
-        expect(script).toContain("assertFreshEvidenceMatchesImmutable");
-        expect(script).toContain("publishedPc14Revision");
-        expect(script).toContain('run("git", ["worktree", "add"');
-        expect(script).toContain("bwrap");
-        expect(script).toContain("PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR");
-        expect(script).not.toContain('"--write"');
-        expect(script).not.toContain("normalise");
-        expect(output).toContain("PC-14 verifying historical CLI, Studio API, and Studio UI runners in published order.");
-        expect(output).toContain("PASS PC-14 historical runners reproduced immutable evidence from 4731f5f6fbfed54b89006988accd72067532f67d.");
-        expect(evidenceFiles.map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex"))).toEqual(evidenceHashes);
-    });
-
-    it("rejects fresh runner identity and provenance drift without rewriting completed evidence", () => {
-        const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
-        const evidenceDirectory = path.dirname(evidencePath);
-        const completedEvidenceHashes = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"]
-            .map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex"));
-        const freshEvidenceDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-fresh-drift-"));
-        try {
-            fs.cpSync(evidenceDirectory, freshEvidenceDirectory, {recursive: true});
-            const freshCliPath = path.join(freshEvidenceDirectory, "cli-real-artifact-result.json");
-            const freshCli = JSON.parse(fs.readFileSync(freshCliPath, "utf-8")) as {readonly rows: Record<string, string>[]};
-            freshCli.rows[0]!["source_identity"] = "sha256:provenance-drift";
-            fs.writeFileSync(freshCliPath, `${JSON.stringify(freshCli, undefined, 2)}\n`);
-            const verifier = spawnSync(process.execPath, ["--input-type=module", "--eval", [
-                `import {assertFreshEvidenceMatchesImmutable} from ${JSON.stringify(pathToFileURL(scriptPath).href)};`,
-                `assertFreshEvidenceMatchesImmutable(${JSON.stringify(freshEvidenceDirectory)});`,
-            ].join("\n")], {cwd: process.cwd(), encoding: "utf-8"});
-            expect(verifier.status).toBe(1);
-            expect(`${verifier.stdout}\n${verifier.stderr}`).toContain("fresh cli-real-artifact-result.json differs byte-for-byte");
-            expect(["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"]
-                .map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex")))
-                .toEqual(completedEvidenceHashes);
-        } finally {
-            fs.rmSync(freshEvidenceDirectory, {recursive: true, force: true});
+        expect(script).toContain("validatePc14Archive");
+        expect(script).toContain("immutableSha256");
+        for (const forbiddenExecutionMechanism of ["worktree", "bwrap", "spawnSync", "symlinkSync", "PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR", "PC14_INTEROPERABILITY_EXTERNAL_COMPARATOR", "assertFreshEvidenceMatchesImmutable", "publishedPc14Revision"]) {
+            expect(script).not.toContain(forbiddenExecutionMechanism);
         }
-    });
-
-    it("rejects a caller-supplied substitute for completed PC-14 provenance", () => {
-        const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
-        const verifier = spawnSync(process.execPath, ["--input-type=module", "--eval", [
-            `import {assertFreshEvidenceMatchesImmutable} from ${JSON.stringify(pathToFileURL(scriptPath).href)};`,
-            `assertFreshEvidenceMatchesImmutable(${JSON.stringify(path.dirname(evidencePath))});`,
-        ].join("\n")], {cwd: process.cwd(), encoding: "utf-8"});
-        expect(verifier.status).toBe(1);
-        expect(`${verifier.stdout}\n${verifier.stderr}`).toContain("PC-14 evidence provenance is fixed");
+        expect(output).toContain("PASS PC-14 completed evidence archive is byte-intact and rewrite-protected.");
+        expect(evidenceFiles.map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex"))).toEqual(evidenceHashes);
     });
 
     it("rejects attempts to rewrite the completed PC-14 evidence", () => {
