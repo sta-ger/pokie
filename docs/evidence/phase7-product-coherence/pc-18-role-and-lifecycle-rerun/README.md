@@ -1,45 +1,53 @@
 # PC-18 independent host verification — candidate `a1ee26008bfc04fc0819a635ce16d03bcf69fef2`
 
-2026-09-05 UTC. This record replaces the superseded `f44f3dd…` evidence and
-retains no generated project/output tree, profile, raw log, or harness.
-
-## Required impact suite
-
-The following one serial, whole-file command completed on this exact checkout:
-
-```text
-npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
-```
-
-Result: **11 suites passed, 59 tests passed**. `npm run build` also completed
-before Studio was launched.
-
-## Fresh Studio rerun — driver/readiness inconclusive
-
-Two isolated Studio launches used the candidate command exactly:
+2026-09-05 UTC. This replaces the earlier inconclusive evidence with bounded
+proof from two new isolated public Studio launches. Both launched this source
+checkout exactly with:
 
 ```text
 node ./dist/cli/pokie.js --no-open
 ```
 
-The first rendered the public `Start a game` surface. On the second, the visible
-recommended Starter Slot form validated as `Valid — no issues found`; `Save game`
-then rendered `Your game was saved. Opening its workspace…`, and the project
-subsequently opened as `Starter Slot` with the visible Play, Simulation, Replay,
-and Build/Export navigation.
+Each used a new Studio registry and Chromium profile. No product code, test, or
+generated project/output tree is retained here.
 
-The repaired harness had a transition-comparison defect: it compared control
-objects to control labels, so it advanced immediately instead of waiting for
-each newly selected tab to render. Its later clicks therefore did not reach the
-required Play round, Simulation run, Replay, Outcome Library, or Stake export.
-There was no rendered product error. The two allowed launches were exhausted,
-so this is driver/readiness-inconclusive evidence, not a product finding.
+## Retained suite result
 
-## Retained proof
+The exact-candidate whole-file command already recorded for this candidate
+passed: `npm run test:targeted --` followed by the eleven required PC-18,
+interoperability, Studio lifecycle, conversion, and managed-provenance files.
+Result: **11 suites / 59 tests passed**. The candidate build passed before the
+public launches.
 
-`01-fresh-studio-managed-blueprint-saved.png` shows the visible managed
-Blueprint save and validation result.
+## Rendered transcript and finding
+
+The fresh Recommended design automatically validated, `Create game` saved a
+managed `Starter Slot` Blueprint, and its workspace rendered. A real Play
+session was then created without pipeline instructions; one visible Spin settled
+as `Round complete`, `You won 12.00`, with credits updated to 1011. Simulation
+also completed 10,000 rounds and rendered RTP, convergence, history, repeat,
+and comparison controls.
+
+In Build/Export, the exact 1024-combination Outcome Library generation entered
+the rendered pending state with `Cancel generation`. The visible cancel action
+was accepted and restored the enabled generation control. The one safe retry,
+with no configuration, destination, or project change, did **not** start a new
+pending run or produce the library. It rendered:
 
 ```text
-fba249602e8fe8fcf33f8f82fc590d235c1f2e377b19eb74140b5e3a173ff793  01-fresh-studio-managed-blueprint-saved.png
+The project, configuration, destination, or bound preflight changed before
+publication. Refresh the preflight, review the destination, then generate again.
 ```
+
+The dependent Stake card truthfully remained `Ready to build` and disclosed its
+compatible-Outcome-Library prerequisite, but could not be verified to terminal
+completion because its prerequisite failed to recover. This is a reproducible
+P1 cancellation/retry lifecycle defect, not a driver timeout.
+
+## Bounded proof
+
+| File | SHA-256 | Observation |
+| --- | --- | --- |
+| `01-play-round.png` | `33871c2ea159dbc22f7c689b21f576e43666b17deafec934abe0058a6fbfe18c` | Clean-context real Play session and settled winning round. |
+| `02-simulation-complete.png` | `c1c20a39996433bb49d717e63bc3fa2967f6637d559436175dc6aa11b6b83689` | Completed 10,000-round Simulation with rendered recovery/history controls. |
+| `03-cancel-retry-preflight-conflict.png` | `91ef081b624eeab86ca9e4aeebc684725b02ac8e344f5b937f97fc42e335e5e2` | Visible retry conflict after accepted cancellation, before Outcome Library publication. |
