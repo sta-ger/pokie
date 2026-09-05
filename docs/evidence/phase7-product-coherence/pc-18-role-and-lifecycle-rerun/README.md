@@ -116,3 +116,32 @@ matcher incorrectly treated a prior generated-artifact phrase as later build
 success, so the remaining four-launch allowance was exhausted before a safe
 cross-project attempt or the reverse flow could be driven.  Those variants,
 and therefore independent systemic-class confirmation, remain unverified.
+
+## Final focused recovery (four fresh profiles)
+
+The persistent harness was repaired before each launch: the artifact terminal
+matcher now requires a new local state, and card-local actions/inputs require
+a single visible matching control inside that card.  Fresh launch one rendered
+the advanced Load/Save and staged PAR Import → Diagnose & map → Preview →
+Apply/Export controls.  It made no mutation.
+
+Fresh launch two created the starter project and, in **Build/Export**, pressed
+the rendered **Generate exact outcome library (base)** action.  The product
+then rendered: `Generating this outcome library failed. Check the settings
+above and try again. If it continues, reopen the project and retry.` Its local
+diagnostic stated: `Server plan: Unavailable — This Studio source is not an
+independently recognized POKIE artifact and cannot be used for conversion
+planning.` This is a reproducible product failure in the Outcome
+Library/Stake materialization class, not a driver timeout.  It blocks the
+Studio output-to-input and reverse-publication branches; no follow-on
+publication was issued while that operation was failed.
+
+Fresh launch three exposed that a prior harness field matcher was too broad;
+the attempt is discarded as evidence and no product conclusion is drawn from
+it.  Fresh launch four used the repaired card-local selector, entered a new
+isolated destination through the rendered PAR field, and pressed its one
+rendered **Build** action.  No local success, pending, or error state was
+rendered within the bounded wait.  This leaves PAR cross-project switching and
+staged import not reached; it is not a product finding because the visible UI
+did not reproduce an error.  No generated trees, profiles, raw logs,
+screenshots, or automation files are retained.
