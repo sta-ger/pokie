@@ -131,10 +131,11 @@ export type StudioPlaySpinResult =
 // project, plays it through its own real OutcomeLibraryBundleOutcomeSource adapter instead -- the exact
 // same selector class PreGeneratedSpinCommandHandler/sampleOutcomeSourceProject already use in production
 // -- never loadPokieGame, never a regenerated game-model draw (see newOutcomeSourceSession's own doc
-// comment). A resolved "stakeAdapter" project (or any other type the resolver hands back that isn't a
-// loadable package) has no draw contract of its own and reports the same structured
+// comment). A resolved "stakeAdapter" project has no draw contract of its own and reports the same structured
 // "outcomeSource.sample" capability diagnostic describeUnsupportedProjectOperation gives every other POKIE
-// surface, as an honest `{status: "failed"}` result, never a package-loading attempt. A path the resolver
+// surface, as an honest `{status: "failed"}` result, never a package-loading attempt. Blueprint and PAR
+// projects proceed to the shared runtime resolver below, where their supported conversion path is
+// materialized before loading. A path the resolver
 // doesn't recognize at all -- including one that doesn't exist on disk, same as before this resolution
 // step existed -- falls straight through to the ordinary materialize-and-load flow below, unaffected.
 export class StudioPlayService {
@@ -210,7 +211,10 @@ export class StudioPlayService {
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
             return this.newOutcomeSourceSession(project, seed, modeName, assertCurrent);
         }
-        const diagnostic = project === undefined ? undefined : describeUnsupportedProjectOperation(project, PLAY_OPERATION);
+        // Blueprint and PAR projects have a planned runtime conversion, so they must reach the shared
+        // resolver below instead of being rejected merely because the source artifact itself cannot play.
+        // WASM is the remaining resolved project type whose Play boundary is genuinely unavailable.
+        const diagnostic = project?.type === "wasm" ? describeUnsupportedProjectOperation(project, PLAY_OPERATION) : undefined;
         if (diagnostic !== undefined) {
             return {status: "failed", error: diagnostic.message};
         }

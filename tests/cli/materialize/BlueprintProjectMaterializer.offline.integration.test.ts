@@ -8,7 +8,7 @@ import {computeGameBlueprintHash, DEV_OPERATION, GAME_BLUEPRINT_SCHEMA_VERSION, 
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
 import {BlueprintMaterializationError} from "../../../cli/materialize/BlueprintMaterializationError.js";
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
-import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {createLocalRuntimeIdentity, createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {resolveLocalPokieDependencyClosure} from "../../../cli/prepare/localPokieDependencyClosure.js";
 import {PackageCommandResult, PackageCommandRunning, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
 import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
@@ -26,8 +26,13 @@ const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulatio
 // another concurrent process's own cache entries.
 const DEFAULT_CACHE_ROOT = path.join(os.tmpdir(), "pokie-materialize-cache");
 
-function computeDefaultCacheDir(blueprint: GameBlueprint, pokieVersion: string): string {
-    const raw = `blueprintHash:${computeGameBlueprintHash(blueprint)}|pokieVersion:${pokieVersion}|buildContractVersion:${GAME_BLUEPRINT_SCHEMA_VERSION}`;
+function computeDefaultCacheDir(blueprint: GameBlueprint, pokieVersion: string, runtimeIdentity: string): string {
+    const raw =
+        `blueprintHash:${computeGameBlueprintHash(blueprint)}|` +
+        `pokieVersion:${pokieVersion}|` +
+        `buildContractVersion:${GAME_BLUEPRINT_SCHEMA_VERSION}|` +
+        `runtimeIdentity:${runtimeIdentity}|` +
+        "sourceIdentity:blueprint";
     const cacheKey = crypto.createHash("sha256").update(raw).digest("hex");
     return path.join(DEFAULT_CACHE_ROOT, cacheKey);
 }
@@ -585,9 +590,9 @@ describe("CLI command coverage (offline end-to-end, through the built CLI execut
     });
 
     afterAll(() => {
+        fs.rmSync(computeDefaultCacheDir(blueprint, POKIE_VERSION, createLocalRuntimeIdentity(pokiePackageRootWithSpaces)), {recursive: true, force: true});
         fs.rmSync(pokiePackageRootWithSpaces, {recursive: true, force: true});
         fs.rmSync(sourceDir, {recursive: true, force: true});
-        fs.rmSync(computeDefaultCacheDir(blueprint, POKIE_VERSION), {recursive: true, force: true});
         restoreEnv("npm_config_offline", originalNpmOffline);
         restoreEnv("npm_config_registry", originalNpmRegistry);
     });

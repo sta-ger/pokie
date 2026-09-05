@@ -466,12 +466,14 @@ export class StudioServer implements StudioServerHandling {
         // Every recorded round, from any tab, refers to a session/game this shutdown is about to make
         // unreachable -- see StudioRoundRecorder.clearAll()'s own doc comment.
         this.roundRecorder.clearAll();
+        const server = this.server;
+        this.server = undefined;
         await new Promise<void>((resolve, reject) => {
-            if (!this.server) {
+            if (!server) {
                 resolve();
                 return;
             }
-            this.server.close((error) => {
+            server.close((error) => {
                 if (error) {
                     reject(error);
                     return;
