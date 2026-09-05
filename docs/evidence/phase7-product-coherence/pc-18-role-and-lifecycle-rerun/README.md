@@ -38,9 +38,42 @@ and `Open stop-window preview`. A stale wait predicate still saw an appended
 rendered literal-strip view proves that the Preview action succeeded; this is
 not reported as a product failure.
 
-The four-launch recovery cap was then exhausted. Outcome Library cancellation,
-fresh-preflight retry, terminal publication, dependent Stake export, and the
-remaining stale/cross-project/switching/cleanup/deep-link variants were not
-reached. No rendered product error was observed. This remains bounded
-**driver-inconclusive** evidence. Controller-owned harness reports and
-diagnostic screenshots remain outside this evidence directory.
+## Publisher recovery finding
+
+Four further clean-profile launches used the same candidate build and the
+single repaired harness. The first reached the actual Build/Export main view;
+the following three performed the rendered Outcome Library lifecycle without
+duplicating a pending request:
+
+1. Create the managed `Starter Slot` Blueprint, open Build/Export, and accept
+   the displayed exact preflight (1,024 combinations).
+2. Start `Generate exact outcome library (base)`, observe its local
+   `Cancel generation` pending action, and cancel it once.
+3. After the pending action disappeared, retry the unchanged visible inputs.
+
+The retry did not publish an Outcome Library. One clean run rendered
+`Generating this outcome library failed` with the local diagnostic: `Server
+plan: Unavailable — This Studio source is not an independently recognized
+POKIE artifact and cannot be used for conversion planning.` Another rendered
+the recovery error: `The project, configuration, destination, or bound
+preflight changed before publication. Refresh the preflight, review the
+destination, then generate again.` These are product-local error states, not
+driver waits. Therefore the requested cancellation → fresh-preflight →
+unchanged-input retry lifecycle cannot reach terminal Outcome Library
+publication from a clean Studio project.
+
+The dependent `Stake Engine export` remained independently reachable. Its
+rendered result said `Built to .../stakeAdapter`, displayed the executed
+`materialize → generateOutcomeLibrary → publish` plan, recorded managed
+provenance (`starter-slot@0.1.0`, configuration SHA-256, exact, `managed-v1`),
+and reported 1,024 published items. This does not repair the failed direct
+Outcome Library recovery path.
+
+The retained impact suite is still the 11-suite/59-test green whole-file run
+recorded above. The role, replay-provenance, and literal-preview observations
+above remain valid; the publisher failure means the full six-role and
+lifecycle checklist is not accepted. A representative rendered-error capture
+was retained only in the controller-owned harness; SHA-256:
+`26daf6e904fb851bb061a6edf965a14b2397b62dbe3da0d831f5a79103dabb10`.
+No generated projects, outputs, browser profiles, scripts, logs, or images
+are committed here.
