@@ -1,53 +1,48 @@
 # PC-18 independent host rerun — candidate `fb041804833d0721f5d13a8f7e3633d8c79d047c`
 
-2026-09-05 UTC. This is the bounded descendant record; runtime profiles,
-generated projects, browser profiles, screenshots, and raw logs are not
-retained in the repository.
+2026-09-05 UTC. This bounded descendant record retains no generated project,
+browser profile, image, raw log, or harness script.
 
-## Required machine command
+## Required impact suite
 
-One serial complete-file command was issued against this checkout:
+One serial complete-file command ran against this checkout:
 
 ```text
 npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
 ```
 
-The host executor returned the command preamble before its trailing Jest
-summary, then the one runner process terminated. It is not counted as an
-independently retained green result, and no duplicate Jest process was run.
+It passed: 11 suites, 59 tests. `npm run build` also completed before Studio.
 
-`npm run build` completed before the browser work; `dist/cli/pokie.js` was
-present and executable.
+## Fresh rendered Studio finding
 
-## Fresh rendered Studio recovery
+Two fresh isolated registry/browser-profile launches used exactly
+`node ./dist/cli/pokie.js --no-open` from this source checkout. Each used the
+public UI to create an editable Blueprint, open Build/Export, and request
+`Generate exact outcome library (base)` after Studio displayed its exact
+1,024-combination preflight and the dependent Stake provenance/plan.
 
-Four new isolated registry/browser-profile launches used exactly
-`node ./dist/cli/pokie.js --no-open` from this checkout. No rendered product
-error, browser exception, or failed network diagnostic was observed.
-
-The repaired public flow selected `Create game` and reached a created editable
-`blueprint.json` project. Its Overview truthfully identified the project as
-`Created in Studio`, exposed its local location and valid state, and directed
-the user to Build/Export. Build/Export truthfully displayed Outcome Library's
-local destination, exact 1,024-combination preflight, materialization plan, and
-the dependent Stake route (`materialize → generateOutcomeLibrary → publish`),
-including Stake's data boundary and its disabled compatibility check before an
-Outcome Library exists.
-
-The final launch clicked `Generate exact outcome library (base)` once. Its local
-pending state rendered (`Generating outcome library from this project's current
-build…`, disabled generator, and `Cancel generation`). The recovery harness then
-incorrectly issued the dependent Stake Build while that non-idempotent request
-remained pending and ended Studio before a local completion/error observation.
-Consequently Outcome Library completion, Stake completion/recovery, the six
-roles, and remaining lifecycle variants are deliberately not claimed. This is
-driver-inconclusive evidence, not a product finding.
-
-Runtime-only transcript checksums (not committed):
+The first accepted request rendered this local failure:
 
 ```text
-recovery-7.json a8bcca596e241d498b4efe7c6b609dbb1fc5eed33100e55dc67cbff62d29c369
-recovery-8.json 7cb1a3f8c9b3adf4f76e771865beab4190a891910b2b17bd2259a655161ff772
-recovery-9.json 955dbfa2ccc06e22006595fdc95a793875258b6352a832e7f6bcb32a3fb5e45b
-recovery-10.json b2d6ac73089253c0c801720cc3928c68d3020ccd25232ae83e983689f4342064
+Generating this outcome library failed. Check the settings above and try again.
+Server plan: Unavailable — This Studio source is not an independently
+recognized POKIE artifact and cannot be used for conversion planning.
+```
+
+The UI explicitly offered retry, so one safe fresh-profile retry was made. It
+reached the dependent `Stake Engine export` Build after the generator left
+pending, but Stake never produced a local completion; its final rendered view
+again contained the same Outcome Library failure and server-plan diagnostic.
+No second request was made while either operation displayed pending. Thus the
+managed-project Outcome Library and dependent Stake mission are not usable
+through the required public candidate-build workflow. Downstream lifecycle
+variants are blocked by this rendered product defect, not waived or inferred.
+
+Runtime-only checksums (not committed):
+
+```text
+recovery-11.json 718bd78f98eedf651a31915ecf4299804afb981aff6e75888bea0dbbfc37d939
+recovery-11.png  6bc0d2388d2d3d0b61b489d697dd49df8a07f65a02311c418eab74659fb9b6ad
+recovery-12.json 4e72fd0110eb127f06c5839d9e24bae40eb36f37fba3254aec223f56aebca78f
+recovery-12.png  5707f51ae32d38ce18297791a7b8a0e26c82419673e85938ca629421874f4a9c
 ```
