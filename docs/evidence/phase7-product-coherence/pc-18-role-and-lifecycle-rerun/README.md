@@ -1,53 +1,34 @@
-# PC-18 independent host verification — candidate `a1ee26008bfc04fc0819a635ce16d03bcf69fef2`
+# PC-18 independent host verification — candidate `1077df75047471f863e7b11cc35df9583b26a63d`
 
-2026-09-05 UTC. This replaces the earlier inconclusive evidence with bounded
-proof from two new isolated public Studio launches. Both launched this source
-checkout exactly with:
+2026-09-05 UTC. This directory supersedes all retained proof for a different
+candidate SHA. No generated project/output tree, browser profile, raw log, or
+screenshot is retained.
 
-```text
-node ./dist/cli/pokie.js --no-open
-```
+## Machine evidence
 
-Each used a new Studio registry and Chromium profile. No product code, test, or
-generated project/output tree is retained here.
-
-## Retained suite result
-
-The exact-candidate whole-file command already recorded for this candidate
-passed: `npm run test:targeted --` followed by the eleven required PC-18,
-interoperability, Studio lifecycle, conversion, and managed-provenance files.
-Result: **11 suites / 59 tests passed**. The candidate build passed before the
-public launches.
-
-## Rendered transcript and finding
-
-The fresh Recommended design automatically validated, `Create game` saved a
-managed `Starter Slot` Blueprint, and its workspace rendered. A real Play
-session was then created without pipeline instructions; one visible Spin settled
-as `Round complete`, `You won 12.00`, with credits updated to 1011. Simulation
-also completed 10,000 rounds and rendered RTP, convergence, history, repeat,
-and comparison controls.
-
-In Build/Export, the exact 1024-combination Outcome Library generation entered
-the rendered pending state with `Cancel generation`. The visible cancel action
-was accepted and restored the enabled generation control. The one safe retry,
-with no configuration, destination, or project change, did **not** start a new
-pending run or produce the library. It rendered:
+The required whole-file command was run once sequentially on this checkout:
 
 ```text
-The project, configuration, destination, or bound preflight changed before
-publication. Refresh the preflight, review the destination, then generate again.
+npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
 ```
 
-The dependent Stake card truthfully remained `Ready to build` and disclosed its
-compatible-Outcome-Library prerequisite, but could not be verified to terminal
-completion because its prerequisite failed to recover. This is a reproducible
-P1 cancellation/retry lifecycle defect, not a driver timeout.
+Result: **11 suites / 59 tests passed** in 56.123 seconds. `npm run build-cli`
+also completed on the candidate before Studio was launched.
 
-## Bounded proof
+## Public-workflow transcript
 
-| File | SHA-256 | Observation |
-| --- | --- | --- |
-| `01-play-round.png` | `33871c2ea159dbc22f7c689b21f576e43666b17deafec934abe0058a6fbfe18c` | Clean-context real Play session and settled winning round. |
-| `02-simulation-complete.png` | `c1c20a39996433bb49d717e63bc3fa2967f6637d559436175dc6aa11b6b83689` | Completed 10,000-round Simulation with rendered recovery/history controls. |
-| `03-cancel-retry-preflight-conflict.png` | `91ef081b624eeab86ca9e4aeebc684725b02ac8e344f5b937f97fc42e335e5e2` | Visible retry conflict after accepted cancellation, before Outcome Library publication. |
+Two fresh isolated Studio processes used the candidate checkout exactly as
+`node ./dist/cli/pokie.js --no-open`, each with a new registry and Chromium
+profile. The first rendered `Design Your Game`, accepted `Create game`, and
+reported that the managed recommended Blueprint was saved. Its browser driver
+then selected the editor's descriptive `Play` text before the workspace control
+appeared; this was corrected in the controller-owned harness.
+
+The second fresh process rendered the managed `Starter Slot` workspace and the
+actual `Play` tab. The visible product then rendered `Start Play`, `New Play
+session`, and its explanation that no additional setup was required. The
+harness had been waiting for the later `Spin` state rather than invoking this
+intermediate rendered action, so it stopped without a product error. The two
+allowed public launches were thereby exhausted. This is a bounded
+selector/readiness inconclusive result, not evidence of a product defect; no
+outcome cancellation/retry, Stake export, or six-role cold-start claim is made.
