@@ -118,6 +118,11 @@ const studioClientComponentsTransform = {
 
 const studioClientComponentsModuleNameMapper = {
     "\\.css$": "<rootDir>/tests/cli/studio-client/src/styleMock.js",
+    // The server-backed browser acceptance tests use Studio's real HTTP
+    // services.  Resolve the package import to this checkout's source just as
+    // the Node integration project does; no published package is installed in
+    // an isolated clone.
+    "^pokie$": "<rootDir>/src/index.ts",
     // Studio's common components now import cli/client/player directly (CanonicalPlayerView --
     // see its own doc comment) -- that module's own internal imports use real ".js" extensions
     // (NodeNext-style, same convention as "pokie"/"pokie-examples" resolve via their own
