@@ -1,48 +1,39 @@
-# PC-18 independent host rerun — candidate `fb041804833d0721f5d13a8f7e3633d8c79d047c`
+# PC-18 independent host verification — candidate `f44f3dd8699884056ead859af3c6248009b28403`
 
-2026-09-05 UTC. This bounded descendant record retains no generated project,
-browser profile, image, raw log, or harness script.
+2026-09-05 UTC. This record supersedes the prior different-candidate evidence.
+It retains no generated project/output tree, browser profile, raw log, or harness.
 
 ## Required impact suite
 
-One serial complete-file command ran against this checkout:
+One serial whole-file command completed against this exact checkout:
 
 ```text
 npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
 ```
 
-It passed: 11 suites, 59 tests. `npm run build` also completed before Studio.
+Result: **11 suites passed, 59 tests passed**. `npm run build` also passed before
+Studio was launched.
 
-## Fresh rendered Studio finding
+## Fresh public Studio preflight
 
-Two fresh isolated registry/browser-profile launches used exactly
-`node ./dist/cli/pokie.js --no-open` from this source checkout. Each used the
-public UI to create an editable Blueprint, open Build/Export, and request
-`Generate exact outcome library (base)` after Studio displayed its exact
-1,024-combination preflight and the dependent Stake provenance/plan.
+Two fresh isolated `HOME`/XDG and Chromium profiles launched Studio from this
+source checkout exactly as `node ./dist/cli/pokie.js --no-open`. The visible UI
+created a Recommended managed Blueprint and opened its workspace; it then
+created and spun one Play session, completed a Simulation (the retained image
+shows 10,000/10,000 settled rounds and its RTP review), and reached Replay.
 
-The first accepted request rendered this local failure:
+The first Simulation wait predicate expired, but its later rendered view showed
+the completed report; it was treated as a driver/readiness threshold, not a
+product failure. In the second launch, the rendered Build/Export navigation
+click did not transition away from the completed Simulation view and showed no
+product error. With the two-launch limit reached, Outcome Library/Stake and the
+remaining lifecycle variants were not independently confirmed. This evidence
+therefore supports neither a product finding nor full acceptance.
 
-```text
-Generating this outcome library failed. Check the settings above and try again.
-Server plan: Unavailable — This Studio source is not an independently
-recognized POKIE artifact and cannot be used for conversion planning.
-```
+## Retained file
 
-The UI explicitly offered retry, so one safe fresh-profile retry was made. It
-reached the dependent `Stake Engine export` Build after the generator left
-pending, but Stake never produced a local completion; its final rendered view
-again contained the same Outcome Library failure and server-plan diagnostic.
-No second request was made while either operation displayed pending. Thus the
-managed-project Outcome Library and dependent Stake mission are not usable
-through the required public candidate-build workflow. Downstream lifecycle
-variants are blocked by this rendered product defect, not waived or inferred.
-
-Runtime-only checksums (not committed):
+`01-fresh-studio-simulation-complete.png`
 
 ```text
-recovery-11.json 718bd78f98eedf651a31915ecf4299804afb981aff6e75888bea0dbbfc37d939
-recovery-11.png  6bc0d2388d2d3d0b61b489d697dd49df8a07f65a02311c418eab74659fb9b6ad
-recovery-12.json 4e72fd0110eb127f06c5839d9e24bae40eb36f37fba3254aec223f56aebca78f
-recovery-12.png  5707f51ae32d38ce18297791a7b8a0e26c82419673e85938ca629421874f4a9c
+3bacd2e969a560e4d69ffb034c56efab92eeefd87a19ba656759a25a8d34b6d4  01-fresh-studio-simulation-complete.png
 ```
