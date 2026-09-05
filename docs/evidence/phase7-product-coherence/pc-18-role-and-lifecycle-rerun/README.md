@@ -246,3 +246,27 @@ transition. This is a driver/readiness failure with no rendered product error,
 not a product finding. The two-launch limit prevented further role, lifecycle,
 and misuse missions. No runtime project, profile, browser data, log, image, or
 harness file is retained here.
+
+## Focused recovery rerun — `6c8f2df0c677ec4190d78b197fdaeb79306adc17`
+
+2026-09-05 UTC. The retained required eleven-file whole-file suite remains
+present and truthful (11 suites / 59 tests passed); it was not duplicated.
+`npm run build-cli` completed before the two permitted fresh public Studio
+launches, each launched from this checkout exactly as
+`node ./dist/cli/pokie.js --no-open`, with a new registry, Documents root,
+and Chromium profile.
+
+The first rendered run created a valid managed Starter Slot, completed Player's
+new-session → Spin round, and rendered Analyst's completed report (including
+the local `Open full report` control). The original report predicate was too
+narrow and was repaired in the persistent harness.
+
+The second fresh run repeated those local successes, rendered Reviewer
+provenance, and reached Build/Export. Its visible action was `Generate exact
+outcome library (base)`. The repaired harness still queried that action with
+an exact whole-name match rather than the required semantic prefix, so it did
+not start a generation or duplicate a request. No rendered product error was
+observed. Both launches were then spent; Author and lifecycle/misuse variants
+remain unexecuted. This is a bounded **driver-inconclusive** recovery result,
+not a product finding. No runtime project, profile, registry, automation
+script, raw log, screenshot, or generated output is retained.
