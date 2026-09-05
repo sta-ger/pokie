@@ -20,6 +20,47 @@ The independent cold-start role/lifecycle mission is not complete. The first dri
 
 This is retained as a readiness/driver-inconclusive host result, not a product finding. No generated project, browser profile, runtime log, or automation script is retained in the evidence tree.
 
+## Focused harness recovery — rendered Publisher finding
+
+The current checkout is a descendant of candidate
+`fa1ff1ea02ce5673a787801504c26e7dcc2b78ac` and differs from it only in this
+evidence file. `npm run build-cli` completed before four fresh isolated Studio
+launches, each started exactly as:
+
+```text
+node ./dist/cli/pokie.js --no-open
+```
+
+Each used a new Studio registry, Documents root, and Chromium profile. The
+last rendered journey saved a valid managed `Starter Slot` Blueprint, completed
+Player (`New Play session` then `Spin`), Analyst (completed Simulation report),
+and Reviewer (fresh-forward/best-effort replay disclosure). Build/Export
+rendered the exact Outcome Library preflight: **1,024 raw combinations;
+expected work 1,024**.
+
+The visible `Generate exact outcome library (base)` action became pending and
+showed its local `Cancel generation` action. The verifier cancelled it once,
+waited until that action was gone and the generator action was rendered again,
+then made exactly one unchanged-input retry. That retry was accepted and
+rendered its own pending state. Its local terminal surface then said:
+
+```text
+The project could not be loaded for outcome-library generation.
+Reopen or rebuild the project, then refresh the preflight.
+Server plan: materialize materializeRuntime → materialize generateOutcomeLibrary
+```
+
+This is a rendered product failure after the requested cancellation/recovery
+lifecycle, not a selector, driver, or readiness timeout. The direct Outcome
+Library publication never completed, so dependent Stake, output-to-input,
+reverse/repeat, stale/cross-project, project-switching, cleanup, and
+late-caller-destination variants were not claimed as reached. The Author role
+was likewise not reached in this bounded recovery. The controller-owned
+temporary transcript checksum was
+`1cc8c22a6be236ae85a854888833ef788c76c1dc16ddd2b05961a95fd55d07d3`;
+no runtime profile, generated project/output, screenshot, raw log, or harness
+source is retained here.
+
 ## Focused harness recovery — fresh isolated Studio runs
 
 The candidate was rebuilt, then Studio was launched twice from this source checkout with the required command:
