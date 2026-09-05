@@ -270,3 +270,32 @@ observed. Both launches were then spent; Author and lifecycle/misuse variants
 remain unexecuted. This is a bounded **driver-inconclusive** recovery result,
 not a product finding. No runtime project, profile, registry, automation
 script, raw log, screenshot, or generated output is retained.
+
+## Independent four-launch recovery — `6c8f2df0c677ec4190d78b197fdaeb79306adc17`
+
+2026-09-05 UTC. The exact required eleven-file whole-file command was run
+once, sequentially, and completed green: **11 suites / 59 tests**. The
+candidate was then built successfully before public UI use. Four fresh Studio
+profiles, registries, and Documents roots launched this source checkout only
+as `node ./dist/cli/pokie.js --no-open`.
+
+Three clean managed `Starter Slot` journeys reached Player (`New Play session`
+→ `Spin` → completed round), Analyst (the completed default 10,000-round
+report), Reviewer (the rendered fresh/best-effort provenance disclosure), and
+Build/Export. The Publisher journey used the displayed `Default (exact until
+cap)` mode and `Generate exact outcome library (base)` action. It observed
+the local `Cancel generation` pending control, invoked that cancellation once,
+waited until it disappeared and the exact-generation action returned, then
+retried unchanged visible inputs exactly once. That retry rendered the local
+terminal message **`Generating this outcome library failed`**. This is a
+rendered product result after the required cancellation/recovery sequence,
+not a selector or readiness threshold.
+
+The fourth fresh journey independently entered Game Model and its visible
+editor. The subsequent anticipated literal-reel controls were disabled, so
+the Author literal preview was not reached; no defect is inferred from that
+driver path. Direct Outcome Library publication had already failed, so the
+dependent output-to-input, reverse/repeat, stale/cross-project, project
+switch, cleanup, Stake, and late caller-owned-destination variants could not
+be exercised from a publishable outcome. No generated project, output,
+browser data, full log, screenshot, or harness file is retained.
