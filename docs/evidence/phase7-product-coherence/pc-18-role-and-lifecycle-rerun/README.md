@@ -77,3 +77,26 @@ was retained only in the controller-owned harness; SHA-256:
 `26daf6e904fb851bb061a6edf965a14b2397b62dbe3da0d831f5a79103dabb10`.
 No generated projects, outputs, browser profiles, scripts, logs, or images
 are committed here.
+
+## Current-candidate independent attempt — `b0e9a53118a51c9602d362cbf0d2a89dcf59072b`
+
+2026-09-05 UTC. The verifier built this exact checkout successfully, then used
+two fresh Studio profiles, each launched from this checkout exactly as
+`node ./dist/cli/pokie.js --no-open`. No tests were required by this request.
+
+In both rendered sessions, Recommended `Create game` produced a valid managed
+`Starter Slot` Blueprint and opened its saved workspace. The second session
+also reopened that persisted project from the public `Your projects` flow and
+rendered the Player, Simulation, Replay, and Build/Export navigation. These
+are candidate-local observations, not filesystem/API substitutions.
+
+The CDP mouse driver then raced asynchronous navigation: it rendered the Play
+page but did not find a Spin control (the visible control was `New Play
+session`), and later sent clicks while the preceding route was still active.
+The result was visible pages without a rendered product error, not a
+reproducible product symptom. The two-launch ceiling was reached before the
+six-role/lifecycle missions could be completed. Accordingly this addendum
+records an **inconclusive driver result**, not a pass and not a new product
+finding. No runtime profiles, generated projects, screenshots, raw logs, or
+harness scripts are retained; the temporary final screen checksum was
+`da931da1e803aa2e903257b560eb4bc4bafc35347276bbb9109318d687359b97`.
