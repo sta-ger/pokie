@@ -120,3 +120,30 @@ exhausted before a role mission or lifecycle terminal state could be reached.
 This remains **inconclusive: driver**, not a product finding. No generated
 project, profile, browser artifact, screenshot, raw log, or harness file is
 retained in this evidence directory.
+
+## Independent lifecycle completion — `b0e9a53118a51c9602d362cbf0d2a89dcf59072b`
+
+2026-09-05 UTC. The final repaired fresh-profile journey launched this source
+checkout exactly as `node ./dist/cli/pokie.js --no-open`. It created, saved,
+returned through the rendered `Projects` control, and reopened a clean managed
+`Starter Slot` Blueprint. Player completed a real `New Play session` → `Spin`
+round; Analyst completed a 10,000-round Simulation; and Reviewer rendered its
+fresh-forward, best-effort reproducibility disclosure.
+
+In Build/Export, Studio rendered the exact preflight: **1,024 raw
+combinations; expected work 1,024**. The verifier started `Generate exact
+outcome library (base)`, observed its local `Cancel generation` action, used
+it once, and waited until that pending control had gone and the exact
+preflight was rendered again. The unchanged-input retry then rendered the
+local error `Generating this outcome library failed` and its diagnostic:
+`Server plan: Unavailable — This Studio source is not an independently
+recognized POKIE artifact and cannot be used for conversion planning.` The
+same terminal surface also rendered the recovery message that the bound
+preflight/project/configuration/destination had changed before publication.
+
+This is a reproducible product failure, not a driver timeout: a fresh Studio
+managed Blueprint cannot complete the required cancellation → refreshed
+preflight → unchanged-input Outcome Library publication lifecycle. Stake
+export and the remaining Author/output-to-input/cross-project variants were
+therefore not reached after this terminal failure. No generated projects,
+profiles, screenshots, raw logs, or harness scripts are retained.
