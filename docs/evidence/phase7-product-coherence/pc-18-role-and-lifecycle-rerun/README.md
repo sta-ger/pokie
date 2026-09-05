@@ -97,3 +97,22 @@ result review, warning provenance, replay provenance, and project-history
 evidence.  It does not claim stale/cross-project artifact attempts or
 Studio-side reverse publication: those portions remain unverified rather than
 being inferred from these flows or the targeted suite.
+
+## Focused harness-recovery observation
+
+Four further fresh-profile public Studio starts were used only to reach the
+remaining artifact boundary.  Build/Export visibly described the Outcome
+Library, Stake export, and PAR one-way snapshot data boundaries, and the
+rendered `Generate exact outcome library (base)` action created an inspected
+1024-outcome library whose manifest checksum was
+`91475f997c0d03ac0f941d1cb1ecc394c4e2bc9f3b49399a0c4b2f2b51a51cc3`.
+The temporary artifact trees were moved to trash after inspection.  The final
+fresh start exposed the real advanced controls: path Load/Save and a staged
+PAR import (Import → Diagnose & map → Preview canonical model → Apply/Export).
+
+No rendered product error appeared.  This is deliberately not recorded as
+stale/cross-project/reverse-publication coverage: a harness terminal-state
+matcher incorrectly treated a prior generated-artifact phrase as later build
+success, so the remaining four-launch allowance was exhausted before a safe
+cross-project attempt or the reverse flow could be driven.  Those variants,
+and therefore independent systemic-class confirmation, remain unverified.
