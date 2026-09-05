@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "documentationScope": {
-    "description": "The public surface is the repository README and maintained top-level docs. Immutable evidence, phase inventories, and closeout reports are historical audit records rather than current public CLI guidance.",
+    "description": "The public surface is the repository README and maintained top-level docs. Each include is a bounded maintained-document candidate: the collector only reads an exact file or one named directory level, never dependency, build, cache, or temporary worktree trees. Excludes are filters over those bounded candidates, so historical evidence globs do not make a tree discoverable. Immutable evidence, phase inventories, and closeout reports are historical audit records rather than current public CLI guidance.",
     "include": ["README.md", "docs/*.md"],
     "exclude": [
       "docs/evidence/**",
@@ -32,7 +32,7 @@
     },
     "implicitRoot": {
       "helpExitCode": 0,
-      "usage": "Usage: studio [options] [projectRoot] [excess...]",
+      "usage": "Usage: pokie [options] [projectRoot] [excess...]",
       "requiredOptions": ["--no-open"]
     }
   },
@@ -100,6 +100,7 @@
     {"id":"subcommand:par import","owner":"tests/cli/commands/ParCommand.test.ts"},
     {"id":"subcommand:reel generate","owner":"tests/cli/commands/ReelCommand.test.ts"},
     {"id":"target:tsPackage","owner":"tests/cli/BuildWorkflow.integration.test.ts"},
+    {"id":"target:blueprint","owner":"tests/cli/BuildWorkflow.integration.test.ts"},
     {"id":"target:outcomeLibrary","owner":"tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts"},
     {"id":"target:stakeAdapter","owner":"tests/cli/StakeEngineExportRegistryWorkflow.integration.test.ts"},
     {"id":"target:parWorkbook","owner":"tests/cli/ParSheetRoundTrip.integration.test.ts"},
@@ -117,6 +118,7 @@
     {"id":"finding:implicit-studio","owner":"tests/cli/publicCommandTree.test.ts"},
     {"id":"finding:documentation-claims","owner":"scripts/check-cli-inventory.mjs"},
     {"id":"value:build:--target:tsPackage","owner":"tests/cli/BuildWorkflow.integration.test.ts"},
+    {"id":"value:build:--target:blueprint","owner":"tests/cli/BuildWorkflow.integration.test.ts"},
     {"id":"value:build:--target:outcomeLibrary","owner":"tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts"},
     {"id":"value:build:--target:stakeAdapter","owner":"tests/cli/StakeEngineExportRegistryWorkflow.integration.test.ts"},
     {"id":"value:build:--target:parWorkbook","owner":"tests/cli/ParSheetRoundTrip.integration.test.ts"},
@@ -197,6 +199,7 @@
     {"id":"option:generate:--exact","owner":"tests/cli/commands/GenerateCommand.test.ts"},
     {"id":"option:generate:--sample","owner":"tests/cli/commands/GenerateCommand.test.ts"},
     {"id":"option:import:--out","owner":"tests/cli/commands/ImportCommand.test.ts"},
+    {"id":"option:import:--dry-run","owner":"tests/cli/commands/ImportCommand.test.ts"},
     {"id":"option:import:--format","owner":"tests/cli/commands/ImportCommand.test.ts"},
     {"id":"option:init:--package-name","owner":"tests/cli/commands/InitCommand.test.ts"},
     {"id":"option:init:--game-id","owner":"tests/cli/commands/InitCommand.test.ts"},
@@ -263,8 +266,10 @@
     {"id":"option:par:--help","owner":"P7-01 executable help contract"},
     {"id":"option:par export:--help","owner":"P7-01 executable help contract"},
     {"id":"option:par export:--out","owner":"tests/cli/commands/ParCommand.test.ts"},
+    {"id":"option:par export:--dry-run","owner":"tests/cli/commands/ParCommand.test.ts"},
     {"id":"option:par import:--help","owner":"P7-01 executable help contract"},
     {"id":"option:par import:--out","owner":"tests/cli/commands/ParCommand.test.ts"},
+    {"id":"option:par import:--dry-run","owner":"tests/cli/commands/ParCommand.test.ts"},
     {"id":"option:par import:--format","owner":"tests/cli/commands/ParCommand.test.ts"},
     {"id":"option:reel:--help","owner":"P7-01 executable help contract"},
     {"id":"option:reel generate:--help","owner":"P7-01 executable help contract"},
@@ -288,7 +293,7 @@
     {"id":"argument:client:<packageRoot>","owner":"tests/cli/commands/ClientCommand.test.ts"}, {"id":"argument:client:[excess...]","owner":"tests/cli/commands/ClientCommand.test.ts"},
     {"id":"argument:create:[name]","owner":"tests/cli/commands/CreateCommand.test.ts"}, {"id":"argument:create:[excess...]","owner":"tests/cli/commands/CreateCommand.test.ts"},
     {"id":"argument:dev:<packageRoot>","owner":"tests/cli/commands/DevCommand.test.ts"}, {"id":"argument:dev:[excess...]","owner":"tests/cli/commands/DevCommand.test.ts"},
-    {"id":"argument:diff:<leftReportJson>","owner":"tests/cli/commands/DiffCommand.test.ts"}, {"id":"argument:diff:<rightReportJson>","owner":"tests/cli/commands/DiffCommand.test.ts"}, {"id":"argument:diff:[excess...]","owner":"tests/cli/commands/DiffCommand.test.ts"},
+    {"id":"argument:diff:<leftProjectOrReportJson>","owner":"tests/cli/commands/DiffCommand.test.ts"}, {"id":"argument:diff:<rightProjectOrReportJson>","owner":"tests/cli/commands/DiffCommand.test.ts"}, {"id":"argument:diff:[excess...]","owner":"tests/cli/commands/DiffCommand.test.ts"},
     {"id":"argument:edit:<blueprint>","owner":"tests/cli/commands/EditCommand.test.ts"}, {"id":"argument:edit:[excess...]","owner":"tests/cli/commands/EditCommand.test.ts"},
     {"id":"argument:export:<source>","owner":"tests/cli/commands/ExportCommand.test.ts"}, {"id":"argument:export:[excess...]","owner":"tests/cli/commands/ExportCommand.test.ts"},
     {"id":"argument:fairness seed-commit:<serverSeedPath>","owner":"tests/cli/commands/FairnessCommand.test.ts"}, {"id":"argument:fairness seed-commit:[excess...]","owner":"tests/cli/commands/FairnessCommand.test.ts"},

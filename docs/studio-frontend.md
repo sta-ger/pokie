@@ -2,7 +2,7 @@
 
 This documents the **implementation** of POKIE Studio's frontend (`cli/studio-client/`) — the stack, layout,
 UX/navigation, dev workflow, build, and tests. For the full `/api/...` reference and what each screen talks to
-server-side, see [`cli.md`](cli.md#pokie--pokie-studio-experimental) — none of that behavior or API surface has
+server-side, see [`cli.md`](cli.md#pokie) — none of that behavior or API surface has
 changed; only how the frontend is built, rendered, and organized has.
 
 ## Stack

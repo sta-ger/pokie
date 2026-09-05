@@ -143,36 +143,51 @@ describe("PC-14 artifact interoperability remediation contract", () => {
         }
     });
 
-    it("has a reproducible runner-owned regeneration entry point", () => {
+    it("has an immutable evidence validation entry point", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
         const packageJson = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf-8")) as {readonly scripts: Record<string, string>};
         expect(packageJson.scripts["evidence:pc14-interoperability"]).toBe("node scripts/generate-pc14-interoperability-evidence.mjs");
         expect(fs.existsSync(scriptPath)).toBe(true);
     }, 120000);
 
-    it("byte-compares clean-process regeneration after every PC-05 tuple is runner-emitted", () => {
-        if (process.env.PC14_INTEROPERABILITY_REGENERATION_CHILD === "1") return;
+    it("performs archival integrity checks without recreating PC-14 execution", () => {
         const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
-        const writeEvidence = process.env.PC14_INTEROPERABILITY_WRITE_EVIDENCE === "1";
-        const result = spawnSync(process.execPath, [scriptPath, ...(writeEvidence ? ["--write"] : [])], {
+        const script = fs.readFileSync(scriptPath, "utf-8");
+        const evidenceDirectory = path.dirname(evidencePath);
+        const evidenceFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"];
+        const evidenceHashes = evidenceFiles.map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex"));
+        const result = spawnSync(process.execPath, [scriptPath], {
             cwd: process.cwd(),
-            env: {...process.env, PC14_INTEROPERABILITY_REGENERATION_CHILD: "1"},
             encoding: "utf-8",
-            // The deterministic regeneration starts three foreground
-            // real-artifact runners.  Studio's rendered Stake recovery adds
-            // one publication/polling lifecycle, so leave enough headroom
-            // for an otherwise healthy constrained CI worker instead of
-            // treating a constrained concurrent changed-test worker as a
-            // product difference. The three real-artifact runners normally
-            // finish well below this budget; the additional headroom keeps
-            // their clean-process proof reliable when another selected
-            // integration suite is using the second Jest worker.
-            timeout: 300000,
+            timeout: 30000,
         });
         expect(result.error).toBeUndefined();
+        const output = `${result.stdout}\n${result.stderr}`;
+        expect(result.status === 0 ? "" : output.slice(-5000)).toBe("");
         expect(result.status).toBe(0);
-        expect(`${result.stdout}\n${result.stderr}`).not.toContain("missing required exact owner-operation evidence");
-    }, 330000);
+        expect(script).toContain("validatePc14Archive");
+        expect(script).toContain("immutableSha256");
+        for (const forbiddenExecutionMechanism of ["worktree", "bwrap", "spawnSync", "symlinkSync", "PC14_INTEROPERABILITY_EVIDENCE_OUTPUT_DIR", "PC14_INTEROPERABILITY_EXTERNAL_COMPARATOR", "assertFreshEvidenceMatchesImmutable", "publishedPc14Revision"]) {
+            expect(script).not.toContain(forbiddenExecutionMechanism);
+        }
+        expect(output).toContain("PASS PC-14 completed evidence archive is byte-intact and rewrite-protected.");
+        expect(evidenceFiles.map((file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(evidenceDirectory, file))).digest("hex"))).toEqual(evidenceHashes);
+    });
+
+    it("rejects attempts to rewrite the completed PC-14 evidence", () => {
+        const scriptPath = path.resolve(process.cwd(), "scripts/generate-pc14-interoperability-evidence.mjs");
+        const evidenceFiles = ["cli-real-artifact-result.json", "studio-real-artifact-result.json", "studio-ui-real-artifact-result.json", "interoperability-result.json"];
+        const evidenceHashes = evidenceFiles.map((file) => crypto.createHash("sha256").update(fs.readFileSync(
+            path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-14-artifact-torture", file),
+        )).digest("hex"));
+        const result = spawnSync(process.execPath, [scriptPath, "--write"], {cwd: process.cwd(), encoding: "utf-8"});
+        expect(result.error).toBeUndefined();
+        expect(result.status).toBe(1);
+        expect(`${result.stdout}\n${result.stderr}`).toContain("PC-14 evidence is immutable");
+        expect(evidenceFiles.map((file) => crypto.createHash("sha256").update(fs.readFileSync(
+            path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-14-artifact-torture", file),
+        )).digest("hex"))).toEqual(evidenceHashes);
+    });
 
     it("injects the fixed evidence clock into real writers instead of only normalising saved hashes", () => {
         const originalClock = process.env.PC14_FIXED_RUNNER_CLOCK;

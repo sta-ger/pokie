@@ -33,7 +33,7 @@ import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {assertArtifactBuildNotCancelled, ensureArtifactDestinationParent, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
-import {ArtifactConversionPlanner, computeArtifactInputBindingHash, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type ArtifactConfigurationProvenance, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions, type ArtifactIdentity} from "./ArtifactConversionPlanner.js";
+import {ArtifactConversionPlanner, computeArtifactInputBindingHash, computeProjectInputBindingHash, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type ArtifactConfigurationProvenance, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions, type ArtifactIdentity} from "./ArtifactConversionPlanner.js";
 import {
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
@@ -924,7 +924,7 @@ export class ArtifactBuilderRegistry {
         // Rebind every resolved artifact tree that supplied an input hash
         // before any writer is allowed to publish.
         const preparedInputBindingHash = plan.source.configurationProvenance?.inputBindingHash;
-        if (preparedInputBindingHash !== undefined && computeArtifactInputBindingHash([source.rootPath]) !== preparedInputBindingHash) {
+        if (preparedInputBindingHash !== undefined && computeProjectInputBindingHash(source) !== preparedInputBindingHash) {
             throw new Error("The source artifact bytes changed after this conversion was prepared; prepare a new plan before executing it.");
         }
         // Resolved Blueprint/package provenance is computed from the runnable

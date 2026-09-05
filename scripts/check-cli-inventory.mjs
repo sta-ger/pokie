@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Collect the executable CLI contract and the configured public documentation contract. */
-import {mkdtemp, mkdir, readFile, readdir, rm, writeFile} from "node:fs/promises";
+import {mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, writeFile} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import {spawnSync} from "node:child_process";
 import {createHash} from "node:crypto";
@@ -217,22 +217,92 @@ function globExpression(pattern) {
     return new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\//g, "(?:.*/)?").replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*")}$`);
 }
 
-async function allFiles(root, relative = "") {
-    const entries = await readdir(path.join(root, relative), {withFileTypes: true});
-    const files = [];
-    for (const entry of entries) {
-        const child = path.join(relative, entry.name);
-        if (entry.isDirectory()) files.push(...await allFiles(root, child));
-        else if (entry.isFile()) files.push(child.replaceAll(path.sep, "/"));
+const NON_DOCUMENT_TREE_SEGMENTS = new Set([".cache", ".git", "build", "cache", "dist", "node_modules", "temp", "tmp"]);
+
+function normalizedDocumentationPattern(pattern) {
+    if (typeof pattern !== "string" || pattern.length === 0) fail("documentation candidate must be a non-empty relative path.");
+    const normalized = pattern.replaceAll("\\", "/");
+    const segments = normalized.split("/");
+    if (path.isAbsolute(pattern) || /^[a-z]:/i.test(normalized) || normalized.startsWith("//") || segments.some((segment) => segment === ".." || NON_DOCUMENT_TREE_SEGMENTS.has(segment))) fail(`documentation candidate must not enter a dependency, build, cache, temporary, drive, UNC, or parent tree: ${pattern}`);
+    if (segments.slice(0, -1).some((segment) => /[*?[]/.test(segment))) fail(`documentation candidate must name one maintained directory: ${pattern}`);
+    return normalized;
+}
+
+function normalizedDocumentationExclusionPattern(pattern) {
+    const normalized = pattern.replaceAll("\\", "/");
+    const segments = normalized.split("/");
+    // Exclusions filter the already bounded candidate list; unlike includes,
+    // they never select a directory to traverse. They may therefore name
+    // historical, dependency, build, cache, or temporary paths to filter
+    // without making any of those trees documentation candidates.
+    if (path.isAbsolute(pattern) || /^[a-z]:/i.test(normalized) || normalized.startsWith("//") || segments.includes("..")) fail(`documentation exclusion must not name an absolute, drive, UNC, or parent path: ${pattern}`);
+    return normalized;
+}
+
+function lexicalChild(root, relative, label) {
+    const candidate = path.resolve(root, relative);
+    const relation = path.relative(root, candidate);
+    if (relation === ".." || relation.startsWith(`..${path.sep}`) || path.isAbsolute(relation)) fail(`${label} escapes its documentation root: ${relative}`);
+    return candidate;
+}
+
+async function realpathChild(root, candidate, label) {
+    const realRoot = await realpath(root);
+    const realCandidate = await realpath(candidate);
+    const relation = path.relative(realRoot, realCandidate);
+    if (relation === ".." || relation.startsWith(`..${path.sep}`) || path.isAbsolute(relation)) fail(`${label} escapes its documentation root through a symlink: ${candidate}`);
+    return realCandidate;
+}
+
+async function documentationRootFor(coverage, coveragePath) {
+    const coverageDirectory = path.dirname(path.resolve(coveragePath));
+    if (!coverage.documentationRoot) return realpath(repositoryRoot);
+    const root = coverage.documentationRoot.replaceAll("\\", "/");
+    const segments = root.split("/");
+    if (path.isAbsolute(coverage.documentationRoot) || /^[a-z]:/i.test(root) || root.startsWith("//") || segments.some((segment) => segment === ".." || NON_DOCUMENT_TREE_SEGMENTS.has(segment))) fail(`documentation root must not enter a dependency, build, cache, temporary, drive, UNC, or parent tree: ${coverage.documentationRoot}`);
+    const lexicalRoot = lexicalChild(coverageDirectory, root, "documentation root");
+    return realpathChild(await realpath(coverageDirectory), lexicalRoot, "documentation root");
+}
+
+async function filesForDocumentationCandidate(root, pattern, excluded = []) {
+    const normalized = normalizedDocumentationPattern(pattern);
+    const directory = path.posix.dirname(normalized);
+    const basename = path.posix.basename(normalized);
+    const candidateDirectory = lexicalChild(root, directory === "." ? "" : directory, "documentation candidate parent");
+    if (!/[*?[]/.test(basename)) {
+        // An exclusion is a filter, not another candidate to inspect.  In particular, an
+        // exact historical path covered by a recursive exclusion must not be stat'ed merely
+        // because a map retains it alongside the maintained documentation candidates.
+        if (excluded.some((expression) => expression.test(normalized))) return [];
+        try {
+            const candidate = lexicalChild(root, normalized, "documentation candidate");
+            await realpathChild(root, path.dirname(candidate), "documentation candidate parent");
+            const realCandidate = await realpathChild(root, candidate, "documentation candidate");
+            return (await stat(realCandidate)).isFile() ? [normalized] : [];
+        } catch (error) {
+            if (error?.code === "ENOENT") return [];
+            throw error;
+        }
     }
-    return files;
+    let entries;
+    try {
+        entries = await readdir(await realpathChild(root, candidateDirectory, "documentation candidate parent"), {withFileTypes: true});
+    } catch (error) {
+        if (error?.code === "ENOENT") return [];
+        throw error;
+    }
+    const expression = globExpression(normalized);
+    return entries.filter((entry) => entry.isFile()).map((entry) => path.posix.join(directory === "." ? "" : directory, entry.name)).filter((file) => expression.test(file) && !excluded.some((excludedExpression) => excludedExpression.test(file)));
 }
 
 async function configuredDocumentationFiles(coverage, root) {
-    if (!coverage.documentationScope) return coverage.documentationFiles;
-    const included = coverage.documentationScope.include.map(globExpression);
-    const excluded = (coverage.documentationScope.exclude ?? []).map(globExpression);
-    return (await allFiles(root)).filter((file) => included.some((expression) => expression.test(file)) && !excluded.some((expression) => expression.test(file))).sort();
+    if (!coverage.documentationScope) {
+        const files = await Promise.all((coverage.documentationFiles ?? []).map((pattern) => filesForDocumentationCandidate(root, pattern)));
+        return [...new Set(files.flat())].sort();
+    }
+    const excluded = (coverage.documentationScope.exclude ?? []).map((pattern) => globExpression(normalizedDocumentationExclusionPattern(pattern)));
+    const files = await Promise.all(coverage.documentationScope.include.map((pattern) => filesForDocumentationCandidate(root, pattern, excluded)));
+    return [...new Set(files.flat())].filter((file) => !excluded.some((expression) => expression.test(file))).sort();
 }
 
 function documentedCapabilities(contents, inventory) {
@@ -249,7 +319,7 @@ function documentedCapabilities(contents, inventory) {
         // option which the currently collected executable no longer exposes.
         const knownOptions = [...new Set([
             ...(entry?.values ?? []).map((value) => value.split(":")[2]),
-            "--format", "--mode", "--source-type", "--target", "--to",
+            "--format", "--source-type", "--target", "--to",
         ])];
         for (const option of knownOptions) {
             const escapedOption = option.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -388,6 +458,11 @@ function documentedCapabilities(contents, inventory) {
             headingContext = heading[1] ? commandFor(heading[1], ` ${heading[1]}${heading[2] ?? ""}`) : "root";
             capabilities.add(headingContext.includes(" ") ? `subcommand:${headingContext}` : `command:${headingContext}`);
             if (headingContext === "root") capabilities.delete("command:root");
+        } else if (/^#{1,2}\s/.test(line)) {
+            // A new top-level documentation section must not inherit a previous command's
+            // option grammar.  Otherwise a Build example beneath a non-command heading after
+            // `pokie generate` is falsely recorded as a `generate --target` capability.
+            headingContext = undefined;
         }
         else if (heading) headingContext = undefined;
         else if (/^#{1,6}\s+/.test(line)) headingContext = undefined;
@@ -413,10 +488,12 @@ function documentedCapabilities(contents, inventory) {
 
 export async function documentationCapabilities(coverage, inventory, coveragePath = DEFAULT_COVERAGE) {
     const capabilities = new Set();
-    const root = coverage.documentationRoot ? path.resolve(path.dirname(coveragePath), coverage.documentationRoot) : repositoryRoot;
+    const root = await documentationRootFor(coverage, coveragePath);
     const files = await configuredDocumentationFiles(coverage, root);
     for (const configuredFile of files) {
-        const contents = await readFile(path.resolve(root, configuredFile), "utf8");
+        const candidate = lexicalChild(root, configuredFile, "documentation final read");
+        await realpathChild(root, path.dirname(candidate), "documentation final read parent");
+        const contents = await readFile(await realpathChild(root, candidate, "documentation final read"), "utf8");
         for (const capability of documentedCapabilities(contents, inventory)) capabilities.add(capability);
     }
     if (files.length > 0) capabilities.add("finding:documentation-claims");

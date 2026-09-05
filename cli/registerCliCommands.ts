@@ -66,8 +66,8 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
         // wires into every Blueprint materialization below -- so a freshly scaffolded package's own "npm
         // install" resolves "pokie" against this exact running installation instead of the registry, even
         // when its own version has never been published.
-        new InitCommand(version, undefined, withLocalPokieInstall(pokiePackageRoot)),
         new ImportCommand(version),
+        new InitCommand(version, undefined, withLocalPokieInstall(pokiePackageRoot)),
         new InspectCommand(),
         new ParCommand(version),
         new ReelCommand(),
@@ -78,8 +78,8 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
             createMaterializingRuntimePackageResolver(version, REPLAY_OPERATION, pokiePackageRoot),
         ),
         new ReportCommand(),
-        new ServeCommand(undefined, undefined, createMaterializingRuntimePackageResolver(version, SERVE_OPERATION, pokiePackageRoot)),
         new SampleCommand(),
+        new ServeCommand(undefined, undefined, createMaterializingRuntimePackageResolver(version, SERVE_OPERATION, pokiePackageRoot)),
         new SimCommand(
             undefined,
             undefined,

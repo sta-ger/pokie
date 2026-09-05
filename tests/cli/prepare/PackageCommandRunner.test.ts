@@ -1,7 +1,9 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {PackageCommandResult, PackageCommandRunning, withLinkedLocalPokieRuntime, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
+import {EventEmitter} from "events";
+import type {ChildProcessWithoutNullStreams} from "child_process";
+import {PackageCommandResult, PackageCommandRunning, PackageCommandSpawning, runPackageCommand, withLinkedLocalPokieRuntime, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
 import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
 
 type RecordedCall = {command: string; args: string[]; cwd: string};
@@ -52,6 +54,51 @@ function createRecordingBase(): PackageCommandRunning & {calls: RecordedCall[]} 
     };
     return Object.assign(runner, {calls});
 }
+
+type SpawnedCall = {command: string; args: string[]; cwd: string};
+
+// This tests runPackageCommand itself rather than one of its injected wrappers. The child process is
+// simulated only to make the subprocess boundary deterministic; its captured argv is exactly what
+// the real runner hands to its spawn dependency.
+describe("runPackageCommand", () => {
+    const spawnedCalls: SpawnedCall[] = [];
+    let failSpawnedCommand = false;
+    const spawnRecordedCommand: PackageCommandSpawning = (command, args, options) => {
+        spawnedCalls.push({command, args, cwd: options.cwd});
+        const child = Object.assign(new EventEmitter(), {pid: 123, stdout: new EventEmitter(), stderr: new EventEmitter()});
+        queueMicrotask(() => {
+            if (failSpawnedCommand) child.stderr.emit("data", Buffer.from("simulated install failure"));
+            child.emit("close", failSpawnedCommand ? 7 : 0, null);
+        });
+        return child as unknown as ChildProcessWithoutNullStreams;
+    };
+
+    beforeEach(() => {
+        spawnedCalls.splice(0);
+        failSpawnedCommand = false;
+    });
+
+    it("adds cache-first install flags only to npm install and otherwise forwards argv unchanged", async () => {
+        await runPackageCommand("npm", ["install", "typescript@5"], "/package", {spawn: spawnRecordedCommand});
+        await runPackageCommand("npm", ["run", "build", "--", "--watch"], "/package", {spawn: spawnRecordedCommand});
+        await runPackageCommand("pnpm", ["install", "typescript@5"], "/package", {spawn: spawnRecordedCommand});
+
+        expect(spawnedCalls).toEqual([
+            {command: "npm", args: ["install", "typescript@5", "--prefer-offline", "--no-audit", "--no-fund"], cwd: "/package"},
+            {command: "npm", args: ["run", "build", "--", "--watch"], cwd: "/package"},
+            {command: "pnpm", args: ["install", "typescript@5"], cwd: "/package"},
+        ]);
+    });
+
+    it("retains effective npm install argv and stderr in a failed command diagnostic", async () => {
+        failSpawnedCommand = true;
+        await expect(runPackageCommand("npm", ["install"], "/package", {spawn: spawnRecordedCommand})).rejects.toMatchObject({
+            message: "npm install --prefer-offline --no-audit --no-fund exited with 7.",
+            stderr: "simulated install failure",
+        });
+        expect(spawnedCalls).toEqual([{command: "npm", args: ["install", "--prefer-offline", "--no-audit", "--no-fund"], cwd: "/package"}]);
+    });
+});
 
 // Snapshots package.json exactly as it stands the moment the wrapped "npm install" itself would run --
 // this is what proves the local `file:` rewrite is really in effect for that command, not just present

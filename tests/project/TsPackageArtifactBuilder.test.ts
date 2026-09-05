@@ -67,6 +67,15 @@ describe("TsPackageArtifactBuilder", () => {
         await expect(loadPokieGame(destinationDir)).resolves.toMatchObject({getManifest: expect.any(Function)});
     });
 
+    it("keeps the supplied current runtime link", async () => {
+        const runtimeRoot = path.join(dir, "current-runtime");
+        fs.mkdirSync(runtimeRoot);
+
+        await new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(runtimeRoot).build(blueprintProjectOf(blueprintPath), destinationDir);
+
+        expect(fs.readlinkSync(path.join(destinationDir, "node_modules", "pokie"))).toBe(runtimeRoot);
+    });
+
     it("throws ArtifactBuildConflictError rather than overwriting an existing, non-empty destination", async () => {
         fs.mkdirSync(destinationDir);
         fs.writeFileSync(path.join(destinationDir, "unrelated.txt"), "not ours");

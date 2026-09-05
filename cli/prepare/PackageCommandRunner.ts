@@ -1,11 +1,16 @@
-import {execFile, spawn} from "child_process";
+import {execFile, spawn, type ChildProcessWithoutNullStreams} from "child_process";
 import fs from "fs";
 import path from "path";
 import {PackageJsonLike, withLocalPokieDependency} from "pokie";
 import {LocalPokieDependencyClosureEntry, resolveLocalPokieDependencyClosure} from "./localPokieDependencyClosure.js";
 
 export type PackageCommandResult = {stdout: string; stderr: string};
-export type PackageCommandOptions = {readonly signal?: AbortSignal};
+export type PackageCommandSpawning = (
+    command: string,
+    args: string[],
+    options: {cwd: string; detached: boolean; stdio: ["ignore", "pipe", "pipe"]},
+) => ChildProcessWithoutNullStreams;
+export type PackageCommandOptions = {readonly signal?: AbortSignal; readonly spawn?: PackageCommandSpawning};
 
 // `cwd` is always the package's own project root -- never a shell string, so `args` (e.g. "install",
 // or "run"/"build") is never interpreted for shell metacharacters.
@@ -95,11 +100,23 @@ export const runPackageCommand: PackageCommandRunning = (command, args, cwd, opt
             return;
         }
 
+        // A generated package normally only needs versions this running checkout has already
+        // installed (notably TypeScript for its first build). Prefer npm's local cache before
+        // asking the registry again: it keeps `pokie init` responsive in offline or slow-network
+        // environments while retaining npm's normal registry fallback for a genuinely missing
+        // package. Audit/funding lookups do not contribute to preparing the package and can turn a
+        // successful dependency resolution into an unrelated network wait.
+        const effectiveArgs =
+            command === "npm" && args[0] === "install"
+                ? [...args, "--prefer-offline", "--no-audit", "--no-fund"]
+                : args;
+
         // Unlike spawn(), execFile does not forward `detached` to its child,
         // which would leave npm in this process's own group. Use spawn here
         // so POSIX can address npm and every inherited lifecycle descendant
         // as one private process group.
-        const child = spawn(command, args, {cwd, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"]});
+        const spawnOptions = {cwd, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] as ["ignore", "pipe", "pipe"]};
+        const child = options.spawn?.(command, effectiveArgs, spawnOptions) ?? spawn(command, effectiveArgs, spawnOptions);
         let stdout = "";
         let stderr = "";
         let spawnError: Error | undefined;
@@ -129,7 +146,7 @@ export const runPackageCommand: PackageCommandRunning = (command, args, cwd, opt
                 return;
             }
             if (code !== 0) {
-                const error = Object.assign(new Error(`${command} ${args.join(" ")} exited with ${signal ?? code}.`), {stderr});
+                const error = Object.assign(new Error(`${command} ${effectiveArgs.join(" ")} exited with ${signal ?? code}.`), {stderr});
                 reject(error);
                 return;
             }

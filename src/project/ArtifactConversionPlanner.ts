@@ -144,6 +144,22 @@ export function computeArtifactInputBindingHash(
     return `sha256:${hash.digest("hex")}`;
 }
 
+// A runnable package's source contract is its authored/package-managed files: its entry module, manifest,
+// lockfile, and any other files outside node_modules. The dependency tree is intentionally excluded from that
+// binding. In particular, a freshly built package links node_modules/pokie to the active POKIE installation;
+// recursively hashing that link walks the entire running checkout for every CLI/Studio plan or execution
+// rebind, turning a small package conversion into seconds of unrelated filesystem work. package.json and
+// package-lock.json still bind the declared runtime selection, while the running POKIE process remains the
+// authoritative implementation of that runtime.
+export function computeProjectInputBindingHash(project: Pick<PokieProject, "rootPath" | "type">): string {
+    return computeArtifactInputBindingHash(
+        [project.rootPath],
+        project.type === "tsPackage"
+            ? {ignoredDirectoryPaths: [path.join(project.rootPath, "node_modules")]}
+            : {},
+    );
+}
+
 export type ArtifactConversionStepKind =
     | "importParWorkbook"
     | "publish"

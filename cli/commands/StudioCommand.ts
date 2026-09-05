@@ -149,7 +149,10 @@ export class StudioCommand implements CliCommandHandling {
     // real box and reads it back once parsing resolves, while getCommanderCommand() never parses this
     // tree at all, so its own default box is never read.
     private buildCommand(resultRef: {value?: StudioOptions} = {}): Command {
-        return createCommanderCliCommand("studio")
+        // Studio has no public `pokie studio` verb.  Its Commander tree is
+        // nevertheless also used to render help for the implicit root entry,
+        // so its display name must describe the command users actually type.
+        return createCommanderCliCommand("pokie")
             .description(this.getDescription())
             .argument("[projectRoot]", "a game package/blueprint to open on launch (default: the Studio home screen)")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")

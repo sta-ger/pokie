@@ -1,6 +1,6 @@
 const assert = process.getBuiltinModule("node:assert/strict");
 const {spawnSync} = process.getBuiltinModule("node:child_process");
-const {cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile} = process.getBuiltinModule("node:fs/promises");
+const {chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile} = process.getBuiltinModule("node:fs/promises");
 const os = process.getBuiltinModule("node:os");
 const path = process.getBuiltinModule("node:path");
 
@@ -19,7 +19,7 @@ process.stdout.write(help);
     await writeFile(path.join(directory, "docs.md"), documentation);
     await writeFile(coverage, JSON.stringify({
         documentationRoot: ".",
-        documentationScope: {include: ["**/*.md"]},
+        documentationScope: {include: ["docs.md"]},
         initialInventory: {rootCommands: ["build"], nestedVerbs: []},
         findings: {
             versionHelp: {helpExitCode: 0, versionExitCode: 0, versionOutputIncludes: "Usage: pokie build"},
@@ -149,11 +149,129 @@ test("discovers narrative documentation and rejects command-scoped stale claims"
     try {
         await mkdir(path.join(directory, "public-guides"));
         await writeFile(path.join(directory, "public-guides/narrative.md"), "A stale example is npx pokie build --source-type rogue-source --target supported --mode base -x.\n");
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        map.documentationScope.include.push("public-guides/*.md");
+        await writeFile(coverage, JSON.stringify(map));
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 1);
         assert.match(result.stderr, /stale documented capability value:build:--source-type:rogue-source/);
         assert.match(result.stderr, /stale documented capability alias:build:-x/);
     } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("limits discovery to maintained-document candidates despite nested dependency, build, cache, and temporary trees", async () => {
+    const {directory, cli, coverage} = await fixture();
+    const cacheDirectory = path.join(directory, ".cache");
+    try {
+        const ignoredRoots = ["node_modules/dependency", "dist/generated", "build/generated", ".cache/tool", "cache/tool", "tmp/worktree", "temp/worktree"];
+        for (const ignoredRoot of ignoredRoots) {
+            let nested = path.join(directory, ignoredRoot);
+            for (let index = 0; index < 80; index += 1) {
+                nested = path.join(nested, `nested-${index}`);
+                await mkdir(nested, {recursive: true});
+            }
+            await writeFile(path.join(nested, "stale-public-command.md"), "pokie deploy --target experimental\n");
+        }
+        // A whole-tree collector would try to open this irrelevant cache directory.  Candidate
+        // collection must not touch it at all, even though it contains a deeply nested .md file.
+        await chmod(cacheDirectory, 0o000);
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 0, result.stderr);
+        const inventory = JSON.parse(await readFile(path.join(directory, "evidence/inventory.json"), "utf8"));
+        assert.deepEqual(inventory.rootCommands, ["build"]);
+        assert.match(await readFile(path.join(directory, "evidence/collector-transcript.txt"), "utf8"), /INDEPENDENT_RERUN/);
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        map.documentationScope.include = ["**/*.md"];
+        await writeFile(coverage, JSON.stringify(map));
+        const broadCandidate = run(cli, coverage, path.join(directory, "broad-candidate"));
+        assert.equal(broadCandidate.status, 1);
+        assert.match(broadCandidate.stderr, /documentation candidate must name one maintained directory/);
+        map.documentationScope.include = ["docs.md"];
+        map.documentationRoot = "node_modules";
+        await writeFile(coverage, JSON.stringify(map));
+        const dependencyRoot = run(cli, coverage, path.join(directory, "dependency-root"));
+        assert.equal(dependencyRoot.status, 1);
+        assert.match(dependencyRoot.stderr, /documentation root must not enter a dependency, build, cache, temporary, drive, UNC, or parent tree/);
+    } finally {
+        await chmod(cacheDirectory, 0o700).catch(() => {});
+        await rm(directory, {recursive: true, force: true});
+    }
+});
+
+test("allows historical-document exclusions without expanding bounded candidates", async () => {
+    const {directory, cli, coverage} = await fixture();
+    const historicalDirectory = path.join(directory, "docs/phase6-archive");
+    try {
+        await mkdir(historicalDirectory, {recursive: true});
+        await writeFile(path.join(historicalDirectory, "legacy.md"), "pokie deploy --target obsolete\n");
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        // The historical file is an otherwise valid exact candidate. Its stale command claim
+        // proves the exclusion filters candidates rather than merely accepting an unused glob.
+        // Make its directory unreadable to prove filtering occurs before inspecting the exact
+        // excluded candidate.
+        map.documentationScope.include = ["docs.md", "docs/*.md", "docs/phase6-archive/legacy.md"];
+        // Filters may name unmaintained trees. They remain filters: the bounded include list
+        // above is still the only source of filesystem candidates.
+        map.documentationScope.exclude = ["docs/phase6-*/**", "node_modules/**", "build/**", "cache/**", "tmp/**", "temp/**"];
+        await writeFile(coverage, JSON.stringify(map));
+        await chmod(historicalDirectory, 0o000);
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 0, result.stderr);
+    } finally {
+        await chmod(historicalDirectory, 0o700).catch(() => {});
+        await rm(directory, {recursive: true, force: true});
+    }
+});
+
+test("rejects lexical and realpath escapes for roots, legacy files, candidates, parents, and final reads", async () => {
+    const {directory, cli, coverage} = await fixture();
+    const outside = await mkdtemp(path.join(os.tmpdir(), "pokie-inventory-outside-"));
+    try {
+        await writeFile(path.join(outside, "escape.md"), "pokie deploy --target escape\n");
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        map.documentationRoot = "../outside";
+        await writeFile(coverage, JSON.stringify(map));
+        let result = run(cli, coverage, path.join(directory, "root-traversal"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /documentation root must not enter/);
+
+        map.documentationRoot = "C:\\outside";
+        await writeFile(coverage, JSON.stringify(map));
+        result = run(cli, coverage, path.join(directory, "drive-root"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /drive/);
+
+        map.documentationRoot = "//server/share";
+        await writeFile(coverage, JSON.stringify(map));
+        result = run(cli, coverage, path.join(directory, "unc-root"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /UNC/);
+
+        map.documentationRoot = ".";
+        delete map.documentationScope;
+        map.documentationFiles = ["../escape.md"];
+        await writeFile(coverage, JSON.stringify(map));
+        result = run(cli, coverage, path.join(directory, "legacy-traversal"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /documentation candidate must not enter/);
+
+        await symlink(outside, path.join(directory, "linked-docs"), "dir");
+        map.documentationFiles = ["linked-docs/escape.md"];
+        await writeFile(coverage, JSON.stringify(map));
+        result = run(cli, coverage, path.join(directory, "legacy-symlink"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /escapes its documentation root through a symlink/);
+
+        map.documentationScope = {include: ["linked-docs/*.md"]};
+        delete map.documentationFiles;
+        await writeFile(coverage, JSON.stringify(map));
+        result = run(cli, coverage, path.join(directory, "glob-parent-symlink"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /escapes its documentation root through a symlink/);
+    } finally {
+        await rm(directory, {recursive: true, force: true});
+        await rm(outside, {recursive: true, force: true});
+    }
 });
 
 test("keeps command context for ordinary claims below a CLI heading", async () => {
@@ -252,7 +370,7 @@ process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? stud
 `);
         await writeFile(coverage, JSON.stringify({
             documentationRoot: ".",
-            documentationScope: {include: ["**/*.md"]},
+            documentationScope: {include: ["docs.md"]},
             initialInventory: {rootCommands: ["create", "init"], nestedVerbs: []},
             findings: {
                 versionHelp: {helpExitCode: 0, versionExitCode: 0, versionOutputIncludes: "Usage: pokie init [directory]"},
@@ -287,24 +405,30 @@ test("checks the freshly built production CLI against the complete public docume
         // This is the smallest fresh CLI build boundary: the command module plus the ESM/CJS
         // package entry points that its `pokie` imports resolve through. Browser assets are not
         // loaded by recursive `--help` collection.
-        runBuildStep([path.join(root, "generate-barrels.js")]);
+        runBuildStep([path.join(buildRoot, "generate-barrels.js")]);
         runBuildStep([tsc, "--project", "tsconfig.prod.json"]);
         runBuildStep([shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
+        // Several CLI command modules use their sibling compiled shared modules via `dist/src`.
+        // The complete package build supplies that tree; mirror it from this isolated ESM build
+        // before exercising the executable without pulling browser-asset compilation into help.
+        await cp(path.join(buildRoot, "dist", "esm"), path.join(buildRoot, "dist", "src"), {recursive: true});
         runBuildStep([tsc, "--project", "tsconfig.prod.json", "--module", "CommonJS", "--outDir", "dist/cjs"]);
-        runBuildStep([path.join(root, "write-cjs-package-json.js")]);
+        runBuildStep([path.join(buildRoot, "write-cjs-package-json.js")]);
         runBuildStep([shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
         runBuildStep([tsc, "--project", "tsconfig.cli.json"]);
-        const evidenceDirectory = path.join(directory, "evidence");
-        const result = spawnSync(process.execPath, [
-            checker,
-            "--cli", path.join(buildRoot, "dist/cli/pokie.js"),
-            "--coverage", path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"),
-            "--evidence-dir", evidenceDirectory,
-        ], {cwd: buildRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
-        assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-        const inventory = JSON.parse(await readFile(path.join(evidenceDirectory, "inventory.json"), "utf8"));
-        assert.equal(inventory.rootCommands.length, 21);
-        assert.equal(inventory.commands.filter((command) => command.path.includes(" ")).length, 9);
-        assert.match(await readFile(path.join(evidenceDirectory, "collector-transcript.txt"), "utf8"), /INDEPENDENT_RERUN/);
+        for (const runId of ["first", "second"]) {
+            const evidenceDirectory = path.join(directory, `evidence-${runId}`);
+            const result = spawnSync(process.execPath, [
+                checker,
+                "--cli", path.join(buildRoot, "dist/cli/pokie.js"),
+                "--coverage", path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"),
+                "--evidence-dir", evidenceDirectory,
+            ], {cwd: buildRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
+            assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+            const inventory = JSON.parse(await readFile(path.join(evidenceDirectory, "inventory.json"), "utf8"));
+            assert.equal(inventory.rootCommands.length, 21);
+            assert.equal(inventory.commands.filter((command) => command.path.includes(" ")).length, 9);
+            assert.match(await readFile(path.join(evidenceDirectory, "collector-transcript.txt"), "utf8"), /INDEPENDENT_RERUN/);
+        }
     } finally { await rm(directory, {recursive: true, force: true}); }
-}, 180000);
+}, 300000);
