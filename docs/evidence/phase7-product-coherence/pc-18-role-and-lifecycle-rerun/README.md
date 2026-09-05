@@ -147,3 +147,45 @@ preflight → unchanged-input Outcome Library publication lifecycle. Stake
 export and the remaining Author/output-to-input/cross-project variants were
 therefore not reached after this terminal failure. No generated projects,
 profiles, screenshots, raw logs, or harness scripts are retained.
+
+## Exact-candidate clean-context rerun — `7a954bdce949e2b8ecbcb79f642bd939ab64a5b0`
+
+2026-09-05 UTC. The verifier first built this exact checkout successfully with
+`npm run build-cli`. No targeted test files were required by the persisted
+request. It then ran the two permitted fresh-profile public Studio launches
+from this source checkout exactly as:
+
+```text
+node ./dist/cli/pokie.js --no-open
+```
+
+Each run used a new writable `XDG_DOCUMENTS_DIR`, a new Studio registry, and a
+new Chromium profile. The visible initial `Design Your Game` page described the
+starter as ready to edit and stated that `Create game` saves it and opens its
+workspace. The valid, enabled rendered `Create game` action was clicked once
+per launch. Neither action was pending or duplicated.
+
+Both runs returned the same rendered recovery state: `Your game could not be
+completed. Try again. If it continues, choose the location again and retry.`
+The bounded Studio response diagnostic (recorded while observing that visible
+request, not used to drive the workflow) was:
+
+```text
+200 {"status":"unavailable","error":"Could not determine a safe default project location
+(resolved to \"…/projects/POKIE Projects/starter-slot\"). Choose a destination directory explicitly."}
+```
+
+The `projects` Documents root itself existed and was writable; the managed
+flow instead treats its absent child `POKIE Projects` as an unavailable default
+and does not create it. Its advertised no-location-prompt create path therefore
+cannot reach a saved Starter Slot workspace in a genuinely clean context, and
+the visible managed flow supplies no destination picker to recover. The first
+preflight's summary checksum was
+`ffbf20a530859ba96337aa4897aa0cceb942b0dcb4f1b3ebbd5d1313611a8fb7`.
+
+This is a rendered, repeatable product failure rather than a driver/readiness
+timeout. It blocks Player, Analyst, Reviewer, Author, Publisher, Stake, and
+the downstream output-to-input/lifecycle branches before any project exists;
+those branches were not claimed as executed. No generated project, profile,
+registry, screenshot, raw log, or harness script is retained in the committed
+evidence.
