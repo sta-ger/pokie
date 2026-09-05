@@ -788,6 +788,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         seed: "",
     });
     const [outcomeLibraryPreflight, setOutcomeLibraryPreflight] = useState<OutcomeLibraryPreflightView>({status: "loading"});
+    // A terminal cancellation deliberately invalidates the browser's execution
+    // binding. The server owns the immutable snapshot, but cancellation can
+    // finish after that snapshot's source/destination reservation has been
+    // released; retry only from a newly observed preflight.
+    const [outcomeLibraryPreflightRevision, setOutcomeLibraryPreflightRevision] = useState(0);
     // A cancellation checkpoint is server-persisted. Rehydrate it after a browser
     // reload so recovery never depends on an in-memory React state or a job id
     // copied by the user before refreshing the page.
@@ -843,7 +848,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         return () => {
             cancelled = true;
         };
-    }, [defaultModeName, fetchImpl, outcomeLibraryGenerationOptions]);
+    }, [defaultModeName, fetchImpl, outcomeLibraryGenerationOptions, outcomeLibraryPreflightRevision]);
 
     // The "Build artifact" group's own target list -- see StudioArtifactBuildService.listTargets's own
     // doc comment. Fetched once on mount: it depends only on the active project's own resolved ProjectType,
@@ -1023,6 +1028,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                     deployment.refreshProjectModes();
                 } else if (job.status === "cancelled" && job.result?.status === "cancelled") {
                     setOutcomeLibraryRun({status: "cancelled", result: job.result});
+                    // The visible retry must bind to a fresh server preflight,
+                    // even when no form field changed while cancellation was in
+                    // flight. This preserves the source/destination drift
+                    // check while making a clean cancellation recoverable.
+                    setOutcomeLibraryPreflightRevision((revision) => revision + 1);
                 } else if (job.result !== undefined && job.result.status !== "ok") {
                     setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(job.result), ...("error" in job.result ? {diagnostic: job.result.error} : {}), plan: job.result.plan});
                 } else {
