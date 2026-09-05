@@ -184,6 +184,41 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
         });
 
+        it("retains a token-bound recognized source after cancellation recovery reuses unchanged inputs", async () => {
+            const managedBlueprintPlan: ArtifactConversionPlan = {
+                ...plannedOutcomeLibrary,
+                source: {kind: "blueprint", capabilities: ["blueprint.build", "outcomeLibrary.generate"]},
+            };
+            const planning = {prepare: jest.fn(() => Promise.resolve(managedBlueprintPlan))};
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(buildFixtureGame()),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                planning,
+            );
+
+            const estimate = await svc.estimate(projectRoot, {generation: "exact"});
+            expect(estimate.status).toBe("ok");
+            if (estimate.status !== "ok") return;
+
+            const generated = await svc.generate(projectRoot, {generation: "exact", preflightToken: estimate.preflightToken});
+
+            expect(generated).toMatchObject({status: "ok", plan: managedBlueprintPlan});
+            // Estimate owns source recognition. The token-bound execution still
+            // checks destination availability, but must not re-resolve a source
+            // that the safe retry preflight already recognized.
+            expect(planning.prepare).toHaveBeenCalledTimes(2);
+        });
+
         it("keeps legacy bounded generation below the cap exact in the prepared plan", async () => {
             const planning = {prepare: jest.fn(() => Promise.resolve(plannedOutcomeLibrary))};
             const svc = new StudioOutcomeLibraryGenerateService(
