@@ -27,22 +27,30 @@ repeat directories each contained `index_base.json`, `manifest.json`, and
 
 ## Fresh Studio recovery result
 
-All four permitted fresh Studio launches used exactly
+The recovery harness was repaired in place to use the public Snap launcher with
+a fixed local CDP endpoint. Four fresh launches used exactly
 `node ./dist/cli/pokie.js --no-open`, a new `POKIE_HOME`, a new browser profile,
-and the inherited display. Each public server printed
-`http://127.0.0.1:3200`.
+and the inherited display; each server printed `http://127.0.0.1:3200`.
 
-1. Snap Chromium with a fresh profile did not create a DevTools TCP endpoint
-   and exited 0 before any rendered observation.
-2. The same stable harness with an isolated `XDG_RUNTIME_DIR` had the same
-   endpoint failure.
-3. The direct installed Chromium binary exposed a missing `libnspr4.so`
-   runtime dependency before startup.
-4. The direct binary with its Chromium and GNOME runtime library paths then
-   exposed a missing `libXdamage.so.1` dependency before startup.
+The first repaired launch rendered the public Studio start screen. The second
+created the ready-to-edit `Starter Slot` through the visible **Create game**
+control and reached its workspace. Visible workspace navigation established
+**Play**, **Simulation**, **Replay**, and **Build/Export**. The Play panel said
+that it creates a Studio session; Simulation described review/export after
+completion; Replay stated that seed replay creates a *fresh forward* session
+and is not a lookup of a prior recorded round. These are rendered, public-UI
+observations, not private API assertions.
 
-Thus no Studio page, error, action, DOM state, or screenshot was observed or
-retained. This is a **browser-driver inconclusive** outcome, not a product
-finding. Studio role equivalence, lifecycle misuse, recovery, project switching,
-history, and deep-link verification remain not reached. No profiles, generated
-outputs, raw logs, browser automation, or screenshots are committed.
+In the final two fresh sessions, the same rendered Create game action reached
+the workspace, but the idempotent Play-tab click did not expose the previously
+rendered local **Start Play** control within the bounded semantic wait. Neither
+run rendered a Studio error, validation failure, or product symptom. The
+browser process and CDP transport remained live, but the control transition was
+unconfirmed. The four-launch budget is exhausted, so the remaining Studio
+role/lifecycle actions (actual play, simulation/cancellation, export/import,
+stale/cross-project use, retry/resume, cleanup, project switching, history and
+deep links) are **not reached**. This is a **driver inconclusive** result, not a
+product finding.
+
+No profiles, generated outputs, raw logs, browser automation, or screenshots
+are committed.
