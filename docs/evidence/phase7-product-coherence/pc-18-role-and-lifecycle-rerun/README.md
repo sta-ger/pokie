@@ -21,33 +21,33 @@ present and executable.
 
 ## Fresh rendered Studio recovery
 
-Four fresh registry/browser-profile launches used exactly
-`node ./dist/cli/pokie.js --no-open --port 0` from this checkout. No rendered
-product error, browser exception, or failed network diagnostic occurred.
+Four new isolated registry/browser-profile launches used exactly
+`node ./dist/cli/pokie.js --no-open` from this checkout. No rendered product
+error, browser exception, or failed network diagnostic was observed.
 
-1. The repaired Home selector found `Create game`; the action entered its local
-   validation/pending state. The former harness ended that operation before a
-   semantic outcome, so it was not retried.
-2. `Choose a different start` rendered the public starter, blank, generated,
-   and open-saved choices. It did not render Blueprint or managed choices.
-3. `Projects` changed the fragment to `#/home/projects`; the immediate observer
-   still showed the design editor, so the selector was repaired rather than
-   treating a fixed wait as a defect.
-4. The repaired semantic wait rendered Projects with `Your projects`, `Add a
-   game you already have`, `Browse…`, `Browse PAR sheet…`, and a disabled
-   `Check game`; its clean context showed `Loading your projects…`. It offered
-   no visible creation control for a managed Blueprint project.
+The repaired public flow selected `Create game` and reached a created editable
+`blueprint.json` project. Its Overview truthfully identified the project as
+`Created in Studio`, exposed its local location and valid state, and directed
+the user to Build/Export. Build/Export truthfully displayed Outcome Library's
+local destination, exact 1,024-combination preflight, materialization plan, and
+the dependent Stake route (`materialize → generateOutcomeLibrary → publish`),
+including Stake's data boundary and its disabled compatibility check before an
+Outcome Library exists.
 
-The fourth launch exhausted this invocation's public-workflow budget before a
-managed Blueprint, Outcome Library, dependent Stake, six role missions, or the
-requested lifecycle variants could be reached. This is an inconclusive public
-workflow record, not a product finding.
+The final launch clicked `Generate exact outcome library (base)` once. Its local
+pending state rendered (`Generating outcome library from this project's current
+build…`, disabled generator, and `Cancel generation`). The recovery harness then
+incorrectly issued the dependent Stake Build while that non-idempotent request
+remained pending and ended Studio before a local completion/error observation.
+Consequently Outcome Library completion, Stake completion/recovery, the six
+roles, and remaining lifecycle variants are deliberately not claimed. This is
+driver-inconclusive evidence, not a product finding.
 
-Runtime-only harness transcript checksums (not committed):
+Runtime-only transcript checksums (not committed):
 
 ```text
-recovery-3.json 5bb5a87e9fe9ca38cc0d4f34dc9d0c6e4c1b9be2afcd09262301aff75781c11d
-recovery-4.json f7cc1e87beff6d5d7f41e1cafc2d5e6c558eb7be3ad71818c44b76dcf06cb60e
-recovery-5.json 71ccdbed3888484cd53b145893ceba36d6e8518213f988e6c8ee72d943da91a3
-recovery-6.json f5119bc98678d9fea59a4a1b313cf9ae75a39332ed475aafd4c49f6e331688a9
+recovery-7.json a8bcca596e241d498b4efe7c6b609dbb1fc5eed33100e55dc67cbff62d29c369
+recovery-8.json 7cb1a3f8c9b3adf4f76e771865beab4190a891910b2b17bd2259a655161ff772
+recovery-9.json 955dbfa2ccc06e22006595fdc95a793875258b6352a832e7f6bcb32a3fb5e45b
+recovery-10.json b2d6ac73089253c0c801720cc3928c68d3020ccd25232ae83e983689f4342064
 ```
