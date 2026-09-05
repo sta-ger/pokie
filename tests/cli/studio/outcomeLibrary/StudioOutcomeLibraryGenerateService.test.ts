@@ -7,6 +7,8 @@ import {
     OutcomeLibraryBundleWriter,
     OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
     PokieGame,
+    WeightedOutcomeLibraryGenerationCancelledError,
+    generateWeightedOutcomeLibrary,
 } from "pokie";
 import fs from "fs";
 import os from "os";
@@ -184,17 +186,54 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
         });
 
-        it("retains a token-bound recognized source after cancellation recovery reuses unchanged inputs", async () => {
+        it("publishes a managed Blueprint retry when the destination check's source probe is unavailable after cancellation", async () => {
+            const blueprintPath = path.join(projectRoot, "blueprint.json");
+            fs.writeFileSync(blueprintPath, "{}");
+            const destination = path.join(projectRoot, "outcomelibrary");
             const managedBlueprintPlan: ArtifactConversionPlan = {
                 ...plannedOutcomeLibrary,
-                source: {kind: "blueprint", capabilities: ["blueprint.build", "outcomeLibrary.generate"]},
+                source: {
+                    kind: "blueprint",
+                    canonicalLocation: blueprintPath,
+                    capabilities: ["blueprint.build", "outcomeLibrary.generate"],
+                },
+                target: {
+                    kind: "outcomeLibrary",
+                    canonicalLocation: destination,
+                    capabilities: ["outcome-library-read"],
+                },
             };
-            const planning = {prepare: jest.fn(() => Promise.resolve(managedBlueprintPlan))};
+            const unavailableSourcePlan: ArtifactConversionPlan = {
+                ...managedBlueprintPlan,
+                status: "unavailable",
+                steps: [],
+                diagnostic: {
+                    code: "unrecognized-source",
+                    failedEdge: {from: "tsPackage", to: "outcomeLibrary"},
+                    message: "This Studio source is not an independently recognized POKIE artifact and cannot be used for conversion planning.",
+                    recovery: "Open or generate a recognized POKIE Outcome Library bundle, then retry the action.",
+                },
+            };
+            let plannerCalls = 0;
+            const planning = {prepare: jest.fn(() => {
+                plannerCalls += 1;
+                // The initial and refreshed preflights recognize the managed
+                // Blueprint. The execution-time destination probe reproduces
+                // the cancellation-cleanup recognition race from Studio.
+                return Promise.resolve(plannerCalls < 3 ? managedBlueprintPlan : unavailableSourcePlan);
+            })};
+            let generationCalls = 0;
             const svc = new StudioOutcomeLibraryGenerateService(
                 POKIE_VERSION,
                 () => Promise.resolve(buildFixtureGame()),
                 undefined,
-                undefined,
+                (request) => {
+                    generationCalls += 1;
+                    if (generationCalls === 1) {
+                        throw new WeightedOutcomeLibraryGenerationCancelledError(BigInt(1), BigInt(6), new Map(), "fixture-enumeration");
+                    }
+                    return generateWeightedOutcomeLibrary(request);
+                },
                 undefined,
                 undefined,
                 undefined,
@@ -206,17 +245,23 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                 planning,
             );
 
-            const estimate = await svc.estimate(projectRoot, {generation: "exact"});
-            expect(estimate.status).toBe("ok");
-            if (estimate.status !== "ok") return;
+            const initialPreflight = await svc.estimate(blueprintPath, {generation: "exact"});
+            expect(initialPreflight.status).toBe("ok");
+            if (initialPreflight.status !== "ok") return;
+            await expect(svc.generate(blueprintPath, {generation: "exact", preflightToken: initialPreflight.preflightToken})).resolves.toMatchObject({
+                status: "cancelled",
+                plan: managedBlueprintPlan,
+            });
 
-            const generated = await svc.generate(projectRoot, {generation: "exact", preflightToken: estimate.preflightToken});
+            const refreshedPreflight = await svc.estimate(blueprintPath, {generation: "exact"});
+            expect(refreshedPreflight.status).toBe("ok");
+            if (refreshedPreflight.status !== "ok") return;
+
+            const generated = await svc.generate(blueprintPath, {generation: "exact", preflightToken: refreshedPreflight.preflightToken});
 
             expect(generated).toMatchObject({status: "ok", plan: managedBlueprintPlan});
-            // Estimate owns source recognition. The token-bound execution still
-            // checks destination availability, but must not re-resolve a source
-            // that the safe retry preflight already recognized.
-            expect(planning.prepare).toHaveBeenCalledTimes(2);
+            expect(fs.existsSync(path.join(destination, "manifest.json"))).toBe(true);
+            expect(planning.prepare).toHaveBeenCalledTimes(3);
         });
 
         it("keeps legacy bounded generation below the cap exact in the prepared plan", async () => {
