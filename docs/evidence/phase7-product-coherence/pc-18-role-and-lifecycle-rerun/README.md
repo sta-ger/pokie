@@ -189,3 +189,37 @@ the downstream output-to-input/lifecycle branches before any project exists;
 those branches were not claimed as executed. No generated project, profile,
 registry, screenshot, raw log, or harness script is retained in the committed
 evidence.
+
+## Candidate `41f96777465485400a52b9ca5c6dd8bf0b621823` independent rerun
+
+2026-09-05 UTC. `npm run build-cli` completed before either UI launch. No
+targeted test files are required by the persisted request. Two fresh Studio
+profiles, fresh writable Documents roots, registries, and Chromium profiles
+then launched this source checkout exactly as `node ./dist/cli/pokie.js
+--no-open`.
+
+Both clean rendered runs successfully used Recommended `Create game` to save
+and open `Starter Slot`. They each completed the visible Player `New Play
+session` → `Spin` round, the default 10,000-round Simulation report, and
+opened Replay. Build/Export rendered the exact `1,024 raw combinations;
+expected work 1,024` preflight.
+
+In each run, `Generate exact outcome library (base)` visibly became pending,
+exposed `Cancel generation`, and was cancelled once. Once that pending action
+had disappeared and the preflight was rendered again, the unchanged-input
+retry visibly failed: `Generating this outcome library failed`, with `Server
+plan: Unavailable — This Studio source is not an independently recognized
+POKIE artifact and cannot be used for conversion planning.` This is a repeated
+rendered product result, not a wait or selector threshold. It proves that the
+candidate's clean managed Blueprint cannot complete the required recovery and
+publication path.
+
+The same two runs did not reach the separate Stake export action: after the
+Outcome Library finding, the visible card used a generic `Build` control rather
+than the harness's initially expected accessible label. That selector mismatch
+is not treated as a product defect and, with the two-launch limit reached,
+Stake and the remaining output-to-input/reverse/cross-project variants are not
+claimed as verified. The temporary rendered-event transcript checksum was
+`9f45b5a3f52a7fb70b7ff00a394cbc131693dd3b1aeeb5d71d38be9336b17f96`.
+No generated projects, profiles, registries, browser data, raw logs,
+screenshots, or harness files are retained.
