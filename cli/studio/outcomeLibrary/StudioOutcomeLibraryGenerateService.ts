@@ -437,9 +437,16 @@ export class StudioOutcomeLibraryGenerateService {
         if (plan.status === "unavailable") {
             return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
         }
+        // Studio addresses a managed project by its directory, while the
+        // conversion planner correctly binds that project's editable source
+        // as `blueprint.json`.  Compare a token-bound Blueprint plan against
+        // its canonical source identity, not the enclosing dashboard path;
+        // otherwise every lifecycle phase can falsely report source drift
+        // before cancellation or a refreshed retry reaches generation.
+        const planSourcePath = tokenBoundBlueprintPlan?.source.canonicalLocation ?? projectRoot;
         const planDrift = describePreparedArtifactPlanDrift(
             plan,
-            projectRoot,
+            planSourcePath,
             "outcomeLibrary",
             boundDestination,
             requestedGeneration.generationSemantics,
