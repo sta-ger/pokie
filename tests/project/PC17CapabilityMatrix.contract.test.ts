@@ -11,30 +11,38 @@ function readAudit(name: string): string {
 }
 
 describe("PC-17 capability-matrix parity contract", () => {
-    it("records every PC-05 operation class and keeps intentional Studio differences on a shared user result", () => {
+    it("records every PC-05 operation with its CLI, Studio, contract, diagnostic, and next-action disposition", () => {
         const matrix = fs.readFileSync(MATRIX_PATH, "utf-8");
         const parity = readAudit("CAPABILITY-PARITY.md");
 
-        for (const operation of [
-            "Create an editable game design",
-            "Build a runnable package",
-            "Generate raw weighted outcomes",
-            "Materialize a canonical Outcome Library bundle",
-            "Run/play a game",
-            "Simulate",
-            "Replay a result",
-            "Certify an Outcome Library",
-            "Prove fairness",
-            "Assess WASM compatibility",
-        ]) {
+        const operationTable = matrix.slice(0, matrix.indexOf("##"));
+        const operations = Array.from(operationTable.matchAll(/^\| ([^|]+) \|/gm))
+            .map((match) => match[1])
+            .filter((operation) => operation !== "Domain operation / user goal" && operation !== "---");
+        expect(operations).toHaveLength(28);
+        expect(parity).toContain("| PC-05 operation | CLI result | Studio result or intentional absence | Shared contract / boundary | Prerequisite or diagnostic | Next user action |");
+        for (const operation of operations) {
             expect(matrix).toContain(`| ${operation} |`);
+            expect(parity).toContain(`| \`${operation}\` |`);
         }
-        expect(parity).toContain("no unexplained CLI/Studio semantic mismatch");
-        expect(parity).toContain("`BUILD_PRODUCT_MATRIX`, `ArtifactConversionPlanner`, `ArtifactBuilderRegistry` and `ProjectTargetResolver`");
-        expect(parity).toContain("`createMaterializingRuntimePackageResolver`, `simulateOutcomeSourceProject` and `replayOutcomeSourceProject`");
-        expect(parity).toContain("raw JSON is never labelled runnable");
-        expect(parity).toContain("Stake export stays analyzable, not drawable");
-        expect(parity).toContain("WASM remains inspection-only");
+        expect(parity).toContain("Intentional absence");
+        expect(parity).toContain("`BUILD_PRODUCT_MATRIX`, `ArtifactConversionPlanner`, `ArtifactBuilderRegistry`, `ProjectTargetResolver`");
+        expect(parity).toContain("`simulateOutcomeSourceProject`");
+        expect(parity).toContain("`replayOutcomeSourceProject`");
+        expect(parity).toContain("Raw JSON/checkpoint is not runnable");
+        expect(parity).toContain("Stake analyzes but does not draw");
+        expect(parity).toContain("No build/runtime/sampling/logic-validation promise");
+    });
+
+    it("gives every public command and nested verb an independently auditable parity disposition", () => {
+        const parity = readAudit("CAPABILITY-PARITY.md");
+        for (const route of [
+            "build", "certification build", "certification verify", "client", "create", "dev", "diff", "edit", "export",
+            "fairness commit", "fairness reveal", "fairness seed-commit", "fairness verify", "generate", "import", "init",
+            "inspect", "par export", "par import", "reel generate", "replay", "report", "sample", "serve", "sim", "validate",
+        ]) {
+            expect(parity).toContain(`| \`${route}\` |`);
+        }
     });
 
     it("has one conversion contract for every supported matrix cell instead of a CLI- or Studio-only exception", () => {
@@ -44,8 +52,7 @@ describe("PC-17 capability-matrix parity contract", () => {
         );
 
         expect(supportedCells).toHaveLength(14);
-        expect(parity).toContain("planner validation happens before writing");
-        expect(parity).toContain("conflicts preserve caller-owned output");
-        expect(parity).toContain("cancellation removes partial output");
+        expect(parity).toContain("409 conflict preservation");
+        expect(parity).toContain("cancellation leaves neither output nor staging directory");
     });
 });
