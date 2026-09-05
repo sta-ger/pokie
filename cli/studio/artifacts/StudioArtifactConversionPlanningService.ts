@@ -3,6 +3,7 @@ import {
     ArtifactConversionPlanningOptions,
     ArtifactConversionPlan,
     ArtifactTargetType,
+    type PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
 } from "pokie";
@@ -17,6 +18,20 @@ export interface StudioArtifactConversionPlanning {
         destinationPath?: string,
         options?: Omit<ArtifactConversionPlanningOptions, "destinationPath">,
     ): Promise<ArtifactConversionPlan>;
+}
+
+/**
+ * Resolves the source represented by a Studio project location. A managed
+ * Blueprint has a file identity, while Studio also accepts its containing
+ * directory when reopening or acting on it from the dashboard.
+ */
+export async function resolveStudioProjectSource(
+    resolver: ProjectResolving,
+    projectRoot: string,
+): Promise<PokieProject | undefined> {
+    const direct = await resolver.resolve(projectRoot);
+    if (direct !== undefined) return direct;
+    return resolver.resolve(path.join(projectRoot, "blueprint.json"));
 }
 
 /**
@@ -46,7 +61,7 @@ export class StudioArtifactConversionPlanningService implements StudioArtifactCo
         options: Omit<ArtifactConversionPlanningOptions, "destinationPath"> = {},
     ): Promise<ArtifactConversionPlan> {
         try {
-            const source = await this.resolveStudioSource(projectRoot);
+            const source = await resolveStudioProjectSource(this.resolver, projectRoot);
             return source === undefined
                 ? createUnresolvedRuntimePlan(projectRoot, target, destinationPath)
                 : this.registry.preparePlan(source, target, {...options, destinationPath});
@@ -58,15 +73,4 @@ export class StudioArtifactConversionPlanningService implements StudioArtifactCo
         }
     }
 
-    /**
-     * A managed Blueprint Project is represented by its durable blueprint.json
-     * source, even when a Studio caller supplies its containing project
-     * directory. Resolve that file through the regular project resolver rather
-     * than inventing capabilities from the directory name or registry state.
-     */
-    private async resolveStudioSource(projectRoot: string) {
-        const direct = await this.resolver.resolve(projectRoot);
-        if (direct !== undefined) return direct;
-        return this.resolver.resolve(path.join(projectRoot, "blueprint.json"));
-    }
 }

@@ -86,6 +86,19 @@ describe("StudioArtifactBuildService", () => {
             expect(byTarget.get("parWorkbook")?.supported).toBe(true);
         });
 
+        it("recognizes a managed Blueprint directory for Outcome Library and Stake goals", async () => {
+            const blueprintPath = writeBlueprintFile();
+
+            const targets = await service.listTargets(workDir);
+            const outcomePreview = await service.preview(workDir, "outcomeLibrary");
+            const stakePreview = await service.preview(workDir, "stakeAdapter");
+
+            expect(targets.find((entry) => entry.target === "outcomeLibrary")).toMatchObject({supported: true});
+            expect(targets.find((entry) => entry.target === "stakeAdapter")).toMatchObject({supported: true});
+            expect(outcomePreview).toMatchObject({status: "ok", sourceType: "blueprint", plan: {source: {canonicalLocation: blueprintPath}}});
+            expect(stakePreview).toMatchObject({status: "ok", sourceType: "blueprint", plan: {source: {canonicalLocation: blueprintPath}}});
+        });
+
         it("marks every target unsupported for a path that isn't a recognized POKIE project", async () => {
             const targets = await service.listTargets(path.join(workDir, "does-not-exist"));
 
