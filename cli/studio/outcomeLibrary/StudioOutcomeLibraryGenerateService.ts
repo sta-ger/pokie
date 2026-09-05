@@ -14,6 +14,7 @@ import {
     WeightedOutcomeLibraryGenerationCancelledError,
     ArtifactConversionPlanner,
     ArtifactConversionPlan,
+    assertPreparedArtifactDestinationAvailable,
     DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE,
     DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
@@ -478,16 +479,22 @@ export class StudioOutcomeLibraryGenerateService {
                 },
                 canPublish: (read) => read.status === "ready",
                 assertDestinationAvailable: async () => {
-                    // A token-bound Blueprint plan has already proved both the
-                    // canonical source and this destination during preflight;
-                    // `currentSource` above retains that immutable source
-                    // identity.  Re-planning here would re-run source
-                    // recognition merely to check the destination, which made
-                    // cancellation recovery depend on a transient resolver
-                    // result and could reject an unchanged managed Blueprint.
-                    // The atomic writer remains the publication boundary for
-                    // the bound destination itself.
-                    if (tokenBoundBlueprintPlan !== undefined) return;
+                    // The token retains the managed Blueprint source identity,
+                    // but publication must still re-check its physical output:
+                    // OutcomeLibraryBundleWriter atomically replaces an
+                    // existing directory. Use the registry's direct
+                    // source-alias/missing-or-empty guard here rather than
+                    // re-planning, so a cancelled retry does not depend on
+                    // transient source recognition while a late caller-owned
+                    // destination remains protected.
+                    if (tokenBoundBlueprintPlan !== undefined) {
+                        assertPreparedArtifactDestinationAvailable(
+                            tokenBoundBlueprintPlan.source.canonicalLocation,
+                            boundDestination,
+                            "directory",
+                        );
+                        return;
+                    }
                     const current = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
                     if (current.status === "planned") return;
                     throw new Error(current.diagnostic?.message ?? "The Outcome Library destination is unavailable.");

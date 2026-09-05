@@ -266,6 +266,61 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(planning.prepare).toHaveBeenCalledTimes(2);
         });
 
+        it("rejects a caller-owned destination introduced after a token-bound Blueprint preflight without publishing or registering it", async () => {
+            const blueprintPath = path.join(projectRoot, "blueprint.json");
+            fs.writeFileSync(blueprintPath, "{}");
+            const destination = path.join(projectRoot, "outcomelibrary");
+            const managedBlueprintPlan: ArtifactConversionPlan = {
+                ...plannedOutcomeLibrary,
+                source: {
+                    kind: "blueprint",
+                    canonicalLocation: blueprintPath,
+                    capabilities: ["blueprint.build", "outcomeLibrary.generate"],
+                },
+                target: {
+                    kind: "outcomeLibrary",
+                    canonicalLocation: destination,
+                    capabilities: ["outcome-library-read"],
+                },
+            };
+            const writer = {writeToDirectory: jest.fn()} as unknown as OutcomeLibraryBundleWriter<string>;
+            const bundleReader = {
+                readManifest: jest.fn(() => Promise.resolve({modes: []})),
+            } as unknown as OutcomeLibraryBundleReader<string>;
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(buildFixtureGame()),
+                undefined,
+                (request) => {
+                    fs.mkdirSync(destination);
+                    fs.writeFileSync(path.join(destination, "caller-owned.txt"), "do not replace");
+                    return generateWeightedOutcomeLibrary(request);
+                },
+                writer,
+                bundleReader,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {prepare: () => Promise.resolve(managedBlueprintPlan)},
+            );
+
+            const preflight = await svc.estimate(blueprintPath, {generation: "exact"});
+            expect(preflight.status).toBe("ok");
+            if (preflight.status !== "ok") return;
+
+            await expect(svc.generate(blueprintPath, {generation: "exact", preflightToken: preflight.preflightToken})).resolves.toMatchObject({
+                status: "load-error",
+                error: expect.stringContaining("already exists and is not empty"),
+                plan: managedBlueprintPlan,
+            });
+            expect(writer.writeToDirectory).not.toHaveBeenCalled();
+            expect(fs.readFileSync(path.join(destination, "caller-owned.txt"), "utf-8")).toBe("do not replace");
+            expect(fs.existsSync(path.join(projectRoot, ".pokie", "outcome-library-registry.json"))).toBe(false);
+        });
+
         it("keeps legacy bounded generation below the cap exact in the prepared plan", async () => {
             const planning = {prepare: jest.fn(() => Promise.resolve(plannedOutcomeLibrary))};
             const svc = new StudioOutcomeLibraryGenerateService(
