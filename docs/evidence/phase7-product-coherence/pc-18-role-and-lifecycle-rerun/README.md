@@ -1,4 +1,4 @@
-# PC-18 independent host rerun — candidate `1fe1845eff997ff199f5277c7ee0637f4ed4c25f`
+# PC-18 independent public-product rerun — candidate `1fe1845eff997ff199f5277c7ee0637f4ed4c25f`
 
 Date: 2026-09-05 (UTC). This retained record contains bounded proof only.
 
@@ -15,42 +15,54 @@ Result: **11 suites, 59 tests passed**. A candidate `npm run build` completed
 before Studio launches. No concurrent or duplicate Jest, build, pack, or
 install process was started.
 
-## Reused public CLI evidence
+## Fresh public CLI role missions
 
-The immediately preceding candidate-bound run used only
-`node ./dist/cli/pokie.js` in isolated output contexts. Its random create,
-inspect, validate, TypeScript-package, outcome-library, Stake-adapter, and
-PAR-workbook role actions exited 0; package/library/Stake validation and
-outcome repeat plus Stake reverse/repeat also exited 0. Inspected outcome and
-repeat directories each contained `index_base.json`, `manifest.json`, and
-`outcomes_base.jsonl`. Generated outputs were discarded.
+A newly-created `/tmp/pokie-pc18-public-*` context used only
+`node ./dist/cli/pokie.js`, then was discarded. All of these public commands
+exited 0: random `create`; `validate`; PAR `export` and `import`; Blueprint to
+`tsPackage` `build`; package `validate`; seeded `sim`, `report`, and `replay`;
+Blueprint to `outcomeLibrary`; Outcome Library to `stakeAdapter`; Stake
+`import` back to an Outcome Library; deep validation; and `init --no-prepare`,
+followed by a real `init` retry and validation of the prepared project.
+
+The imported Stake output displayed the intentional reconstruction-provenance
+warning, and its deep validation passed. Selected disposed-artifact SHA-256
+values: conversion evidence
+`78a3b309ff66d6944ba8a600fa74a7c5e1c9d0028685eabd872935600106cac1`, QA
+simulation `bfdf4c5ec5b52f3bbfde7d20f5153abbc667687a0ac5d34676f429bf6e6edec0`,
+replay `10c4815290fafa0e7ecdaf429e300f174e65e442ac4ed9a9f0d343c3041b4a03`,
+Outcome manifest `7e0ef20e777951533eefe4afd55ba843ca2451d4758734adfc6da45a2c1e88ef`,
+Stake manifest `79b5e61e02f201d571459af91a524bedd7b8b9a14c713c03e38204f5710eabec`,
+and imported manifest `e64330263fe37d29cb50a9f690075910ecd405048b3b033f31c2fc0cb1315550`.
+The source and imported Outcome directories each contained `index_base.json`,
+`manifest.json`, and `outcomes_base.jsonl`; the imported directory also had
+`source-provenance.json`.
 
 ## Fresh Studio recovery result
 
-The recovery harness was repaired in place to use the public Snap launcher with
-a fixed local CDP endpoint. Four fresh launches used exactly
-`node ./dist/cli/pokie.js --no-open`, a new `POKIE_HOME`, a new browser profile,
-and the inherited display; each server printed `http://127.0.0.1:3200`.
+This invocation used four fresh launches, each exactly
+`node ./dist/cli/pokie.js --no-open` with a new `POKIE_HOME`, Chromium profile,
+runtime directory, and CDP endpoint. The first reached the rendered start
+screen but found a harness locator syntax error before Create; it was repaired
+in the persisted harness in place. That was a driver fault, not a product
+symptom.
 
-The first repaired launch rendered the public Studio start screen. The second
-created the ready-to-edit `Starter Slot` through the visible **Create game**
-control and reached its workspace. Visible workspace navigation established
-**Play**, **Simulation**, **Replay**, and **Build/Export**. The Play panel said
-that it creates a Studio session; Simulation described review/export after
-completion; Replay stated that seed replay creates a *fresh forward* session
-and is not a lookup of a prior recorded round. These are rendered, public-UI
-observations, not private API assertions.
+The remaining launches visibly created `Starter Slot`, reached its workspace,
+opened Play, pressed **New Play session**, and reached **Spin**. Simulation
+exposed **Run Simulation** and its live **Cancel** control. The cancellation
+button opened its rendered confirmation; before the visible confirmation was
+accepted, the 10,000-round run completed in 0.2 s. The sole **Confirm** then
+closed the prompt safely and preserved the completed result (RTP 96.04%, one
+recorded run). It is not evidence of a successful cancellation, but it shows
+that the late confirmation did not corrupt the completed run.
 
-In the final two fresh sessions, the same rendered Create game action reached
-the workspace, but the idempotent Play-tab click did not expose the previously
-rendered local **Start Play** control within the bounded semantic wait. Neither
-run rendered a Studio error, validation failure, or product symptom. The
-browser process and CDP transport remained live, but the control transition was
-unconfirmed. The four-launch budget is exhausted, so the remaining Studio
-role/lifecycle actions (actual play, simulation/cancellation, export/import,
-stale/cross-project use, retry/resume, cleanup, project switching, history and
-deep links) are **not reached**. This is a **driver inconclusive** result, not a
-product finding.
+The same rendered journey established the local **Outcome library generator**
+in Build/Export, Replay's explicit fresh-forward (not lookup) provenance, and
+the `Starter Slot` entry under **Your projects**. No rendered product error or
+validation failure occurred. A real cancelled run, stale prepared plan,
+cross-project attempted artifact, reverse/repeat publication, and completed
+retry/resume from Studio remain unverified: the four-launch allowance is now
+consumed, so they are not inferred from the machine suite.
 
 No profiles, generated outputs, raw logs, browser automation, or screenshots
 are committed.
