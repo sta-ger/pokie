@@ -223,3 +223,26 @@ claimed as verified. The temporary rendered-event transcript checksum was
 `9f45b5a3f52a7fb70b7ff00a394cbc131693dd3b1aeeb5d71d38be9336b17f96`.
 No generated projects, profiles, registries, browser data, raw logs,
 screenshots, or harness files are retained.
+
+## Exact-candidate host rerun — `6c8f2df0c677ec4190d78b197fdaeb79306adc17`
+
+2026-09-05 UTC. The required impact command was run once as the complete
+eleven-file `npm run test:targeted -- …` invocation named in the reviewer
+checklist. It passed: **11 suites / 59 tests**. `npm run build-cli` then
+completed before Studio was launched.
+
+Two fresh profiles then launched the candidate checkout exactly as
+`node ./dist/cli/pokie.js --no-open`, with distinct Studio registries,
+Documents roots, and Chromium profiles. The first rendered `Create game` while
+automatic validation was still pending; its now-disabled control showed that
+the click had not been accepted, so it was not retried in that same profile.
+The repaired second run waited for the enabled control. It visibly created and
+saved the managed `Starter Slot` project, whose Overview reported `Valid — no
+issues found`; it then visibly opened Play, created a new Play session, and
+sent one Spin. The harness incorrectly treated the persistent navigation label
+`Simulation` as that route's ready state while the Spin view still rendered
+`Spinning…`, then attempted the Simulation action before its rendered route
+transition. This is a driver/readiness failure with no rendered product error,
+not a product finding. The two-launch limit prevented further role, lifecycle,
+and misuse missions. No runtime project, profile, browser data, log, image, or
+harness file is retained here.
