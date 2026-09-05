@@ -186,7 +186,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
         });
 
-        it("publishes a managed Blueprint retry after cancellation with the same recognized source plan", async () => {
+        it("publishes a managed Blueprint retry when cancellation recovery's destination probe cannot re-recognize the source", async () => {
             const blueprintPath = path.join(projectRoot, "blueprint.json");
             fs.writeFileSync(blueprintPath, "{}");
             const destination = path.join(projectRoot, "outcomelibrary");
@@ -203,7 +203,25 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                     capabilities: ["outcome-library-read"],
                 },
             };
-            const planning = {prepare: jest.fn(() => Promise.resolve(managedBlueprintPlan))};
+            const unavailableSourcePlan: ArtifactConversionPlan = {
+                ...managedBlueprintPlan,
+                status: "unavailable",
+                steps: [],
+                diagnostic: {
+                    code: "unrecognized-source",
+                    failedEdge: {from: "tsPackage", to: "outcomeLibrary"},
+                    message: "This Studio source is not an independently recognized POKIE artifact and cannot be used for conversion planning.",
+                    recovery: "Open or generate a recognized POKIE Outcome Library bundle, then retry the action.",
+                },
+            };
+            let plannerCalls = 0;
+            const planning = {prepare: jest.fn(() => {
+                plannerCalls += 1;
+                // Both visible preflights recognize the managed Blueprint.
+                // A publication-time source re-probe reproduces the resolver
+                // race that must not invalidate the already bound retry.
+                return Promise.resolve(plannerCalls < 3 ? managedBlueprintPlan : unavailableSourcePlan);
+            })};
             let generationCalls = 0;
             const svc = new StudioOutcomeLibraryGenerateService(
                 POKIE_VERSION,
@@ -243,7 +261,9 @@ describe("StudioOutcomeLibraryGenerateService", () => {
 
             expect(generated).toMatchObject({status: "ok", plan: managedBlueprintPlan});
             expect(fs.existsSync(path.join(destination, "manifest.json"))).toBe(true);
-            expect(planning.prepare).toHaveBeenCalledTimes(3);
+            // Initial/refreshed preflights own recognition; publication uses
+            // the token-bound source and destination rather than re-planning.
+            expect(planning.prepare).toHaveBeenCalledTimes(2);
         });
 
         it("keeps legacy bounded generation below the cap exact in the prepared plan", async () => {

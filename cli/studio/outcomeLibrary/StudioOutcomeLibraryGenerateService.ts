@@ -478,6 +478,16 @@ export class StudioOutcomeLibraryGenerateService {
                 },
                 canPublish: (read) => read.status === "ready",
                 assertDestinationAvailable: async () => {
+                    // A token-bound Blueprint plan has already proved both the
+                    // canonical source and this destination during preflight;
+                    // `currentSource` above retains that immutable source
+                    // identity.  Re-planning here would re-run source
+                    // recognition merely to check the destination, which made
+                    // cancellation recovery depend on a transient resolver
+                    // result and could reject an unchanged managed Blueprint.
+                    // The atomic writer remains the publication boundary for
+                    // the bound destination itself.
+                    if (tokenBoundBlueprintPlan !== undefined) return;
                     const current = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
                     if (current.status === "planned") return;
                     throw new Error(current.diagnostic?.message ?? "The Outcome Library destination is unavailable.");
