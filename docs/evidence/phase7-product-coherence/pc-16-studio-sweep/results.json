@@ -1,8 +1,11 @@
 {
   "candidateSha": "8c52757cf8610a4e330e2e13d1bb12de1d406d31",
-  "checkoutHead": "bdbf969496bdd6dd6e3e7aee9346414903a7471c",
+  "checkoutHead": "b00d98438808b1aa8e4ff21ec108f252f724f30a",
   "cliLaunch": "node ./dist/cli/pokie.js --no-open",
   "profiles": [
+    "profile-a"
+  ],
+  "controllerVerifiedRetainedProfiles": [
     "profile-a",
     "profile-b"
   ],
@@ -18,7 +21,7 @@
     {
       "name": "Enter pc16-alpha artifact path",
       "status": "success",
-      "latencyMs": 30,
+      "latencyMs": 39,
       "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects No games yet. Start a game or add one you already have. Create your first game Add a game you already have Choose a game folder, saved game design, or PAR spreadsheet (.xlsx). Studio checks it first, so nothing is added until you confirm. Game location Browse… Browse PAR sheet… Resolving… Check game Documentation Docs index Getting started CLI reference",
       "consoleFailures": [],
       "networkFailures": []
@@ -26,16 +29,16 @@
     {
       "name": "Check pc16-alpha generated package",
       "status": "success",
-      "latencyMs": 233,
-      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects No games yet. Start a game or add one you already have. Create your first game Add a game you already have Choose a game folder, saved game design, or PAR spreadsheet (.xlsx). Studio checks it first, so nothing is added until you confirm. Game location Browse… Browse PAR sheet… Resolves to: /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-a6tzqfz3/pokie-pc16-verifier-iofkrU/artifacts/pc16-alp",
+      "latencyMs": 229,
+      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects No games yet. Start a game or add one you already have. Create your first game Add a game you already have Choose a game folder, saved game design, or PAR spreadsheet (.xlsx). Studio checks it first, so nothing is added until you confirm. Game location Browse… Browse PAR sheet… Resolves to: /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-jkdgixbh/pokie-pc16-verifier-Q4tfI4/artifacts/pc16-alp",
       "consoleFailures": [],
       "networkFailures": []
     },
     {
       "name": "Register pc16-alpha generated package",
       "status": "success",
-      "latencyMs": 129,
-      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects Search projects Game type Availability Name Type Added to Studio Last opened Actions Available projects pc16-alpha-package /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-a6tzqfz3/pokie-pc16-verifier-iofkrU/artifacts/pc16-alpha-package Playable game Added from your computer 9/5/2026, 12:43:59 PM Open Remove Showing 1–1 of 1 projects Add a game you already have Choose a game folder, saved gam",
+      "latencyMs": 122,
+      "visible": "POKIE Studio Start a game Projects Projects Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it. New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea. Your projects Search projects Game type Availability Name Type Added to Studio Last opened Actions Available projects pc16-alpha-package /home/stager/Work/sta-ger/agents/runtime/verifier-tools/pokie-verifier-tools-jkdgixbh/pokie-pc16-verifier-Q4tfI4/artifacts/pc16-alpha-package Playable game Added from your computer 9/5/2026, 1:05:01 PM Open Remove Showing 1–1 of 1 projects Add a game you already have Choose a game folder, saved game",
       "consoleFailures": [],
       "networkFailures": []
     },
@@ -50,7 +53,7 @@
     {
       "name": "Play tab opens",
       "status": "success",
-      "latencyMs": 125,
+      "latencyMs": 130,
       "visible": "POKIE Studio / Your projects / Pc16 Alpha / Play Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Play prepares this game for a real round and creates a session in Studio. Nothing else needs to be set up. Start Play Show advanced details (seed) New Play session",
       "consoleFailures": [],
       "networkFailures": []
@@ -58,7 +61,7 @@
     {
       "name": "Play session starts",
       "status": "success",
-      "latencyMs": 168,
+      "latencyMs": 157,
       "visible": "POKIE Studio / Your projects / Pc16 Alpha / Play Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Play Spin Scenarios Scenario searches use real settled spins and leave their final round in this Play session. Find any win Find symbol win Find free games Symbol The symbol Find symbol win searches for in a real, already-evaluated win. Session Show advanced details (seed) Reset Play session Bet: 1 1 2 5 10 Credits 1000",
       "consoleFailures": [],
       "networkFailures": []
@@ -66,15 +69,15 @@
     {
       "name": "Play spin settles",
       "status": "success",
-      "latencyMs": 168,
-      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Play Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Play Spin Scenarios Scenario searches use real settled spins and leave their final round in this Play session. Find any win Find symbol win Find free games Symbol The symbol Find symbol win searches for in a real, already-evaluated win. Session Show advanced details (seed) Reset Play session Round complete — no win this round. Bet: 1 1 2 5 10 Q Q 8 J 7 Q 8 10 A 8 Q 10 Credits 999 Total win 0.00 Payout multiplier 0.00 Paylines / ways Paytable Inspect round artifact",
+      "latencyMs": 160,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Play Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Play Spin Scenarios Scenario searches use real settled spins and leave their final round in this Play session. Find any win Find symbol win Find free games Symbol The symbol Find symbol win searches for in a real, already-evaluated win. Session Show advanced details (seed) Reset Play session Round complete — no win this round. Bet: 1 1 2 5 10 A J 8 8 Q 7 Q 8 A 8 Q 10 Credits 999 Total win 0.00 Payout multiplier 0.00 Paylines / ways Paytable Inspect round artifact",
       "consoleFailures": [],
       "networkFailures": []
     },
     {
       "name": "Simulation tab opens",
       "status": "success",
-      "latencyMs": 172,
+      "latencyMs": 154,
       "visible": "POKIE Studio / Your projects / Pc16 Alpha / Simulation Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project 1 Configure Set rounds 2 Run Watch progress 3 Review See results 4 Export Download report Simulation plays many rounds of this game to estimate RTP, win frequency, and the largest win. When it finishes, review the summary here or export the full report. Rounds * Run Simulation Show advanced details (seed, workers) Recent runs Refresh No completed simulations yet.",
       "consoleFailures": [],
       "networkFailures": []
@@ -82,8 +85,48 @@
     {
       "name": "Simulation rounds entered",
       "status": "success",
-      "latencyMs": 82,
+      "latencyMs": 88,
       "visible": "POKIE Studio / Your projects / Pc16 Alpha / Simulation Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project 1 Configure Set rounds 2 Run Watch progress 3 Review See results 4 Export Download report Simulation plays many rounds of this game to estimate RTP, win frequency, and the largest win. When it finishes, review the summary here or export the full report. Rounds * Run Simulation Show advanced details (seed, workers) Recent runs Refresh No completed simulations yet.",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Simulation launch is accepted",
+      "status": "success",
+      "latencyMs": 77,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Simulation Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Configure Set rounds 2 Run Watch progress 3 Review See results 4 Export Download report queued — 0/2 rounds — elapsed 0.0s Cancel Recent runs Refresh No completed simulations yet.",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Simulation reaches terminal",
+      "status": "success",
+      "latencyMs": 0,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Simulation Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Configure Set rounds Run Watch progress 3 Review See results 4 Export Download report RTP 50.00% Hit frequency 50.00% Volatility 0.50 Max win 1.00 Duration 0.0s Convergence RTP 95% CI: -19.30% – 119.30% Warnings No seed was provided — this run is not reproducible. Requested rounds (2) is low — RTP/hit-frequency estimates may be noisy. Recommendation: Run with --seed <seed> (e.g. --seed demo) to make this simulation reproducible. Open full report Compare with another run Repeat simulation Recent runs Ref",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Simulation review is visibly available",
+      "status": "success",
+      "latencyMs": 0,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Simulation Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Configure Set rounds Run Watch progress 3 Review See results 4 Export Download report RTP 50.00% Hit frequency 50.00% Volatility 0.50 Max win 1.00 Duration 0.0s Convergence RTP 95% CI: -19.30% – 119.30% Warnings No seed was provided — this run is not reproducible. Requested rounds (2) is low — RTP/hit-frequency estimates may be noisy. Recommendation: Run with --seed <seed> (e.g. --seed demo) to make this simulation reproducible. Open full report Compare with another run Repeat simulation Recent runs Ref",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Replay tab opens",
+      "status": "success",
+      "latencyMs": 166,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Replay Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round. To inspect a round you just played, choose Session Spin and select it from the list. Once a round is loaded, its grid, wins, paylines, paytable, and export download are available below. Recreate from seed Replay Artifact Session Spin Recent Simu",
+      "consoleFailures": [],
+      "networkFailures": []
+    },
+    {
+      "name": "Replay seed target loads",
+      "status": "success",
+      "latencyMs": 79,
+      "visible": "POKIE Studio / Your projects / Pc16 Alpha / Replay Overview Game Model Play Simulation Replay Build/Export Provably Fair Pc16 Alpha pc16-alpha · v0.1.0 Show project location Close project Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round. To inspect a round you just played, choose Session Spin and select it from the list. Once a round is loaded, its grid, wins, paylines, paytable, and export download are available below. Recreate from seed Replay Artifact Session Spin Recent Simu",
       "consoleFailures": [],
       "networkFailures": []
     }
@@ -93,12 +136,16 @@
   "screenshots": [
     {
       "name": "profile-a-play.png",
-      "sha256": "6d3c84fd19b14a33f6f9993a9b9a5c6fb91745f04f7a5a1afdd90fb8e2b929e4"
+      "sha256": "07064f0c50b379a0626200f65a35af01a2cbe7e0f2a00704b2017ad0ab73be48"
+    },
+    {
+      "name": "profile-a-simulation.png",
+      "sha256": "c086bd20beeba12c552dae0317299f8f81c15a6f1a9918a6bd6f94722ee3f4fd"
     }
   ],
   "cleanup": "Studio and both Chromium profile processes received SIGTERM; isolated runtime removed.",
   "inconclusive": {
     "category": "readiness",
-    "reason": "After the rendered Run Simulation action for two rounds, no local terminal or rendered product-error state appeared before the 120-second interaction bound. Console and network failure arrays remained empty."
+    "reason": "The rendered Replay Run again control was discovered and invoked after a loaded replay, but neither its local Round complete result nor a rendered product error appeared within the 120-second interaction bound. Console and network failure arrays remained empty; the public-launch budget was exhausted."
   }
 }
