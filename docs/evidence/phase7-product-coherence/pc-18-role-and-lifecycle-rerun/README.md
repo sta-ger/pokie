@@ -100,3 +100,23 @@ records an **inconclusive driver result**, not a pass and not a new product
 finding. No runtime profiles, generated projects, screenshots, raw logs, or
 harness scripts are retained; the temporary final screen checksum was
 `da931da1e803aa2e903257b560eb4bc4bafc35347276bbb9109318d687359b97`.
+
+## Focused harness-recovery attempt — `b0e9a53118a51c9602d362cbf0d2a89dcf59072b`
+
+2026-09-05 UTC. A fresh candidate build completed, then two further fresh
+profiles were launched from this source checkout exactly as
+`node ./dist/cli/pokie.js --no-open`. The repaired persistent harness recorded
+an explicit action-to-observation checklist for Author, Player, Analyst,
+Reviewer, Publisher, Stake, and lifecycle boundaries, and waited for local
+rendered transitions instead of issuing route-racing clicks.
+
+Both sessions visibly created and saved a valid managed `Starter Slot`
+Blueprint. Saving presented the rendered `Preview Game Model` entry, which the
+second run used. That action rendered the editor's `Game window` preview pane,
+not the project dashboard navigation (`Overview`, `Play`, `Simulation`,
+`Replay`, `Build/Export`) assumed by the prior transition. No rendered product
+error or failed operation appeared. The two fresh-launch budget was therefore
+exhausted before a role mission or lifecycle terminal state could be reached.
+This remains **inconclusive: driver**, not a product finding. No generated
+project, profile, browser artifact, screenshot, raw log, or harness file is
+retained in this evidence directory.
