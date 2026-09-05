@@ -66,3 +66,34 @@ consumed, so they are not inferred from the machine suite.
 
 No profiles, generated outputs, raw logs, browser automation, or screenshots
 are committed.
+
+## Recovery-launch lifecycle extension
+
+A later clean-profile recovery pass used the existing persistent harness and
+four more public Studio launches, each started exactly with
+`node ./dist/cli/pokie.js --no-open`.  Every launch had a new Studio home,
+Chromium profile, runtime directory, and CDP endpoint.  The successful final
+journey visibly created the starter project, opened Play, created a new Play
+session, reached Spin, opened Simulation, and ran its cancellation/recovery
+controls.  On one fresh run the rendered terminal text was `Cancelled after
+0.1s — 3000/10000 rounds completed.` with `Back to configuration` and
+`Repeat simulation` available; this is direct evidence of a real accepted
+cancellation.  No completed run was listed after that cancellation.
+
+On the final fresh run, the same cancellation confirmation arrived after the
+fast run had already reached its local `Review / See results` state.  It did
+not corrupt the result: the UI showed 10,000/10,000 rounds, RTP 98.00%, and
+one recent run.  One rendered `Repeat simulation` action was then accepted;
+its completed results were reviewed and the recent-run list showed exactly two
+completed 10,000-round runs (RTP 95.58% and 98.00%).  The result warning
+truthfully stated that an unseeded run is not reproducible and recommended a
+seed.  Build/Export again displayed the Outcome library generator, Replay
+again stated that it is a fresh forward replay rather than a lookup, and Your
+projects showed the `Starter Slot` history entry.  No rendered product error
+or validation failure appeared.
+
+This extends cancellation, late-confirmation safety, repeat/retry, completed
+result review, warning provenance, replay provenance, and project-history
+evidence.  It does not claim stale/cross-project artifact attempts or
+Studio-side reverse publication: those portions remain unverified rather than
+being inferred from these flows or the targeted suite.
