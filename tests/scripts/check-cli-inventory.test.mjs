@@ -191,7 +191,7 @@ test("limits discovery to maintained-document candidates despite nested dependen
         await writeFile(coverage, JSON.stringify(map));
         const dependencyRoot = run(cli, coverage, path.join(directory, "dependency-root"));
         assert.equal(dependencyRoot.status, 1);
-        assert.match(dependencyRoot.stderr, /documentation root must not enter a dependency, build, cache, or temporary tree/);
+        assert.match(dependencyRoot.stderr, /documentation root must not enter a dependency, build, cache, temporary, drive, UNC, or parent tree/);
     } finally {
         await chmod(cacheDirectory, 0o700).catch(() => {});
         await rm(directory, {recursive: true, force: true});
