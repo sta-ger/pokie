@@ -64,6 +64,39 @@ describe("StudioOutcomeLibraryGenerateService", () => {
     }
 
     describe("estimate", () => {
+        it("plans a managed Studio Blueprint source through the same recognized artifact route as its runtime", async () => {
+            const blueprintPath = path.join(projectRoot, "blueprint.json");
+            fs.writeFileSync(blueprintPath, JSON.stringify({
+                manifest: {id: "studio-starter", name: "Studio Starter", version: "1.0.0"},
+                reels: 2,
+                rows: 1,
+                symbols: ["A", "B"],
+                paytable: {A: {2: 5}},
+                reelStrips: [["A", "A", "B"], ["A", "B"]],
+                availableBets: [1],
+            }));
+
+            const studio = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(buildFixtureGame()),
+            );
+            const result = await studio.estimate(blueprintPath, {});
+
+            expect(result).toMatchObject({
+                status: "ok",
+                plan: {
+                    status: "planned",
+                    source: {kind: "blueprint", canonicalLocation: blueprintPath},
+                    target: {kind: "outcomeLibrary", canonicalLocation: path.join(projectRoot, "outcomelibrary")},
+                },
+            });
+            if (result.status !== "ok") throw new Error("Expected a recognized managed Blueprint plan.");
+            await expect(studio.generate(blueprintPath, {preflightToken: result.preflightToken})).resolves.toMatchObject({
+                status: "ok",
+                plan: {status: "planned", source: {kind: "blueprint", canonicalLocation: blueprintPath}},
+            });
+        });
+
         it("rejects every WASM sidecar state before registry, estimate, generation, or a package load", async () => {
             const wasmPath = path.join(projectRoot, "component.wasm");
             const sidecar = `${wasmPath}.pokie-wasm.json`;
