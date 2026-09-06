@@ -7,6 +7,7 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
 } from "pokie";
+import fs from "fs";
 import path from "path";
 import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPlan.js";
 
@@ -34,6 +35,20 @@ export async function resolveStudioProjectSource(
     // owns, never by a relative dashboard selector whose meaning could change
     // while a preflight/job is in flight.
     const resolvedProjectRoot = path.resolve(projectRoot);
+
+    // A saved Design Game normally enters Studio through blueprint.json
+    // itself. Do not manufacture a child selector beneath that file before
+    // resolving it: a file is already the canonical provenance boundary.
+    // Managed directories keep the Blueprint-first ordering below so an
+    // adjacent generated package cannot take ownership of the project.
+    try {
+        if (fs.statSync(resolvedProjectRoot).isFile()) {
+            return await resolver.resolve(resolvedProjectRoot);
+        }
+    } catch {
+        // Preserve the ordinary resolver contract below for missing and
+        // inaccessible user-selected paths.
+    }
     const managedBlueprintPath = path.join(resolvedProjectRoot, "blueprint.json");
     // Studio-managed projects own blueprint.json as their editable source.
     // Resolve it before the enclosing directory: a generated or partially
