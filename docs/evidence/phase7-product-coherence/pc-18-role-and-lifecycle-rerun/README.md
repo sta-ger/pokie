@@ -1,39 +1,51 @@
 # PC-18 independent host verification — driver inconclusive
 
-Candidate SHA: `938d6bfe61f13ff2dd80f1f984b2d4706bfa8646`.
+Candidate code SHA: `938d6bfe61f13ff2dd80f1f984b2d4706bfa8646`.
+This evidence commit is documentation-only and is its descendant.
 
-The required complete-file command was started once, as one serialized Jest
-process, with all eleven requested files:
+## Complete-file test boundary
+
+The required serialized command was run exactly once, with all eleven requested
+files, on this candidate checkout:
 
 ```text
 npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
 ```
 
-The candidate was built with `npm run build-cli`. Two fresh-profile Studio
-starts used only this checkout's built command:
+Result: **11 suites / 60 tests passed**. The candidate was then built once with
+`npm run build-cli`.
+
+## Fresh public Studio launches
+
+Two clean, isolated Studio/browser-profile launches used only the candidate
+build command:
 
 ```text
 node ./dist/cli/pokie.js --no-open
 ```
 
-On the functional start, a clean Studio registry created and opened Starter
-Slot. The rendered project showed it was `Created in Studio`, editable, and
-valid. The visible Play path activated `New Play session` then `Spin`; the
-session rendered its local pending state (`Spinning…`). The Simulation view
-then rendered an enabled control labelled exactly `Run Simulation`.
+The first repaired the retained case-sensitive selector defect and rendered:
 
-The browser harness looked for the different label `Run simulation` and
-stopped before activation. This is a selector/driver defect, not a rendered
-product error. It therefore did not obtain the required same-action
-pending/job/terminal record for simulation, cancellation/recovery, replay,
-Outcome Library to Stake handoff, source drift, cross-project/stale behavior,
-or caller-owned-destination safety. No product finding is asserted.
+```text
+Create game -> Starter Slot (Created in Studio; Editable; Valid)
+Play -> New Play session -> Spin -> Spinning…
+Simulation -> Run Simulation -> queued — 0/10000 -> Cancel -> Confirm
+Simulation -> Cancelled after 0.2s — 3000/10000 rounds completed
+```
 
-Only two representative current-candidate screenshots are retained; the fresh
-registry, browser profiles, generated projects, logs, and harness source are
-outside this evidence directory.
+The second launch repaired the tab/Recent-Simulation interaction assumptions.
+It rendered a complete Play terminal and the same Simulation action lifecycle:
 
-| File | SHA-256 |
-| --- | --- |
-| `01-clean-studio-workspace.png` | `bf3b665e9a6134cd54e348e59b947b89be0b55b5e6805d79e685a8cf65480017` |
-| `02-simulation-rendered-control.png` | `aca17231b12662eda7ab0acacac41ef19efe6ccf2ab1daa15a83843c1d6533c9` |
+```text
+Spin -> Spinning… -> Round complete — no win this round.
+Run Simulation -> queued — 0/10000 -> Cancel -> Confirm
+RTP 102.38%; 10000/10000 rounds; Duration 0.3s
+```
+
+Thus the exact cancellation action was accepted, but its local terminal was a
+completed simulation, not a rendered failure. The harness had still waited
+only for the cancellation terminal and stopped before the remaining Replay,
+Outcome Library, Stake, source-drift, cross-project, and cleanup checks. This
+is a harness-control-flow limitation after a rendered success, not a product
+finding. No generated project, browser profile, raw log, harness source, or
+output tree is retained.
