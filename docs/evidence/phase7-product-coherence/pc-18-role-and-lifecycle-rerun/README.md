@@ -17,25 +17,30 @@ then completed before either Studio launch.
 
 ## Fresh public-workflow recovery
 
-The persistent repaired harness made two fresh-profile, fresh-registry launches
-from this checkout only with `node ./dist/cli/pokie.js --no-open`.
+After `npm run build-cli` completed, the persistent harness made four new
+fresh-profile, fresh-registry launches from this checkout only with
+`node ./dist/cli/pokie.js --no-open`. No CLI private API, DOM/state injection,
+or stale `node_modules` Pokie executable was used.
 
-1. The clean `Design Your Game` page visibly rendered the Recommended starter
-   with enabled `Create game` and no product error. The prior guard inspected
-   `body.innerText`, which cannot contain native input values, then incorrectly
-   tried the absent starter chooser. The harness was repaired in place to query
-   the visible native inputs directly.
-2. The repaired fresh journey recognized the in-place Recommended starter,
-   clicked `Create game`, and visibly reached the saved `Starter Slot` workspace
-   (`Overview`, `Game Model`, `Play`, `Simulation`, `Replay`, `Build/Export`,
-   `Close project`). No rendered product error occurred. Its project-close wait
-   was too broad: existing workspace text satisfied `/Projects/` and `/Open/`
-   before the close transition, so it attempted no duplicate action and then
-   failed to find an `Open` control. The remaining role and lifecycle actions
-   were therefore not reached within the fixed two-launch budget.
+The stable rendered checklist was: clean Recommended starter → Create game →
+Close/Open project → one completed Play Spin → one-round Simulation → Session
+Spin Replay → Outcome Library → Stake export → lifecycle compatibility states.
+The last two launches visibly reached the following local states without a
+rendered product error:
 
-This is **inconclusive (selector)**, not a product finding: the observed
-failure is a harness semantic-state predicate and no rendered/reproducible
-product symptom was observed. The retained harness now records the complete
-ordered role/lifecycle checklist and preserves both repaired selectors for a
-future bounded recovery.
+1. The in-place Recommended starter saved to `Starter Slot`; `Close project`
+   then rendered the distinct local `Open` action and reopened that project.
+2. `Play` created a session and its Spin reached `Round complete — no win this
+   round` (rather than the transient `Spinning…` state).
+3. `Simulation` accepted visible round count `1` and rendered results including
+   `RTP 0.00%`, duration, and expected low-sample warnings.
+4. `Replay` rendered and accepted the `Session Spin` source selection.
+
+The final rendered Replay selection produced neither a local load/inspect
+control nor a local success/error state during the bounded interaction wait.
+Because there was no rendered or reproducible product symptom, this is
+**inconclusive (selector)**, not a product finding. Replay completion,
+Outcome/Stake, and the cancellation/recovery variants consequently remain
+not reached. The harness was repaired in place for the former native-input,
+project-transition, transient-Spin, and Replay-source distinctions; no
+generated run tree, profile, raw log, harness, or screenshot is retained.
