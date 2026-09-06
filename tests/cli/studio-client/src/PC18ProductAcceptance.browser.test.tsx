@@ -1,13 +1,17 @@
-import {act, screen, waitFor} from "@testing-library/react";
+import {act, screen, waitFor, within} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import fs from "fs";
 import http from "http";
 import os from "os";
 import path from "path";
 import {passthroughRuntimePackageResolver} from "../../../../cli/materialize/materializeRuntimePackage.js";
+import {StudioArtifactConversionPlanningService} from "../../../../cli/studio/artifacts/StudioArtifactConversionPlanningService.js";
 import {StudioBlueprintService} from "../../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
+import {computeGameBlueprintHash} from "../../../../src/generated/computeGameBlueprintHash.js";
 import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js";
+import {buildFixtureGame} from "../../../weightedoutcome/generate/GenerateTestFixtures.js";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
 function writeStudioAssets(root: string): void {
@@ -69,4 +73,75 @@ describe("PC-18 Studio product acceptance", () => {
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
+
+    it("hands a rendered managed Blueprint Outcome Library action to a fresh canonical Stake plan", async () => {
+        const studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-outcome-assets-"));
+        const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-outcome-project-"));
+        const blueprint = path.join(projectRoot, "blueprint.json");
+        const source = {
+            manifest: {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"},
+            reels: 2,
+            rows: 1,
+            symbols: ["A", "B"],
+            paytable: {A: {2: 5}},
+            reelStrips: [["A", "A", "B"], ["A", "B"]],
+            availableBets: [1],
+        };
+        fs.writeFileSync(blueprint, JSON.stringify(source));
+        writeStudioAssets(studioRoot);
+        const fixture = buildFixtureGame();
+        const loadGame = jest.fn(() => Promise.resolve({
+            ...fixture,
+            getManifest: () => source.manifest,
+            getConfigHash: () => computeGameBlueprintHash(source),
+        }) as never);
+        const prepare = jest.spyOn(StudioArtifactConversionPlanningService.prototype, "prepare");
+        const server = new StudioServer({
+            pokieVersion: "1.0.0",
+            host: "127.0.0.1",
+            port: 0,
+            studioRoot,
+            homeService: new StudioHomeService("1.0.0", undefined, loadGame, undefined, passthroughRuntimePackageResolver),
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadGame, undefined, passthroughRuntimePackageResolver)),
+            loadGame,
+            resolveRuntimePackageRoot: passthroughRuntimePackageResolver,
+            initialContext: {mode: "project", projectRoot: blueprint},
+        });
+        try {
+            const address = await server.start();
+            const requests: string[] = [];
+            const serverFetch = createServerFetch(`http://${address.host}:${address.port}`);
+            const fetchImpl: FetchLike = (url, init) => {
+                requests.push(`${init?.method ?? "GET"} ${url.split("?")[0]}`);
+                return serverFetch(url, init);
+            };
+            const user = userEvent.setup();
+            renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(blueprint)}/exportDeploy`]});
+
+            await screen.findByRole("button", {name: "Generate exact outcome library (base)"});
+            await waitFor(() => expect(requests.filter((request) => request === "POST /api/project/outcome-libraries/generate/estimate").length).toBeGreaterThan(1));
+            const generate = screen.getByRole("button", {name: "Generate exact outcome library (base)"});
+            await waitFor(() => expect(generate).toBeEnabled());
+            await user.click(generate);
+            expect(await screen.findByText(/Generated .* outcomes for mode "base" using exact/, {}, {timeout: 10000})).toBeInTheDocument();
+
+            expect(prepare).toHaveBeenCalledWith(
+                blueprint,
+                "outcomeLibrary",
+                path.join(projectRoot, "outcomelibrary"),
+                expect.objectContaining({generationSemantics: "exact"}),
+            );
+            await waitFor(() => expect(requests.filter((request) => request === "POST /api/project/artifacts/preview").length).toBeGreaterThan(4));
+
+            const stakeCard = screen.getByText("Stake Engine export", {selector: "p"}).closest('div[style*="margin-bottom"]');
+            expect(stakeCard).not.toBeNull();
+            const build = within(stakeCard!).getByRole("button", {name: "Build"});
+            await waitFor(() => expect(build).toBeEnabled());
+        } finally {
+            prepare.mockRestore();
+            await server.stop();
+            fs.rmSync(studioRoot, {recursive: true, force: true});
+            fs.rmSync(projectRoot, {recursive: true, force: true});
+        }
+    }, 30000);
 });

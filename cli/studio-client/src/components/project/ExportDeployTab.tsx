@@ -882,6 +882,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     // once a build attempt itself hits it.
     const [artifactPreviews, setArtifactPreviews] = useState<Record<string, ArtifactPreviewRunView>>({});
     const [artifactDestinations, setArtifactDestinations] = useState<Record<string, string>>({});
+    // A completed Outcome Library publication changes the canonical input the
+    // Stake projection is allowed to reuse.  Refresh its server-owned
+    // prepared operation before enabling the follow-on Build action; retaining
+    // the pre-publication preview would make Stake re-decide from stale input.
+    const [artifactPreviewRevision, setArtifactPreviewRevision] = useState(0);
     useEffect(() => {
         let cancelled = false;
         const supportedTargets = artifactTargets.filter((entry) => entry.supported).map((entry) => entry.target);
@@ -905,7 +910,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         return () => {
             cancelled = true;
         };
-    }, [artifactTargets, artifactDestinations, fetchImpl]);
+    }, [artifactTargets, artifactDestinations, artifactPreviewRevision, fetchImpl]);
 
     // One run per artifactTarget (keyed by StudioArtifactTargetType), each independent of every other --
     // see ArtifactBuildRunView's own doc comment.
@@ -1026,6 +1031,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                 if (job.status === "completed" && job.result?.status === "ok") {
                     setOutcomeLibraryRun({status: "ok", result: job.result});
                     deployment.refreshProjectModes();
+                    // The generated bundle is now canonical project state.
+                    // Re-preflight every registry-backed artifact card so the
+                    // visible Stake handoff owns an operation prepared from
+                    // that exact bundle and its provenance.
+                    setArtifactPreviewRevision((revision) => revision + 1);
                 } else if (job.status === "cancelled" && job.result?.status === "cancelled") {
                     setOutcomeLibraryRun({status: "cancelled", result: job.result});
                     // The visible retry must bind to a fresh server preflight,
