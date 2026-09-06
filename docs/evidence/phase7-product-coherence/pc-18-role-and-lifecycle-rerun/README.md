@@ -1,40 +1,42 @@
-# PC-18 independent host verification — driver inconclusive
+# PC-18 independent host verification — recovery inconclusive
 
 Candidate product SHA: `0bee2c1d89220785698608d19dad2c10d65e39cb`.
 This evidence commit changes this README only.
 
 ## Bounded complete-file verification
 
-The required serial command was run once (one Jest process, all complete files):
+The persisted single complete-file command passed on this exact candidate:
+11 suites and 59 tests. It covered the listed PC-18 role/lifecycle,
+interoperability, parity, Studio-context/product, planner, and managed-outcome
+files. This recovery invocation reused that passed criterion and built the
+candidate Studio bundle once with `npm run build-cli`.
+
+## Rendered public workflow recovery
+
+Four newly isolated Studio launches used only
+`node ./dist/cli/pokie.js --no-open`, each with a fresh registry and Chromium
+profile. No private Studio API was used.
+
+The repaired journey created the recommended game, entered the rendered `Play`
+workspace, completed a no-win round, and reached the terminal Simulation
+report. It then selected the rendered native `Session Spin` option, loaded the
+recorded round, and showed truthful provenance: `Recorded -- Play tab spin`,
+config hash, completeness, inspectability, and the appropriate unavailable
+reproduction/comparison states for a live spin.
+
+The same journey opened `Build/Export`, reached `Generate exact outcome library
+(base)`, and visibly accepted `Cancel generation`. The cancellation control
+disappeared and the generate action became enabled again, after which the
+harness made its one safe retry. The retry did not yield a rendered product
+error. Its local-result observer selected a heading-only element and therefore
+did not recognize the later terminal state before its bounded wait elapsed;
+Stake handoff, destination safety, and stale/cross-project cleanup remain
+unreached. This is a driver/readiness limitation, not a product finding.
+
+Representative transcript checksums (raw transcripts, profiles, projects, and
+outputs are deliberately not retained):
 
 ```text
-npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
+0f8f826d84fa066184cdce42c981d29c722dba4d7ce300607f1e98153fca4804  final recovery journey
+8ed14c1da8b67f35ca1a7590abb963d82d3c1078d18ca80976e7506d715779b6  cancellation-control journey
 ```
-
-It exited `0`: 11 suites, 59 tests passed. The candidate Studio bundle was then
-built with `npm run build-cli` before browser verification.
-
-## Rendered public workflow
-
-Two fresh-profile Studio launches used only this checkout's candidate command:
-`node ./dist/cli/pokie.js --no-open`. Each had a new Studio registry and
-Chromium profile. No private Studio API was used for workflow actions.
-
-The first launch corrected the previous readiness error: after `Create game`,
-a rendered `Play` tab (rather than automatic validation text) established
-workspace readiness. It created a Play session, rendered a settled round,
-and rendered a terminal Simulation report. It also rendered and accepted
-`Cancel generation` after a Studio Outcome Library request. The driver then
-failed to recognize the cancellation terminal wording and did not continue to
-Replay, retry, or Stake. Transcript SHA-256:
-`3db7beec01503abefb4f1fb0af3a4b4d9543d716860dc4c5174cf15f06c2246b`.
-
-The second launch retained those repairs, but its randomly settled Play round
-did not render the win-only `Line:` control used as the harness success
-predicate. The visible Play controls remained rendered and enabled; no product
-error was rendered. This is a driver assertion failure, not evidence of a
-product defect. Transcript SHA-256:
-`9dcdffe6d1065b747022bc45e815545732b3038f6628c451c73d62f5a6b8e450`.
-
-The two-launch budget is exhausted. No generated projects, outputs, profiles,
-screenshots, raw logs, or automation files are retained in this repository.
