@@ -1,4 +1,4 @@
-# PC-18 independent host verification — inconclusive
+# PC-18 independent host verification — finding
 
 Candidate product SHA: `365419351b56ab75abe3c3931612086972073563`.
 This evidence commit is a documentation-only descendant of that candidate.
@@ -41,31 +41,43 @@ profile, raw log, screenshot, or harness file is retained in this evidence.
 
 ## Current candidate recovery (four fresh launches)
 
-The required single serial complete-file command was launched once for all 11
-requested paths in this invocation. Its process completed; the retained
-controller-validated green result remains the bounded suite proof (11 suites,
-59 tests). The existing harness was repaired in place before each public
-launch and invoked Studio only as `node ./dist/cli/pokie.js --no-open`, with a
-new Studio home and Chromium profile every time.
+The retained complete-file command remains the bounded green proof: all 11
+requested suites passed (59 tests), and it was not duplicated.
 
-All four journeys cleanly created a Recommended project, closed/reopened it,
-settled one Play Spin, and rendered a completed one-round Simulation. The
-fourth journey also reached Replay, selected the rendered **Session Spin**
-source and its recorded row, and rendered **Loaded replay**. Its local detail
-truthfully showed source `Recorded -- Play tab spin`, full captured artifact,
-version/hash, and `Inspectable AVAILABLE` / `Exportable AVAILABLE` alongside
-the appropriate unreproducible/comparison limits.
+Each fresh journey launched candidate Studio only through
+`node ./dist/cli/pokie.js --no-open`, with a new Studio home and Chromium
+profile. The final journey created a Recommended project, closed/reopened it,
+settled a Play spin and one-round Simulation, then loaded its recorded
+**Session Spin** replay. Replay rendered `Loaded replay`, source `Recorded --
+Play tab spin`, the captured artifact/version/hash, and truthful
+Inspectable/Exportable availability and reproducibility/comparison limits.
 
-Three repaired harness causes consumed the four-launch allowance: first the
-native Session Spin input's visible container rather than the zero-sized input
-needed clicking; then the row matcher had to preserve its rendered punctuation;
-finally the post-row success matcher guessed a phrase even though the rendered
-detail had succeeded. No product error or defect was rendered. The final
-success was observed after that stale matcher threshold and is treated as
-success, but the terminated harness could not continue in the same fresh
-journey to Blueprint Outcome Library, Stake, cancellation/retry, source drift,
-late-destination, or stale/cross-project checks.
+### Observed product defect — Blueprint Outcome Library generator
+
+On that same clean Studio project, the rendered **Generate exact outcome
+library (base)** control was clicked once. Studio then rendered:
+
+```text
+Generating this outcome library failed. Check the settings above and try again.
+Server plan: Unavailable — This Studio source is not an independently
+recognized POKIE artifact and cannot be used for conversion planning.
+```
+
+This blocks the required Studio-created Blueprint Outcome Library role goal.
+In contrast, the separately rendered **Stake Engine export** `Build` control
+was accepted and completed its own route:
+
+```text
+Built to .../stakeAdapter.
+Executed plan: materialize materializeRuntime → materialize
+generateOutcomeLibrary → publish publish.
+Stake manifest: base (cost 1).
+```
+
+Thus the local generator failure is a product finding, not a driver timeout;
+the later Stake completion does not repair the failed user-facing Outcome
+Library action. Cancellation/retry, source-drift, late-destination, and
+stale/cross-project variants remain unreached after the four-launch budget.
 
 No generated project/output tree, browser profile, harness, raw log, or
-screenshot is retained. The first uncompleted checklist action is Build/Export
-Outcome Library generation.
+screenshot is retained.
