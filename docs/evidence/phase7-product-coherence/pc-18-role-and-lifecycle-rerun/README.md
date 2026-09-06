@@ -1,4 +1,4 @@
-# PC-18 independent host verification — recovery inconclusive
+# PC-18 independent host verification — finding
 
 Candidate product SHA: `0bee2c1d89220785698608d19dad2c10d65e39cb`.
 This evidence commit changes this README only.
@@ -13,30 +13,35 @@ candidate Studio bundle once with `npm run build-cli`.
 
 ## Rendered public workflow recovery
 
-Four newly isolated Studio launches used only
-`node ./dist/cli/pokie.js --no-open`, each with a fresh registry and Chromium
-profile. No private Studio API was used.
+This recovery used a newly isolated Studio launch with a fresh registry and
+Chromium profile, started only with `node ./dist/cli/pokie.js --no-open`. No
+private Studio API was used.
 
-The repaired journey created the recommended game, entered the rendered `Play`
-workspace, completed a no-win round, and reached the terminal Simulation
-report. It then selected the rendered native `Session Spin` option, loaded the
-recorded round, and showed truthful provenance: `Recorded -- Play tab spin`,
-config hash, completeness, inspectability, and the appropriate unavailable
-reproduction/comparison states for a live spin.
+The clean journey created the recommended game, entered the rendered `Play`
+workspace, completed a settled round, reached the terminal Simulation report,
+then selected rendered `Session Spin` and inspected its recorded round.
 
 The same journey opened `Build/Export`, reached `Generate exact outcome library
 (base)`, and visibly accepted `Cancel generation`. The cancellation control
 disappeared and the generate action became enabled again, after which the
-harness made its one safe retry. The retry did not yield a rendered product
-error. Its local-result observer selected a heading-only element and therefore
-did not recognize the later terminal state before its bounded wait elapsed;
-Stake handoff, destination safety, and stale/cross-project cleanup remain
-unreached. This is a driver/readiness limitation, not a product finding.
+harness made its one safe retry. The local rendered result was instead:
+
+```text
+Generating this outcome library failed. Check the settings above and try again.
+Server plan: Unavailable — This Studio source is not an independently
+recognized POKIE artifact and cannot be used for conversion planning.
+```
+
+That blocks the Studio-created Outcome Library and its required Stake Engine
+handoff. The displayed Stake action listed `generateOutcomeLibrary` as a
+prerequisite. The harness' attempted off-viewport Stake click was not counted
+as a user action or a product result; the visible Outcome Library failure is
+the finding. Destination safety, stale/cross-project behavior, and cleanup
+cannot be completed past this failed prerequisite.
 
 Representative transcript checksums (raw transcripts, profiles, projects, and
 outputs are deliberately not retained):
 
 ```text
-0f8f826d84fa066184cdce42c981d29c722dba4d7ce300607f1e98153fca4804  final recovery journey
-8ed14c1da8b67f35ca1a7590abb963d82d3c1078d18ca80976e7506d715779b6  cancellation-control journey
+b697da0fbb59520d1f82bd88bf6348e8f4d5d7e26c6c5223bcb803015230c7e6  fresh rendered recovery finding
 ```
