@@ -19,14 +19,26 @@ finding-register.json
 evidence/                         # streams, transcript, ledger, screenshots, delta records
 ```
 
-`PROVENANCE.json` binds a reviewer, UTC start/freeze times, package specifier, package
-SHA-256, absolute installed executable path, timestamped command stdout/stderr and exit
-records, fresh absolute browser-profile path, browser transcript, and artifact ledger.
+`PROVENANCE.json` binds a reviewer, UTC start/freeze times, the exact 40-character
+candidate SHA, and a retained package artifact (relative path, SHA-256 and byte size).
+Every command has a unique ID, exact candidate/package binding, chronological start/end
+times, exit status, command text, and distinct structured stdout/stderr evidence.
+Structured evidence has a unique ID, retained relative path, digest, byte size, capture
+timestamp, kind, summary, candidate ID, and package SHA-256; the validator rehashes it.
+The Studio session has the same binding, a fresh-profile creation time, public `pokie`
+launcher/rendered-controls declaration, chronological session times, and transcript.
+Artifact-ledger evidence is candidate-bound and captured during the blind phase.
 Use Studio only through its public launcher and rendered controls. Preserve all command
 streams, failures, visible recovery states, artifact provenance, and screenshots needed
 for visual claims.
 
-`coverage.json` has one complete, current-candidate evidence record for each of:
+`coverage.json` has exactly one complete, current-candidate record for each ID below.
+Each names the executed public workflow and surface, expected role, fresh absolute clean
+context, chronological blind-phase timestamps, structured evidence, and the required
+workflow observations. It cannot use one generic non-empty file for all IDs. Required
+observations include installed CLI/help/errors/artifacts; public Studio launcher and
+rendered controls; role outputs; artifact/lifecycle boundaries; and Studio/isolated
+example desktop+narrow player parity.
 
 - `known-findings`, `blind-cli-exploration`, `blind-studio-exploration`,
   `systemic-cli-sweep`, `systemic-studio-sweep`, `duplicate-audit`,
@@ -43,17 +55,20 @@ failed publication. Player evidence compares Studio and isolated examples at des
 and narrow viewports for feature/win/inspection/reset/project-switch behaviour and
 rendered layout.
 
-After the freeze, `comparison.json` records exactly one disposition for every frozen
-blind finding and cites the frozen-file hash. `finding-register.json` carries every
-finding (including known and delta findings) with severity, P2 materiality, reproducer,
-public surface, owner, status, and evidence path. `open`, `unresolved`, `accepted`, or
+After the freeze, `comparison.json` records exactly one candidate-bound, structured
+disposition for every frozen blind finding and cites the frozen-file hash.
+`finding-register.json` carries every finding (including known and delta findings) with
+severity, P2 materiality, reproducer, public surface, owner, status, and structured
+evidence. A frozen finding's ID, severity, materiality, reproducer, public surface,
+owner, and original evidence are immutable in the register; only disposition/delta data
+and a delta-verified status may be added. `open`, `unresolved`, `accepted`, or
 `blocked` P0/P1 findings, and any such material P2 finding, make release validation
 fail. Classify P2 materiality before comparison: a material P2 blocks a core role,
 destroys or mispublishes an artifact, loses lifecycle cleanup/provenance, or produces a
 meaningful Studio/examples visual or semantic mismatch.
 
-Each remediation gets a new clean context and a separate delta record that verifies the
-fix, lifecycle cleanup, and affected CLI/Studio/player parity. It must not rewrite the
-original blind list or comparison. A `resolved` register finding therefore records its
-delta review id, absolute clean-context path, and retained delta evidence path; the
-validator rejects a resolved finding without all three.
+Each remediation gets a new clean context and separate candidate-bound, chronological
+delta record that verifies the fix, lifecycle cleanup, and affected CLI/Studio/player
+parity. It must not rewrite the original blind list or comparison. A `resolved` finding
+therefore records a distinct delta review ID, absolute clean-context path, start/end
+timestamps, those three observations, and retained structured delta evidence.

@@ -1,219 +1,68 @@
 #!/usr/bin/env node
-/**
- * Validates the machine-checkable portion of PC-19's independent review record.
- *
- * Independence itself is a reviewer attestation: this validator deliberately does
- * not read a checkout or any earlier Phase 7 evidence.  It instead rejects a run
- * unless the reviewer froze a complete blind list before recording comparison
- * dispositions, and unless every retained claim is bound to one candidate.
- */
+/** Validate the append-only, candidate-bound evidence required by PC-19. */
 import {createHash} from "node:crypto";
 import {existsSync} from "node:fs";
-import {readFile} from "node:fs/promises";
+import {readFile, stat} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
 
-export const PC19_SCHEMA_VERSION = 1;
-
-export const REQUIRED_COVERAGE_IDS = [
-    "known-findings",
-    "blind-cli-exploration",
-    "blind-studio-exploration",
-    "systemic-cli-sweep",
-    "systemic-studio-sweep",
-    "duplicate-audit",
-    "artifact-torture",
-    "cli-studio-semantic-parity",
-    "player-examples-parity",
-    "lifecycle-recovery",
-    "role-math-par",
-    "role-game-frontend-package",
-    "role-qa-simulation-report-replay",
-    "role-outcome-library-integration",
-    "role-stake-deployment-export",
-    "role-new-project-preparation-retry",
-];
-
-const REQUIRED_FILES = ["PROVENANCE.json", "frozen-findings.json", "comparison.json", "coverage.json", "finding-register.json"];
-const BLOCKING_SEVERITIES = new Set(["P0", "P1"]);
-const OPEN_STATUSES = new Set(["open", "unresolved", "accepted", "blocked"]);
-
-function fail(message) {
-    throw new Error(`PC-19 independent-review evidence is invalid: ${message}`);
+export const PC19_SCHEMA_VERSION = 2;
+export const REQUIRED_COVERAGE_IDS = ["known-findings", "blind-cli-exploration", "blind-studio-exploration", "systemic-cli-sweep", "systemic-studio-sweep", "duplicate-audit", "artifact-torture", "cli-studio-semantic-parity", "player-examples-parity", "lifecycle-recovery", "role-math-par", "role-game-frontend-package", "role-qa-simulation-report-replay", "role-outcome-library-integration", "role-stake-deployment-export", "role-new-project-preparation-retry"];
+const FILES = ["PROVENANCE.json", "frozen-findings.json", "comparison.json", "coverage.json", "finding-register.json"];
+const STATUSES = new Set(["open", "unresolved", "accepted", "blocked", "resolved"]);
+const ROLE = {"known-findings":"cross-role", "blind-cli-exploration":"independent-reviewer", "blind-studio-exploration":"independent-reviewer", "systemic-cli-sweep":"independent-reviewer", "systemic-studio-sweep":"independent-reviewer", "duplicate-audit":"independent-reviewer", "artifact-torture":"independent-reviewer", "cli-studio-semantic-parity":"independent-reviewer", "player-examples-parity":"independent-reviewer", "lifecycle-recovery":"independent-reviewer", "role-math-par":"math-par", "role-game-frontend-package":"game-frontend-package", "role-qa-simulation-report-replay":"qa-simulation-report-replay", "role-outcome-library-integration":"outcome-library-integration", "role-stake-deployment-export":"stake-deployment-export", "role-new-project-preparation-retry":"new-project-preparation-retry"};
+const OBS = {"known-findings":["known-findings-disposition"], "blind-cli-exploration":["installed-cli","recursive-help","bounded-errors","artifact-workflow"], "blind-studio-exploration":["public-launcher","rendered-controls","fresh-profile","home-projects","design-game"], "systemic-cli-sweep":["public-cli-sweep"], "systemic-studio-sweep":["public-launcher","rendered-controls","studio-sweep"], "duplicate-audit":["retained-owner","duplicate-audit"], "artifact-torture":["blueprint","par","runtime-package","outcome-library","stake-round-trip","stale-drift","caller-owned-destination","cancellation","staging-cleanup","retry","provenance"], "cli-studio-semantic-parity":["artifact-conversions","recovery-boundaries"], "player-examples-parity":["studio-player","isolated-examples","desktop","narrow-viewport","feature","win","inspection","reset","project-switch","rendered-layout"], "lifecycle-recovery":["cancellation","failed-publication","stale-context","project-switch","server-shutdown","caller-owned-output"], "role-math-par":["par-workbook"], "role-game-frontend-package":["frontend-package"], "role-qa-simulation-report-replay":["simulation","report","replay"], "role-outcome-library-integration":["outcome-library"], "role-stake-deployment-export":["stake","deployment","export"], "role-new-project-preparation-retry":["new-project","retry"]};
+const fail = (message) => { throw new Error(`PC-19 independent-review evidence is invalid: ${message}`); };
+const digest = (contents) => createHash("sha256").update(contents).digest("hex");
+const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
+const candidateId = (value) => typeof value === "string" && /^[a-f0-9]{40}$/i.test(value);
+const utc = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value) && !Number.isNaN(Date.parse(value));
+const after = (value, boundary) => Date.parse(value) >= Date.parse(boundary);
+const before = (value, boundary) => Date.parse(value) <= Date.parse(boundary);
+const relative = (value) => typeof value === "string" && value.length > 0 && !path.isAbsolute(value) && !value.split(/[\\/]+/).includes("..");
+function ids(entries, label, property = "id") { const values = entries.map((entry) => entry?.[property]); if (values.some((v) => typeof v !== "string" || !v) || new Set(values).size !== values.length) fail(`${label} has duplicate or missing ${property}s`); }
+function candidate(record, value, label) { if (!record || record.candidateId !== value.id || record.candidatePackageSha256 !== value.packageArtifact.sha256) fail(`${label} is not bound to the exact candidate package artifact`); }
+function range(record, label, start, end) { if (!utc(record?.startedAt) || !utc(record?.endedAt) || !before(record.startedAt, record.endedAt) || (start && !after(record.startedAt, start)) || (end && !before(record.endedAt, end))) fail(`${label} must have chronological timestamps${end ? " within its review phase" : ""}`); }
+function finding(value, label) { if (!value || !["P0","P1","P2","P3"].includes(value.severity) || ["id","reproducer","publicSurface","owner","status"].some((key) => typeof value[key] !== "string" || !value[key]) || !STATUSES.has(value.status) || !value.evidence || typeof value.evidence !== "object") fail(`${label} must include id, severity, reproducer, public surface, owner, valid status, and structured evidence`); if (value.severity === "P2" && typeof value.material !== "boolean") fail(`${label} must classify P2 materiality before release gating`); }
+async function json(directory, filename) { const target = path.join(directory, filename); if (!existsSync(target)) fail(`missing ${filename}`); const contents = await readFile(target, "utf8"); try { return {contents, value: JSON.parse(contents)}; } catch { fail(`${filename} is not JSON`); } }
+async function evidence(directory, value, label, exactCandidate, start, end, used) {
+    if (!value || typeof value.evidenceId !== "string" || !value.evidenceId || !relative(value.path) || !sha(value.sha256) || !utc(value.capturedAt) || typeof value.kind !== "string" || !value.kind || typeof value.summary !== "string" || !value.summary || !Number.isSafeInteger(value.sizeBytes) || value.sizeBytes <= 0) fail(`${label} must retain structured evidence metadata`);
+    candidate(value, exactCandidate, `${label} evidence`);
+    if ((start && !after(value.capturedAt, start)) || (end && !before(value.capturedAt, end))) fail(`${label} evidence has an invalid chronological timestamp`);
+    if (used.has(value.evidenceId)) fail(`${label} reuses evidence metadata ${value.evidenceId}`); used.add(value.evidenceId);
+    const target = path.resolve(directory, value.path); if (!target.startsWith(`${path.resolve(directory)}${path.sep}`) || !existsSync(target)) fail(`${label} names missing evidence: ${value.path}`);
+    const [contents, file] = await Promise.all([readFile(target), stat(target)]); if (!contents.length) fail(`${label} evidence is empty: ${value.path}`); if (digest(contents) !== value.sha256 || file.size !== value.sizeBytes) fail(`${label} evidence digest or size does not match retained content`);
 }
+function frozenFields(a, b) { for (const field of ["id","severity","material","reproducer","publicSurface","owner","evidence"]) if (JSON.stringify(a[field]) !== JSON.stringify(b[field])) fail(`finding register rewrites frozen ${field} for ${a.id}`); }
 
-function digest(contents) {
-    return createHash("sha256").update(contents).digest("hex");
-}
-
-function isUtc(value) {
-    return typeof value === "string" && (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/).test(value) && !Number.isNaN(Date.parse(value));
-}
-
-function isRelativeEvidencePath(value) {
-    return typeof value === "string" && value.length > 0 && !path.isAbsolute(value) && !value.split((/[\\/]+/)).includes("..");
-}
-
-async function readJson(directory, filename) {
-    const target = path.join(directory, filename);
-    if (!existsSync(target)) fail(`missing ${filename}`);
-    let contents;
-    try {
-        contents = await readFile(target, "utf8");
-    } catch (error) {
-        throw new Error(`PC-19 independent-review evidence is invalid: cannot read ${filename}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    try {
-        return {contents, value: JSON.parse(contents)};
-    } catch {
-        fail(`${filename} is not JSON`);
-        throw new Error("unreachable");
-    }
-}
-
-function assertCandidate(candidate) {
-    if (!candidate || typeof candidate !== "object" || typeof candidate.id !== "string" || candidate.id.length === 0
-        || typeof candidate.packageSpecifier !== "string" || candidate.packageSpecifier.length === 0
-        || typeof candidate.installedExecutable !== "string" || !path.isAbsolute(candidate.installedExecutable)
-        || typeof candidate.packageSha256 !== "string" || !(/^[a-f0-9]{64}$/i).test(candidate.packageSha256)) {
-        fail("provenance must identify the installed package, executable, and package SHA-256");
-    }
-}
-
-function assertFinding(finding, label) {
-    if (!finding || typeof finding !== "object" || typeof finding.id !== "string" || finding.id.length === 0
-        || !["P0", "P1", "P2", "P3"].includes(finding.severity)
-        || typeof finding.reproducer !== "string" || finding.reproducer.length === 0
-        || typeof finding.publicSurface !== "string" || finding.publicSurface.length === 0
-        || typeof finding.owner !== "string" || finding.owner.length === 0
-        || typeof finding.status !== "string" || finding.status.length === 0
-        || !isRelativeEvidencePath(finding.evidence)) {
-        fail(`${label} must include id, severity, reproducer, public surface, owner, status, and a relative evidence path`);
-    }
-    if (finding.severity === "P2" && typeof finding.material !== "boolean") fail(`${label} must classify P2 materiality before release gating`);
-}
-
-function assertDistinctIds(entries, label) {
-    const ids = entries.map((entry) => entry.id);
-    if (new Set(ids).size !== ids.length) fail(`${label} has duplicate finding IDs`);
-}
-
-async function assertEvidenceFile(directory, relativePath, label) {
-    if (!isRelativeEvidencePath(relativePath)) fail(`${label} has an unsafe evidence path`);
-    const target = path.resolve(directory, relativePath);
-    if (!target.startsWith(`${path.resolve(directory)}${path.sep}`) || !existsSync(target)) fail(`${label} names missing evidence: ${relativePath}`);
-    if ((await readFile(target, "utf8")).trim().length === 0) fail(`${label} evidence is empty: ${relativePath}`);
-}
-
-/** Validate an append-only PC-19 run directory without consulting prior campaign records. */
 export async function validatePc19IndependentColdStartReview(directory) {
-    const reviewDirectory = path.resolve(directory);
-    for (const filename of REQUIRED_FILES) {
-        if (!existsSync(path.join(reviewDirectory, filename))) fail(`missing required record ${filename}`);
-    }
-    const provenance = await readJson(reviewDirectory, "PROVENANCE.json");
-    const frozen = await readJson(reviewDirectory, "frozen-findings.json");
-    const comparison = await readJson(reviewDirectory, "comparison.json");
-    const coverage = await readJson(reviewDirectory, "coverage.json");
-    const register = await readJson(reviewDirectory, "finding-register.json");
-
-    if (provenance.value.schemaVersion !== PC19_SCHEMA_VERSION || !isUtc(provenance.value.startedAt) || !isUtc(provenance.value.frozenAt)
-        || Date.parse(provenance.value.startedAt) > Date.parse(provenance.value.frozenAt)) {
-        fail("provenance must have this schema version and chronological start/freeze timestamps");
-    }
-    assertCandidate(provenance.value.candidate);
-    if (typeof provenance.value.reviewer !== "string" || provenance.value.reviewer.length === 0
-        || provenance.value.cleanRoomAttestation !== "I recorded blind findings before reading roadmap, source, completed evidence, known findings, fixes, or prior acceptance evidence.") {
-        fail("provenance lacks the required reviewer-owned clean-room attestation");
-    }
-    if (!Array.isArray(provenance.value.commandRecords) || provenance.value.commandRecords.length === 0
-        || !provenance.value.commandRecords.every((record) => record && typeof record === "object" && typeof record.commandId === "string" && isUtc(record.startedAt) && isUtc(record.endedAt) && typeof record.exitStatus === "number" && isRelativeEvidencePath(record.stdout) && isRelativeEvidencePath(record.stderr))) {
-        fail("provenance must retain timestamped command streams and exit statuses");
-    }
-    if (!provenance.value.studioProfile || !path.isAbsolute(provenance.value.studioProfile.path) || typeof provenance.value.studioProfile.browser !== "string" || !isUtc(provenance.value.studioProfile.startedAt)
-        || !isRelativeEvidencePath(provenance.value.studioProfile.browserTranscript)
-        || !Array.isArray(provenance.value.artifactLedger) || provenance.value.artifactLedger.length === 0) {
-        fail("provenance must retain fresh Studio profile metadata, browser transcript, and artifact ledger");
-    }
-    await Promise.all(provenance.value.commandRecords.flatMap((record) => [
-        assertEvidenceFile(reviewDirectory, record.stdout, `command ${record.commandId} stdout`),
-        assertEvidenceFile(reviewDirectory, record.stderr, `command ${record.commandId} stderr`),
-    ]));
-    await assertEvidenceFile(reviewDirectory, provenance.value.studioProfile.browserTranscript, "Studio browser transcript");
-    await Promise.all(provenance.value.artifactLedger.map((entry, index) => assertEvidenceFile(reviewDirectory, entry, `artifact ledger ${index + 1}`)));
-
-    if (frozen.value.schemaVersion !== PC19_SCHEMA_VERSION || frozen.value.reviewId !== provenance.value.reviewId || frozen.value.candidateId !== provenance.value.candidate.id
-        || frozen.value.frozenAt !== provenance.value.frozenAt || !Array.isArray(frozen.value.findings)) {
-        fail("frozen findings must bind to the provenance review, candidate, and freeze timestamp");
-    }
-    const frozenHash = digest(frozen.contents);
-    if (provenance.value.frozenFindingsSha256 !== frozenHash) fail("frozen findings hash differs from the pre-comparison provenance record");
-    frozen.value.findings.forEach((finding) => assertFinding(finding, "a frozen finding"));
-    assertDistinctIds(frozen.value.findings, "frozen findings");
-    await Promise.all(frozen.value.findings.map((finding) => assertEvidenceFile(reviewDirectory, finding.evidence, `frozen finding ${finding.id}`)));
-
-    if (comparison.value.schemaVersion !== PC19_SCHEMA_VERSION || comparison.value.reviewId !== provenance.value.reviewId
-        || comparison.value.candidateId !== provenance.value.candidate.id || comparison.value.frozenFindingsSha256 !== frozenHash
-        || !isUtc(comparison.value.comparedAt) || Date.parse(comparison.value.comparedAt) < Date.parse(provenance.value.frozenAt)
-        || !Array.isArray(comparison.value.dispositions)) {
-        fail("comparison must be a post-freeze record bound to the exact frozen findings hash");
-    }
-    const dispositionIds = comparison.value.dispositions.map((entry) => entry?.findingId);
-    if (dispositionIds.length !== frozen.value.findings.length || new Set(dispositionIds).size !== dispositionIds.length
-        || frozen.value.findings.some((finding) => !dispositionIds.includes(finding.id))
-        || comparison.value.dispositions.some((entry) => !entry || typeof entry.disposition !== "string" || entry.disposition.length === 0 || !isRelativeEvidencePath(entry.evidence))) {
-        fail("comparison must retain exactly one post-freeze disposition and evidence path for every blind finding");
-    }
-    await Promise.all(comparison.value.dispositions.map((entry) => assertEvidenceFile(reviewDirectory, entry.evidence, `comparison ${entry.findingId}`)));
-
-    if (coverage.value.schemaVersion !== PC19_SCHEMA_VERSION || coverage.value.reviewId !== provenance.value.reviewId || coverage.value.candidateId !== provenance.value.candidate.id || !Array.isArray(coverage.value.records)) {
-        fail("coverage must bind every check to this review and candidate");
-    }
-    const coverageIds = coverage.value.records.map((entry) => entry?.id);
-    if (new Set(coverageIds).size !== coverageIds.length || REQUIRED_COVERAGE_IDS.some((id) => !coverageIds.includes(id))) {
-        fail(`coverage is missing required review records: ${REQUIRED_COVERAGE_IDS.filter((id) => !coverageIds.includes(id)).join(", ")}`);
-    }
-    for (const record of coverage.value.records) {
-        if (!record || record.candidateId !== provenance.value.candidate.id || record.status !== "complete" || !isRelativeEvidencePath(record.evidence)) {
-            fail("every coverage record needs current-candidate identity, complete status, and evidence");
-        }
-        await assertEvidenceFile(reviewDirectory, record.evidence, `coverage ${record.id}`);
-    }
-
-    if (register.value.schemaVersion !== PC19_SCHEMA_VERSION || register.value.reviewId !== provenance.value.reviewId || register.value.candidateId !== provenance.value.candidate.id || !Array.isArray(register.value.findings)) {
-        fail("finding register must bind to this review and candidate");
-    }
-    register.value.findings.forEach((finding) => assertFinding(finding, "a register finding"));
-    assertDistinctIds(register.value.findings, "finding register");
-    if (frozen.value.findings.some((finding) => !register.value.findings.some((entry) => entry.id === finding.id))) fail("finding register omits a frozen blind finding");
-    for (const finding of register.value.findings) {
-        await assertEvidenceFile(reviewDirectory, finding.evidence, `finding register ${finding.id}`);
-        if (BLOCKING_SEVERITIES.has(finding.severity) && OPEN_STATUSES.has(finding.status)) fail(`release-blocking ${finding.severity} finding remains unresolved: ${finding.id}`);
-        if (finding.severity === "P2" && finding.material && OPEN_STATUSES.has(finding.status)) fail(`material P2 finding remains unresolved: ${finding.id}`);
-        if (finding.status === "resolved") {
-            if (!finding.delta || typeof finding.delta.reviewId !== "string" || finding.delta.reviewId.length === 0 || !path.isAbsolute(finding.delta.cleanContext) || !isRelativeEvidencePath(finding.delta.evidence)) {
-                fail(`resolved finding ${finding.id} lacks a clean-context independent delta pass`);
-            }
-            await assertEvidenceFile(reviewDirectory, finding.delta.evidence, `delta pass ${finding.id}`);
-        }
-    }
-    return {candidateId: provenance.value.candidate.id, frozenFindingsSha256: frozenHash, coverageIds};
+    const reviewDirectory = path.resolve(directory); for (const file of FILES) if (!existsSync(path.join(reviewDirectory, file))) fail(`missing required record ${file}`);
+    const [provenance, frozen, comparison, coverage, register] = await Promise.all(FILES.map((file) => json(reviewDirectory, file)));
+    const p = provenance.value, used = new Set();
+    if (p.schemaVersion !== PC19_SCHEMA_VERSION || !utc(p.startedAt) || !utc(p.frozenAt) || !before(p.startedAt, p.frozenAt)) fail("provenance must have this schema version and chronological start/freeze timestamps");
+    const c = p.candidate, artifact = c?.packageArtifact;
+    if (!c || !candidateId(c.id) || typeof c.packageSpecifier !== "string" || !c.packageSpecifier || typeof c.installedExecutable !== "string" || !path.isAbsolute(c.installedExecutable) || !artifact || !relative(artifact.path) || !sha(artifact.sha256)) fail("provenance must identify an exact candidate SHA and retained package artifact");
+    if (typeof p.reviewId !== "string" || !p.reviewId || typeof p.reviewer !== "string" || !p.reviewer || p.cleanRoomAttestation !== "I recorded blind findings before reading roadmap, source, completed evidence, known findings, fixes, or prior acceptance evidence.") fail("provenance lacks the required reviewer-owned clean-room attestation");
+    await evidence(reviewDirectory, artifact, "candidate package artifact", c, p.startedAt, undefined, used);
+    if (!Array.isArray(p.commandRecords) || !p.commandRecords.length) fail("provenance must retain command records"); ids(p.commandRecords, "command records", "commandId"); let last = p.startedAt;
+    for (const record of p.commandRecords) { if (typeof record.command !== "string" || !record.command || !Number.isInteger(record.exitStatus)) fail(`command ${record?.commandId ?? "record"} lacks command text or exit status`); candidate(record, c, `command ${record.commandId}`); range(record, `command ${record.commandId}`, p.startedAt); if (!after(record.startedAt, last)) fail(`command ${record.commandId} is out of chronological order`); last = record.endedAt; await evidence(reviewDirectory, record.stdout, `command ${record.commandId} stdout`, c, record.startedAt, record.endedAt, used); await evidence(reviewDirectory, record.stderr, `command ${record.commandId} stderr`, c, record.startedAt, record.endedAt, used); }
+    const studio = p.studioSession;
+    if (!studio || typeof studio.sessionId !== "string" || !studio.sessionId || studio.launcher !== "pokie" || studio.execution !== "public-launcher-rendered-controls" || !studio.freshProfile || !path.isAbsolute(studio.freshProfile.path) || !utc(studio.freshProfile.createdAt)) fail("provenance must retain a fresh public-launcher Studio session");
+    candidate(studio, c, "Studio session"); range(studio, "Studio session", p.startedAt, p.frozenAt); if (!after(studio.freshProfile.createdAt, p.startedAt) || !before(studio.freshProfile.createdAt, studio.startedAt)) fail("Studio profile must be created in the clean review context before its session"); await evidence(reviewDirectory, studio.transcript, "Studio browser transcript", c, studio.startedAt, studio.endedAt, used);
+    if (!Array.isArray(p.artifactLedger) || !p.artifactLedger.length) fail("provenance must retain an artifact ledger"); for (const [index, entry] of p.artifactLedger.entries()) await evidence(reviewDirectory, entry, `artifact ledger ${index + 1}`, c, p.startedAt, p.frozenAt, used);
+    const f = frozen.value, frozenHash = digest(frozen.contents);
+    if (f.schemaVersion !== PC19_SCHEMA_VERSION || f.reviewId !== p.reviewId || f.candidateId !== c.id || f.candidatePackageSha256 !== artifact.sha256 || f.frozenAt !== p.frozenAt || !Array.isArray(f.findings)) fail("frozen findings must bind to the exact provenance candidate and freeze timestamp"); if (p.frozenFindingsSha256 !== frozenHash) fail("frozen findings hash differs from the pre-comparison provenance record"); f.findings.forEach((entry) => finding(entry, "a frozen finding")); ids(f.findings, "frozen findings"); for (const entry of f.findings) await evidence(reviewDirectory, entry.evidence, `frozen finding ${entry.id}`, c, p.startedAt, p.frozenAt, used);
+    const x = comparison.value;
+    if (x.schemaVersion !== PC19_SCHEMA_VERSION || x.reviewId !== p.reviewId || x.candidateId !== c.id || x.candidatePackageSha256 !== artifact.sha256 || x.frozenFindingsSha256 !== frozenHash || !utc(x.comparedAt) || !after(x.comparedAt, p.frozenAt) || !Array.isArray(x.dispositions)) fail("comparison must be a post-freeze record bound to the exact candidate and frozen findings hash"); ids(x.dispositions, "comparison dispositions", "findingId"); if (x.dispositions.length !== f.findings.length || f.findings.some((entry) => !x.dispositions.some((item) => item.findingId === entry.id))) fail("comparison must retain exactly one post-freeze disposition for every blind finding"); for (const entry of x.dispositions) { if (typeof entry.disposition !== "string" || !entry.disposition) fail("comparison disposition is incomplete"); candidate(entry, c, `comparison ${entry.findingId}`); await evidence(reviewDirectory, entry.evidence, `comparison ${entry.findingId}`, c, p.frozenAt, undefined, used); }
+    const v = coverage.value;
+    if (v.schemaVersion !== PC19_SCHEMA_VERSION || v.reviewId !== p.reviewId || v.candidateId !== c.id || v.candidatePackageSha256 !== artifact.sha256 || !Array.isArray(v.records)) fail("coverage must bind every check to this exact review and candidate package"); ids(v.records, "coverage records"); const covered = v.records.map((entry) => entry.id); if (REQUIRED_COVERAGE_IDS.some((id) => !covered.includes(id))) fail(`coverage is missing required review records: ${REQUIRED_COVERAGE_IDS.filter((id) => !covered.includes(id)).join(", ")}`);
+    for (const entry of v.records) { if (entry.status !== "complete" || entry.publicWorkflow !== entry.id || typeof entry.publicSurface !== "string" || !entry.publicSurface || entry.role !== ROLE[entry.id] || !path.isAbsolute(entry.cleanContext) || !Array.isArray(entry.observations)) fail(`coverage ${entry.id} lacks its required public workflow, role, clean context, or observations`); candidate(entry, c, `coverage ${entry.id}`); range(entry, `coverage ${entry.id}`, p.startedAt, p.frozenAt); if (!OBS[entry.id] || OBS[entry.id].some((observation) => !entry.observations.includes(observation))) fail(`coverage ${entry.id} omits required workflow observations`); if (entry.evidence?.kind !== `coverage:${entry.id}`) fail(`coverage ${entry.id} evidence does not identify its executed workflow`); await evidence(reviewDirectory, entry.evidence, `coverage ${entry.id}`, c, entry.startedAt, entry.endedAt, used); }
+    const r = register.value;
+    if (r.schemaVersion !== PC19_SCHEMA_VERSION || r.reviewId !== p.reviewId || r.candidateId !== c.id || r.candidatePackageSha256 !== artifact.sha256 || !Array.isArray(r.findings)) fail("finding register must bind to this exact review and candidate package"); r.findings.forEach((entry) => finding(entry, "a register finding")); ids(r.findings, "finding register"); for (const blind of f.findings) { const registered = r.findings.find((entry) => entry.id === blind.id); if (!registered) fail("finding register omits a frozen blind finding"); frozenFields(blind, registered); }
+    for (const entry of r.findings) { const frozenEntry = f.findings.some((item) => item.id === entry.id); if (!frozenEntry) await evidence(reviewDirectory, entry.evidence, `finding register ${entry.id}`, c, p.frozenAt, undefined, used); if ((["P0","P1"].includes(entry.severity) || (entry.severity === "P2" && entry.material)) && entry.status !== "resolved") fail(`release-blocking ${entry.severity} finding remains unresolved: ${entry.id}`); if (entry.status === "resolved") { const delta = entry.delta; if (!delta || typeof delta.reviewId !== "string" || !delta.reviewId || delta.reviewId === p.reviewId || !path.isAbsolute(delta.cleanContext) || !Array.isArray(delta.observations) || ["fix-verified","lifecycle-cleanup","affected-cli-studio-player-parity"].some((item) => !delta.observations.includes(item))) fail(`resolved finding ${entry.id} lacks a complete independent delta pass`); candidate(delta, c, `delta pass ${entry.id}`); range(delta, `delta pass ${entry.id}`, p.frozenAt); await evidence(reviewDirectory, delta.evidence, `delta pass ${entry.id}`, c, delta.startedAt, delta.endedAt, used); } }
+    return {candidateId: c.id, frozenFindingsSha256: frozenHash, coverageIds: covered};
 }
-
-function usage() {
-    throw new Error("Usage: node scripts/pc-19-independent-cold-start-review.mjs --review-dir <append-only-review-run>");
-}
-
-export async function main(argv = process.argv) {
-    if (argv.length !== 4 || argv[2] !== "--review-dir") usage();
-    const result = await validatePc19IndependentColdStartReview(argv[3]);
-    process.stdout.write(`PC19_INDEPENDENT_REVIEW_PASS candidate=${result.candidateId} coverage=${result.coverageIds.length}\n`);
-}
-
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    main().catch((error) => {
-        process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-        process.exitCode = 1;
-    });
-}
+function usage() { throw new Error("Usage: node scripts/pc-19-independent-cold-start-review.mjs --review-dir <append-only-review-run>"); }
+export async function main(argv = process.argv) { if (argv.length !== 4 || argv[2] !== "--review-dir") usage(); const result = await validatePc19IndependentColdStartReview(argv[3]); process.stdout.write(`PC19_INDEPENDENT_REVIEW_PASS candidate=${result.candidateId} coverage=${result.coverageIds.length}\n`); }
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error) => { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 1; });

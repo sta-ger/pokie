@@ -4,78 +4,28 @@ import {mkdir, mkdtemp, rm, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
-import {REQUIRED_COVERAGE_IDS, validatePc19IndependentColdStartReview} from "../../scripts/pc-19-independent-cold-start-review.mjs";
+import {PC19_SCHEMA_VERSION, REQUIRED_COVERAGE_IDS, validatePc19IndependentColdStartReview} from "../../scripts/pc-19-independent-cold-start-review.mjs";
 
+const candidateId = "a".repeat(40), packageSha = "50c36b9e2b1b9656bfde4308454fff4c6f9b71bbc4ecc4470fa57cfce107ac81";
 const attestation = "I recorded blind findings before reading roadmap, source, completed evidence, known findings, fixes, or prior acceptance evidence.";
-
-function sha256(value) {
-    return createHash("sha256").update(value).digest("hex");
-}
+const pre = {startedAt: "2026-09-06T09:00:00Z", endedAt: "2026-09-06T09:01:00Z"};
+const obs = {"known-findings":["known-findings-disposition"], "blind-cli-exploration":["installed-cli","recursive-help","bounded-errors","artifact-workflow"], "blind-studio-exploration":["public-launcher","rendered-controls","fresh-profile","home-projects","design-game"], "systemic-cli-sweep":["public-cli-sweep"], "systemic-studio-sweep":["public-launcher","rendered-controls","studio-sweep"], "duplicate-audit":["retained-owner","duplicate-audit"], "artifact-torture":["blueprint","par","runtime-package","outcome-library","stake-round-trip","stale-drift","caller-owned-destination","cancellation","staging-cleanup","retry","provenance"], "cli-studio-semantic-parity":["artifact-conversions","recovery-boundaries"], "player-examples-parity":["studio-player","isolated-examples","desktop","narrow-viewport","feature","win","inspection","reset","project-switch","rendered-layout"], "lifecycle-recovery":["cancellation","failed-publication","stale-context","project-switch","server-shutdown","caller-owned-output"], "role-math-par":["par-workbook"], "role-game-frontend-package":["frontend-package"], "role-qa-simulation-report-replay":["simulation","report","replay"], "role-outcome-library-integration":["outcome-library"], "role-stake-deployment-export":["stake","deployment","export"], "role-new-project-preparation-retry":["new-project","retry"]};
+const roles = {"known-findings":"cross-role", "role-math-par":"math-par", "role-game-frontend-package":"game-frontend-package", "role-qa-simulation-report-replay":"qa-simulation-report-replay", "role-outcome-library-integration":"outcome-library-integration", "role-stake-deployment-export":"stake-deployment-export", "role-new-project-preparation-retry":"new-project-preparation-retry"};
+const hash = (value) => createHash("sha256").update(value).digest("hex");
 
 async function writeReview(directory, mutate = (review) => review) {
-    await mkdir(path.join(directory, "evidence"), {recursive: true});
-    const files = ["command.stdout.txt", "command.stderr.txt", "browser.md", "artifacts.tsv", "blind.md", "comparison.md", "coverage.md"];
-    await Promise.all(files.map((file) => writeFile(path.join(directory, "evidence", file), `${file}\n`)));
-    const candidate = {id: "candidate-sha-123", packageSpecifier: "pokie@1.3.0", installedExecutable: "/clean-room/node_modules/.bin/pokie", packageSha256: "a".repeat(64)};
-    const frozen = {schemaVersion: 1, reviewId: "review-1", candidateId: candidate.id, frozenAt: "2026-09-06T10:00:00Z", findings: [{id: "BLIND-1", severity: "P3", material: false, reproducer: "visible route", publicSurface: "Studio Home", owner: "independent reviewer", status: "open", evidence: "evidence/blind.md"}]};
+    await mkdir(path.join(directory, "evidence"), {recursive: true}); let n = 0;
+    async function evidence(kind, capturedAt = "2026-09-06T09:00:30Z") { const number = n += 1, pathName = `evidence/${number}-${kind}.txt`, contents = `${kind}-${number}\n`; await writeFile(path.join(directory, pathName), contents); return {evidenceId:`E${number}`, path:pathName, sha256:hash(contents), sizeBytes:Buffer.byteLength(contents), capturedAt, kind, summary:`${kind} evidence`, candidateId, candidatePackageSha256:packageSha}; }
+    const artifact = await evidence("package", "2026-09-06T09:00:00Z"), stdout = await evidence("stdout"), stderr = await evidence("stderr"), transcript = await evidence("studio", "2026-09-06T09:03:00Z"), ledger = await evidence("ledger", "2026-09-06T09:04:00Z"), blindEvidence = await evidence("blind", "2026-09-06T09:30:00Z"), comparisonEvidence = await evidence("comparison", "2026-09-06T10:30:00Z"), coverageEvidence = await Promise.all(REQUIRED_COVERAGE_IDS.map((id) => evidence(`coverage:${id}`, "2026-09-06T09:40:00Z"))), deltaEvidence = await evidence("delta", "2026-09-06T11:00:30Z");
+    const candidate = {id:candidateId, packageSpecifier:"pokie@1.3.0", installedExecutable:"/clean-room/node_modules/.bin/pokie", packageArtifact:artifact};
+    const frozen = {schemaVersion:PC19_SCHEMA_VERSION, reviewId:"review-1", candidateId, candidatePackageSha256:packageSha, frozenAt:"2026-09-06T10:00:00Z", findings:[{id:"BLIND-1", severity:"P1", material:false, reproducer:"visible route", publicSurface:"Studio Home", owner:"independent reviewer", status:"open", evidence:blindEvidence}]};
     const frozenContents = `${JSON.stringify(frozen, null, 2)}\n`;
-    const review = {
-        provenance: {schemaVersion: 1, reviewId: "review-1", startedAt: "2026-09-06T09:00:00Z", frozenAt: frozen.frozenAt, frozenFindingsSha256: sha256(frozenContents), reviewer: "independent reviewer", cleanRoomAttestation: attestation, candidate, commandRecords: [{commandId: "C001", startedAt: "2026-09-06T09:00:00Z", endedAt: "2026-09-06T09:01:00Z", exitStatus: 0, stdout: "evidence/command.stdout.txt", stderr: "evidence/command.stderr.txt"}], studioProfile: {path: "/clean-room/profile", browser: "Chromium", startedAt: "2026-09-06T09:02:00Z", browserTranscript: "evidence/browser.md"}, artifactLedger: ["evidence/artifacts.tsv"]},
-        frozen,
-        comparison: {schemaVersion: 1, reviewId: "review-1", candidateId: candidate.id, frozenFindingsSha256: sha256(frozenContents), comparedAt: "2026-09-06T11:00:00Z", dispositions: [{findingId: "BLIND-1", disposition: "fixed and independently rerun", evidence: "evidence/comparison.md"}]},
-        coverage: {schemaVersion: 1, reviewId: "review-1", candidateId: candidate.id, records: REQUIRED_COVERAGE_IDS.map((id) => ({id, candidateId: candidate.id, status: "complete", evidence: "evidence/coverage.md"}))},
-        register: {schemaVersion: 1, reviewId: "review-1", candidateId: candidate.id, findings: [{...frozen.findings[0], status: "resolved", delta: {reviewId: "delta-1", cleanContext: "/clean-room/delta-profile", evidence: "evidence/comparison.md"}}]},
-    };
-    const result = mutate(review);
-    await writeFile(path.join(directory, "frozen-findings.json"), frozenContents);
-    await Promise.all([
-        writeFile(path.join(directory, "PROVENANCE.json"), `${JSON.stringify(result.provenance, null, 2)}\n`),
-        writeFile(path.join(directory, "comparison.json"), `${JSON.stringify(result.comparison, null, 2)}\n`),
-        writeFile(path.join(directory, "coverage.json"), `${JSON.stringify(result.coverage, null, 2)}\n`),
-        writeFile(path.join(directory, "finding-register.json"), `${JSON.stringify(result.register, null, 2)}\n`),
-    ]);
+    const review = {provenance:{schemaVersion:PC19_SCHEMA_VERSION, reviewId:"review-1", startedAt:pre.startedAt, frozenAt:frozen.frozenAt, frozenFindingsSha256:hash(frozenContents), reviewer:"independent reviewer", cleanRoomAttestation:attestation, candidate, commandRecords:[{commandId:"C001", command:"pokie --help", candidateId, candidatePackageSha256:packageSha, ...pre, exitStatus:0, stdout, stderr}], studioSession:{sessionId:"studio-1", launcher:"pokie", execution:"public-launcher-rendered-controls", candidateId, candidatePackageSha256:packageSha, startedAt:"2026-09-06T09:02:00Z", endedAt:"2026-09-06T09:04:00Z", freshProfile:{path:"/clean-room/profile", createdAt:"2026-09-06T09:01:30Z"}, transcript}, artifactLedger:[ledger]}, frozen, comparison:{schemaVersion:PC19_SCHEMA_VERSION, reviewId:"review-1", candidateId, candidatePackageSha256:packageSha, frozenFindingsSha256:hash(frozenContents), comparedAt:"2026-09-06T10:30:00Z", dispositions:[{findingId:"BLIND-1", disposition:"fixed", candidateId, candidatePackageSha256:packageSha, evidence:comparisonEvidence}]}, coverage:{schemaVersion:PC19_SCHEMA_VERSION, reviewId:"review-1", candidateId, candidatePackageSha256:packageSha, records:REQUIRED_COVERAGE_IDS.map((id, i) => ({id, publicWorkflow:id, publicSurface:id.includes("studio") ? "Studio rendered UI" : "installed pokie CLI", role:roles[id] ?? "independent-reviewer", candidateId, candidatePackageSha256:packageSha, cleanContext:`/clean-room/${id}`, startedAt:pre.startedAt, endedAt:"2026-09-06T09:59:00Z", status:"complete", observations:obs[id], evidence:coverageEvidence[i]}))}, register:{schemaVersion:PC19_SCHEMA_VERSION, reviewId:"review-1", candidateId, candidatePackageSha256:packageSha, findings:[{...frozen.findings[0], status:"resolved", delta:{reviewId:"delta-1", candidateId, candidatePackageSha256:packageSha, cleanContext:"/clean-room/delta", startedAt:"2026-09-06T11:00:00Z", endedAt:"2026-09-06T11:01:00Z", observations:["fix-verified","lifecycle-cleanup","affected-cli-studio-player-parity"], evidence:deltaEvidence}}]}};
+    const value = mutate(review); await writeFile(path.join(directory, "frozen-findings.json"), frozenContents); await Promise.all([["PROVENANCE.json", value.provenance], ["comparison.json", value.comparison], ["coverage.json", value.coverage], ["finding-register.json", value.register]].map(([name, contents]) => writeFile(path.join(directory, name), `${JSON.stringify(contents, null, 2)}\n`)));
 }
+async function forgery(mutate, expression) { const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-pc19-")); try { await writeReview(directory, mutate); await assert.rejects(() => validatePc19IndependentColdStartReview(directory), expression); } finally { await rm(directory, {recursive:true, force:true}); } }
 
-test("accepts a current-candidate review with a frozen blind list and complete closure", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-pc19-"));
-    try {
-        await writeReview(directory);
-        await assert.doesNotReject(() => validatePc19IndependentColdStartReview(directory));
-    } finally {
-        await rm(directory, {recursive: true, force: true});
-    }
-});
-
-test("rejects comparison before freeze, missing role coverage, and an unresolved material defect", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-pc19-"));
-    try {
-        await writeReview(directory, (review) => {
-            review.comparison.comparedAt = "2026-09-06T09:59:59Z";
-            return review;
-        });
-        await assert.rejects(() => validatePc19IndependentColdStartReview(directory), /post-freeze/i);
-        await writeReview(directory, (review) => {
-            review.coverage.records = review.coverage.records.filter((record) => record.id !== "role-stake-deployment-export");
-            return review;
-        });
-        await assert.rejects(() => validatePc19IndependentColdStartReview(directory), /role-stake-deployment-export/);
-        await writeReview(directory, (review) => {
-            review.register.findings = [{id: "P2-1", severity: "P2", material: true, reproducer: "cancel", publicSurface: "Studio", owner: "owner", status: "open", evidence: "evidence/blind.md"}, ...review.register.findings];
-            return review;
-        });
-        await assert.rejects(() => validatePc19IndependentColdStartReview(directory), /material P2/i);
-    } finally {
-        await rm(directory, {recursive: true, force: true});
-    }
-});
-
-test("rejects a changed frozen list even when the comparison otherwise names its findings", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-pc19-"));
-    try {
-        await writeReview(directory);
-        await writeFile(path.join(directory, "frozen-findings.json"), `${JSON.stringify({schemaVersion: 1, findings: []})}\n`);
-        await assert.rejects(() => validatePc19IndependentColdStartReview(directory), /bind to the provenance|hash differs/i);
-    } finally {
-        await rm(directory, {recursive: true, force: true});
-    }
-});
+test("accepts a complete candidate-bound review with frozen findings and independent delta", async () => { const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-pc19-")); try { await writeReview(directory); await assert.doesNotReject(() => validatePc19IndependentColdStartReview(directory)); } finally { await rm(directory, {recursive:true, force:true}); } });
+test("rejects frozen finding reclassification, omission, and resolution without a delta", async () => { await forgery((r) => { r.register.findings[0].severity = "P3"; return r; }, /rewrites frozen severity/i); await forgery((r) => { r.register.findings = []; return r; }, /omits a frozen/i); await forgery((r) => { delete r.register.findings[0].delta; return r; }, /complete independent delta/i); await forgery((r) => { r.register.findings[0].status = "closed"; return r; }, /valid status/i); });
+test("rejects unbound, reordered, duplicated, and tampered candidate evidence", async () => { await forgery((r) => { r.provenance.candidate.id = "candidate-sha-123"; return r; }, /exact candidate SHA/i); await forgery((r) => { r.provenance.commandRecords.push({...r.provenance.commandRecords[0], commandId:"C002"}); return r; }, /chronological order|reuses evidence metadata/i); await forgery((r) => { r.coverage.records[0].candidatePackageSha256 = "c".repeat(64); return r; }, /exact candidate package artifact/i); await forgery((r) => { r.coverage.records[0].evidence.sha256 = "d".repeat(64); return r; }, /digest or size/i); });
+test("rejects incomplete coverage, missing roles, and unresolved material defects", async () => { await forgery((r) => { r.coverage.records.find((record) => record.id === "blind-studio-exploration").observations = ["public-launcher"]; return r; }, /omits required workflow observations/i); await forgery((r) => { r.coverage.records = r.coverage.records.filter((record) => record.id !== "role-stake-deployment-export"); return r; }, /role-stake-deployment-export/i); await forgery((r) => { r.register.findings.push({id:"P2-1", severity:"P2", material:true, reproducer:"cancel", publicSurface:"Studio", owner:"owner", status:"open", evidence:r.comparison.dispositions[0].evidence}); return r; }, /reuses evidence metadata|release-blocking/i); });
