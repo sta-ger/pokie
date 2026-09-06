@@ -38,3 +38,23 @@ rendered result. Per the verification contract, no product defect is claimed and
 the remaining Play/Simulation/Replay/Outcome/Stake/cancellation/recovery
 workflow is not reached. No generated project, profile, registry, output tree,
 raw log, or automation source was retained as repository evidence.
+
+## Harness-recovery follow-up
+
+The persistent fresh-profile harness was repaired to use the checkout's CDP
+dependency and to query visible controls by semantic prefix. A new clean Studio
+launch from the candidate build rendered the ready-to-edit starter directly:
+
+```text
+Design Your Game
+Start with the ready-to-edit starter game …
+Create game
+```
+
+This establishes that the public first action is the rendered `Create game`
+control, rather than the earlier harness's guessed `Recommended`/`Create
+Project` label. The next fresh-profile execution activated that corrected action,
+but the host-side driver execution was terminated before it emitted its action
+transcript or a local dashboard/terminal observation. Thus it supplies no
+correlatable product outcome. No finding is claimed; the remaining public
+missions and lifecycle variants remain not reached for a driver reason.
