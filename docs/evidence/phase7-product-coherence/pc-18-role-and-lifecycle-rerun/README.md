@@ -1,301 +1,41 @@
-# PC-18 independent host verification — candidate `1077df75047471f863e7b11cc35df9583b26a63d`
+# PC-18 independent host verification — candidate `d5a57549ff764416298fb4b8fa0273e8cd975ec1`
 
-2026-09-05 UTC. This evidence commit is a descendant of the stated candidate
-and contains no product or test changes. Generated projects, registries,
-profiles, full logs, scripts, and screenshots are excluded.
+2026-09-06 UTC. This retained evidence is limited to the exact candidate and
+contains no generated project, registry, browser profile, script, screenshot,
+raw log, build output, product change, or test change.
 
-## Required impact suite
+## Whole-file impact suite
 
-The required whole-file command ran once, sequentially, on this checkout:
+The candidate ran the reviewer-required complete command, sequentially:
 
 ```text
 npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
 ```
 
-Result: **11 suites / 59 tests passed** in 55.579 seconds. `npm run build-cli`
+Result: **11 suites / 59 tests passed** in 56.09 seconds. `npm run build-cli`
 then completed before Studio was launched.
 
-## Fresh public-workflow recovery transcript
+## Fresh public-workflow attempt
 
-Four fresh Studio profiles and registries were launched from this source
-checkout exactly as `node ./dist/cli/pokie.js --no-open`. Each began at `Design
-Your Game`, used `Create game`, and visibly reported a newly managed, valid
-`Starter Slot` Blueprint.
+Two new Studio registries and Chromium profiles launched this source checkout
+only as `node ./dist/cli/pokie.js --no-open`. Both visibly rendered the clean
+`Design Your Game` page with the Recommended starter already in place:
+`starter-slot`, `Starter Slot`, and enabled `Create game`. Neither session
+rendered a product error.
 
-The final clean journey reached Player (`Start Play` → `New Play session` →
-`Spin` → terminal round), Analyst (a completed 10,000-round Simulation), and
-Reviewer (the rendered Replay screen). Replay states that it is a fresh
-forward session rather than a recorded-result lookup and discloses its
-best-effort reproducibility limit.
+The first harness selector incorrectly expected the pre-starter chooser rather
+than this valid initial Recommended state. The repaired persistent harness
+again received the same rendered starter state, but its driver returned no
+text value to the selector predicate and therefore made no create/save click.
+This is a browser-driver selector failure with no rendered or reproducible
+product symptom. The two-launch budget was exhausted before the required
+create/reopen, Player, Simulation, Replay, Outcome Library, Stake, and
+lifecycle/misuse missions could be executed. The uncoached second-mode
+exploration did not begin because readiness had not passed.
 
-It also reached Author end-to-end: Game Model → locally associated Reels
-`Edit` → rendered native `Per-reel (Reel Strip Modeler)` radio → `Select reel
-1` → the actual aria-labelled `Edit or generate Literal or generated` control.
-The journey used its rendered `Add symbol to reel 1` action before Preview.
-The resulting view visibly rendered `Literal strip`, `Sequence: A, K, Q, J`,
-and `Open stop-window preview`. A stale wait predicate still saw an appended
-`Check & preview` label elsewhere in the page and timed out, but the later
-rendered literal-strip view proves that the Preview action succeeded; this is
-not reported as a product failure.
+Temporary bounded-transcript SHA-256:
+`72c9ab7de68fb3d0ab91e83f2123b752a21ddc1a2652b54eacd2e4b53ae39472`.
 
-## Publisher recovery finding
-
-Four further clean-profile launches used the same candidate build and the
-single repaired harness. The first reached the actual Build/Export main view;
-the following three performed the rendered Outcome Library lifecycle without
-duplicating a pending request:
-
-1. Create the managed `Starter Slot` Blueprint, open Build/Export, and accept
-   the displayed exact preflight (1,024 combinations).
-2. Start `Generate exact outcome library (base)`, observe its local
-   `Cancel generation` pending action, and cancel it once.
-3. After the pending action disappeared, retry the unchanged visible inputs.
-
-The retry did not publish an Outcome Library. One clean run rendered
-`Generating this outcome library failed` with the local diagnostic: `Server
-plan: Unavailable — This Studio source is not an independently recognized
-POKIE artifact and cannot be used for conversion planning.` Another rendered
-the recovery error: `The project, configuration, destination, or bound
-preflight changed before publication. Refresh the preflight, review the
-destination, then generate again.` These are product-local error states, not
-driver waits. Therefore the requested cancellation → fresh-preflight →
-unchanged-input retry lifecycle cannot reach terminal Outcome Library
-publication from a clean Studio project.
-
-The dependent `Stake Engine export` remained independently reachable. Its
-rendered result said `Built to .../stakeAdapter`, displayed the executed
-`materialize → generateOutcomeLibrary → publish` plan, recorded managed
-provenance (`starter-slot@0.1.0`, configuration SHA-256, exact, `managed-v1`),
-and reported 1,024 published items. This does not repair the failed direct
-Outcome Library recovery path.
-
-The retained impact suite is still the 11-suite/59-test green whole-file run
-recorded above. The role, replay-provenance, and literal-preview observations
-above remain valid; the publisher failure means the full six-role and
-lifecycle checklist is not accepted. A representative rendered-error capture
-was retained only in the controller-owned harness; SHA-256:
-`26daf6e904fb851bb061a6edf965a14b2397b62dbe3da0d831f5a79103dabb10`.
-No generated projects, outputs, browser profiles, scripts, logs, or images
-are committed here.
-
-## Current-candidate independent attempt — `b0e9a53118a51c9602d362cbf0d2a89dcf59072b`
-
-2026-09-05 UTC. The verifier built this exact checkout successfully, then used
-two fresh Studio profiles, each launched from this checkout exactly as
-`node ./dist/cli/pokie.js --no-open`. No tests were required by this request.
-
-In both rendered sessions, Recommended `Create game` produced a valid managed
-`Starter Slot` Blueprint and opened its saved workspace. The second session
-also reopened that persisted project from the public `Your projects` flow and
-rendered the Player, Simulation, Replay, and Build/Export navigation. These
-are candidate-local observations, not filesystem/API substitutions.
-
-The CDP mouse driver then raced asynchronous navigation: it rendered the Play
-page but did not find a Spin control (the visible control was `New Play
-session`), and later sent clicks while the preceding route was still active.
-The result was visible pages without a rendered product error, not a
-reproducible product symptom. The two-launch ceiling was reached before the
-six-role/lifecycle missions could be completed. Accordingly this addendum
-records an **inconclusive driver result**, not a pass and not a new product
-finding. No runtime profiles, generated projects, screenshots, raw logs, or
-harness scripts are retained; the temporary final screen checksum was
-`da931da1e803aa2e903257b560eb4bc4bafc35347276bbb9109318d687359b97`.
-
-## Focused harness-recovery attempt — `b0e9a53118a51c9602d362cbf0d2a89dcf59072b`
-
-2026-09-05 UTC. A fresh candidate build completed, then two further fresh
-profiles were launched from this source checkout exactly as
-`node ./dist/cli/pokie.js --no-open`. The repaired persistent harness recorded
-an explicit action-to-observation checklist for Author, Player, Analyst,
-Reviewer, Publisher, Stake, and lifecycle boundaries, and waited for local
-rendered transitions instead of issuing route-racing clicks.
-
-Both sessions visibly created and saved a valid managed `Starter Slot`
-Blueprint. Saving presented the rendered `Preview Game Model` entry, which the
-second run used. That action rendered the editor's `Game window` preview pane,
-not the project dashboard navigation (`Overview`, `Play`, `Simulation`,
-`Replay`, `Build/Export`) assumed by the prior transition. No rendered product
-error or failed operation appeared. The two fresh-launch budget was therefore
-exhausted before a role mission or lifecycle terminal state could be reached.
-This remains **inconclusive: driver**, not a product finding. No generated
-project, profile, browser artifact, screenshot, raw log, or harness file is
-retained in this evidence directory.
-
-## Independent lifecycle completion — `b0e9a53118a51c9602d362cbf0d2a89dcf59072b`
-
-2026-09-05 UTC. The final repaired fresh-profile journey launched this source
-checkout exactly as `node ./dist/cli/pokie.js --no-open`. It created, saved,
-returned through the rendered `Projects` control, and reopened a clean managed
-`Starter Slot` Blueprint. Player completed a real `New Play session` → `Spin`
-round; Analyst completed a 10,000-round Simulation; and Reviewer rendered its
-fresh-forward, best-effort reproducibility disclosure.
-
-In Build/Export, Studio rendered the exact preflight: **1,024 raw
-combinations; expected work 1,024**. The verifier started `Generate exact
-outcome library (base)`, observed its local `Cancel generation` action, used
-it once, and waited until that pending control had gone and the exact
-preflight was rendered again. The unchanged-input retry then rendered the
-local error `Generating this outcome library failed` and its diagnostic:
-`Server plan: Unavailable — This Studio source is not an independently
-recognized POKIE artifact and cannot be used for conversion planning.` The
-same terminal surface also rendered the recovery message that the bound
-preflight/project/configuration/destination had changed before publication.
-
-This is a reproducible product failure, not a driver timeout: a fresh Studio
-managed Blueprint cannot complete the required cancellation → refreshed
-preflight → unchanged-input Outcome Library publication lifecycle. Stake
-export and the remaining Author/output-to-input/cross-project variants were
-therefore not reached after this terminal failure. No generated projects,
-profiles, screenshots, raw logs, or harness scripts are retained.
-
-## Exact-candidate clean-context rerun — `7a954bdce949e2b8ecbcb79f642bd939ab64a5b0`
-
-2026-09-05 UTC. The verifier first built this exact checkout successfully with
-`npm run build-cli`. No targeted test files were required by the persisted
-request. It then ran the two permitted fresh-profile public Studio launches
-from this source checkout exactly as:
-
-```text
-node ./dist/cli/pokie.js --no-open
-```
-
-Each run used a new writable `XDG_DOCUMENTS_DIR`, a new Studio registry, and a
-new Chromium profile. The visible initial `Design Your Game` page described the
-starter as ready to edit and stated that `Create game` saves it and opens its
-workspace. The valid, enabled rendered `Create game` action was clicked once
-per launch. Neither action was pending or duplicated.
-
-Both runs returned the same rendered recovery state: `Your game could not be
-completed. Try again. If it continues, choose the location again and retry.`
-The bounded Studio response diagnostic (recorded while observing that visible
-request, not used to drive the workflow) was:
-
-```text
-200 {"status":"unavailable","error":"Could not determine a safe default project location
-(resolved to \"…/projects/POKIE Projects/starter-slot\"). Choose a destination directory explicitly."}
-```
-
-The `projects` Documents root itself existed and was writable; the managed
-flow instead treats its absent child `POKIE Projects` as an unavailable default
-and does not create it. Its advertised no-location-prompt create path therefore
-cannot reach a saved Starter Slot workspace in a genuinely clean context, and
-the visible managed flow supplies no destination picker to recover. The first
-preflight's summary checksum was
-`ffbf20a530859ba96337aa4897aa0cceb942b0dcb4f1b3ebbd5d1313611a8fb7`.
-
-This is a rendered, repeatable product failure rather than a driver/readiness
-timeout. It blocks Player, Analyst, Reviewer, Author, Publisher, Stake, and
-the downstream output-to-input/lifecycle branches before any project exists;
-those branches were not claimed as executed. No generated project, profile,
-registry, screenshot, raw log, or harness script is retained in the committed
-evidence.
-
-## Candidate `41f96777465485400a52b9ca5c6dd8bf0b621823` independent rerun
-
-2026-09-05 UTC. `npm run build-cli` completed before either UI launch. No
-targeted test files are required by the persisted request. Two fresh Studio
-profiles, fresh writable Documents roots, registries, and Chromium profiles
-then launched this source checkout exactly as `node ./dist/cli/pokie.js
---no-open`.
-
-Both clean rendered runs successfully used Recommended `Create game` to save
-and open `Starter Slot`. They each completed the visible Player `New Play
-session` → `Spin` round, the default 10,000-round Simulation report, and
-opened Replay. Build/Export rendered the exact `1,024 raw combinations;
-expected work 1,024` preflight.
-
-In each run, `Generate exact outcome library (base)` visibly became pending,
-exposed `Cancel generation`, and was cancelled once. Once that pending action
-had disappeared and the preflight was rendered again, the unchanged-input
-retry visibly failed: `Generating this outcome library failed`, with `Server
-plan: Unavailable — This Studio source is not an independently recognized
-POKIE artifact and cannot be used for conversion planning.` This is a repeated
-rendered product result, not a wait or selector threshold. It proves that the
-candidate's clean managed Blueprint cannot complete the required recovery and
-publication path.
-
-The same two runs did not reach the separate Stake export action: after the
-Outcome Library finding, the visible card used a generic `Build` control rather
-than the harness's initially expected accessible label. That selector mismatch
-is not treated as a product defect and, with the two-launch limit reached,
-Stake and the remaining output-to-input/reverse/cross-project variants are not
-claimed as verified. The temporary rendered-event transcript checksum was
-`9f45b5a3f52a7fb70b7ff00a394cbc131693dd3b1aeeb5d71d38be9336b17f96`.
-No generated projects, profiles, registries, browser data, raw logs,
-screenshots, or harness files are retained.
-
-## Exact-candidate host rerun — `6c8f2df0c677ec4190d78b197fdaeb79306adc17`
-
-2026-09-05 UTC. The required impact command was run once as the complete
-eleven-file `npm run test:targeted -- …` invocation named in the reviewer
-checklist. It passed: **11 suites / 59 tests**. `npm run build-cli` then
-completed before Studio was launched.
-
-Two fresh profiles then launched the candidate checkout exactly as
-`node ./dist/cli/pokie.js --no-open`, with distinct Studio registries,
-Documents roots, and Chromium profiles. The first rendered `Create game` while
-automatic validation was still pending; its now-disabled control showed that
-the click had not been accepted, so it was not retried in that same profile.
-The repaired second run waited for the enabled control. It visibly created and
-saved the managed `Starter Slot` project, whose Overview reported `Valid — no
-issues found`; it then visibly opened Play, created a new Play session, and
-sent one Spin. The harness incorrectly treated the persistent navigation label
-`Simulation` as that route's ready state while the Spin view still rendered
-`Spinning…`, then attempted the Simulation action before its rendered route
-transition. This is a driver/readiness failure with no rendered product error,
-not a product finding. The two-launch limit prevented further role, lifecycle,
-and misuse missions. No runtime project, profile, browser data, log, image, or
-harness file is retained here.
-
-## Focused recovery rerun — `6c8f2df0c677ec4190d78b197fdaeb79306adc17`
-
-2026-09-05 UTC. The retained required eleven-file whole-file suite remains
-present and truthful (11 suites / 59 tests passed); it was not duplicated.
-`npm run build-cli` completed before the two permitted fresh public Studio
-launches, each launched from this checkout exactly as
-`node ./dist/cli/pokie.js --no-open`, with a new registry, Documents root,
-and Chromium profile.
-
-The first rendered run created a valid managed Starter Slot, completed Player's
-new-session → Spin round, and rendered Analyst's completed report (including
-the local `Open full report` control). The original report predicate was too
-narrow and was repaired in the persistent harness.
-
-The second fresh run repeated those local successes, rendered Reviewer
-provenance, and reached Build/Export. Its visible action was `Generate exact
-outcome library (base)`. The repaired harness still queried that action with
-an exact whole-name match rather than the required semantic prefix, so it did
-not start a generation or duplicate a request. No rendered product error was
-observed. Both launches were then spent; Author and lifecycle/misuse variants
-remain unexecuted. This is a bounded **driver-inconclusive** recovery result,
-not a product finding. No runtime project, profile, registry, automation
-script, raw log, screenshot, or generated output is retained.
-
-## Independent four-launch recovery — `6c8f2df0c677ec4190d78b197fdaeb79306adc17`
-
-2026-09-05 UTC. The exact required eleven-file whole-file command was run
-once, sequentially, and completed green: **11 suites / 59 tests**. The
-candidate was then built successfully before public UI use. Four fresh Studio
-profiles, registries, and Documents roots launched this source checkout only
-as `node ./dist/cli/pokie.js --no-open`.
-
-Three clean managed `Starter Slot` journeys reached Player (`New Play session`
-→ `Spin` → completed round), Analyst (the completed default 10,000-round
-report), Reviewer (the rendered fresh/best-effort provenance disclosure), and
-Build/Export. The Publisher journey used the displayed `Default (exact until
-cap)` mode and `Generate exact outcome library (base)` action. It observed
-the local `Cancel generation` pending control, invoked that cancellation once,
-waited until it disappeared and the exact-generation action returned, then
-retried unchanged visible inputs exactly once. That retry rendered the local
-terminal message **`Generating this outcome library failed`**. This is a
-rendered product result after the required cancellation/recovery sequence,
-not a selector or readiness threshold.
-
-The fourth fresh journey independently entered Game Model and its visible
-editor. The subsequent anticipated literal-reel controls were disabled, so
-the Author literal preview was not reached; no defect is inferred from that
-driver path. Direct Outcome Library publication had already failed, so the
-dependent output-to-input, reverse/repeat, stale/cross-project, project
-switch, cleanup, Stake, and late caller-owned-destination variants could not
-be exercised from a publishable outcome. No generated project, output,
-browser data, full log, screenshot, or harness file is retained.
+Conclusion: **inconclusive (selector)**, not a product finding. Earlier,
+superseded PC-18 evidence was removed so this directory contains only the
+current-candidate bounded transcript.
