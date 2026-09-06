@@ -1,44 +1,41 @@
-# PC-18 independent host verification — finding
+# PC-18 independent host verification — inconclusive
 
-Candidate product SHA: `6f9fa507792db28df6917b3b9f66436a1b9dcd8d`.
-This evidence commit is its descendant; the only product-tree change since that
-SHA is this evidence directory.
+Candidate SHA: `0bee2c1d89220785698608d19dad2c10d65e39cb`.
 
-## Retained complete-file suite
+## Required complete-file command
 
-The retained candidate-bound evidence remains present and truthful: the single
-serial command below passed all 11 required complete files (59 tests) on the
-candidate. Per the recovery contract, it was not duplicated.
+The verifier started the prescribed serial command once, with all 11 files in
+one invocation, and did not start a concurrent or duplicate Jest process:
 
 ```text
 npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
 ```
 
-The candidate CLI was rebuilt with `npm run build-cli` before the final fresh
-Studio launch. Every launch used `node ./dist/cli/pokie.js --no-open`, a new
-Studio registry, and a new Chromium profile. No generated project, profile,
-output tree, browser script, screenshot, or raw log is retained.
+Its host-side wrapper did not retain a final exit record, so this run is not
+used as a passing test assertion. The candidate CLI was then built before the
+Studio attempt.
 
-## Rendered failure: Studio-created Blueprint cannot create its Outcome Library
+## Rendered Studio attempt
 
-The final fresh journey used only visible Studio controls:
+Fresh Studio registries and Chromium profiles were used. Studio was launched
+from this checkout only with `node ./dist/cli/pokie.js --no-open`.
 
-1. **Create game** created the recommended starter and opened its editable
-   workspace with **Valid — no issues found**.
-2. **Build/Export** exposed the enabled **Generate exact outcome library
-   (base)** control and the Stake Engine export card with a default,
-   project-owned destination and a preflight of **Ready to build**.
-3. Generation exposed **Cancel generation**. Cancelling it restored the enabled
-   generation control, proving the rendered cancellation/retry transition.
-4. The single safe retry began generation, but its pending control cleared into
-   the rendered product error: **The project could not be loaded for
-   outcome-library generation. Reopen or rebuild the project, then refresh the
-   preflight.** The local diagnostic still showed the expected plan,
-   `materialize materializeRuntime → materialize generateOutcomeLibrary`.
+The first UI-driver pass stopped before an action because its expected
+`Design a game` control was not rendered; the visible start page instead
+already contained the recommended editable game and its `Create game` button.
+The one safe retry repaired that selector and rendered these product states:
 
-The subsequent visible Stake **Build** action produced no success or error
-transition during the bounded wait because the prerequisite Outcome Library had
-already failed. The rendered error is therefore the product finding, not a
-driver/readiness finding. It blocks the Studio-created Blueprint Outcome
-Library and Stake handoff that this rerun was required to verify; source drift,
-late-destination, and cross-project variants consequently remain unreachable.
+1. `Create game` was accepted.
+2. Studio rendered `Valid — no issues found.`
+3. Studio rendered `Your game was saved. Opening its workspace…`.
+
+The driver then falsely treated the validation text as workspace readiness and
+looked for a non-rendered `Play` control before the route transition completed.
+There was no rendered product error. Because the permitted launches were
+exhausted, this is driver/readiness-inconclusive, not a product finding. No
+claim is made here about Play, Simulation, Replay, Outcome Library, Stake,
+source-drift, destination, cross-project, cancellation, recovery, or cleanup
+variants.
+
+No generated projects, runtime profiles, browser data, automation source,
+screenshots, or raw logs are retained. This README is the only retained proof.
