@@ -1,29 +1,40 @@
 # PC-18 independent host verification — driver inconclusive
 
 Candidate product SHA: `6f9fa507792db28df6917b3b9f66436a1b9dcd8d`.
+This evidence commit is its descendant: `92cc2596c5b85121b5e2e721ee698072580c2af0`.
 
-## Complete-file impact suite
+## Retained complete-file suite
 
-The requested single serial command ran each required file once on this exact
-candidate and passed **11 suites / 59 tests**:
+The candidate-bound retained evidence remains present and records that this
+single serial command passed all 11 required complete files (59 tests):
 
 ```text
 npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
 ```
 
-## Public Studio rerun
+Per the recovery contract, that already-passing command was not duplicated.
+The candidate CLI was rebuilt successfully with `npm run build-cli` before the
+fresh Studio rerun.
 
-After a successful candidate build, two fresh Studio launches used only
-`node ./dist/cli/pokie.js --no-open`, each with isolated registry and Chromium
-profile paths. The second rendered the public start screen with an enabled
-**Create game** control and a valid ready-to-edit recommended starter game.
+## Fresh public Studio recovery
 
-No product action was sent. The harness process consumed non-interactive stdin
-and exited before the semantic UI actions could be issued; the earlier launch
-had the same driver transition defect while collecting the rendered state. The
-two-launch ceiling prevents a further public-workflow attempt. This is driver
-inconclusive evidence, not a product failure and not proof of the role or
-lifecycle criteria.
+Both permitted launches used `node ./dist/cli/pokie.js --no-open`, a new Studio
+registry, and a new Chromium profile. The first attached CDP to Chromium's
+blank startup tab; it sent no product action. The repaired stable harness then
+attached only to Studio's local URL and waited for meaningful rendered content.
 
-No generated project/output tree, browser profile, harness, raw log, or
-screenshot is retained.
+The second launch rendered the public **Start a game** screen, including the
+enabled **Create game** control and no prerequisite instructions beyond the
+visible starter description. Clicking that control produced the local rendered
+success/pending state **Your game was saved. Opening its workspace…** and the
+local validation **Valid — no issues found**.
+
+The harness incorrectly treated the first pending-state text change as the
+workspace transition and stopped before the workspace appeared. It was then
+repaired in place to wait through `Opening its workspace…` for a
+workspace-specific rendered control, but the two-launch budget was exhausted.
+No rendered product error, failed build, stale/provenance diagnostic, or unsafe
+destination behavior was observed. The omitted operations therefore remain
+unverified rather than failed.
+
+No output tree, profile, harness, screenshot, or raw log is retained.
