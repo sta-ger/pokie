@@ -1,41 +1,40 @@
-# PC-18 independent host verification — inconclusive
+# PC-18 independent host verification — driver inconclusive
 
-Candidate SHA: `0bee2c1d89220785698608d19dad2c10d65e39cb`.
+Candidate product SHA: `0bee2c1d89220785698608d19dad2c10d65e39cb`.
+This evidence commit changes this README only.
 
-## Required complete-file command
+## Bounded complete-file verification
 
-The verifier started the prescribed serial command once, with all 11 files in
-one invocation, and did not start a concurrent or duplicate Jest process:
+The required serial command was run once (one Jest process, all complete files):
 
 ```text
 npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
 ```
 
-Its host-side wrapper did not retain a final exit record, so this run is not
-used as a passing test assertion. The candidate CLI was then built before the
-Studio attempt.
+It exited `0`: 11 suites, 59 tests passed. The candidate Studio bundle was then
+built with `npm run build-cli` before browser verification.
 
-## Rendered Studio attempt
+## Rendered public workflow
 
-Fresh Studio registries and Chromium profiles were used. Studio was launched
-from this checkout only with `node ./dist/cli/pokie.js --no-open`.
+Two fresh-profile Studio launches used only this checkout's candidate command:
+`node ./dist/cli/pokie.js --no-open`. Each had a new Studio registry and
+Chromium profile. No private Studio API was used for workflow actions.
 
-The first UI-driver pass stopped before an action because its expected
-`Design a game` control was not rendered; the visible start page instead
-already contained the recommended editable game and its `Create game` button.
-The one safe retry repaired that selector and rendered these product states:
+The first launch corrected the previous readiness error: after `Create game`,
+a rendered `Play` tab (rather than automatic validation text) established
+workspace readiness. It created a Play session, rendered a settled round,
+and rendered a terminal Simulation report. It also rendered and accepted
+`Cancel generation` after a Studio Outcome Library request. The driver then
+failed to recognize the cancellation terminal wording and did not continue to
+Replay, retry, or Stake. Transcript SHA-256:
+`3db7beec01503abefb4f1fb0af3a4b4d9543d716860dc4c5174cf15f06c2246b`.
 
-1. `Create game` was accepted.
-2. Studio rendered `Valid — no issues found.`
-3. Studio rendered `Your game was saved. Opening its workspace…`.
+The second launch retained those repairs, but its randomly settled Play round
+did not render the win-only `Line:` control used as the harness success
+predicate. The visible Play controls remained rendered and enabled; no product
+error was rendered. This is a driver assertion failure, not evidence of a
+product defect. Transcript SHA-256:
+`9dcdffe6d1065b747022bc45e815545732b3038f6628c451c73d62f5a6b8e450`.
 
-The driver then falsely treated the validation text as workspace readiness and
-looked for a non-rendered `Play` control before the route transition completed.
-There was no rendered product error. Because the permitted launches were
-exhausted, this is driver/readiness-inconclusive, not a product finding. No
-claim is made here about Play, Simulation, Replay, Outcome Library, Stake,
-source-drift, destination, cross-project, cancellation, recovery, or cleanup
-variants.
-
-No generated projects, runtime profiles, browser data, automation source,
-screenshots, or raw logs are retained. This README is the only retained proof.
+The two-launch budget is exhausted. No generated projects, outputs, profiles,
+screenshots, raw logs, or automation files are retained in this repository.
