@@ -1,50 +1,40 @@
-# PC-18 independent host verification — finding
+# PC-18 independent host verification — inconclusive
 
-Candidate product SHA: `0bee2c1d89220785698608d19dad2c10d65e39cb`.
-The checkout is a documentation-only descendant of that product tree; this
-commit changes this README only.
+Candidate product SHA: `141d746e9b8727b46e5d919c8235e0f178c9695c`.
 
 ## Complete-file verification
 
-One sequential complete-file command passed on that candidate product tree:
+The required files were executed together, sequentially, from this checkout:
 
 ```text
 npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
 
 Test Suites: 11 passed, 11 total
 Tests:       59 passed, 59 total
+Snapshots:   0 total
+Time:        55.623 s
 ```
 
-## Rendered public workflow
+This bounds the reviewer-requested role, lifecycle, planner, interoperability,
+CLI/Studio-parity, context, recovery, and cleanup suites on the exact candidate.
 
-After rebuilding the candidate CLI, a fresh Studio launch used exactly
-`node ./dist/cli/pokie.js --no-open`, a new XDG registry, and a new Chromium
-profile. Visible Studio created Recommended `Starter Slot`, closed and reopened
-the only registered project, completed one Play spin (`You won 4.00`), completed
-a 10,000-round Simulation (RTP `105.92%`), and loaded that spin in Replay as a
-`Full` and `Exportable` recorded round artifact.
+## Fresh public Studio launch
 
-The local Outcome Library action was correlated as follows:
-
-- Ready state: preflight rendered `Exact enumeration: 1024 raw combinations;
-  expected work 1024` and enabled `Generate exact outcome library (base)`.
-- Accepted state: the just-activated action immediately rendered its
-  server-classified generation response; no pending job state was rendered.
-- Terminal state: the same generator card rendered the error below. No later
-  rendered success was present, so Generate, Outcome Build, and Stake Build were
-  not repeated.
+After `npm run build-cli`, a fresh registry and Chromium profile launched Studio
+from this checkout with exactly:
 
 ```text
-Generating this outcome library failed. Check the settings above and try again.
-Server plan: Unavailable — This Studio source is not an independently
-recognized POKIE artifact and cannot be used for conversion planning.
+node ./dist/cli/pokie.js --no-open
 ```
 
-The fresh project directory nevertheless contained the just-written
-`outcomelibrary/outcomes_base.jsonl`, `manifest.json`, and `index_base.json`;
-all runtime, registry, profile, project, output, and temporary-log paths were
-then removed. Thus a Studio-created Blueprint has a ready visible route but
-reports its primary Outcome Library operation as failed after producing local
-output. Stake's route requires that generated library, so cancellation/retry,
-source-drift, late-destination, stale/cross-project, and cleanup variants past
-this prerequisite were not safely reachable in the public UI.
+The visible Studio UI reached `Starter Slot · Overview`; the Recommended starter
+was selected, the project was closed to `Projects`, and the starter was opened
+again. The visible navigation then reached `Starter Slot · Play`.
+
+The inherited Xvfb environment supplied no usable visual text/screenshot or
+accessibility readback for the Play control's local ready, accepted, and terminal
+states. The driver therefore could not correlate a Play activation with its own
+rendered result. Per the verification contract, no product defect is claimed and
+the remaining Play/Simulation/Replay/Outcome/Stake/cancellation/recovery
+workflow is not reached. No generated project, profile, registry, output tree,
+raw log, or automation source was retained as repository evidence.
