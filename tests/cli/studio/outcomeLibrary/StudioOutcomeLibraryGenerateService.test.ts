@@ -146,6 +146,52 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(fs.existsSync(path.join(projectRoot, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR, "manifest.json"))).toBe(true);
         });
 
+        it("uses the HTTP-validated managed Blueprint runtime for an unchanged cancellation retry", async () => {
+            const blueprintPath = path.join(projectRoot, "blueprint.json");
+            fs.writeFileSync(blueprintPath, JSON.stringify({
+                manifest: {id: "studio-validated-retry", name: "Studio Validated Retry", version: "1.0.0"},
+                reels: 2,
+                rows: 1,
+                symbols: ["A", "B"],
+                paytable: {A: {2: 5}},
+                reelStrips: [["A", "A", "B"], ["A", "B"]],
+                availableBets: [1],
+            }));
+            let loadCalls = 0;
+            let generationCalls = 0;
+            const studio = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => {
+                    loadCalls += 1;
+                    if (loadCalls > 4) return Promise.reject(new Error("a second post-launch materialization must not be required"));
+                    return Promise.resolve(buildFixtureGame());
+                },
+                undefined,
+                (request) => {
+                    generationCalls += 1;
+                    if (generationCalls === 1) {
+                        throw new WeightedOutcomeLibraryGenerationCancelledError(BigInt(1), BigInt(6), new Map(), "fixture-enumeration");
+                    }
+                    return generateWeightedOutcomeLibrary(request);
+                },
+            );
+
+            const initial = await studio.estimate(projectRoot, {generation: "exact"});
+            expect(initial.status).toBe("ok");
+            if (initial.status !== "ok") return;
+            await expect(studio.generate(projectRoot, {generation: "exact", preflightToken: initial.preflightToken})).resolves.toMatchObject({status: "cancelled"});
+
+            const refreshed = await studio.estimate(projectRoot, {generation: "exact"});
+            expect(refreshed).toMatchObject({status: "ok", plan: {source: {kind: "blueprint", canonicalLocation: blueprintPath}}});
+            if (refreshed.status !== "ok") return;
+            const binding = studio.getPreflightBinding(refreshed.preflightToken);
+            expect(binding).toBeDefined();
+            if (binding === undefined) return;
+            await expect(studio.validatePreflightBinding(projectRoot, {generation: "exact", preflightToken: refreshed.preflightToken}, binding)).resolves.toBeUndefined();
+            await expect(studio.generate(projectRoot, {generation: "exact", preflightToken: refreshed.preflightToken})).resolves.toMatchObject({status: "ok"});
+            expect(loadCalls).toBe(4);
+        });
+
         it("rejects every WASM sidecar state before registry, estimate, generation, or a package load", async () => {
             const wasmPath = path.join(projectRoot, "component.wasm");
             const sidecar = `${wasmPath}.pokie-wasm.json`;

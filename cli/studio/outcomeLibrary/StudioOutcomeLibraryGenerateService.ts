@@ -84,6 +84,11 @@ export type StudioOutcomeLibraryPreflightBinding = {
 type StudioOutcomeLibraryPreflightSnapshot = {
     readonly binding: StudioOutcomeLibraryPreflightBinding;
     readonly plan: ArtifactConversionPlan;
+    // The HTTP launch boundary has just loaded and checked this runtime
+    // against the immutable binding. Retain it for the queued job so an
+    // unchanged managed Blueprint retry does not need one more independent
+    // materialization between launch acceptance and generation.
+    readonly validatedGame?: PokieGame;
 };
 
 // The Project Dashboard's Generate step (and Registry panel), built directly on top of the exact same
@@ -342,6 +347,12 @@ export class StudioOutcomeLibraryGenerateService {
                 ) {
                     return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
                 }
+                // The accepted job starts on the next microtask. Keep this
+                // exact, freshly checked runtime with its token so the job
+                // does not race a separate materialization after a
+                // cancellation/recovery cycle. Direct service callers that
+                // skip this HTTP boundary still load afresh in generate().
+                this.preflightSnapshots.set(request.preflightToken!, {...snapshot, validatedGame: game});
                 return undefined;
             } catch {
                 return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
@@ -386,11 +397,20 @@ export class StudioOutcomeLibraryGenerateService {
         // In particular, legacy `bounded` means “sample only above the cap”, so
         // a small bounded request is an exact plan and must not acquire sampled
         // provenance just because it arrived through Studio.
+        const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
+        if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         let game: PokieGame;
         let domainRequest: OutcomeLibraryGenerationRequest;
         let preparedRequest;
         try {
-            game = await this.loadGame(projectRoot);
+            // A token-bound Blueprint runtime validated at the HTTP start
+            // boundary is safe to consume here. Re-loading it creates a
+            // fourth materialization probe after cancellation has already
+            // been accepted and can fail independently of the unchanged
+            // Blueprint. Every other caller retains the execution-time load.
+            game = snapshot?.plan.source.kind === "blueprint" && snapshot.validatedGame !== undefined
+                ? snapshot.validatedGame
+                : await this.loadGame(projectRoot);
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
@@ -410,8 +430,6 @@ export class StudioOutcomeLibraryGenerateService {
             }
             return {status: "generation-error", code: error instanceof WeightedOutcomeLibraryGenerationError ? error.getCode() : "weighted-outcome-library-generation-invalid-request", error: error instanceof Error ? error.message : String(error), plan: unresolvedPlan};
         }
-        const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
-        if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         const binding = snapshot?.binding;
         const loadedConfigHash = game.getConfigHash?.();
         if (binding !== undefined && (binding.requestKey !== generationRequestKey(request) || binding.destination !== preparedRequest.preflight.destination?.path || binding.gameId !== game.getManifest().id || binding.gameVersion !== game.getManifest().version || binding.configHash !== loadedConfigHash)) {
