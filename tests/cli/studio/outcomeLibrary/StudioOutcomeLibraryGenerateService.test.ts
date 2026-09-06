@@ -403,6 +403,51 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(planning.prepare).toHaveBeenCalledTimes(2);
         });
 
+        it("binds an implicit managed Blueprint generation before a later planner probe can lose Studio provenance", async () => {
+            const blueprintPath = path.join(projectRoot, "blueprint.json");
+            const destination = path.join(projectRoot, "outcomelibrary");
+            fs.writeFileSync(blueprintPath, "{}");
+            const managedBlueprintPlan: ArtifactConversionPlan = {
+                ...plannedOutcomeLibrary,
+                source: {
+                    kind: "blueprint",
+                    canonicalLocation: blueprintPath,
+                    capabilities: ["blueprint.build", "outcomeLibrary.generate"],
+                },
+                target: {
+                    kind: "outcomeLibrary",
+                    canonicalLocation: destination,
+                    capabilities: ["outcome-library-read"],
+                },
+            };
+            const planning = {prepare: jest.fn(() => Promise.resolve(managedBlueprintPlan))};
+            const svc = new StudioOutcomeLibraryGenerateService(
+                POKIE_VERSION,
+                () => Promise.resolve(buildFixtureGame()),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                planning,
+            );
+
+            await expect(svc.generate(blueprintPath, {generation: "exact"})).resolves.toMatchObject({
+                status: "ok",
+                plan: managedBlueprintPlan,
+            });
+            expect(fs.existsSync(path.join(destination, "manifest.json"))).toBe(true);
+            // The public no-token path obtains one server-owned preflight and
+            // executes that exact Blueprint plan. It must not re-run source
+            // recognition after output generation begins.
+            expect(planning.prepare).toHaveBeenCalledTimes(1);
+        });
+
         it("rejects a caller-owned destination introduced after a token-bound Blueprint preflight without publishing or registering it", async () => {
             const blueprintPath = path.join(projectRoot, "blueprint.json");
             fs.writeFileSync(blueprintPath, "{}");

@@ -397,6 +397,18 @@ export class StudioOutcomeLibraryGenerateService {
     // writer "pokie outcomelibrary build" uses. Every other mode already in that bundle is preserved (see
     // this class's own doc comment); only "request.mode ?? 'base'" is (re)computed.
     public async generate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest): Promise<StudioOutcomeLibraryGenerateResultView> {
+        // HTTP callers always supply the snapshot they just displayed, but
+        // retained in-process callers need the same immutable source binding.
+        // In particular, a managed Blueprint must not be re-recognized after
+        // runtime preparation, when materializer cleanup can make a separate
+        // directory probe transiently unavailable.
+        if (request.preflightToken === undefined) {
+            const preflight = await this.estimate(projectRoot, request);
+            if (preflight.status !== "ok") return this.preflightFailureResult(projectRoot, preflight);
+            if (preflight.plan.source.kind === "blueprint") {
+                return this.generate(projectRoot, {...request, preflightToken: preflight.preflightToken});
+            }
+        }
         const wasmDiagnostic = this.wasmBoundaryDiagnostic(projectRoot);
         if (wasmDiagnostic !== undefined) {
             return {status: "load-error", error: wasmDiagnostic, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
@@ -740,6 +752,23 @@ export class StudioOutcomeLibraryGenerateService {
                 ...(entry.generator !== undefined ? {strategy: entry.generator.strategy, generatedAt: entry.generator.generatedAt} : {}),
             })),
         };
+    }
+
+    /** Converts an implicit caller's failed server-owned preflight into the existing generation DTO. */
+    private preflightFailureResult(
+        projectRoot: string,
+        preflight: Exclude<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>,
+    ): StudioOutcomeLibraryGenerateResultView {
+        const plan = preflight.plan ?? createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
+        if (preflight.status === "unsupported") return {status: "unsupported", error: preflight.error, plan};
+        if (preflight.status === "conflict") return {status: "conflict", error: preflight.error, plan};
+        if (preflight.status === "generation-error") {
+            return {status: "generation-error", code: preflight.code ?? "weighted-outcome-library-generation-invalid-request", error: preflight.error, plan};
+        }
+        if (preflight.status === "invalid") {
+            return {status: "generation-error", code: "weighted-outcome-library-generation-invalid-request", error: preflight.error, plan};
+        }
+        return {status: "load-error", error: preflight.error, plan};
     }
 
     /**
