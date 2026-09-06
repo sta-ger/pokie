@@ -26,6 +26,7 @@ import type {StudioArtifactBuildJobView, StudioArtifactBuildProgressView} from "
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
 import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPlan.js";
+import {resolveStudioProjectSource} from "./StudioArtifactConversionPlanningService.js";
 
 export type StudioArtifactBuildStartResult =
     | {status: "created"; job: StudioArtifactBuildJobView}
@@ -123,7 +124,7 @@ export class StudioArtifactBuildService {
     // sibling name is also its own root when a Stake export is reopened, which must not make its supported
     // republish edge disappear from the available-targets surface.
     public async listTargets(projectRoot: string): Promise<readonly StudioArtifactTargetView[]> {
-        const project = await this.resolveProject.resolve(projectRoot);
+        const project = await resolveStudioProjectSource(this.resolveProject, projectRoot);
         return Promise.all(this.registry.listTargets().map(async (target) => {
             const descriptor = this.registry.describe(target);
             const plan = project === undefined
@@ -209,7 +210,7 @@ export class StudioArtifactBuildService {
      * destination that preflight inspected.
      */
     public async validateStakeProjectionSource(sourcePath: string, destinationPath: string): Promise<{readonly plan: ArtifactConversionPlan; readonly operation: PreparedStakeProjectionOperation} | undefined> {
-        const source = await this.resolveProject.resolve(sourcePath);
+        const source = await resolveStudioProjectSource(this.resolveProject, sourcePath);
         if (source === undefined) return undefined;
         const operation = await this.stakeProjection.prepareOperation(source, destinationPath);
         return {plan: operation.plan, operation};
@@ -220,7 +221,7 @@ export class StudioArtifactBuildService {
         destinationPath: string,
         options?: ArtifactBuildOptions,
     ): Promise<StudioArtifactBuildView> {
-        const source = await this.resolveProject.resolve(sourcePath);
+        const source = await resolveStudioProjectSource(this.resolveProject, sourcePath);
         if (source === undefined) {
             return {
                 status: "error",
@@ -387,7 +388,7 @@ export class StudioArtifactBuildService {
         // immediately before allocating its job so a package path replaced by
         // an inspection-only component cannot consume the retained operation.
         try {
-            const current = await this.resolveProject.resolve(projectRoot);
+            const current = await resolveStudioProjectSource(this.resolveProject, projectRoot);
             if (current?.type === "wasm") {
                 return {
                     status: "unsupported",
@@ -593,7 +594,7 @@ export class StudioArtifactBuildService {
         target: ArtifactTargetType,
         outDir: string | undefined,
     ): Promise<{project: PokieProject; destination: string} | undefined> {
-        const project = await this.resolveProject.resolve(projectRoot);
+        const project = await resolveStudioProjectSource(this.resolveProject, projectRoot);
         if (project === undefined) {
             return undefined;
         }

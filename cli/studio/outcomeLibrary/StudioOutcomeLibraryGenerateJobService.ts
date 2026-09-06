@@ -243,7 +243,22 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     private checkpointPath(projectRoot: string, id: string): string {
-        return path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${id}.json`);
+        // Studio registers a managed Blueprint by its canonical JSON file,
+        // while package projects are directories. Checkpoints belong beside
+        // the managed project in both cases; appending ".pokie" to the
+        // Blueprint file itself turns a successful publication into ENOTDIR
+        // during terminal cleanup and falsely reports the job as failed.
+        return path.join(this.projectStateRoot(projectRoot), ".pokie", "outcome-library-checkpoints", `${id}.json`);
+    }
+
+    private projectStateRoot(projectRoot: string): string {
+        try {
+            return fs.statSync(projectRoot).isFile() ? path.dirname(projectRoot) : projectRoot;
+        } catch {
+            // Keep the prior path spelling for a missing project so the
+            // normal generation/preflight diagnostics remain authoritative.
+            return projectRoot;
+        }
     }
 
     private persistCheckpoint(projectRoot: string, id: string, request: ValidatedOutcomeLibraryGenerateRequest, checkpoint: ExactEnumerationCheckpoint): StudioOutcomeLibraryCheckpointView {

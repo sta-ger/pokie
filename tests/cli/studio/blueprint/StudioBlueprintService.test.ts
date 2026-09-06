@@ -1002,6 +1002,34 @@ describe("StudioBlueprintService", () => {
             expect(fs.existsSync(path.join(freshHome, "POKIE Projects", "valera-mathematician", "blueprint.json"))).toBe(true);
         });
 
+        it("creates the missing POKIE Projects child in an explicitly configured clean Documents root", () => {
+            const documents = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-documents-test-"));
+            const freshHome = path.join(tmpDir, "fresh-profile");
+            const expectedPath = path.join(documents, "POKIE Projects", "sample-slot", "blueprint.json");
+            const service = new StudioBlueprintService(
+                "1.2.1",
+                studioRoot,
+                homeService,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                new PokiePathResolver({}, {platform: "linux", env: {XDG_DOCUMENTS_DIR: documents}, homeDir: freshHome}),
+            );
+            try {
+                expect(fs.existsSync(path.dirname(path.dirname(expectedPath)))).toBe(false);
+
+                expect(service.saveManaged(buildBlueprint())).toMatchObject({status: "ok", path: expectedPath, name: "sample-slot"});
+                expect(fs.existsSync(expectedPath)).toBe(true);
+            } finally {
+                fs.rmSync(documents, {recursive: true, force: true});
+            }
+        });
+
         it("persists the complete Recommended model as the managed Blueprint source a later Projects Open materializes", () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "starter-slot");
             const service = createServiceWithManagedDirectory(managedDir);

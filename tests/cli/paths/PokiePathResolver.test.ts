@@ -122,6 +122,29 @@ describe("PokiePathResolver", () => {
             }
         });
 
+        it("uses an explicitly configured temporary Documents root outside Home so a first managed save can create its POKIE Projects child", () => {
+            const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-temp-home-test-"));
+            const documents = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-temp-documents-test-"));
+            try {
+                const env: PlatformDirectoryEnvironment = {
+                    platform: "linux",
+                    env: {XDG_DOCUMENTS_DIR: documents},
+                    homeDir: tempHome,
+                };
+                const destination = path.join(documents, "POKIE Projects", "starter-slot");
+
+                expect(fs.existsSync(path.dirname(destination))).toBe(false);
+                expect(new PokiePathResolver({}, env).resolveIndependentProjectDirectory("starter-slot")).toEqual({
+                    status: "valid",
+                    directory: destination,
+                    source: "documents",
+                });
+            } finally {
+                fs.rmSync(tempHome, {recursive: true, force: true});
+                fs.rmSync(documents, {recursive: true, force: true});
+            }
+        });
+
         it("rejects a Documents symlink whose real destination is the OS temp directory", () => {
             const realTarget = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-symlink-target-"));
             try {

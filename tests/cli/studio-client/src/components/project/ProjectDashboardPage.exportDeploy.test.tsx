@@ -813,6 +813,76 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(await screen.findByText("Generating outcome library from this project's current build…")).toBeInTheDocument();
     });
 
+    it("refreshes the preflight binding after cancellation so an unchanged retry starts a new safe job", async () => {
+        const user = userEvent.setup();
+        const preflightTokens: string[] = [];
+        const starts: Array<{preflightToken?: string}> = [];
+        let cancelled = false;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [requestPath] = url.split("?");
+            if (requestPath === "/api/project/outcome-libraries/generate/estimate") {
+                const token = `fresh-preflight-${preflightTokens.length + 1}`;
+                preflightTokens.push(token);
+                const body = BASE_ROUTES[requestPath]().body as Record<string, unknown>;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({...body, preflightToken: token})});
+            }
+            if (requestPath === "/api/project/outcome-libraries/generate/jobs" && init?.method === "POST") {
+                starts.push(JSON.parse(String(init.body)) as {preflightToken?: string});
+                return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({status: "created", job: {id: `job-${starts.length}`, status: "running", cancellationRequested: false}})});
+            }
+            if (requestPath === "/api/project/outcome-libraries/generate/jobs/job-1/cancel") {
+                cancelled = true;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({id: "job-1", status: "running", cancellationRequested: true})});
+            }
+            if (requestPath === "/api/project/outcome-libraries/generate/jobs/job-1") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve(cancelled
+                        ? {
+                            id: "job-1", status: "cancelled", cancellationRequested: true,
+                            result: {status: "cancelled", processedRawIndex: "12", progressTotal: "27", checkpoint: {id: "job-1"}, recovery: "Resume this exact checkpoint."},
+                        }
+                        : {id: "job-1", status: "running", cancellationRequested: false}),
+                });
+            }
+            if (requestPath === "/api/project/outcome-libraries/generate/jobs/job-2") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({
+                        id: "job-2", status: "completed", cancellationRequested: false,
+                        result: {
+                            status: "ok", bundleDir: "outcomelibrary", files: ["manifest.json"], warnings: [],
+                            mode: {modeName: "base", libraryId: "a-base", hash: "sha256:retry", outcomeCount: 27, totalWeight: 27, rtp: 0.95},
+                            generator: {strategy: "exact", pokieVersion: "1.0.0"}, coverage: 1,
+                            selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
+                        },
+                    }),
+                });
+            }
+            return fetchImplFrom(BASE_ROUTES)(url, init);
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        const generate = await screen.findByRole("button", {name: "Generate exact outcome library (base)"});
+        await user.click(generate);
+        await user.click(await screen.findByRole("button", {name: "Cancel generation"}));
+
+        expect(await screen.findByText(/Generation was cancelled at 12 \/ 27/)).toBeInTheDocument();
+        await waitFor(() => expect(preflightTokens.length).toBeGreaterThan(2));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled());
+
+        await user.click(screen.getByRole("button", {name: "Generate exact outcome library (base)"}));
+
+        expect(await screen.findByText(/Generated 27 outcomes for mode "base" using exact/)).toBeInTheDocument();
+        expect(starts).toHaveLength(2);
+        expect(starts[1].preflightToken).toBe(preflightTokens.at(-1));
+        expect(starts[1].preflightToken).not.toBe(starts[0].preflightToken);
+    });
+
     it("lets a project above the exact-generation cap explicitly generate bounded coverage and continue to Stake Engine Export", async () => {
         const user = userEvent.setup();
         let generationRequest: unknown;

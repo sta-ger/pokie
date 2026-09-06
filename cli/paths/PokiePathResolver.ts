@@ -103,15 +103,15 @@ export class PokiePathResolver {
         // Judged with the *target* platform's containment semantics too (see isUnsafeStartDirectory.ts),
         // not whatever this.unsafeContext's own caller happened to assume -- so a win32 base directory
         // resolved above is checked against Windows drive/UNC rules even when this runs on a POSIX host.
-        // A Studio session may deliberately run with a disposable HOME to isolate its registry and
-        // projects.  Treat that complete profile as its own explicit user root, while retaining the
-        // temp-dir guard for every path outside it (including a Documents symlink escaping elsewhere
-        // under /tmp).  This keeps a fresh Studio able to create and reopen its first project instead
-        // of reporting a generic completion error solely because the profile is isolated.
+        // A Studio session may deliberately use a disposable, explicitly configured Documents or Home
+        // directory to isolate its registry and projects. Treat that selected base as its user root,
+        // while retaining the temp-dir guard for every path outside it (including a Documents symlink
+        // escaping elsewhere under /tmp). This lets a first managed save create its absent POKIE
+        // Projects child instead of rejecting a clean, writable Documents root as an unsafe temp path.
         const unsafeContext: UnsafeStartDirectoryContext = {
             ...this.unsafeContext,
             platform: this.env.platform,
-            allowedTemporaryRoot: home,
+            allowedTemporaryRoot: baseDirectory,
         };
         if (isUnsafeStartDirectory(base.directory, unsafeContext) || isUnsafeStartDirectory(directory, unsafeContext)) {
             return {

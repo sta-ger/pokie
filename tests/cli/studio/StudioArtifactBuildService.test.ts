@@ -86,6 +86,19 @@ describe("StudioArtifactBuildService", () => {
             expect(byTarget.get("parWorkbook")?.supported).toBe(true);
         });
 
+        it("recognizes a managed Blueprint directory for Outcome Library and Stake goals", async () => {
+            const blueprintPath = writeBlueprintFile();
+
+            const targets = await service.listTargets(workDir);
+            const outcomePreview = await service.preview(workDir, "outcomeLibrary");
+            const stakePreview = await service.preview(workDir, "stakeAdapter");
+
+            expect(targets.find((entry) => entry.target === "outcomeLibrary")).toMatchObject({supported: true});
+            expect(targets.find((entry) => entry.target === "stakeAdapter")).toMatchObject({supported: true});
+            expect(outcomePreview).toMatchObject({status: "ok", sourceType: "blueprint", plan: {source: {canonicalLocation: blueprintPath}}});
+            expect(stakePreview).toMatchObject({status: "ok", sourceType: "blueprint", plan: {source: {canonicalLocation: blueprintPath}}});
+        });
+
         it("marks every target unsupported for a path that isn't a recognized POKIE project", async () => {
             const targets = await service.listTargets(path.join(workDir, "does-not-exist"));
 
@@ -190,9 +203,14 @@ describe("StudioArtifactBuildService", () => {
 
         it("rejects a prepared Stake operation when its source becomes a WASM component", async () => {
             const packagePath = writeBlueprintFile();
-            const resolve = jest.fn()
-                .mockResolvedValueOnce({rootPath: packagePath, type: "blueprint", capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "fixture"})
-                .mockResolvedValueOnce({rootPath: packagePath, type: "wasm", capabilities: PROJECT_TYPE_CAPABILITIES.wasm, provenance: "replacement component"});
+            let sourceType: "blueprint" | "wasm" = "blueprint";
+            const resolve = jest.fn((location: string) => {
+                if (location !== packagePath) return Promise.resolve(undefined);
+                if (sourceType === "blueprint") {
+                    return Promise.resolve({rootPath: packagePath, type: "blueprint" as const, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "fixture"});
+                }
+                return Promise.resolve({rootPath: packagePath, type: "wasm" as const, capabilities: PROJECT_TYPE_CAPABILITIES.wasm, provenance: "replacement component"});
+            });
             service = new StudioArtifactBuildService("1.3.0", undefined, {resolve});
 
             const preview = await service.preview(packagePath, "stakeAdapter", path.join(workDir, "replaced-stake"));
@@ -200,6 +218,7 @@ describe("StudioArtifactBuildService", () => {
             if (preview.status !== "ok" || preview.preparedOperationId === undefined) {
                 throw new Error("expected a retained Stake operation");
             }
+            sourceType = "wasm";
 
             await expect(service.startPreparedStakeProjection(packagePath, preview.preparedOperationId)).resolves.toMatchObject({
                 status: "unsupported",

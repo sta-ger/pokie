@@ -788,6 +788,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         seed: "",
     });
     const [outcomeLibraryPreflight, setOutcomeLibraryPreflight] = useState<OutcomeLibraryPreflightView>({status: "loading"});
+    // A terminal cancellation deliberately invalidates the browser's execution
+    // binding. The server owns the immutable snapshot, but cancellation can
+    // finish after that snapshot's source/destination reservation has been
+    // released; retry only from a newly observed preflight.
+    const [outcomeLibraryPreflightRevision, setOutcomeLibraryPreflightRevision] = useState(0);
     // A cancellation checkpoint is server-persisted. Rehydrate it after a browser
     // reload so recovery never depends on an in-memory React state or a job id
     // copied by the user before refreshing the page.
@@ -843,7 +848,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         return () => {
             cancelled = true;
         };
-    }, [defaultModeName, fetchImpl, outcomeLibraryGenerationOptions]);
+    }, [defaultModeName, fetchImpl, outcomeLibraryGenerationOptions, outcomeLibraryPreflightRevision]);
 
     // The "Build artifact" group's own target list -- see StudioArtifactBuildService.listTargets's own
     // doc comment. Fetched once on mount: it depends only on the active project's own resolved ProjectType,
@@ -877,6 +882,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     // once a build attempt itself hits it.
     const [artifactPreviews, setArtifactPreviews] = useState<Record<string, ArtifactPreviewRunView>>({});
     const [artifactDestinations, setArtifactDestinations] = useState<Record<string, string>>({});
+    // A completed Outcome Library publication changes the canonical input the
+    // Stake projection is allowed to reuse.  Refresh its server-owned
+    // prepared operation before enabling the follow-on Build action; retaining
+    // the pre-publication preview would make Stake re-decide from stale input.
+    const [artifactPreviewRevision, setArtifactPreviewRevision] = useState(0);
     useEffect(() => {
         let cancelled = false;
         const supportedTargets = artifactTargets.filter((entry) => entry.supported).map((entry) => entry.target);
@@ -900,7 +910,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
         return () => {
             cancelled = true;
         };
-    }, [artifactTargets, artifactDestinations, fetchImpl]);
+    }, [artifactTargets, artifactDestinations, artifactPreviewRevision, fetchImpl]);
 
     // One run per artifactTarget (keyed by StudioArtifactTargetType), each independent of every other --
     // see ArtifactBuildRunView's own doc comment.
@@ -1021,8 +1031,18 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                 if (job.status === "completed" && job.result?.status === "ok") {
                     setOutcomeLibraryRun({status: "ok", result: job.result});
                     deployment.refreshProjectModes();
+                    // The generated bundle is now canonical project state.
+                    // Re-preflight every registry-backed artifact card so the
+                    // visible Stake handoff owns an operation prepared from
+                    // that exact bundle and its provenance.
+                    setArtifactPreviewRevision((revision) => revision + 1);
                 } else if (job.status === "cancelled" && job.result?.status === "cancelled") {
                     setOutcomeLibraryRun({status: "cancelled", result: job.result});
+                    // The visible retry must bind to a fresh server preflight,
+                    // even when no form field changed while cancellation was in
+                    // flight. This preserves the source/destination drift
+                    // check while making a clean cancellation recoverable.
+                    setOutcomeLibraryPreflightRevision((revision) => revision + 1);
                 } else if (job.result !== undefined && job.result.status !== "ok") {
                     setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(job.result), ...("error" in job.result ? {diagnostic: job.result.error} : {}), plan: job.result.plan});
                 } else {

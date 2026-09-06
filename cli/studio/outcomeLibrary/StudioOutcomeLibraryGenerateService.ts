@@ -13,12 +13,15 @@ import {
     WeightedOutcomeLibraryGenerationError,
     WeightedOutcomeLibraryGenerationCancelledError,
     ArtifactConversionPlanner,
+    ArtifactConversionPlan,
+    assertPreparedArtifactDestinationAvailable,
     DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE,
     DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
     describeArtifactConversionPlanDiagnostic,
     describeWasmLifecycleBoundary,
+    computeArtifactInputBindingHash,
     isWasmComponentFile,
     estimateExactOutcomeSpaceSize,
     generateWeightedOutcomeLibrary,
@@ -75,6 +78,25 @@ export type StudioOutcomeLibraryPreflightBinding = {
     readonly requiresBounded: boolean;
 };
 
+type ManagedBlueprintSourceBinding = {
+    readonly canonicalLocation: string;
+    readonly physicalLocation: string;
+    readonly fileIdentity: string;
+    readonly inputBindingHash: string;
+};
+
+// The plan is retained with the same immutable source/configuration/destination
+// binding shown to Studio.  The HTTP boundary may retain its materialized runtime
+// so a cancellation retry does not depend on another runtime preparation, but
+// every execution boundary still rebinds the canonical Blueprint's physical
+// identity and bytes before using that runtime.
+type StudioOutcomeLibraryPreflightSnapshot = {
+    readonly binding: StudioOutcomeLibraryPreflightBinding;
+    readonly plan: ArtifactConversionPlan;
+    readonly managedBlueprint?: ManagedBlueprintSourceBinding;
+    readonly validatedGame?: PokieGame;
+};
+
 // The Project Dashboard's Generate step (and Registry panel), built directly on top of the exact same
 // public generation service "pokie outcomelibrary generate"/"build" already drive
 // (generateExactWeightedOutcomeLibrary / estimateExactOutcomeSpaceSize / OutcomeLibraryBundleWriter) --
@@ -111,7 +133,7 @@ export class StudioOutcomeLibraryGenerateService {
     private readonly ensureDirectory: (dirPath: string) => void;
     private readonly planning: StudioArtifactConversionPlanning;
     private readonly planner = new ArtifactConversionPlanner();
-    private readonly preflightSnapshots = new Map<string, StudioOutcomeLibraryPreflightBinding>();
+    private readonly preflightSnapshots = new Map<string, StudioOutcomeLibraryPreflightSnapshot>();
     private nextPreflightToken = 1;
 
     constructor(
@@ -168,7 +190,7 @@ export class StudioOutcomeLibraryGenerateService {
         }
         let game: PokieGame;
         try {
-            game = await this.loadGame(projectRoot);
+            game = await this.loadGame(this.runtimeSourcePath(projectRoot));
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
@@ -210,10 +232,24 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
         }
         const preflightToken = String(this.nextPreflightToken++);
+        let managedBlueprint: ManagedBlueprintSourceBinding | undefined;
+        try {
+            managedBlueprint = this.captureManagedBlueprintBinding(plan);
+        } catch (error) {
+            return {
+                status: "load-error",
+                error: error instanceof Error ? error.message : String(error),
+                plan,
+            };
+        }
         this.preflightSnapshots.set(preflightToken, {
-            requestKey: generationRequestKey(request), gameId: game.getManifest().id, gameVersion: game.getManifest().version,
-            ...(resolvedConfigHash === undefined ? {} : {configHash: resolvedConfigHash}), destination: boundDestination,
-            requiresBounded: preparedRequest.preflight.requiresSampledOptIn,
+            binding: {
+                requestKey: generationRequestKey(request), gameId: game.getManifest().id, gameVersion: game.getManifest().version,
+                ...(resolvedConfigHash === undefined ? {} : {configHash: resolvedConfigHash}), destination: boundDestination,
+                requiresBounded: preparedRequest.preflight.requiresSampledOptIn,
+            },
+            plan,
+            ...(managedBlueprint === undefined ? {} : {managedBlueprint}),
         });
         return {
             status: "ok",
@@ -264,7 +300,7 @@ export class StudioOutcomeLibraryGenerateService {
             }
             return {result: {...preflight, plan: preflight.plan ?? createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")}};
         }
-        const current = this.preflightSnapshots.get(preflight.preflightToken);
+        const current = this.preflightSnapshots.get(preflight.preflightToken)?.binding;
         if (current === undefined || current.requestKey !== binding.requestKey || current.gameId !== binding.gameId || current.gameVersion !== binding.gameVersion || current.configHash !== binding.configHash || current.destination !== binding.destination) {
             return {result: {status: "conflict", error: "The source, configuration, destination, or generation strategy changed since this checkpoint was created. Refresh the project and start a new generation.", plan: preflight.plan}};
         }
@@ -273,15 +309,16 @@ export class StudioOutcomeLibraryGenerateService {
 
     /** Snapshot a live preflight token before a cancellation checkpoint is persisted. */
     public getPreflightBinding(token: string | undefined): StudioOutcomeLibraryPreflightBinding | undefined {
-        return token === undefined ? undefined : this.preflightSnapshots.get(token);
+        return token === undefined ? undefined : this.preflightSnapshots.get(token)?.binding;
     }
 
     /**
      * Revalidates a supplied preflight at the HTTP launch boundary.  A job is
      * deliberately not the first consumer of this check: otherwise a stale
      * browser request is observable as a queued job before it is rejected by
-     * generate().  Re-estimating here also proves that the source identity and
-     * resolved publication destination still describe the immutable snapshot.
+     * generate(). Package sources are re-estimated here; a managed Blueprint
+     * token instead rebinds its canonical file/configuration/input snapshot
+     * without re-running directory recognition.
      */
     public async validatePreflightBinding(
         projectRoot: string,
@@ -291,11 +328,55 @@ export class StudioOutcomeLibraryGenerateService {
         if (generationRequestKey(request) !== binding.requestKey) {
             return "The generation request no longer matches the immutable preflight. Refresh the displayed preflight before generating.";
         }
+        const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
+        // A managed Blueprint preflight already holds the canonical source
+        // identity. Re-resolving it through the planner here adds a third
+        // directory-recognition probe between the refreshed visible preflight
+        // and the token-bound job. Rebind the canonical file directly instead.
+        if (snapshot?.plan.source.kind === "blueprint") {
+            if (
+                snapshot.binding.requestKey !== binding.requestKey ||
+                snapshot.binding.gameId !== binding.gameId ||
+                snapshot.binding.gameVersion !== binding.gameVersion ||
+                snapshot.binding.configHash !== binding.configHash ||
+                snapshot.binding.destination !== binding.destination ||
+                snapshot.binding.requiresBounded !== binding.requiresBounded
+            ) {
+                return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+            }
+            try {
+                const game = await this.loadBoundManagedBlueprint(snapshot);
+                const preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(
+                    game,
+                    request,
+                    request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR,
+                    projectRoot,
+                ));
+                if (
+                    game.getManifest().id !== binding.gameId ||
+                    game.getManifest().version !== binding.gameVersion ||
+                    game.getConfigHash?.() !== binding.configHash ||
+                    preparedRequest.preflight.destination?.path !== binding.destination ||
+                    preparedRequest.preflight.requiresSampledOptIn !== binding.requiresBounded
+                ) {
+                    return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+                }
+                // Runtime preparation can be slow or transiently unavailable
+                // immediately after a cancelled job. Keep this exact runtime
+                // for the queued job, but never treat it as source authority:
+                // generate() and publication each re-check the saved file's
+                // canonical identity, bytes, and configuration binding.
+                this.preflightSnapshots.set(request.preflightToken!, {...snapshot, validatedGame: game});
+                return undefined;
+            } catch {
+                return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+            }
+        }
         const preflight = await this.estimate(projectRoot, request);
         if (preflight.status !== "ok") {
             return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
         }
-        const current = this.preflightSnapshots.get(preflight.preflightToken);
+        const current = this.preflightSnapshots.get(preflight.preflightToken)?.binding;
         if (
             current === undefined ||
             current.requestKey !== binding.requestKey ||
@@ -316,6 +397,18 @@ export class StudioOutcomeLibraryGenerateService {
     // writer "pokie outcomelibrary build" uses. Every other mode already in that bundle is preserved (see
     // this class's own doc comment); only "request.mode ?? 'base'" is (re)computed.
     public async generate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest): Promise<StudioOutcomeLibraryGenerateResultView> {
+        // HTTP callers always supply the snapshot they just displayed, but
+        // retained in-process callers need the same immutable source binding.
+        // In particular, a managed Blueprint must not be re-recognized after
+        // runtime preparation, when materializer cleanup can make a separate
+        // directory probe transiently unavailable.
+        if (request.preflightToken === undefined) {
+            const preflight = await this.estimate(projectRoot, request);
+            if (preflight.status !== "ok") return this.preflightFailureResult(projectRoot, preflight);
+            if (preflight.plan.source.kind === "blueprint") {
+                return this.generate(projectRoot, {...request, preflightToken: preflight.preflightToken});
+            }
+        }
         const wasmDiagnostic = this.wasmBoundaryDiagnostic(projectRoot);
         if (wasmDiagnostic !== undefined) {
             return {status: "load-error", error: wasmDiagnostic, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
@@ -330,11 +423,19 @@ export class StudioOutcomeLibraryGenerateService {
         // In particular, legacy `bounded` means “sample only above the cap”, so
         // a small bounded request is an exact plan and must not acquire sampled
         // provenance just because it arrived through Studio.
+        const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
+        if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         let game: PokieGame;
         let domainRequest: OutcomeLibraryGenerationRequest;
         let preparedRequest;
         try {
-            game = await this.loadGame(projectRoot);
+            if (snapshot?.plan.source.kind === "blueprint") {
+                game = snapshot.validatedGame === undefined
+                    ? await this.loadBoundManagedBlueprint(snapshot)
+                    : this.rebindManagedBlueprintRuntime(snapshot);
+            } else {
+                game = await this.loadGame(this.runtimeSourcePath(projectRoot));
+            }
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
@@ -354,10 +455,9 @@ export class StudioOutcomeLibraryGenerateService {
             }
             return {status: "generation-error", code: error instanceof WeightedOutcomeLibraryGenerationError ? error.getCode() : "weighted-outcome-library-generation-invalid-request", error: error instanceof Error ? error.message : String(error), plan: unresolvedPlan};
         }
-        const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
-        if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+        const binding = snapshot?.binding;
         const loadedConfigHash = game.getConfigHash?.();
-        if (snapshot !== undefined && (snapshot.requestKey !== generationRequestKey(request) || snapshot.destination !== preparedRequest.preflight.destination?.path || snapshot.gameId !== game.getManifest().id || snapshot.gameVersion !== game.getManifest().version || snapshot.configHash !== loadedConfigHash)) {
+        if (binding !== undefined && (binding.requestKey !== generationRequestKey(request) || binding.destination !== preparedRequest.preflight.destination?.path || binding.gameId !== game.getManifest().id || binding.gameVersion !== game.getManifest().version || binding.configHash !== loadedConfigHash)) {
             return {status: "conflict", error: "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
         const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
@@ -365,16 +465,31 @@ export class StudioOutcomeLibraryGenerateService {
         if (boundDestination === undefined) {
             return {status: "load-error", error: "The prepared Outcome Library request has no publication destination.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
-        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
+        // A successful preflight has already resolved and bound the exact
+        // managed Blueprint source. Reuse that plan for this token after the
+        // runtime identity check above; direct/no-token and package callers
+        // retain the ordinary fresh planner lookup. This prevents a cancelled
+        // Blueprint job's cleanup from turning an unchanged retry into an
+        // unrecognized-source failure without weakening package byte-drift
+        // detection at the execution boundary.
+        const tokenBoundBlueprintPlan = snapshot?.plan.source.kind === "blueprint" ? snapshot.plan : undefined;
+        const plan = tokenBoundBlueprintPlan ?? await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
         if (plan.status === "conflict") {
             return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
         }
         if (plan.status === "unavailable") {
             return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
         }
+        // Studio addresses a managed project by its directory, while the
+        // conversion planner correctly binds that project's editable source
+        // as `blueprint.json`.  Compare a token-bound Blueprint plan against
+        // its canonical source identity, not the enclosing dashboard path;
+        // otherwise every lifecycle phase can falsely report source drift
+        // before cancellation or a refreshed retry reaches generation.
+        const planSourcePath = tokenBoundBlueprintPlan?.source.canonicalLocation ?? projectRoot;
         const planDrift = describePreparedArtifactPlanDrift(
             plan,
-            projectRoot,
+            planSourcePath,
             "outcomeLibrary",
             boundDestination,
             requestedGeneration.generationSemantics,
@@ -394,10 +509,18 @@ export class StudioOutcomeLibraryGenerateService {
             };
         try {
             const execution = await this.planner.executeConversionPlan(plan, {
-                // Resolve again at both prepared-operation binding points. This
-                // binds the actual runtime source rather than treating the
-                // preview plan as a one-time guard.
-                currentSource: async () => (await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration)).source,
+                // Rebind a managed Blueprint's canonical file before both the
+                // generation read and durable publication. This intentionally
+                // avoids a planner re-probe, which can transiently fail during
+                // cancellation cleanup even when the immutable source is sound.
+                currentSource: async () => {
+                    if (tokenBoundBlueprintPlan !== undefined && snapshot !== undefined) {
+                        if (snapshot.validatedGame === undefined) await this.loadBoundManagedBlueprint(snapshot);
+                        else this.rebindManagedBlueprintRuntime(snapshot);
+                        return tokenBoundBlueprintPlan.source;
+                    }
+                    return (await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration)).source;
+                },
                 read: async (): Promise<PreparedGenerationRead> => {
                     const reuse = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
                     if (reuse !== undefined) {
@@ -456,8 +579,25 @@ export class StudioOutcomeLibraryGenerateService {
                 },
                 canPublish: (read) => read.status === "ready",
                 assertDestinationAvailable: async () => {
+                    // The token retains the managed Blueprint source identity,
+                    // but publication must still re-check its physical output:
+                    // OutcomeLibraryBundleWriter atomically replaces an
+                    // existing directory. Use the registry's direct
+                    // source-alias/missing-or-empty guard here rather than
+                    // re-planning, so a cancelled retry does not depend on
+                    // transient source recognition while a late caller-owned
+                    // destination remains protected.
+                    if (tokenBoundBlueprintPlan !== undefined) {
+                        assertPreparedArtifactDestinationAvailable(
+                            tokenBoundBlueprintPlan.source.canonicalLocation,
+                            boundDestination,
+                            "directory",
+                        );
+                        return;
+                    }
                     const current = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
-                    if (current.status !== "planned") throw new Error(current.diagnostic?.message ?? "The Outcome Library destination is unavailable.");
+                    if (current.status === "planned") return;
+                    throw new Error(current.diagnostic?.message ?? "The Outcome Library destination is unavailable.");
                 },
                 publish: (read) => {
                     if (read.status !== "ready") throw new Error("The prepared Outcome Library generation was not publishable.");
@@ -523,7 +663,7 @@ export class StudioOutcomeLibraryGenerateService {
         if (wasmDiagnostic !== undefined) return {status: "load-error", error: wasmDiagnostic};
         let game: PokieGame;
         try {
-            game = await this.loadGame(projectRoot);
+            game = await this.loadGame(this.runtimeSourcePath(projectRoot));
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error)};
         }
@@ -612,6 +752,131 @@ export class StudioOutcomeLibraryGenerateService {
                 ...(entry.generator !== undefined ? {strategy: entry.generator.strategy, generatedAt: entry.generator.generatedAt} : {}),
             })),
         };
+    }
+
+    /** Converts an implicit caller's failed server-owned preflight into the existing generation DTO. */
+    private preflightFailureResult(
+        projectRoot: string,
+        preflight: Exclude<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>,
+    ): StudioOutcomeLibraryGenerateResultView {
+        const plan = preflight.plan ?? createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
+        if (preflight.status === "unsupported") return {status: "unsupported", error: preflight.error, plan};
+        if (preflight.status === "conflict") return {status: "conflict", error: preflight.error, plan};
+        if (preflight.status === "generation-error") {
+            return {status: "generation-error", code: preflight.code ?? "weighted-outcome-library-generation-invalid-request", error: preflight.error, plan};
+        }
+        if (preflight.status === "invalid") {
+            return {status: "generation-error", code: "weighted-outcome-library-generation-invalid-request", error: preflight.error, plan};
+        }
+        return {status: "load-error", error: preflight.error, plan};
+    }
+
+    /**
+     * Rebinds the physical managed Blueprint without asking the planner to
+     * recognize the enclosing Studio directory again. Its preflight snapshot
+     * retains physical identity and byte binding, so cancellation recovery
+     * keeps canonical identity without accepting a changed source.
+     */
+    private captureManagedBlueprintBinding(plan: ArtifactConversionPlan): ManagedBlueprintSourceBinding | undefined {
+        const source = plan.source;
+        if (source.kind !== "blueprint" || source.canonicalLocation === undefined) return undefined;
+        let physicalLocation: string;
+        try {
+            physicalLocation = this.realpath(source.canonicalLocation);
+        } catch {
+            throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed preflight before generating.");
+        }
+        if (this.isDirectory(physicalLocation)) {
+            throw new Error("The prepared managed Blueprint source is not a file. Refresh the displayed preflight before generating.");
+        }
+        return {
+            canonicalLocation: source.canonicalLocation,
+            physicalLocation,
+            fileIdentity: this.managedBlueprintFileIdentity(source.canonicalLocation),
+            inputBindingHash: computeArtifactInputBindingHash([source.canonicalLocation]),
+        };
+    }
+
+    private assertManagedBlueprintBinding(snapshot: StudioOutcomeLibraryPreflightSnapshot, game: PokieGame): void {
+        const source = snapshot.plan.source;
+        const canonicalLocation = source.canonicalLocation;
+        if (source.kind !== "blueprint" || canonicalLocation === undefined) {
+            throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed preflight before generating.");
+        }
+        let physicalLocation: string;
+        try {
+            physicalLocation = this.realpath(canonicalLocation);
+        } catch {
+            throw new Error("The managed Blueprint source changed or was deleted after preflight. Refresh the displayed preflight before generating.");
+        }
+        if (this.isDirectory(physicalLocation)) {
+            throw new Error("The managed Blueprint source was replaced after preflight. Refresh the displayed preflight before generating.");
+        }
+        const managedBlueprint = snapshot.managedBlueprint;
+        if (managedBlueprint !== undefined && (
+            managedBlueprint.canonicalLocation !== canonicalLocation ||
+            managedBlueprint.physicalLocation !== physicalLocation ||
+            managedBlueprint.fileIdentity !== this.managedBlueprintFileIdentity(canonicalLocation)
+        )) {
+            throw new Error("The managed Blueprint source was replaced after preflight. Refresh the displayed preflight before generating.");
+        }
+        const expectedInputBindingHash = managedBlueprint?.inputBindingHash ?? source.configurationProvenance?.inputBindingHash;
+        if (expectedInputBindingHash !== undefined && computeArtifactInputBindingHash([canonicalLocation]) !== expectedInputBindingHash) {
+            throw new Error("The managed Blueprint input changed after preflight. Refresh the displayed preflight before generating.");
+        }
+        const manifest = game.getManifest();
+        if (
+            manifest.id !== snapshot.binding.gameId ||
+            manifest.version !== snapshot.binding.gameVersion ||
+            (snapshot.binding.configHash !== undefined && game.getConfigHash?.() !== snapshot.binding.configHash)
+        ) {
+            throw new Error("The managed Blueprint configuration changed after preflight. Refresh the displayed preflight before generating.");
+        }
+    }
+
+    private async loadBoundManagedBlueprint(snapshot: StudioOutcomeLibraryPreflightSnapshot): Promise<PokieGame> {
+        const canonicalLocation = snapshot.plan.source.canonicalLocation;
+        if (canonicalLocation === undefined) {
+            throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed preflight before generating.");
+        }
+        const game = await this.loadGame(canonicalLocation);
+        this.assertManagedBlueprintBinding(snapshot, game);
+        return game;
+    }
+
+    private rebindManagedBlueprintRuntime(snapshot: StudioOutcomeLibraryPreflightSnapshot): PokieGame {
+        if (snapshot.validatedGame === undefined) {
+            throw new Error("The prepared managed Blueprint runtime is no longer available. Refresh the displayed preflight before generating.");
+        }
+        this.assertManagedBlueprintBinding(snapshot, snapshot.validatedGame);
+        return snapshot.validatedGame;
+    }
+
+    private managedBlueprintFileIdentity(filePath: string): string {
+        try {
+            const stats = fs.statSync(filePath);
+            if (!stats.isFile()) throw new Error("not a file");
+            return `${stats.dev}:${stats.ino}`;
+        } catch {
+            throw new Error("The managed Blueprint source changed or was deleted after preflight. Refresh the displayed preflight before generating.");
+        }
+    }
+
+    /**
+     * A managed Studio Project can be opened either through its canonical
+     * blueprint.json file or through its containing folder. The conversion
+     * planner already normalizes the latter to blueprint.json; runtime loading
+     * must use that same source identity instead of treating the folder like a
+     * package. Otherwise a clean saved project can load in the dashboard yet
+     * lose its recognized Blueprint provenance when Outcome Library preflight
+     * or registry work starts.
+     */
+    private runtimeSourcePath(projectRoot: string): string {
+        if (!this.isDirectory(projectRoot)) return projectRoot;
+        const managedBlueprintPath = path.join(projectRoot, "blueprint.json");
+        return this.directoryExists(managedBlueprintPath) && !this.isDirectory(managedBlueprintPath)
+            ? managedBlueprintPath
+            : projectRoot;
     }
 
     // Reconstructs every mode OTHER than `excludeModeName` already in the bundle at `resolvedOutDir`, as
