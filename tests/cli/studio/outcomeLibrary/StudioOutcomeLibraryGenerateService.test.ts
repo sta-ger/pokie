@@ -177,7 +177,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(fs.existsSync(path.join(projectRoot, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR, "manifest.json"))).toBe(true);
         });
 
-        it("rebinds an unchanged managed Blueprint through cancellation retry execution", async () => {
+        it("rebinds an unchanged managed Blueprint file while retaining the HTTP-validated runtime through cancellation retry execution", async () => {
             const blueprintPath = path.join(projectRoot, "blueprint.json");
             fs.writeFileSync(blueprintPath, JSON.stringify({
                 manifest: {id: "studio-validated-retry", name: "Studio Validated Retry", version: "1.0.0"},
@@ -194,7 +194,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                 POKIE_VERSION,
                 () => {
                     loadCalls += 1;
-                    if (loadCalls > 8) return Promise.reject(new Error("an unchanged cancellation retry should finish after its required execution-time rebinds"));
+                    if (loadCalls > 5) return Promise.reject(new Error("an unchanged cancellation retry should retain its HTTP-validated runtime while rebinding the Blueprint file"));
                     return Promise.resolve(buildFixtureGame());
                 },
                 undefined,
@@ -220,7 +220,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             if (binding === undefined) return;
             await expect(studio.validatePreflightBinding(projectRoot, {generation: "exact", preflightToken: refreshed.preflightToken}, binding)).resolves.toBeUndefined();
             await expect(studio.generate(projectRoot, {generation: "exact", preflightToken: refreshed.preflightToken})).resolves.toMatchObject({status: "ok"});
-            expect(loadCalls).toBe(8);
+            expect(loadCalls).toBe(5);
         });
 
         it("rejects every WASM sidecar state before registry, estimate, generation, or a package load", async () => {
@@ -458,7 +458,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(fs.existsSync(path.join(projectRoot, ".pokie", "outcome-library-registry.json"))).toBe(false);
         });
 
-        it("rejects a managed Blueprint changed after HTTP binding before its queued generation can read or publish", async () => {
+        it("rejects a managed Blueprint replaced after HTTP binding before its queued generation can read or publish", async () => {
             const blueprintPath = path.join(projectRoot, "blueprint.json");
             fs.writeFileSync(blueprintPath, "{\"revision\":1}");
             const destination = path.join(projectRoot, "outcomelibrary");
@@ -498,11 +498,13 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             if (binding === undefined) return;
             await expect(svc.validatePreflightBinding(blueprintPath, {generation: "exact", preflightToken: preflight.preflightToken}, binding)).resolves.toBeUndefined();
 
-            fs.writeFileSync(blueprintPath, "{\"revision\":2}");
+            const replacementPath = path.join(projectRoot, "blueprint.replacement.json");
+            fs.writeFileSync(replacementPath, "{\"revision\":1}");
+            fs.renameSync(replacementPath, blueprintPath);
 
             await expect(svc.generate(blueprintPath, {generation: "exact", preflightToken: preflight.preflightToken})).resolves.toMatchObject({
                 status: "load-error",
-                error: expect.stringMatching(/Blueprint input changed after preflight/i),
+                error: expect.stringMatching(/Blueprint source was replaced after preflight/i),
             });
             expect(generateLibrary).not.toHaveBeenCalled();
             expect(writer.writeToDirectory).not.toHaveBeenCalled();
