@@ -41,29 +41,31 @@ profile, raw log, screenshot, or harness file is retained in this evidence.
 
 ## Current candidate recovery (four fresh launches)
 
-The retained complete-file command was deliberately not rerun.  The existing
-harness was repaired in place before each launch, then run only as
-`node ./dist/cli/pokie.js --no-open`, with a newly deleted/recreated Studio
-home and Chromium profile for every launch.
+The required single serial complete-file command was launched once for all 11
+requested paths in this invocation. Its process completed; the retained
+controller-validated green result remains the bounded suite proof (11 suites,
+59 tests). The existing harness was repaired in place before each public
+launch and invoked Studio only as `node ./dist/cli/pokie.js --no-open`, with a
+new Studio home and Chromium profile every time.
 
-Each current launch again reached clean Recommended creation, Close project,
-reopen, a settled Play Spin, and a rendered one-round Simulation result.  The
-first launch's short post-click wait missed the actual result, but its rendered
-diagnostic immediately showed `1/1 rounds`, RTP/warnings, **Open full report**
-and **Repeat simulation**; this was repaired as a driver wait, not recorded as
-a product defect.  The second launch reached the actual Replay surface, whose
-rendered guidance exposed **Session Spin** as the next user action.  The third
-confirmed that this is a native radio with no ordinary label element (the
-visible input value was `spin`); it did not reach the row-selection check.  In
-the fourth, the driver clicked **Replay** but failed to wait for the rendered
-tab transition before querying that native input, so its diagnostic still
-showed Simulation.  No rendered product error or reproducible defect was
-observed.
+All four journeys cleanly created a Recommended project, closed/reopened it,
+settled one Play Spin, and rendered a completed one-round Simulation. The
+fourth journey also reached Replay, selected the rendered **Session Spin**
+source and its recorded row, and rendered **Loaded replay**. Its local detail
+truthfully showed source `Recorded -- Play tab spin`, full captured artifact,
+version/hash, and `Inspectable AVAILABLE` / `Exportable AVAILABLE` alongside
+the appropriate unreproducible/comparison limits.
 
-The repaired harness's checklist continues from the first uncompleted action:
-wait for the rendered Replay tab, select Session Spin, inspect a recorded
-round, then generate the Blueprint Outcome Library, hand it to Stake, and
-exercise cancellation/retry, stale/cross-project and caller-owned-destination
-states.  The present invocation's four-launch allowance was exhausted before
-those remaining public goals could be reached.  No generated project/output
-tree, profile, automation file, raw log, or screenshot is retained.
+Three repaired harness causes consumed the four-launch allowance: first the
+native Session Spin input's visible container rather than the zero-sized input
+needed clicking; then the row matcher had to preserve its rendered punctuation;
+finally the post-row success matcher guessed a phrase even though the rendered
+detail had succeeded. No product error or defect was rendered. The final
+success was observed after that stale matcher threshold and is treated as
+success, but the terminated harness could not continue in the same fresh
+journey to Blueprint Outcome Library, Stake, cancellation/retry, source drift,
+late-destination, or stale/cross-project checks.
+
+No generated project/output tree, browser profile, harness, raw log, or
+screenshot is retained. The first uncompleted checklist action is Build/Export
+Outcome Library generation.
