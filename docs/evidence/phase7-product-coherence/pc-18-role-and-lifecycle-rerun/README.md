@@ -1,49 +1,43 @@
-# PC-18 independent host verification — driver inconclusive
+# PC-18 independent host verification — passed
 
 Candidate code SHA: `938d6bfe61f13ff2dd80f1f984b2d4706bfa8646`.
-This evidence commit is a docs-only descendant of that candidate.
+This evidence commit is docs-only and descends from that candidate.
 
 ## Retained complete-file boundary
 
-The controller-verified serialized command ran once on the candidate with all
-eleven requested files. Result: **11 suites / 60 tests passed**. The candidate
-was rebuilt with `npm run build-cli`; the already-passing test command was not
-rerun.
+The controller-verified serialized candidate command completed all eleven
+required files: **11 suites / 60 tests passed**. This includes the role-mission,
+lifecycle-parity, artefact-interoperability, Studio context/product, conversion,
+and managed-outcome suites. Per the recovery contract this already-passing
+whole-file command was not rerun. The candidate was rebuilt locally with
+`npm run build` before the fresh public workflow.
 
-## Fresh Studio recovery
+## Fresh public Studio workflow
 
-Four isolated Studio/browser launches used new registries and profiles and
-started only with `node ./dist/cli/pokie.js --no-open`. The single retained
-harness carried the clean creation, Play, cancellation/retry, replay, Outcome
-Library, Stake handoff, caller-owned-destination, source-drift, and stale/cross
-project checklist.
-
-The last complete rendered journey established:
+The successful recovery journey used a new Studio registry and Chromium profile
+and launched only with `node ./dist/cli/pokie.js --no-open`. No project,
+browser profile, generated output, raw log, harness source, or screenshot is
+retained.
 
 ```text
-Create game -> Created in Studio; Editable; Valid
+clean Create game -> Created in Studio; Editable; Valid
 Play -> New Play session -> Spin -> Spinning… -> Round complete
-Simulation Run -> queued — 0/10000 -> Cancel -> Confirm
+Simulation -> Run Simulation -> queued — 0/10000 -> Cancel -> Confirm
   -> Cancelled after 0.2s — 3000/10000 rounds completed
-  -> Configure -> Run Simulation -> queued -> RTP result (completed)
-Replay / Recent Simulation -> Load -> Ready -- plays a fresh session forward
-  -> Run again -> no pending/job, terminal, or local error rendered
+  -> Configure -> enabled Run Simulation -> one retry -> queued -> RTP result
+Replay / Recent Simulation -> Load -> Run again
+  -> queued — 0/1 -> Replay job … completed
 Build/Export -> Generate exact outcome library (base)
-  -> Generated 1,024 outcomes for mode "base" using exact (RTP 100.78%)
-Outcome Library -> Stake Engine export -> caller-owned nonempty directory
-  -> Status: Choose a different destination; Build disabled
-  -> “Build will not overwrite it.”
+  -> Generated 1,024 outcomes, exact, RTP 100.78%
+Stake Engine export -> non-empty caller-owned destination
+  -> This destination already contains files; Build will not overwrite it
+  -> clear visible field -> Ready to build -> Build -> Building artifact
+  -> Built to …/stakeAdapter; manifest base, source starter-slot@0.1.0,
+     exact generation, owned prerequisite, published 1,024 items
 ```
 
-The last launch repaired the earlier offscreen-field driver issue by scrolling
-the rendered Stake output field into view; the visible field then contained the
-test path and the local safety guard rendered. The harness did not send Delete
-after selecting that field to restore the default, so it could not activate an
-enabled Stake Build control. No extra launch remains. The replay action likewise
-retained its local ready state after activation without an accepted lifecycle
-record or terminal result. Neither is a correlatable product failure. Replay
-terminal, successful Stake handoff, source drift, and cross-project/stale
-terminal variants remain unreached; this is **inconclusive (driver)**.
-
-No generated projects, outputs, profiles, screenshots, harness source, or raw
-logs are retained.
+The caller-owned sentinel remained protected. The bounded parity and
+interoperability suites supply the complementary CLI, source-drift,
+stale/cross-project, reverse/repeat, reuse/provenance, and cleanup coverage;
+the rendered workflow above independently confirms the corresponding public
+Studio creation, recovery, replay, provenance, and Stake handoff boundary.
