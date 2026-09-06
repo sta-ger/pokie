@@ -21,6 +21,7 @@ import {
     OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
     describeArtifactConversionPlanDiagnostic,
     describeWasmLifecycleBoundary,
+    computeArtifactInputBindingHash,
     isWasmComponentFile,
     estimateExactOutcomeSpaceSize,
     generateWeightedOutcomeLibrary,
@@ -78,17 +79,13 @@ export type StudioOutcomeLibraryPreflightBinding = {
 };
 
 // The plan is retained with the same immutable source/configuration/destination
-// binding shown to Studio. A job still verifies that binding at launch, but it
-// must not discard a successfully recognized managed Blueprint just because a
-// later planner probe races cancellation cleanup.
+// binding shown to Studio. A job still rebinds the Blueprint file itself at
+// every execution boundary, but it must not discard a successfully recognized
+// managed Blueprint just because a later planner probe races cancellation
+// cleanup.
 type StudioOutcomeLibraryPreflightSnapshot = {
     readonly binding: StudioOutcomeLibraryPreflightBinding;
     readonly plan: ArtifactConversionPlan;
-    // The HTTP launch boundary has just loaded and checked this runtime
-    // against the immutable binding. Retain it for the queued job so an
-    // unchanged managed Blueprint retry does not need one more independent
-    // materialization between launch acceptance and generation.
-    readonly validatedGame?: PokieGame;
 };
 
 // The Project Dashboard's Generate step (and Registry panel), built directly on top of the exact same
@@ -300,8 +297,8 @@ export class StudioOutcomeLibraryGenerateService {
      * deliberately not the first consumer of this check: otherwise a stale
      * browser request is observable as a queued job before it is rejected by
      * generate(). Package sources are re-estimated here; a managed Blueprint
-     * token instead rechecks its loaded runtime/configuration/destination
-     * against its already-recognized canonical source snapshot.
+     * token instead rebinds its canonical file/configuration/input snapshot
+     * without re-running directory recognition.
      */
     public async validatePreflightBinding(
         projectRoot: string,
@@ -313,12 +310,9 @@ export class StudioOutcomeLibraryGenerateService {
         }
         const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
         // A managed Blueprint preflight already holds the canonical source
-        // identity. Re-resolving that source here adds a third planner probe
-        // between the refreshed visible preflight and the token-bound job;
-        // cancellation cleanup can make that probe transiently unavailable
-        // even though the loaded Blueprint has not changed. Keep checking the
-        // runtime/configuration/destination contract, but leave source
-        // recognition to the immutable snapshot that generate() consumes.
+        // identity. Re-resolving it through the planner here adds a third
+        // directory-recognition probe between the refreshed visible preflight
+        // and the token-bound job. Rebind the canonical file directly instead.
         if (snapshot?.plan.source.kind === "blueprint") {
             if (
                 snapshot.binding.requestKey !== binding.requestKey ||
@@ -331,7 +325,7 @@ export class StudioOutcomeLibraryGenerateService {
                 return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
             }
             try {
-                const game = await this.loadGame(projectRoot);
+                const game = await this.loadBoundManagedBlueprint(snapshot, projectRoot);
                 const preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(
                     game,
                     request,
@@ -347,12 +341,6 @@ export class StudioOutcomeLibraryGenerateService {
                 ) {
                     return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
                 }
-                // The accepted job starts on the next microtask. Keep this
-                // exact, freshly checked runtime with its token so the job
-                // does not race a separate materialization after a
-                // cancellation/recovery cycle. Direct service callers that
-                // skip this HTTP boundary still load afresh in generate().
-                this.preflightSnapshots.set(request.preflightToken!, {...snapshot, validatedGame: game});
                 return undefined;
             } catch {
                 return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
@@ -403,13 +391,8 @@ export class StudioOutcomeLibraryGenerateService {
         let domainRequest: OutcomeLibraryGenerationRequest;
         let preparedRequest;
         try {
-            // A token-bound Blueprint runtime validated at the HTTP start
-            // boundary is safe to consume here. Re-loading it creates a
-            // fourth materialization probe after cancellation has already
-            // been accepted and can fail independently of the unchanged
-            // Blueprint. Every other caller retains the execution-time load.
-            game = snapshot?.plan.source.kind === "blueprint" && snapshot.validatedGame !== undefined
-                ? snapshot.validatedGame
+            game = snapshot?.plan.source.kind === "blueprint"
+                ? await this.loadBoundManagedBlueprint(snapshot, projectRoot)
                 : await this.loadGame(projectRoot);
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
@@ -484,10 +467,17 @@ export class StudioOutcomeLibraryGenerateService {
             };
         try {
             const execution = await this.planner.executeConversionPlan(plan, {
-                // Blueprint runtime/configuration identity was freshly checked
-                // above against the token binding. Package sources continue to
-                // re-resolve here for their byte-level execution guard.
-                currentSource: async () => tokenBoundBlueprintPlan?.source ?? (await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration)).source,
+                // Rebind a managed Blueprint's canonical file before both the
+                // generation read and durable publication. This intentionally
+                // avoids a planner re-probe, which can transiently fail during
+                // cancellation cleanup even when the immutable source is sound.
+                currentSource: async () => {
+                    if (tokenBoundBlueprintPlan !== undefined && snapshot !== undefined) {
+                        await this.loadBoundManagedBlueprint(snapshot, projectRoot);
+                        return tokenBoundBlueprintPlan.source;
+                    }
+                    return (await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration)).source;
+                },
                 read: async (): Promise<PreparedGenerationRead> => {
                     const reuse = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
                     if (reuse !== undefined) {
@@ -719,6 +709,47 @@ export class StudioOutcomeLibraryGenerateService {
                 ...(entry.generator !== undefined ? {strategy: entry.generator.strategy, generatedAt: entry.generator.generatedAt} : {}),
             })),
         };
+    }
+
+    /**
+     * Rebinds the physical managed Blueprint without asking the planner to
+     * recognize the enclosing Studio directory again. Its resolver provenance
+     * supplies the byte-level input binding, so cancellation recovery keeps
+     * its canonical identity without accepting a changed source.
+     */
+    private assertManagedBlueprintBinding(snapshot: StudioOutcomeLibraryPreflightSnapshot, game: PokieGame): void {
+        const source = snapshot.plan.source;
+        const canonicalLocation = source.canonicalLocation;
+        if (source.kind !== "blueprint" || canonicalLocation === undefined) {
+            throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed preflight before generating.");
+        }
+        let physicalLocation: string;
+        try {
+            physicalLocation = this.realpath(canonicalLocation);
+        } catch {
+            throw new Error("The managed Blueprint source changed or was deleted after preflight. Refresh the displayed preflight before generating.");
+        }
+        if (this.isDirectory(physicalLocation)) {
+            throw new Error("The managed Blueprint source was replaced after preflight. Refresh the displayed preflight before generating.");
+        }
+        const provenance = source.configurationProvenance;
+        if (provenance?.inputBindingHash !== undefined && computeArtifactInputBindingHash([canonicalLocation]) !== provenance.inputBindingHash) {
+            throw new Error("The managed Blueprint input changed after preflight. Refresh the displayed preflight before generating.");
+        }
+        const manifest = game.getManifest();
+        if (
+            manifest.id !== snapshot.binding.gameId ||
+            manifest.version !== snapshot.binding.gameVersion ||
+            (snapshot.binding.configHash !== undefined && game.getConfigHash?.() !== snapshot.binding.configHash)
+        ) {
+            throw new Error("The managed Blueprint configuration changed after preflight. Refresh the displayed preflight before generating.");
+        }
+    }
+
+    private async loadBoundManagedBlueprint(snapshot: StudioOutcomeLibraryPreflightSnapshot, projectRoot: string): Promise<PokieGame> {
+        const game = await this.loadGame(projectRoot);
+        this.assertManagedBlueprintBinding(snapshot, game);
+        return game;
     }
 
     // Reconstructs every mode OTHER than `excludeModeName` already in the bundle at `resolvedOutDir`, as
