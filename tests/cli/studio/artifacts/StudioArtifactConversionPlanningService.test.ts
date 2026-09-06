@@ -90,6 +90,27 @@ describe("StudioArtifactConversionPlanningService", () => {
         );
     });
 
+    it("lets the resolver retain an explicitly selected saved Blueprint without a separate filesystem probe", async () => {
+        const blueprintPath = path.join(projectRoot, "blueprint.json");
+        const resolver = {
+            resolve: jest.fn((location: string) => Promise.resolve(location === blueprintPath
+                ? {type: "blueprint" as const, rootPath: blueprintPath, capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export"] as const, provenance: "managed Blueprint selected during save/reopen"}
+                : undefined)),
+        } as ProjectResolving;
+        const registry = {preparePlan: jest.fn(() => ({status: "planned"}))} as unknown as ArtifactBuilderRegistry;
+        const service = new StudioArtifactConversionPlanningService("1.3.0", resolver, registry);
+
+        await expect(service.prepare(blueprintPath, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"))).resolves.toMatchObject({status: "planned"});
+
+        expect(resolver.resolve).toHaveBeenCalledTimes(1);
+        expect(resolver.resolve).toHaveBeenCalledWith(blueprintPath);
+        expect(registry.preparePlan).toHaveBeenCalledWith(
+            expect.objectContaining({type: "blueprint", rootPath: blueprintPath}),
+            "outcomeLibrary",
+            {destinationPath: path.join(projectRoot, "outcomelibrary")},
+        );
+    });
+
     it("keeps a managed Blueprint source available when its enclosing directory has an unrelated malformed artifact candidate", async () => {
         const blueprintPath = path.join(projectRoot, "blueprint.json");
         const resolver = {
