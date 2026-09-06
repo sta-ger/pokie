@@ -13,7 +13,7 @@ suites and 59 tests**. Per recovery instructions, it was not duplicated.
 npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
 ```
 
-## Fresh public Studio recovery
+## Prior fresh public Studio recovery
 
 The retained harness was updated in place before each attempt. Four fresh
 registries, browser profiles, and runtime directories launched candidate Studio
@@ -38,3 +38,32 @@ journey into Replay, Blueprint Outcome Library, Stake, or the cancellation,
 retry, stale/cross-project, and caller-owned-destination variants. The
 four-launch recovery budget is exhausted. No generated project tree, browser
 profile, raw log, screenshot, or harness file is retained in this evidence.
+
+## Current candidate recovery (four fresh launches)
+
+The retained complete-file command was deliberately not rerun.  The existing
+harness was repaired in place before each launch, then run only as
+`node ./dist/cli/pokie.js --no-open`, with a newly deleted/recreated Studio
+home and Chromium profile for every launch.
+
+Each current launch again reached clean Recommended creation, Close project,
+reopen, a settled Play Spin, and a rendered one-round Simulation result.  The
+first launch's short post-click wait missed the actual result, but its rendered
+diagnostic immediately showed `1/1 rounds`, RTP/warnings, **Open full report**
+and **Repeat simulation**; this was repaired as a driver wait, not recorded as
+a product defect.  The second launch reached the actual Replay surface, whose
+rendered guidance exposed **Session Spin** as the next user action.  The third
+confirmed that this is a native radio with no ordinary label element (the
+visible input value was `spin`); it did not reach the row-selection check.  In
+the fourth, the driver clicked **Replay** but failed to wait for the rendered
+tab transition before querying that native input, so its diagnostic still
+showed Simulation.  No rendered product error or reproducible defect was
+observed.
+
+The repaired harness's checklist continues from the first uncompleted action:
+wait for the rendered Replay tab, select Session Spin, inspect a recorded
+round, then generate the Blueprint Outcome Library, hand it to Stake, and
+exercise cancellation/retry, stale/cross-project and caller-owned-destination
+states.  The present invocation's four-launch allowance was exhausted before
+those remaining public goals could be reached.  No generated project/output
+tree, profile, automation file, raw log, or screenshot is retained.
