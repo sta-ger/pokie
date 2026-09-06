@@ -181,7 +181,7 @@ export class StudioOutcomeLibraryGenerateService {
         }
         let game: PokieGame;
         try {
-            game = await this.loadGame(projectRoot);
+            game = await this.loadGame(this.runtimeSourcePath(projectRoot));
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
@@ -325,7 +325,7 @@ export class StudioOutcomeLibraryGenerateService {
                 return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
             }
             try {
-                const game = await this.loadBoundManagedBlueprint(snapshot, projectRoot);
+                const game = await this.loadBoundManagedBlueprint(snapshot);
                 const preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(
                     game,
                     request,
@@ -392,8 +392,8 @@ export class StudioOutcomeLibraryGenerateService {
         let preparedRequest;
         try {
             game = snapshot?.plan.source.kind === "blueprint"
-                ? await this.loadBoundManagedBlueprint(snapshot, projectRoot)
-                : await this.loadGame(projectRoot);
+                ? await this.loadBoundManagedBlueprint(snapshot)
+                : await this.loadGame(this.runtimeSourcePath(projectRoot));
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
@@ -473,7 +473,7 @@ export class StudioOutcomeLibraryGenerateService {
                 // cancellation cleanup even when the immutable source is sound.
                 currentSource: async () => {
                     if (tokenBoundBlueprintPlan !== undefined && snapshot !== undefined) {
-                        await this.loadBoundManagedBlueprint(snapshot, projectRoot);
+                        await this.loadBoundManagedBlueprint(snapshot);
                         return tokenBoundBlueprintPlan.source;
                     }
                     return (await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration)).source;
@@ -620,7 +620,7 @@ export class StudioOutcomeLibraryGenerateService {
         if (wasmDiagnostic !== undefined) return {status: "load-error", error: wasmDiagnostic};
         let game: PokieGame;
         try {
-            game = await this.loadGame(projectRoot);
+            game = await this.loadGame(this.runtimeSourcePath(projectRoot));
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error)};
         }
@@ -746,10 +746,31 @@ export class StudioOutcomeLibraryGenerateService {
         }
     }
 
-    private async loadBoundManagedBlueprint(snapshot: StudioOutcomeLibraryPreflightSnapshot, projectRoot: string): Promise<PokieGame> {
-        const game = await this.loadGame(projectRoot);
+    private async loadBoundManagedBlueprint(snapshot: StudioOutcomeLibraryPreflightSnapshot): Promise<PokieGame> {
+        const canonicalLocation = snapshot.plan.source.canonicalLocation;
+        if (canonicalLocation === undefined) {
+            throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed preflight before generating.");
+        }
+        const game = await this.loadGame(canonicalLocation);
         this.assertManagedBlueprintBinding(snapshot, game);
         return game;
+    }
+
+    /**
+     * A managed Studio Project can be opened either through its canonical
+     * blueprint.json file or through its containing folder. The conversion
+     * planner already normalizes the latter to blueprint.json; runtime loading
+     * must use that same source identity instead of treating the folder like a
+     * package. Otherwise a clean saved project can load in the dashboard yet
+     * lose its recognized Blueprint provenance when Outcome Library preflight
+     * or registry work starts.
+     */
+    private runtimeSourcePath(projectRoot: string): string {
+        if (!this.isDirectory(projectRoot)) return projectRoot;
+        const managedBlueprintPath = path.join(projectRoot, "blueprint.json");
+        return this.directoryExists(managedBlueprintPath) && !this.isDirectory(managedBlueprintPath)
+            ? managedBlueprintPath
+            : projectRoot;
     }
 
     // Reconstructs every mode OTHER than `excludeModeName` already in the bundle at `resolvedOutDir`, as

@@ -100,6 +100,36 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             });
         });
 
+        it("uses a managed directory's canonical Blueprint for every Outcome Library runtime boundary", async () => {
+            const blueprintPath = path.join(projectRoot, "blueprint.json");
+            fs.writeFileSync(blueprintPath, JSON.stringify({
+                manifest: {id: "studio-directory-source", name: "Studio Directory Source", version: "1.0.0"},
+                reels: 2,
+                rows: 1,
+                symbols: ["A", "B"],
+                paytable: {A: {2: 5}},
+                reelStrips: [["A", "A", "B"], ["A", "B"]],
+                availableBets: [1],
+            }));
+            const loadGame = jest.fn((_source: string) => Promise.resolve(buildFixtureGame()));
+            const studio = new StudioOutcomeLibraryGenerateService(POKIE_VERSION, loadGame);
+
+            const preflight = await studio.estimate(projectRoot, {generation: "exact"});
+            expect(preflight).toMatchObject({
+                status: "ok",
+                plan: {source: {kind: "blueprint", canonicalLocation: blueprintPath}},
+            });
+            if (preflight.status !== "ok") return;
+
+            await expect(studio.generate(projectRoot, {generation: "exact", preflightToken: preflight.preflightToken})).resolves.toMatchObject({
+                status: "ok",
+                plan: {source: {kind: "blueprint", canonicalLocation: blueprintPath}},
+            });
+            await expect(studio.registry(projectRoot)).resolves.toMatchObject({status: "ok", buildStatus: "compatible"});
+            expect(loadGame).toHaveBeenCalled();
+            expect(loadGame.mock.calls.every(([source]) => source === blueprintPath)).toBe(true);
+        });
+
         it("retains a managed project Blueprint through cancellation, refreshed preflight, and unchanged retry", async () => {
             const blueprintPath = path.join(projectRoot, "blueprint.json");
             fs.writeFileSync(blueprintPath, JSON.stringify({
