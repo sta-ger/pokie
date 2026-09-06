@@ -1,54 +1,50 @@
 # PC-18 independent host verification — driver inconclusive
 
 Candidate code SHA: `938d6bfe61f13ff2dd80f1f984b2d4706bfa8646`.
-This evidence-only commit is its descendant; it contains no product-code change.
+This evidence commit is a docs-only descendant of that candidate.
 
 ## Retained complete-file boundary
 
 The controller-verified serialized command ran once on the candidate with all
-eleven required files:
+eleven required files named in the persisted request. Result: **11 suites / 60
+tests passed**. The candidate was rebuilt with `npm run build-cli` before this
+fresh UI recovery; the already-passing test command was not rerun.
 
-```text
-npm run test:targeted -- tests/cli/PC18RoleMissions.integration.test.ts tests/cli/PC18LifecycleParity.integration.test.ts tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/ArtifactInteroperabilityTorture.integration.test.ts tests/cli/PC17CliStudioParity.integration.test.ts tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx tests/cli/studio-client/src/PC17ProductSemanticAudit.browser.test.tsx tests/project/ArtifactConversionPlanner.test.ts tests/project/ManagedOutcomeProjectService.test.ts
-```
+## Fresh Studio recovery (four launches)
 
-Result: **11 suites / 60 tests passed**. The candidate was built with
-`npm run build-cli` before the first public launch. This recovery did not rerun
-either already-passing command.
+Each launch used a new Studio registry and Chromium profile and started the
+source-checkout build only with `node ./dist/cli/pokie.js --no-open`. The one
+in-place harness contained the ordered checklist for clean creation, Play,
+Simulation cancellation/recovery, replay, Outcome Library generation, and
+Stake handoff.
 
-## Fresh public Studio recovery runs
-
-All four permitted recovery launches used a new Studio registry and Chromium
-profile and started the source-checkout candidate only with:
-
-```text
-node ./dist/cli/pokie.js --no-open
-```
-
-The first three runs repaired bounded driver faults (a stale cancellation-sheet
-assumption and an omitted label helper) without a rendered product error. The
-fourth clean journey rendered these action-local observations:
+Rendered, action-local results across the launches:
 
 ```text
 Create game -> Created in Studio; Editable; Valid
 Play -> New Play session -> Spin -> Spinning… -> Round complete
 Simulation Run -> queued — 0/10000 -> Cancel -> Confirm
   -> Cancelled after 0.2s — 3000/10000 rounds completed
-  -> Configure -> Run Simulation -> queued — 0/10000
-  -> RTP 106.48%; 10000/10000 rounds; Duration 0.2s
-Replay -> Recent Simulation -> selected starter-slot v0.1.0 -> Load
-  -> Loaded replay (Source: Recreated -- recent simulation; Ready)
-  -> Run again
+  -> Configure -> Run Simulation -> queued -> RTP result (completed)
+Replay / Recent Simulation -> selected starter-slot v0.1.0 -> Load
+  -> Ready -- plays a fresh session forward -> Run again
+  -> no pending/job, local terminal, or local error rendered
+Build/Export -> Generate exact outcome library (base)
+  -> Generated 1,024 outcomes for mode "base" using exact (RTP 100.78%)
 ```
 
-For that exact final `Run again` activation, the immediately preceding local
-state rendered `Ready -- plays a fresh session forward`; no queued/job record,
-local completion, or action-local error rendered during the bounded semantic
-wait. The still-rendered control remained `Run again`. This does not meet the
-action-correlation contract for a finding and leaves Replay terminal, Outcome
-Library-to-Stake handoff, source drift, cross-project behavior, and
-caller-owned-destination safety unreached. It is a driver/instrumentation
-inconclusive result, not a product failure.
+The fourth launch's simulation completed rapidly before cancellation could be
+confirmed; the rendered local terminal was its RTP result, not a cancellation
+failure. Its still-open confirmation sheet was then dismissed, but the harness
+did not navigate from the completed simulation state before the launch budget
+ended.
 
-No generated projects, browser profiles, output trees, harness source, raw
-logs, or screenshots are retained.
+No action-local product error was rendered. In particular, the enabled Replay
+`Run again` action retained its exact local ready state after activation and
+never exposed a request/job lifecycle record, terminal, or error. That does
+not satisfy the action-correlation contract for a finding. Replay terminal,
+Stake caller-owned-destination safety, source drift, and cross-project/stale
+checks remain unreached; the appropriate status is **inconclusive (driver)**.
+
+No generated projects, outputs, browser profiles, screenshots, harness source,
+or raw logs are retained.
