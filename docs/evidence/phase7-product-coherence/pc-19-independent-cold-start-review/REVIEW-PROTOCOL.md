@@ -21,6 +21,8 @@ evidence/                         # streams, transcript, ledger, screenshots, de
 
 `PROVENANCE.json` binds a reviewer, UTC start/freeze times, the exact 40-character
 candidate SHA, and a retained package artifact (relative path, SHA-256 and byte size).
+The artifact's retained-content digest is the `candidatePackageSha256` used by every
+record; a self-declared package SHA that differs from the retained artifact is invalid.
 Every command has a unique ID, exact candidate/package binding, chronological start/end
 times, exit status, command text, and distinct structured stdout/stderr evidence.
 Structured evidence has a unique ID, retained relative path, digest, byte size, capture
@@ -34,8 +36,12 @@ for visual claims.
 
 `coverage.json` has exactly one complete, current-candidate record for each ID below.
 Each names the executed public workflow and surface, expected role, fresh absolute clean
-context, chronological blind-phase timestamps, structured evidence, and the required
-workflow observations. It cannot use one generic non-empty file for all IDs. Required
+context, a `phase`, chronological timestamps, structured evidence, and the required
+workflow observations. Every workflow except `known-findings` declares `phase: "blind"`
+and completes no later than `frozenAt`. `known-findings` declares
+`phase: "post-freeze-comparison"`; its start, end, and evidence capture must all be
+strictly after `frozenAt`. It cannot be recorded during clean-room work. It cannot use
+one generic non-empty file for all IDs. Required
 observations include installed CLI/help/errors/artifacts; public Studio launcher and
 rendered controls; role outputs; artifact/lifecycle boundaries; and Studio/isolated
 example desktop+narrow player parity.
@@ -55,8 +61,20 @@ failed publication. Player evidence compares Studio and isolated examples at des
 and narrow viewports for feature/win/inspection/reset/project-switch behaviour and
 rendered layout.
 
+After the freeze, send the freeze receipt to a verifier-controlled location outside the
+review run before opening known findings or completed campaign material. The immutable
+receipt is JSON with `schemaVersion: 1`, `receiptId`, `trustedBy`, `issuedAt`, `reviewId`,
+`candidateId`, `candidatePackageSha256`, `frozenAt`, and `frozenFindingsSha256`. The
+verifier records the receipt's SHA-256 and independently supplies the expected candidate
+SHA, package SHA, receipt path, and receipt SHA to the validator. A receipt in the review
+directory, or a receipt whose digest is not the verifier-supplied digest, is invalid.
+This external anchor prevents coordinated rewriting of the frozen file and mutable run
+records from replacing the already frozen findings. The post-freeze comparison and
+`known-findings` timestamps/evidence must be later than the receipt's `issuedAt`.
+
 After the freeze, `comparison.json` records exactly one candidate-bound, structured
-disposition for every frozen blind finding and cites the frozen-file hash.
+disposition for every frozen blind finding and cites the frozen-file hash. Its timestamp
+and every disposition's evidence capture are strictly post-freeze.
 `finding-register.json` carries every finding (including known and delta findings) with
 severity, P2 materiality, reproducer, public surface, owner, status, and structured
 evidence. A frozen finding's ID, severity, materiality, reproducer, public surface,
