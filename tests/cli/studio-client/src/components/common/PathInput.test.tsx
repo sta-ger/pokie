@@ -106,18 +106,72 @@ describe("PathInput", () => {
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Fsave.json&kind=file")).toBe(true);
     });
 
-    it("renders a file-appropriate status and remediation when a directory is used in a file control", async () => {
+    it("renders a file-appropriate status and remediation when a directory is entered in a file control", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "error", error: "some raw backend message that should never render", resolvedPath: "/root/games", reason: "type"}}),
         });
 
-        renderWithProviders(<Harness kind="file" />, {fetchImpl});
+        renderWithProviders(<Harness kind="file" initial="./games" />, {fetchImpl});
 
         await user.click(screen.getByRole("textbox", {name: "Path"}));
 
         expect(await screen.findByText('"/root/games" is a folder, not a file.')).toBeInTheDocument();
         expect(await screen.findByText("Point this at a file instead, or use Browse to pick one.")).toBeInTheDocument();
+    });
+
+    it("does not resolve a blank file field as Studio's working directory before Browse can select a file", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "valid", directory: "/home/alice/Documents", source: "documents"}}),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
+            "/api/home/fs/native-browse": () => ({ok: true, status: 200, body: {status: "selected", path: "/games/saved-design.json"}}),
+        });
+
+        renderWithProviders(<Harness kind="file" initial="" />, {fetchImpl});
+
+        await user.click(screen.getByRole("textbox", {name: "Path"}));
+
+        expect(calls.some((call) => call.url.startsWith("/api/home/fs/browse"))).toBe(false);
+        expect(screen.queryByText(/is a folder, not a file/)).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Browse…"}));
+
+        expect(await screen.findByDisplayValue("/games/saved-design.json")).toBeInTheDocument();
+        const pickCall = calls.find((call) => call.url === "/api/home/fs/native-browse");
+        expect(JSON.parse(String(pickCall?.init?.body))).toMatchObject({kind: "file", mode: "open", startPath: "/home/alice/Documents"});
+        expect(screen.queryByText(/is a folder, not a file/)).not.toBeInTheDocument();
+    });
+
+    it("offers a blank file field's server-browser fallback at the default directory and selects its file", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "valid", directory: "/home/alice/Documents", source: "documents"}}),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "unavailable", reason: "No graphical display."}}),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    resolvedPath: "/home/alice/Documents",
+                    displayPath: "/home/alice/Documents",
+                    entries: [{name: "cli-created-blueprint.json", isDirectory: false}],
+                    isDirectory: true,
+                },
+            }),
+        });
+
+        renderWithProviders(<Harness kind="file" initial="" />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Browse…"}));
+
+        expect(await screen.findByText("Server filesystem browser")).toBeInTheDocument();
+        expect(await screen.findByText("Current location: /home/alice/Documents")).toBeInTheDocument();
+        await user.click(screen.getByText("cli-created-blueprint.json"));
+
+        expect(await screen.findByDisplayValue("/home/alice/Documents/cli-created-blueprint.json")).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=%2Fhome%2Falice%2FDocuments")).toBe(true);
+        expect(screen.queryByText(/is a folder, not a file/)).not.toBeInTheDocument();
     });
 
     it("does not request kind=file for a directory control", async () => {

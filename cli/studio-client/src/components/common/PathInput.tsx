@@ -160,10 +160,18 @@ export const PathInput = forwardRef<HTMLInputElement, PathInputProps>(({
     // already-absolute path) really is the user's own input being resolved, hence "Resolves to". A blank
     // field with a caller-supplied `autoDestinationPath` resolves *that* instead of the blank string
     // itself -- see its own doc comment for why (the root a blank string resolves to isn't necessarily
-    // where the action actually writes).
+    // where the action actually writes). A blank file field without such a destination has no file to
+    // resolve at all: resolving it against Studio's working directory would incorrectly report that
+    // directory as a folder-not-file error before Browse can select a saved design.
     const resolveHint = (path: string): void => {
         const auto = path.trim().length === 0;
-        const target = auto && autoDestinationPath && autoDestinationPath.trim().length > 0 ? autoDestinationPath : path;
+        const hasAutoDestination = autoDestinationPath !== undefined && autoDestinationPath.trim().length > 0;
+        if (auto && kind === "file" && !hasAutoDestination) {
+            resolveRequestIdRef.current += 1;
+            setHint({status: "idle"});
+            return;
+        }
+        const target = auto && hasAutoDestination ? autoDestinationPath : path;
         const requestId = ++resolveRequestIdRef.current;
         setHint({status: "loading"});
         browseFilesystem(fetchImpl, target, relevantDirectory, kind)
