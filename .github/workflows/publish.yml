@@ -1,20 +1,33 @@
-name: Publish
+name: Authorized PC-20 publication
 
 on:
   workflow_dispatch:
     inputs:
+      candidate_ref:
+        description: "Immutable accepted candidate SHA (not a branch or tag)"
+        required: true
+        type: string
       pc20_release_config:
-        description: "Absolute path to the authorized PC-20 release config on the release runner"
+        description: "Absolute config path provisioned only on the protected release runner"
         required: true
         type: string
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, pokie-release-runner]
     permissions:
-      contents: read
+      contents: write
+      id-token: write
+    environment: npm-publication
     steps:
+      - name: Reject non-SHA dispatches before checkout
+        run: test "${{ inputs.candidate_ref }}" = "$(printf '%s' '${{ inputs.candidate_ref }}' | grep -E '^[0-9a-fA-F]{40}$')"
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_ref }}
+          fetch-depth: 0
+          persist-credentials: true
 
       - uses: actions/setup-node@v4
         with:
@@ -22,11 +35,34 @@ jobs:
           cache: "npm"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Verify explicit candidate checkout and protected release authority
+        env:
+          PC20_CONFIG: ${{ inputs.pc20_release_config }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PC20_DRIVE_ACCESS_TOKEN: ${{ secrets.PC20_DRIVE_ACCESS_TOKEN }}
+        run: |
+          test -r "$PC20_CONFIG"
+          test -n "$NODE_AUTH_TOKEN"
+          test -n "$PC20_DRIVE_ACCESS_TOKEN"
+          test "$(git rev-parse HEAD)" = "${{ inputs.candidate_ref }}"
+          git remote get-url origin >/dev/null
+          npm whoami
+
       - run: npm ci
 
-      # Publishing is intentionally not an automatic push side effect.  The
-      # authorized release runner must supply external merge/push/npm/Drive
-      # receipts; the controller runs the one local composite gate and fails
-      # closed on any identity, cleanup, or receipt mismatch.
-      - name: Validate PC-20 release completion
-        run: npm run release:pc20 -- --config "${{ inputs.pc20_release_config }}"
+      - name: Run the one candidate-bound release gate and retain its archive receipt
+        env:
+          PC20_CONFIG: ${{ inputs.pc20_release_config }}
+        run: npm run release:pc20 -- --gate-only --config "$PC20_CONFIG"
+
+      - name: Merge, push, publish and Drive round-trip under the authorized runner
+        env:
+          PC20_CONFIG: ${{ inputs.pc20_release_config }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PC20_DRIVE_ACCESS_TOKEN: ${{ secrets.PC20_DRIVE_ACCESS_TOKEN }}
+        run: node scripts/pc-20-authorized-release-runner.mjs --config "$PC20_CONFIG" --candidate-ref "${{ inputs.candidate_ref }}"
+
+      - name: Append the receipt-bound PC-20 completion record
+        env:
+          PC20_CONFIG: ${{ inputs.pc20_release_config }}
+        run: npm run release:pc20 -- --config "$PC20_CONFIG"

@@ -1,4 +1,5 @@
 import {ChildProcessWithoutNullStreams, execFileSync, spawn, spawnSync} from "child_process";
+import {createHash} from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -99,6 +100,33 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     let installDir: string | undefined;
     let pokieBinPath: string;
 
+    function retainReleaseSmokeReceipt(): void {
+        const receiptPath = process.env.POKIE_PACK_SMOKE_RECEIPT;
+        const archivePath = process.env.POKIE_PACK_SMOKE_ARCHIVE_PATH;
+        if (receiptPath === undefined && archivePath === undefined) return;
+        expect(receiptPath).toBeDefined();
+        expect(archivePath).toBeDefined();
+        expect(process.env.POKIE_PACK_SMOKE_CANDIDATE_ID).toMatch(/^[a-f0-9]{40}$/i);
+        const archive = fs.readFileSync(tarballPath!);
+        const archiveSha256 = createHash("sha256").update(archive).digest("hex");
+        expect(archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
+        fs.mkdirSync(path.dirname(archivePath!), {recursive: true});
+        fs.copyFileSync(tarballPath!, archivePath!, fs.constants.COPYFILE_EXCL);
+        const ownPackage = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {name: string; version: string};
+        fs.writeFileSync(receiptPath!, `${JSON.stringify({
+            schemaVersion: 1,
+            kind: "npm-pack-install-smoke",
+            candidateId: process.env.POKIE_PACK_SMOKE_CANDIDATE_ID,
+            candidatePackageSha256: archiveSha256,
+            packageName: ownPackage.name,
+            packageVersion: ownPackage.version,
+            archivePath: path.resolve(archivePath!),
+            archiveSha256,
+            archiveSizeBytes: archive.length,
+            installed: {cli: true, studioApi: true, studioAssets: true, libraryWorker: true, processesDrained: true},
+        }, null, 2)}\n`, {flag: "wx"});
+    }
+
     beforeAll(() => {
         // Build explicitly, then keep the real tarball and npm's output outside the candidate tree.
         // `npm pack --json` includes one record per shipped file; once the package exceeded 8,000
@@ -134,6 +162,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     });
 
     afterAll(() => {
+        // Jest reaches afterAll only after every real installed CLI, Studio/API/assets and worker
+        // assertion above has completed; the receipt is therefore an append-only release artifact,
+        // not a pre-flight checklist written before the smoke boundary ran.
+        retainReleaseSmokeReceipt();
         if (installDir !== undefined) {
             fs.rmSync(installDir, {recursive: true, force: true});
         }

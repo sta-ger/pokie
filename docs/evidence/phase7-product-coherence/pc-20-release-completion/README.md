@@ -11,7 +11,9 @@ record:
 - a verifier-supplied PC-19 candidate SHA, package archive digest, and trusted
   freeze receipt outside this mutable evidence tree;
 - one successful `npm run check:release` process group on clean `develop` at
-  that exact SHA;
+  that exact SHA. The gate retains the exact `.tgz`, its SHA-256, captured
+  output, and the real npm-pack/install receipt for installed CLI, Studio/API
+  assets, and direct library-worker smoke results;
 - an externally anchored lifecycle receipt proving the same SHA was merged,
   pushed, published with the same package digest, and uploaded to/read back
   from Drive.  That receipt must refer to the retained gate-record digest.
@@ -21,6 +23,13 @@ it stops before completion until the external lifecycle receipt exists.  After
 the authorized merge/push/publication/Drive round trip records that gate digest,
 a second invocation reuses the immutable green gate rather than running the
 composite a second time and writes the completion record.
+
+The workflow runs only on the protected `pokie-release-runner` label. It checks
+out an immutable candidate SHA, validates release authority, runs `--gate-only`,
+then uses `scripts/pc-20-authorized-release-runner.mjs` for the fast-forward
+develop merge, push, archive publication/registry digest check, and authenticated
+Drive upload/read-back. Missing authority or any ref/package/archive/receipt
+drift leaves this directory without a completion record.
 
 No repository-local assertion, checklist, or older campaign record can stand
 in for those credentials and receipts.  The controller uses exclusive file

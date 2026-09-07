@@ -1,111 +1,91 @@
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
-import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
-import os from "node:os";
+import {execFileSync} from "node:child_process";
+import {existsSync} from "node:fs";
+import {readFile, rm, writeFile} from "node:fs/promises";
 import path from "node:path";
 import {test} from "@jest/globals";
-import {PC20_SCHEMA_VERSION, validatePc20ReleaseCompletion} from "../../scripts/pc-20-release-completion.mjs";
+import {PC20_EVIDENCE_DIRECTORY, PC20_SCHEMA_VERSION, runBoundedProcess, validatePc20ReleaseCompletion, validatePc20ReleaseGate} from "../../scripts/pc-20-release-completion.mjs";
 
-const candidateId = "a".repeat(40);
-const packageSha = "b".repeat(64);
+const repositoryDirectory = path.resolve(".");
+const candidateId = execFileSync("git", ["rev-parse", "HEAD"], {cwd:repositoryDirectory, encoding:"utf8"}).trim();
+const packageIdentity = JSON.parse(await readFile(path.join(repositoryDirectory, "package.json"), "utf8"));
+const archive = Buffer.from("PC-20 test archive\n");
+const packageSha = createHash("sha256").update(archive).digest("hex");
 const hash = (value) => createHash("sha256").update(value).digest("hex");
-const gateResult = {command:"npm run check:release", startedAt:"2026-09-07T20:00:00.000Z", endedAt:"2026-09-07T20:01:00.000Z", exitCode:0, timedOut:false, cancelled:false, processGroupDrained:true};
+
+function paths() {
+    const stem = `pc-20-${candidateId}`;
+    return ["release-gate.json", "completion.json", "npm-pack-smoke.json", "package.tgz", "release-gate.stdout.txt", "release-gate.stderr.txt"].map((suffix) => path.join(PC20_EVIDENCE_DIRECTORY, `${stem}-${suffix}`));
+}
 
 async function fixture() {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pokie-pc20-"));
-    const reviewDirectory = path.join(root, "review"), outputDirectory = path.join(root, "pc20"), freezeReceiptPath = path.join(root, "freeze.json"), lifecycleReceiptPath = path.join(root, "lifecycle.json");
+    const lifecycleReceiptPath = path.join("/tmp", `pokie-pc20-lifecycle-${process.pid}-${Date.now()}.json`);
+    const freezeReceiptPath = path.join("/tmp", `pokie-pc20-freeze-${process.pid}-${Date.now()}.json`);
     const freezeContents = "trusted freeze receipt\n";
     await writeFile(freezeReceiptPath, freezeContents);
-    const config = {candidateId, candidatePackageSha256:packageSha, reviewDirectory, freezeReceiptPath, freezeReceiptSha256:hash(freezeContents), lifecycleReceiptPath, lifecycleReceiptSha256:"0".repeat(64), outputDirectory, repositoryDirectory:root, packageName:"pokie", packageVersion:"1.3.0"};
-    return {root, config, lifecycleReceiptPath, outputDirectory};
+    return {config:{candidateId, candidatePackageSha256:packageSha, reviewDirectory:"/tmp/pc19-review", freezeReceiptPath, freezeReceiptSha256:hash(freezeContents), lifecycleReceiptPath, lifecycleReceiptSha256:"0".repeat(64), outputDirectory:PC20_EVIDENCE_DIRECTORY, repositoryDirectory, packageName:packageIdentity.name, packageVersion:packageIdentity.version}, lifecycleReceiptPath, cleanup:async () => { await Promise.all([...paths().map((file) => rm(file, {force:true})), rm(freezeReceiptPath, {force:true}), rm(lifecycleReceiptPath, {force:true})]); }};
 }
 
-function lifecycleReceipt(gateSha256, mutate = (value) => value) {
-    return mutate({schemaVersion:PC20_SCHEMA_VERSION, receiptId:"release-1", issuedAt:"2026-09-07T20:02:00.000Z", candidateId, candidatePackageSha256:packageSha, releaseSha:candidateId, git:{mergedToDevelop:true, cleanDevelop:true, developSha:candidateId, pushedSha:candidateId, remote:"origin", pushedAt:"2026-09-07T20:01:20.000Z"}, publication:{published:true, packageName:"pokie", packageVersion:"1.3.0", packageSha256:packageSha, publishedSha:candidateId, registryIdentity:"https://registry.npmjs.org/pokie/1.3.0", publishedAt:"2026-09-07T20:01:30.000Z"}, drive:{uploaded:true, readBack:true, releaseGateSha256:gateSha256, uploadId:"drive-file-1", uploadedAt:"2026-09-07T20:01:40.000Z", readBackAt:"2026-09-07T20:01:50.000Z"}});
+const acceptedPc19 = () => ({candidateId, frozenFindingsSha256:"c".repeat(64), freezeReceiptSha256:"d".repeat(64), coverageIds:["blind-cli-exploration", "blind-studio-exploration", "player-examples-parity", "role-math-par"]});
+const state = () => ({head:candidateId, branch:"develop", dirty:false});
+
+async function retainedGate(_directory, options) {
+    await writeFile(options.paths.archive, archive, {flag:"wx"});
+    const receipt = {schemaVersion:PC20_SCHEMA_VERSION, kind:"npm-pack-install-smoke", candidateId, candidatePackageSha256:packageSha, packageName:packageIdentity.name, packageVersion:packageIdentity.version, archivePath:options.paths.archive, archiveSha256:packageSha, archiveSizeBytes:archive.length, installed:{cli:true, studioApi:true, studioAssets:true, libraryWorker:true, processesDrained:true}};
+    await writeFile(options.paths.smoke, `${JSON.stringify(receipt, null, 2)}\n`, {flag:"wx"});
+    return {command:"npm run check:release", startedAt:"2026-09-07T20:00:00.000Z", endedAt:"2026-09-07T20:01:00.000Z", exitCode:0, timedOut:false, cancelled:false, processGroupDrained:true, stdout:"real candidate gate output\n", stderr:""};
 }
 
-function acceptedPc19() {
-    return {candidateId, frozenFindingsSha256:"c".repeat(64), freezeReceiptSha256:"d".repeat(64), coverageIds:["blind-cli-exploration", "blind-studio-exploration", "player-examples-parity", "role-math-par"]};
+function lifecycle(gateSha256) {
+    return {schemaVersion:PC20_SCHEMA_VERSION, receiptId:"release-1", issuedAt:"2026-09-07T20:02:00.000Z", candidateId, candidatePackageSha256:packageSha, releaseSha:candidateId, git:{mergedToDevelop:true, cleanDevelop:true, developSha:candidateId, pushedSha:candidateId, remote:"origin", pushedAt:"2026-09-07T20:01:20.000Z"}, publication:{published:true, packageName:packageIdentity.name, packageVersion:packageIdentity.version, packageSha256:packageSha, registryArchiveSha256:packageSha, publishedSha:candidateId, registryIdentity:"https://registry.example/pokie.tgz", publishedAt:"2026-09-07T20:01:30.000Z"}, drive:{uploaded:true, readBack:true, releaseGateSha256:gateSha256, readBackSha256:gateSha256, uploadId:"drive-file-1", uploadedAt:"2026-09-07T20:01:40.000Z", readBackAt:"2026-09-07T20:01:50.000Z"}};
 }
 
-test("runs the official release composite once only after PC-19 acceptance, then appends a completion tied to push, publish, and Drive receipts", async () => {
-    const {root, config, lifecycleReceiptPath, outputDirectory} = await fixture();
-    let pc19Calls = 0, gateCalls = 0;
+test("retains the canonical candidate archive/install receipt and reuses its immutable green gate", async () => {
+    const testFixture = await fixture();
     try {
-        const result = await validatePc20ReleaseCompletion(config, {
-            validatePc19:async () => { pc19Calls += 1; return acceptedPc19(); },
-            readRepositoryState:() => ({head:candidateId, branch:"develop", dirty:false}),
-            runReleaseGate:async () => {
-                gateCalls += 1;
-                const gate = {schemaVersion:PC20_SCHEMA_VERSION, kind:"release-gate", candidateId, candidatePackageSha256:packageSha, ...gateResult};
-                const gateSha = hash(`${JSON.stringify(gate, null, 2)}\n`);
-                const contents = `${JSON.stringify(lifecycleReceipt(gateSha), null, 2)}\n`;
-                await writeFile(lifecycleReceiptPath, contents);
-                config.lifecycleReceiptSha256 = hash(contents);
-                return gateResult;
-            },
-        });
-        assert.equal(result.candidateId, candidateId);
-        assert.equal(pc19Calls, 1);
-        assert.equal(gateCalls, 1);
-        const entries = await Promise.all(["pc-20-" + candidateId + "-release-gate.json", "pc-20-" + candidateId + "-completion.json"].map((name) => readFile(path.join(outputDirectory, name), "utf8")));
-        assert.match(entries[0], /npm run check:release/);
-        assert.match(entries[1], /campaign-completion/);
-
-        const replay = await validatePc20ReleaseCompletion(config, {
-            validatePc19:async () => acceptedPc19(),
-            readRepositoryState:() => ({head:candidateId, branch:"develop", dirty:false}),
-            runReleaseGate:async () => { throw new Error("the persisted candidate gate must not be run twice"); },
-        });
-        assert.equal(replay.reused, true);
-        assert.equal(gateCalls, 1);
-    } finally { await rm(root, {recursive:true, force:true}); }
+        const gateRun = await validatePc20ReleaseGate(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state, runReleaseGate:retainedGate});
+        assert.equal(gateRun.gate.reused, false);
+        assert.equal(gateRun.gate.gate.archiveSha256, packageSha);
+        assert.equal(existsSync(paths()[3]), true);
+        const receipt = lifecycle(gateRun.gate.sha256);
+        const contents = `${JSON.stringify(receipt, null, 2)}\n`;
+        await writeFile(testFixture.lifecycleReceiptPath, contents);
+        testFixture.config.lifecycleReceiptSha256 = hash(contents);
+        const completed = await validatePc20ReleaseCompletion(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state, runReleaseGate:async () => { throw new Error("immutable gate was not reused"); }});
+        assert.equal(completed.candidateId, candidateId);
+        assert.equal((await validatePc20ReleaseGate(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state, runReleaseGate:async () => { throw new Error("gate rerun"); }})).gate.reused, true);
+    } finally { await testFixture.cleanup(); }
 });
 
-test("fails closed before running the release gate when PC-19 is unaccepted or develop has drifted", async () => {
-    const {root, config} = await fixture();
+test("rejects alternate evidence locations, package identity drift, and altered smoke/lifecycle bindings", async () => {
+    const testFixture = await fixture();
     try {
-        let gateCalls = 0;
-        await assert.rejects(() => validatePc20ReleaseCompletion(config, {
-            validatePc19:async () => { throw new Error("PC-19 independent-review evidence is invalid: incomplete coverage"); },
-            readRepositoryState:() => ({head:candidateId, branch:"develop", dirty:false}),
-            runReleaseGate:async () => { gateCalls += 1; return gateResult; },
-        }), /incomplete coverage/);
-        assert.equal(gateCalls, 0);
-        await assert.rejects(() => validatePc20ReleaseCompletion(config, {
-            validatePc19:async () => acceptedPc19(),
-            readRepositoryState:() => ({head:"e".repeat(40), branch:"develop", dirty:false}),
-            runReleaseGate:async () => { gateCalls += 1; return gateResult; },
-        }), /clean develop at the accepted candidate/i);
-        assert.equal(gateCalls, 0);
-    } finally { await rm(root, {recursive:true, force:true}); }
+        await assert.rejects(() => validatePc20ReleaseGate({...testFixture.config, outputDirectory:"/tmp/not-pc20"}, {validatePc19:acceptedPc19, readRepositoryState:state}), /canonical PC-20 evidence/i);
+        await assert.rejects(() => validatePc20ReleaseGate({...testFixture.config, packageVersion:"0.0.0"}, {validatePc19:acceptedPc19, readRepositoryState:state}), /package name\/version/i);
+        await validatePc20ReleaseGate(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state, runReleaseGate:retainedGate});
+        await writeFile(paths()[3], "tampered archive\n");
+        await assert.rejects(() => validatePc20ReleaseGate(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state}), /archive digest/i);
+    } finally { await testFixture.cleanup(); }
 });
 
-test("rejects altered registry, Drive, and process-cleanup receipts rather than treating a checklist as release completion", async () => {
-    for (const mutate of [
-        (receipt) => { receipt.publication.packageSha256 = "e".repeat(64); return receipt; },
-        (receipt) => { receipt.drive.readBack = false; return receipt; },
-    ]) {
-        const {root, config, lifecycleReceiptPath} = await fixture();
-        try {
-            const gate = {schemaVersion:PC20_SCHEMA_VERSION, kind:"release-gate", candidateId, candidatePackageSha256:packageSha, ...gateResult};
-            const gateSha = hash(`${JSON.stringify(gate, null, 2)}\n`);
-            const contents = `${JSON.stringify(lifecycleReceipt(gateSha, mutate), null, 2)}\n`;
-            await writeFile(lifecycleReceiptPath, contents);
-            config.lifecycleReceiptSha256 = hash(contents);
-            await assert.rejects(() => validatePc20ReleaseCompletion(config, {
-                validatePc19:async () => acceptedPc19(),
-                readRepositoryState:() => ({head:candidateId, branch:"develop", dirty:false}),
-                runReleaseGate:async () => gateResult,
-            }), /registry publication identity|Drive upload\/read-back/i);
-        } finally { await rm(root, {recursive:true, force:true}); }
-    }
-    const {root, config} = await fixture();
-    try {
-        await assert.rejects(() => validatePc20ReleaseCompletion(config, {
-            validatePc19:async () => acceptedPc19(),
-            readRepositoryState:() => ({head:candidateId, branch:"develop", dirty:false}),
-            runReleaseGate:async () => ({...gateResult, processGroupDrained:false}),
-        }), /release gate record is incomplete/i);
-    } finally { await rm(root, {recursive:true, force:true}); }
+test("drains a real detached process tree on success, timeout, cancellation, and spawn error", async () => {
+    const success = await runBoundedProcess(process.execPath, ["-e", "process.stdout.write('ok')"], {cwd:repositoryDirectory, timeoutMs:1_000});
+    assert.equal(success.processGroupDrained, true);
+    await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {cwd:repositoryDirectory, timeoutMs:50}), /timed out/i);
+    const controller = new AbortController(); controller.abort();
+    await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", "0"], {cwd:repositoryDirectory, signal:controller.signal}), /cancelled/i);
+    await assert.rejects(() => runBoundedProcess("definitely-not-a-command-pc20", [], {cwd:repositoryDirectory}), /ENOENT|spawn/i);
+});
+
+test("the publication workflow is an authorized candidate-ref runner, not an ephemeral completion stub", async () => {
+    const workflow = await readFile(path.join(repositoryDirectory, ".github", "workflows", "publish.yml"), "utf8");
+    assert.match(workflow, /runs-on: \[self-hosted, pokie-release-runner\]/);
+    assert.match(workflow, /candidate_ref/);
+    assert.match(workflow, /ref: \$\{\{ inputs\.candidate_ref \}\}/);
+    assert.match(workflow, /contents: write/);
+    assert.match(workflow, /NPM_TOKEN/);
+    assert.match(workflow, /PC20_DRIVE_ACCESS_TOKEN/);
+    assert.match(workflow, /--gate-only/);
+    assert.match(workflow, /pc-20-authorized-release-runner\.mjs/);
 });
