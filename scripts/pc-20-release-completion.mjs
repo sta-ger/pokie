@@ -9,7 +9,7 @@
  */
 import {createHash} from "node:crypto";
 import {existsSync} from "node:fs";
-import {mkdir, readFile, stat, writeFile} from "node:fs/promises";
+import {mkdir, readFile, rm, stat, writeFile} from "node:fs/promises";
 import {spawn, spawnSync} from "node:child_process";
 import path from "node:path";
 import process from "node:process";
@@ -34,7 +34,15 @@ function required(value, name) {
 function outputPaths(config) {
     const root = path.resolve(required(config.outputDirectory, "outputDirectory"));
     const name = `pc-20-${config.candidateId}`;
-    return {root, gate:path.join(root, `${name}-release-gate.json`), completion:path.join(root, `${name}-completion.json`), smoke:path.join(root, `${name}-npm-pack-smoke.json`), archive:path.join(root, `${name}-package.tgz`), stdout:path.join(root, `${name}-release-gate.stdout.txt`), stderr:path.join(root, `${name}-release-gate.stderr.txt`)};
+    return {root, gate:path.join(root, `${name}-release-gate.json`), failed:path.join(root, `${name}-release-gate.failed.json`), completion:path.join(root, `${name}-completion.json`), smoke:path.join(root, `${name}-npm-pack-smoke.json`), archive:path.join(root, `${name}-package.tgz`), stdout:path.join(root, `${name}-release-gate.stdout.txt`), stderr:path.join(root, `${name}-release-gate.stderr.txt`)};
+}
+
+export function pc20CandidateReceiptPaths(candidateId, {includeCompletion = true, includeFailed = true} = {}) {
+    const name = `pc-20-${candidateId}`;
+    const paths = ["release-gate.json", "npm-pack-smoke.json", "package.tgz", "release-gate.stdout.txt", "release-gate.stderr.txt"];
+    if (includeCompletion) paths.push("completion.json");
+    if (includeFailed) paths.push("release-gate.failed.json");
+    return new Set(paths.map((suffix) => path.join(PC20_EVIDENCE_DIRECTORY, `${name}-${suffix}`)));
 }
 
 async function readJson(target, label) {
@@ -68,22 +76,29 @@ function commandResult(command, args, cwd) {
     return (result.stdout || "").trim();
 }
 
-export function readRepositoryState(repositoryDirectory) {
+export function readRepositoryState(repositoryDirectory, permittedReceiptPaths = new Set()) {
     const cwd = path.resolve(repositoryDirectory);
     const head = commandResult("git", ["rev-parse", "HEAD"], cwd);
     const branch = commandResult("git", ["branch", "--show-current"], cwd);
-    const evidencePrefix = `${path.relative(cwd, PC20_EVIDENCE_DIRECTORY).split(path.sep).join("/")}/`;
-    const dirty = commandResult("git", ["status", "--porcelain", "--untracked-files=all"], cwd).split("\n").filter(Boolean).some((line) => {
-        // The append-only candidate receipts are the controller's own output;
-        // source or any other evidence mutation remains a dirty checkout.
-        const changed = line.slice(3).replace(/^"|"$/g, "");
-        return !changed.startsWith(evidencePrefix);
-    });
-    return {head, branch, dirty};
+    const raw = commandResult("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], cwd);
+    const records = raw ? raw.split("\0").filter(Boolean) : [];
+    const changedPaths = [];
+    for (let index = 0; index < records.length; index++) {
+        const record = records[index];
+        const changed = record.slice(3);
+        changedPaths.push(path.resolve(cwd, changed));
+        if (/^[RC]/.test(record.slice(0, 2))) changedPaths.push(path.resolve(cwd, records[++index] || ""));
+    }
+    const dirtyPaths = changedPaths.filter((changed) => !permittedReceiptPaths.has(changed));
+    return {head, branch, dirty:dirtyPaths.length > 0, dirtyPaths};
 }
 
 function assertExactCleanDevelop(state, candidateId, phase) {
     if (!state || state.head !== candidateId || state.branch !== "develop" || state.dirty) fail(`${phase} must run from clean develop at the accepted candidate SHA`);
+}
+
+export function assertPc20CandidateClean(repositoryDirectory, candidateId, phase = "PC-20 lifecycle", receiptOptions = {}) {
+    assertExactCleanDevelop(readRepositoryState(repositoryDirectory, pc20CandidateReceiptPaths(candidateId, receiptOptions)), candidateId, phase);
 }
 
 const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -93,32 +108,79 @@ function processGroupAlive(pid) {
     try { process.kill(-pid, 0); return true; } catch { return false; }
 }
 
-/** Terminate a detached process group and refuse to return until it is gone. */
-export async function drainProcessTree(child, graceMs = 1_000) {
+function processSnapshot() {
+    if (process.platform === "win32") return new Map();
+    const result = spawnSync("ps", ["-eo", "pid=,ppid=,stat="], {encoding:"utf8"});
+    const processes = new Map();
+    for (const line of (result.stdout || "").split("\n")) {
+        const match = /^\s*(\d+)\s+(\d+)\s+(\S+)/.exec(line);
+        if (match) processes.set(Number(match[1]), {parentPid:Number(match[2]), zombie:match[3].startsWith("Z")});
+    }
+    return processes;
+}
+
+function createOwnershipTracker(pid) {
+    const ownedPids = new Set(Number.isInteger(pid) && pid > 0 ? [pid] : []);
+    const capture = () => {
+        const snapshot = processSnapshot();
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (const [childPid, details] of snapshot) {
+                if (ownedPids.has(details.parentPid) && !ownedPids.has(childPid)) {
+                    ownedPids.add(childPid);
+                    changed = true;
+                }
+            }
+        }
+    };
+    capture();
+    const timer = setInterval(capture, 10);
+    return {ownedPids, capture, stop:() => clearInterval(timer)};
+}
+
+function processAlive(pid) {
+    const details = processSnapshot().get(pid);
+    if (details?.zombie) return false;
+    try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+/** Terminate the root process group and every descendant observed while it ran. */
+export async function drainProcessTree(child, graceMs = 1_000, ownedPids = new Set()) {
     const pid = child?.pid;
-    if (!Number.isInteger(pid) || pid <= 0) return {processGroupDrained:true, termination:"not-started"};
+    if (Number.isInteger(pid) && pid > 0) ownedPids.add(pid);
+    if (ownedPids.size === 0) return {processGroupDrained:true, processTreeDrained:true, ownedProcessIds:[], termination:"not-started"};
     const terminate = (signal) => {
-        try {
-            if (process.platform === "win32") child.kill(signal);
-            else process.kill(-pid, signal);
-        } catch { /* a concurrently exiting tree is verified below */ }
+        for (const processId of ownedPids) {
+            try {
+                if (process.platform === "win32") process.kill(processId, signal);
+                else {
+                    // A detached descendant gets its own process group; signal both its
+                    // group and its PID, then verify it actually left the process table.
+                    process.kill(-processId, signal);
+                }
+            } catch { /* a concurrently exiting tree is verified below */ }
+            try { process.kill(processId, signal); } catch { /* see verification below */ }
+        }
     };
     if (process.platform === "win32") {
-        if (child.exitCode === null) terminate("SIGTERM");
-        await Promise.race([new Promise((resolve) => child.once("exit", resolve)), pause(graceMs)]);
-        if (child.exitCode === null) terminate("SIGKILL");
-        await Promise.race([new Promise((resolve) => child.once("exit", resolve)), pause(graceMs)]);
-        return {processGroupDrained:child.exitCode !== null, termination:"windows-child"};
+        terminate("SIGTERM");
+        await pause(graceMs);
+        if ([...ownedPids].some(processAlive)) terminate("SIGKILL");
+        await pause(25);
+        const processTreeDrained = ![...ownedPids].some(processAlive);
+        return {processGroupDrained:processTreeDrained, processTreeDrained, ownedProcessIds:[...ownedPids], termination:"windows-owned-processes"};
     }
-    if (processGroupAlive(pid)) terminate("SIGTERM");
+    if (Number.isInteger(pid) && pid > 0 && processGroupAlive(pid)) terminate("SIGTERM");
     const deadline = Date.now() + graceMs;
-    while (processGroupAlive(pid) && Date.now() < deadline) await pause(25);
-    if (processGroupAlive(pid)) {
+    while ([...ownedPids].some(processAlive) && Date.now() < deadline) await pause(25);
+    if ([...ownedPids].some(processAlive)) {
         terminate("SIGKILL");
         const killDeadline = Date.now() + graceMs;
-        while (processGroupAlive(pid) && Date.now() < killDeadline) await pause(25);
+        while ([...ownedPids].some(processAlive) && Date.now() < killDeadline) await pause(25);
     }
-    return {processGroupDrained:!processGroupAlive(pid), termination:"process-group"};
+    const processTreeDrained = ![...ownedPids].some(processAlive);
+    return {processGroupDrained:!processGroupAlive(pid), processTreeDrained, ownedProcessIds:[...ownedPids], termination:"tracked-process-tree"};
 }
 
 /**
@@ -126,38 +188,49 @@ export async function drainProcessTree(child, graceMs = 1_000) {
  * ownership is a release invariant on every exit path, including spawn error,
  * AbortSignal cancellation and timer expiry.
  */
-export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60 * 1000, signal, env = process.env, spawnCommand = spawn} = {}) {
+export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60 * 1000, signal, env = process.env, spawnCommand = spawn, ownedProcessIds = []} = {}) {
     const startedAt = now();
     let child;
     let timedOut = false;
     let cancelled = false;
     let timeout;
     let abort;
-    let output = "", errorOutput = "", exitCode = null, spawnError;
+    let output = "", errorOutput = "", exitCode = null, spawnError, tracker, drainage = {processGroupDrained:true, processTreeDrained:true, ownedProcessIds:[]};
+    let failure;
     try {
         if (signal?.aborted) { cancelled = true; throw new Error("release gate was cancelled before spawn"); }
         child = spawnCommand(command, args, {cwd:path.resolve(cwd), detached:process.platform !== "win32", stdio:["ignore", "pipe", "pipe"], env});
+        tracker = createOwnershipTracker(child.pid);
+        for (const processId of ownedProcessIds) if (Number.isInteger(processId) && processId > 0) tracker.ownedPids.add(processId);
         child.stdout?.on("data", (chunk) => { output += chunk; });
         child.stderr?.on("data", (chunk) => { errorOutput += chunk; });
         const exited = new Promise((resolve) => {
             child.once("error", (error) => { spawnError = error; resolve(); });
             child.once("exit", (code) => { exitCode = code; resolve(); });
         });
-        timeout = setTimeout(() => { timedOut = true; void drainProcessTree(child); }, timeoutMs);
-        abort = () => { cancelled = true; void drainProcessTree(child); };
+        timeout = setTimeout(() => { timedOut = true; void drainProcessTree(child, 1_000, tracker.ownedPids); }, timeoutMs);
+        abort = () => { cancelled = true; void drainProcessTree(child, 1_000, tracker.ownedPids); };
         signal?.addEventListener("abort", abort, {once:true});
         await exited;
         if (spawnError) throw spawnError;
+    } catch (error) {
+        failure = error;
     } finally {
         clearTimeout(timeout);
         if (abort) signal?.removeEventListener("abort", abort);
-        const drainage = await drainProcessTree(child);
-        if (!drainage.processGroupDrained) fail("release gate process tree could not be drained");
+        tracker?.capture();
+        tracker?.stop();
+        drainage = await drainProcessTree(child, 1_000, tracker?.ownedPids);
+        if (!drainage.processGroupDrained || !drainage.processTreeDrained) failure = new Error("release gate tracked process tree could not be drained");
     }
-    const result = {command:`${command} ${args.join(" ")}`, startedAt, endedAt:now(), exitCode, timedOut, cancelled, processGroupDrained:true, stdout:output, stderr:errorOutput};
-    if (timedOut) fail("release gate timed out after its process tree was drained");
-    if (cancelled) fail("release gate was cancelled after its process tree was drained");
-    if (exitCode !== 0) fail(`release gate failed with exit code ${exitCode}`);
+    const result = {command:`${command} ${args.join(" ")}`, startedAt, endedAt:now(), exitCode, timedOut, cancelled, processGroupDrained:drainage.processGroupDrained, processTreeDrained:drainage.processTreeDrained, ownedProcessIds:drainage.ownedProcessIds, stdout:output, stderr:errorOutput};
+    if (!failure && timedOut) failure = new Error("release gate timed out after its process tree was drained");
+    if (!failure && cancelled) failure = new Error("release gate was cancelled after its process tree was drained");
+    if (!failure && exitCode !== 0) failure = new Error(`release gate failed with exit code ${exitCode}`);
+    if (failure) {
+        failure.pc20Result = result;
+        throw failure;
+    }
     return result;
 }
 
@@ -175,7 +248,7 @@ export async function runReleaseGate(repositoryDirectory, options = {}) {
 }
 
 function validateSmokeReceipt(receipt, config, paths) {
-    if (!receipt || receipt.schemaVersion !== PC20_SCHEMA_VERSION || receipt.kind !== "npm-pack-install-smoke" || receipt.candidateId !== config.candidateId || receipt.candidatePackageSha256 !== config.candidatePackageSha256 || receipt.packageName !== config.packageName || receipt.packageVersion !== config.packageVersion || path.resolve(receipt.archivePath || "") !== paths.archive || !sha(receipt.archiveSha256) || receipt.archiveSha256 !== config.candidatePackageSha256 || !Number.isSafeInteger(receipt.archiveSizeBytes) || receipt.archiveSizeBytes <= 0 || !receipt.installed || receipt.installed.cli !== true || receipt.installed.studioApi !== true || receipt.installed.studioAssets !== true || receipt.installed.libraryWorker !== true || receipt.installed.processesDrained !== true) fail("npm-pack/install smoke receipt is incomplete or bound to a different package archive");
+    if (!receipt || receipt.schemaVersion !== PC20_SCHEMA_VERSION || receipt.kind !== "npm-pack-install-smoke" || receipt.complete !== true || receipt.candidateId !== config.candidateId || receipt.candidatePackageSha256 !== config.candidatePackageSha256 || receipt.packageName !== config.packageName || receipt.packageVersion !== config.packageVersion || path.resolve(receipt.archivePath || "") !== paths.archive || !sha(receipt.archiveSha256) || receipt.archiveSha256 !== config.candidatePackageSha256 || !Number.isSafeInteger(receipt.archiveSizeBytes) || receipt.archiveSizeBytes <= 0 || !receipt.installed || receipt.installed.cli !== true || receipt.installed.studioApi !== true || receipt.installed.studioAssets !== true || receipt.installed.libraryWorker !== true || receipt.installed.processesDrained !== true || !receipt.cleanup || receipt.cleanup.temporaryInstallRemoved !== true || receipt.cleanup.temporaryPackDirectoryRemoved !== true || receipt.cleanup.processesDrained !== true) fail("npm-pack/install smoke receipt is incomplete or bound to a different package archive");
 }
 
 async function verifySmokeReceipt(config, paths) {
@@ -189,11 +262,31 @@ async function verifySmokeReceipt(config, paths) {
 }
 
 function validateGate(gate, config) {
-    if (!gate || gate.schemaVersion !== PC20_SCHEMA_VERSION || gate.kind !== "release-gate" || gate.candidateId !== config.candidateId || gate.candidatePackageSha256 !== config.candidatePackageSha256 || gate.command !== "npm run check:release" || gate.exitCode !== 0 || gate.timedOut || gate.cancelled || gate.processGroupDrained !== true || !sha(gate.stdoutSha256) || !sha(gate.stderrSha256) || !sha(gate.packagingSmokeSha256) || !utc(gate.startedAt) || !utc(gate.endedAt) || Date.parse(gate.startedAt) > Date.parse(gate.endedAt)) fail("release gate record is incomplete, failed, or bound to a different candidate");
+    if (!gate || gate.schemaVersion !== PC20_SCHEMA_VERSION || gate.kind !== "release-gate" || gate.candidateId !== config.candidateId || gate.candidatePackageSha256 !== config.candidatePackageSha256 || gate.command !== "npm run check:release" || gate.exitCode !== 0 || gate.timedOut || gate.cancelled || gate.processGroupDrained !== true || gate.processTreeDrained !== true || !sha(gate.stdoutSha256) || !sha(gate.stderrSha256) || !sha(gate.packagingSmokeSha256) || !utc(gate.startedAt) || !utc(gate.endedAt) || Date.parse(gate.startedAt) > Date.parse(gate.endedAt)) fail("release gate record is incomplete, failed, or bound to a different candidate");
+}
+
+function validateFailedGate(gate, config) {
+    if (!gate || gate.schemaVersion !== PC20_SCHEMA_VERSION || gate.kind !== "release-gate-failed" || gate.candidateId !== config.candidateId || gate.candidatePackageSha256 !== config.candidatePackageSha256 || gate.command !== "npm run check:release" || gate.success !== false || typeof gate.failure !== "string" || !gate.failure || !utc(gate.failedAt) || gate.processGroupDrained !== true || gate.processTreeDrained !== true) fail("failed release gate record is incomplete or bound to a different candidate");
+}
+
+async function cleanPartialGateArtifacts(paths) {
+    await Promise.all([paths.smoke, paths.archive, paths.stdout, paths.stderr].map((target) => rm(target, {force:true})));
+}
+
+async function retainFailedGate(config, paths, error) {
+    const result = error?.pc20Result || {};
+    const failed = {schemaVersion:PC20_SCHEMA_VERSION, kind:"release-gate-failed", candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, command:"npm run check:release", success:false, failedAt:now(), failure:error instanceof Error ? error.message : String(error), exitCode:result.exitCode ?? null, timedOut:result.timedOut === true, cancelled:result.cancelled === true, processGroupDrained:result.processGroupDrained !== false, processTreeDrained:result.processTreeDrained !== false, ownedProcessIds:Array.isArray(result.ownedProcessIds) ? result.ownedProcessIds : []};
+    validateFailedGate(failed, config);
+    try { await writeFile(paths.failed, `${JSON.stringify(failed, null, 2)}\n`, {flag:"wx"}); } catch { fail("failed release gate record already exists; this candidate is permanently locked"); }
 }
 
 async function obtainGate(config, dependencies) {
     const paths = outputPaths(config);
+    if (existsSync(paths.failed)) {
+        const failed = await readJson(paths.failed, "failed release gate record");
+        validateFailedGate(failed.value, config);
+        fail("this candidate's official release gate already failed and is permanently locked");
+    }
     if (existsSync(paths.gate)) {
         const existing = await readJson(paths.gate, "release gate record");
         validateGate(existing.value, config);
@@ -201,19 +294,29 @@ async function obtainGate(config, dependencies) {
         if (existing.value.packagingSmokeSha256 !== smoke.sha256) fail("release gate record is not bound to its retained packaging smoke receipt");
         return {gate:existing.value, sha256:digest(existing.contents), reused:true};
     }
-    const result = await dependencies.runReleaseGate(config.repositoryDirectory, {paths, candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256});
-    const smoke = await verifySmokeReceipt(config, paths);
-    const stdout = required(result.stdout ?? "", "release gate stdout"), stderr = typeof result.stderr === "string" ? result.stderr : "";
+    let result;
     try {
+        result = await dependencies.runReleaseGate(config.repositoryDirectory, {paths, candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256});
+    } catch (error) {
+        await cleanPartialGateArtifacts(paths);
+        await retainFailedGate(config, paths, error);
+        throw error;
+    }
+    try {
+        const smoke = await verifySmokeReceipt(config, paths);
+        const stdout = required(result.stdout ?? "", "release gate stdout"), stderr = typeof result.stderr === "string" ? result.stderr : "";
         await writeFile(paths.stdout, stdout, {flag:"wx"});
         await writeFile(paths.stderr, stderr || "(no stderr)\n", {flag:"wx"});
-    } catch { fail("release gate output evidence already exists"); }
-    const gate = {schemaVersion:PC20_SCHEMA_VERSION, kind:"release-gate", candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, ...result, stdout:undefined, stderr:undefined, stdoutPath:path.basename(paths.stdout), stdoutSha256:digest(stdout), stderrPath:path.basename(paths.stderr), stderrSha256:digest(stderr || "(no stderr)\n"), packagingSmokePath:path.basename(paths.smoke), packagingSmokeSha256:smoke.sha256, archivePath:path.basename(paths.archive), archiveSha256:config.candidatePackageSha256};
-    validateGate(gate, config);
-    await mkdir(paths.root, {recursive:true});
-    const contents = `${JSON.stringify(gate, null, 2)}\n`;
-    try { await writeFile(paths.gate, contents, {flag:"wx"}); } catch { fail("release gate record already exists; retry so its immutable contents can be validated"); }
-    return {gate, sha256:digest(contents), reused:false};
+        const gate = {schemaVersion:PC20_SCHEMA_VERSION, kind:"release-gate", candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, ...result, stdout:undefined, stderr:undefined, stdoutPath:path.basename(paths.stdout), stdoutSha256:digest(stdout), stderrPath:path.basename(paths.stderr), stderrSha256:digest(stderr || "(no stderr)\n"), packagingSmokePath:path.basename(paths.smoke), packagingSmokeSha256:smoke.sha256, archivePath:path.basename(paths.archive), archiveSha256:config.candidatePackageSha256};
+        validateGate(gate, config);
+        const contents = `${JSON.stringify(gate, null, 2)}\n`;
+        await writeFile(paths.gate, contents, {flag:"wx"});
+        return {gate, sha256:digest(contents), reused:false};
+    } catch (error) {
+        await cleanPartialGateArtifacts(paths);
+        await retainFailedGate(config, paths, error);
+        throw error;
+    }
 }
 
 function validateLifecycleReceipt(receipt, config, gateSha256) {
@@ -244,9 +347,10 @@ export async function validatePc20ReleaseGate(config, dependencies = {}) {
         freezeReceiptSha256:config.freezeReceiptSha256,
     });
     if (!pc19 || pc19.candidateId !== config.candidateId) fail("PC-19 did not accept the exact release candidate");
-    assertExactCleanDevelop(services.readRepositoryState(config.repositoryDirectory), config.candidateId, "before the release gate");
+    const permittedReceipts = pc20CandidateReceiptPaths(config.candidateId);
+    assertExactCleanDevelop(services.readRepositoryState(config.repositoryDirectory, permittedReceipts), config.candidateId, "before the release gate");
     const gate = await obtainGate(config, services);
-    assertExactCleanDevelop(services.readRepositoryState(config.repositoryDirectory), config.candidateId, "after the release gate");
+    assertExactCleanDevelop(services.readRepositoryState(config.repositoryDirectory, permittedReceipts), config.candidateId, "after the release gate");
     return {pc19, gate};
 }
 

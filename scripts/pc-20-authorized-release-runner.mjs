@@ -11,7 +11,7 @@ import {spawnSync} from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
-import {PC20_EVIDENCE_DIRECTORY, PC20_SCHEMA_VERSION} from "./pc-20-release-completion.mjs";
+import {assertPc20CandidateClean, PC20_EVIDENCE_DIRECTORY, PC20_SCHEMA_VERSION, validatePc20ReleaseGate} from "./pc-20-release-completion.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const digest = (value) => createHash("sha256").update(value).digest("hex");
@@ -49,12 +49,19 @@ export async function runAuthorizedPc20Lifecycle(config, candidateRef) {
     requireConfig(config, candidateRef);
     if (run("git", ["rev-parse", "HEAD"]) !== candidateRef) fail("checked-out candidate ref drifted before lifecycle");
     const nameVersion = `${config.packageName}@${config.packageVersion}`;
-    if (run("git", ["status", "--porcelain"]) !== "") fail("candidate checkout is not clean");
+    // The controller's exact candidate receipts are intentionally untracked until
+    // the protected runner publishes.  Nothing else, including another PC-20
+    // artifact, is tolerated by this shared cleanliness contract.
+    assertPc20CandidateClean(root, candidateRef, "candidate checkout before lifecycle", {includeCompletion:false, includeFailed:false});
+    // Re-read the controller's immutable gate rather than treating the
+    // tolerated filenames as proof that a gate really succeeded.
+    await validatePc20ReleaseGate(config);
     const remote = run("git", ["remote", "get-url", "origin"]);
     if (!remote) fail("push authority is unavailable");
     run("git", ["checkout", "develop"]);
     run("git", ["merge", "--ff-only", candidateRef]);
-    if (run("git", ["rev-parse", "HEAD"]) !== candidateRef || run("git", ["status", "--porcelain"]) !== "") fail("develop did not resolve cleanly to the accepted candidate");
+    if (run("git", ["rev-parse", "HEAD"]) !== candidateRef) fail("develop did not resolve to the accepted candidate");
+    assertPc20CandidateClean(root, candidateRef, "develop before push/publication", {includeCompletion:false, includeFailed:false});
     run("git", ["push", "origin", "develop"]);
     const pushedAt = new Date().toISOString();
     const archive = path.join(PC20_EVIDENCE_DIRECTORY, `pc-20-${candidateRef}-package.tgz`);

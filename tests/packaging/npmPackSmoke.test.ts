@@ -99,6 +99,25 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     let tarballPath: string | undefined;
     let installDir: string | undefined;
     let pokieBinPath: string;
+    const smokeResults = {cli: false, studioApi: false, studioAssets: false, libraryWorker: false, processesDrained: false};
+
+    function stageReleaseSmokeArchive(): void {
+        const receiptPath = process.env.POKIE_PACK_SMOKE_RECEIPT;
+        const archivePath = process.env.POKIE_PACK_SMOKE_ARCHIVE_PATH;
+        if (receiptPath === undefined && archivePath === undefined) return;
+        expect(receiptPath).toBeDefined();
+        expect(archivePath).toBeDefined();
+        expect(process.env.POKIE_PACK_SMOKE_CANDIDATE_ID).toMatch(/^[a-f0-9]{40}$/i);
+        // A release receipt is a result, never a finally-block assertion.  In
+        // particular, an earlier failed suite must not be able to leave a
+        // seemingly successful installed/cleanup receipt behind.
+        if (!smokeResults.cli || !smokeResults.studioApi || !smokeResults.studioAssets || !smokeResults.libraryWorker) return;
+        const archive = fs.readFileSync(tarballPath!);
+        const archiveSha256 = createHash("sha256").update(archive).digest("hex");
+        expect(archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
+        fs.mkdirSync(path.dirname(archivePath!), {recursive: true});
+        fs.copyFileSync(tarballPath!, archivePath!, fs.constants.COPYFILE_EXCL);
+    }
 
     function retainReleaseSmokeReceipt(): void {
         const receiptPath = process.env.POKIE_PACK_SMOKE_RECEIPT;
@@ -106,12 +125,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         if (receiptPath === undefined && archivePath === undefined) return;
         expect(receiptPath).toBeDefined();
         expect(archivePath).toBeDefined();
-        expect(process.env.POKIE_PACK_SMOKE_CANDIDATE_ID).toMatch(/^[a-f0-9]{40}$/i);
-        const archive = fs.readFileSync(tarballPath!);
+        if (!Object.values(smokeResults).every(Boolean)) return;
+        const archive = fs.readFileSync(archivePath!);
         const archiveSha256 = createHash("sha256").update(archive).digest("hex");
-        expect(archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
-        fs.mkdirSync(path.dirname(archivePath!), {recursive: true});
-        fs.copyFileSync(tarballPath!, archivePath!, fs.constants.COPYFILE_EXCL);
         const ownPackage = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {name: string; version: string};
         fs.writeFileSync(receiptPath!, `${JSON.stringify({
             schemaVersion: 1,
@@ -123,7 +139,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             archivePath: path.resolve(archivePath!),
             archiveSha256,
             archiveSizeBytes: archive.length,
-            installed: {cli: true, studioApi: true, studioAssets: true, libraryWorker: true, processesDrained: true},
+            complete: true,
+            installed: smokeResults,
+            cleanup: {temporaryInstallRemoved: true, temporaryPackDirectoryRemoved: true, processesDrained: true},
         }, null, 2)}\n`, {flag: "wx"});
     }
 
@@ -165,13 +183,17 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // Jest reaches afterAll only after every real installed CLI, Studio/API/assets and worker
         // assertion above has completed; the receipt is therefore an append-only release artifact,
         // not a pre-flight checklist written before the smoke boundary ran.
-        retainReleaseSmokeReceipt();
+        if (smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker) {
+            stageReleaseSmokeArchive();
+        }
         if (installDir !== undefined) {
             fs.rmSync(installDir, {recursive: true, force: true});
         }
         if (packDir !== undefined) {
             fs.rmSync(packDir, {recursive: true, force: true});
         }
+        smokeResults.processesDrained = true;
+        retainReleaseSmokeReceipt();
     });
 
     it("runs `pokie --no-open` (Home mode): serves the app shell/assets and a healthy API", async () => {
@@ -212,6 +234,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const styleCss = await fetch(`${baseUrl}${stylesheetHref}`);
             expect(styleCss.status).toBe(200);
             expect(styleCss.headers.get("content-type")).toContain("css");
+            smokeResults.cli = true;
+            smokeResults.studioApi = true;
+            smokeResults.studioAssets = true;
         } finally {
             await stopChild(child);
         }
@@ -285,6 +310,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const output = execFileSync("node", [scriptPath], {cwd: installDir, encoding: "utf-8", timeout: 60000});
 
         expect(output).toContain('PARALLEL_SIMULATION_SMOKE_OK {"workers":2,"rounds":20000}');
+        smokeResults.libraryWorker = true;
     });
 
     // Studio startup targeting, against the real installed binary: which of Home / a project dashboard
