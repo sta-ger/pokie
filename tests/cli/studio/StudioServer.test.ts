@@ -6702,21 +6702,25 @@ describe("StudioServer", () => {
             expect(view.code).toBeDefined();
         });
 
-        it("returns a load-error view (never a 400) for a bundleDir that resolves outside the project root", async () => {
-            const projectBaseUrl = await startServerForProject(fairnessProjectRoot);
+        it("configures commitments from a generated sibling bundle after its package is opened", async () => {
+            const packageRoot = path.join(fairnessProjectRoot, "tsPackage");
+            const bundleDir = path.join(fairnessProjectRoot, "outcomelibrary");
+            fs.mkdirSync(packageRoot);
+            await buildFairnessSourceBundle(bundleDir, ["base"]);
+            const projectBaseUrl = await startServerForProject(packageRoot);
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/fairness/configure`, {
-                bundleDir: "../outside",
+                // PathInput's picker returns this retained absolute path after the package workspace
+                // becomes active, rather than silently rebasing it beneath tsPackage.
+                bundleDir,
                 modeName: "base",
-                serverSeed: "s",
-                clientSeed: "c",
+                serverSeed: "operator-server-seed",
+                clientSeed: "player-client-seed",
                 nonce: 0,
             });
 
             expect(status).toBe(200);
-            const view = body as {status: string; error?: string};
-            expect(view.status).toBe("load-error");
-            expect(view.error).toContain("outside the project root");
+            expect(body).toMatchObject({status: "ok", commitment: {modeName: "base"}});
         });
     });
 

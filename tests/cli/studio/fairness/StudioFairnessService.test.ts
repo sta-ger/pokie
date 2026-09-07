@@ -68,18 +68,37 @@ describe("StudioFairnessService", () => {
             expect(view.status).toBe("invalid");
         });
 
-        it("reports load-error for a bundle path that resolves outside the project root", async () => {
+        it("hands a generated sibling bundle from an opened package through Configure, Generate, and Verify", async () => {
+            const packageRoot = path.join(tmpRoot, "tsPackage");
+            const bundleDir = path.join(tmpRoot, "outcomelibrary");
+            fs.mkdirSync(packageRoot);
+            await buildFairnessSourceBundle(bundleDir, ["base"]);
             const service = new StudioFairnessService();
 
-            const view = await service.configure(tmpRoot, {
-                bundleDir: "../outside",
+            const configured = await service.configure(packageRoot, {
+                bundleDir: "../outcomelibrary",
                 modeName: "base",
                 serverSeed: "operator-server-seed",
                 clientSeed: "player-client-seed",
                 nonce: 0,
             });
+            expect(configured.status).toBe("ok");
+            if (configured.status !== "ok") throw new Error("expected the sibling bundle commitment to succeed");
 
-            expect(view.status).toBe("load-error");
+            const generated = await service.generateProof(packageRoot, {
+                bundleDir: "../outcomelibrary",
+                commitment: configured.commitment,
+                serverSeed: "operator-server-seed",
+            });
+            expect(generated.status).toBe("ok");
+            if (generated.status !== "ok") throw new Error("expected the sibling bundle proof to succeed");
+
+            const verified = await service.verify(packageRoot, {
+                proof: generated.proof,
+                commitment: configured.commitment,
+                sourceBundleDir: "../outcomelibrary",
+            });
+            expect(verified).toMatchObject({status: "ok", errors: []});
         });
     });
 
@@ -109,12 +128,12 @@ describe("StudioFairnessService", () => {
             expect(view.code).toBeDefined();
         });
 
-        it("reports load-error for a bundle path that resolves outside the project root", async () => {
+        it("reports load-error for a selected bundle that cannot be read", async () => {
             await buildFairnessSourceBundle(path.join(tmpRoot, "bundle"), ["base"]);
             const commitment = await issueFairnessCommitmentFor(path.join(tmpRoot, "bundle"), "base", {serverSeed: "operator-server-seed"});
             const service = new StudioFairnessService();
 
-            const view = await service.generateProof(tmpRoot, {bundleDir: "../outside", commitment, serverSeed: "operator-server-seed"});
+            const view = await service.generateProof(tmpRoot, {bundleDir: "../missing-bundle", commitment, serverSeed: "operator-server-seed"});
 
             expect(view.status).toBe("load-error");
         });
@@ -178,16 +197,18 @@ describe("StudioFairnessService", () => {
             expect(view.errors.some((issue) => issue.code === "fairness-verify-source-bundle-dir-required")).toBe(true);
         });
 
-        it("reports load-error for a sourceBundleDir that resolves outside the project root", async () => {
+        it("returns a verification diagnostic for a selected source bundle that cannot be read", async () => {
             await buildFairnessSourceBundle(path.join(tmpRoot, "bundle"), ["base"]);
             const commitment = await issueFairnessCommitmentFor(path.join(tmpRoot, "bundle"), "base", {serverSeed: "operator-server-seed"});
             const service = new StudioFairnessService();
             const generated = await service.generateProof(tmpRoot, {bundleDir: "bundle", commitment, serverSeed: "operator-server-seed"});
             if (generated.status !== "ok") throw new Error("expected the proof to build successfully");
 
-            const view = await service.verify(tmpRoot, {proof: generated.proof, commitment, sourceBundleDir: "../outside"});
+            const view = await service.verify(tmpRoot, {proof: generated.proof, commitment, sourceBundleDir: "../missing-bundle"});
 
-            expect(view.status).toBe("load-error");
+            expect(view.status).toBe("ok");
+            if (view.status !== "ok") throw new Error("expected verifier diagnostics");
+            expect(view.errors).not.toEqual([]);
         });
     });
 });
