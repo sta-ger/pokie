@@ -239,7 +239,7 @@ function TargetCard({
     onCancelArtifactBuild: (target: StudioArtifactTargetType) => void;
     artifactDestination: string;
     onArtifactDestinationChange: (target: StudioArtifactTargetType, destination: string) => void;
-    onOpenAsProject: (projectRoot: string) => void;
+    onOpenAsProject: (result: Extract<StudioArtifactBuildView, {status: "ok"}>) => void;
     onAddToProjects: (projectRoot: string) => void;
     addedToProjects: boolean;
     onRevealOutput: (path: string) => void;
@@ -596,7 +596,7 @@ function TargetCard({
                                 </Text>
                             )}
                             <QuickActions>
-                                <Button size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result.outputPath)}>
+                                <Button size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result)}>
                                     Open as Project
                                 </Button>
                                 <Button size="xs" variant="default" onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)} disabled={addedToProjects}>
@@ -1121,6 +1121,21 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     function pollArtifactBuild(target: StudioArtifactTargetType, jobId: string): void {
         getArtifactBuild(fetchImpl, jobId)
             .then((job) => {
+                // A card only owns a job for the target it started. Never let a
+                // completed response for a sibling artifact replace this card's
+                // follow-up actions: doing so can make TypeScript Package's
+                // "Open as Project" open a PAR workbook output instead.
+                if (job.target !== target) {
+                    Reflect.deleteProperty(artifactBuildPollTimers.current, target);
+                    setArtifactBuildRuns((runs) => ({
+                        ...runs,
+                        [target]: {
+                            status: "error",
+                            message: `The ${target} build returned a ${job.target} job. Refresh Build/Export before trying again.`,
+                        },
+                    }));
+                    return;
+                }
                 if (job.status === "queued" || job.status === "running") {
                     setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId, progress: job.progress, cancellationRequested: job.cancellationRequested}}));
                     artifactBuildPollTimers.current[target] = setTimeout(() => pollArtifactBuild(target, jobId), 100);
@@ -1164,9 +1179,16 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     // transition every other "Open in Studio"/"Open as Project" action in Studio already uses (see
     // useOpenProject's own doc comment). This is this card's own "run/inspect follow-up": once open, the
     // new project's own Play/Replay/Validate tabs are immediately reachable.
-    function handleOpenArtifactAsProject(projectRoot: string): void {
+    function handleOpenArtifactAsProject(target: StudioArtifactTargetType, result: Extract<StudioArtifactBuildView, {status: "ok"}>): void {
         setArtifactActionError(undefined);
-        openAndNavigate(projectRoot).catch((error: unknown) => setArtifactActionError(errorMessage(error)));
+        // Keep the card's target coupled to the terminal output all the way to
+        // the Home -> Project transition. A stale/cross-target response must
+        // not silently navigate to another artifact's path.
+        if (result.target !== target) {
+            setArtifactActionError(`The ${target} build result points to a ${result.target} artifact. Build it again before opening it.`);
+            return;
+        }
+        openAndNavigate(result.outputPath).catch((error: unknown) => setArtifactActionError(errorMessage(error)));
     }
 
     // Registers the build's own output in Studio's persistent Projects registry, so it shows up in Home's
@@ -1239,7 +1261,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
                                             onArtifactDestinationChange={(target, destination) =>
                                                 setArtifactDestinations((destinations) => ({...destinations, [target]: destination}))
                                             }
-                                            onOpenAsProject={handleOpenArtifactAsProject}
+                                            onOpenAsProject={(result) => handleOpenArtifactAsProject(card.artifactTarget!, result)}
                                             onAddToProjects={handleAddArtifactToProjects}
                                             addedToProjects={addedToProjects}
                                             onRevealOutput={handleRevealOutput}
