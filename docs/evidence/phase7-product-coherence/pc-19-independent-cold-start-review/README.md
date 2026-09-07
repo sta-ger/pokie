@@ -1,25 +1,15 @@
-# PC-19 independent cold-start release review
+# PC-19 blind cold-start rerun — 2026-09-07
 
-This directory contains the protocol and validator for the final, current-candidate
-release review. It intentionally contains no claimed pass: a historical PC-02 through
-PC-18 result cannot stand in for this fresh review.
+Candidate: `778e3d6eec1d7d7a12c29838e005ee16a0b8ce26`
 
-The reviewer creates one new directory below `runs/` outside a POKIE checkout, follows
-[REVIEW-PROTOCOL.md](REVIEW-PROTOCOL.md), then validates it without consulting older
-campaign records:
+Launch: candidate checkout `node ./dist/cli/pokie.js --no-open` via the controller-retained public UI driver.
+Run transcript: isolated harness run `1788769300062` (not retained in this repository).
 
-```sh
-node scripts/pc-19-independent-cold-start-review.mjs \
-  --review-dir /absolute/path/to/run \
-  --expected-candidate <40-character-candidate-sha> \
-  --expected-package-sha256 <retained-package-sha256> \
-  --freeze-receipt /verifier-controlled/path/freeze-receipt.json \
-  --expected-freeze-receipt-sha256 <receipt-sha256>
-```
+The clean Studio home/design screen rendered with all six design sections valid. The visible **Create game** control was enabled and, after activation, rendered the action-local acknowledgement: “Your game was saved. Opening its workspace…”. No action-local error was rendered.
 
-The validator checks the mechanical release boundary: candidate/package provenance,
-timestamped installed-CLI streams, a new Studio profile and browser transcript,
-artifact ledger, a verifier-anchored frozen blind finding list, post-freeze comparison,
-coverage for all roles and sweeps, and the P0/P1/material-P2 gate. It does not claim to
-prove what a human privately read; the clean-room attestation and controlled review
-boundary make that limitation explicit.
+The retained generic driver then exited before the workspace opened. Thus the required blind exploration, six role missions, artifact interoperability, parity checks, visual/player review, and finding/delta gate were not reached. This is driver incompleteness, not a product finding.
+
+Representative rendered-image checksums (artifacts intentionally not retained):
+
+* initial screen: `f4bcb359056dd01eeee720e8ad33990a00225e6b28c7d35ffd9dd3098ffb27a0`
+* after Create game: `d75b747d36cfe270fde1f4a4bbf0b0e353cf1e47ca69e0449fe98288d3e72ac9`
