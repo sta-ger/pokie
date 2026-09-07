@@ -11,7 +11,7 @@ import {spawnSync} from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
-import {assertPc20CandidateCheckout, assertPc20CandidateClean, PC20_EVIDENCE_DIRECTORY, PC20_SCHEMA_VERSION, validatePc20ReleaseGate} from "./pc-20-release-completion.mjs";
+import {assertPc20CandidateCheckout, assertPc20CandidateClean, PC20_EVIDENCE_DIRECTORY, PC20_SCHEMA_VERSION, validatePc20RetainedReleaseGate} from "./pc-20-release-completion.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const digest = (value) => createHash("sha256").update(value).digest("hex");
@@ -46,7 +46,7 @@ async function driveRoundTrip(gatePath, gateSha256, {readFile:read = readFile, f
 }
 
 export async function runAuthorizedPc20Lifecycle(config, candidateRef, dependencies = {}) {
-    const services = {run, validateGate:validatePc20ReleaseGate, assertCandidateCheckout:assertPc20CandidateCheckout, assertDevelopClean:assertPc20CandidateClean, exists:existsSync, readFile, writeFile, fetch, environment:process.env, now:() => new Date().toISOString(), ...dependencies};
+    const services = {run, validateGate:validatePc20RetainedReleaseGate, assertCandidateCheckout:assertPc20CandidateCheckout, assertDevelopClean:assertPc20CandidateClean, exists:existsSync, readFile, writeFile, fetch, environment:process.env, now:() => new Date().toISOString(), ...dependencies};
     requireConfig(config, candidateRef, services.environment);
     if (services.run("git", ["rev-parse", "HEAD"]) !== candidateRef) fail("checked-out candidate ref drifted before lifecycle");
     const nameVersion = `${config.packageName}@${config.packageVersion}`;

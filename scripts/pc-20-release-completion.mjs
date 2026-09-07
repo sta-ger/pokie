@@ -265,7 +265,9 @@ export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60
     let failure;
     try {
         if (signal?.aborted) { cancelled = true; throw new Error("release gate was cancelled before spawn"); }
-        child = spawnCommand(command, args, {cwd:path.resolve(cwd), detached:process.platform !== "win32", stdio:["ignore", "pipe", "pipe"], env:{...env, ...(resourceRegistryPath ? {POKIE_PC20_RESOURCE_REGISTRY:resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:resourceRegistrySecret} : {})}});
+        const ownershipHook = path.join(repositoryRoot, "scripts", "pc-20-resource-ownership-hook.cjs");
+        const nodeOptions = [env.NODE_OPTIONS, resourceRegistryPath ? `--require=${ownershipHook}` : ""].filter(Boolean).join(" ");
+        child = spawnCommand(command, args, {cwd:path.resolve(cwd), detached:process.platform !== "win32", stdio:["ignore", "pipe", "pipe"], env:{...env, ...(resourceRegistryPath ? {POKIE_PC20_RESOURCE_REGISTRY:resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:resourceRegistrySecret, NODE_OPTIONS:nodeOptions} : {})}});
         tracker = createOwnershipTracker(child.pid, resourceRegistryPath, resourceRegistrySecret);
         for (const processId of ownedProcessIds) if (Number.isInteger(processId) && processId > 0) tracker.ownedPids.add(processId);
         child.stdout?.on("data", (chunk) => { output += chunk; });
@@ -417,6 +419,27 @@ export async function validatePc20ReleaseGate(config, dependencies = {}) {
     const gate = await obtainGate(config, services);
     assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, pc20CandidateReceiptPaths(config.candidateId, {includeCompletion:false, includeFailed:false})), config.candidateId, "after the release gate");
     return {pc19, gate};
+}
+
+/**
+ * The protected publisher receives a gate that the controller has already
+ * validated.  It must never start (or repeat) that official composite; it
+ * revalidates the retained, candidate-bound artifacts before advancing
+ * develop.  Keeping this narrower than validatePc20ReleaseGate also makes the
+ * handoff independently executable without reinterpreting mutable PC-19
+ * review inputs.
+ */
+export async function validatePc20RetainedReleaseGate(config, dependencies = {}) {
+    validateConfig(config);
+    const services = {readRepositoryState, ...dependencies};
+    const paths = outputPaths(config);
+    assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, pc20CandidateReceiptPaths(config.candidateId, {includeCompletion:false, includeFailed:false})), config.candidateId, "before the authorized lifecycle");
+    if (!existsSync(paths.gate)) fail("the authorized lifecycle requires an existing immutable green release gate");
+    const existing = await readJson(paths.gate, "release gate record");
+    validateGate(existing.value, config);
+    const smoke = await verifySmokeReceipt(config, paths);
+    if (existing.value.packagingSmokeSha256 !== smoke.sha256) fail("release gate record is not bound to its retained packaging smoke receipt");
+    return {gate:existing.value, sha256:digest(existing.contents), reused:true};
 }
 
 export async function validatePc20ReleaseCompletion(config, dependencies = {}) {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {execFileSync} from "node:child_process";
 import {existsSync} from "node:fs";
-import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import {mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
@@ -86,23 +86,20 @@ test("drains a real detached process tree on success, timeout, cancellation, and
     await assert.rejects(() => runBoundedProcess("definitely-not-a-command-pc20", [], {cwd:repositoryDirectory}), /ENOENT|spawn/i);
 });
 
-test("production-owned resource registration drains a detached/reparented process and audits non-PID handles", async () => {
+test("the production ownership preload drains a detached/reparented process and audits non-PID handles", async () => {
     const pidPath = path.join("/tmp", `pokie-pc20-detached-${process.pid}-${Date.now()}`);
     const registryPath = path.join("/tmp", `pokie-pc20-resources-${process.pid}-${Date.now()}`);
     try {
-        const controllerUrl = pathToFileURL(path.join(repositoryDirectory, "scripts", "pc-20-release-completion.mjs")).href;
         const result = await runBoundedProcess(process.execPath, ["-e", `
         const {spawn} = require("node:child_process");
         const {writeFileSync} = require("node:fs");
         const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {detached:true, stdio:"ignore"});
         writeFileSync(process.argv[1], String(child.pid));
-        import(${JSON.stringify(controllerUrl)}).then(({registerPc20OwnedResource}) => {
-            registerPc20OwnedResource({kind:"browser", resourceId:"detached-browser", pid:child.pid});
-        }).then(() => process.exit(0));
+        process.exit(0);
     `, pidPath], {cwd:repositoryDirectory, timeoutMs:1_000, resourceRegistryPath:registryPath});
         const detachedPid = Number(await readFile(pidPath, "utf8"));
         assert.equal(result.resourcesDrained, true);
-        assert.deepEqual(result.ownedResources, [{schemaVersion:1, action:"acquired", kind:"browser", resourceId:"detached-browser", pid:detachedPid, released:false}]);
+        assert.deepEqual(result.ownedResources, [{schemaVersion:1, action:"acquired", kind:"process", resourceId:`process:${detachedPid}:${process.execPath}`, pid:detachedPid, released:false}]);
         assert.throws(() => process.kill(detachedPid, 0), /ESRCH/);
     } finally { await Promise.all([rm(pidPath, {force:true}), rm(registryPath, {force:true})]); }
     await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", `
@@ -217,6 +214,49 @@ test("uses a controlled real Git remote handoff and refuses post-push protected-
         assert.equal(git(["rev-parse", "refs/heads/develop"], remote), base);
         assert.equal(npmCalled, false);
     } finally { await testFixture.cleanup(); await rm(sandbox, {recursive:true, force:true}); }
+});
+
+test("executes the authorized runner CLI against a controlled Git remote and rejects its post-push drift", async () => {
+    const sandbox = await mkdtemp(path.join(os.tmpdir(), "pokie-pc20-runner-cli-"));
+    const remote = path.join(sandbox, "origin.git"), work = path.join(sandbox, "work"), scripts = path.join(work, "scripts");
+    const git = (args, cwd = work) => execFileSync("git", args, {cwd, encoding:"utf8"}).trim();
+    try {
+        await mkdir(scripts, {recursive:true});
+        for (const script of ["pc-19-independent-cold-start-review.mjs", "pc-20-release-completion.mjs", "pc-20-authorized-release-runner.mjs"]) {
+            await writeFile(path.join(scripts, script), await readFile(path.join(repositoryDirectory, "scripts", script)));
+        }
+        await writeFile(path.join(work, "package.json"), JSON.stringify({name:"pc20-runner-fixture", version:"1.0.0"}));
+        git(["init", "--bare", remote], sandbox);
+        git(["init", "-b", "develop", work], sandbox);
+        git(["config", "user.name", "PC-20 test"]); git(["config", "user.email", "pc20@example.invalid"]);
+        git(["add", "."]); git(["commit", "-m", "base"]);
+        const base = git(["rev-parse", "HEAD"]);
+        git(["remote", "add", "origin", remote]); git(["push", "-u", "origin", "develop"]);
+        await writeFile(path.join(work, "candidate.txt"), "candidate\n");
+        git(["add", "candidate.txt"]); git(["commit", "-m", "candidate"]);
+        const candidate = git(["rev-parse", "HEAD"]);
+        git(["checkout", "--detach", candidate]);
+        const evidence = path.join(work, "docs", "evidence", "phase7-product-coherence", "pc-20-release-completion");
+        await mkdir(evidence, {recursive:true});
+        const archivePath = path.join(evidence, `pc-20-${candidate}-package.tgz`);
+        const smokePath = path.join(evidence, `pc-20-${candidate}-npm-pack-smoke.json`);
+        const gatePath = path.join(evidence, `pc-20-${candidate}-release-gate.json`);
+        const fixtureArchive = Buffer.from("authorized runner fixture archive\n");
+        const fixtureSha = hash(fixtureArchive);
+        await writeFile(archivePath, fixtureArchive);
+        const smoke = {schemaVersion:1, kind:"npm-pack-install-smoke", candidateId:candidate, candidatePackageSha256:fixtureSha, packageName:"pc20-runner-fixture", packageVersion:"1.0.0", archivePath, archiveSha256:fixtureSha, archiveSizeBytes:fixtureArchive.length, complete:true, suitePassed:true, installed:{cli:true, studioApi:true, studioAssets:true, libraryWorker:true, processesDrained:true}, cleanup:{temporaryInstallRemoved:true, temporaryPackDirectoryRemoved:true, processesDrained:true}};
+        const smokeContents = `${JSON.stringify(smoke)}\n`;
+        await writeFile(smokePath, smokeContents);
+        const gate = {schemaVersion:1, kind:"release-gate", candidateId:candidate, candidatePackageSha256:fixtureSha, command:"npm run check:release", exitCode:0, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedResources:[], startedAt:"2026-09-07T20:00:00.000Z", endedAt:"2026-09-07T20:01:00.000Z", stdoutSha256:"a".repeat(64), stderrSha256:"b".repeat(64), packagingSmokeSha256:hash(smokeContents), archiveSha256:fixtureSha};
+        await writeFile(gatePath, `${JSON.stringify(gate)}\n`);
+        const freezePath = path.join(sandbox, "freeze.json"), lifecyclePath = path.join(sandbox, "lifecycle.json");
+        await writeFile(freezePath, "fixture freeze\n");
+        const configPath = path.join(sandbox, "config.json");
+        await writeFile(configPath, `${JSON.stringify({candidateId:candidate, candidatePackageSha256:fixtureSha, reviewDirectory:path.join(sandbox, "review"), freezeReceiptPath:freezePath, freezeReceiptSha256:hash("fixture freeze\n"), lifecycleReceiptPath:lifecyclePath, lifecycleReceiptSha256:"0".repeat(64), outputDirectory:evidence, repositoryDirectory:work, packageName:"pc20-runner-fixture", packageVersion:"1.0.0"})}\n`);
+        await writeFile(path.join(remote, "hooks", "post-receive"), `#!/bin/sh\ngit update-ref refs/heads/develop ${base}\n`, {mode:0o755});
+        assert.throws(() => execFileSync(process.execPath, [path.join(scripts, "pc-20-authorized-release-runner.mjs"), "--config", configPath, "--candidate-ref", candidate], {cwd:work, env:{...process.env, NODE_AUTH_TOKEN:"test", PC20_DRIVE_ACCESS_TOKEN:"test"}, encoding:"utf8"}), /remote protected develop drifted/i);
+        assert.equal(git(["rev-parse", "refs/heads/develop"], remote), base);
+    } finally { await rm(sandbox, {recursive:true, force:true}); }
 });
 
 test("locks a failed candidate and removes partial smoke artifacts before another gate can run", async () => {

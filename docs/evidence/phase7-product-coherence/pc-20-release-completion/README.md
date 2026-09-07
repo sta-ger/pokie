@@ -14,7 +14,10 @@ record:
   candidate checkout at that exact SHA, before `develop` is advanced. The gate
   retains the exact `.tgz`, its SHA-256, captured output, and the complete
   real npm-pack/install receipt for installed CLI, Studio/API assets, direct
-  library-worker smoke results, and cleanup;
+  library-worker smoke results, and cleanup. Its authenticated ownership
+  preload records gate-created child processes and workers at acquisition, so
+  detached descendants are drained and non-PID provider/container handles
+  require an explicit release record before the post-drain audit can pass;
 - an externally anchored lifecycle receipt proving the same SHA was merged,
   pushed, published with the same package digest, and uploaded to/read back
   from Drive.  That receipt must refer to the retained gate-record digest.
