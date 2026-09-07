@@ -78,7 +78,13 @@ export async function runAuthorizedPc20Lifecycle(config, candidateRef) {
 
 async function main(argv = process.argv) {
     if (argv.length !== 6 || argv[2] !== "--config" || argv[4] !== "--candidate-ref" || !path.isAbsolute(argv[3]) || !sha(argv[5], 40)) fail("usage: --config <absolute-path> --candidate-ref <40-char-sha>");
-    await runAuthorizedPc20Lifecycle(await json(argv[3]), argv[5]);
+    const config = await json(argv[3]);
+    await runAuthorizedPc20Lifecycle(config, argv[5]);
+    // The protected runner is the trusted producer of this post-publication
+    // receipt.  Bind its final bytes before the separate completion invocation;
+    // a read-only/missing config fails here and therefore cannot be completed.
+    config.lifecycleReceiptSha256 = digest(await readFile(config.lifecycleReceiptPath));
+    await writeFile(argv[3], `${JSON.stringify(config, null, 2)}\n`);
     process.stdout.write(`PC20_AUTHORIZED_LIFECYCLE_PASS candidate=${argv[5]}\n`);
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error) => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
