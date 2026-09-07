@@ -258,6 +258,58 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent(`/project/${encodeURIComponent(savedPath)}/overview`));
     });
 
+    it("opens a CLI-loaded Blueprint after Save game so Home records it in Projects", async () => {
+        const user = userEvent.setup();
+        const cliBlueprintPath = "/cli/Pc19 Delta/blueprint.json";
+        const {fetchImpl, calls} = createFakeFetch((call) => {
+            if (call.url === "/api/home/blueprints/load") {
+                return {
+                    ok: true,
+                    status: 200,
+                    body: {
+                        status: "ok",
+                        path: cliBlueprintPath,
+                        blueprint: {manifest: {id: "pc19-delta", name: "Pc19 Delta", version: "0.1.0"}},
+                        blueprintHash: "loaded-hash",
+                    },
+                };
+            }
+            if (call.url === "/api/home/blueprints/validate") {
+                return {ok: true, status: 200, body: {status: "ok", warnings: []}};
+            }
+            if (call.url === "/api/home/blueprints/save") {
+                return {ok: true, status: 201, body: {status: "ok", path: cliBlueprintPath, blueprintHash: "saved-hash"}};
+            }
+            if (call.url === "/api/home/projects/open") {
+                return {
+                    ok: true,
+                    status: 200,
+                    body: {
+                        context: {mode: "project", projectRoot: cliBlueprintPath},
+                        manifest: {id: "pc19-delta", name: "Pc19 Delta", version: "0.1.0"},
+                    },
+                };
+            }
+            throw new Error(`unexpected fetch to ${call.url}`);
+        });
+
+        renderWithProviders(
+            <>
+                <BlueprintEditorPage guided initialPath={cliBlueprintPath} />
+                <LocationProbe />
+            </>,
+            {fetchImpl},
+        );
+
+        await waitFor(() => expect(calls.some((call) => call.url === "/api/home/blueprints/load")).toBe(true));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Save game"})).toBeEnabled());
+        await user.click(screen.getByRole("button", {name: "Save game"}));
+
+        await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1));
+        expect(JSON.parse(calls.find((call) => call.url === "/api/home/projects/open")?.init?.body ?? "{}")).toEqual({projectRoot: cliBlueprintPath});
+        await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent(`/project/${encodeURIComponent(cliBlueprintPath)}/overview`));
+    });
+
     it("validates an immediately edited revision before saving and does not save it when invalid", async () => {
         const validationBodies: {blueprint: {manifest: {name: string}}}[] = [];
         const managedSaveBodies: unknown[] = [];
