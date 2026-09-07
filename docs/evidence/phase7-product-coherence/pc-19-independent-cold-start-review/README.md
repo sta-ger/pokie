@@ -18,3 +18,5 @@ No product defect was observed. This review is nevertheless incomplete: the publ
 ## Recovery run 2026-09-07T18:12Z
 
 The separately retained [recovery record](recovery-run-2026-09-07T18-12Z.md) extends the same candidate-bound review. It confirms the actual public Play action is labelled `New Play session`; `Start Play` is its rendered fieldset legend. The persistent harness has been repaired with that selector for the next fresh-profile run. No product terminal state or defect was observed in this bounded recovery launch.
+
+Verifier-owned freeze receipt: `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-19-b7e657459f7cd688/pc-19-recovery-freeze-receipt.json` (SHA-256 `a4e102ec5bcfeadc8fd7be11a48d99e46a8bb9802a14f7400f084711a05a3775`). Its schema and candidate/package binding validated. The PC-19 protocol validator correctly refuses to mark the review complete because this partial record lacks the required complete `PROVENANCE.json` coverage bundle; no post-freeze comparison was opened.
