@@ -1,46 +1,40 @@
-# PC-19 independent cold-start review — P1 finding
+# PC-19 blind cold-start transcript (partial)
 
-Candidate code reviewed: `f02673948a8d4aba07ce42a2dd354be9a1f73447`.
-This evidence descendant contains no code diff from that candidate.
+Candidate reviewed: `7e4bf7cd1178fe59a29f924bb72e92b379b6d444`.
 
-The retained `blind-generation-*.md` receipts document the original isolated
-launch and its findings freeze before recovery disclosure, source, roadmap,
-known findings, fixes, or prior acceptance evidence were read. The prior role,
-player, Build/Export and visual receipts in `generation-5/` remain valid
-evidence of the reached paths; this review is not passed because the fresh
-saved-design lifecycle below contradicts its own visible success claim.
+The candidate build completed successfully before the Studio launch. The built
+CLI checksum was `ed89a858789e02acbfc66d0fb4a950f0a48678ac9ee530f399d43fc9f9103c83`.
 
-## Current-candidate delta: saved design Browse and Save
+The fresh-profile public run launched exactly:
 
-The candidate was freshly built with `npm run build-cli`. Its public CLI then
-created `Pc19 Delta` with
-`node ./dist/cli/pokie.js create pc19-delta --random --seed 19 --out …`.
-The resulting blueprint SHA-256 was
-`7fd0fa6c2637dd47f948560a9319ff5ebf03ed834f66a5c0d8edb594fdfd8e17`.
+```
+node ./dist/cli/pokie.js --no-open
+```
 
-Fresh Studio was launched only with `node ./dist/cli/pokie.js --no-open`, with
-a new Studio home and Chromium profile. In its rendered Design page, the
-enabled `Load from path` `Browse…` control opened the visible server-filesystem
-browser after one safe Tab/Space retry. Selecting the CLI-created JSON and
-activating rendered `Load` changed the primary action to enabled `Save game`.
+Rendered workflow evidence from that run:
 
-One visible `Save game` activation then rendered the action-local claim
-`Your game was saved. Opening its workspace…`. After its bounded local wait
-had no workspace or action-local error, the same journey continued once to
-visible `Projects`; it rendered `No games yet`. Thus the exact action promised
-a durable workspace, but its own rendered recovery surface proves that no
-saved object exists. The Save action was not repeated.
+1. The visible, enabled **Create game** button was activated once from the
+   starter design.
+2. Its local accepted state rendered: **Save game — Your game was saved.
+   Opening its workspace…**.
+3. The local terminal surface rendered the **Starter Slot** workspace with
+   Overview, Game Model, Play, Simulation, Replay, and Build/Export, and
+   showed **Valid — no issues found**.
+4. After the visible **Close project** action, the Projects surface rendered
+   one available **Starter Slot** project with the action **Open**.
 
-The concise, action-correlated transcript is
-[`generation-6/saved-design-browse-save.md`](generation-6/saved-design-browse-save.md).
-Runtime profiles, generated blueprints, raw logs, browser automation and
-generated outputs are intentionally not retained.
+No product failure was observed in this executed path. This is intentionally
+partial: the four-launch blind-run limit was reached while repairing the
+generic harness, before all six role missions, artifact interoperability,
+parity spot checks, player review, packed-artifact receipt, and external freeze
+receipt could be completed. Therefore it is not pass evidence.
 
-## Finding and gate
+The three retained browser screenshots are deliberately not copied into the
+repository; their source-run checksums are, respectively, initial/workspace/
+projects:
 
-`PC19-SAVED-DESIGN-SAVE-PERSISTENCE` is a P1: saving a valid, Studio-loaded
-CLI blueprint visibly reports success but does not make its promised workspace
-available. It blocks the saved-design workspace, post-load roles, player, and
-CLI/Studio lifecycle-parity portions of the charter. The register therefore
-has an unresolved release-blocking finding and PC-19 cannot pass until a fix
-receives a new independent delta rerun.
+```
+7b40cd1848ac2e3365e6341c8b2a3a0dc4377dd196cbf92453234d56d7b8bd2d
+5945d9ac8779fc400fb1d1896190840cb72857e60233c510c8150f60ca59a896
+3b5bbc483900cb0e74031217af99931129b62617d8c20e88aa85f3945ac7d22e
+```
