@@ -1,19 +1,20 @@
-# Rendered public-workflow transcript
+# Rendered public-workflow transcript — recovery launches
 
-The candidate source launched Studio at `http://127.0.0.1:3200` in a newly
-created Studio and Chromium profile. The following single-click actions had the
-listed rendered local terminal states:
+Each launch used a newly created Studio and Chromium profile and the candidate
+source launcher `node ./dist/cli/pokie.js --no-open`. The following one-click
+actions had rendered action-local results:
 
-| Ready control | Activation | Rendered local terminal |
+| Ready control | Activation | Rendered local result |
 | --- | --- | --- |
-| Create game | one click | workspace and `Your game was saved` |
-| New Play session | one click | enabled `Spin` session with 1000 credits |
-| Spin | one click | `Round complete — no win this round`, 999 credits |
-| Run Simulation | one click | 10,000/10,000 rounds, RTP 99.82%, full report controls |
-| Generate exact outcome library (base) | one click | `Generated 1,024 outcomes for mode "base" using exact` |
+| Create game | one click | `Your game was saved` and workspace |
+| New Play session | one click | enabled `Spin`, 1,000 credits |
+| Spin | one click | completed round (one loss; one 10.00 win) |
+| Run Simulation | one click | completed 10,000/10,000-round report with RTP and report controls |
+| Session Spin native radio | one click | rendered `Session 1 — Round 1 — Spin — win 10` selection |
+| Generate exact outcome library (base) | one click per fresh project | `Generated 1,024 outcomes for mode "base" using exact (RTP 100.78%)` |
 
-The first launch's fixed wait expired while Simulation was already completing;
-the later rendered result above reconciled that threshold as a success, not a
-product failure. The repeated fresh-profile lifecycle run produced no rendered
-product error. Missing mission coverage is a bounded driver/coverage limitation,
-not a claimed product finding.
+The asynchronous Simulation and Outcome Library actions each displayed their
+completed local result. No page-wide or prior error was used as a terminal state.
+The rendered Session Spin round was not selected or loaded before this
+invocation's two-launch cap, so replay/export/fairness and the remaining role
+coverage are deliberately unclaimed rather than treated as product failures.
