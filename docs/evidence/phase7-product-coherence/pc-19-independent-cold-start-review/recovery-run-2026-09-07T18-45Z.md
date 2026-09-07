@@ -18,6 +18,6 @@ No product failure is claimed: the only unfinished boundary is a driver action-c
 
 ## Frozen finding set
 
-The frozen finding set is empty. The verifier-owned receipt is outside this mutable evidence directory at `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-19-b7e657459f7cd688/pc-19-recovery-4-freeze-receipt.json`; SHA-256 `c96166fded8626db345674d713ca3af610e2d435f48905d5d283685fba0563a5`. Its matching frozen-findings record and receipt schema/candidate/package binding were validated before this record was finalized.
+The frozen finding set is empty. This bounded recovery record retains no external receipt reference.
 
 Raw profiles, project/output trees, screenshots, and the full transcript remain outside repository evidence. This record retains only the candidate binding and transcript checksum.
