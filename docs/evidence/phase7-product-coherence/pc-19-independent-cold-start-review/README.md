@@ -14,3 +14,7 @@ Observed public UI results from the fresh final run:
 - The workspace rendered the overview, player entry (`Open Play`), Simulation, Replay, Game Model, and Build/Export surfaces. Game Model rendered its saved five-reel, three-row design; Build/Export rendered ready local destinations and an exact 1024-combination Outcome Library preflight.
 
 No product defect was observed. This review is nevertheless incomplete: the public-launch cap was consumed while repairing the generic visible-UI driver, before the independent run could execute `Start Play`, `Run Simulation`, replay loading, Outcome Library generation, export, all six role missions, CLI/Studio parity, and examples-player parity. No pass or finding is claimed from this partial evidence.
+
+## Recovery run 2026-09-07T18:12Z
+
+The separately retained [recovery record](recovery-run-2026-09-07T18-12Z.md) extends the same candidate-bound review. It confirms the actual public Play action is labelled `New Play session`; `Start Play` is its rendered fieldset legend. The persistent harness has been repaired with that selector for the next fresh-profile run. No product terminal state or defect was observed in this bounded recovery launch.
