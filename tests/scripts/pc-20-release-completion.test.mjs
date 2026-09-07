@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {test} from "@jest/globals";
-import {PC20_EVIDENCE_DIRECTORY, PC20_SCHEMA_VERSION, runBoundedProcess, validatePc20ReleaseCompletion, validatePc20ReleaseGate} from "../../scripts/pc-20-release-completion.mjs";
+import {PC20_EVIDENCE_DIRECTORY, PC20_SCHEMA_VERSION, drainProcessTree, runBoundedProcess, validatePc20ReleaseCompletion, validatePc20ReleaseGate} from "../../scripts/pc-20-release-completion.mjs";
 import {runAuthorizedPc20Lifecycle} from "../../scripts/pc-20-authorized-release-runner.mjs";
 
 const repositoryDirectory = path.resolve(".");
@@ -16,6 +16,7 @@ const packageIdentity = JSON.parse(await readFile(path.join(repositoryDirectory,
 const archive = Buffer.from("PC-20 test archive\n");
 const packageSha = createHash("sha256").update(archive).digest("hex");
 const hash = (value) => createHash("sha256").update(value).digest("hex");
+const registryPath = (label) => path.join("/tmp", `pokie-pc20-${label}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.ndjson`);
 
 function paths() {
     const stem = `pc-20-${candidateId}`;
@@ -37,7 +38,7 @@ async function retainedGate(_directory, options) {
     await writeFile(options.paths.archive, archive, {flag:"wx"});
     const receipt = {schemaVersion:PC20_SCHEMA_VERSION, kind:"npm-pack-install-smoke", complete:true, suitePassed:true, candidateId, candidatePackageSha256:packageSha, packageName:packageIdentity.name, packageVersion:packageIdentity.version, archivePath:options.paths.archive, archiveSha256:packageSha, archiveSizeBytes:archive.length, installed:{cli:true, studioApi:true, studioAssets:true, libraryWorker:true, processesDrained:true}, cleanup:{temporaryInstallRemoved:true, temporaryPackDirectoryRemoved:true, processesDrained:true}};
     await writeFile(options.paths.smoke, `${JSON.stringify(receipt, null, 2)}\n`, {flag:"wx"});
-    return {command:"npm run check:release", startedAt:"2026-09-07T20:00:00.000Z", endedAt:"2026-09-07T20:01:00.000Z", exitCode:0, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedResources:[], stdout:"real candidate gate output\n", stderr:""};
+    return {command:"npm run check:release", startedAt:"2026-09-07T20:00:00.000Z", endedAt:"2026-09-07T20:01:00.000Z", exitCode:0, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedProcessIdentities:[], ownedResources:[], stdout:"real candidate gate output\n", stderr:""};
 }
 
 function lifecycle(gateSha256) {
@@ -78,17 +79,21 @@ test("rejects alternate evidence locations, package identity drift, and altered 
 });
 
 test("drains a real detached process tree on success, timeout, cancellation, and spawn error", async () => {
-    const success = await runBoundedProcess(process.execPath, ["-e", "process.stdout.write('ok')"], {cwd:repositoryDirectory, timeoutMs:1_000});
-    assert.equal(success.processGroupDrained, true);
-    await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {cwd:repositoryDirectory, timeoutMs:50}), /timed out/i);
-    const controller = new AbortController(); controller.abort();
-    await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", "0"], {cwd:repositoryDirectory, signal:controller.signal}), /cancelled/i);
-    await assert.rejects(() => runBoundedProcess("definitely-not-a-command-pc20", [], {cwd:repositoryDirectory}), /ENOENT|spawn/i);
+    const registries = [];
+    const options = () => { const resourceRegistryPath = registryPath("bounded"); registries.push(resourceRegistryPath); return {cwd:repositoryDirectory, resourceRegistryPath}; };
+    try {
+        const success = await runBoundedProcess(process.execPath, ["-e", "process.stdout.write('ok')"], {...options(), timeoutMs:1_000});
+        assert.equal(success.processGroupDrained, true);
+        await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {...options(), timeoutMs:50}), /timed out/i);
+        const controller = new AbortController(); controller.abort();
+        await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", "0"], {...options(), signal:controller.signal}), /cancelled/i);
+        await assert.rejects(() => runBoundedProcess("definitely-not-a-command-pc20", [], options()), /ownership registry|ENOENT|spawn/i);
+    } finally { await Promise.all(registries.map((target) => rm(target, {force:true}))); }
 });
 
 test("the production ownership preload drains a detached/reparented process and audits non-PID handles", async () => {
     const pidPath = path.join("/tmp", `pokie-pc20-detached-${process.pid}-${Date.now()}`);
-    const registryPath = path.join("/tmp", `pokie-pc20-resources-${process.pid}-${Date.now()}`);
+    const ownedRegistryPath = path.join("/tmp", `pokie-pc20-resources-${process.pid}-${Date.now()}`);
     try {
         const result = await runBoundedProcess(process.execPath, ["-e", `
         const {spawn} = require("node:child_process");
@@ -96,25 +101,73 @@ test("the production ownership preload drains a detached/reparented process and 
         const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {detached:true, stdio:"ignore"});
         writeFileSync(process.argv[1], String(child.pid));
         process.exit(0);
-    `, pidPath], {cwd:repositoryDirectory, timeoutMs:1_000, resourceRegistryPath:registryPath});
+    `, pidPath], {cwd:repositoryDirectory, timeoutMs:1_000, resourceRegistryPath:ownedRegistryPath});
         const detachedPid = Number(await readFile(pidPath, "utf8"));
         assert.equal(result.resourcesDrained, true);
-        assert.deepEqual(result.ownedResources, [{schemaVersion:1, action:"acquired", kind:"process", resourceId:`process:${detachedPid}:${process.execPath}`, pid:detachedPid, released:false}]);
+        assert.equal(result.ownedResources.length, 1);
+        assert.match(result.ownedResources[0].processIdentity, /^linux-start-ticks:/);
+        assert.deepEqual({...result.ownedResources[0], processIdentity:undefined}, {schemaVersion:1, action:"acquired", kind:"process", resourceId:`process:${detachedPid}:${process.execPath}`, pid:detachedPid, released:false, processIdentity:undefined});
         assert.throws(() => process.kill(detachedPid, 0), /ESRCH/);
-    } finally { await Promise.all([rm(pidPath, {force:true}), rm(registryPath, {force:true})]); }
+    } finally { await Promise.all([rm(pidPath, {force:true}), rm(ownedRegistryPath, {force:true})]); }
     await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", `
         import(${JSON.stringify(pathToFileURL(path.join(repositoryDirectory, "scripts", "pc-20-release-completion.mjs")).href)}).then(({registerPc20OwnedResource}) => {
             registerPc20OwnedResource({kind:"container", resourceId:"container-without-pid"});
         }).then(() => process.exit(0));
-    `], {cwd:repositoryDirectory, resourceRegistryPath:registryPath}), /owned resources could not be drained/i);
+    `], {cwd:repositoryDirectory, resourceRegistryPath:ownedRegistryPath}), /owned resources could not be drained/i);
+    const releasedRegistryPath = registryPath("released-non-pid");
     const released = await runBoundedProcess(process.execPath, ["-e", `
         import(${JSON.stringify(pathToFileURL(path.join(repositoryDirectory, "scripts", "pc-20-release-completion.mjs")).href)}).then(({registerPc20OwnedResource}) => {
             const resource = {kind:"provider", resourceId:"provider-without-pid"};
             registerPc20OwnedResource(resource);
             registerPc20OwnedResource(resource, "released");
         }).then(() => process.exit(0));
-    `], {cwd:repositoryDirectory, resourceRegistryPath:registryPath});
+    `], {cwd:repositoryDirectory, resourceRegistryPath:releasedRegistryPath});
     assert.equal(released.resourcesDrained, true);
+    await rm(releasedRegistryPath, {force:true});
+});
+
+test("fails closed before an immediate detached child can run when registry acquisition fails", async () => {
+    const invalidRegistry = await mkdtemp(path.join(os.tmpdir(), "pokie-pc20-registry-directory-"));
+    const pidPath = path.join(os.tmpdir(), `pokie-pc20-unregistered-${process.pid}-${Date.now()}`);
+    try {
+        await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", `
+            const {spawn} = require("node:child_process");
+            require("node:fs").writeFileSync(process.argv[1], String(spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {detached:true, stdio:"ignore"}).pid));
+        `, pidPath], {cwd:repositoryDirectory, resourceRegistryPath:invalidRegistry}), /ownership registry|unreadable/i);
+        assert.equal(existsSync(pidPath), false);
+    } finally { await Promise.all([rm(pidPath, {force:true}), rm(invalidRegistry, {recursive:true, force:true})]); }
+});
+
+test("fails closed when the final ownership-registry signature audit is invalid", async () => {
+    const invalidRegistry = registryPath("invalid-signature");
+    try {
+        await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", `
+            require("node:fs").appendFileSync(process.env.POKIE_PC20_RESOURCE_REGISTRY, "{\\\"schemaVersion\\\":1}\\n");
+        `], {cwd:repositoryDirectory, resourceRegistryPath:invalidRegistry}), /invalid or unsigned record/i);
+    } finally { await rm(invalidRegistry, {force:true}); }
+});
+
+test("never signals a PID whose acquisition identity has been reused", async () => {
+    const result = await drainProcessTree({pid:process.pid}, 10, new Map([[process.pid, "linux-start-ticks:not-this-process"]]));
+    assert.equal(result.processTreeDrained, true);
+    assert.deepEqual(result.reusedProcessIds, [process.pid]);
+    assert.doesNotThrow(() => process.kill(process.pid, 0));
+});
+
+test("requires an explicit release for provider and container resources even when they carry a PID", async () => {
+    const script = (kind, release) => ["-e", `
+        import(${JSON.stringify(pathToFileURL(path.join(repositoryDirectory, "scripts", "pc-20-release-completion.mjs")).href)}).then(({registerPc20OwnedResource}) => {
+            const resource = {kind:${JSON.stringify(kind)}, resourceId:${JSON.stringify(`${kind}-with-pid`)}, pid:process.pid};
+            registerPc20OwnedResource(resource);${release ? " registerPc20OwnedResource(resource, \"released\");" : ""}
+        }).then(() => process.exit(0));
+    `];
+    const providerRegistry = registryPath("provider-pid"), containerRegistry = registryPath("container-pid"), releasedRegistry = registryPath("released-provider-pid");
+    try {
+        await assert.rejects(() => runBoundedProcess(process.execPath, script("provider", false), {cwd:repositoryDirectory, resourceRegistryPath:providerRegistry}), /owned resources could not be drained/i);
+        await assert.rejects(() => runBoundedProcess(process.execPath, script("container", false), {cwd:repositoryDirectory, resourceRegistryPath:containerRegistry}), /owned resources could not be drained/i);
+        const released = await runBoundedProcess(process.execPath, script("provider", true), {cwd:repositoryDirectory, resourceRegistryPath:releasedRegistry});
+        assert.equal(released.resourcesDrained, true);
+    } finally { await Promise.all([rm(providerRegistry, {force:true}), rm(containerRegistry, {force:true}), rm(releasedRegistry, {force:true})]); }
 });
 
 test("executes the authorized gate-to-fast-forward handoff before any push or publication", async () => {
@@ -247,7 +300,7 @@ test("executes the authorized runner CLI against a controlled Git remote and rej
         const smoke = {schemaVersion:1, kind:"npm-pack-install-smoke", candidateId:candidate, candidatePackageSha256:fixtureSha, packageName:"pc20-runner-fixture", packageVersion:"1.0.0", archivePath, archiveSha256:fixtureSha, archiveSizeBytes:fixtureArchive.length, complete:true, suitePassed:true, installed:{cli:true, studioApi:true, studioAssets:true, libraryWorker:true, processesDrained:true}, cleanup:{temporaryInstallRemoved:true, temporaryPackDirectoryRemoved:true, processesDrained:true}};
         const smokeContents = `${JSON.stringify(smoke)}\n`;
         await writeFile(smokePath, smokeContents);
-        const gate = {schemaVersion:1, kind:"release-gate", candidateId:candidate, candidatePackageSha256:fixtureSha, command:"npm run check:release", exitCode:0, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedResources:[], startedAt:"2026-09-07T20:00:00.000Z", endedAt:"2026-09-07T20:01:00.000Z", stdoutSha256:"a".repeat(64), stderrSha256:"b".repeat(64), packagingSmokeSha256:hash(smokeContents), archiveSha256:fixtureSha};
+        const gate = {schemaVersion:1, kind:"release-gate", candidateId:candidate, candidatePackageSha256:fixtureSha, command:"npm run check:release", exitCode:0, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedProcessIdentities:[], ownedResources:[], startedAt:"2026-09-07T20:00:00.000Z", endedAt:"2026-09-07T20:01:00.000Z", stdoutSha256:"a".repeat(64), stderrSha256:"b".repeat(64), packagingSmokeSha256:hash(smokeContents), archiveSha256:fixtureSha};
         await writeFile(gatePath, `${JSON.stringify(gate)}\n`);
         const freezePath = path.join(sandbox, "freeze.json"), lifecyclePath = path.join(sandbox, "lifecycle.json");
         await writeFile(freezePath, "fixture freeze\n");

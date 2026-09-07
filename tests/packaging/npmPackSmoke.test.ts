@@ -101,6 +101,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     let pokieBinPath: string;
     const smokeResults = {cli: false, studioApi: false, studioAssets: false, libraryWorker: false, processesDrained: false};
     const completedSmokeTests = new Set<string>();
+    const spawnedSmokeChildren = new Set<ChildProcessWithoutNullStreams>();
+    const spawnSmokeChild = (args: string[], cwd: string): ChildProcessWithoutNullStreams => {
+        const child = spawn(pokieBinPath, args, {cwd}) as ChildProcessWithoutNullStreams;
+        spawnedSmokeChildren.add(child);
+        return child;
+    };
+    const verifySmokeProcessCleanup = (): boolean => [...spawnedSmokeChildren].every((child) => child.exitCode !== null || child.signalCode !== null);
     const smokeIt = (name: string, implementation: () => unknown | Promise<unknown>): void => {
         it(name, async () => {
             await implementation();
@@ -204,12 +211,15 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         if (packDir !== undefined) {
             fs.rmSync(packDir, {recursive: true, force: true});
         }
-        smokeResults.processesDrained = true;
+        // This is a real handle audit, not a finally-block declaration. A
+        // receipt can claim cleanup only once every smoke-launched server has
+        // delivered an exit outcome after its stop attempt.
+        smokeResults.processesDrained = verifySmokeProcessCleanup();
         retainReleaseSmokeReceipt(suitePassed);
     });
 
     smokeIt("runs `pokie --no-open` (Home mode): serves the app shell/assets and a healthy API", async () => {
-        const child = spawn(pokieBinPath, ["--no-open", "--port", "0"], {cwd: installDir}) as ChildProcessWithoutNullStreams;
+        const child = spawnSmokeChild(["--no-open", "--port", "0"], installDir!);
         try {
             const port = await waitForListeningPort(child);
             const baseUrl = `http://127.0.0.1:${port}`;
@@ -255,7 +265,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     });
 
     smokeIt("runs `pokie . --no-open` (Project mode) against a non-package directory: starts cleanly, reports an error dashboard, never crashes", async () => {
-        const child = spawn(pokieBinPath, [".", "--no-open", "--port", "0"], {cwd: installDir}) as ChildProcessWithoutNullStreams;
+        const child = spawnSmokeChild([".", "--no-open", "--port", "0"], installDir!);
         try {
             const port = await waitForListeningPort(child);
             const baseUrl = `http://127.0.0.1:${port}`;
@@ -349,7 +359,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         });
 
         async function contextOf(args: string[], cwd: string): Promise<unknown> {
-            const child = spawn(pokieBinPath, [...args, "--no-open", "--port", "0"], {cwd}) as ChildProcessWithoutNullStreams;
+            const child = spawnSmokeChild([...args, "--no-open", "--port", "0"], cwd);
             try {
                 const port = await waitForListeningPort(child);
                 return await (await fetch(`http://127.0.0.1:${port}/api/context`)).json();
@@ -718,7 +728,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const expectFile = (filePath: string): void => expect(fs.existsSync(filePath)).toBe(true);
         const expectDirectory = (directoryPath: string): void => expect(fs.statSync(directoryPath).isDirectory()).toBe(true);
         const runListeningWorkflow = async (id: string, args: string[], assertion: (baseUrl: string) => Promise<void>): Promise<void> => {
-            const child = spawn(pokieBinPath, args, {cwd: workflowRoot}) as ChildProcessWithoutNullStreams;
+            const child = spawnSmokeChild(args, workflowRoot);
             workflowIds.push(id);
             exercisedPublicWorkflows.add(args[0]);
             try {
