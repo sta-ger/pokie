@@ -64,3 +64,14 @@ d0a855058b094e8893db3ad098118e261c253433dd8476e7f69c44926cf3b934
 This closes the saved-design Browse → Load → Save → durable-Projects delta.
 It does not convert PC-19 into PASS evidence: the reviewer-required external
 freeze receipt and the complete independent charter remain unavailable.
+
+## Retained-evidence revalidation: 2026-09-07
+
+One fresh-profile replay of the same repaired candidate-bound journey retained
+the same local outcomes: rendered **Load** selected `PC19 Saved Design`, one
+**Save game** opened its workspace, **Spin** settled at `Round complete`,
+Simulation completed after its local queued state, and Projects rendered the
+durable `PC19 Saved Design` entry. Its transient transcript SHA-256 was
+`7a59d189ccffb5d237fb215884a4949e6da371dd8232a57e28fac0cadd84609a`.
+No additional parity or artifact-interoperability boundary was completed, so
+this is validation of the retained saved-design delta only, not PASS evidence.
