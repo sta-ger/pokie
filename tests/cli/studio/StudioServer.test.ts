@@ -2503,9 +2503,11 @@ describe("StudioServer", () => {
             // receives the row it immediately opens into the Workspace.
             it("persists and registers the default Recommended Design Game model", async () => {
                 const expectedPath = path.join(managedWorkDir, "POKIE Projects", "starter-slot", "blueprint.json");
+                const operationId = "cold-start-create-starter-slot";
 
                 const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {
                     blueprint: createRecommendedBlueprint(),
+                    operationId,
                 });
 
                 expect(status).toBe(201);
@@ -2525,6 +2527,16 @@ describe("StudioServer", () => {
                 expect(await managedRegistry.list()).toEqual([
                     expect.objectContaining({location: expectedPath, name: "starter-slot", origin: "managed", type: "blueprint"}),
                 ]);
+
+                // Simulates the browser losing the first response and retrying Create game. The exact
+                // same operation resumes the original result instead of allocating starter-slot-2.
+                const retried = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {
+                    blueprint: createRecommendedBlueprint(),
+                    operationId,
+                });
+                expect(retried).toEqual({status: 201, body});
+                expect(await managedRegistry.list()).toHaveLength(1);
+                expect(fs.existsSync(path.join(managedWorkDir, "POKIE Projects", "starter-slot-2", "blueprint.json"))).toBe(false);
             });
 
             it("retries a transient managed-project registration so Create Project can open the recommended model", async () => {

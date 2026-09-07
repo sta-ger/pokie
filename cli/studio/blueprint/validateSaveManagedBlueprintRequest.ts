@@ -1,6 +1,6 @@
-export type SaveManagedBlueprintRequestInput = {blueprint?: unknown; sourceWorkbookPath?: unknown; conversionEvidence?: unknown};
+export type SaveManagedBlueprintRequestInput = {blueprint?: unknown; sourceWorkbookPath?: unknown; conversionEvidence?: unknown; operationId?: unknown};
 
-export type ValidatedSaveManagedBlueprintRequest = {blueprint: unknown; sourceWorkbookPath?: string};
+export type ValidatedSaveManagedBlueprintRequest = {blueprint: unknown; sourceWorkbookPath?: string; operationId?: string};
 
 // The one place a POST /api/home/blueprints/save-managed body is turned into a trusted request — throws
 // a plain, client-safe Error (StudioServer catches this and maps it to 400) for anything malformed.
@@ -14,9 +14,12 @@ export function validateSaveManagedBlueprintRequest(input: SaveManagedBlueprintR
     if (input.sourceWorkbookPath !== undefined && typeof input.sourceWorkbookPath !== "string") {
         throw new Error('"sourceWorkbookPath" must be a string when given.');
     }
+    if (input.operationId !== undefined && (typeof input.operationId !== "string" || input.operationId.trim().length === 0 || input.operationId.length > 200)) {
+        throw new Error('"operationId" must be a non-empty string of at most 200 characters when given.');
+    }
     // Conversion evidence is server-authored at PAR Apply time and looked up
     // by StudioBlueprintService from its durable prepared record.  Accepting
     // this legacy client field would let a crafted request forge provenance.
     // Ignore it for wire compatibility; it is never trusted or persisted.
-    return {blueprint: input.blueprint, sourceWorkbookPath: input.sourceWorkbookPath};
+    return {blueprint: input.blueprint, sourceWorkbookPath: input.sourceWorkbookPath, operationId: input.operationId};
 }

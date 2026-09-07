@@ -170,6 +170,10 @@ const DEFAULT_PORT = 3200;
 // registry I/O interruption must not strand a valid recommended model behind a generic completion
 // failure, so retry the idempotent registration once before rolling that new source back.
 const MANAGED_PROJECT_REGISTRATION_ATTEMPTS = 2;
+const MANAGED_SAVE_OPERATION_CACHE_LIMIT = 64;
+
+type ManagedSaveResponse = {statusCode: number; body: unknown};
+type ManagedSaveOperation = {requestFingerprint: string; completion: Promise<ManagedSaveResponse>};
 
 // The one "unavailable" outcome that isn't about the server's own display -- see isLoopbackRequest's
 // own doc comment for why this is reported instead of ever consulting nativePickerService for a remote
@@ -225,6 +229,10 @@ export class StudioServer implements StudioServerHandling {
     // spawned.
     private readonly openFolder: (folderPath: string) => void;
     private readonly blueprintService: StudioBlueprintService;
+    // A Create game retry must be idempotent. The browser may lose a response after the local server
+    // has already persisted and registered the project; retaining the completed response by its client
+    // operation ID lets the retry continue to Workspace without creating a second managed project.
+    private readonly managedSaveOperations = new Map<string, ManagedSaveOperation>();
     private readonly loadGame: typeof loadPokieGame;
     // Crosses from "the projectRoot a direct `pokie <path>`/`pokie studio <path>` launch was given" to
     // "a real, loadable runtime" before startProjectDashboardLoad() ever touches loadGame -- same
@@ -1486,6 +1494,38 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        const response = await this.resolveManagedSaveOperation(validated);
+        this.sendJson(res, response.statusCode, response.body);
+    }
+
+    private resolveManagedSaveOperation(validated: ReturnType<typeof validateSaveManagedBlueprintRequest>): Promise<ManagedSaveResponse> {
+        if (validated.operationId === undefined) {
+            return this.saveManagedBlueprintProject(validated);
+        }
+
+        const requestFingerprint = crypto
+            .createHash("sha256")
+            .update(JSON.stringify({blueprint: validated.blueprint, sourceWorkbookPath: validated.sourceWorkbookPath}))
+            .digest("hex");
+        const existing = this.managedSaveOperations.get(validated.operationId);
+        if (existing !== undefined) {
+            if (existing.requestFingerprint !== requestFingerprint) {
+                return Promise.resolve({statusCode: 409, body: {status: "error", error: "This Create game operation ID belongs to a different game design. Try Create game again."}});
+            }
+            return existing.completion;
+        }
+
+        while (this.managedSaveOperations.size >= MANAGED_SAVE_OPERATION_CACHE_LIMIT) {
+            const oldestOperationId = this.managedSaveOperations.keys().next().value;
+            if (oldestOperationId === undefined) break;
+            this.managedSaveOperations.delete(oldestOperationId);
+        }
+        const completion = this.saveManagedBlueprintProject(validated);
+        this.managedSaveOperations.set(validated.operationId, {requestFingerprint, completion});
+        return completion;
+    }
+
+    private async saveManagedBlueprintProject(validated: ReturnType<typeof validateSaveManagedBlueprintRequest>): Promise<ManagedSaveResponse> {
         // A PAR-backed managed save executes the shared prepared artifact
         // publication asynchronously; a normal draft save remains immediate.
         // Awaiting both keeps registration behind the same terminal boundary.
@@ -1499,23 +1539,20 @@ export class StudioServer implements StudioServerHandling {
                 // freshly-created source back so users never receive a "saved" result for an orphan that
                 // disappears from Projects after restart.
                 this.blueprintService.discardManagedSave(result.path);
-                this.sendJson(res, 500, {status: "error", error: `Could not register the Blueprint Project at "${result.path}".`});
-                return;
+                return {statusCode: 500, body: {status: "error", error: `Could not register the Blueprint Project at "${result.path}".`}};
             }
             if (registration.status !== "ok") {
                 // A managed save is not successful until its Blueprint Project is registered.  Roll the
                 // freshly-created source back so users never receive a "saved" result for an orphan that
                 // disappears from Projects after restart.
                 this.blueprintService.discardManagedSave(result.path);
-                this.sendJson(res, 500, {status: "error", error: `Could not register the Blueprint Project at "${result.path}".`});
-                return;
+                return {statusCode: 500, body: {status: "error", error: `Could not register the Blueprint Project at "${result.path}".`}};
             }
             // The client can render this freshly persisted row directly, instead of making its visible
             // Projects update depend on a follow-up registry list request settling.
-            this.sendJson(res, 201, {...result, registeredProject: registration.entry});
-            return;
+            return {statusCode: 201, body: {...result, registeredProject: registration.entry}};
         }
-        this.sendJson(res, 200, result);
+        return {statusCode: 200, body: result};
     }
 
     private async registerManagedProject(location: string, name: string, sourceWorkbookPath: string | undefined, conversionEvidencePath?: string) {
