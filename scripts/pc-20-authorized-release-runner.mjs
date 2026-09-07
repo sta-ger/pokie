@@ -66,6 +66,12 @@ export async function runAuthorizedPc20Lifecycle(config, candidateRef, dependenc
     services.assertDevelopClean(root, candidateRef, "develop before push/publication", {includeCompletion:false, includeFailed:false});
     services.run("git", ["push", "origin", "develop"]);
     const pushedAt = services.now();
+    // A local fast-forward is not publication authority.  Resolve the protected
+    // ref from the remote after the push, immediately before npm can receive
+    // the archive, so a concurrent develop advance fails closed.
+    const remoteDevelop = services.run("git", ["ls-remote", "--exit-code", "origin", "refs/heads/develop"]);
+    const remoteDevelopSha = /^([a-f0-9]{40})\s+refs\/heads\/develop\s*$/im.exec(remoteDevelop)?.[1];
+    if (remoteDevelopSha !== candidateRef) fail("remote protected develop drifted after push and before publication");
     const archive = path.join(PC20_EVIDENCE_DIRECTORY, `pc-20-${candidateRef}-package.tgz`);
     const gatePath = path.join(PC20_EVIDENCE_DIRECTORY, `pc-20-${candidateRef}-release-gate.json`);
     if (!services.exists(archive) || !services.exists(gatePath)) fail("candidate-bound gate archive/receipt is unavailable");
@@ -79,7 +85,7 @@ export async function runAuthorizedPc20Lifecycle(config, candidateRef, dependenc
     const gateContents = await services.readFile(gatePath);
     const gateSha256 = digest(gateContents);
     const drive = await driveRoundTrip(gatePath, gateSha256, services);
-    const receipt = {schemaVersion:PC20_SCHEMA_VERSION, receiptId:`pc-20-${candidateRef}`, issuedAt:services.now(), candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, releaseSha:candidateRef, git:{mergedToDevelop:true, cleanDevelop:true, developSha:candidateRef, pushedSha:candidateRef, remote, pushedAt}, publication:{published:true, packageName:config.packageName, packageVersion:config.packageVersion, packageSha256:config.candidatePackageSha256, registryArchiveSha256:config.candidatePackageSha256, publishedSha:candidateRef, registryIdentity:dist.tarball, publishedAt:services.now()}, drive};
+    const receipt = {schemaVersion:PC20_SCHEMA_VERSION, receiptId:`pc-20-${candidateRef}`, issuedAt:services.now(), candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, releaseSha:candidateRef, git:{mergedToDevelop:true, cleanDevelop:true, developSha:candidateRef, pushedSha:candidateRef, remote, pushedAt, remoteDevelopSha}, publication:{published:true, packageName:config.packageName, packageVersion:config.packageVersion, packageSha256:config.candidatePackageSha256, registryArchiveSha256:config.candidatePackageSha256, publishedSha:candidateRef, registryIdentity:dist.tarball, publishedAt:services.now()}, drive};
     const target = path.resolve(config.lifecycleReceiptPath);
     await services.writeFile(target, `${JSON.stringify(receipt, null, 2)}\n`, {flag:"wx"});
     return receipt;

@@ -7,8 +7,8 @@
  * controller owns the one local release gate and writes append-only receipts
  * tying those operations to the same immutable source and package identities.
  */
-import {createHash} from "node:crypto";
-import {existsSync, readFileSync} from "node:fs";
+import {createHash, randomBytes, timingSafeEqual} from "node:crypto";
+import {appendFileSync, existsSync, readFileSync} from "node:fs";
 import {mkdir, readFile, rm, stat, writeFile} from "node:fs/promises";
 import {spawn, spawnSync} from "node:child_process";
 import path from "node:path";
@@ -25,6 +25,8 @@ const utc = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d
 const digest = (contents) => createHash("sha256").update(contents).digest("hex");
 const fail = (message) => { throw new Error(`PC-20 release completion is invalid: ${message}`); };
 const now = () => new Date().toISOString();
+const resourceKinds = new Set(["provider", "browser", "worker", "container", "process"]);
+const resourceActions = new Set(["acquired", "released"]);
 
 function required(value, name) {
     if (typeof value !== "string" || !value) fail(`${name} is required`);
@@ -129,7 +131,38 @@ function processSnapshot() {
     return processes;
 }
 
-function readOwnedResources(resourceRegistryPath) {
+function resourceSignature(secret, record) {
+    return createHash("sha256").update(secret).update("\0").update(JSON.stringify(record)).digest("hex");
+}
+
+/**
+ * Production gate children use this authenticated writer to declare resources
+ * which can outlive their parent process.  A provider/container without a PID
+ * must subsequently write its `released` event; process-like resources are
+ * drained and audited by the controller itself.
+ */
+export function registerPc20OwnedResource({kind, resourceId, pid}, action = "acquired", environment = process.env) {
+    const registry = environment.POKIE_PC20_RESOURCE_REGISTRY;
+    const secret = environment.POKIE_PC20_RESOURCE_REGISTRY_SECRET;
+    if (!registry || !secret) return false;
+    if (!resourceKinds.has(kind) || !resourceActions.has(action) || typeof resourceId !== "string" || !resourceId) throw new Error("PC-20 owned resource requires a supported kind, action, and resourceId");
+    if (pid !== undefined && (!Number.isInteger(pid) || pid <= 0)) throw new Error("PC-20 owned resource PID must be a positive integer");
+    const record = {schemaVersion:1, action, kind, resourceId, ...(pid === undefined ? {} : {pid})};
+    appendFileSync(registry, `${JSON.stringify({...record, signature:resourceSignature(secret, record)})}\n`, {encoding:"utf8", mode:0o600});
+    return true;
+}
+
+function signedResourceRecord(value, secret) {
+    if (!value || value.schemaVersion !== 1 || !resourceActions.has(value.action) || !resourceKinds.has(value.kind) || typeof value.resourceId !== "string" || !value.resourceId || typeof value.signature !== "string") return undefined;
+    if (value.pid !== undefined && (!Number.isInteger(value.pid) || value.pid <= 0)) return undefined;
+    const {signature, ...record} = value;
+    const expected = resourceSignature(secret, record);
+    const actualBytes = Buffer.from(signature, "hex"), expectedBytes = Buffer.from(expected, "hex");
+    if (actualBytes.length !== expectedBytes.length || !timingSafeEqual(actualBytes, expectedBytes)) return undefined;
+    return record;
+}
+
+function readOwnedResources(resourceRegistryPath, resourceRegistrySecret) {
     if (!resourceRegistryPath || !existsSync(resourceRegistryPath)) return [];
     let contents;
     try { contents = readFileSync(resourceRegistryPath, "utf8"); } catch { return []; }
@@ -137,14 +170,14 @@ function readOwnedResources(resourceRegistryPath) {
     for (const line of contents.split("\n")) {
         if (!line.trim()) continue;
         try {
-            const record = JSON.parse(line);
-            if (["provider", "browser", "worker", "container", "process"].includes(record.kind) && Number.isInteger(record.pid) && record.pid > 0) records.push(record);
+            const record = signedResourceRecord(JSON.parse(line), resourceRegistrySecret);
+            if (record) records.push(record);
         } catch { /* an incomplete concurrent append is retried by the next audit */ }
     }
     return records;
 }
 
-function createOwnershipTracker(pid, resourceRegistryPath) {
+function createOwnershipTracker(pid, resourceRegistryPath, resourceRegistrySecret) {
     const ownedPids = new Set(Number.isInteger(pid) && pid > 0 ? [pid] : []);
     const ownedResources = new Map();
     const capture = () => {
@@ -159,9 +192,11 @@ function createOwnershipTracker(pid, resourceRegistryPath) {
                 }
             }
         }
-        for (const resource of readOwnedResources(resourceRegistryPath)) {
-            ownedPids.add(resource.pid);
-            ownedResources.set(`${resource.kind}:${resource.pid}`, resource);
+        for (const resource of readOwnedResources(resourceRegistryPath, resourceRegistrySecret)) {
+            const key = `${resource.kind}:${resource.resourceId}`;
+            const current = ownedResources.get(key) || {};
+            ownedResources.set(key, {...current, ...resource, released:current.released || resource.action === "released"});
+            if (resource.pid !== undefined) ownedPids.add(resource.pid);
         }
     };
     capture();
@@ -179,7 +214,8 @@ function processAlive(pid) {
 export async function drainProcessTree(child, graceMs = 1_000, ownedPids = new Set(), ownedResources = new Map()) {
     const pid = child?.pid;
     if (Number.isInteger(pid) && pid > 0) ownedPids.add(pid);
-    if (ownedPids.size === 0) return {processGroupDrained:true, processTreeDrained:true, resourcesDrained:ownedResources.size === 0, ownedProcessIds:[], ownedResources:[...ownedResources.values()], termination:"not-started"};
+    const resourcesReleased = () => [...ownedResources.values()].every((resource) => resource.pid !== undefined || resource.released === true);
+    if (ownedPids.size === 0) return {processGroupDrained:true, processTreeDrained:true, resourcesDrained:resourcesReleased(), ownedProcessIds:[], ownedResources:[...ownedResources.values()], termination:"not-started"};
     const terminate = (signal) => {
         for (const processId of ownedPids) {
             try {
@@ -199,7 +235,7 @@ export async function drainProcessTree(child, graceMs = 1_000, ownedPids = new S
         if ([...ownedPids].some(processAlive)) terminate("SIGKILL");
         await pause(25);
         const processTreeDrained = ![...ownedPids].some(processAlive);
-        return {processGroupDrained:processTreeDrained, processTreeDrained, resourcesDrained:processTreeDrained, ownedProcessIds:[...ownedPids], ownedResources:[...ownedResources.values()], termination:"windows-owned-processes"};
+        return {processGroupDrained:processTreeDrained, processTreeDrained, resourcesDrained:processTreeDrained && resourcesReleased(), ownedProcessIds:[...ownedPids], ownedResources:[...ownedResources.values()], termination:"windows-owned-processes"};
     }
     if (Number.isInteger(pid) && pid > 0 && processGroupAlive(pid)) terminate("SIGTERM");
     const deadline = Date.now() + graceMs;
@@ -210,7 +246,7 @@ export async function drainProcessTree(child, graceMs = 1_000, ownedPids = new S
         while ([...ownedPids].some(processAlive) && Date.now() < killDeadline) await pause(25);
     }
     const processTreeDrained = ![...ownedPids].some(processAlive);
-    return {processGroupDrained:!processGroupAlive(pid), processTreeDrained, resourcesDrained:processTreeDrained, ownedProcessIds:[...ownedPids], ownedResources:[...ownedResources.values()], termination:"tracked-process-tree"};
+    return {processGroupDrained:!processGroupAlive(pid), processTreeDrained, resourcesDrained:processTreeDrained && resourcesReleased(), ownedProcessIds:[...ownedPids], ownedResources:[...ownedResources.values()], termination:"tracked-process-tree"};
 }
 
 /**
@@ -218,7 +254,7 @@ export async function drainProcessTree(child, graceMs = 1_000, ownedPids = new S
  * ownership is a release invariant on every exit path, including spawn error,
  * AbortSignal cancellation and timer expiry.
  */
-export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60 * 1000, signal, env = process.env, spawnCommand = spawn, ownedProcessIds = [], resourceRegistryPath} = {}) {
+export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60 * 1000, signal, env = process.env, spawnCommand = spawn, ownedProcessIds = [], resourceRegistryPath, resourceRegistrySecret = randomBytes(32).toString("hex")} = {}) {
     const startedAt = now();
     let child;
     let timedOut = false;
@@ -229,8 +265,8 @@ export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60
     let failure;
     try {
         if (signal?.aborted) { cancelled = true; throw new Error("release gate was cancelled before spawn"); }
-        child = spawnCommand(command, args, {cwd:path.resolve(cwd), detached:process.platform !== "win32", stdio:["ignore", "pipe", "pipe"], env:{...env, ...(resourceRegistryPath ? {POKIE_PC20_RESOURCE_REGISTRY:resourceRegistryPath} : {})}});
-        tracker = createOwnershipTracker(child.pid, resourceRegistryPath);
+        child = spawnCommand(command, args, {cwd:path.resolve(cwd), detached:process.platform !== "win32", stdio:["ignore", "pipe", "pipe"], env:{...env, ...(resourceRegistryPath ? {POKIE_PC20_RESOURCE_REGISTRY:resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:resourceRegistrySecret} : {})}});
+        tracker = createOwnershipTracker(child.pid, resourceRegistryPath, resourceRegistrySecret);
         for (const processId of ownedProcessIds) if (Number.isInteger(processId) && processId > 0) tracker.ownedPids.add(processId);
         child.stdout?.on("data", (chunk) => { output += chunk; });
         child.stderr?.on("data", (chunk) => { errorOutput += chunk; });
@@ -352,7 +388,7 @@ async function obtainGate(config, dependencies) {
 function validateLifecycleReceipt(receipt, config, gateSha256) {
     if (!receipt || receipt.schemaVersion !== PC20_SCHEMA_VERSION || typeof receipt.receiptId !== "string" || !receipt.receiptId || !utc(receipt.issuedAt) || receipt.candidateId !== config.candidateId || receipt.releaseSha !== config.candidateId || receipt.candidatePackageSha256 !== config.candidatePackageSha256) fail("external lifecycle receipt is not bound to the accepted candidate/package");
     const git = receipt.git;
-    if (!git || git.mergedToDevelop !== true || git.cleanDevelop !== true || git.developSha !== config.candidateId || git.pushedSha !== config.candidateId || typeof git.remote !== "string" || !git.remote || !utc(git.pushedAt)) fail("external lifecycle receipt lacks the clean develop merge/push of the accepted SHA");
+    if (!git || git.mergedToDevelop !== true || git.cleanDevelop !== true || git.developSha !== config.candidateId || git.pushedSha !== config.candidateId || git.remoteDevelopSha !== config.candidateId || typeof git.remote !== "string" || !git.remote || !utc(git.pushedAt)) fail("external lifecycle receipt lacks the clean develop merge/push of the accepted SHA");
     const publication = receipt.publication;
     if (!publication || publication.published !== true || publication.packageName !== config.packageName || publication.packageVersion !== config.packageVersion || publication.packageSha256 !== config.candidatePackageSha256 || publication.registryArchiveSha256 !== config.candidatePackageSha256 || publication.publishedSha !== config.candidateId || typeof publication.registryIdentity !== "string" || !publication.registryIdentity || !utc(publication.publishedAt)) fail("external lifecycle receipt lacks the exact registry publication identity");
     const drive = receipt.drive;

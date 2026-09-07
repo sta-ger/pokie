@@ -191,7 +191,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // Jest reaches afterAll only after every real installed CLI, Studio/API/assets and worker
         // assertion above has completed; the receipt is therefore an append-only release artifact,
         // not a pre-flight checklist written before the smoke boundary ran.
-        const suitePassed = completedSmokeTests.size === 14;
+        // Every test in this describe is registered through smokeIt.  Keep the
+        // expected count explicit so adding an unwrapped test cannot silently
+        // make a release receipt describe only a subset of this suite.
+        const suitePassed = completedSmokeTests.size === 22;
         if (suitePassed && smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker) {
             stageReleaseSmokeArchive();
         }
@@ -355,23 +358,23 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             }
         }
 
-        it("`pokie` inside a project opens that project", async () => {
+        smokeIt("`pokie` inside a project opens that project", async () => {
             expect(await contextOf([], projectRoot)).toEqual({mode: "project", projectRoot});
         });
 
-        it("`pokie` from a nested directory inside a project still opens that project", async () => {
+        smokeIt("`pokie` from a nested directory inside a project still opens that project", async () => {
             const nested = path.join(projectRoot, "dist");
             expect(fs.existsSync(nested)).toBe(true);
 
             expect(await contextOf([], nested)).toEqual({mode: "project", projectRoot});
         });
 
-        it("`pokie` outside any project opens Home", async () => {
+        smokeIt("`pokie` outside any project opens Home", async () => {
             // installDir has a package.json of its own, but no "pokie.entry" — not a game package.
             expect(await contextOf([], installDir!)).toEqual({mode: "home"});
         });
 
-        it("`pokie .` opens the project it was pointed at", async () => {
+        smokeIt("`pokie .` opens the project it was pointed at", async () => {
             expect(await contextOf(["."], projectRoot)).toEqual({mode: "project", projectRoot});
         });
     });
@@ -390,7 +393,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stderr).toBe("");
     });
 
-    it.each([["--help"], ["-h"]])("prints the general usage and the full command list for `pokie %s`, exiting 0", (flag) => {
+    for (const [flag] of [["--help"], ["-h"]]) smokeIt(`prints the general usage and the full command list for \`pokie ${flag}\`, exiting 0`, () => {
         const result = spawnSync(pokieBinPath, [flag], {cwd: installDir, encoding: "utf-8", timeout: 60000});
 
         expect(result.status).toBe(0);
@@ -410,7 +413,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stdout).not.toMatch(/^ {2}(name|studio)\b/m);
     });
 
-    it.each([["--version"], ["-V"]])("prints the installed version for `pokie %s`, exiting 0", (flag) => {
+    for (const [flag] of [["--version"], ["-V"]]) smokeIt(`prints the installed version for \`pokie ${flag}\`, exiting 0`, () => {
         const result = spawnSync(pokieBinPath, [flag], {cwd: installDir, encoding: "utf-8", timeout: 60000});
         const {version} = JSON.parse(fs.readFileSync(path.join(installDir!, "node_modules", "pokie", "package.json"), "utf-8")) as {
             version: string;

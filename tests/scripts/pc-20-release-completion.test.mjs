@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {execFileSync} from "node:child_process";
 import {existsSync} from "node:fs";
-import {readFile, rm, writeFile} from "node:fs/promises";
+import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import {pathToFileURL} from "node:url";
 import {test} from "@jest/globals";
 import {PC20_EVIDENCE_DIRECTORY, PC20_SCHEMA_VERSION, runBoundedProcess, validatePc20ReleaseCompletion, validatePc20ReleaseGate} from "../../scripts/pc-20-release-completion.mjs";
 import {runAuthorizedPc20Lifecycle} from "../../scripts/pc-20-authorized-release-runner.mjs";
@@ -39,7 +41,7 @@ async function retainedGate(_directory, options) {
 }
 
 function lifecycle(gateSha256) {
-    return {schemaVersion:PC20_SCHEMA_VERSION, receiptId:"release-1", issuedAt:"2026-09-07T20:02:00.000Z", candidateId, candidatePackageSha256:packageSha, releaseSha:candidateId, git:{mergedToDevelop:true, cleanDevelop:true, developSha:candidateId, pushedSha:candidateId, remote:"origin", pushedAt:"2026-09-07T20:01:20.000Z"}, publication:{published:true, packageName:packageIdentity.name, packageVersion:packageIdentity.version, packageSha256:packageSha, registryArchiveSha256:packageSha, publishedSha:candidateId, registryIdentity:"https://registry.example/pokie.tgz", publishedAt:"2026-09-07T20:01:30.000Z"}, drive:{uploaded:true, readBack:true, releaseGateSha256:gateSha256, readBackSha256:gateSha256, uploadId:"drive-file-1", uploadedAt:"2026-09-07T20:01:40.000Z", readBackAt:"2026-09-07T20:01:50.000Z"}};
+    return {schemaVersion:PC20_SCHEMA_VERSION, receiptId:"release-1", issuedAt:"2026-09-07T20:02:00.000Z", candidateId, candidatePackageSha256:packageSha, releaseSha:candidateId, git:{mergedToDevelop:true, cleanDevelop:true, developSha:candidateId, pushedSha:candidateId, remoteDevelopSha:candidateId, remote:"origin", pushedAt:"2026-09-07T20:01:20.000Z"}, publication:{published:true, packageName:packageIdentity.name, packageVersion:packageIdentity.version, packageSha256:packageSha, registryArchiveSha256:packageSha, publishedSha:candidateId, registryIdentity:"https://registry.example/pokie.tgz", publishedAt:"2026-09-07T20:01:30.000Z"}, drive:{uploaded:true, readBack:true, releaseGateSha256:gateSha256, readBackSha256:gateSha256, uploadId:"drive-file-1", uploadedAt:"2026-09-07T20:01:40.000Z", readBackAt:"2026-09-07T20:01:50.000Z"}};
 }
 
 test("retains the canonical candidate archive/install receipt and reuses its immutable green gate", async () => {
@@ -84,26 +86,38 @@ test("drains a real detached process tree on success, timeout, cancellation, and
     await assert.rejects(() => runBoundedProcess("definitely-not-a-command-pc20", [], {cwd:repositoryDirectory}), /ENOENT|spawn/i);
 });
 
-test("tracks and drains a detached descendant rather than only the release process group", async () => {
+test("production-owned resource registration drains a detached/reparented process and audits non-PID handles", async () => {
     const pidPath = path.join("/tmp", `pokie-pc20-detached-${process.pid}-${Date.now()}`);
     const registryPath = path.join("/tmp", `pokie-pc20-resources-${process.pid}-${Date.now()}`);
     try {
+        const controllerUrl = pathToFileURL(path.join(repositoryDirectory, "scripts", "pc-20-release-completion.mjs")).href;
         const result = await runBoundedProcess(process.execPath, ["-e", `
         const {spawn} = require("node:child_process");
-        const {appendFileSync, writeFileSync} = require("node:fs");
+        const {writeFileSync} = require("node:fs");
         const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {detached:true, stdio:"ignore"});
         writeFileSync(process.argv[1], String(child.pid));
-        appendFileSync(process.env.POKIE_PC20_RESOURCE_REGISTRY, JSON.stringify({kind:"browser", pid:child.pid}) + "\\n");
-        process.exit(0);
+        import(${JSON.stringify(controllerUrl)}).then(({registerPc20OwnedResource}) => {
+            registerPc20OwnedResource({kind:"browser", resourceId:"detached-browser", pid:child.pid});
+        }).then(() => process.exit(0));
     `, pidPath], {cwd:repositoryDirectory, timeoutMs:1_000, resourceRegistryPath:registryPath});
         const detachedPid = Number(await readFile(pidPath, "utf8"));
         assert.equal(result.resourcesDrained, true);
-        assert.deepEqual(result.ownedResources, [{kind:"browser", pid:detachedPid}]);
+        assert.deepEqual(result.ownedResources, [{schemaVersion:1, action:"acquired", kind:"browser", resourceId:"detached-browser", pid:detachedPid, released:false}]);
         assert.throws(() => process.kill(detachedPid, 0), /ESRCH/);
     } finally { await Promise.all([rm(pidPath, {force:true}), rm(registryPath, {force:true})]); }
-    // The assertion above is intentionally limited to the lifecycle outcome:
-    // the controller's process-table audit, not a process-group assumption,
-    // owns the detached child before it can become orphaned.
+    await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", `
+        import(${JSON.stringify(pathToFileURL(path.join(repositoryDirectory, "scripts", "pc-20-release-completion.mjs")).href)}).then(({registerPc20OwnedResource}) => {
+            registerPc20OwnedResource({kind:"container", resourceId:"container-without-pid"});
+        }).then(() => process.exit(0));
+    `], {cwd:repositoryDirectory, resourceRegistryPath:registryPath}), /owned resources could not be drained/i);
+    const released = await runBoundedProcess(process.execPath, ["-e", `
+        import(${JSON.stringify(pathToFileURL(path.join(repositoryDirectory, "scripts", "pc-20-release-completion.mjs")).href)}).then(({registerPc20OwnedResource}) => {
+            const resource = {kind:"provider", resourceId:"provider-without-pid"};
+            registerPc20OwnedResource(resource);
+            registerPc20OwnedResource(resource, "released");
+        }).then(() => process.exit(0));
+    `], {cwd:repositoryDirectory, resourceRegistryPath:registryPath});
+    assert.equal(released.resourcesDrained, true);
 });
 
 test("executes the authorized gate-to-fast-forward handoff before any push or publication", async () => {
@@ -127,6 +141,7 @@ test("executes the authorized gate-to-fast-forward handoff before any push or pu
             if (name === "git" && args[0] === "merge") return "";
             if (name === "git" && args[0] === "rev-parse") return candidateId;
             if (name === "git" && args[0] === "remote") return "origin";
+            if (name === "git" && args[0] === "ls-remote") return `${candidateId}\trefs/heads/develop`;
             if (name === "npm" && args[0] === "view") return JSON.stringify({tarball:"https://registry.example/pokie.tgz"});
             return "";
         };
@@ -138,6 +153,7 @@ test("executes the authorized gate-to-fast-forward handoff before any push or pu
         assert.equal(receipt.git.developSha, candidateId);
         assert.ok(calls.indexOf("gate validated") < calls.indexOf(`git merge --ff-only ${candidateId}`));
         assert.ok(calls.indexOf(`git merge --ff-only ${candidateId}`) < calls.indexOf("git push origin develop"));
+        assert.ok(calls.indexOf("git push origin develop") < calls.indexOf("git ls-remote --exit-code origin refs/heads/develop"));
         assert.ok(calls.indexOf("git push origin develop") < calls.indexOf(`npm publish ${archivePath} --access public`));
     } finally { await testFixture.cleanup(); }
 });
@@ -156,7 +172,51 @@ test("authorized runner rejects candidate identity, gate receipt and post-merge 
             return "";
         }};
         await assert.rejects(() => runAuthorizedPc20Lifecycle(testFixture.config, candidateId, drift), /develop did not resolve/i);
+        const remoteDrift = {...dependencies, run:(name, args) => {
+            if (name === "git" && args[0] === "remote") return "origin";
+            if (name === "git" && args[0] === "rev-parse") return candidateId;
+            if (name === "git" && args[0] === "ls-remote") return `${"f".repeat(40)}\trefs/heads/develop`;
+            return "";
+        }};
+        await assert.rejects(() => runAuthorizedPc20Lifecycle(testFixture.config, candidateId, remoteDrift), /remote protected develop drifted/i);
     } finally { await testFixture.cleanup(); }
+});
+
+test("uses a controlled real Git remote handoff and refuses post-push protected-ref drift before npm", async () => {
+    const testFixture = await fixture();
+    const sandbox = await mkdtemp(path.join(os.tmpdir(), "pokie-pc20-runner-"));
+    const remote = path.join(sandbox, "origin.git"), work = path.join(sandbox, "work");
+    const git = (args, cwd = work) => execFileSync("git", args, {cwd, encoding:"utf8"}).trim();
+    try {
+        git(["init", "--bare", remote], sandbox);
+        git(["init", "-b", "develop", work], sandbox);
+        git(["config", "user.name", "PC-20 test" ]);
+        git(["config", "user.email", "pc20@example.invalid"]);
+        await writeFile(path.join(work, "candidate.txt"), "base\n");
+        git(["add", "candidate.txt"]); git(["commit", "-m", "base"]);
+        const base = git(["rev-parse", "HEAD"]);
+        git(["remote", "add", "origin", remote]); git(["push", "-u", "origin", "develop"]);
+        await writeFile(path.join(work, "candidate.txt"), "candidate\n");
+        git(["commit", "-am", "candidate"]);
+        const candidate = git(["rev-parse", "HEAD"]);
+        const config = {...testFixture.config, candidateId:candidate};
+        let npmCalled = false;
+        const command = (name, args) => {
+            if (name === "git") {
+                const output = git(args);
+                if (args[0] === "push") git(["--git-dir", remote, "update-ref", "refs/heads/develop", base], sandbox);
+                return output;
+            }
+            if (name === "npm") { npmCalled = true; return ""; }
+            throw new Error(`unexpected command ${name}`);
+        };
+        await assert.rejects(() => runAuthorizedPc20Lifecycle(config, candidate, {
+            environment:{NODE_AUTH_TOKEN:"test", PC20_DRIVE_ACCESS_TOKEN:"test"}, run:command,
+            validateGate:async () => {}, assertCandidateCheckout:() => {}, assertDevelopClean:() => {},
+        }), /remote protected develop drifted/i);
+        assert.equal(git(["rev-parse", "refs/heads/develop"], remote), base);
+        assert.equal(npmCalled, false);
+    } finally { await testFixture.cleanup(); await rm(sandbox, {recursive:true, force:true}); }
 });
 
 test("locks a failed candidate and removes partial smoke artifacts before another gate can run", async () => {
@@ -188,6 +248,8 @@ test("the publication workflow is an authorized candidate-ref runner, not an eph
     assert.match(workflow, /contents: write/);
     assert.match(workflow, /NPM_TOKEN/);
     assert.match(workflow, /PC20_DRIVE_ACCESS_TOKEN/);
+    assert.match(workflow, /concurrency:/);
+    assert.match(workflow, /pc20-protected-develop-publication/);
     assert.match(workflow, /--gate-only/);
     assert.match(workflow, /pc-20-authorized-release-runner\.mjs/);
 });

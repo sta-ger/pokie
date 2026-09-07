@@ -12,6 +12,13 @@ on:
         required: true
         type: string
 
+# develop is checked again on the remote immediately before publication.  Keep
+# dispatches serialized as well, so two authorized runners cannot race the
+# protected fast-forward window.
+concurrency:
+  group: pc20-protected-develop-publication
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: [self-hosted, pokie-release-runner]
