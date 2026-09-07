@@ -65,6 +65,34 @@ This closes the saved-design Browse → Load → Save → durable-Projects delta
 It does not convert PC-19 into PASS evidence: the reviewer-required external
 freeze receipt and the complete independent charter remain unavailable.
 
+## TypeScript package opening defect: 2026-09-07
+
+In a new Studio profile launched exactly with
+`node ./dist/cli/pokie.js --no-open`, the visible **TypeScript Game Package**
+card rendered its enabled **Build** control. One activation rendered the
+action-local `Building` state and then `Built to /home/stager/POKIE
+Projects/tsPackage`. The same card then rendered its own enabled **Open as
+Project** control, which was activated once.
+
+That activation immediately navigated to a workspace whose local Overview
+identified `/home/stager/POKIE Projects/parWorkbook.xlsx`, `Game format: PAR
+spreadsheet`, and `Invalid — 1 error(s)`: `pokie-package-load-failed` because
+Studio tried to read `parWorkbook.xlsx/package.json` (`ENOTDIR`). It never
+rendered the just-built TypeScript package as the promised openable project.
+This is a synchronous, action-local artifact-interoperability failure, not the
+earlier picker readiness observation.
+
+Action correlation: action = `TypeScript Game Package — Open as Project`;
+ready state = `the same built TypeScript-package card exposes its enabled Open
+as Project control`; accepted state = `the exact control immediately replaced
+the card with its opened-project workspace`; terminal state = `the workspace
+rendered the unrelated PAR workbook and its local package-load error instead
+of tsPackage`; synchronous terminal = `true`.
+
+No generated package, project tree, screenshot, profile, or raw log was
+retained. The transient rendered-workflow transcript SHA-256 was
+`f0bc870cd524956255ae14a54491edb30b3253df5dbc7597a89b30ee6046e7d7`.
+
 ## Retained-evidence revalidation: 2026-09-07
 
 One fresh-profile replay of the same repaired candidate-bound journey retained
