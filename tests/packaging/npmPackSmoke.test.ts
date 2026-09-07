@@ -133,13 +133,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         fs.copyFileSync(tarballPath!, archivePath!, fs.constants.COPYFILE_EXCL);
     }
 
-    function retainReleaseSmokeReceipt(suitePassed: boolean): void {
+    function retainReleaseSmokeReceipt(suitePassed: boolean, cleanup: {temporaryInstallRemoved: boolean; temporaryPackDirectoryRemoved: boolean; processesDrained: boolean}): void {
         const receiptPath = process.env.POKIE_PACK_SMOKE_RECEIPT;
         const archivePath = process.env.POKIE_PACK_SMOKE_ARCHIVE_PATH;
         if (receiptPath === undefined && archivePath === undefined) return;
         expect(receiptPath).toBeDefined();
         expect(archivePath).toBeDefined();
-        if (!suitePassed || !Object.values(smokeResults).every(Boolean)) return;
+        if (!suitePassed || !Object.values(smokeResults).every(Boolean) || !Object.values(cleanup).every(Boolean)) return;
         const archive = fs.readFileSync(archivePath!);
         const archiveSha256 = createHash("sha256").update(archive).digest("hex");
         const ownPackage = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {name: string; version: string};
@@ -156,7 +156,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             complete: true,
             suitePassed: true,
             installed: smokeResults,
-            cleanup: {temporaryInstallRemoved: true, temporaryPackDirectoryRemoved: true, processesDrained: true},
+            cleanup,
         }, null, 2)}\n`, {flag: "wx"});
     }
 
@@ -215,7 +215,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // receipt can claim cleanup only once every smoke-launched server has
         // delivered an exit outcome after its stop attempt.
         smokeResults.processesDrained = verifySmokeProcessCleanup();
-        retainReleaseSmokeReceipt(suitePassed);
+        const cleanup = {
+            temporaryInstallRemoved: installDir === undefined || !fs.existsSync(installDir),
+            temporaryPackDirectoryRemoved: packDir === undefined || !fs.existsSync(packDir),
+            processesDrained: smokeResults.processesDrained,
+        };
+        retainReleaseSmokeReceipt(suitePassed, cleanup);
     });
 
     smokeIt("runs `pokie --no-open` (Home mode): serves the app shell/assets and a healthy API", async () => {
