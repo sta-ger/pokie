@@ -1,3 +1,0 @@
-# Artifact and lifecycle boundaries
-
-The retained public workflow crossed saved design → workspace → Play/session/round → Simulation/report → Replay inspector → generated Outcome Library sibling → built TypeScript package → opened read-only package → Provably Fair proof. The same candidate-built CLI validated and sampled those generated artifacts. Earlier retained recovery records document driver-only control repairs and clean fresh-context reruns; no uncorrelated page error was treated as a product terminal. This record is a bounded index to `recovery-run-2026-09-07T18-35Z.md`, `recovery-run-2026-09-07T18-45Z.md`, and `recovery-run-2026-09-07T18-55Z.md`.

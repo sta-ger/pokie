@@ -1,29 +1,8 @@
 {
   "schemaVersion": 3,
-  "reviewId": "pc-19-169c80f8-recovery-6",
-  "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
-  "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37",
-  "frozenAt": "2026-09-07T19:30:43.676Z",
-  "findings": [
-    {
-      "id": "pc-19-generated-sibling-bundle",
-      "severity": "P2",
-      "material": true,
-      "reproducer": "Pre-fix Studio-generated sibling Outcome Library selected in the opened TypeScript package then Compute commitments rendered its own immediate failure.",
-      "publicSurface": "Studio Provably Fair",
-      "owner": "product coherence",
-      "status": "resolved",
-      "evidence": {
-        "evidenceId": "E006",
-        "path": "reviews/role-missions.md",
-        "sha256": "6b10e3f1e4914a5ceffdcbc97ac2d96236dd2392621a9f8fe2aeadfc5c93335e",
-        "sizeBytes": 707,
-        "capturedAt": "2026-09-07T19:01:00Z",
-        "kind": "blind-finding-and-delta-summary",
-        "summary": "Rendered generated-sibling fairness delta summary.",
-        "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
-        "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37"
-      }
-    }
-  ]
+  "reviewId": "pc-20-cc0219a1-incomplete-rerun",
+  "candidateId": "cc0219a1088de689781de5bf56ed2786e8d40972",
+  "candidatePackageSha256": "07053aad46507e453d0fadd04a18cf47e03031cceb6d1a80ae49ee5735b509ad",
+  "frozenAt": "2026-09-07T23:13:36.112Z",
+  "findings": []
 }
