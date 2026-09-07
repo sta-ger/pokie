@@ -29,9 +29,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Require the candidate to be the exact clean develop revision
+      - name: Require a clean immutable candidate checkout before its gate
         run: |
-          git checkout develop
           test "$(git rev-parse HEAD)" = "${{ inputs.candidate_ref }}"
           test -z "$(git status --porcelain --untracked-files=all)"
 
