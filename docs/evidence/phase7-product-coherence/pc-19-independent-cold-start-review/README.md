@@ -30,3 +30,19 @@ The 18:35Z record has an independently validated verifier-owned freeze receipt. 
 The separately retained [18:45Z recovery record](recovery-run-2026-09-07T18-45Z.md) covers four new fresh-profile candidate launches. It confirms rendered create, Play/spin, queued/running/completed Simulation, Session Spin replay loading, exact Outcome Library generation, and one successful TypeScript package build in the third launch. The fourth launch still could not reach the package-opening/fairness sequence because the harness's scoped `Build` lookup selected the visible `Build/Export` navigation control; it rendered no accepted package-build state or product error. The result remains driver-inconclusive and is not a product finding or PASS.
 
 The recovery record retains no additional external receipt reference. No post-freeze comparison opened because the reviewer charter remains incomplete.
+
+## Recovery run 2026-09-07T18:55Z–19:01Z
+
+The [current-candidate delta record](recovery-run-2026-09-07T18-55Z.md)
+completes the previously missing generated-sibling fairness and canonical-player
+boundaries in fresh contexts. It is bound to candidate
+`169c80f839758285d02de55eb72008e750e48a53` and installed-package digest
+`414fa8e93ca1c93a02b2268925fa4ab5e45ba06e540d12372f1d8d4633c98543`.
+The historic material P2 (a Studio-generated sibling Outcome Library could not
+be consumed by the opened TypeScript package's Provably Fair surface) received
+an independently successful current-candidate delta: Compute commitments,
+Generate round proof, and Verify completed against that sibling bundle. No
+unresolved P0, P1, or material P2 was observed in this candidate-bound rerun.
+The immutable protocol record remains pending an evidence-identity repair: its
+validator requires the supplied installed-package digest to equal a retained
+package-archive digest, while the controller supplied the lockfile digest.
