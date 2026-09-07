@@ -1,25 +1,18 @@
 name: Publish
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
     inputs:
-      bump:
-        description: "Version bump type"
+      pc20_release_config:
+        description: "Absolute path to the authorized PC-20 release config on the release runner"
         required: true
-        default: patch
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
+        type: string
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -30,27 +23,10 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - run: npm ci
-      - run: npm run check:release
-      - run: npm run build
 
-      - name: Configure release commit identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      # Defaults to a patch bump on a plain push to master; workflow_dispatch's "bump" input
-      # overrides it for an explicit minor/major release. The "[skip ci]" in the commit message is
-      # load-bearing: GitHub does not trigger workflow runs for a push whose head commit message
-      # contains it, which is what stops this workflow from re-triggering on the version-bump
-      # commit it's about to push.
-      - name: Bump version
-        run: |
-          npm version "${{ github.event.inputs.bump || 'patch' }}" -m "chore: release v%s [skip ci]"
-
-      - name: Push version bump and tag
-        run: git push --follow-tags
-
-      - name: Publish to npm
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Publishing is intentionally not an automatic push side effect.  The
+      # authorized release runner must supply external merge/push/npm/Drive
+      # receipts; the controller runs the one local composite gate and fails
+      # closed on any identity, cleanup, or receipt mismatch.
+      - name: Validate PC-20 release completion
+        run: npm run release:pc20 -- --config "${{ inputs.pc20_release_config }}"

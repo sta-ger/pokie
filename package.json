@@ -46,6 +46,7 @@
         "check:fast": "npm test",
         "check:full": "node scripts/run-full-check.mjs",
         "check:release": "npm run lint && npm run typecheck && npm run test:coverage && npm run test:packaging",
+        "release:pc20": "node scripts/pc-20-release-completion.mjs",
         "build-esm:compile": "tsc --project tsconfig.prod.json && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs",
         "build-cjs:compile": "tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs && node write-cjs-package-json.js && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs",
         "build-esm": "npm run generate-barrels && npm run build-esm:compile",
