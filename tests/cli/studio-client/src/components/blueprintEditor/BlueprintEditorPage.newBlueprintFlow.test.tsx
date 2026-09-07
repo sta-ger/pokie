@@ -93,6 +93,35 @@ describe("BlueprintEditorPage - New flow", () => {
         expect(document.activeElement).not.toBe(screen.getByRole("button", {name: "Back"}));
     });
 
+    it("opens a native file picker for a blank saved game design instead of resolving Studio's client directory", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createFakeFetch((call) => {
+            if (call.url === "/api/home/fs/default-location") {
+                return {ok: true, status: 200, body: {status: "valid", directory: "/home/alice/Documents", source: "documents"}};
+            }
+            if (call.url === "/api/home/fs/native-browse/availability") {
+                return {ok: true, status: 200, body: {status: "available"}};
+            }
+            if (call.url === "/api/home/fs/native-browse") {
+                return {ok: true, status: 200, body: {status: "selected", path: "/games/cli-created-blueprint.json"}};
+            }
+            throw new Error(`unexpected fetch to ${call.url}`);
+        });
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        await user.click(await screen.findByRole("button", {name: "Open a saved game design"}));
+        const savedDesignInput = screen.getByLabelText("Saved game design");
+        const browseButton = screen.getAllByRole("button", {name: "Browse…"}).find((button) => button.parentElement?.contains(savedDesignInput));
+        expect(browseButton).toBeDefined();
+        await user.click(browseButton!);
+
+        expect(await screen.findByDisplayValue("/games/cli-created-blueprint.json")).toBeInTheDocument();
+        expect(screen.queryByText(/is a folder, not a file/)).not.toBeInTheDocument();
+        const pickCall = calls.find((call) => call.url === "/api/home/fs/native-browse");
+        expect(JSON.parse(String(pickCall?.init?.body))).toMatchObject({kind: "file", mode: "open", startPath: "/home/alice/Documents"});
+    });
+
     it("gates behind Save/Discard/Cancel when the draft is dirty, and Cancel leaves the draft untouched", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));

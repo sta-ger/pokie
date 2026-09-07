@@ -1131,6 +1131,50 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await waitFor(() => expect(capturedOpenProjectRoot).toBe("/games/tsPackage"));
         });
 
+        it("keeps a TypeScript package card from adopting a PAR build job or opening its workbook", async () => {
+            const user = userEvent.setup();
+            let openCalls = 0;
+            const fetchImpl: FetchLike = (url, init) => {
+                const [path] = url.split("?");
+                if (path === "/api/project/artifacts/build" && init?.method === "POST") {
+                    return Promise.resolve({
+                        ok: true,
+                        status: 202,
+                        json: () => Promise.resolve({status: "created", job: {id: "wrong-target-job", target: "tsPackage", status: "queued", cancellationRequested: false}}),
+                    });
+                }
+                if (path === "/api/project/artifacts/build/wrong-target-job") {
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: () => Promise.resolve({
+                            id: "wrong-target-job",
+                            target: "parWorkbook",
+                            status: "completed",
+                            cancellationRequested: false,
+                            result: {status: "ok", target: "parWorkbook", outputPath: "/games/parWorkbook.xlsx", outputKind: "file", sourceType: "blueprint"},
+                        }),
+                    });
+                }
+                if (path === "/api/home/projects/open") {
+                    openCalls += 1;
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", context: {mode: "project", projectRoot: "/games/parWorkbook.xlsx"}})});
+                }
+                return fetchImplFrom(BASE_ROUTES)(url, init);
+            };
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "A"});
+            await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+            const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+            await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
+
+            expect(await within(buildArtifactSection).findByText(/tsPackage build returned a parWorkbook job/)).toBeInTheDocument();
+            expect(within(buildArtifactSection).queryByRole("button", {name: "Open as Project"})).not.toBeInTheDocument();
+            expect(openCalls).toBe(0);
+        });
+
         it("keeps PAR workbook project actions actionable for the built file while retaining its file reveal action", async () => {
             const user = userEvent.setup();
             let capturedOpenProjectRoot: string | undefined;

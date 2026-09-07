@@ -11,7 +11,7 @@ import {
     OutcomeLibraryBundleReading,
 } from "pokie";
 import fs from "fs";
-import {resolveProjectDirectory} from "../outcomeLibrary/resolveProjectDirectory.js";
+import path from "path";
 import type {StudioFairnessConfigureView} from "./StudioFairnessConfigureView.js";
 import type {StudioFairnessGenerateView} from "./StudioFairnessGenerateView.js";
 import type {StudioFairnessVerifyView} from "./StudioFairnessVerifyView.js";
@@ -22,23 +22,21 @@ import type {ValidatedFairnessVerifyRequest} from "./validateFairnessVerifyReque
 // The Provably Fair tab, built directly on top of pokie's own commit-reveal services (see
 // docs/provably-fair.md) -- this class never computes a hash, draws an outcome, or re-implements the
 // three-artifact commit-reveal contract itself; it only resolves a request's bundle path against the
-// active project's root and shapes each service call's result into a view.
+// active project's root and shapes each service call's result into a view. A source bundle is read-only,
+// so it may deliberately be a sibling of an opened built package (or another selected local bundle).
 export class StudioFairnessService {
     private readonly reader: OutcomeLibraryBundleReading<string>;
     private readonly proofBuilder: FairnessRoundProofBuilding;
     private readonly proofVerifier: FairnessRoundProofVerifying;
-    private readonly realpath: (resolvedPath: string) => string;
 
     constructor(
         reader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
         proofBuilder: FairnessRoundProofBuilding = new FairnessRoundProofBuilder(),
         proofVerifier: FairnessRoundProofVerifying = new FairnessRoundProofVerifier(),
-        realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
     ) {
         this.reader = reader;
         this.proofBuilder = proofBuilder;
         this.proofVerifier = proofVerifier;
-        this.realpath = realpath;
     }
 
     // Computes both commit-reveal artifacts a real round would publish in sequence -- the server seed
@@ -46,15 +44,12 @@ export class StudioFairnessService {
     // (publishable before the outcome is drawn) -- from the live bundle's own libraryId/libraryHash for
     // the requested mode, so Configure never lets a stale/guessed library identity slip into a commitment.
     public async configure(projectRoot: string, request: ValidatedFairnessConfigureRequest): Promise<StudioFairnessConfigureView> {
-        const resolved = resolveProjectDirectory(projectRoot, request.bundleDir, this.realpath);
-        if (resolved.status === "error") {
-            return {status: "load-error", error: resolved.message};
-        }
+        const bundleDir = this.resolveSourceBundleDirectory(projectRoot, request.bundleDir);
 
         let libraryId: string;
         let libraryHash: string;
         try {
-            const manifest = await this.reader.readManifest(resolved.resolvedPath);
+            const manifest = await this.reader.readManifest(bundleDir);
             const mode = manifest.modes.find((candidate) => candidate.modeName === request.modeName);
             if (mode === undefined) {
                 return {status: "load-error", error: `Mode "${request.modeName}" was not found in bundle "${request.bundleDir}".`};
@@ -82,17 +77,14 @@ export class StudioFairnessService {
     }
 
     public async generateProof(projectRoot: string, request: ValidatedFairnessGenerateRequest): Promise<StudioFairnessGenerateView> {
-        const resolved = resolveProjectDirectory(projectRoot, request.bundleDir, this.realpath);
-        if (resolved.status === "error") {
-            return {status: "load-error", error: resolved.message};
-        }
+        const bundleDir = this.resolveSourceBundleDirectory(projectRoot, request.bundleDir);
 
         try {
             // Cast, not a re-validation: FairnessRoundProofBuilder.build always runs
             // FairnessCommitmentValidator against this value before using it (see its own doc comment),
             // so a malformed request-supplied commitment still surfaces as a diagnosable build-error
             // below, never as a silent type mismatch.
-            const proof = await this.proofBuilder.build(request.commitment as FairnessCommitment, request.serverSeed, resolved.resolvedPath);
+            const proof = await this.proofBuilder.build(request.commitment as FairnessCommitment, request.serverSeed, bundleDir);
             return {status: "ok", proof};
         } catch (error) {
             if (error instanceof FairnessRoundProofBuildError) {
@@ -108,11 +100,7 @@ export class StudioFairnessService {
     public async verify(projectRoot: string, request: ValidatedFairnessVerifyRequest): Promise<StudioFairnessVerifyView> {
         let resolvedSourceBundleDir: string | undefined;
         if (request.sourceBundleDir !== undefined) {
-            const resolved = resolveProjectDirectory(projectRoot, request.sourceBundleDir, this.realpath);
-            if (resolved.status === "error") {
-                return {status: "load-error", error: resolved.message};
-            }
-            resolvedSourceBundleDir = resolved.resolvedPath;
+            resolvedSourceBundleDir = this.resolveSourceBundleDirectory(projectRoot, request.sourceBundleDir);
         }
 
         const issues = await this.proofVerifier.verify(request.proof, {commitment: request.commitment, sourceBundleDir: resolvedSourceBundleDir});
@@ -121,5 +109,22 @@ export class StudioFairnessService {
             errors: issues.filter((issue) => issue.severity === "error"),
             warnings: issues.filter((issue) => issue.severity !== "error"),
         };
+    }
+
+    // Unlike an output destination, a fairness source is only read. The native picker and fallback
+    // browser return absolute paths, and a built package's sibling `outcomelibrary` naturally has a
+    // relative spelling such as "../outcomelibrary". Requiring that source to live inside the package
+    // makes Studio's own Build/Generate handoff impossible without protecting a write boundary.
+    private resolveSourceBundleDirectory(projectRoot: string, bundleDir: string): string {
+        const resolvedProjectRoot = path.resolve(projectRoot);
+        let projectDirectory = resolvedProjectRoot;
+        try {
+            if (fs.statSync(resolvedProjectRoot).isFile()) {
+                projectDirectory = path.dirname(resolvedProjectRoot);
+            }
+        } catch {
+            // The bundle reader/proof service owns the familiar missing-path diagnostic.
+        }
+        return path.resolve(projectDirectory, bundleDir);
     }
 }

@@ -902,39 +902,40 @@ export function BlueprintEditorPage({
                     // Home keeps Projects mounted beside this editor, but Projects fetches only when
                     // visible. Give its owner the just-persisted row as well as asking it to reconcile
                     // its list, so the visible Projects update never waits on that request settling.
+                    // A guided Save always promises to open the resulting workspace. This includes a
+                    // Blueprint loaded from the CLI or another Studio session: its ordinary overwrite
+                    // save must still cross Home's Open boundary, which records that recognized project
+                    // in the durable Projects registry. Limiting Open to save-managed left those loaded
+                    // designs with a visible success claim but no workspace or Projects entry.
                     if (!alreadyOwnsPath) {
                         if ("registeredProject" in raw && raw.registeredProject !== undefined) {
                             onManagedProjectSaved?.(raw.registeredProject);
                         }
-                        // Open the exact source that this Create Project request just persisted, rather
-                        // than treating the registry projection as the creation result. Registration is
-                        // durable Home-list metadata and may canonicalize a location independently;
-                        // `view.path` is the concrete Blueprint file save-managed confirmed exists.
-                        // This keeps a fresh registry from redirecting the first Workspace open to an
-                        // unresolved registry location. The saved Blueprint is sufficient to open its
-                        // Workspace; a missing optional registry projection must not strand Create
-                        // Project on Design Your Game after a successful save.
-                        const workspaceOpenRequestId = ++workspaceOpenRequestIdRef.current;
-                        openProject(fetchImpl, view.path)
-                            .then(({context}) => {
-                                if (workspaceOpenRequestId !== workspaceOpenRequestIdRef.current) {
-                                    return;
-                                }
-                                // The saved project is now visibly represented by its Workspace, not by
-                                // the hidden creator. Clear the creator result before navigating so a
-                                // late render cannot pair a successful Workspace with stale save error
-                                // remediation from the previous editor state.
-                                setManagedSaveView({status: "idle"});
-                                setWorkspaceOpenError(undefined);
-                                allowNextDesignNavigation();
-                                navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`);
-                            })
-                            .catch((error: unknown) => {
-                                if (workspaceOpenRequestId === workspaceOpenRequestIdRef.current) {
-                                    setWorkspaceOpenError(errorMessage(error));
-                                }
-                            });
                     }
+                    // Open the exact source this Save just persisted, rather than treating the
+                    // save-managed registry projection as the creation result. The path is both the
+                    // concrete Blueprint file the save confirmed and, for a loaded CLI Blueprint, the
+                    // source Home must register while opening.
+                    const workspaceOpenRequestId = ++workspaceOpenRequestIdRef.current;
+                    openProject(fetchImpl, view.path)
+                        .then(({context}) => {
+                            if (workspaceOpenRequestId !== workspaceOpenRequestIdRef.current) {
+                                return;
+                            }
+                            // The saved project is now visibly represented by its Workspace, not by
+                            // the hidden creator. Clear the creator result before navigating so a
+                            // late render cannot pair a successful Workspace with stale save error
+                            // remediation from the previous editor state.
+                            setManagedSaveView({status: "idle"});
+                            setWorkspaceOpenError(undefined);
+                            allowNextDesignNavigation();
+                            navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`);
+                        })
+                        .catch((error: unknown) => {
+                            if (workspaceOpenRequestId === workspaceOpenRequestIdRef.current) {
+                                setWorkspaceOpenError(errorMessage(error));
+                            }
+                        });
                 }
             })
             .catch((error: unknown) => setManagedSaveView({status: "error", message: errorMessage(error)}))

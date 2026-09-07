@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 3,
+  "reviewId": "pc-19-169c80f8-recovery-6",
+  "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
+  "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37",
+  "findings": [
+    {
+      "id": "pc-19-generated-sibling-bundle",
+      "severity": "P2",
+      "material": true,
+      "reproducer": "Pre-fix Studio-generated sibling Outcome Library selected in the opened TypeScript package then Compute commitments rendered its own immediate failure.",
+      "publicSurface": "Studio Provably Fair",
+      "owner": "product coherence",
+      "status": "resolved",
+      "evidence": {
+        "evidenceId": "E006",
+        "path": "reviews/role-missions.md",
+        "sha256": "6b10e3f1e4914a5ceffdcbc97ac2d96236dd2392621a9f8fe2aeadfc5c93335e",
+        "sizeBytes": 707,
+        "capturedAt": "2026-09-07T19:01:00Z",
+        "kind": "blind-finding-and-delta-summary",
+        "summary": "Rendered generated-sibling fairness delta summary.",
+        "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
+        "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37"
+      },
+      "delta": {
+        "reviewId": "pc-19-recovery-6-post-freeze-independent-delta",
+        "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
+        "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37",
+        "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-19-b7e657459f7cd688/run-2026-09-07T19-31-47-081Z",
+        "startedAt": "2026-09-07T19:31:47.081Z",
+        "endedAt": "2026-09-07T19:31:56.856Z",
+        "observations": [
+          "fix-verified",
+          "lifecycle-cleanup",
+          "affected-cli-studio-player-parity"
+        ],
+        "evidence": {
+          "evidenceId": "E024",
+          "path": "reviews/post-freeze-delta.md",
+          "sha256": "bfae58f359c212061701d5dcec326f33cb1d2bdd496e070b3485485b1f16b41a",
+          "sizeBytes": 1036,
+          "capturedAt": "2026-09-07T19:31:56.856Z",
+          "kind": "independent-post-freeze-delta",
+          "summary": "Fresh post-freeze generated-sibling fairness delta.",
+          "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
+          "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37"
+        }
+      }
+    }
+  ]
+}

@@ -532,10 +532,29 @@ describe("studio-client apiClient", () => {
             expect(calls).toEqual([
                 {
                     url: "/api/home/blueprints/save-managed",
-                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({blueprint: {manifest: {id: "a"}}})},
+                    init: {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: expect.stringMatching(/^\{"blueprint":\{"manifest":\{"id":"a"\}\},"operationId":".+"\}$/),
+                    },
                 },
             ]);
             expect(result).toEqual(body);
+        });
+
+        it("retries one transient browser connection failure with the same managed-save operation ID", async () => {
+            const body = {status: "ok", path: "/POKIE Projects/a/blueprint.json", name: "a", blueprintHash: "saved-hash"};
+            const calls: {body?: string}[] = [];
+            const fetchImpl: FetchLike = (_url, init) => {
+                calls.push({body: init?.body});
+                if (calls.length === 1) return Promise.reject(new TypeError("Failed to fetch"));
+                return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve(body)});
+            };
+
+            await expect(saveManagedBlueprint(fetchImpl, {manifest: {id: "a"}})).resolves.toEqual(body);
+
+            expect(calls).toHaveLength(2);
+            expect(calls[0].body).toBe(calls[1].body);
         });
 
         it("returns a typed invalid-name/unavailable outcome (not a thrown error) since both ride on 200", async () => {

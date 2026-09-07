@@ -360,15 +360,39 @@ export async function saveManagedBlueprint(
     sourceWorkbookPath?: string,
     conversionEvidence?: unknown,
 ): Promise<StudioBlueprintSaveManagedView> {
-    const response = await fetchImpl("/api/home/blueprints/save-managed", {
+    // A browser can lose the first response while Studio is still warming up even though the local
+    // server completed the managed save. Keep one operation identity for the retry so the server can
+    // return that first result instead of creating a second starter project.
+    const operationId = createManagedSaveOperationId();
+    const request = () => fetchImpl("/api/home/blueprints/save-managed", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({blueprint, sourceWorkbookPath, conversionEvidence}),
+        body: JSON.stringify({blueprint, sourceWorkbookPath, conversionEvidence, operationId}),
     });
+    let response;
+    try {
+        response = await request();
+    } catch (error) {
+        if (!isTransientStudioConnectionFailure(error)) {
+            throw error;
+        }
+        response = await request();
+    }
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to save the project"));
     }
     return (await response.json()) as StudioBlueprintSaveManagedView;
+}
+
+function createManagedSaveOperationId(): string {
+    if (typeof globalThis.crypto?.randomUUID === "function") {
+        return globalThis.crypto.randomUUID();
+    }
+    return `managed-save-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isTransientStudioConnectionFailure(error: unknown): boolean {
+    return error instanceof TypeError && (/failed to fetch|networkerror/i).test(error.message);
 }
 
 // Never writes anything — see StudioBlueprintService.importParSheet()'s own doc comment. Domain-level

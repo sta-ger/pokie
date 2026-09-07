@@ -2503,9 +2503,11 @@ describe("StudioServer", () => {
             // receives the row it immediately opens into the Workspace.
             it("persists and registers the default Recommended Design Game model", async () => {
                 const expectedPath = path.join(managedWorkDir, "POKIE Projects", "starter-slot", "blueprint.json");
+                const operationId = "cold-start-create-starter-slot";
 
                 const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {
                     blueprint: createRecommendedBlueprint(),
+                    operationId,
                 });
 
                 expect(status).toBe(201);
@@ -2525,6 +2527,16 @@ describe("StudioServer", () => {
                 expect(await managedRegistry.list()).toEqual([
                     expect.objectContaining({location: expectedPath, name: "starter-slot", origin: "managed", type: "blueprint"}),
                 ]);
+
+                // Simulates the browser losing the first response and retrying Create game. The exact
+                // same operation resumes the original result instead of allocating starter-slot-2.
+                const retried = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {
+                    blueprint: createRecommendedBlueprint(),
+                    operationId,
+                });
+                expect(retried).toEqual({status: 201, body});
+                expect(await managedRegistry.list()).toHaveLength(1);
+                expect(fs.existsSync(path.join(managedWorkDir, "POKIE Projects", "starter-slot-2", "blueprint.json"))).toBe(false);
             });
 
             it("retries a transient managed-project registration so Create Project can open the recommended model", async () => {
@@ -6690,21 +6702,25 @@ describe("StudioServer", () => {
             expect(view.code).toBeDefined();
         });
 
-        it("returns a load-error view (never a 400) for a bundleDir that resolves outside the project root", async () => {
-            const projectBaseUrl = await startServerForProject(fairnessProjectRoot);
+        it("configures commitments from a generated sibling bundle after its package is opened", async () => {
+            const packageRoot = path.join(fairnessProjectRoot, "tsPackage");
+            const bundleDir = path.join(fairnessProjectRoot, "outcomelibrary");
+            fs.mkdirSync(packageRoot);
+            await buildFairnessSourceBundle(bundleDir, ["base"]);
+            const projectBaseUrl = await startServerForProject(packageRoot);
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/fairness/configure`, {
-                bundleDir: "../outside",
+                // PathInput's picker returns this retained absolute path after the package workspace
+                // becomes active, rather than silently rebasing it beneath tsPackage.
+                bundleDir,
                 modeName: "base",
-                serverSeed: "s",
-                clientSeed: "c",
+                serverSeed: "operator-server-seed",
+                clientSeed: "player-client-seed",
                 nonce: 0,
             });
 
             expect(status).toBe(200);
-            const view = body as {status: string; error?: string};
-            expect(view.status).toBe("load-error");
-            expect(view.error).toContain("outside the project root");
+            expect(body).toMatchObject({status: "ok", commitment: {modeName: "base"}});
         });
     });
 
