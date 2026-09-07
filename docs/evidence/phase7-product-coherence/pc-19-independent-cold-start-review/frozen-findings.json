@@ -1,8 +1,22 @@
 {
   "schemaVersion": 3,
-  "reviewId": "pc-20-cc0219a1-incomplete-rerun",
+  "reviewId": "pc-20-cc0219a1-recovery-finding-freeze",
   "candidateId": "cc0219a1088de689781de5bf56ed2786e8d40972",
   "candidatePackageSha256": "07053aad46507e453d0fadd04a18cf47e03031cceb6d1a80ae49ee5735b509ad",
-  "frozenAt": "2026-09-07T23:13:36.112Z",
-  "findings": []
+  "frozenAt": "2026-09-07T23:53:00.000Z",
+  "findings": [
+    {
+      "id": "PC19-P2-EXACT-OUTCOME-MEMORY",
+      "severity": "P2",
+      "material": true,
+      "reproducer": "Use the exact retained archive to run an accepted 614,656-outcome exact generation through build or generate.",
+      "publicSurface": "Archive CLI exact Outcome Library generation",
+      "owner": "POKIE outcome-library generation",
+      "status": "open",
+      "evidence": {
+        "path": "transcript.md",
+        "summary": "Accepted archive CLI actions reached their own fatal OOM terminal with no published library."
+      }
+    }
+  ]
 }
