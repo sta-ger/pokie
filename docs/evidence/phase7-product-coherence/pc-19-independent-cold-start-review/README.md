@@ -1,37 +1,16 @@
-# PC-19 independent blind cold-start review
+# PC-19 independent cold-start record
 
-Candidate: `1229e9d965c5d94aa2f6751e646090ed1a6f66cb`
+- Candidate: `169c80f839758285d02de55eb72008e750e48a53`
+- Dependency lock digest (SHA-256): `755c40dc3a866cc206cd2548b151c1de8e96b102b4bee8aac5682ffaed1fef54`
+- Installed package digest (SHA-256 of `node_modules/.package-lock.json`): `414fa8e93ca1c93a02b2268925fa4ab5e45ba06e540d12372f1d8d4633c98543`
+- Fresh rendered-run transcript digest (SHA-256): `2370764ca64557015fd830cf4fac1078deec2452aba2a0e70268f145e85825f9`
 
-Review run: 2026-09-07T17:15Z–17:28Z UTC
-Context: fresh Studio registry and fresh Chromium profile; Studio was launched from this checkout with `node ./dist/cli/pokie.js --no-open`.
+The reviewer began without reading source, roadmap, prior evidence, recovery history, or known findings. The candidate was built and Studio was launched from this checkout with `node ./dist/cli/pokie.js --no-open` and a new Studio/browser profile.
 
-## Result
+Observed public UI results from the fresh final run:
 
-Finding: the built package's **Provably Fair** workflow cannot complete the
-outcome-library folder that Studio itself generated. This is a material P2
-product-coherence failure: a first-party generated artifact is not consumable
-by the first-party verification surface that explicitly requests it.
+- The starter design rendered valid in every visible design section.
+- One enabled `Create game` activation rendered its local checking state, then `Your game was saved. Opening its workspace…`, then the project workspace.
+- The workspace rendered the overview, player entry (`Open Play`), Simulation, Replay, Game Model, and Build/Export surfaces. Game Model rendered its saved five-reel, three-row design; Build/Export rendered ready local destinations and an exact 1024-combination Outcome Library preflight.
 
-The retained transcript records only rendered public-UI observations. No
-repository source, roadmap, prior evidence, recovery history, or known finding
-was read before the run and its finding were recorded.
-
-## Compact artifact binding
-
-| Object | Rendered source/result | SHA-256 |
-| --- | --- | --- |
-| Editable Blueprint | created in Studio at `starter-slot-263/blueprint.json` | `9428e23e9c3b58a215037dcabaec2926b39317d4784c9ca07ea051e843fb1031` |
-| TypeScript package | Build/Export reported `Built to .../tsPackage`; then **Open as Project** opened it read-only | `947f7483afe017aae48c154f00c67e4705b09e5ab972cca3d3f277e562dabc2a` |
-| Outcome library | generator reported `Generated 1,024 outcomes for mode "base" using exact (RTP 100.78%) into outcomelibrary` | consumed attempt failed below |
-
-## Finding correlation
-
-- Ready state: the opened TypeScript package rendered **Provably Fair** with
-  all required inputs filled: source directory
-  `/home/stager/POKIE Projects/starter-slot-263/outcomelibrary`, mode `base`,
-  server seed `server-seed`, client seed `client-seed`, and nonce `0`.
-- One visible activation: **Compute commitments**.
-- Accepted lifecycle: none was rendered; this action exposed no queued/job id.
-- Action-local terminal: **“The Provably Fair bundle directory could not be
-  completed. Try again. If it continues, choose the location again and retry.”**
-- The action was not repeated.
+No product defect was observed. This review is nevertheless incomplete: the public-launch cap was consumed while repairing the generic visible-UI driver, before the independent run could execute `Start Play`, `Run Simulation`, replay loading, Outcome Library generation, export, all six role missions, CLI/Studio parity, and examples-player parity. No pass or finding is claimed from this partial evidence.
