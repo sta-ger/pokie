@@ -46,3 +46,17 @@ unresolved P0, P1, or material P2 was observed in this candidate-bound rerun.
 The immutable protocol record remains pending an evidence-identity repair: its
 validator requires the supplied installed-package digest to equal a retained
 package-archive digest, while the controller supplied the lockfile digest.
+
+## Recovery run 2026-09-07T19:27Z–19:33Z — completed immutable record
+
+The verifier created and retained the exact candidate package archive
+[`artifacts/pokie-1.3.0.tgz`](artifacts/pokie-1.3.0.tgz) before freezing it:
+SHA-256 `50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37`
+(3,163,590 bytes). The post-freeze delta used one new Studio profile and the
+candidate source launcher; its local fairness terminals were Compute
+commitments → Revealed round → Verified / No issues reported. The complete
+review records validate with the repository's PC-19 validator.
+
+Verifier-owned trusted receipt (outside this mutable evidence directory):
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-19-b7e657459f7cd688/pc-19-recovery-6-freeze-receipt.json`, SHA-256
+`e2489c3dce7df93ac44a6b8e47b352dbd3f525f9f144c5feb1b8e3eda74cd671`.
