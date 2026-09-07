@@ -34,3 +34,33 @@ SHA-256 is:
 ```
 81243a82c18f7c241ba890ee68459ecd5d868f280ba7201b3147ff1611db9ef4
 ```
+
+## Saved-design continuation: 2026-09-07
+
+One further fresh-profile Studio launch again used exactly
+`node ./dist/cli/pokie.js --no-open` from this candidate descendant. The
+candidate CLI first created a disposable `PC19 Saved Design` blueprint. The
+visible **Browse…** control opened its rendered server filesystem browser and
+the visible `POKIE Projects` entry accepted the activation with its local
+**Loading directory…** state. It did not render a listing or a local terminal
+error in the bounded observation, so that wait was not treated as a product
+failure. The picker was cancelled once; Studio's rendered **Load from path**
+control then visibly contained the disposable absolute path.
+
+The one visible **Load** activation rendered `PC19 Saved Design` in its local
+Game id/name control. The one enabled **Save game** activation subsequently
+rendered its workspace, and after **Close project** the rendered Projects view
+contained the durable `PC19 Saved Design` entry. The same journey also reached
+Game Model, Play (new session → `Spinning…` → `Round complete`), Simulation
+(`queued` → completed report), Replay, and Build/Export preflights. No
+action-local product failure was rendered. The temporary blueprint was removed
+after the launch; profile, registry, workspace, screenshots, and raw transcript
+remain outside retained evidence. Raw transcript SHA-256:
+
+```
+d0a855058b094e8893db3ad098118e261c253433dd8476e7f69c44926cf3b934
+```
+
+This closes the saved-design Browse → Load → Save → durable-Projects delta.
+It does not convert PC-19 into PASS evidence: the reviewer-required external
+freeze receipt and the complete independent charter remain unavailable.
