@@ -24,3 +24,9 @@ The [18:35Z recovery record](recovery-run-2026-09-07T18-35Z.md) records a later 
 Verifier-owned freeze receipt: `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-19-b7e657459f7cd688/pc-19-recovery-freeze-receipt.json` (SHA-256 `a4e102ec5bcfeadc8fd7be11a48d99e46a8bb9802a14f7400f084711a05a3775`). Its schema and candidate/package binding validated. The PC-19 protocol validator correctly refuses to mark the review complete because this partial record lacks the required complete `PROVENANCE.json` coverage bundle; no post-freeze comparison was opened.
 
 The 18:35Z record has an independently validated verifier-owned freeze receipt. Its candidate/package binding anchors that bounded record's empty frozen finding set; no post-freeze comparison was opened. The receipt itself is intentionally not retained as repository evidence.
+
+## Recovery run 2026-09-07T18:45Z
+
+The separately retained [18:45Z recovery record](recovery-run-2026-09-07T18-45Z.md) covers four new fresh-profile candidate launches. It confirms rendered create, Play/spin, queued/running/completed Simulation, Session Spin replay loading, exact Outcome Library generation, and one successful TypeScript package build in the third launch. The fourth launch still could not reach the package-opening/fairness sequence because the harness's scoped `Build` lookup selected the visible `Build/Export` navigation control; it rendered no accepted package-build state or product error. The result remains driver-inconclusive and is not a product finding or PASS.
+
+Verifier-owned recovery-4 freeze receipt: `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-19-b7e657459f7cd688/pc-19-recovery-4-freeze-receipt.json` (SHA-256 `c96166fded8626db345674d713ca3af610e2d435f48905d5d283685fba0563a5`). Its candidate/package/frozen-findings binding was locally schema-validated. No post-freeze comparison opened because the reviewer charter remains incomplete.
