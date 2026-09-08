@@ -65,19 +65,20 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         };
     }
 
-    // 28^4 is the independently accepted 614,656-combination exact workload.
-    // Its alternating strips keep artifact construction small enough for this
-    // real public-command regression while still exercising the full raw sweep
-    // and its cancellation/provenance publication path.
+    // 28^4 is the independently accepted 614,656-outcome exact workload. Each
+    // reel exposes all 28 canonical symbols, so every stop tuple resolves to a
+    // different grid -- this is deliberately not a raw-draw fixture that
+    // collapses to a tiny distinct library.
     function acceptedExactWorkloadBlueprint(id: string): GameBlueprint {
-        const reel = (offset: number): string[] => Array.from({length: 28}, (_unused, stop) => ((stop + offset) % 2 === 0 ? "A" : "B"));
+        const symbols = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ01"];
+        const reel = (): string[] => [...symbols];
         return {
             manifest: {id, name: "Accepted Exact Workload Slot", version: "1.0.0"},
             reels: 4,
             rows: 1,
-            symbols: ["A", "B"],
+            symbols,
             paytable: {A: {4: 1}},
-            reelStrips: [reel(0), reel(1), reel(0), reel(1)],
+            reelStrips: [reel(), reel(), reel(), reel()],
         };
     }
 
@@ -134,7 +135,7 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         }
     }
 
-    it("streams the accepted 614,656-combination exact workload through public build and generate commands", async () => {
+    it("streams 614,656 distinct exact outcomes through public build and generate commands with durable retry-safe output", async () => {
         const blueprint = acceptedExactWorkloadBlueprint("accepted-exact-workload-slot");
         const blueprintPath = path.join(workDir, "accepted-exact.blueprint.json");
         fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
@@ -143,14 +144,39 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(await new BuildCommand("1.3.0").run([blueprintPath, "--target", "outcomeLibrary", "--exact", "--out", bundleDir])).toBe(0);
         const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, "manifest.json"), "utf-8")) as {game: {id: string}; modes: Array<{outcomeCount: number; generator?: {strategy: string; totalOutcomeSpaceSize: number}}>};
         expect(manifest.game.id).toBe("accepted-exact-workload-slot");
-        expect(manifest.modes[0]).toEqual(expect.objectContaining({outcomeCount: 16, generator: expect.objectContaining({strategy: "exact", totalOutcomeSpaceSize: 614_656})}));
+        expect(manifest.modes[0]).toEqual(expect.objectContaining({outcomeCount: 614_656, generator: expect.objectContaining({strategy: "exact", totalOutcomeSpaceSize: 614_656})}));
+        // This reads the staged byte index back against every record; it is
+        // intentionally the bundle reader's real integrity boundary, not an
+        // in-memory manifest-only assertion.
+        expect(await new OutcomeLibraryCommand("1.3.0").run(["validate", bundleDir, "--deep"])).toBe(0);
 
         const packageRoot = await buildPackage(blueprint, "accepted-exact-package");
         const rawLibrary = path.join(workDir, "accepted-exact.json");
-        expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(0);
-        expect(countRawOutcomes(rawLibrary)).toBe(16);
+        const checkpointFile = path.join(workDir, "accepted-exact.checkpoint.json");
+        const fakeProcess = new EventEmitter() as unknown as NodeJS.Process;
+        let cancelled = false;
+        (console.error as jest.Mock).mockImplementation((message: unknown) => {
+            if (!cancelled && typeof message === "string" && message.includes("progress")) {
+                cancelled = true;
+                fakeProcess.emit("SIGINT");
+            }
+        });
+        const cancellingCommand = new OutcomeLibraryCommand(
+            "1.3.0", undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, fakeProcess,
+        );
+        // Cancellation occurs after a real external staging checkpoint. The
+        // caller-visible destination must remain absent until retry completes.
+        expect(await cancellingCommand.run(["generate", packageRoot, "--exact", "--out", rawLibrary, "--resume", checkpointFile, "--progress"])).toBe(130);
+        expect(cancelled).toBe(true);
+        expect(fs.existsSync(rawLibrary)).toBe(false);
+        expect(fs.existsSync(checkpointFile)).toBe(true);
+
+        expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary, "--resume", checkpointFile])).toBe(0);
+        expect(fs.existsSync(checkpointFile)).toBe(false);
+        expect(countRawOutcomes(rawLibrary)).toBe(614_656);
         expect(fs.readFileSync(rawLibrary, "utf-8").slice(0, 1024)).toContain('"provenance":{"game":{"id":"accepted-exact-workload-slot"');
-    }, 600_000);
+    }, 3_600_000);
 
     it("package -> generate -> validate -> analyze -> bundle: exact weights match the hand-computable fixture", async () => {
         const packageRoot = await buildPackage(finiteBlueprint("exact-cli-slot"), "pkg");

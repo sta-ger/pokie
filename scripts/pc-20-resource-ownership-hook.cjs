@@ -6,6 +6,7 @@
  */
 const {appendFileSync, readFileSync} = require("node:fs");
 const {createHash} = require("node:crypto");
+const {syncBuiltinESMExports} = require("node:module");
 const childProcess = require("node:child_process");
 const workerThreads = require("node:worker_threads");
 
@@ -86,6 +87,13 @@ class Pc20OwnedWorker extends workerThreads.Worker {
     }
 }
 workerThreads.Worker = Pc20OwnedWorker;
+
+// Built-in ESM named exports are snapshots of their CommonJS counterparts
+// until explicitly synchronized.  The release composite itself includes ESM
+// consumers, so without this call `import {spawn} from "node:child_process"`
+// and `import {Worker} from "node:worker_threads"` could bypass the wrappers
+// above and escape the acquisition registry.
+syncBuiltinESMExports();
 
 // A registry with no child resources still has an authenticated sentinel, so
 // a missing, unreadable, malformed, or unsigned registry cannot mean "empty".

@@ -126,6 +126,23 @@ test("the production ownership preload drains a detached/reparented process and 
     await rm(releasedRegistryPath, {force:true});
 });
 
+test("the production ownership preload registers and drains detached ESM children and ESM Workers", async () => {
+    const ownedRegistryPath = registryPath("esm-owned-resources");
+    try {
+        const result = await runBoundedProcess(process.execPath, ["--input-type=module", "-e", `
+            import {spawn} from "node:child_process";
+            import {Worker} from "node:worker_threads";
+            const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {detached:true, stdio:"ignore"});
+            const worker = new Worker("setTimeout(() => process.exit(0), 20)", {eval:true});
+            await new Promise((resolve, reject) => worker.once("exit", resolve).once("error", reject));
+            process.exit(0);
+        `], {cwd:repositoryDirectory, timeoutMs:2_000, resourceRegistryPath:ownedRegistryPath});
+        assert.equal(result.resourcesDrained, true);
+        assert.ok(result.ownedResources.some((resource) => resource.kind === "process" && resource.released === false));
+        assert.ok(result.ownedResources.some((resource) => resource.kind === "worker" && resource.released === true));
+    } finally { await rm(ownedRegistryPath, {force:true}); }
+});
+
 test("fails closed before an immediate detached child can run when registry acquisition fails", async () => {
     const invalidRegistry = await mkdtemp(path.join(os.tmpdir(), "pokie-pc20-registry-directory-"));
     const pidPath = path.join(os.tmpdir(), `pokie-pc20-unregistered-${process.pid}-${Date.now()}`);
@@ -136,6 +153,20 @@ test("fails closed before an immediate detached child can run when registry acqu
         `, pidPath], {cwd:repositoryDirectory, resourceRegistryPath:invalidRegistry}), /ownership registry|unreadable/i);
         assert.equal(existsSync(pidPath), false);
     } finally { await Promise.all([rm(pidPath, {force:true}), rm(invalidRegistry, {recursive:true, force:true})]); }
+});
+
+test("fails closed before ESM named imports can hand out a child or Worker when registry acquisition fails", async () => {
+    const invalidRegistry = await mkdtemp(path.join(os.tmpdir(), "pokie-pc20-esm-registry-directory-"));
+    try {
+        await assert.rejects(() => runBoundedProcess(process.execPath, ["--input-type=module", "-e", `
+            import {spawn} from "node:child_process";
+            spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {detached:true, stdio:"ignore"});
+        `], {cwd:repositoryDirectory, resourceRegistryPath:invalidRegistry}), /ownership registry|unreadable/i);
+        await assert.rejects(() => runBoundedProcess(process.execPath, ["--input-type=module", "-e", `
+            import {Worker} from "node:worker_threads";
+            new Worker("setInterval(() => {}, 1000)", {eval:true});
+        `], {cwd:repositoryDirectory, resourceRegistryPath:invalidRegistry}), /ownership registry|unreadable/i);
+    } finally { await rm(invalidRegistry, {recursive:true, force:true}); }
 });
 
 test("fails closed when the final ownership-registry signature audit is invalid", async () => {
