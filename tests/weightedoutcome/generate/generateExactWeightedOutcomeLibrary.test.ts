@@ -549,7 +549,7 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         // A legacy durable checkpoint remains correct through the streaming
         // adapter too. It takes the compatible in-memory resume route rather
         // than silently skipping the checkpoint's accumulated prefix.
-        const streamed: Awaited<ReturnType<typeof generateExactWeightedOutcomeLibrary>>["library"]["outcomes"] = [];
+        const streamed: Array<Awaited<ReturnType<typeof generateExactWeightedOutcomeLibrary>>["library"]["outcomes"][number]> = [];
         for await (const outcome of streamExactWeightedOutcomes({
             libraryId: "fixture-lib",
             game: buildFixtureGame(),
