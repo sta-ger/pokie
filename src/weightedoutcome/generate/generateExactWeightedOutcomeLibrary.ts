@@ -351,6 +351,13 @@ export async function *streamExactWeightedOutcomes(
     const sortedUniqueGrids = Array.from(grids.entries())
         .map(([gridKey, entry]) => ({id: outcomeIdForGrid(gridKey), entry}))
         .sort((a, b) => compareIds(a.id, b.id));
+    // Sorting retains the only data needed for the publication phase.  Drop
+    // the accumulation map (and, critically, its second copy of every large
+    // grid's JSON key) before an archive CLI producer starts constructing
+    // round artifacts or bundle index entries.  This keeps exact generation
+    // action-local at the accepted large workload instead of retaining both
+    // phases' identity structures at once.
+    grids.clear();
 
     for (const {id, entry} of sortedUniqueGrids) {
         // Guaranteed non-null by prepare(): a game whose createExactEnumerationSession was undefined would

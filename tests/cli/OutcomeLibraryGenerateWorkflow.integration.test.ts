@@ -1,4 +1,5 @@
 import {EventEmitter} from "events";
+import {spawnSync} from "child_process";
 import {GameBlueprint, WeightedOutcomeLibrary, WeightedOutcomeLibraryAnalyzer, WeightedOutcomeLibraryValidator} from "pokie";
 import fs from "fs";
 import os from "os";
@@ -6,6 +7,86 @@ import path from "path";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
 import {OutcomeSourceCommand} from "../../cli/commands/OutcomeSourceCommand.js";
+
+const LARGE_EXACT_WORKLOAD = 614_656;
+const LARGE_EXACT_WORKLOAD_CHILD = "POKIE_PC20_LARGE_EXACT_WORKLOAD_CHILD";
+
+function wideExactBlueprint(id: string): GameBlueprint {
+    // 49 * 49 * 16 * 16 = 614,656 distinct visible grids. Every stop is
+    // unique within its reel, so the public exact path must retain enough
+    // generation/index identity for the full accepted workload rather than
+    // receiving a deceptively small deduplicated fixture. Keeping the grid
+    // four reels wide exercises the workload without making the fixture's
+    // per-outcome artifact itself dominate the configured heap.
+    const fortyNineStops = Array.from({length: 49}, (_unused, index) => `S${index}`);
+    const sixteenStops = fortyNineStops.slice(0, 16);
+    return {
+        manifest: {id, name: "614656 Exact CLI Slot", version: "1.0.0"},
+        reels: 4,
+        rows: 1,
+        symbols: fortyNineStops,
+        paytable: {S0: {4: 1}},
+        reelStrips: [
+            [...fortyNineStops],
+            [...fortyNineStops],
+            [...sixteenStops],
+            [...sixteenStops],
+        ],
+    };
+}
+
+function readFilePrefix(filePath: string, bytes = 64 * 1024): string {
+    const descriptor = fs.openSync(filePath, "r");
+    try {
+        const buffer = Buffer.alloc(bytes);
+        const read = fs.readSync(descriptor, buffer, 0, buffer.length, 0);
+        return buffer.subarray(0, read).toString("utf-8");
+    } finally {
+        fs.closeSync(descriptor);
+    }
+}
+
+function readFileSuffix(filePath: string, bytes = 2): string {
+    const descriptor = fs.openSync(filePath, "r");
+    try {
+        const size = fs.fstatSync(descriptor).size;
+        const buffer = Buffer.alloc(bytes);
+        const read = fs.readSync(descriptor, buffer, 0, buffer.length, Math.max(0, size - bytes));
+        return buffer.subarray(0, read).toString("utf-8");
+    } finally {
+        fs.closeSync(descriptor);
+    }
+}
+
+function runLargeExactWorkloadChild(route: "build" | "generate"): void {
+    const testFile = path.resolve("tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts");
+    const child = spawnSync(
+        process.execPath,
+        [
+            "--max-old-space-size=1408",
+            "./node_modules/jest/bin/jest.js",
+            "--runInBand",
+            "--runTestsByPath",
+            testFile,
+            "--testNamePattern",
+            `large exact workload: public CLI ${route} route`,
+        ],
+        {
+            cwd: process.cwd(),
+            encoding: "utf-8",
+            env: {
+                ...process.env,
+                NODE_OPTIONS: "--experimental-vm-modules",
+                [LARGE_EXACT_WORKLOAD_CHILD]: route,
+            },
+            maxBuffer: 1024 * 1024,
+        },
+    );
+
+    expect(child.error).toBeUndefined();
+    if (child.status !== 0) throw new Error(`Large exact ${route} child failed:\n${child.stdout}\n${child.stderr}`);
+    expect(`${child.stdout}\n${child.stderr}`).toMatch(/1 passed/);
+}
 
 // End-to-end happy path for "pokie outcomelibrary generate": package (a real "pokie build" output) ->
 // generate (drives the built package's own runtime) -> validate (WeightedOutcomeLibraryValidator, the
@@ -276,4 +357,96 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         const resumedLibrary = readLibrary(partialFile);
         expect(resumedLibrary.outcomes).toEqual(fullLibrary.outcomes);
     });
+
+    it("large exact workload: public CLI build route", async () => {
+        if (process.env[LARGE_EXACT_WORKLOAD_CHILD] !== "build") {
+            runLargeExactWorkloadChild("build");
+            return;
+        }
+
+        // This test is intentionally run in its own Node process by the
+        // parent route above.  The child uses the exact configured
+        // test:targeted heap limit, so a failed retention bound is a normal
+        // test failure rather than a fatal heap failure for sibling suites.
+        expect(process.execArgv).toContain("--max-old-space-size=1408");
+
+        const blueprintPath = path.join(workDir, "large-build.blueprint.json");
+        const bundleDir = path.join(workDir, "large-build-bundle");
+        fs.writeFileSync(blueprintPath, JSON.stringify(wideExactBlueprint("large-build-cli-slot")));
+
+        expect(
+            await new BuildCommand("1.3.0").run([blueprintPath, "--target", "outcomeLibrary", "--exact", "--out", bundleDir]),
+        ).toBe(0);
+
+        const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, "manifest.json"), "utf-8")) as {
+            game: {id: string}; configHash?: string; modes: Array<{outcomeCount: number; totalWeight: number; generator: {strategy: string; totalOutcomeSpaceSize: number; sampledRawCount: number}}>;
+        };
+        expect(manifest.game).toEqual({id: "large-build-cli-slot", name: "614656 Exact CLI Slot", version: "1.0.0"});
+        expect(manifest.configHash).toMatch(/^sha256:/);
+        expect(manifest.modes).toEqual([
+            expect.objectContaining({
+                outcomeCount: LARGE_EXACT_WORKLOAD,
+                totalWeight: LARGE_EXACT_WORKLOAD,
+                generator: expect.objectContaining({strategy: "exact", totalOutcomeSpaceSize: LARGE_EXACT_WORKLOAD, sampledRawCount: LARGE_EXACT_WORKLOAD}),
+            }),
+        ]);
+        expect(fs.statSync(path.join(bundleDir, "index_base.json")).size).toBeGreaterThan(0);
+        const outcomesPath = path.join(bundleDir, "outcomes_base.jsonl");
+        expect(fs.statSync(outcomesPath).size).toBeGreaterThan(LARGE_EXACT_WORKLOAD);
+        expect(readFilePrefix(outcomesPath)).toContain('"provenance":{"game":{"id":"large-build-cli-slot"');
+    }, 40 * 60 * 1000);
+
+    it("large exact workload: public CLI generate route", async () => {
+        if (process.env[LARGE_EXACT_WORKLOAD_CHILD] !== "generate") {
+            runLargeExactWorkloadChild("generate");
+            return;
+        }
+
+        expect(process.execArgv).toContain("--max-old-space-size=1408");
+        const packageRoot = await buildPackage(wideExactBlueprint("large-generate-cli-slot"), "large-generate-pkg");
+
+        // Cancellation happens at the first real 5,000-combination exact
+        // progress checkpoint.  The temporary raw JSON publication must be
+        // discarded rather than exposing a syntactically partial library.
+        const cancelledOutput = path.join(workDir, "large-cancelled.json");
+        const fakeProcess = new EventEmitter() as unknown as NodeJS.Process;
+        let cancelled = false;
+        (console.error as jest.Mock).mockImplementation((message: unknown) => {
+            if (!cancelled && typeof message === "string" && message.includes("progress")) {
+                cancelled = true;
+                fakeProcess.emit("SIGINT");
+            }
+        });
+        const cancelledCommand = new OutcomeLibraryCommand(
+            "1.3.0",
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            fakeProcess,
+        );
+        expect(
+            await cancelledCommand.run(["generate", packageRoot, "--exact", "--out", cancelledOutput, "--progress"]),
+        ).toBe(130);
+        expect(cancelled).toBe(true);
+        expect(fs.existsSync(cancelledOutput)).toBe(false);
+
+        (console.error as jest.Mock).mockImplementation(() => undefined);
+        const outputPath = path.join(workDir, "large-generate.json");
+        expect(
+            await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", outputPath]),
+        ).toBe(0);
+        const printed = (console.log as jest.Mock).mock.calls.flat().join("\n");
+        expect(printed).toContain("614656");
+        expect(fs.statSync(outputPath).size).toBeGreaterThan(LARGE_EXACT_WORKLOAD);
+        expect(readFilePrefix(outputPath)).toContain('"libraryId":"large-generate-cli-slot-base"');
+        expect(readFilePrefix(outputPath)).toContain('"provenance":{"game":{"id":"large-generate-cli-slot"');
+        expect(readFileSuffix(outputPath)).toBe("]}");
+    }, 40 * 60 * 1000);
 });
