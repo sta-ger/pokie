@@ -44,17 +44,21 @@ describe("StudioOutcomeLibraryGenerateService", () => {
         fs.rmSync(projectRoot, {recursive: true, force: true});
     });
 
-    function service(pokieVersion: string = POKIE_VERSION, game: PokieGame = buildFixtureGame()): StudioOutcomeLibraryGenerateService {
+    function service(
+        pokieVersion?: string,
+        game?: PokieGame,
+        writer?: OutcomeLibraryBundleWriter<string>,
+    ): StudioOutcomeLibraryGenerateService {
         // The runtime seam deliberately does not turn this temporary directory
         // into a recognized package. Supply the already-prepared package plan
         // that production obtains from the resolver so these tests exercise
         // generation rather than fabricated source recognition.
         return new StudioOutcomeLibraryGenerateService(
-            pokieVersion,
-            () => Promise.resolve(game),
+            pokieVersion ?? POKIE_VERSION,
+            () => Promise.resolve(game ?? buildFixtureGame()),
             undefined,
             undefined,
-            undefined,
+            writer,
             undefined,
             undefined,
             undefined,
@@ -847,6 +851,40 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                 const resumed = await service().generate(projectRoot, {});
                 expect(resumed).toMatchObject({status: "ok", generator: {strategy: "exact"}});
             }
+        });
+
+        it("cancels after streamed bundle publication starts, removes staging, and cleanly retries", async () => {
+            const controller = new AbortController();
+            const nativeWriter = new OutcomeLibraryBundleWriter<string>(POKIE_VERSION);
+            const nativeWrite = nativeWriter.writeToDirectory.bind(nativeWriter);
+            let publicationStarted = false;
+            const writer = {
+                writeToDirectory: (...args: Parameters<OutcomeLibraryBundleWriter<string>["writeToDirectory"]>) =>
+                    nativeWrite(args[0], args[1], {
+                        ...args[2],
+                        onProgress: (progress) => {
+                            if (!publicationStarted && progress.message.startsWith("Publishing Outcome file")) {
+                                publicationStarted = true;
+                                controller.abort();
+                            }
+                        },
+                    }),
+            } as OutcomeLibraryBundleWriter<string>;
+            const svc = service(POKIE_VERSION, buildFixtureGame(), writer);
+
+            const result = await svc.generate(projectRoot, {signal: controller.signal});
+
+            expect(publicationStarted).toBe(true);
+            expect(result).toMatchObject({status: "cancelled", processedRawIndex: BigInt(0), progressTotal: BigInt(6)});
+            if (result.status === "cancelled") {
+                expect(result.checkpoint).toBeUndefined();
+                expect(result.recovery).toMatch(/retry/i);
+            }
+            expect(fs.existsSync(path.join(projectRoot, "outcomelibrary"))).toBe(false);
+            expect(fs.readdirSync(projectRoot).some((entry) => entry.startsWith("outcomelibrary.staging-") || entry.startsWith("outcomelibrary.tmp-"))).toBe(false);
+
+            await expect(svc.generate(projectRoot, {})).resolves.toMatchObject({status: "ok", generator: {strategy: "exact"}});
+            expect(fs.existsSync(path.join(projectRoot, "outcomelibrary", "manifest.json"))).toBe(true);
         });
     });
 
