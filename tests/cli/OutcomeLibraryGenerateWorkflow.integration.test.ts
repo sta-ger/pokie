@@ -176,6 +176,11 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary, "--resume", checkpointFile])).toBe(0);
         expect(fs.existsSync(checkpointFile)).toBe(false);
         expect(countRawOutcomes(rawLibrary)).toBe(16);
+        // The compact fixture has 16 distinct grids, but each grid's exact
+        // weight must still account for every one of the 614,656 stop tuples.
+        // This keeps the bounded regression sensitive to a generator that
+        // incorrectly truncates the raw enumeration before coalescing grids.
+        expect(readLibrary(rawLibrary).outcomes.reduce((weight, outcome) => weight + outcome.weight, 0)).toBe(614_656);
         expect(fs.readFileSync(rawLibrary, "utf-8").slice(0, 1024)).toContain('"provenance":{"game":{"id":"accepted-exact-workload-slot"');
     }, 3_600_000);
 
