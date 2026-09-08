@@ -66,15 +66,17 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
     }
 
     // 28^4 is the independently accepted 614,656-outcome exact workload.
-    // Every stop has a reel-specific symbol, so no two stop tuples can render
-    // the same canonical grid.  This is intentionally not an alternating
+    // Each strip has 28 unique positions. Canonical grids retain reel
+    // position, so using this same 28-symbol strip on every reel still makes
+    // every one of the 28^4 stop tuples distinct while keeping the game's
+    // symbol catalogue realistic. This is intentionally not an alternating
     // strip: the public build/generate paths must construct, stage and publish
     // all 614,656 distinct artifacts under the configured heap.
     function acceptedExactWorkloadBlueprint(id: string): GameBlueprint {
-        const reel = (reelId: number): string[] => Array.from({length: 28}, (_unused, stop) => `R${reelId}-${stop}`);
-        const reelStrips = Array.from({length: 4}, (_unused, reelId) => reel(reelId));
+        const reel = Array.from({length: 28}, (_unused, stop) => `S${stop}`);
+        const reelStrips = Array.from({length: 4}, () => [...reel]);
         // The one shared line-pay tuple exercises a genuine win calculation;
-        // every other stop remains reel-specific. No broad wild substitution
+        // every other stop remains position-distinct. No broad wild substitution
         // set is needed, so the fixture spends its heap and I/O budget on the
         // actual distinct-outcome workload rather than a synthetic paytable.
         for (const strip of reelStrips) strip[0] = "P";
