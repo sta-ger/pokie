@@ -4,6 +4,7 @@ import {
     estimateExactOutcomeSpaceSize,
     GameBlueprint,
     GamePackageGenerator,
+    createStreamingExactWeightedOutcomes,
     generateExactWeightedOutcomeLibrary,
     generateSampledWeightedOutcomeLibrary,
     generateWeightedOutcomeLibrary,
@@ -13,7 +14,6 @@ import {
     prepareOutcomeLibraryGeneration,
     prepareOutcomeLibraryGenerationFromEstimate,
     preflightOutcomeLibraryGenerationFromEstimate,
-    streamExactWeightedOutcomes,
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
     VideoSlotSession,
@@ -654,14 +654,16 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         fs.rmdirSync(outDir);
         try {
             const writer = new OutcomeLibraryBundleWriter("1.3.0");
+            const stream = createStreamingExactWeightedOutcomes({libraryId: "fixture-lib", game: buildFixtureGame(), pokieVersion: "1.3.0"});
             const result = await writer.writeToDirectory(
-                [{modeName: "base", libraryId: "fixture-lib", outcomes: streamExactWeightedOutcomes({libraryId: "fixture-lib", game: buildFixtureGame(), pokieVersion: "1.3.0"})}],
+                [{modeName: "base", libraryId: "fixture-lib", outcomes: stream.outcomes, getGenerator: stream.getDiagnostics}],
                 outDir,
             );
 
             expect(result.issues.filter((issue) => issue.severity === "error")).toHaveLength(0);
             expect(result.manifest?.modes[0].outcomeCount).toBe(4);
             expect(result.manifest?.modes[0].totalWeight).toBe(6);
+            expect(result.manifest?.modes[0].generator).toMatchObject({strategy: "exact", sampledRawCount: 6});
 
             const reader = new OutcomeLibraryBundleReader();
             const library = await reader.readLibrary(outDir, "base");

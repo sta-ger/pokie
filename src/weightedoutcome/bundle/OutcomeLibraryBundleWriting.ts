@@ -19,6 +19,10 @@ export type OutcomeLibraryBundleSupplementalFile = {
 
 export type OutcomeLibraryBundleWriteOptions = {
     readonly signal?: AbortSignal;
+    // The producer may run for long enough that a destination which was safe
+    // at preflight is claimed before this writer reaches its atomic swap.
+    // Invoke the owner's immutable destination policy at that last boundary.
+    readonly assertDestinationAvailable?: () => void;
     readonly onProgress?: (progress: OutcomeLibraryBundleWriteProgress) => void;
     readonly supplementalFiles?: readonly OutcomeLibraryBundleSupplementalFile[];
     readonly generatedBy?: string;

@@ -154,6 +154,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 const analysis = await computeOnlineWeightedOutcomeLibraryAnalysis(outcomesPath, result.built.totalWeight);
                 const indexFile = `index_${mode.modeName}.json`;
                 const firstOutcome = result.built.firstOutcome as {artifact: {betMode: string; stake: number}};
+                const generator = mode.generator ?? mode.getGenerator?.();
 
                 const manifestEntry: OutcomeLibraryBundleManifestModeEntry = {
                     modeName: mode.modeName,
@@ -166,7 +167,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                     analysis,
                     indexFile,
                     outcomesFile,
-                    ...(mode.generator !== undefined ? {generator: mode.generator} : {}),
+                    ...(generator === undefined ? {} : {generator}),
                 };
                 manifestEntries.push(manifestEntry);
 
@@ -185,6 +186,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             }
 
             assertNotCancelled(options);
+            options?.assertDestinationAvailable?.();
             if (issues.some((issue) => issue.severity === "error") || gameManifest === undefined || artifactPokieVersion === undefined) {
                 return {outDir, files: [], manifest: undefined, issues};
             }

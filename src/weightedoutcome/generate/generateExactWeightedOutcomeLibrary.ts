@@ -129,6 +129,15 @@ export type GenerateExactWeightedOutcomeLibraryResult = {
     readonly diagnostics: OutcomeLibraryGeneratorDiagnostics;
 };
 
+// The bundle writer needs the generator diagnostics only after it has consumed
+// the outcome stream.  Keep that small terminal value separate from the
+// outcomes themselves so a managed publication never has to retain a complete
+// WeightedOutcomeLibrary merely to put provenance in its manifest.
+export type StreamingExactWeightedOutcomes = {
+    readonly outcomes: AsyncGenerator<WeightedOutcomeInput>;
+    readonly getDiagnostics: () => OutcomeLibraryGeneratorDiagnostics | undefined;
+};
+
 /**
  * Executes the public domain request without making callers choose legacy
  * `exact`/`bounded`/`sampled` option names. CLI, Studio, and managed builders
@@ -138,8 +147,21 @@ export type GenerateExactWeightedOutcomeLibraryResult = {
 export function generateWeightedOutcomeLibrary(
     request: OutcomeLibraryGenerationRequest,
 ): Promise<GenerateExactWeightedOutcomeLibraryResult> {
+    return generateExactWeightedOutcomeLibrary(legacyOptionsForRequest(request));
+}
+
+/** The streaming counterpart to generateWeightedOutcomeLibrary for bundle publishers. */
+export function generateStreamingWeightedOutcomeLibrary(
+    request: OutcomeLibraryGenerationRequest,
+): StreamingExactWeightedOutcomes {
+    return createStreamingExactWeightedOutcomes(legacyOptionsForRequest(request));
+}
+
+function legacyOptionsForRequest(
+    request: OutcomeLibraryGenerationRequest,
+): GenerateExactWeightedOutcomeLibraryOptions {
     const prepared = prepareOutcomeLibraryGeneration(request);
-    return generateExactWeightedOutcomeLibrary({
+    return {
         libraryId: prepared.libraryId,
         game: prepared.game,
         pokieVersion: prepared.pokieVersion,
@@ -160,7 +182,7 @@ export function generateWeightedOutcomeLibrary(
         ...(prepared.now === undefined ? {} : {now: prepared.now}),
         ...(prepared.heapUsedLimitBytes === undefined ? {} : {heapUsedLimitBytes: prepared.heapUsedLimitBytes}),
         ...(prepared.getHeapUsedBytes === undefined ? {} : {getHeapUsedBytes: prepared.getHeapUsedBytes}),
-    });
+    };
 }
 
 type PreparedGeneration = {
@@ -379,6 +401,29 @@ export async function *streamExactWeightedOutcomes(
         ...(options.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: options.compatibilityPolicyVersion}),
         generatedAt: (options.now ?? (() => new Date()))().toISOString(),
     };
+}
+
+/**
+ * Adapts the exact producer for a streaming bundle publisher.  `outcomes` is
+ * consumed once by the writer; once that consumption completes,
+ * `getDiagnostics` exposes the producer's small terminal diagnostic record.
+ * It deliberately never collects outcomes or their artifacts in an array.
+ */
+export function createStreamingExactWeightedOutcomes(
+    options: GenerateExactWeightedOutcomeLibraryOptions,
+): StreamingExactWeightedOutcomes {
+    const source = streamExactWeightedOutcomes(options);
+    let diagnostics: OutcomeLibraryGeneratorDiagnostics | undefined;
+    async function *captureDiagnostics(): AsyncGenerator<WeightedOutcomeInput> {
+        let step = await source.next();
+        while (!step.done) {
+            yield step.value;
+            step = await source.next();
+        }
+        diagnostics = step.value;
+        return step.value;
+    }
+    return {outcomes: captureDiagnostics(), getDiagnostics: () => diagnostics};
 }
 
 // Convenience over streamExactWeightedOutcomes for the common case: collects the whole stream (still one

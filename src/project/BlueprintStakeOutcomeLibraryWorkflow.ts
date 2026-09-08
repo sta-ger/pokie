@@ -30,7 +30,7 @@ import {ClusterWinCalculator} from "../session/videoslot/wincalculator/ClusterWi
 import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/winevaluation/SelectedEvaluatorGroupWinAggregationPolicy.js";
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
-import {generateWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
+import {generateStreamingWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
 import {
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
     MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY,
@@ -314,33 +314,31 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         const hasRuntimeBetModes = declaredModes !== undefined && declaredModes.length > 0 && declaredModes.every((mode) => mode.runtimeType !== undefined);
         // A package without the optional bet-mode contract still has the canonical base runtime.
         const modes = declaredModes && declaredModes.length > 0 ? declaredModes : [{id: "base"}];
-        const generated = await Promise.all(
-            modes.map(async (mode) => ({
-                mode,
-                generated: await generateWeightedOutcomeLibrary({
-                    libraryId: `${game.getManifest().id}-${mode.id}`,
-                    game,
-                    pokieVersion: this.pokieVersion,
-                    configHash,
-                    ...(declaredModes && declaredModes.length > 0 ? {mode: mode.id} : {}),
-                    selectBetMode: hasRuntimeBetModes,
-                    generation: generation.generation,
-                    ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
-                    ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
-                    ...(generation.sampled !== undefined ? {sample: generation.sampled} : {}),
-                    // Bind the managed writer's destination into the same
-                    // resolved domain request used by CLI and Studio. The
-                    // workflow still owns filesystem publication/rollback,
-                    // while the request owns its destination identity.
-                    outputDestination: boundDestination,
-                    ...(destinationSafety === undefined ? {} : {outputDestinationSafety: destinationSafety}),
-                    signal: options?.signal,
-                    onProgress: (completed, total) => {
-                        reportArtifactBuildProgress(options, {status: "running", completed, total, preflight});
-                    },
-                }),
-            })),
-        );
+        const generated = modes.map((mode) => {
+            const stream = generateStreamingWeightedOutcomeLibrary({
+                libraryId: `${game.getManifest().id}-${mode.id}`,
+                game,
+                pokieVersion: this.pokieVersion,
+                configHash,
+                ...(declaredModes && declaredModes.length > 0 ? {mode: mode.id} : {}),
+                selectBetMode: hasRuntimeBetModes,
+                generation: generation.generation,
+                ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
+                ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
+                ...(generation.sampled !== undefined ? {sample: generation.sampled} : {}),
+                // Bind the managed writer's destination into the same
+                // resolved domain request used by CLI and Studio. The
+                // workflow still owns filesystem publication/rollback,
+                // while the request owns its destination identity.
+                outputDestination: boundDestination,
+                ...(destinationSafety === undefined ? {} : {outputDestinationSafety: destinationSafety}),
+                signal: options?.signal,
+                onProgress: (completed, total) => {
+                    reportArtifactBuildProgress(options, {status: "running", completed, total, preflight});
+                },
+            });
+            return {mode, stream};
+        });
         assertArtifactBuildNotCancelled(options);
         // Generation can take a long time.  Re-run the immutable request's
         // original availability policy at the durable-publication boundary so
@@ -352,18 +350,22 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             throw new Error("Managed Outcome Library destination changed after preflight.");
         }
         assertArtifactBuildNotCancelled(options);
-        publication.started = true;
         const result = await this.writer.writeToDirectory(
-            generated.map(({mode, generated: library}) => ({
+            generated.map(({mode, stream}) => ({
                 modeName: mode.id,
-                libraryId: library.library.libraryId,
-                schemaVersion: library.library.schemaVersion,
-                outcomes: library.library.outcomes,
-                generator: library.diagnostics,
+                libraryId: `${game.getManifest().id}-${mode.id}`,
+                outcomes: stream.outcomes,
+                getGenerator: stream.getDiagnostics,
             })),
             boundDestination,
             {
                 signal: options?.signal,
+                assertDestinationAvailable: () => {
+                    const revalidatedDestination = resolveOutcomeLibraryGenerationDestination(boundDestination, destinationSafety);
+                    if (revalidatedDestination?.path !== boundDestination) {
+                        throw new Error("Managed Outcome Library destination changed before publication.");
+                    }
+                },
                 onProgress: (progress) => {
                     reportArtifactBuildProgress(options, {
                         status: "running",
@@ -375,6 +377,11 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 },
             },
         );
+        // The writer's last-boundary destination check can reject a directory
+        // another actor created while this stream was running. Mark this
+        // invocation as owner only after its atomic publication succeeds, so
+        // failure cleanup never removes that late external destination.
+        publication.started = true;
         const errors = result.issues.filter((issue) => issue.severity === "error");
         if (errors.length > 0 || result.manifest === undefined) {
             throw new Error(`Could not build Outcome Library from Blueprint "${blueprintPath}": ${errors.map((issue) => issue.message).join("; ")}`);
