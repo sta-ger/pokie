@@ -9,10 +9,21 @@ import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOve
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 
-function buildPackageForSmoke(): void {
+async function buildPackageForSmoke(): Promise<void> {
     const run = (command: string, args: string[]): void => {
         execFileSync(command, args, {cwd: REPO_ROOT, stdio: "inherit"});
     };
+    const runInParallel = (command: string, args: string[]): Promise<void> => new Promise((resolve, reject) => {
+        const child = spawn(command, args, {cwd: REPO_ROOT, stdio: "inherit"});
+        child.once("error", reject);
+        child.once("exit", (code, signal) => {
+            if (code === 0) {
+                resolve();
+                return;
+            }
+            reject(new Error(`${command} ${args.join(" ")} exited with code ${code ?? "unknown"}${signal === null ? "" : ` (signal ${signal})`}`));
+        });
+    });
     const node = process.execPath;
     const tsc = path.join(REPO_ROOT, "node_modules", "typescript", "bin", "tsc");
     const shx = path.join(REPO_ROOT, "node_modules", "shx", "lib", "cli.js");
@@ -23,9 +34,14 @@ function buildPackageForSmoke(): void {
     // build the candidate without turning the test into an invocation of the release build gate.
     run(node, [path.join(REPO_ROOT, "generate-barrels.js")]);
     fs.rmSync(path.join(REPO_ROOT, "dist"), {recursive: true, force: true});
-    run(node, [tsc, "--project", "tsconfig.prod.json"]);
+    // ESM and CJS have separate output directories and no generated-file dependency between
+    // them. Building them concurrently keeps the smoke boundary identical while leaving enough
+    // time for this intentionally real packaging test to complete inside the changed-tests gate.
+    await Promise.all([
+        runInParallel(node, [tsc, "--project", "tsconfig.prod.json"]),
+        runInParallel(node, [tsc, "--project", "tsconfig.prod.json", "--module", "CommonJS", "--outDir", "dist/cjs"]),
+    ]);
     run(node, [shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
-    run(node, [tsc, "--project", "tsconfig.prod.json", "--module", "CommonJS", "--outDir", "dist/cjs"]);
     run(node, [path.join(REPO_ROOT, "write-cjs-package-json.js")]);
     run(node, [shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
     run(node, [tsc, "--project", "tsconfig.cli.json"]);
@@ -160,12 +176,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }, null, 2)}\n`, {flag: "wx"});
     }
 
-    beforeAll(() => {
+    beforeAll(async () => {
         // Build explicitly, then keep the real tarball and npm's output outside the candidate tree.
         // `npm pack --json` includes one record per shipped file; once the package exceeded 8,000
         // files that output crossed execFileSync's default 1 MiB buffer and failed with ENOBUFS.
         // Silent non-JSON mode emits only the tarball filename and remains bounded as the package grows.
-        buildPackageForSmoke();
+        await buildPackageForSmoke();
         packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
         const filename = execFileSync(
             "npm",
