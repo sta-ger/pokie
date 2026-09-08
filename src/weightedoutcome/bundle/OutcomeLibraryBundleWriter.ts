@@ -66,23 +66,25 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
     private readonly validator: OutcomeLibraryBundleWriteValidating<T>;
     private readonly now: () => Date;
     private readonly writeFile: (filePath: string, contents: string) => void;
+    private readonly nativeFileWriting: boolean;
     private readonly renameDirectory: (from: string, to: string) => void;
     private readonly removeDirectory: (dirPath: string) => void;
 
     constructor(
         pokieVersion: string,
-        validator: OutcomeLibraryBundleWriteValidating<T> = new OutcomeLibraryBundleWriteValidator<T>(),
-        now: () => Date = () => new Date(),
-        writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
-        renameDirectory: (from: string, to: string) => void = (from, to) => fs.renameSync(from, to),
-        removeDirectory: (dirPath: string) => void = (dirPath) => fs.rmSync(dirPath, {recursive: true, force: true}),
+        validator?: OutcomeLibraryBundleWriteValidating<T>,
+        now?: () => Date,
+        writeFile?: (filePath: string, contents: string) => void,
+        renameDirectory?: (from: string, to: string) => void,
+        removeDirectory?: (dirPath: string) => void,
     ) {
         this.pokieVersion = pokieVersion;
-        this.validator = validator;
-        this.now = now;
-        this.writeFile = writeFile;
-        this.renameDirectory = renameDirectory;
-        this.removeDirectory = removeDirectory;
+        this.validator = validator ?? new OutcomeLibraryBundleWriteValidator<T>();
+        this.now = now ?? (() => new Date());
+        this.writeFile = writeFile ?? ((filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"));
+        this.nativeFileWriting = writeFile === undefined;
+        this.renameDirectory = renameDirectory ?? ((from, to) => fs.renameSync(from, to));
+        this.removeDirectory = removeDirectory ?? ((dirPath) => fs.rmSync(dirPath, {recursive: true, force: true}));
     }
 
     public async writeToDirectory(
@@ -123,12 +125,22 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
 
                 const outcomesFile = `outcomes_${mode.modeName}.jsonl`;
                 const outcomesPath = path.join(stagingDir, outcomesFile);
-                const result = await streamModeOutcomesToTempFile(mode.modeName, mode.libraryId, mode.outcomes, schemaVersion, outcomesPath, options, completed);
+                const stagedEntriesPath = this.nativeFileWriting ? path.join(stagingDir, `.entries_${mode.modeName}.json`) : undefined;
+                const result = await streamModeOutcomesToTempFile(
+                    mode.modeName,
+                    mode.libraryId,
+                    mode.outcomes,
+                    schemaVersion,
+                    outcomesPath,
+                    options,
+                    stagedEntriesPath,
+                    completed,
+                );
                 issues.push(...result.issues);
                 if (result.built === undefined) {
                     continue;
                 }
-                completed += BigInt(result.built.entries.length);
+                completed += BigInt(result.built.outcomeCount);
 
                 const current = provenanceKeyOf(result.built.firstOutcome as never);
                 if (firstMode === undefined) {
@@ -162,7 +174,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                     stake: firstOutcome.artifact.stake,
                     libraryId: mode.libraryId,
                     libraryHash: result.built.libraryHash,
-                    outcomeCount: result.built.entries.length,
+                    outcomeCount: result.built.outcomeCount,
                     totalWeight: result.built.totalWeight,
                     analysis,
                     indexFile,
@@ -171,18 +183,33 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 };
                 manifestEntries.push(manifestEntry);
 
-                const index: OutcomeLibraryBundleModeIndex = {
-                    schemaVersion: OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION,
-                    modeName: mode.modeName,
-                    libraryId: mode.libraryId,
-                    librarySchemaVersion: schemaVersion,
-                    libraryHash: result.built.libraryHash,
-                    outcomeCount: result.built.entries.length,
-                    totalWeight: result.built.totalWeight,
-                    outcomesFile,
-                    entries: result.built.entries,
-                };
-                this.writeFile(path.join(stagingDir, indexFile), `${JSON.stringify(index, null, 4)}\n`);
+                const indexPath = path.join(stagingDir, indexFile);
+                if (result.built.entriesPath !== undefined) {
+                    this.writeNativeIndex(indexPath, {
+                        schemaVersion: OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION,
+                        modeName: mode.modeName,
+                        libraryId: mode.libraryId,
+                        librarySchemaVersion: schemaVersion,
+                        libraryHash: result.built.libraryHash,
+                        outcomeCount: result.built.outcomeCount,
+                        totalWeight: result.built.totalWeight,
+                        outcomesFile,
+                    }, result.built.entriesPath);
+                    fs.rmSync(result.built.entriesPath, {force: true});
+                } else {
+                    const index: OutcomeLibraryBundleModeIndex = {
+                        schemaVersion: OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION,
+                        modeName: mode.modeName,
+                        libraryId: mode.libraryId,
+                        librarySchemaVersion: schemaVersion,
+                        libraryHash: result.built.libraryHash,
+                        outcomeCount: result.built.outcomeCount,
+                        totalWeight: result.built.totalWeight,
+                        outcomesFile,
+                        entries: result.built.entries ?? [],
+                    };
+                    this.writeFile(indexPath, `${JSON.stringify(index, null, 4)}\n`);
+                }
             }
 
             assertNotCancelled(options);
@@ -244,6 +271,30 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 // best-effort only — the staging directory is purely internal scratch space, never part of the
                 // published result either way.
             }
+        }
+    }
+
+    /** Writes the potentially large entries array without ever parsing it back into JS. */
+    private writeNativeIndex(
+        indexPath: string,
+        header: Omit<OutcomeLibraryBundleModeIndex, "entries">,
+        entriesPath: string,
+    ): void {
+        const destination = fs.openSync(indexPath, "w");
+        const source = fs.openSync(entriesPath, "r");
+        try {
+            const headerJson = JSON.stringify(header);
+            fs.writeSync(destination, `${headerJson.slice(0, -1)},"entries":[`);
+            const buffer = Buffer.allocUnsafe(64 * 1024);
+            let bytesRead = fs.readSync(source, buffer, 0, buffer.length, null);
+            while (bytesRead > 0) {
+                fs.writeSync(destination, buffer, 0, bytesRead);
+                bytesRead = fs.readSync(source, buffer, 0, buffer.length, null);
+            }
+            fs.writeSync(destination, "]}\n");
+        } finally {
+            fs.closeSync(source);
+            fs.closeSync(destination);
         }
     }
 }

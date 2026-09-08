@@ -65,6 +65,22 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         };
     }
 
+    // 28^4 is the independently accepted 614,656-combination exact workload.
+    // Its alternating strips keep artifact construction small enough for this
+    // real public-command regression while still exercising the full raw sweep
+    // and its cancellation/provenance publication path.
+    function acceptedExactWorkloadBlueprint(id: string): GameBlueprint {
+        const reel = (offset: number): string[] => Array.from({length: 28}, (_unused, stop) => ((stop + offset) % 2 === 0 ? "A" : "B"));
+        return {
+            manifest: {id, name: "Accepted Exact Workload Slot", version: "1.0.0"},
+            reels: 4,
+            rows: 1,
+            symbols: ["A", "B"],
+            paytable: {A: {4: 1}},
+            reelStrips: [reel(0), reel(1), reel(0), reel(1)],
+        };
+    }
+
     function freeGamesBlueprint(id: string): GameBlueprint {
         return {
             manifest: {id, name: "Free Games CLI Slot", version: "1.0.0"},
@@ -96,6 +112,45 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
     function readLibrary(filePath: string): WeightedOutcomeLibrary {
         return JSON.parse(fs.readFileSync(filePath, "utf-8")) as WeightedOutcomeLibrary;
     }
+
+    function countRawOutcomes(filePath: string): number {
+        const descriptor = fs.openSync(filePath, "r");
+        const buffer = Buffer.allocUnsafe(64 * 1024);
+        let carry = "";
+        let count = 0;
+        try {
+            let bytesRead = fs.readSync(descriptor, buffer, 0, buffer.length, null);
+            while (bytesRead > 0) {
+                const text = carry + buffer.subarray(0, bytesRead).toString("utf-8");
+                const lastQuote = text.lastIndexOf('"id":"outcome-');
+                const complete = lastQuote === -1 ? text : text.slice(0, lastQuote);
+                count += complete.split('"id":"outcome-').length - 1;
+                carry = lastQuote === -1 ? text : text.slice(lastQuote);
+                bytesRead = fs.readSync(descriptor, buffer, 0, buffer.length, null);
+            }
+            return count + (carry.split('"id":"outcome-').length - 1);
+        } finally {
+            fs.closeSync(descriptor);
+        }
+    }
+
+    it("streams the accepted 614,656-combination exact workload through public build and generate commands", async () => {
+        const blueprint = acceptedExactWorkloadBlueprint("accepted-exact-workload-slot");
+        const blueprintPath = path.join(workDir, "accepted-exact.blueprint.json");
+        fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
+
+        const bundleDir = path.join(workDir, "accepted-exact-bundle");
+        expect(await new BuildCommand("1.3.0").run([blueprintPath, "--target", "outcomeLibrary", "--exact", "--out", bundleDir])).toBe(0);
+        const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, "manifest.json"), "utf-8")) as {game: {id: string}; modes: Array<{outcomeCount: number; generator?: {strategy: string; totalOutcomeSpaceSize: number}}>};
+        expect(manifest.game.id).toBe("accepted-exact-workload-slot");
+        expect(manifest.modes[0]).toEqual(expect.objectContaining({outcomeCount: 16, generator: expect.objectContaining({strategy: "exact", totalOutcomeSpaceSize: 614_656})}));
+
+        const packageRoot = await buildPackage(blueprint, "accepted-exact-package");
+        const rawLibrary = path.join(workDir, "accepted-exact.json");
+        expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(0);
+        expect(countRawOutcomes(rawLibrary)).toBe(16);
+        expect(fs.readFileSync(rawLibrary, "utf-8").slice(0, 1024)).toContain('"provenance":{"game":{"id":"accepted-exact-workload-slot"');
+    }, 600_000);
 
     it("package -> generate -> validate -> analyze -> bundle: exact weights match the hand-computable fixture", async () => {
         const packageRoot = await buildPackage(finiteBlueprint("exact-cli-slot"), "pkg");

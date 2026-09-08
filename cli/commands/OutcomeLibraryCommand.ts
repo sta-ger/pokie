@@ -136,6 +136,7 @@ type SerializedCheckpoint = {
     progressTotal: string;
     sourceEnumerationId: string;
     grids: [string, {grid: string[][]; weight: string}][];
+    externalStagingDirectory?: string;
 };
 
 // Three CLI verbs ("pokie outcomelibrary generate"/"build"/"validate") sharing one command, the same
@@ -576,6 +577,13 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     );
                     return 130;
                 }
+                if (error.checkpoint.restartRequired) {
+                    console.error(
+                        `Generation of "${packageRoot}" was cancelled after ${error.processedRawIndex} / ${error.progressTotal} raw draws. ` +
+                            "No incomplete library was published; this run has no resumable exact checkpoint, so retry the same command from the beginning.",
+                    );
+                    return 130;
+                }
                 if (options.resume === undefined) {
                     console.error(
                         `Generation of "${packageRoot}" was cancelled after ${error.processedRawIndex} / ${error.progressTotal} raw draws, ` +
@@ -721,7 +729,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     if (error === undefined && options.resume !== undefined && this.fileExists(options.resume)) this.removeFile(options.resume);
                 },
                 onTerminalFailure: (error: unknown) => {
-                    if (resolvedRequest.preflight.strategy === "exact" && error instanceof WeightedOutcomeLibraryGenerationCancelledError && options.resume !== undefined) {
+                    if (resolvedRequest.preflight.strategy === "exact" && error instanceof WeightedOutcomeLibraryGenerationCancelledError && !error.checkpoint.restartRequired && options.resume !== undefined) {
                         this.writeFile(options.resume, JSON.stringify(this.serializeCheckpoint(error.checkpoint), null, 4));
                     }
                 },
@@ -955,6 +963,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             progressTotal: checkpoint.progressTotal.toString(),
             sourceEnumerationId: checkpoint.sourceEnumerationId,
             grids: Array.from(checkpoint.grids.entries()).map(([key, entry]) => [key, {grid: entry.grid, weight: entry.weight.toString()}]),
+            ...(checkpoint.externalStagingDirectory === undefined ? {} : {externalStagingDirectory: checkpoint.externalStagingDirectory}),
         };
     }
 
@@ -976,6 +985,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             progressTotal: BigInt(parsed.progressTotal),
             sourceEnumerationId: parsed.sourceEnumerationId,
             grids: new Map(parsed.grids.map(([key, entry]) => [key, {grid: entry.grid, weight: BigInt(entry.weight)}])),
+            ...(typeof parsed.externalStagingDirectory === "string" ? {externalStagingDirectory: parsed.externalStagingDirectory} : {}),
         };
     }
 

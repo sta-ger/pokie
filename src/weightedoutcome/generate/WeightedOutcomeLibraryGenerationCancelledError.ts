@@ -18,6 +18,15 @@ export type ExactEnumerationCheckpoint = {
     readonly progressTotal: bigint;
     readonly grids: ReadonlyMap<string, UniqueGridWeightEntry<string>>;
     readonly sourceEnumerationId: string;
+    /**
+     * Disk-partitioned exact generation deliberately discards its temporary
+     * accumulator on cancellation. Such a checkpoint reports honest progress
+     * but is retry-only: accepting it as a resume seed would omit already
+     * swept weights.
+     */
+    readonly restartRequired?: boolean;
+    /** Opaque disk staging retained only for a cancelled exact sweep. */
+    readonly externalStagingDirectory?: string;
 };
 
 // Thrown when the caller's own AbortSignal fires mid-enumeration. Unlike WeightedOutcomeLibraryGenerationError
@@ -31,11 +40,25 @@ export class WeightedOutcomeLibraryGenerationCancelledError extends Error {
     public readonly progressTotal: bigint;
     public readonly checkpoint: ExactEnumerationCheckpoint;
 
-    constructor(processedRawIndex: bigint, progressTotal: bigint, grids: ExactEnumerationCheckpoint["grids"], sourceEnumerationId: string) {
+    constructor(
+        processedRawIndex: bigint,
+        progressTotal: bigint,
+        grids: ExactEnumerationCheckpoint["grids"],
+        sourceEnumerationId: string,
+        restartRequired?: boolean,
+        externalStagingDirectory?: string,
+    ) {
         super(`Weighted outcome library generation was cancelled after ${processedRawIndex} / ${progressTotal} raw draws.`);
         this.name = "WeightedOutcomeLibraryGenerationCancelledError";
         this.processedRawIndex = processedRawIndex;
         this.progressTotal = progressTotal;
-        this.checkpoint = {processedRawIndex, progressTotal, grids, sourceEnumerationId};
+        this.checkpoint = {
+            processedRawIndex,
+            progressTotal,
+            grids,
+            sourceEnumerationId,
+            ...(restartRequired === true ? {restartRequired: true} : {}),
+            ...(externalStagingDirectory === undefined ? {} : {externalStagingDirectory}),
+        };
     }
 }

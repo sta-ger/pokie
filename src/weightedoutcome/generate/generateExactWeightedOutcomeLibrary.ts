@@ -1,4 +1,7 @@
 import crypto from "crypto";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import v8 from "v8";
 import {buildRoundArtifactFromSession} from "../../artifact/buildRoundArtifactFromSession.js";
 import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
@@ -18,7 +21,7 @@ import {sampleStopTuples} from "./internal/sampleStopTuples.js";
 import {sweepStopTuples} from "./internal/sweepStopTuples.js";
 import {toBigIntSafeDecimal} from "./internal/toBigIntSafeDecimal.js";
 import type {OutcomeLibraryGeneratorDiagnostics, OutcomeLibraryGenerationStrategy} from "./OutcomeLibraryGeneratorDiagnostics.js";
-import type {ExactEnumerationCheckpoint} from "./WeightedOutcomeLibraryGenerationCancelledError.js";
+import {WeightedOutcomeLibraryGenerationCancelledError, type ExactEnumerationCheckpoint} from "./WeightedOutcomeLibraryGenerationCancelledError.js";
 import {WeightedOutcomeLibraryGenerationError} from "./WeightedOutcomeLibraryGenerationError.js";
 import {
     adaptLegacyOutcomeLibraryGenerationRequest,
@@ -40,6 +43,12 @@ export {DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE} from "./OutcomeLibraryGenerationRe
 // a clean, actionable WeightedOutcomeLibraryGenerationError (see accumulateUniqueGridWeights) instead of an
 // uncatchable V8 "JavaScript heap out of memory" process abort.
 const HEAP_SAFETY_FRACTION = 0.85;
+// Exact enumeration can legitimately reach hundreds of thousands of distinct
+// grids. Keep that identity set on disk, partitioned by the same digest prefix
+// used by the canonical outcome id, so only one small sorted partition is live
+// while artifacts are constructed and published.
+const EXTERNAL_GRID_BUCKETS = 256;
+const EXTERNAL_YIELD_EVERY = BigInt(5000);
 
 function defaultHeapUsedLimitBytes(): number {
     return v8.getHeapStatistics().heap_size_limit * HEAP_SAFETY_FRACTION;
@@ -227,6 +236,12 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
                 "position to continue from; resumeFrom is only valid for a run that itself resolves to \"exact\".",
         );
     }
+    if (options.resumeFrom?.restartRequired) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-checkpoint-unsupported",
+            "This exact generation was cancelled while using bounded disk staging, so its temporary grid accumulator was safely discarded. Retry the command from the beginning; this checkpoint cannot be resumed without changing exact weights.",
+        );
+    }
     if (options.resumeFrom !== undefined && options.resumeFrom.progressTotal !== estimate.totalOutcomeSpaceSize) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-checkpoint-mismatch",
@@ -328,38 +343,13 @@ export async function *streamExactWeightedOutcomes(
     const manifest = game.getManifest();
     const prepared = prepare(options);
 
-    const {grids, processedRawCount} = await accumulateUniqueGridWeights<string>(prepared.reelWindows, prepared.tuples, prepared.progressTotal, {
-        signal: options.signal,
-        onProgress: options.onProgress,
-        initialGrids: prepared.initialGrids,
-        initialProcessedRawCount: prepared.initialProcessedRawCount,
-        sourceEnumerationId: prepared.sourceEnumerationId,
-        heapUsedLimitBytes: options.heapUsedLimitBytes ?? defaultHeapUsedLimitBytes(),
-        getHeapUsedBytes: options.getHeapUsedBytes ?? (() => process.memoryUsage().heapUsed),
-    });
-
     const provenance: RoundArtifactProvenance = {
         game: manifest,
         pokieVersion: options.pokieVersion,
         ...(prepared.configHash !== undefined ? {configHash: prepared.configHash} : {}),
     };
 
-    // Canonically sorted by id before ever being yielded -- both so this function's own output already
-    // matches buildWeightedOutcomeLibrary's own sort order, and because a caller streaming this straight into
-    // OutcomeLibraryBundleModeInput.outcomes (see streamExactWeightedOutcomes's own doc comment) requires
-    // outcomes to already arrive in that order; the writer only ever verifies it, it never re-sorts.
-    const sortedUniqueGrids = Array.from(grids.entries())
-        .map(([gridKey, entry]) => ({id: outcomeIdForGrid(gridKey), entry}))
-        .sort((a, b) => compareIds(a.id, b.id));
-    // Sorting retains the only data needed for the publication phase.  Drop
-    // the accumulation map (and, critically, its second copy of every large
-    // grid's JSON key) before an archive CLI producer starts constructing
-    // round artifacts or bundle index entries.  This keeps exact generation
-    // action-local at the accepted large workload instead of retaining both
-    // phases' identity structures at once.
-    grids.clear();
-
-    for (const {id, entry} of sortedUniqueGrids) {
+    const createOutcome = (id: string, entry: UniqueGridWeightEntry<string>): WeightedOutcomeInput => {
         // Guaranteed non-null by prepare(): a game whose createExactEnumerationSession was undefined would
         // already have thrown before this point.
         const session = game.createExactEnumerationSession!(new ForcedSymbolsCombinationsGenerator<string>(entry.grid));
@@ -392,7 +382,45 @@ export async function *streamExactWeightedOutcomes(
             stake,
         });
 
-        yield {id, weight: toSafeWeightNumber(entry.weight, id), artifact};
+        return {id, weight: toSafeWeightNumber(entry.weight, id), artifact};
+    };
+
+    let processedRawCount: bigint;
+    // Resume checkpoints deliberately retain their historical in-memory
+    // representation. Fresh exact publication, which is every normal public
+    // CLI/Studio path, uses bounded disk partitions instead.
+    if (prepared.strategy === "exact" && (options.resumeFrom === undefined || options.resumeFrom.externalStagingDirectory !== undefined)) {
+        const external = externallyAccumulateExactGridWeights(prepared.reelWindows, prepared.tuples, prepared.progressTotal, {
+            signal: options.signal,
+            onProgress: options.onProgress,
+            sourceEnumerationId: prepared.sourceEnumerationId,
+            ...(options.resumeFrom?.externalStagingDirectory === undefined ? {} : {stagingDirectory: options.resumeFrom.externalStagingDirectory}),
+            ...(prepared.initialProcessedRawCount === undefined ? {} : {initialProcessedRawCount: prepared.initialProcessedRawCount}),
+        });
+        let step = await external.next();
+        while (!step.done) {
+            yield createOutcome(step.value.id, step.value.entry);
+            step = await external.next();
+        }
+        processedRawCount = step.value;
+    } else {
+        const {grids, processedRawCount: accumulatedRawCount} = await accumulateUniqueGridWeights<string>(prepared.reelWindows, prepared.tuples, prepared.progressTotal, {
+            signal: options.signal,
+            onProgress: options.onProgress,
+            initialGrids: prepared.initialGrids,
+            initialProcessedRawCount: prepared.initialProcessedRawCount,
+            sourceEnumerationId: prepared.sourceEnumerationId,
+            heapUsedLimitBytes: options.heapUsedLimitBytes ?? defaultHeapUsedLimitBytes(),
+            getHeapUsedBytes: options.getHeapUsedBytes ?? (() => process.memoryUsage().heapUsed),
+        });
+        const sortedUniqueGrids = Array.from(grids.entries())
+            .map(([gridKey, entry]) => ({id: outcomeIdForGrid(gridKey), entry}))
+            .sort((a, b) => compareIds(a.id, b.id));
+        grids.clear();
+        for (const {id, entry} of sortedUniqueGrids) {
+            yield createOutcome(id, entry);
+        }
+        processedRawCount = accumulatedRawCount;
     }
 
     return {
@@ -408,6 +436,83 @@ export async function *streamExactWeightedOutcomes(
         ...(options.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: options.compatibilityPolicyVersion}),
         generatedAt: (options.now ?? (() => new Date()))().toISOString(),
     };
+}
+
+/**
+ * Spills raw grid keys into digest partitions, then deduplicates and sorts one
+ * partition at a time. The SHA-256 prefix is also the first part of an
+ * outcome id, therefore traversing buckets in numeric order preserves the
+ * writer's required canonical id ordering without retaining a global sort.
+ */
+async function *externallyAccumulateExactGridWeights(
+    reelWindows: readonly string[][][],
+    tuples: Generator<{tuple: number[]; rawIndex: bigint}>,
+    progressTotal: bigint,
+    options: {
+        readonly signal?: AbortSignal;
+        readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
+        readonly sourceEnumerationId: string;
+        readonly stagingDirectory?: string;
+        readonly initialProcessedRawCount?: bigint;
+    },
+): AsyncGenerator<{readonly id: string; readonly entry: UniqueGridWeightEntry<string>}, bigint> {
+    const stagingDir = options.stagingDirectory ?? fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-grids-"));
+    const descriptors = new Map<number, number>();
+    let processedRawCount = options.initialProcessedRawCount ?? BigInt(0);
+    let completed = false;
+    let checkpointGrid: [string, UniqueGridWeightEntry<string>] | undefined;
+    try {
+        for (const {tuple, rawIndex} of tuples) {
+            if (options.signal?.aborted) {
+                throw new WeightedOutcomeLibraryGenerationCancelledError(rawIndex, progressTotal, new Map(checkpointGrid === undefined ? [] : [checkpointGrid]), options.sourceEnumerationId, false, stagingDir);
+            }
+            const grid = tuple.map((position, reelId) => reelWindows[reelId][position]);
+            const gridKey = JSON.stringify(grid);
+            checkpointGrid = [gridKey, {grid, weight: BigInt(1)}];
+            const bucket = Number.parseInt(crypto.createHash("sha256").update(gridKey).digest("hex").slice(0, 2), 16);
+            let descriptor = descriptors.get(bucket);
+            if (descriptor === undefined) {
+                descriptor = fs.openSync(path.join(stagingDir, `${bucket.toString(16).padStart(2, "0")}.jsonl`), "a");
+                descriptors.set(bucket, descriptor);
+            }
+            fs.writeSync(descriptor, `${gridKey}\n`);
+            processedRawCount++;
+            if (processedRawCount % EXTERNAL_YIELD_EVERY === BigInt(0)) {
+                options.onProgress?.(processedRawCount, progressTotal);
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+        }
+        for (const descriptor of descriptors.values()) fs.closeSync(descriptor);
+        descriptors.clear();
+        options.onProgress?.(processedRawCount, progressTotal);
+
+        for (let bucket = 0; bucket < EXTERNAL_GRID_BUCKETS; bucket++) {
+            if (options.signal?.aborted) {
+                throw new WeightedOutcomeLibraryGenerationCancelledError(processedRawCount, progressTotal, new Map(checkpointGrid === undefined ? [] : [checkpointGrid]), options.sourceEnumerationId, false, stagingDir);
+            }
+            const bucketPath = path.join(stagingDir, `${bucket.toString(16).padStart(2, "0")}.jsonl`);
+            if (!fs.existsSync(bucketPath)) continue;
+            const weights = new Map<string, UniqueGridWeightEntry<string>>();
+            for (const line of fs.readFileSync(bucketPath, "utf-8").split("\n")) {
+                if (line.length === 0) continue;
+                const entry = weights.get(line);
+                if (entry !== undefined) entry.weight += BigInt(1);
+                else weights.set(line, {grid: JSON.parse(line) as string[][], weight: BigInt(1)});
+            }
+            const sorted = Array.from(weights.entries())
+                .map(([gridKey, entry]) => ({id: outcomeIdForGrid(gridKey), entry}))
+                .sort((left, right) => compareIds(left.id, right.id));
+            weights.clear();
+            for (const item of sorted) yield item;
+        }
+        completed = true;
+        return processedRawCount;
+    } finally {
+        for (const descriptor of descriptors.values()) fs.closeSync(descriptor);
+        if (completed || !options.signal?.aborted) fs.rmSync(stagingDir, {recursive: true, force: true});
+    }
 }
 
 /**
