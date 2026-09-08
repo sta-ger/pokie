@@ -77,10 +77,11 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
             reels: 4,
             rows: 1,
             symbols: reel,
-            // All symbols must have valid, reachable payouts for the public
-            // Blueprint build contract. The strip still preserves each
-            // stop's own identity, and all of them are reachable.
-            paytable: Object.fromEntries(reel.map((symbol) => [symbol, {4: 1}])),
+            // A public Blueprint permits symbols without payouts. Keep one
+            // reachable payout so this remains a real game workload, while
+            // avoiding an unrelated 28-way paytable scan for each of the
+            // 614,656 distinct outcome artifacts.
+            paytable: {S0: {4: 1}},
             reelStrips: [reel, reel, reel, reel],
         };
     }
