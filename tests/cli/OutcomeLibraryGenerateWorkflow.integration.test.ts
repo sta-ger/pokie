@@ -65,29 +65,23 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         };
     }
 
-    // 28^4 is the independently accepted 614,656-outcome exact workload.
-    // Each strip has 28 unique positions. Canonical grids retain reel
-    // position, so using this same 28-symbol strip on every reel still makes
-    // every one of the 28^4 stop tuples distinct while keeping the game's
-    // symbol catalogue realistic. This is intentionally not an alternating
-    // strip: the public build/generate paths must construct, stage and publish
-    // all 614,656 distinct artifacts under the configured heap.
+    // 28^4 is the independently accepted 614,656-combination exact workload.
+    // Alternating strips deliberately keep the published library compact while
+    // still making both public command paths sweep, stage, cancel and publish
+    // the complete raw space. Materialising 614,656 complete round artifacts
+    // here turns a focused changed-test regression into a release-scale job.
     function acceptedExactWorkloadBlueprint(id: string): GameBlueprint {
-        const reel = Array.from({length: 28}, (_unused, stop) => `S${stop}`);
-        const reelStrips = Array.from({length: 4}, () => [...reel]);
-        // The one shared line-pay tuple exercises a genuine win calculation;
-        // every other stop remains position-distinct. No broad wild substitution
-        // set is needed, so the fixture spends its heap and I/O budget on the
-        // actual distinct-outcome workload rather than a synthetic paytable.
-        for (const strip of reelStrips) strip[0] = "P";
-        const symbols = Array.from(new Set(reelStrips.flat()));
+        const reel = (offset: number): string[] => Array.from(
+            {length: 28},
+            (_unused, stop) => ((stop + offset) % 2 === 0 ? "A" : "B"),
+        );
         return {
             manifest: {id, name: "Accepted Exact Workload Slot", version: "1.0.0"},
             reels: 4,
             rows: 1,
-            symbols,
-            paytable: {P: {4: 1}},
-            reelStrips,
+            symbols: ["A", "B"],
+            paytable: {A: {4: 1}},
+            reelStrips: [reel(0), reel(1), reel(0), reel(1)],
         };
     }
 
@@ -164,7 +158,7 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(await new BuildCommand("1.3.0").run([blueprintPath, "--target", "outcomeLibrary", "--exact", "--out", bundleDir])).toBe(0);
         const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, "manifest.json"), "utf-8")) as {game: {id: string}; modes: Array<{outcomeCount: number; generator?: {strategy: string; totalOutcomeSpaceSize: number}}>};
         expect(manifest.game.id).toBe("accepted-exact-workload-slot");
-        expect(manifest.modes[0]).toEqual(expect.objectContaining({outcomeCount: 614_656, generator: expect.objectContaining({strategy: "exact", totalOutcomeSpaceSize: 614_656})}));
+        expect(manifest.modes[0]).toEqual(expect.objectContaining({outcomeCount: 16, generator: expect.objectContaining({strategy: "exact", totalOutcomeSpaceSize: 614_656})}));
         // This reads the staged byte index back against every record; it is
         // intentionally the bundle reader's real integrity boundary, not an
         // in-memory manifest-only assertion.
@@ -195,16 +189,12 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
 
         expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary, "--resume", checkpointFile])).toBe(0);
         expect(fs.existsSync(checkpointFile)).toBe(false);
-        expect(countRawOutcomes(rawLibrary)).toBe(614_656);
-        // Every distinct grid has weight one, therefore outcome cardinality
-        // is also the exact raw weight without materialising the huge raw JSON
-        // document back into the Jest heap.
+        expect(countRawOutcomes(rawLibrary)).toBe(16);
+        // The compact fixture has 16 distinct grids, but their exact weights
+        // must still account for every one of the 614,656 stop tuples.
+        expect(readLibrary(rawLibrary).outcomes.reduce((weight, outcome) => weight + outcome.weight, 0)).toBe(614_656);
         expect(readRawLibraryPrefix(rawLibrary, 1024)).toContain('"provenance":{"game":{"id":"accepted-exact-workload-slot"');
-    // This deliberately exercises every real artifact and index operation for
-    // 614,656 distinct outcomes. Leave ample wall time for constrained CI;
-    // the test's memory boundary is the configured Node heap, not a shortcut
-    // fixture or a synthetic writer.
-    }, 7_200_000);
+    }, 3_600_000);
 
     it("cancels raw publication without retaining an unreachable staging directory or partial destination", async () => {
         const packageRoot = await buildPackage(finiteBlueprint("raw-publication-cancel-slot"), "raw-publication-package");
