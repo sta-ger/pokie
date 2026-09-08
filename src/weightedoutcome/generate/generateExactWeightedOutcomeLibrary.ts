@@ -49,6 +49,10 @@ const HEAP_SAFETY_FRACTION = 0.85;
 // while artifacts are constructed and published.
 const EXTERNAL_GRID_BUCKETS = 256;
 const EXTERNAL_YIELD_EVERY = BigInt(5000);
+// Keep staging writes bounded without paying a synchronous filesystem call for
+// every raw reel-stop tuple. At most one buffer per digest partition is live,
+// so even a sweep that touches all partitions retains only a few megabytes.
+const EXTERNAL_WRITE_BUFFER_BYTES = 16 * 1024;
 
 function defaultHeapUsedLimitBytes(): number {
     return v8.getHeapStatistics().heap_size_limit * HEAP_SAFETY_FRACTION;
@@ -479,6 +483,7 @@ async function *externallyAccumulateExactGridWeights(
 ): AsyncGenerator<{readonly id: string; readonly entry: UniqueGridWeightEntry<string>}, bigint> {
     const stagingDir = options.stagingDirectory ?? fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-grids-"));
     const descriptors = new Map<number, number>();
+    const bufferedLines = new Map<number, string>();
     let processedRawCount = options.initialProcessedRawCount ?? BigInt(0);
     let checkpointGrid: [string, UniqueGridWeightEntry<string>] | undefined;
     try {
@@ -501,7 +506,13 @@ async function *externallyAccumulateExactGridWeights(
                 descriptor = fs.openSync(path.join(stagingDir, `${bucket.toString(16).padStart(2, "0")}.jsonl`), "a");
                 descriptors.set(bucket, descriptor);
             }
-            fs.writeSync(descriptor, `${gridKey}\n`);
+            const buffered = `${bufferedLines.get(bucket) ?? ""}${gridKey}\n`;
+            if (buffered.length >= EXTERNAL_WRITE_BUFFER_BYTES) {
+                fs.writeSync(descriptor, buffered);
+                bufferedLines.delete(bucket);
+            } else {
+                bufferedLines.set(bucket, buffered);
+            }
             processedRawCount++;
             if (processedRawCount % EXTERNAL_YIELD_EVERY === BigInt(0)) {
                 options.onProgress?.(processedRawCount, progressTotal);
@@ -510,6 +521,10 @@ async function *externallyAccumulateExactGridWeights(
                 });
             }
         }
+        for (const [bucket, buffered] of bufferedLines) {
+            fs.writeSync(descriptors.get(bucket)!, buffered);
+        }
+        bufferedLines.clear();
         for (const descriptor of descriptors.values()) fs.closeSync(descriptor);
         descriptors.clear();
         options.onProgress?.(processedRawCount, progressTotal);
