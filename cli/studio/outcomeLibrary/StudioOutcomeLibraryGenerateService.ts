@@ -7,6 +7,7 @@ import {
     OutcomeLibraryBundleReading,
     OutcomeLibraryBundleWriter,
     OutcomeLibraryBundleWriting,
+    OutcomeLibraryBundleWriteCancelledError,
     OutcomeSpaceEstimate,
     OutcomeLibraryGenerationRequest,
     PokieGame,
@@ -536,8 +537,14 @@ export class StudioOutcomeLibraryGenerateService {
                             if (sourceMode?.generator === undefined) return {status: "terminal", view: {status: "load-error", error: `The prepared reusable Outcome Library does not contain generated provenance for mode "${modeName}". Regenerate that mode before reusing it.`, plan}};
                             const modes: OutcomeLibraryBundleModeInput<string>[] = [];
                             for (const entry of sourceManifest.modes) {
-                                const library = await this.bundleReader.readLibrary(sourceDir, entry.modeName);
-                                modes.push({modeName: entry.modeName, libraryId: library.libraryId, schemaVersion: library.schemaVersion, outcomes: library.outcomes, ...(entry.generator === undefined ? {} : {generator: entry.generator})});
+                                const index = await this.bundleReader.readModeIndex(sourceDir, entry.modeName);
+                                modes.push({
+                                    modeName: entry.modeName,
+                                    libraryId: index.libraryId,
+                                    schemaVersion: index.librarySchemaVersion,
+                                    outcomes: this.bundleReader.iterateModeOutcomes(sourceDir, entry.modeName),
+                                    ...(entry.generator === undefined ? {} : {generator: entry.generator}),
+                                });
                             }
                             return {status: "ready", modes, libraryId: sourceMode.libraryId, generator: sourceMode.generator};
                         } catch (error) {
@@ -618,7 +625,7 @@ export class StudioOutcomeLibraryGenerateService {
                 },
                 publish: (read) => {
                     if (read.status !== "ready") throw new Error("The prepared Outcome Library generation was not publishable.");
-                    return this.writer.writeToDirectory(read.modes, boundDestination);
+                    return this.writer.writeToDirectory(read.modes, boundDestination, {signal: request.signal});
                 },
                 register: (writeResult) => {
                     if (writeResult.manifest !== undefined && !writeResult.issues.some((issue) => issue.severity === "error")) this.recordDiscoveredBundleDir(projectRoot, outDirRelative);
@@ -676,6 +683,15 @@ export class StudioOutcomeLibraryGenerateService {
                     recovery: resumable
                         ? "Generation was cancelled before publication. Resume this exact checkpoint while the game configuration is unchanged."
                         : "Generation was cancelled before publication. Retry the same bounded-coverage request to start a fresh deterministic sample.",
+                    plan,
+                };
+            }
+            if (error instanceof OutcomeLibraryBundleWriteCancelledError) {
+                return {
+                    status: "cancelled",
+                    processedRawIndex: BigInt(0),
+                    progressTotal: preparedRequest.preflight.estimate.totalOutcomeSpaceSize,
+                    recovery: "Publication was cancelled before the bundle could be atomically replaced. Retry the same prepared request.",
                     plan,
                 };
             }
@@ -945,12 +961,12 @@ export class StudioOutcomeLibraryGenerateService {
             if (entry.modeName === excludeModeName) {
                 continue;
             }
-            const library = await this.bundleReader.readLibrary(resolvedOutDir, entry.modeName);
+            const index = await this.bundleReader.readModeIndex(resolvedOutDir, entry.modeName);
             modes.push({
                 modeName: entry.modeName,
-                libraryId: library.libraryId,
-                schemaVersion: library.schemaVersion,
-                outcomes: library.outcomes,
+                libraryId: index.libraryId,
+                schemaVersion: index.librarySchemaVersion,
+                outcomes: this.bundleReader.iterateModeOutcomes(resolvedOutDir, entry.modeName),
                 ...(entry.generator !== undefined ? {generator: entry.generator} : {}),
             });
         }

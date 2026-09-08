@@ -544,6 +544,19 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     "bounded-coverage strategy with --sample <n> --seed <string>.",
                 );
             }
+            // A raw library is an array-shaped JSON document.  Printing it
+            // would necessarily retain every generated outcome until
+            // JSON.stringify has completed, which defeats the streaming
+            // contract for an otherwise accepted exact request.  Decide this
+            // after preflight so a cap-exceeded request still receives its
+            // more specific sampled-recovery diagnostic, but before any
+            // generation work starts.
+            if (options.out === undefined) {
+                throw new Error(
+                    `--out <file> is required for generation. Outcome libraries are streamed directly to a durable file; ` +
+                    `use --estimate to inspect the request without generating. ${GENERATE_USAGE}`,
+                );
+            }
             const prepared = this.prepareRawGenerationOperation(
                 packageRoot,
                 options,
@@ -663,7 +676,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     // Legacy embedding callers that supply a generator retain
                     // their exact result shape. The public CLI's native path
                     // instead hands the writer the domain stream directly.
-                    if (this.generate !== generateWeightedOutcomeLibrary || rawOutput === undefined) {
+                    // rawOutput is guaranteed above for every non-estimate
+                    // public invocation; keeping the guard makes this
+                    // prepared operation safe for direct internal callers.
+                    if (this.generate !== generateWeightedOutcomeLibrary) {
                         return this.generate(reboundRequest);
                     }
                     return generateStreamingWeightedOutcomeLibrary(reboundRequest);

@@ -466,16 +466,27 @@ describe("OutcomeLibraryCommand", () => {
             const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
             const command = createGenerateCommand({generate});
 
-            await command.run(["generate", "/project/slot", "--mode", "bonus"]);
+            await command.run(["generate", "/project/slot", "--mode", "bonus", "--out", "/project/bonus.json"]);
 
             expect(generate).toHaveBeenCalledWith(expect.objectContaining({libraryId: "slot-1-bonus"}));
+        });
+
+        it("requires a durable destination before materializing a generated library", async () => {
+            const loadGame = jest.fn(() => Promise.resolve(FAKE_GAME));
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const command = createGenerateCommand({loadGame, generate});
+
+            await expect(command.run(["generate", "/project/slot", "--exact"])).rejects.toThrow(/--out <file> is required.*--estimate/i);
+
+            expect(loadGame).toHaveBeenCalledWith("/project/slot");
+            expect(generate).not.toHaveBeenCalled();
         });
 
         it("rejects a caller configuration hash that does not match the loaded game", async () => {
             const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
             const command = createGenerateCommand({generate});
 
-            const exitCode = await command.run(["generate", "/project/slot", "--config-hash", "sha256:other"]);
+            const exitCode = await command.run(["generate", "/project/slot", "--config-hash", "sha256:other", "--out", "/project/base.json"]);
 
             expect(exitCode).toBe(1);
             expect(generate).not.toHaveBeenCalled();
@@ -659,7 +670,7 @@ describe("OutcomeLibraryCommand", () => {
             const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
             const command = createGenerateCommand({generate});
 
-            await command.run(["generate", "/project/slot", "--bounded", "--sample-size", "1000", "--seed", "seed-1"]);
+            await command.run(["generate", "/project/slot", "--bounded", "--sample-size", "1000", "--seed", "seed-1", "--out", "/project/base.json"]);
 
             expect(generate).toHaveBeenCalledWith(expect.objectContaining({generation: "bounded", sample: {sampleSize: BigInt(1000), seed: "seed-1"}}));
         });
@@ -668,7 +679,7 @@ describe("OutcomeLibraryCommand", () => {
             const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
             const command = createGenerateCommand({generate});
 
-            await command.run(["generate", "/project/slot", "--sample", "1000", "--seed", "sample-seed"]);
+            await command.run(["generate", "/project/slot", "--sample", "1000", "--seed", "sample-seed", "--out", "/project/base.json"]);
 
             expect(generate).toHaveBeenCalledWith(expect.objectContaining({generation: "sampled", sample: {sampleSize: BigInt(1000), seed: "sample-seed"}}));
         });
@@ -693,7 +704,7 @@ describe("OutcomeLibraryCommand", () => {
             });
             const command = createGenerateCommand({generate});
 
-            const exitCode = await command.run(["generate", "/project/slot"]);
+            const exitCode = await command.run(["generate", "/project/slot", "--out", "/project/base.json"]);
 
             expect(exitCode).toBe(1);
             expect(errorSpy.mock.calls.flat().join("\n")).toContain("weighted-outcome-library-generation-unsupported");
@@ -718,7 +729,7 @@ describe("OutcomeLibraryCommand", () => {
             const writeFile = jest.fn();
             const command = createGenerateCommand({processHandle, generate, writeFile});
 
-            const exitCode = await command.run(["generate", "/project/slot", "--resume", "/project/checkpoint.json"]);
+            const exitCode = await command.run(["generate", "/project/slot", "--resume", "/project/checkpoint.json", "--out", "/project/base.json"]);
 
             expect(exitCode).toBe(130);
             expect(writeFile).toHaveBeenCalledWith("/project/checkpoint.json", expect.any(String));
@@ -748,7 +759,7 @@ describe("OutcomeLibraryCommand", () => {
             const writeFile = jest.fn();
             const command = createGenerateCommand({processHandle, generate, writeFile});
 
-            const exitCode = await command.run(["generate", "/project/slot"]);
+            const exitCode = await command.run(["generate", "/project/slot", "--out", "/project/base.json"]);
 
             expect(exitCode).toBe(130);
             expect(writeFile).not.toHaveBeenCalled();
@@ -769,7 +780,7 @@ describe("OutcomeLibraryCommand", () => {
             const writeFile = jest.fn();
             const command = createGenerateCommand({processHandle, generate, writeFile});
 
-            const exitCode = await command.run(["generate", "/project/slot", "--sample", "4", "--seed", "retry-seed", "--resume", "/project/checkpoint.json"]);
+            const exitCode = await command.run(["generate", "/project/slot", "--sample", "4", "--seed", "retry-seed", "--resume", "/project/checkpoint.json", "--out", "/project/base.json"]);
 
             expect(exitCode).toBe(130);
             expect(writeFile).not.toHaveBeenCalled();
@@ -792,7 +803,7 @@ describe("OutcomeLibraryCommand", () => {
             const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
             const command = createGenerateCommand({loadJson, generate, fileExists: () => true});
 
-            await command.run(["generate", "/project/slot", "--resume", "/project/checkpoint.json"]);
+            await command.run(["generate", "/project/slot", "--resume", "/project/checkpoint.json", "--out", "/project/base.json"]);
 
             expect(generate).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -816,7 +827,7 @@ describe("OutcomeLibraryCommand", () => {
                 loadJson: () => ({processedRawIndex: "0", progressTotal: "6", sourceEnumerationId: "src-1", grids: []}),
             });
 
-            const exitCode = await command.run(["generate", "/project/slot", "--resume", "/project/checkpoint.json"]);
+            const exitCode = await command.run(["generate", "/project/slot", "--resume", "/project/checkpoint.json", "--out", "/project/base.json"]);
 
             expect(exitCode).toBe(0);
             expect(removeFile).toHaveBeenCalledWith("/project/checkpoint.json");
