@@ -44,11 +44,17 @@ async function buildPackageForSmoke(): Promise<void> {
     run(node, [shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
     run(node, [path.join(REPO_ROOT, "write-cjs-package-json.js")]);
     run(node, [shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
-    run(node, [tsc, "--project", "tsconfig.cli.json"]);
-    run(node, [tsc, "--project", "tsconfig.client.json"]);
+
+    // The remaining build commands own separate output trees. Running the type checks and Vite
+    // bundle together preserves the full production-package boundary while keeping this real smoke
+    // suite below the changed-tests gate's timeout.
+    await Promise.all([
+        runInParallel(node, [tsc, "--project", "tsconfig.cli.json"]),
+        runInParallel(node, [tsc, "--project", "tsconfig.client.json"]),
+        runInParallel(node, [tsc, "--project", "cli/studio-client/tsconfig.json", "--noEmit"]),
+        runInParallel(node, [vite, "build", "--config", "cli/studio-client/vite.config.ts"]),
+    ]);
     run(node, [shx, "cp", "cli/client/index.html", "cli/client/style.css", "dist/cli/client/"]);
-    run(node, [tsc, "--project", "cli/studio-client/tsconfig.json", "--noEmit"]);
-    run(node, [vite, "build", "--config", "cli/studio-client/vite.config.ts"]);
     run(node, [shx, "test", "-f", "dist/cli/studio-client/index.html"]);
     run(node, [shx, "chmod", "+x", "dist/cli/pokie.js"]);
 }
