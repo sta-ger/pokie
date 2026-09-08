@@ -242,6 +242,12 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             "This exact generation was cancelled while using bounded disk staging, so its temporary grid accumulator was safely discarded. Retry the command from the beginning; this checkpoint cannot be resumed without changing exact weights.",
         );
     }
+    if (options.resumeFrom?.externalStagingDirectory !== undefined) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-checkpoint-unsupported",
+            "This exact generation checkpoint depends on external disk staging, which is not a durable resume contract. Retry the command from the beginning; resuming it could omit already swept exact weights.",
+        );
+    }
     if (options.resumeFrom !== undefined && options.resumeFrom.progressTotal !== estimate.totalOutcomeSpaceSize) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-checkpoint-mismatch",
@@ -339,6 +345,20 @@ function toSafeWeightNumber(weight: bigint, id: string): number {
 export async function *streamExactWeightedOutcomes(
     options: GenerateExactWeightedOutcomeLibraryOptions,
 ): AsyncGenerator<WeightedOutcomeInput, OutcomeLibraryGeneratorDiagnostics> {
+    return yield* streamExactWeightedOutcomesInternal(options, true);
+}
+
+/**
+ * Public publishers use disk partitions so that a distinct-outcome workload
+ * never retains its whole grid set.  The legacy materialising API keeps its
+ * original in-memory checkpoint contract: it is the only caller that can
+ * actually retain a resumable checkpoint without also retaining an external
+ * staging directory after its caller has gone away.
+ */
+async function *streamExactWeightedOutcomesInternal(
+    options: GenerateExactWeightedOutcomeLibraryOptions,
+    useExternalStaging: boolean,
+): AsyncGenerator<WeightedOutcomeInput, OutcomeLibraryGeneratorDiagnostics> {
     const {game} = options;
     const manifest = game.getManifest();
     const prepared = prepare(options);
@@ -387,14 +407,15 @@ export async function *streamExactWeightedOutcomes(
 
     let processedRawCount: bigint;
     // Resume checkpoints deliberately retain their historical in-memory
-    // representation. Fresh exact publication, which is every normal public
-    // CLI/Studio path, uses bounded disk partitions instead.
-    if (prepared.strategy === "exact" && (options.resumeFrom === undefined || options.resumeFrom.externalStagingDirectory !== undefined)) {
+    // representation. A streaming publisher must never silently discard that
+    // seeded prefix: use the materialising compatibility path for a valid
+    // legacy checkpoint, and disk partitions only for fresh exact publication
+    // (the normal public CLI/Studio path).
+    if (prepared.strategy === "exact" && useExternalStaging && prepared.initialProcessedRawCount === undefined) {
         const external = externallyAccumulateExactGridWeights(prepared.reelWindows, prepared.tuples, prepared.progressTotal, {
             signal: options.signal,
             onProgress: options.onProgress,
             sourceEnumerationId: prepared.sourceEnumerationId,
-            ...(options.resumeFrom?.externalStagingDirectory === undefined ? {} : {stagingDirectory: options.resumeFrom.externalStagingDirectory}),
             ...(prepared.initialProcessedRawCount === undefined ? {} : {initialProcessedRawCount: prepared.initialProcessedRawCount}),
         });
         let step = await external.next();
@@ -459,12 +480,17 @@ async function *externallyAccumulateExactGridWeights(
     const stagingDir = options.stagingDirectory ?? fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-grids-"));
     const descriptors = new Map<number, number>();
     let processedRawCount = options.initialProcessedRawCount ?? BigInt(0);
-    let completed = false;
     let checkpointGrid: [string, UniqueGridWeightEntry<string>] | undefined;
     try {
         for (const {tuple, rawIndex} of tuples) {
             if (options.signal?.aborted) {
-                throw new WeightedOutcomeLibraryGenerationCancelledError(rawIndex, progressTotal, new Map(checkpointGrid === undefined ? [] : [checkpointGrid]), options.sourceEnumerationId, false, stagingDir);
+                // Disk partitions are an implementation detail of a streaming
+                // publication.  They are not a durable checkpoint: a caller
+                // can cancel after this generator yields but before it has
+                // persisted any checkpoint.  Never expose their path as a
+                // resumable token, otherwise publication cancellation leaves
+                // an unreachable staging directory behind.
+                throw new WeightedOutcomeLibraryGenerationCancelledError(rawIndex, progressTotal, new Map(checkpointGrid === undefined ? [] : [checkpointGrid]), options.sourceEnumerationId, true);
             }
             const grid = tuple.map((position, reelId) => reelWindows[reelId][position]);
             const gridKey = JSON.stringify(grid);
@@ -490,7 +516,7 @@ async function *externallyAccumulateExactGridWeights(
 
         for (let bucket = 0; bucket < EXTERNAL_GRID_BUCKETS; bucket++) {
             if (options.signal?.aborted) {
-                throw new WeightedOutcomeLibraryGenerationCancelledError(processedRawCount, progressTotal, new Map(checkpointGrid === undefined ? [] : [checkpointGrid]), options.sourceEnumerationId, false, stagingDir);
+                throw new WeightedOutcomeLibraryGenerationCancelledError(processedRawCount, progressTotal, new Map(checkpointGrid === undefined ? [] : [checkpointGrid]), options.sourceEnumerationId, true);
             }
             const bucketPath = path.join(stagingDir, `${bucket.toString(16).padStart(2, "0")}.jsonl`);
             if (!fs.existsSync(bucketPath)) continue;
@@ -507,11 +533,15 @@ async function *externallyAccumulateExactGridWeights(
             weights.clear();
             for (const item of sorted) yield item;
         }
-        completed = true;
         return processedRawCount;
     } finally {
         for (const descriptor of descriptors.values()) fs.closeSync(descriptor);
-        if (completed || !options.signal?.aborted) fs.rmSync(stagingDir, {recursive: true, force: true});
+        // A stream can be closed by a raw/bundle publisher after aborting,
+        // without this generator ever throwing its own cancellation error.
+        // In that case no checkpoint is observable or persistable.  Always
+        // remove external partitions; callers receive an honest retry-only
+        // cancellation instead of an orphaned pseudo-resume directory.
+        fs.rmSync(stagingDir, {recursive: true, force: true});
     }
 }
 
@@ -548,7 +578,7 @@ export function createStreamingExactWeightedOutcomes(
 export async function generateExactWeightedOutcomeLibrary(
     options: GenerateExactWeightedOutcomeLibraryOptions,
 ): Promise<GenerateExactWeightedOutcomeLibraryResult> {
-    const stream = streamExactWeightedOutcomes(options);
+    const stream = streamExactWeightedOutcomesInternal(options, false);
     const outcomes: WeightedOutcomeInput[] = [];
     let step = await stream.next();
     while (!step.done) {

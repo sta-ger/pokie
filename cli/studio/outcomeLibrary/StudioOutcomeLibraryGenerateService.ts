@@ -674,7 +674,11 @@ export class StudioOutcomeLibraryGenerateService {
             // in read(). Preserve Studio's established action-local outcome
             // for generator failures at that later boundary.
             if (error instanceof WeightedOutcomeLibraryGenerationCancelledError) {
-                const resumable = preparedRequest.preflight.strategy === "exact";
+                // Streaming publication uses disposable disk partitions.  A
+                // cancellation checkpoint marked restartRequired is progress
+                // reporting only, not a token Studio may persist and offer
+                // for resume after its staging has been removed.
+                const resumable = preparedRequest.preflight.strategy === "exact" && !error.checkpoint.restartRequired;
                 return {
                     status: "cancelled",
                     processedRawIndex: error.processedRawIndex,
@@ -682,7 +686,7 @@ export class StudioOutcomeLibraryGenerateService {
                     ...(resumable ? {checkpoint: error.checkpoint} : {}),
                     recovery: resumable
                         ? "Generation was cancelled before publication. Resume this exact checkpoint while the game configuration is unchanged."
-                        : "Generation was cancelled before publication. Retry the same bounded-coverage request to start a fresh deterministic sample.",
+                        : "Generation was cancelled before publication. No partial bundle was published; retry the same request from the beginning.",
                     plan,
                 };
             }

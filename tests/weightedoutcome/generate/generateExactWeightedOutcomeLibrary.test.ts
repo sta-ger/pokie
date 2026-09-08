@@ -20,6 +20,7 @@ import {
     VideoSlotWithBetModesSession,
 } from "pokie";
 import {buildAlternateFixtureGame, buildFixtureConfig, buildFixtureGame, buildUnplayableFixtureGame, buildUnsupportedFixtureGame} from "./GenerateTestFixtures.js";
+import {streamExactWeightedOutcomes} from "../../../src/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -498,7 +499,7 @@ describe("generateExactWeightedOutcomeLibrary", () => {
     }
 
     it("resumes a cancelled exact sweep, via its own checkpoint, into a complete library identical to an uninterrupted run", async () => {
-        expect.assertions(9);
+        expect.assertions(10);
 
         let cancelled: WeightedOutcomeLibraryGenerationCancelledError | undefined;
         try {
@@ -544,6 +545,19 @@ describe("generateExactWeightedOutcomeLibrary", () => {
 
         // Same outcome ids, weights, and full artifacts as an uninterrupted sweep over the whole space.
         expect(resumed.library.outcomes).toEqual(uninterrupted.library.outcomes);
+
+        // A legacy durable checkpoint remains correct through the streaming
+        // adapter too. It takes the compatible in-memory resume route rather
+        // than silently skipping the checkpoint's accumulated prefix.
+        const streamed: Awaited<ReturnType<typeof generateExactWeightedOutcomeLibrary>>["library"]["outcomes"] = [];
+        for await (const outcome of streamExactWeightedOutcomes({
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            resumeFrom: cancelled?.checkpoint,
+            now: () => new Date("2026-01-01T00:00:00.000Z"),
+        })) streamed.push(outcome);
+        expect(streamed).toEqual(uninterrupted.library.outcomes);
     });
 
     it("fails closed when resumeFrom's checkpoint comes from a different source that merely shares the same outcome-space size", async () => {
@@ -628,6 +642,52 @@ describe("generateExactWeightedOutcomeLibrary", () => {
             const cancelled = error as WeightedOutcomeLibraryGenerationCancelledError;
             expect(cancelled.processedRawIndex).toBe(BigInt(0));
             expect(cancelled.progressTotal).toBe(BigInt(6));
+        }
+    });
+
+    it("rejects a legacy disk-staging checkpoint rather than resuming incomplete exact weights", async () => {
+        await expect(generateExactWeightedOutcomeLibrary({
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            resumeFrom: {
+                processedRawIndex: BigInt(3),
+                progressTotal: BigInt(6),
+                grids: new Map(),
+                sourceEnumerationId: "fixture-source",
+                externalStagingDirectory: "/obsolete/external-staging",
+            },
+        })).rejects.toMatchObject({
+            name: "WeightedOutcomeLibraryGenerationError",
+            code: "weighted-outcome-library-generation-checkpoint-unsupported",
+        });
+    });
+
+    it("removes streaming disk staging on cancellation and returns an honest retry-only checkpoint", async () => {
+        const stagingDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-stream-cancel-"));
+        const createStagingDirectory = jest.spyOn(fs, "mkdtempSync").mockReturnValue(stagingDirectory);
+        try {
+            const stream = streamExactWeightedOutcomes({
+                libraryId: "fixture-lib",
+                game: buildFixtureGame(),
+                pokieVersion: "1.3.0",
+                signal: abortAfterReads(3),
+            });
+            try {
+                await stream.next();
+                fail("expected streaming generation to be cancelled");
+            } catch (error) {
+                const cancelled = error as WeightedOutcomeLibraryGenerationCancelledError;
+                expect(cancelled).toMatchObject({
+                    name: "WeightedOutcomeLibraryGenerationCancelledError",
+                    checkpoint: {restartRequired: true},
+                });
+                expect(cancelled.checkpoint.externalStagingDirectory).toBeUndefined();
+            }
+            expect(fs.existsSync(stagingDirectory)).toBe(false);
+        } finally {
+            createStagingDirectory.mockRestore();
+            fs.rmSync(stagingDirectory, {recursive: true, force: true});
         }
     });
 

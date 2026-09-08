@@ -65,21 +65,27 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         };
     }
 
-    // 28^4 is the independently accepted 614,656-combination exact workload.
-    // Alternating strips deliberately keep the resulting library small while
-    // still making both public command paths sweep, stage, cancel, resume and
-    // publish the whole raw space. Creating 614,656 complete round artifacts
-    // here would turn this workflow regression into a release-scale fixture
-    // and prevent the changed-test gate from completing.
+    // 28^4 is the independently accepted 614,656-outcome exact workload.
+    // Every stop has a reel-specific symbol, so no two stop tuples can render
+    // the same canonical grid.  This is intentionally not an alternating
+    // strip: the public build/generate paths must construct, stage and publish
+    // all 614,656 distinct artifacts under the configured heap.
     function acceptedExactWorkloadBlueprint(id: string): GameBlueprint {
-        const reel = (offset: number): string[] => Array.from({length: 28}, (_unused, stop) => ((stop + offset) % 2 === 0 ? "A" : "B"));
+        const reel = (reelId: number): string[] => Array.from({length: 28}, (_unused, stop) => `R${reelId}-${stop}`);
+        const reelStrips = Array.from({length: 4}, (_unused, reelId) => reel(reelId));
+        // The one shared line-pay tuple exercises a genuine win calculation;
+        // every other stop remains reel-specific. No broad wild substitution
+        // set is needed, so the fixture spends its heap and I/O budget on the
+        // actual distinct-outcome workload rather than a synthetic paytable.
+        for (const strip of reelStrips) strip[0] = "P";
+        const symbols = Array.from(new Set(reelStrips.flat()));
         return {
             manifest: {id, name: "Accepted Exact Workload Slot", version: "1.0.0"},
             reels: 4,
             rows: 1,
-            symbols: ["A", "B"],
-            paytable: {A: {4: 1}},
-            reelStrips: [reel(0), reel(1), reel(0), reel(1)],
+            symbols,
+            paytable: {P: {4: 1}},
+            reelStrips,
         };
     }
 
@@ -136,6 +142,17 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         }
     }
 
+    function readRawLibraryPrefix(filePath: string, length: number): string {
+        const descriptor = fs.openSync(filePath, "r");
+        const buffer = Buffer.allocUnsafe(length);
+        try {
+            const bytesRead = fs.readSync(descriptor, buffer, 0, buffer.length, 0);
+            return buffer.subarray(0, bytesRead).toString("utf-8");
+        } finally {
+            fs.closeSync(descriptor);
+        }
+    }
+
     it("streams the 614,656-combination exact workload through public build and generate commands with durable retry-safe output", async () => {
         const blueprint = acceptedExactWorkloadBlueprint("accepted-exact-workload-slot");
         const blueprintPath = path.join(workDir, "accepted-exact.blueprint.json");
@@ -145,7 +162,7 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(await new BuildCommand("1.3.0").run([blueprintPath, "--target", "outcomeLibrary", "--exact", "--out", bundleDir])).toBe(0);
         const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, "manifest.json"), "utf-8")) as {game: {id: string}; modes: Array<{outcomeCount: number; generator?: {strategy: string; totalOutcomeSpaceSize: number}}>};
         expect(manifest.game.id).toBe("accepted-exact-workload-slot");
-        expect(manifest.modes[0]).toEqual(expect.objectContaining({outcomeCount: 16, generator: expect.objectContaining({strategy: "exact", totalOutcomeSpaceSize: 614_656})}));
+        expect(manifest.modes[0]).toEqual(expect.objectContaining({outcomeCount: 614_656, generator: expect.objectContaining({strategy: "exact", totalOutcomeSpaceSize: 614_656})}));
         // This reads the staged byte index back against every record; it is
         // intentionally the bundle reader's real integrity boundary, not an
         // in-memory manifest-only assertion.
@@ -166,23 +183,54 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
             "1.3.0", undefined, undefined, undefined, undefined, undefined,
             undefined, undefined, undefined, undefined, undefined, fakeProcess,
         );
-        // Cancellation occurs after a real external staging checkpoint. The
-        // caller-visible destination must remain absent until retry completes.
+        // External staging is deliberately retry-only: a cancellation before
+        // durable output must leave no caller-visible destination, checkpoint,
+        // or unreachable staging directory.
         expect(await cancellingCommand.run(["generate", packageRoot, "--exact", "--out", rawLibrary, "--resume", checkpointFile, "--progress"])).toBe(130);
         expect(cancelled).toBe(true);
         expect(fs.existsSync(rawLibrary)).toBe(false);
-        expect(fs.existsSync(checkpointFile)).toBe(true);
+        expect(fs.existsSync(checkpointFile)).toBe(false);
 
         expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary, "--resume", checkpointFile])).toBe(0);
         expect(fs.existsSync(checkpointFile)).toBe(false);
-        expect(countRawOutcomes(rawLibrary)).toBe(16);
-        // The compact fixture has 16 distinct grids, but each grid's exact
-        // weight must still account for every one of the 614,656 stop tuples.
-        // This keeps the bounded regression sensitive to a generator that
-        // incorrectly truncates the raw enumeration before coalescing grids.
-        expect(readLibrary(rawLibrary).outcomes.reduce((weight, outcome) => weight + outcome.weight, 0)).toBe(614_656);
-        expect(fs.readFileSync(rawLibrary, "utf-8").slice(0, 1024)).toContain('"provenance":{"game":{"id":"accepted-exact-workload-slot"');
-    }, 3_600_000);
+        expect(countRawOutcomes(rawLibrary)).toBe(614_656);
+        // Every distinct grid has weight one, therefore outcome cardinality
+        // is also the exact raw weight without materialising the huge raw JSON
+        // document back into the Jest heap.
+        expect(readRawLibraryPrefix(rawLibrary, 1024)).toContain('"provenance":{"game":{"id":"accepted-exact-workload-slot"');
+    // This deliberately exercises every real artifact and index operation for
+    // 614,656 distinct outcomes. Leave ample wall time for constrained CI;
+    // the test's memory boundary is the configured Node heap, not a shortcut
+    // fixture or a synthetic writer.
+    }, 7_200_000);
+
+    it("cancels raw publication without retaining an unreachable staging directory or partial destination", async () => {
+        const packageRoot = await buildPackage(finiteBlueprint("raw-publication-cancel-slot"), "raw-publication-package");
+        const rawLibrary = path.join(workDir, "cancelled-raw.json");
+        const fakeProcess = new EventEmitter() as unknown as NodeJS.Process;
+        const originalOpen = fs.openSync;
+        let cancelled = false;
+        const openSync = jest.spyOn(fs, "openSync").mockImplementation(((...args: Parameters<typeof fs.openSync>) => {
+            const descriptor = originalOpen(...args);
+            if (!cancelled && String(args[0]).includes(".cancelled-raw.json.pokie-")) {
+                cancelled = true;
+                fakeProcess.emit("SIGINT");
+            }
+            return descriptor;
+        }) as typeof fs.openSync);
+        try {
+            const command = new OutcomeLibraryCommand(
+                "1.3.0", undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined, fakeProcess,
+            );
+            expect(await command.run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(130);
+            expect(cancelled).toBe(true);
+            expect(fs.existsSync(rawLibrary)).toBe(false);
+            expect(fs.readdirSync(workDir).some((entry) => entry.includes(".cancelled-raw.json.pokie-"))).toBe(false);
+        } finally {
+            openSync.mockRestore();
+        }
+    });
 
     it("package -> generate -> validate -> analyze -> bundle: exact weights match the hand-computable fixture", async () => {
         const packageRoot = await buildPackage(finiteBlueprint("exact-cli-slot"), "pkg");
@@ -299,7 +347,7 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(await new OutcomeSourceCommand().run(["sample", bundleDir, "--mode", "base", "--seed", "downstream-seed"])).toBe(0);
     });
 
-    it("resume/cancel: a SIGINT-cancelled sweep's checkpoint resumes into the exact same complete library an uninterrupted sweep would produce", async () => {
+    it("cancellation during streamed raw generation removes disposable staging and a clean retry produces the complete library", async () => {
         const packageRoot = await buildPackage(largeButBoundedBlueprint("resume-cli-slot"), "pkg");
 
         // Ground truth: the same package, generated in one uninterrupted run.
@@ -343,21 +391,20 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(cancelExit).toBe(130);
         expect(cancelled).toBe(true);
         expect(fs.existsSync(partialFile)).toBe(false);
-        expect(fs.existsSync(checkpointFile)).toBe(true);
-        const checkpoint = JSON.parse(fs.readFileSync(checkpointFile, "utf-8")) as {processedRawIndex: string; progressTotal: string};
-        expect(checkpoint.progressTotal).toBe("8000");
-        expect(Number(checkpoint.processedRawIndex)).toBeGreaterThanOrEqual(5000);
-        expect(Number(checkpoint.processedRawIndex)).toBeLessThan(8000);
+        // Streamed exact publication partitions grids on disk. Those partitions
+        // are deliberately disposable: no checkpoint can safely refer to them
+        // after publication interrupts, so the public contract is retry rather
+        // than a misleading/unreachable resume token.
+        expect(fs.existsSync(checkpointFile)).toBe(false);
 
-        // Resume, against a real (non-cancelling) process -- completes the remaining raw sweep, merges
-        // it with the checkpoint's own already-accumulated grid weights, and produces the exact same
-        // complete library the uninterrupted run above did.
+        // Retry, against a real (non-cancelling) process. It produces the
+        // exact same complete library as an uninterrupted generation.
         const resumeExit = await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--out", partialFile, "--resume", checkpointFile]);
 
         expect(resumeExit).toBe(0);
         expect(fs.existsSync(partialFile)).toBe(true);
-        // The completed checkpoint is stale once the sweep it belonged to has actually finished -- never
-        // left behind to be silently (and wrongly) reused by an unrelated later "generate" run.
+        // No stale checkpoint is left behind to be silently reused by an
+        // unrelated later generation run.
         expect(fs.existsSync(checkpointFile)).toBe(false);
 
         const resumedLibrary = readLibrary(partialFile);

@@ -833,7 +833,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             });
         });
 
-        it("returns a resumable cancellation result without publishing a partial bundle", async () => {
+        it("returns a retry-only cancellation result without publishing a partial bundle", async () => {
             const controller = new AbortController();
             controller.abort();
 
@@ -842,7 +842,9 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(result).toMatchObject({status: "cancelled", processedRawIndex: BigInt(0), progressTotal: BigInt(6)});
             expect(fs.existsSync(path.join(projectRoot, "outcomelibrary", "manifest.json"))).toBe(false);
             if (result.status === "cancelled") {
-                const resumed = await service().generate(projectRoot, {resumeFrom: result.checkpoint});
+                expect(result.checkpoint).toBeUndefined();
+                expect(result.recovery).toMatch(/retry/i);
+                const resumed = await service().generate(projectRoot, {});
                 expect(resumed).toMatchObject({status: "ok", generator: {strategy: "exact"}});
             }
         });

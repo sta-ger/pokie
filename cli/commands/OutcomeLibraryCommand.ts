@@ -599,6 +599,13 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 return 130;
             }
             if (error instanceof WeightedOutcomeLibraryGenerationError) {
+                if (error.getCode() === "weighted-outcome-library-generation-cancelled") {
+                    console.error(
+                        `Generation of "${packageRoot}" was cancelled during raw-library publication. ` +
+                        "No incomplete library was published; retry the same command from the beginning.",
+                    );
+                    return 130;
+                }
                 // Destination safety is a synchronous invocation precondition
                 // (the same public behavior raw --out historically exposed),
                 // while other generation diagnostics are command results.
