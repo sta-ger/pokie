@@ -1,0 +1,3 @@
+# Blind Studio exploration
+
+Fresh profiles were created below the verifier harness before candidate Studio launches from `node ./dist/cli/pokie.js --no-open`. The retained rendered journey entered the starter design, saved one game, opened Play, completed one Spin, queued/running/completed a 10,000-round Simulation, reviewed its report, opened a timestamped Replay round, generated the exact 1,024-outcome library, built/opened the TypeScript package, and completed sibling-bundle fairness Configure/Generate/Verify. The concise source record is `recovery-run-2026-09-07T18-55Z.md`; raw profiles and generated outputs remain outside repository evidence.

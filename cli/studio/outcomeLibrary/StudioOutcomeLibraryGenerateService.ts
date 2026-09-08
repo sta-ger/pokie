@@ -24,6 +24,7 @@ import {
     computeArtifactInputBindingHash,
     isWasmComponentFile,
     estimateExactOutcomeSpaceSize,
+    generateStreamingWeightedOutcomeLibrary,
     generateWeightedOutcomeLibrary,
     prepareOutcomeLibraryGeneration,
 } from "pokie";
@@ -122,6 +123,8 @@ export class StudioOutcomeLibraryGenerateService {
     private readonly pokieVersion: string;
     private readonly loadGame: typeof loadPokieGame;
     private readonly estimateSpace: (game: PokieGame) => OutcomeSpaceEstimate;
+    // Optional solely for existing in-process embeddings. The normal Studio
+    // service publishes the generator's stream directly to the bundle writer.
     private readonly generateLibrary: (request: OutcomeLibraryGenerationRequest) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
     private readonly writer: OutcomeLibraryBundleWriting<string>;
     private readonly bundleReader: OutcomeLibraryBundleReading<string>;
@@ -505,7 +508,8 @@ export class StudioOutcomeLibraryGenerateService {
                 readonly status: "ready";
                 readonly modes: readonly OutcomeLibraryBundleModeInput<string>[];
                 readonly libraryId: string;
-                readonly generator: GenerateExactWeightedOutcomeLibraryResult["diagnostics"];
+                readonly generator?: GenerateExactWeightedOutcomeLibraryResult["diagnostics"];
+                readonly getGenerator?: () => GenerateExactWeightedOutcomeLibraryResult["diagnostics"] | undefined;
             };
         try {
             const execution = await this.planner.executeConversionPlan(plan, {
@@ -544,9 +548,30 @@ export class StudioOutcomeLibraryGenerateService {
                         return {status: "terminal", view: {status: "load-error", error: "The prepared conversion has no executable Outcome Library generation or reuse step. Refresh the preview and retry.", plan}};
                     }
                     const libraryId = domainRequest.libraryId;
-                    let generated: GenerateExactWeightedOutcomeLibraryResult;
                     try {
-                        generated = await this.generateLibrary(domainRequest);
+                        const otherModes = await this.readOtherModes(boundDestination, modeName);
+                        if (otherModes.status === "error") return {status: "terminal", view: {status: "load-error", error: otherModes.message, plan}};
+                        if (this.generateLibrary !== generateWeightedOutcomeLibrary) {
+                            const generated = await this.generateLibrary(domainRequest);
+                            return {
+                                status: "ready",
+                                modes: [...otherModes.modes, {modeName, libraryId, schemaVersion: generated.library.schemaVersion, outcomes: generated.library.outcomes, generator: generated.diagnostics}],
+                                libraryId,
+                                generator: generated.diagnostics,
+                            };
+                        }
+                        const generated = generateStreamingWeightedOutcomeLibrary(domainRequest);
+                        return {
+                            status: "ready",
+                            modes: [...otherModes.modes, {
+                                modeName,
+                                libraryId,
+                                outcomes: generated.outcomes,
+                                getGenerator: generated.getDiagnostics,
+                            }],
+                            libraryId,
+                            getGenerator: generated.getDiagnostics,
+                        };
                     } catch (error) {
                         if (error instanceof WeightedOutcomeLibraryGenerationCancelledError) {
                             const resumable = preparedRequest.preflight.strategy === "exact";
@@ -568,14 +593,6 @@ export class StudioOutcomeLibraryGenerateService {
                         }
                         throw error;
                     }
-                    const otherModes = await this.readOtherModes(boundDestination, modeName);
-                    if (otherModes.status === "error") return {status: "terminal", view: {status: "load-error", error: otherModes.message, plan}};
-                    return {
-                        status: "ready",
-                        modes: [...otherModes.modes, {modeName, libraryId, schemaVersion: generated.library.schemaVersion, outcomes: generated.library.outcomes, generator: generated.diagnostics}],
-                        libraryId,
-                        generator: generated.diagnostics,
-                    };
                 },
                 canPublish: (read) => read.status === "ready",
                 assertDestinationAvailable: async () => {
@@ -623,7 +640,9 @@ export class StudioOutcomeLibraryGenerateService {
 
             const read = execution.read;
             if (read.status !== "ready") return {status: "load-error", error: "The prepared Outcome Library generation lost its publishable source.", plan};
-            const coverage = read.generator.strategy === "exact" ? 1 : toNumberApprox(read.generator.sampledRawCount) / toNumberApprox(read.generator.totalOutcomeSpaceSize);
+            const generator = read.generator ?? read.getGenerator?.();
+            if (generator === undefined) return {status: "load-error", error: "The generated Outcome Library completed without provenance diagnostics.", plan};
+            const coverage = generator.strategy === "exact" ? 1 : toNumberApprox(generator.sampledRawCount) / toNumberApprox(generator.totalOutcomeSpaceSize);
 
             return {
                 status: "ok",
@@ -638,12 +657,33 @@ export class StudioOutcomeLibraryGenerateService {
                     totalWeight: modeEntry.totalWeight,
                     rtp: modeEntry.analysis.rtp,
                 },
-                generator: read.generator,
+                generator,
                 coverage,
                 selector: {kind: "bundle", bundleDir: outDirRelative, modeName},
                 plan,
             };
         } catch (error) {
+            // A streaming producer is consumed inside the writer rather than
+            // in read(). Preserve Studio's established action-local outcome
+            // for generator failures at that later boundary.
+            if (error instanceof WeightedOutcomeLibraryGenerationCancelledError) {
+                const resumable = preparedRequest.preflight.strategy === "exact";
+                return {
+                    status: "cancelled",
+                    processedRawIndex: error.processedRawIndex,
+                    progressTotal: error.progressTotal,
+                    ...(resumable ? {checkpoint: error.checkpoint} : {}),
+                    recovery: resumable
+                        ? "Generation was cancelled before publication. Resume this exact checkpoint while the game configuration is unchanged."
+                        : "Generation was cancelled before publication. Retry the same bounded-coverage request to start a fresh deterministic sample.",
+                    plan,
+                };
+            }
+            if (error instanceof WeightedOutcomeLibraryGenerationError) {
+                return error.getCode() === "weighted-outcome-library-generation-unsupported"
+                    ? {status: "unsupported", error: error.message, plan}
+                    : {status: "generation-error", code: error.getCode(), error: error.message, plan};
+            }
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan};
         }
     }

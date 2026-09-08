@@ -80,7 +80,6 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     hash.update(`{"libraryId":${JSON.stringify(libraryId)},"outcomes":[`);
 
     const entries: OutcomeLibraryBundleIndexEntry[] = [];
-    const seenIds = new Set<string>();
     let previousId: string | undefined;
     let alreadyReportedUnsorted = false;
     let reference: OutcomeHomogeneityKey | undefined;
@@ -104,25 +103,26 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
                 continue;
             }
 
-            if (seenIds.has(outcome.id)) {
-                issues.push({
-                    code: "outcome-library-bundle-write-duplicate-outcome-id",
-                    severity: "error",
-                    message: `mode "${modeName}": outcome id "${outcome.id}" is used by more than one outcome.`,
-                    details: {modeName, id: outcome.id},
-                });
-                continue;
-            }
-            seenIds.add(outcome.id);
-
-            if (!alreadyReportedUnsorted && previousId !== undefined && compareIds(previousId, outcome.id) >= 0) {
-                issues.push({
-                    code: "outcome-library-bundle-write-outcomes-not-sorted",
-                    severity: "error",
-                    message: `mode "${modeName}": outcomes must arrive in strictly increasing canonical id order — "${outcome.id}" does not come after "${previousId}".`,
-                    details: {modeName, id: outcome.id},
-                });
-                alreadyReportedUnsorted = true;
+            if (previousId !== undefined) {
+                const order = compareIds(previousId, outcome.id);
+                if (order === 0) {
+                    issues.push({
+                        code: "outcome-library-bundle-write-duplicate-outcome-id",
+                        severity: "error",
+                        message: `mode "${modeName}": outcome id "${outcome.id}" is used by more than one outcome.`,
+                        details: {modeName, id: outcome.id},
+                    });
+                    continue;
+                }
+                if (!alreadyReportedUnsorted && order > 0) {
+                    issues.push({
+                        code: "outcome-library-bundle-write-outcomes-not-sorted",
+                        severity: "error",
+                        message: `mode "${modeName}": outcomes must arrive in strictly increasing canonical id order — "${outcome.id}" does not come after "${previousId}".`,
+                        details: {modeName, id: outcome.id},
+                    });
+                    alreadyReportedUnsorted = true;
+                }
             }
             previousId = outcome.id;
 

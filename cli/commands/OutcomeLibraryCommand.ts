@@ -27,6 +27,7 @@ import {
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
     estimateExactOutcomeSpaceSize,
+    generateStreamingWeightedOutcomeLibrary,
     generateWeightedOutcomeLibrary,
     loadPokieGame,
     prepareOutcomeLibraryGenerationFromEstimate,
@@ -150,6 +151,9 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     private readonly streamOutcomes: (filePath: string) => AsyncGenerator<WeightedOutcomeInput>;
     private readonly pokieVersion: string;
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
+    // Kept only as an embedding/test compatibility seam. The ordinary CLI
+    // path uses generateStreamingWeightedOutcomeLibrary when it has a durable
+    // --out destination, so it never first constructs a complete library.
     private readonly generate: (request: OutcomeLibraryGenerationRequest) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
     private readonly estimateSpace: (game: PokieGame) => OutcomeSpaceEstimate;
     private readonly writeFile: (filePath: string, contents: string) => void;
@@ -656,7 +660,13 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                             "The loaded package configuration or output destination changed after preflight. Re-run generation from a fresh preflight.",
                         );
                     }
-                    return this.generate(reboundRequest);
+                    // Legacy embedding callers that supply a generator retain
+                    // their exact result shape. The public CLI's native path
+                    // instead hands the writer the domain stream directly.
+                    if (this.generate !== generateWeightedOutcomeLibrary || rawOutput === undefined) {
+                        return this.generate(reboundRequest);
+                    }
+                    return generateStreamingWeightedOutcomeLibrary(reboundRequest);
                 },
                 canPublish: () => rawOutput !== undefined,
                 // Generation can take long enough for another actor to create
@@ -677,11 +687,15 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                         );
                     }
                 },
-                publish: (result: GenerateExactWeightedOutcomeLibraryResult) => {
+                publish: async (result: GenerateExactWeightedOutcomeLibraryResult | ReturnType<typeof generateStreamingWeightedOutcomeLibrary>) => {
                     // The operation has already established a fresh destination.
                     // Keep the legacy injectable writer so test and embedding
                     // callers retain their narrow file-system boundary.
-                    this.writeFile(rawOutput!, JSON.stringify(result.library, null, 4));
+                    if ("library" in result) {
+                        this.writeFile(rawOutput!, JSON.stringify(result.library, null, 4));
+                    } else {
+                        await this.writeStreamingRawLibrary(rawOutput!, resolvedRequest.libraryId, result.outcomes, signal);
+                    }
                     publishedOutput = true;
                 },
                 rollback: () => {
@@ -828,16 +842,86 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         };
     }
 
-    private printGenerateResult(result: GenerateExactWeightedOutcomeLibraryResult, options: GenerateCliOptions): void {
+    /**
+     * Writes the historical raw WeightedOutcomeLibrary JSON shape without
+     * retaining its outcomes array. A sibling temporary file is linked into
+     * place, rather than renamed, so a destination claimed after preflight is
+     * never overwritten. The temporary file is always removed on failure.
+     */
+    private async writeStreamingRawLibrary(
+        outputPath: string,
+        libraryId: string,
+        outcomes: AsyncIterable<WeightedOutcomeInput>,
+        signal: AbortSignal,
+    ): Promise<void> {
+        const tempPath = path.join(path.dirname(outputPath), `.${path.basename(outputPath)}.pokie-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`);
+        let fd: number | undefined;
+        try {
+            fd = fs.openSync(tempPath, "wx");
+            fs.writeSync(fd, `{"schemaVersion":1,"libraryId":${JSON.stringify(libraryId)},"outcomes":[`);
+            let first = true;
+            for await (const outcome of outcomes) {
+                if (signal.aborted) {
+                    throw new WeightedOutcomeLibraryGenerationError(
+                        "weighted-outcome-library-generation-cancelled",
+                        "Generation was cancelled before raw Outcome Library publication completed.",
+                    );
+                }
+                if (!first) fs.writeSync(fd, ",");
+                fs.writeSync(fd, JSON.stringify(outcome));
+                first = false;
+            }
+            if (signal.aborted) {
+                throw new WeightedOutcomeLibraryGenerationError(
+                    "weighted-outcome-library-generation-cancelled",
+                    "Generation was cancelled before raw Outcome Library publication completed.",
+                );
+            }
+            fs.writeSync(fd, "]}");
+            fs.fsyncSync(fd);
+            fs.closeSync(fd);
+            fd = undefined;
+            try {
+                fs.linkSync(tempPath, outputPath);
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+                    throw new WeightedOutcomeLibraryGenerationError(
+                        "weighted-outcome-library-generation-destination-conflict",
+                        `The output destination "${outputPath}" was created after preflight and was left untouched. Re-run generation with a fresh destination.`,
+                    );
+                }
+                throw error;
+            }
+        } finally {
+            if (fd !== undefined) fs.closeSync(fd);
+            fs.rmSync(tempPath, {force: true});
+        }
+    }
+
+    private printGenerateResult(
+        result: GenerateExactWeightedOutcomeLibraryResult | ReturnType<typeof generateStreamingWeightedOutcomeLibrary>,
+        options: GenerateCliOptions,
+    ): void {
+        const streamed = !("library" in result);
+        const diagnostics = streamed ? result.getDiagnostics() : result.diagnostics;
+        if (diagnostics === undefined) throw new Error("Outcome generation completed without diagnostics.");
+        const libraryId = streamed ? undefined : result.library.libraryId;
+        const outcomeCount = streamed ? undefined : result.library.outcomes.length;
         if (options.format === "json") {
-            console.log(JSON.stringify(result, null, 4));
+            // The raw --out file remains the complete backwards-compatible
+            // library document. Stdout intentionally reports a bounded
+            // publication summary instead of duplicating that document in
+            // memory merely to print it.
+            console.log(JSON.stringify(streamed
+                ? {library: {schemaVersion: 1, libraryId: options.libraryId, outcomeCount: "streamed"}, diagnostics}
+                : result, null, 4));
         } else {
-            console.log(`Generated outcome library "${result.library.libraryId}" (${result.diagnostics.strategy}):`);
-            console.log(`  outcomes          ${result.library.outcomes.length}`);
-            console.log(`  total raw space   ${result.diagnostics.totalOutcomeSpaceSize}`);
-            console.log(`  sampled raw count ${result.diagnostics.sampledRawCount}`);
-            if (result.diagnostics.seed !== undefined) {
-                console.log(`  seed              ${result.diagnostics.seed}`);
+            console.log(`Generated outcome library "${libraryId ?? options.libraryId ?? "streamed"}" (${diagnostics.strategy}):`);
+            console.log(`  outcomes          ${outcomeCount ?? "streamed to output"}`);
+            console.log(`  total raw space   ${diagnostics.totalOutcomeSpaceSize}`);
+            console.log(`  sampled raw count ${diagnostics.sampledRawCount}`);
+            if (diagnostics.seed !== undefined) {
+                console.log(`  seed              ${diagnostics.seed}`);
             }
             if (options.out !== undefined) {
                 console.log(`\nLibrary written to "${options.out}".`);

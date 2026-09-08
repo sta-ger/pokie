@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 3,
+  "reviewId": "pc-19-169c80f8-recovery-6",
+  "startedAt": "2026-09-07T17:48:53.022Z",
+  "frozenAt": "2026-09-07T19:30:43.676Z",
+  "frozenFindingsSha256": "516bb887540c6c9ceab057e5b23f2f5ab83677490635b0f68da7ce68d26f901f",
+  "reviewer": "independent-host-side verifier",
+  "cleanRoomAttestation": "I recorded blind findings before reading roadmap, source, completed evidence, known findings, fixes, or prior acceptance evidence.",
+  "candidate": {
+    "id": "169c80f839758285d02de55eb72008e750e48a53",
+    "packageSpecifier": "pokie@1.3.0",
+    "installedExecutable": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/verification_PC-19_1_b7e657459f7c/dist/cli/pokie.js",
+    "packageArtifact": {
+      "evidenceId": "E001",
+      "path": "artifacts/pokie-1.3.0.tgz",
+      "sha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37",
+      "sizeBytes": 3163590,
+      "capturedAt": "2026-09-07T19:27:07Z",
+      "kind": "candidate-package-archive",
+      "summary": "Exact npm package archive made from the candidate checkout.",
+      "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
+      "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37"
+    }
+  },
+  "commandRecords": [
+    {
+      "commandId": "C001",
+      "command": "npm pack --ignore-scripts --json --pack-destination docs/evidence/phase7-product-coherence/pc-19-independent-cold-start-review/artifacts",
+      "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
+      "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37",
+      "startedAt": "2026-09-07T19:27:00Z",
+      "endedAt": "2026-09-07T19:27:07Z",
+      "exitStatus": 0,
+      "stdout": {
+        "evidenceId": "E002",
+        "path": "commands/package-archive.md",
+        "sha256": "24d5f8b1bfcca152f2a2b10cfb03d57f7f351397ca95d945df4e1104d1a49d10",
+        "sizeBytes": 604,
+        "capturedAt": "2026-09-07T19:27:07Z",
+        "kind": "command-stdout-summary",
+        "summary": "Bounded npm pack command result.",
+        "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
+        "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37"
+      },
+      "stderr": {
+        "evidenceId": "E003",
+        "path": "commands/package-archive.stderr.md",
+        "sha256": "a1fe7f07bbf76eb98fe3fa6fe94e5136658d63cf4fa3e10418997106a10ad1a7",
+        "sizeBytes": 49,
+        "capturedAt": "2026-09-07T19:27:07Z",
+        "kind": "command-stderr-summary",
+        "summary": "Bounded npm pack stderr result.",
+        "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
+        "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37"
+      }
+    }
+  ],
+  "studioSession": {
+    "sessionId": "pc-19-recovery-5-studio-player",
+    "launcher": "pokie",
+    "execution": "public-launcher-rendered-controls",
+    "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
+    "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37",
+    "startedAt": "2026-09-07T18:55:16.039Z",
+    "endedAt": "2026-09-07T19:01:34.224Z",
+    "freshProfile": {
+      "path": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-19-b7e657459f7cd688/run-2026-09-07T18-55-16-039Z/browser-profile",
+      "createdAt": "2026-09-07T18:55:16.039Z"
+    },
+    "transcript": {
+      "evidenceId": "E004",
+      "path": "recovery-run-2026-09-07T18-55Z.md",
+      "sha256": "97c8df1d77ade8ac8178548f45c6fddc1248faae1cbd1e0c4e0d12af5ceb35d4",
+      "sizeBytes": 4061,
+      "capturedAt": "2026-09-07T19:01:34Z",
+      "kind": "studio-rendered-transcript-summary",
+      "summary": "Candidate Studio and canonical-player rendered action transcript summary.",
+      "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
+      "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37"
+    }
+  },
+  "artifactLedger": [
+    {
+      "evidenceId": "E005",
+      "path": "reviews/freeze-preparation.md",
+      "sha256": "83eaaf68cf44863d2d71dc614a2f9cd4941e176c77c3a125676fdacb3d366e9c",
+      "sizeBytes": 466,
+      "capturedAt": "2026-09-07T19:27:08Z",
+      "kind": "artifact-ledger",
+      "summary": "Bounded candidate archive and evidence ledger.",
+      "candidateId": "169c80f839758285d02de55eb72008e750e48a53",
+      "candidatePackageSha256": "50047c733bb2799f5dc22d44f4e276b4e174664a1aa975710596d90a3db11d37"
+    }
+  ]
+}
