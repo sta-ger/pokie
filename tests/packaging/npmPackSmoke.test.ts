@@ -181,7 +181,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             path.join(installDir, "package.json"),
             JSON.stringify({name: "pokie-smoke-test", version: "0.0.0", private: true}),
         );
-        execFileSync("npm", ["install", tarballPath, "--no-audit", "--no-fund"], {cwd: installDir, encoding: "utf-8"});
+        // The tarball and its dependency metadata are already local. Prefer npm's cache for matching
+        // dependencies while retaining a real `npm install` boundary (and its normal network fallback
+        // for a cold cache), so this smoke suite cannot time out merely on registry metadata latency.
+        execFileSync("npm", ["install", tarballPath, "--no-audit", "--no-fund", "--prefer-offline"], {cwd: installDir, encoding: "utf-8"});
 
         pokieBinPath = path.join(installDir, "node_modules", ".bin", "pokie");
         expect(fs.existsSync(pokieBinPath)).toBe(true);
