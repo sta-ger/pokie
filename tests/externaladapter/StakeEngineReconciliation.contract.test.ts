@@ -270,19 +270,18 @@ describe("publishDirectoryAtomically direct ownership contract", () => {
         expect(fs.readFileSync(path.join(outDir, "complete.txt"), "utf-8")).toBe("complete payload");
     });
 
-    it("rejects a destination claimed at the final commit boundary without touching it, then permits retry", () => {
+    it("rejects a destination claimed at the real commit boundary without touching it, then permits retry", () => {
         publish("first");
         let claimed = false;
 
         expect(() => publish("second", {
-            renameDirectory: (from, to) => {
+            beforeCommit: () => {
                 if (!claimed) {
                     claimed = true;
                     fs.rmSync(outDir, {recursive: true, force: true});
                     fs.mkdirSync(outDir);
                     fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
                 }
-                fs.renameSync(from, to);
             },
         })).toThrow(/claimed while publication was being prepared/i);
 

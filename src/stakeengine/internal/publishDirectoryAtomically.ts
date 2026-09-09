@@ -12,6 +12,13 @@ export type PublishDirectoryAtomicallyOptions = {
     readonly expectedDestinationIdentity?: PublishDirectoryAtomicallyDestinationIdentity | undefined;
     readonly expectedDestinationWasAbsent?: boolean;
     readonly ownership?: PublishDirectoryAtomicallyOwnership;
+    /**
+     * Test-only commit-boundary seam.  It runs after preparation has finished
+     * and immediately before the final ownership assertion and commit.
+     * Keeping it here (rather than in the scratch rename seam) lets callers
+     * exercise a claimant arriving at the actual publication boundary.
+     */
+    readonly beforeCommit?: () => void;
 };
 
 export type PublishDirectoryAtomicallyDestinationIdentity = {readonly device: number; readonly inode: number};
@@ -25,6 +32,14 @@ export class PublishDirectoryDestinationClaimedError extends Error {
     constructor(message: string) {
         super(message);
         this.name = "PublishDirectoryDestinationClaimedError";
+    }
+}
+
+/** The host cannot provide the atomic directory operation this publisher needs. */
+export class PublishDirectoryPublicationPlatformError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "PublishDirectoryPublicationPlatformError";
     }
 }
 
@@ -78,9 +93,13 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
         // prove that a destination claimed immediately before commit is never
         // exchanged or cleaned up by this invocation.
         exerciseRenameTestSeam(tempDir, options.renameDirectory);
+        // This is deliberately adjacent to the real namespace operation.
+        // A claimant injected here must be rejected before any live path is
+        // exchanged, moved, or scheduled for cleanup.
+        options.beforeCommit?.();
         assertDestinationUnchanged(options.outDir, ownership, expectedAbsent, claimed);
         if (expectedAbsent) installAbsentDirectory(tempDir, options.outDir, claimed);
-        else exchangeDirectory(tempDir, options.outDir, claimed);
+        else exchangeDirectory(tempDir, options.outDir);
 
         // After exchange, tempDir names precisely the preflight-owned output;
         // the live name was always a complete old or complete new directory.
@@ -119,11 +138,10 @@ function exerciseRenameTestSeam(tempDir: string, renameDirectory: PublishDirecto
     if (renameDirectory === undefined) return;
     const probe = path.join(tempDir, ".pokie-publication-probe");
     const movedProbe = `${probe}-moved`;
-    const fd = fs.openSync(tempDir, "r");
     try {
         fs.writeFileSync(probe, "");
         try {
-            renameDirectory(`/proc/self/fd/${fd}/${path.basename(probe)}`, movedProbe);
+            renameDirectory(probe, movedProbe);
             renameDirectory(movedProbe, probe);
         } catch (error) {
             // Preserve the old failure-injection contract's recovery call,
@@ -137,11 +155,6 @@ function exerciseRenameTestSeam(tempDir: string, renameDirectory: PublishDirecto
         }
     } finally {
         try {
-            fs.closeSync(fd);
-        } catch {
-            // scratch descriptor
-        }
-        try {
             fs.rmSync(probe, {force: true});
             fs.rmSync(movedProbe, {force: true});
         } catch {
@@ -152,14 +165,24 @@ function exerciseRenameTestSeam(tempDir: string, renameDirectory: PublishDirecto
 
 function installAbsentDirectory(tempDir: string, outDir: string, claimed: (message: string) => Error): void {
     const result = spawnSync("mv", ["--no-clobber", "--no-target-directory", tempDir, outDir], {encoding: "utf-8"});
-    if (result.error !== undefined || result.status !== 0 || fs.existsSync(tempDir)) {
+    assertSupportedAtomicMove(result, "--no-clobber", outDir);
+    if (fs.existsSync(tempDir)) {
         throw claimed(`Destination "${outDir}" was claimed during publication commit.`);
     }
 }
 
-function exchangeDirectory(tempDir: string, outDir: string, claimed: (message: string) => Error): void {
+function exchangeDirectory(tempDir: string, outDir: string): void {
     const result = spawnSync("mv", ["--exchange", "--no-target-directory", tempDir, outDir], {encoding: "utf-8"});
-    if (result.error !== undefined || result.status !== 0) throw claimed(`Destination "${outDir}" was claimed during publication commit.`);
+    assertSupportedAtomicMove(result, "--exchange", outDir);
+}
+
+function assertSupportedAtomicMove(result: ReturnType<typeof spawnSync>, option: string, outDir: string): void {
+    if (result.error === undefined && result.status === 0) return;
+    const detail = result.error?.message ?? (result.stderr === undefined ? undefined : String(result.stderr).trim()) ?? `mv exited with status ${result.status ?? "unknown"}`;
+    throw new PublishDirectoryPublicationPlatformError(
+        `Cannot atomically publish directory "${outDir}": this host does not provide the required atomic ${option} directory operation (${detail}). ` +
+        "Use a platform with a compatible atomic directory-exchange implementation; publication was not attempted as a claimed destination.",
+    );
 }
 
 function assertDestinationUnchanged(
