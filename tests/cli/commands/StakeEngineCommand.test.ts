@@ -7,6 +7,9 @@ import {
     StakeEngineImportResult,
     StakeEngineImporting,
     StakeEngineImportWriting,
+    ArtifactConversionPlanner,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
     ValidationIssue,
 } from "pokie";
 import fs from "fs";
@@ -111,6 +114,42 @@ describe("StakeEngineCommand", () => {
 
         expect(command.getName()).toBe("stakeengine");
         expect(command.getDescription().length).toBeGreaterThan(0);
+    });
+
+    it("passes the import destination policy to the final bundle writer and permits a retry after a late claim", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-import-late-destination-"));
+        const stakeDir = path.join(workDir, "stake");
+        const outDir = path.join(workDir, "outcome-library");
+        const source: PokieProject = {
+            type: "stakeAdapter",
+            rootPath: stakeDir,
+            capabilities: PROJECT_TYPE_CAPABILITIES.stakeAdapter,
+            provenance: "test Stake export",
+        } as PokieProject;
+        const plan = new ArtifactConversionPlanner().planImportOutput(source, "outcomeLibrary", outDir);
+        let claimDestination = true;
+        const importWriter: StakeEngineImportWriting = {
+            writeToDirectory: async (_result, destination, options) => {
+                if (claimDestination) {
+                    fs.mkdirSync(destination);
+                    fs.writeFileSync(path.join(destination, "caller-owned.txt"), "untouched");
+                }
+                await options?.assertDestinationAvailable?.();
+                return {issues: []};
+            },
+        };
+        const command = new StakeEngineCommand("1.3.0", undefined, createStubImporter(successImportResult), undefined, importWriter);
+
+        try {
+            await expect(command.runPreparedImport(source, plan, stakeDir, outDir)).rejects.toThrow(/already exists|unavailable/i);
+            expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+
+            fs.rmSync(outDir, {recursive: true, force: true});
+            claimDestination = false;
+            await expect(command.runPreparedImport(source, plan, stakeDir, outDir)).resolves.toBe(0);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("limits reconstruction help to POKIE-produced manifests and directs foreign directories to analyze/report or diff", async () => {

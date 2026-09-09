@@ -52,4 +52,23 @@ describe("StakeEngineImportWriter", () => {
         expect(fs.existsSync(path.join(outDir, "outcomes_bonus.jsonl"))).toBe(false);
         expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).toEqual([]);
     });
+
+    it("forwards an async final destination policy, leaves a late caller-owned directory untouched, and retries cleanly", async () => {
+        const writer = new StakeEngineImportWriter("1.3.0");
+
+        await expect(writer.writeToDirectory(resultWithModes(["base"]), outDir, {
+            assertDestinationAvailable: async () => {
+                await Promise.resolve();
+                fs.mkdirSync(outDir);
+                fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+                throw new Error("late Stake import destination claim");
+            },
+        })).rejects.toThrow("late Stake import destination claim");
+
+        expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(fs.readdirSync(path.dirname(outDir)).filter((entry) => entry.startsWith(`${path.basename(outDir)}.`))).toEqual([]);
+
+        fs.rmSync(outDir, {recursive: true, force: true});
+        await expect(writer.writeToDirectory(resultWithModes(["base"]), outDir)).resolves.toEqual({issues: []});
+    });
 });

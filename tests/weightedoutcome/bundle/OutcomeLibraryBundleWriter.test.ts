@@ -221,6 +221,29 @@ describe("OutcomeLibraryBundleWriter", () => {
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
+    it("awaits a late destination assertion before publishing, preserves its caller-owned directory, and permits a clean retry", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        let assertionReached = false;
+
+        await expect(writer.writeToDirectory([modes()[0]], outDir, {
+            assertDestinationAvailable: async () => {
+                await Promise.resolve();
+                assertionReached = true;
+                fs.mkdirSync(outDir);
+                fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+                throw new Error("destination claimed during staging");
+            },
+        })).rejects.toThrow("destination claimed during staging");
+
+        expect(assertionReached).toBe(true);
+        expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(siblingLeftovers(outDir)).toEqual([]);
+
+        fs.rmSync(outDir, {recursive: true, force: true});
+        await expect(writer.writeToDirectory([modes()[0]], outDir)).resolves.toMatchObject({outDir, issues: []});
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
     it("removes a mode's index/outcomes files when a re-write no longer includes that mode", async () => {
         const writer = new OutcomeLibraryBundleWriter("1.3.0");
         await writer.writeToDirectory(modes(), outDir);

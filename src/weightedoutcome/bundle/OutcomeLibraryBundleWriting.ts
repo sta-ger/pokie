@@ -22,7 +22,7 @@ export type OutcomeLibraryBundleWriteOptions = {
     // The producer may run for long enough that a destination which was safe
     // at preflight is claimed before this writer reaches its atomic swap.
     // Invoke the owner's immutable destination policy at that last boundary.
-    readonly assertDestinationAvailable?: () => void;
+    readonly assertDestinationAvailable?: () => Promise<void> | void;
     readonly onProgress?: (progress: OutcomeLibraryBundleWriteProgress) => void;
     readonly supplementalFiles?: readonly OutcomeLibraryBundleSupplementalFile[];
     readonly generatedBy?: string;

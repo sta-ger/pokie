@@ -213,7 +213,6 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             }
 
             assertNotCancelled(options);
-            options?.assertDestinationAvailable?.();
             if (issues.some((issue) => issue.severity === "error") || gameManifest === undefined || artifactPokieVersion === undefined) {
                 return {outDir, files: [], manifest: undefined, issues};
             }
@@ -238,6 +237,13 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
 
             const filesToPublish = [...relativeFiles, ...supplementalFiles.map((file) => file.fileName)];
 
+            // This is intentionally the last awaitable boundary before the
+            // atomic publisher takes ownership of its temp directory and
+            // swaps it into place.  A destination can be claimed while an
+            // async outcome stream is being staged, so an earlier preflight
+            // alone must never authorize this replacement.
+            await options?.assertDestinationAvailable?.();
+            assertNotCancelled(options);
             const {cleanupWarning} = publishDirectoryAtomically({
                 outDir,
                 renameDirectory: this.renameDirectory,

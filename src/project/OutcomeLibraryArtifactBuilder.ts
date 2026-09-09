@@ -57,6 +57,7 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
         const destinationState = captureArtifactDestinationState(destinationPath, this.destinationKind);
+        let finalDestinationRejected = false;
 
         if (source.type !== "outcomeLibrary") {
             throw new Error(
@@ -89,6 +90,19 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: "Publishing outcome-library bundle"});
             const result = await this.writer.writeToDirectory(modes, destinationPath, {
                 signal: options?.signal,
+                assertDestinationAvailable: () => {
+                    try {
+                        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+                        assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+                    } catch (error) {
+                        // Do not let the generic failure cleanup remove a
+                        // directory claimed by another caller after our
+                        // preflight. The writer's staging is still removed by
+                        // its own finally block.
+                        finalDestinationRejected = true;
+                        throw error;
+                    }
+                },
                 onProgress: (progress) => {
                     reportArtifactBuildProgress(options, {
                         status: "running",
@@ -112,7 +126,7 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
             return {outputPath: result.outDir, preflight};
         } catch (error) {
-            await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            if (!finalDestinationRejected) await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
             if (options?.signal?.aborted) {
                 if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
             } else reportArtifactBuildProgress(options, {status: "failed", message: "Outcome-library publishing failed"});

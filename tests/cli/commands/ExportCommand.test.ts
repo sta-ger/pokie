@@ -308,6 +308,48 @@ describe("ExportCommand", () => {
         }
     });
 
+    it("keeps a descriptor export's late caller-owned Outcome destination intact and retries after removal", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-export-command-late-destination-test-"));
+        const sourcePath = path.join(workDir, "outcomes.json");
+        const libraryPath = path.join(workDir, "library.json");
+        const destination = path.join(workDir, "outcomes");
+        const command = new ExportCommand("1.3.0");
+        const original = OutcomeLibraryCommand.prototype.prepareDescriptorBuildOperation;
+        let claimDestination = true;
+        const prepareSpy = jest.spyOn(OutcomeLibraryCommand.prototype, "prepareDescriptorBuildOperation").mockImplementation(function (this: OutcomeLibraryCommand, configPath, outDir, signal) {
+            const prepared = Reflect.apply(original, this, [configPath, outDir, signal]);
+            return {
+                ...prepared,
+                execution: {
+                    ...prepared.execution,
+                    publish: (modes) => {
+                        if (claimDestination) {
+                            fs.mkdirSync(outDir);
+                            fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+                        }
+                        return prepared.execution.publish(modes);
+                    },
+                },
+            };
+        });
+
+        try {
+            fs.writeFileSync(libraryPath, JSON.stringify(validOutcomeLibrary()));
+            fs.writeFileSync(sourcePath, JSON.stringify({modes: [{modeName: "base", libraryPath: "./library.json"}]}));
+
+            await expect(command.run([sourcePath, "--to", "outcomes", "--out", destination])).rejects.toThrow(/destination is unavailable|already exists/i);
+            expect(fs.readFileSync(path.join(destination, "caller-owned.txt"), "utf-8")).toBe("untouched");
+            expect(fs.readdirSync(workDir).filter((entry) => entry.startsWith("outcomes.staging-") || entry.startsWith("outcomes.tmp-"))).toEqual([]);
+
+            fs.rmSync(destination, {recursive: true, force: true});
+            claimDestination = false;
+            await expect(command.run([sourcePath, "--to", "outcomes", "--out", destination])).resolves.toBe(0);
+        } finally {
+            prepareSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it.each<readonly [string, OutcomeProvenanceOverrides]>([
         ["game id", {gameId: "other-export-game"}],
         ["game version", {gameVersion: "2.0.0"}],

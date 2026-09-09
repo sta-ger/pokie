@@ -1032,6 +1032,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for ExportCommand
     public prepareDescriptorBuildOperation(configPath: string, outDir: string, signal?: AbortSignal) {
         const currentSource = () => this.buildDescriptorSource(configPath);
+        const assertDestinationAvailable = () => {
+            const destination = new ArtifactBuilderRegistry(this.pokieVersion).checkDestination("outcomeLibrary", outDir, configPath);
+            if (!destination.available) throw new Error(destination.message);
+        };
         return {plan: this.planner.planIdentity(currentSource(), "outcomeLibrary", {destinationPath: outDir}), validate: () => this.validateBuildSource(configPath), execution: {
             currentSource,
             read: () => {
@@ -1051,11 +1055,11 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 return modes;
             },
             canPublish: () => true,
-            assertDestinationAvailable: () => {
-                const destination = new ArtifactBuilderRegistry(this.pokieVersion).checkDestination("outcomeLibrary", outDir, configPath);
-                if (!destination.available) throw new Error(destination.message);
-            },
-            publish: (modes) => this.writer.writeToDirectory(modes, outDir),
+            assertDestinationAvailable,
+            // Keep the descriptor owner's source-aware destination policy at
+            // the writer's final atomic-swap boundary as well as the prepared
+            // operation boundary above.
+            publish: (modes) => this.writer.writeToDirectory(modes, outDir, {assertDestinationAvailable, signal}),
             rollback: () => fs.promises.rm(outDir, {recursive: true, force: true}),
             ...(signal === undefined ? {} : {signal}),
         }};

@@ -512,6 +512,35 @@ export class StudioOutcomeLibraryGenerateService {
                 readonly generator?: GenerateExactWeightedOutcomeLibraryResult["diagnostics"];
                 readonly getGenerator?: () => GenerateExactWeightedOutcomeLibraryResult["diagnostics"] | undefined;
             };
+        // Studio may intentionally regenerate a mode in an existing canonical
+        // bundle. A destination absent when this read began, however, remains
+        // caller-owned if it appears before the writer's final swap.
+        let destinationExistedWhenRead = false;
+        const assertDestinationAvailable = async () => {
+            // The token retains the managed Blueprint source identity, but
+            // publication must still re-check its physical output:
+            // OutcomeLibraryBundleWriter atomically replaces an existing
+            // directory. Use the registry's direct source-alias/missing-or-
+            // empty guard here rather than re-planning, so a cancelled retry
+            // does not depend on transient source recognition while a late
+            // caller-owned destination remains protected.
+            if (tokenBoundBlueprintPlan !== undefined) {
+                assertPreparedArtifactDestinationAvailable(
+                    tokenBoundBlueprintPlan.source.canonicalLocation,
+                    boundDestination,
+                    "directory",
+                );
+                return;
+            }
+            if (!destinationExistedWhenRead && fs.existsSync(boundDestination)) {
+                throw new Error(`The Outcome Library destination "${boundDestination}" was claimed after generation began.`);
+            }
+            const current = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
+            if (current.status === "planned") {
+                return;
+            }
+            throw new Error(current.diagnostic?.message ?? "The Outcome Library destination is unavailable.");
+        };
         try {
             const execution = await this.planner.executeConversionPlan(plan, {
                 // Rebind a managed Blueprint's canonical file before both the
@@ -527,6 +556,7 @@ export class StudioOutcomeLibraryGenerateService {
                     return (await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration)).source;
                 },
                 read: async (): Promise<PreparedGenerationRead> => {
+                    destinationExistedWhenRead = this.directoryExists(boundDestination);
                     const reuse = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
                     if (reuse !== undefined) {
                         const sourceDir = reuse.output.canonicalLocation;
@@ -602,30 +632,16 @@ export class StudioOutcomeLibraryGenerateService {
                     }
                 },
                 canPublish: (read) => read.status === "ready",
-                assertDestinationAvailable: async () => {
-                    // The token retains the managed Blueprint source identity,
-                    // but publication must still re-check its physical output:
-                    // OutcomeLibraryBundleWriter atomically replaces an
-                    // existing directory. Use the registry's direct
-                    // source-alias/missing-or-empty guard here rather than
-                    // re-planning, so a cancelled retry does not depend on
-                    // transient source recognition while a late caller-owned
-                    // destination remains protected.
-                    if (tokenBoundBlueprintPlan !== undefined) {
-                        assertPreparedArtifactDestinationAvailable(
-                            tokenBoundBlueprintPlan.source.canonicalLocation,
-                            boundDestination,
-                            "directory",
-                        );
-                        return;
-                    }
-                    const current = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
-                    if (current.status === "planned") return;
-                    throw new Error(current.diagnostic?.message ?? "The Outcome Library destination is unavailable.");
-                },
+                assertDestinationAvailable,
                 publish: (read) => {
                     if (read.status !== "ready") throw new Error("The prepared Outcome Library generation was not publishable.");
-                    return this.writer.writeToDirectory(read.modes, boundDestination, {signal: request.signal});
+                    return this.writer.writeToDirectory(read.modes, boundDestination, {
+                        signal: request.signal,
+                        // The planner invokes this policy before publication;
+                        // retain that exact async policy for the writer's final
+                        // atomic replacement after streaming staging.
+                        assertDestinationAvailable,
+                    });
                 },
                 register: (writeResult) => {
                     if (writeResult.manifest !== undefined && !writeResult.issues.some((issue) => issue.severity === "error")) this.recordDiscoveredBundleDir(projectRoot, outDirRelative);

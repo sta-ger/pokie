@@ -158,6 +158,29 @@ describe("OutcomeLibraryArtifactBuilder", () => {
         expect(fs.readdirSync(path.dirname(destinationDir)).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.`))).toEqual([]);
     });
 
+    it("preserves a late caller-owned destination at the writer's final publication check and succeeds on retry", async () => {
+        const nativeWriter = new OutcomeLibraryBundleWriter("1.3.0");
+        let claimDestination = true;
+        const writer = {
+            writeToDirectory: (...args: Parameters<OutcomeLibraryBundleWriter["writeToDirectory"]>) => {
+                if (claimDestination) {
+                    fs.mkdirSync(args[1]);
+                    fs.writeFileSync(path.join(args[1], "caller-owned.txt"), "untouched");
+                }
+                return nativeWriter.writeToDirectory(...args);
+            },
+        } as OutcomeLibraryBundleWriter;
+        const builder = new OutcomeLibraryArtifactBuilder("1.3.0", undefined, writer);
+
+        await expect(builder.build(outcomeLibraryProjectOf(sourceDir), destinationDir)).rejects.toThrow(ArtifactBuildConflictError);
+        expect(fs.readFileSync(path.join(destinationDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(fs.readdirSync(path.dirname(destinationDir)).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.`))).toEqual([]);
+
+        fs.rmSync(destinationDir, {recursive: true, force: true});
+        claimDestination = false;
+        await expect(builder.build(outcomeLibraryProjectOf(sourceDir), destinationDir)).resolves.toMatchObject({outputPath: destinationDir});
+    });
+
     it("rejects a Blueprint instead of writing an unregistered Outcome bundle", async () => {
         const builder = new OutcomeLibraryArtifactBuilder("1.3.0");
 
