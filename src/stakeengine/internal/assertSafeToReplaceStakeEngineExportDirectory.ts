@@ -10,10 +10,20 @@ import {readRecognizedStakeEngineManifest} from "./readRecognizedStakeEngineMani
 // own pokie-manifest.json) — otherwise a caller pointing --out at an unrelated directory by mistake would have
 // it silently wiped. An empty (or nonexistent) directory is always safe to replace — there's nothing to lose.
 export function assertSafeToReplaceStakeEngineExportDirectory(outDir: string): void {
-    if (!fs.existsSync(outDir)) {
-        return;
+    let destination: fs.Stats;
+    try {
+        // lstat is intentional. A link is not a POKIE-owned container even
+        // when its target happens to contain a recognizable manifest: writing
+        // through it would let an --out path escape its caller's namespace.
+        destination = fs.lstatSync(outDir);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        throw error;
     }
-    if (!fs.statSync(outDir).isDirectory()) {
+    if (destination.isSymbolicLink()) {
+        throw new Error(`"${outDir}" is a symbolic link, not a POKIE-owned Stake Engine output directory. Choose a different --out directory.`);
+    }
+    if (!destination.isDirectory()) {
         throw new Error(`"${outDir}" already exists and is not a directory. Choose a different --out directory or remove it first.`);
     }
     if (fs.readdirSync(outDir).length === 0) {

@@ -102,6 +102,9 @@ export class StakeEngineExporter<T extends string | number = string> implements 
     ): Promise<StakeEngineExportResult> {
         assertNotCancelled(options);
         try {
+            // Reject an external holder before mode construction can allocate
+            // any publication scratch beside it.
+            assertSafeToReplaceStakeEngineExportDirectory(outDir);
             const destinationOwnership = capturePublishDirectoryOwnership(outDir);
             const structuralIssues = this.validator.validate(modes);
             if (structuralIssues.some((issue) => issue.severity === "error")) {

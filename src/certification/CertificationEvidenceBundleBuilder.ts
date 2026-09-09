@@ -28,6 +28,7 @@ import {CertificationEvidenceBundleValidator} from "./CertificationEvidenceBundl
 import type {CertificationEvidenceBundleValidating} from "./CertificationEvidenceBundleValidating.js";
 import type {CertificationEvidenceSampleRecord} from "./CertificationEvidenceSampleRecord.js";
 import {isPositiveSafeInteger, MODE_NAME_PATTERN} from "./internal/certificationEvidenceBundleShapeGuards.js";
+import {assertSafeToReplaceCertificationEvidenceDirectory} from "./internal/assertSafeToReplaceCertificationEvidenceDirectory.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
 function hashManifest(manifest: OutcomeLibraryBundleManifest): string {
@@ -121,6 +122,10 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         modes: readonly CertificationEvidenceBundleModeSampleInput[],
         outDir: string,
     ): Promise<CertificationEvidenceBundleBuildResult> {
+        // Ownership is a publication precondition, not a post-sampling
+        // cleanup decision. This leaves an external directory untouched and
+        // avoids allocating adjacent staging output for a refused request.
+        assertSafeToReplaceCertificationEvidenceDirectory(outDir);
         const destinationOwnership = capturePublishDirectoryOwnership(outDir);
         const upfrontIssues = this.validateModesInput(modes);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {

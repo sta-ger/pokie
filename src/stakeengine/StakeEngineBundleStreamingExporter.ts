@@ -139,6 +139,8 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
     }
 
     public async exportToDirectory(modes: readonly StakeEngineBundleModeInput[], outDir: string): Promise<StakeEngineExportResult> {
+        // Keep an external destination out of the staging lifecycle entirely.
+        assertSafeToReplaceStakeEngineExportDirectory(outDir);
         const destinationOwnership = capturePublishDirectoryOwnership(outDir);
         const upfrontIssues = this.validateUpfront(modes);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
