@@ -648,7 +648,7 @@ describe("PC-05 product-model contract", () => {
         expect(outcomeLibraryCommand).toContain("private async readStreamedOutcomes(filePath: string)");
         expect(certificationCommand).toContain("private loadDescriptor(configPath: string): BuildDescriptor");
         expect(certificationCommand).toContain('must be an object with a string "modeName"/"seed" and a number "sampleCount"');
-        expect(certificationCommand).toContain("await this.builder.buildFromBundle(bundleDir, modes, outDir)");
+        expect(certificationCommand).toContain("await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal})");
         expect(materializer).toContain('const MATERIALIZED_MARKER_FILE = ".pokie-materialized.json"');
         expect(materializer).toContain("private async acquireLock(lockDir: string)");
         expect(materializer).toContain("await this.evictStale(cacheDir)");
@@ -870,7 +870,7 @@ describe("PC-05 product-model contract", () => {
             {id: "export-stake-default", artifactId: "stakeAdapter", commandFile: "cli/commands/ExportCommand.ts", sourceAssertions: ["if (args.out !== undefined) return args.out", "return path.join(path.dirname(args.source), \"stakeengine\")", "if (args.dryRun)", "this.registry.executePlan(plan, project, destination,", "prepareDescriptorExportOperation(args.source, destination, controller.signal)"]},
             {id: "export-par-default", artifactId: "parWorkbook", commandFile: "cli/commands/ExportCommand.ts", sourceAssertions: ["if (args.out !== undefined) return args.out", ".par.xlsx", "if (args.dryRun)", "this.registry.executePlan(plan, project, destination,", "prepareDescriptorExportOperation(args.source, destination, controller.signal)"]},
             {id: "stake-import-library-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/ImportCommand.ts", sourceAssertions: ["const outputKind = source.type === \"parWorkbook\" ? \"blueprint\" : \"outcomeLibrary\"", "this.planner.planImportOutput(source, outputKind, destination)"]},
-            {id: "certification-bundle-default", artifactId: "certificationEvidenceBundle", commandFile: "cli/commands/CertificationCommand.ts", sourceAssertions: ["options.out ?? path.join(path.dirname(configPath), \"certification\")", "await this.builder.buildFromBundle(bundleDir, modes, outDir)"]},
+            {id: "certification-bundle-default", artifactId: "certificationEvidenceBundle", commandFile: "cli/commands/CertificationCommand.ts", sourceAssertions: ["options.out ?? path.join(path.dirname(configPath), \"certification\")", "await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal})"]},
             {id: "init-ts-package-default", artifactId: "tsPackage", commandFile: "cli/commands/InitCommand.ts", sourceAssertions: ["directory: directory ?? \".\"", "const scaffold = this.merger.merge(projectRoot, overrides)"]},
         ];
 

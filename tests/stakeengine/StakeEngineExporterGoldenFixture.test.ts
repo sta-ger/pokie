@@ -11,14 +11,16 @@ import {buildSingleOutcomeStakeEngineLibrary} from "./StakeEngineTestFixtures.js
 // its expectation the same wrong way. This pins the literal exact bytes one small, fixed library
 // produces, computed independently and hardcoded, so a regression in the formula itself is also caught.
 describe("StakeEngineExporter golden fixture", () => {
+    let tmpRoot: string;
     let outDir: string;
 
     beforeEach(() => {
-        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-golden-"));
+        tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-golden-"));
+        outDir = path.join(tmpRoot, "out");
     });
 
     afterEach(() => {
-        fs.rmSync(outDir, {recursive: true, force: true});
+        fs.rmSync(tmpRoot, {recursive: true, force: true});
     });
 
     it("exports a single-outcome, cost-1 base mode to the exact known bytes", async () => {

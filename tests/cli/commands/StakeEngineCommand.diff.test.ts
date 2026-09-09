@@ -287,8 +287,10 @@ describe("StakeEngineCommand diff", () => {
     });
 
     it("end to end: diffs two real Stake Engine directories exported at different totalWins, detecting the rtp drift and never event-level diffing", async () => {
-        const leftDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-left-"));
-        const rightDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-right-"));
+        const leftRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-left-"));
+        const rightRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-right-"));
+        const leftDir = path.join(leftRoot, "out");
+        const rightDir = path.join(rightRoot, "out");
         try {
             const leftModes: StakeEngineExportModeInput[] = [
                 {modeName: "base", cost: 1, library: buildSingleOutcomeStakeEngineLibrary({libraryId: "left-lib", betMode: "base", stake: 1, totalWin: 5})},
@@ -311,13 +313,14 @@ describe("StakeEngineCommand diff", () => {
             expect(parsed.diff.perMode.base.rtp.right).toBe(25);
             expect(parsed.diff.perMode.base.rtp.delta).toBe(20);
         } finally {
-            fs.rmSync(leftDir, {recursive: true, force: true});
-            fs.rmSync(rightDir, {recursive: true, force: true});
+            fs.rmSync(leftRoot, {recursive: true, force: true});
+            fs.rmSync(rightRoot, {recursive: true, force: true});
         }
     });
 
     it("end to end: diffs POKIE output against an independently supplied compatible Stake directory", async () => {
-        const leftDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-pokie-left-"));
+        const leftRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-pokie-left-"));
+        const leftDir = path.join(leftRoot, "out");
         const foreignDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-foreign-right-"));
         try {
             await new StakeEngineExporter("1.3.0").exportToDirectory(
@@ -337,14 +340,16 @@ describe("StakeEngineCommand diff", () => {
             expect(parsed.issues.right.filter((issue) => issue.severity === "error")).toEqual([]);
             expect(parsed.diff.perMode.base.rtp).toMatchObject({left: 5, right: 1.5, delta: -3.5});
         } finally {
-            fs.rmSync(leftDir, {recursive: true, force: true});
+            fs.rmSync(leftRoot, {recursive: true, force: true});
             fs.rmSync(foreignDir, {recursive: true, force: true});
         }
     });
 
     it("end to end: diffing the same pair of real Stake Engine directories twice produces byte-identical --format json output", async () => {
-        const leftDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-determinism-left-"));
-        const rightDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-determinism-right-"));
+        const leftRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-determinism-left-"));
+        const rightRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-determinism-right-"));
+        const leftDir = path.join(leftRoot, "out");
+        const rightDir = path.join(rightRoot, "out");
         try {
             const leftModes: StakeEngineExportModeInput[] = [
                 {modeName: "base", cost: 1, library: buildSingleOutcomeStakeEngineLibrary({libraryId: "left-lib", betMode: "base", stake: 1, totalWin: 5})},
@@ -363,8 +368,8 @@ describe("StakeEngineCommand diff", () => {
             const [firstPrinted, secondPrinted] = logSpy.mock.calls.map((call) => call[0] as string);
             expect(secondPrinted).toBe(firstPrinted);
         } finally {
-            fs.rmSync(leftDir, {recursive: true, force: true});
-            fs.rmSync(rightDir, {recursive: true, force: true});
+            fs.rmSync(leftRoot, {recursive: true, force: true});
+            fs.rmSync(rightRoot, {recursive: true, force: true});
         }
     });
 });

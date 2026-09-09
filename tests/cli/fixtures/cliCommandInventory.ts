@@ -484,8 +484,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     // inside the real generate() stub instead, since reaching it at all proves neither flag fired.
                     {flag: "--estimate", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                     {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
-                    // defaultValue "undefined": no --out means printGenerateResult never calls writeFile at all --
-                    // observed via deferValueUnlessCalled, same convention as replay/report/par's own --out.
+                    // Raw generation is deliberately durable-only, but --estimate/--dry-run remain valid no-write
+                    // preflight paths without it.
                     {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "out.json"},
                     // defaultValue "undefined": no --resume means fileExists(options.resume) is never called at all
                     // (guarded on options.resume !== undefined) -- observed via deferValueUnlessCalled.
@@ -1897,8 +1897,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "outcomelibrary",
         kind: "valid",
-        label: "generate <packageRoot> (no options — default output/estimate off, human summary)",
-        args: ["generate", "pkg"],
+        label: "generate <packageRoot> --out <file> (default generation options, human summary)",
+        args: ["generate", "pkg", "--out", "out.json"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -1933,24 +1933,24 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "outcomelibrary",
         kind: "valid",
-        label: "generate <packageRoot> --bounded --sample-size --seed (accepted bounded-coverage options)",
-        args: ["generate", "pkg", "--bounded", "--sample-size", "1000", "--seed", "seed-1"],
+        label: "generate <packageRoot> --bounded --sample-size --seed --out (accepted bounded-coverage options)",
+        args: ["generate", "pkg", "--bounded", "--sample-size", "1000", "--seed", "seed-1", "--out", "out.json"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
     {
         command: "outcomelibrary",
         kind: "valid",
-        label: "generate <packageRoot> --exact (accepted explicit exact choice)",
-        args: ["generate", "pkg", "--exact"],
+        label: "generate <packageRoot> --exact --out (accepted explicit exact choice)",
+        args: ["generate", "pkg", "--exact", "--out", "out.json"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
     {
         command: "outcomelibrary",
         kind: "valid",
-        label: "generate <packageRoot> --sample --seed (accepted direct sampled choice)",
-        args: ["generate", "pkg", "--sample", "1000", "--seed", "seed-1"],
+        label: "generate <packageRoot> --sample --seed --out (accepted direct sampled choice)",
+        args: ["generate", "pkg", "--sample", "1000", "--seed", "seed-1", "--out", "out.json"],
         expectedExitCode: 0,
         expectStdout: "text",
     },

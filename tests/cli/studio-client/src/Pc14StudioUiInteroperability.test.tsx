@@ -205,7 +205,6 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         packageApp.unmount();
         await server.stop();
         packageServerStopped = true;
-        fs.mkdirSync(path.join(outcomeLibraryPath, "certification"));
         const outcomeLibraryHome = new StudioHomeService(POKIE_VERSION);
         const outcomeLibraryServer = new StudioServer({
             pokieVersion: POKIE_VERSION, host: "127.0.0.1", port: 0, studioRoot,

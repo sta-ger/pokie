@@ -231,13 +231,11 @@ describe("ArtifactBuilderRegistry", () => {
                 provenance: "test PAR workbook",
             } as PokieProject;
             fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
-            fs.mkdirSync(destination);
 
             try {
                 await expect(withPromotionFailure.build(target, source, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
                 expect(fs.existsSync(workbookPath)).toBe(true);
-                expect(fs.existsSync(destination)).toBe(true);
-                expect(fs.readdirSync(destination)).toEqual([]);
+                expect(fs.existsSync(destination)).toBe(false);
                 expect(fs.existsSync(path.join(destination, ".pokie", "par-import", "conversion-evidence.json"))).toBe(false);
                 expect(fs.existsSync(path.join(directory, ".pokie", "managed-outcome-projects.json"))).toBe(false);
                 expect(studioRoots).toEqual(new Set());
