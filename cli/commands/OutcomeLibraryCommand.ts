@@ -869,6 +869,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 outputDestinationSafety: {sourcePath: packageRoot, kind: "file", requireAvailable: true},
             }),
             ...(resumeFrom === undefined ? {} : {resumeFrom}),
+            // --resume is an explicit request for a durable exact
+            // cancellation checkpoint, so do not select disposable streaming
+            // partitions for this sweep.
+            ...(options.resume === undefined ? {} : {preserveCheckpointOnCancellation: true}),
             ...(signal === undefined ? {} : {signal}),
             ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
         };

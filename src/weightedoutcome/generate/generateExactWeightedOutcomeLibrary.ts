@@ -124,6 +124,12 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     // config/reel-layout -- two games or configs can coincidentally share the same raw outcome-space size, so
     // progressTotal alone is never enough to trust a checkpoint's accumulated grids.
     readonly resumeFrom?: ExactEnumerationCheckpoint;
+    /**
+     * Select the in-memory exact accumulator for a publisher that promises a
+     * durable resume action. Disk partitions deliberately report retry-only
+     * cancellation because their state is cleaned up with publication.
+     */
+    readonly preserveCheckpointOnCancellation?: boolean;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
     readonly artifactValidator?: ValidationRule<RoundArtifact>;
@@ -185,6 +191,7 @@ function legacyOptionsForRequest(
         ...(prepared.stake === undefined ? {} : {stake: prepared.stake}),
         ...(prepared.outputDestination === undefined ? {} : {outputDestination: prepared.outputDestination}),
         maxOutcomeSpaceSize: prepared.maxExactOutcomeSpaceSize,
+        ...(prepared.preserveCheckpointOnCancellation === undefined ? {} : {preserveCheckpointOnCancellation: prepared.preserveCheckpointOnCancellation}),
         ...(prepared.generation === "exact" ? {exact: true} : {}),
         ...(prepared.generation === "sampled" ? {sampled: prepared.sample!} : {}),
         ...(prepared.generation === "bounded" ? {bounded: prepared.sample!} : {}),
@@ -413,9 +420,15 @@ async function *streamExactWeightedOutcomesInternal(
     // Resume checkpoints deliberately retain their historical in-memory
     // representation. A streaming publisher must never silently discard that
     // seeded prefix: use the materialising compatibility path for a valid
-    // legacy checkpoint, and disk partitions only for fresh exact publication
-    // (the normal public CLI/Studio path).
-    if (prepared.strategy === "exact" && useExternalStaging && prepared.initialProcessedRawCount === undefined) {
+    // legacy checkpoint. Publishers that expose durable cancellation resume
+    // choose the same path from the start; disk partitions remain available
+    // for fresh exact publication that is intentionally retry-only.
+    if (
+        prepared.strategy === "exact" &&
+        useExternalStaging &&
+        !options.preserveCheckpointOnCancellation &&
+        prepared.initialProcessedRawCount === undefined
+    ) {
         const external = externallyAccumulateExactGridWeights(prepared.reelWindows, prepared.tuples, prepared.progressTotal, {
             signal: options.signal,
             onProgress: options.onProgress,

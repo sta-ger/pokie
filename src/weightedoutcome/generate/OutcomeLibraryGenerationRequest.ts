@@ -94,6 +94,13 @@ export type OutcomeLibraryGenerationRequest = {
     /** Publication policy consumed by the domain request, never by a writer-local default. */
     readonly outputDestinationSafety?: OutcomeLibraryGenerationDestinationSafety;
     readonly resumeFrom?: ExactEnumerationCheckpoint;
+    /**
+     * Retain the exact grid accumulator in a cancellation checkpoint instead
+     * of using disposable disk partitions. Publishers which expose resume
+     * must opt in before the sweep starts; an external staging directory is
+     * deliberately not a durable resume contract.
+     */
+    readonly preserveCheckpointOnCancellation?: boolean;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
     readonly artifactValidator?: ValidationRule<RoundArtifact>;
@@ -173,6 +180,12 @@ function validateRequest(request: OutcomeLibraryGenerationRequest): void {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-destination-conflict",
             "outputDestination must be a non-empty destination identity when present.",
+        );
+    }
+    if (request.preserveCheckpointOnCancellation !== undefined && typeof request.preserveCheckpointOnCancellation !== "boolean") {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-invalid-request",
+            "preserveCheckpointOnCancellation must be boolean when present.",
         );
     }
 }

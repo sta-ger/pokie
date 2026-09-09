@@ -1104,6 +1104,10 @@ export class StudioOutcomeLibraryGenerateService {
                 allowWithinSource: true,
             },
             ...("resumeFrom" in request && request.resumeFrom !== undefined ? {resumeFrom: request.resumeFrom} : {}),
+            // Every Studio job exposes cancellation recovery, including after
+            // a server restart, so its exact sweep must retain a checkpoint
+            // the job service can persist rather than disposable partitions.
+            preserveCheckpointOnCancellation: true,
             ...("signal" in request && request.signal !== undefined ? {signal: request.signal} : {}),
             ...("onProgress" in request && request.onProgress !== undefined ? {onProgress: request.onProgress} : {}),
         };
