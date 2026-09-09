@@ -1,0 +1,480 @@
+{
+  "schemaVersion": 3,
+  "reviewId": "pc-19-05d957eb-independent-20260909",
+  "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+  "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+  "records": [
+    {
+      "id": "known-findings",
+      "phase": "post-freeze-comparison",
+      "publicWorkflow": "known-findings",
+      "publicSurface": "PC-19 record comparison",
+      "role": "cross-role",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:18:00Z",
+      "endedAt": "2026-09-09T18:18:00Z",
+      "status": "complete",
+      "observations": [
+        "known-findings-disposition"
+      ],
+      "evidence": {
+        "evidenceId": "E022",
+        "path": "reviews/post-freeze-comparison.md",
+        "sha256": "d744ccadcde08d4e4d478135daac553deda07239701d2f8f9b86c65d8dbfacae",
+        "sizeBytes": 283,
+        "capturedAt": "2026-09-09T18:18:00Z",
+        "kind": "coverage:known-findings",
+        "summary": "Post-receipt known-findings disposition.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "blind-cli-exploration",
+      "phase": "blind",
+      "publicWorkflow": "blind-cli-exploration",
+      "publicSurface": "candidate-built public CLI",
+      "role": "independent-reviewer",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "installed-cli",
+        "recursive-help",
+        "bounded-errors",
+        "artifact-workflow"
+      ],
+      "evidence": {
+        "evidenceId": "E006",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:blind-cli-exploration",
+        "summary": "Candidate-bound blind-cli-exploration summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "blind-studio-exploration",
+      "phase": "blind",
+      "publicWorkflow": "blind-studio-exploration",
+      "publicSurface": "Studio rendered UI",
+      "role": "independent-reviewer",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "public-launcher",
+        "rendered-controls",
+        "fresh-profile",
+        "home-projects",
+        "design-game"
+      ],
+      "evidence": {
+        "evidenceId": "E007",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:blind-studio-exploration",
+        "summary": "Candidate-bound blind-studio-exploration summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "systemic-cli-sweep",
+      "phase": "blind",
+      "publicWorkflow": "systemic-cli-sweep",
+      "publicSurface": "candidate-built public CLI",
+      "role": "independent-reviewer",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "public-cli-sweep"
+      ],
+      "evidence": {
+        "evidenceId": "E008",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:systemic-cli-sweep",
+        "summary": "Candidate-bound systemic-cli-sweep summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "systemic-studio-sweep",
+      "phase": "blind",
+      "publicWorkflow": "systemic-studio-sweep",
+      "publicSurface": "Studio rendered UI",
+      "role": "independent-reviewer",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "public-launcher",
+        "rendered-controls",
+        "studio-sweep"
+      ],
+      "evidence": {
+        "evidenceId": "E009",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:systemic-studio-sweep",
+        "summary": "Candidate-bound systemic-studio-sweep summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "duplicate-audit",
+      "phase": "blind",
+      "publicWorkflow": "duplicate-audit",
+      "publicSurface": "candidate-built public CLI",
+      "role": "independent-reviewer",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "retained-owner",
+        "duplicate-audit"
+      ],
+      "evidence": {
+        "evidenceId": "E010",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:duplicate-audit",
+        "summary": "Candidate-bound duplicate-audit summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "artifact-torture",
+      "phase": "blind",
+      "publicWorkflow": "artifact-torture",
+      "publicSurface": "Studio Build/Export",
+      "role": "independent-reviewer",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "blueprint",
+        "par",
+        "runtime-package",
+        "outcome-library",
+        "stake-round-trip",
+        "stale-drift",
+        "caller-owned-destination",
+        "cancellation",
+        "staging-cleanup",
+        "retry",
+        "provenance"
+      ],
+      "evidence": {
+        "evidenceId": "E011",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:artifact-torture",
+        "summary": "Candidate-bound artifact-torture summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "cli-studio-semantic-parity",
+      "phase": "blind",
+      "publicWorkflow": "cli-studio-semantic-parity",
+      "publicSurface": "candidate CLI and Studio",
+      "role": "independent-reviewer",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "artifact-conversions",
+        "recovery-boundaries"
+      ],
+      "evidence": {
+        "evidenceId": "E012",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:cli-studio-semantic-parity",
+        "summary": "Candidate-bound cli-studio-semantic-parity summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "player-examples-parity",
+      "phase": "blind",
+      "publicWorkflow": "player-examples-parity",
+      "publicSurface": "Studio Player",
+      "role": "independent-reviewer",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "studio-player",
+        "isolated-examples",
+        "desktop",
+        "narrow-viewport",
+        "feature",
+        "win",
+        "inspection",
+        "reset",
+        "project-switch",
+        "rendered-layout"
+      ],
+      "evidence": {
+        "evidenceId": "E013",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:player-examples-parity",
+        "summary": "Candidate-bound player-examples-parity summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "lifecycle-recovery",
+      "phase": "blind",
+      "publicWorkflow": "lifecycle-recovery",
+      "publicSurface": "Studio lifecycle controls",
+      "role": "independent-reviewer",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "cancellation",
+        "failed-publication",
+        "stale-context",
+        "project-switch",
+        "server-shutdown",
+        "caller-owned-output"
+      ],
+      "evidence": {
+        "evidenceId": "E014",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:lifecycle-recovery",
+        "summary": "Candidate-bound lifecycle-recovery summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "role-math-par",
+      "phase": "blind",
+      "publicWorkflow": "role-math-par",
+      "publicSurface": "Studio PAR sheet",
+      "role": "math-par",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "par-workbook"
+      ],
+      "evidence": {
+        "evidenceId": "E015",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:role-math-par",
+        "summary": "Candidate-bound role-math-par summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "role-game-frontend-package",
+      "phase": "blind",
+      "publicWorkflow": "role-game-frontend-package",
+      "publicSurface": "Studio TypeScript package",
+      "role": "game-frontend-package",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "frontend-package"
+      ],
+      "evidence": {
+        "evidenceId": "E016",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:role-game-frontend-package",
+        "summary": "Candidate-bound role-game-frontend-package summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "role-qa-simulation-report-replay",
+      "phase": "blind",
+      "publicWorkflow": "role-qa-simulation-report-replay",
+      "publicSurface": "Studio Simulation and Replay",
+      "role": "qa-simulation-report-replay",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "simulation",
+        "report",
+        "replay"
+      ],
+      "evidence": {
+        "evidenceId": "E017",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:role-qa-simulation-report-replay",
+        "summary": "Candidate-bound role-qa-simulation-report-replay summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "role-outcome-library-integration",
+      "phase": "blind",
+      "publicWorkflow": "role-outcome-library-integration",
+      "publicSurface": "Studio Outcome Library",
+      "role": "outcome-library-integration",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "outcome-library"
+      ],
+      "evidence": {
+        "evidenceId": "E018",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:role-outcome-library-integration",
+        "summary": "Candidate-bound role-outcome-library-integration summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "role-stake-deployment-export",
+      "phase": "blind",
+      "publicWorkflow": "role-stake-deployment-export",
+      "publicSurface": "Studio Stake Engine export",
+      "role": "stake-deployment-export",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "stake",
+        "deployment",
+        "export"
+      ],
+      "evidence": {
+        "evidenceId": "E019",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:role-stake-deployment-export",
+        "summary": "Candidate-bound role-stake-deployment-export summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    },
+    {
+      "id": "role-new-project-preparation-retry",
+      "phase": "blind",
+      "publicWorkflow": "role-new-project-preparation-retry",
+      "publicSurface": "Studio Start a game",
+      "role": "new-project-preparation-retry",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "cleanContext": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286",
+      "startedAt": "2026-09-09T18:00:00Z",
+      "endedAt": "2026-09-09T18:15:00Z",
+      "status": "complete",
+      "observations": [
+        "new-project",
+        "retry"
+      ],
+      "evidence": {
+        "evidenceId": "E020",
+        "path": "reviews/coverage-summary.md",
+        "sha256": "8f4680e9b6c9febd7e5cdbb2977b9ccaa9c33848157ee37c99c9ab56dc511fd0",
+        "sizeBytes": 1102,
+        "capturedAt": "2026-09-09T18:15:00Z",
+        "kind": "coverage:role-new-project-preparation-retry",
+        "summary": "Candidate-bound role-new-project-preparation-retry summary.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+# Independent PC-19 coverage summary
+
+Blind public CLI discovery, bounded invalid-input handling, and artifact command surfaces were exercised from the candidate-built CLI. Blind rendered Studio exploration used the source launcher and fresh profile. The review covered the saved blueprint, valid design model, playable session and settled win, simulation report, completed replay, outcome library generation, and Stake export. Rendered controls exposed project-scoped output destinations, lifecycle progress/cancel surface, generated-output ownership, and retry/replay controls. The product surfaces used the same candidate provenance and showed no unresolved P0, P1, or material P2 defect.
+
+Role missions: math/PAR controls and readiness were rendered; game/package target readiness was rendered; QA simulation/report/replay completed; outcome library integration completed; Stake export completed; new-project preparation completed through Create game. CLI/Studio and player artifact boundaries were compared through the shared created project, settled round, replay artifact, and generated output.
