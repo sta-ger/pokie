@@ -421,18 +421,18 @@ describe("StakeEngineExporter", () => {
         const exporter = new StakeEngineExporter<string>("1.3.0");
         await exporter.exportToDirectory(modes, outDir);
         let claimed = false;
-        const racingRename = (from: string, to: string): void => {
-            if (!claimed && from.includes("/proc/self/fd/")) {
-                claimed = true;
-                fs.rmSync(outDir, {recursive: true, force: true});
-                fs.mkdirSync(outDir);
-                fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
-            }
-            fs.renameSync(from, to);
+        const racingExportOptions = {
+            onProgress: ({message}: {readonly message: string}): void => {
+                if (!claimed && message === "Publishing Stake file pokie-manifest.json") {
+                    claimed = true;
+                    fs.rmSync(outDir, {recursive: true, force: true});
+                    fs.mkdirSync(outDir);
+                    fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+                }
+            },
         };
-        const racingExporter = new StakeEngineExporter<string>("1.3.0", undefined, undefined, undefined, undefined, racingRename);
 
-        await expect(racingExporter.exportToDirectory(modes, outDir)).rejects.toThrow(/claimed (while publication was being prepared|during publication commit)/i);
+        await expect(exporter.exportToDirectory(modes, outDir, racingExportOptions)).rejects.toThrow(/claimed while publication was being prepared/i);
         expect(claimed).toBe(true);
         expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
         expect(siblingLeftovers(outDir)).toEqual([]);
