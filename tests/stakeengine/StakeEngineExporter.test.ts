@@ -432,7 +432,7 @@ describe("StakeEngineExporter", () => {
         };
         const racingExporter = new StakeEngineExporter<string>("1.3.0", undefined, undefined, undefined, undefined, racingRename);
 
-        await expect(racingExporter.exportToDirectory(modes, outDir)).rejects.toThrow(/claimed during publication commit/i);
+        await expect(racingExporter.exportToDirectory(modes, outDir)).rejects.toThrow(/claimed (while publication was being prepared|during publication commit)/i);
         expect(claimed).toBe(true);
         expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
         expect(siblingLeftovers(outDir)).toEqual([]);
