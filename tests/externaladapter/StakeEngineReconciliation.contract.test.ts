@@ -146,10 +146,10 @@ function runViaAtomicallyWriteExternalDeploymentArtifacts(outDir: string, deps: 
 }
 
 const publishSubjects = [
-    {name: "publishDirectoryAtomically (stakeengine)", run: runViaPublishDirectoryAtomically, cleanupWarning: false},
+    {name: "publishDirectoryAtomically (stakeengine)", run: runViaPublishDirectoryAtomically, cleanupWarning: true},
     // External Adapter intentionally retains its independently-owned legacy
-    // stale-backup protocol. Its warning remains part of that public contract;
-    // the Stake publisher no longer needs broad stale cleanup.
+    // stale-backup protocol. Both publishers report post-publication cleanup
+    // failures as warnings, never as failed publication.
     {name: "atomicallyWriteExternalDeploymentArtifactsToDirectory (externaladapter)", run: runViaAtomicallyWriteExternalDeploymentArtifacts, cleanupWarning: true},
 ];
 

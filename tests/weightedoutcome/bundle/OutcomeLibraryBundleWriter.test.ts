@@ -339,7 +339,7 @@ describe("OutcomeLibraryBundleWriter", () => {
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
-    it("does not leave a stale backup or invoke broad destination cleanup after a successful publish", async () => {
+    it("reports superseded-output cleanup failure without failing a successful publish", async () => {
         const writer = new OutcomeLibraryBundleWriter("1.3.0");
         await writer.writeToDirectory(modes(), outDir);
 
@@ -350,7 +350,7 @@ describe("OutcomeLibraryBundleWriter", () => {
 
         const result = await failingWriter.writeToDirectory([modes()[0]], outDir);
 
-        expect(result.issues.some((issue) => issue.code === "outcome-library-bundle-write-stale-cleanup-failed")).toBe(false);
+        expect(result.issues.some((issue) => issue.code === "outcome-library-bundle-write-stale-cleanup-failed" && issue.severity === "warning")).toBe(true);
         expect(fs.existsSync(path.join(outDir, "outcomes_bonus.jsonl"))).toBe(false);
     });
 });

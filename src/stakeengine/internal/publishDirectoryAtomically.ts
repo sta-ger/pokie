@@ -79,8 +79,19 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
 
         // After exchange, tempDir names precisely the preflight-owned output;
         // the live name was always a complete old or complete new directory.
-        removeTemp();
-        return {};
+        // Failing to remove that superseded output cannot undo a completed
+        // publish, but callers still need a durable warning so it can be
+        // cleaned up manually.
+        try {
+            removeDirectory(tempDir);
+            return {};
+        } catch (error) {
+            return {
+                cleanupWarning:
+                    `The publish to "${options.outDir}" succeeded, but the superseded invocation-owned directory at "${tempDir}" could not be removed: ` +
+                    `${error instanceof Error ? error.message : String(error)}. Remove it manually.`,
+            };
+        }
     } catch (error) {
         removeTemp();
         throw error;

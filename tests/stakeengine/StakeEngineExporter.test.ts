@@ -373,7 +373,7 @@ describe("StakeEngineExporter", () => {
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
-    it("does not leave a stale backup or invoke broad destination cleanup after a successful publish", async () => {
+    it("reports superseded-output cleanup failure without failing a successful publish", async () => {
         const exporter = new StakeEngineExporter<string>("1.3.0");
         await exporter.exportToDirectory(modes, outDir);
 
@@ -387,7 +387,7 @@ describe("StakeEngineExporter", () => {
         expect(result.manifest).toBeDefined();
         expect(result.files.length).toBeGreaterThan(0);
         expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);
-        expect(result.issues.some((issue) => issue.code === "stakeengine-stale-export-cleanup-failed")).toBe(false);
+        expect(result.issues.some((issue) => issue.code === "stakeengine-stale-export-cleanup-failed" && issue.severity === "warning")).toBe(true);
 
         const index = JSON.parse(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")) as StakeEngineIndex;
         expect(index.modes.map((entry) => entry.name)).toEqual(["base", "bonus"]);
