@@ -64,6 +64,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
     private readonly writeFile: (filePath: string, data: string | Buffer) => void;
     private readonly renameDirectory: (from: string, to: string) => void;
     private readonly removeDirectory: (dirPath: string) => void;
+    private readonly beforeCommit: (() => void) | undefined;
 
     constructor(
         pokieVersion: string,
@@ -73,6 +74,9 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         writeFile: (filePath: string, data: string | Buffer) => void = (filePath, data) => fs.writeFileSync(filePath, data),
         renameDirectory: (from: string, to: string) => void = (from, to) => fs.renameSync(from, to),
         removeDirectory: (dirPath: string) => void = (dirPath) => fs.rmSync(dirPath, {recursive: true, force: true}),
+        // Final-boundary seam for direct consumers that need to prove a
+        // claimant arriving after file preparation is never adopted.
+        beforeCommit: (() => void) | undefined = undefined,
     ) {
         this.pokieVersion = pokieVersion;
         this.validator = validator;
@@ -81,6 +85,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         this.writeFile = writeFile;
         this.renameDirectory = renameDirectory;
         this.removeDirectory = removeDirectory;
+        this.beforeCommit = beforeCommit;
     }
 
     // Runs full validation itself (StakeEngineExportValidator, which always runs WeightedOutcomeLibraryValidator
@@ -180,6 +185,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             ownership: destinationOwnership,
             renameDirectory: this.renameDirectory,
             removeDirectory: this.removeDirectory,
+            beforeCommit: this.beforeCommit,
             writeFilesIntoTempDir: (tempDir) => {
                 for (const builtMode of builtModes) {
                     assertNotCancelled(options);

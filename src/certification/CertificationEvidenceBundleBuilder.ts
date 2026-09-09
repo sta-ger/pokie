@@ -84,6 +84,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
     private readonly renameDirectory: (from: string, to: string) => void;
     private readonly removeDirectory: (dirPath: string) => void;
     private readonly selfValidator: CertificationEvidenceBundleValidating;
+    private readonly beforeCommit: (() => void) | undefined;
 
     constructor(
         pokieVersion: string,
@@ -98,6 +99,9 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         // Appended last (rather than grouped next to bundleValidator) so existing positional constructor calls
         // never shift — see every other constructor parameter above.
         selfValidator: CertificationEvidenceBundleValidating = new CertificationEvidenceBundleValidator(),
+        // Lets the direct builder contract test the final shared-publication
+        // boundary while preserving the production writer's single path.
+        beforeCommit: (() => void) | undefined = undefined,
     ) {
         this.pokieVersion = pokieVersion;
         this.reader = reader;
@@ -109,6 +113,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         this.renameDirectory = renameDirectory;
         this.removeDirectory = removeDirectory;
         this.selfValidator = selfValidator;
+        this.beforeCommit = beforeCommit;
     }
 
     public async buildFromBundle(
@@ -227,6 +232,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
                 ownership: destinationOwnership,
                 renameDirectory: this.renameDirectory,
                 removeDirectory: this.removeDirectory,
+                beforeCommit: this.beforeCommit,
                 writeFilesIntoTempDir: (tempDir) => {
                     for (const file of relativeFiles) {
                         this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));

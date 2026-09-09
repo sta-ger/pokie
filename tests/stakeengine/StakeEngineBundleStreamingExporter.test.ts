@@ -215,4 +215,32 @@ describe("StakeEngineBundleStreamingExporter", () => {
         expect(siblingLeftovers(outDir)).toEqual([]);
         expect(fs.existsSync(path.join(outDir, "lookup_bonus.csv"))).toBe(false);
     });
+
+    it("preserves a destination claimed at the final publication boundary and cleanly retries after it is released", async () => {
+        const claimedOutDir = path.join(outDir, "late-claim");
+        let claimOnCommit = true;
+        const exporter = new StakeEngineBundleStreamingExporter<string>(
+            "1.3.0",
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => {
+                if (!claimOnCommit) return;
+                fs.mkdirSync(claimedOutDir);
+                fs.writeFileSync(path.join(claimedOutDir, "caller-owned.txt"), "untouched");
+            },
+        );
+
+        await expect(exporter.exportToDirectory(bundleModes, claimedOutDir)).rejects.toThrow(/claimed/i);
+        expect(fs.readFileSync(path.join(claimedOutDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(siblingLeftovers(claimedOutDir)).toEqual([]);
+
+        fs.rmSync(claimedOutDir, {recursive: true, force: true});
+        claimOnCommit = false;
+        await expect(exporter.exportToDirectory(bundleModes, claimedOutDir)).resolves.toMatchObject({outDir: claimedOutDir, issues: []});
+        expect(fs.existsSync(path.join(claimedOutDir, "pokie-manifest.json"))).toBe(true);
+        expect(siblingLeftovers(claimedOutDir)).toEqual([]);
+    });
 });

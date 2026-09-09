@@ -437,4 +437,37 @@ describe("CertificationEvidenceBundleBuilder", () => {
         expect(result.issues.map((issue) => issue.code)).toContain("certification-evidence-bundle-content-hash-mismatch");
         expect(fs.existsSync(certDir)).toBe(false);
     });
+
+    it("preserves a late claimant at the shared commit boundary and publishes on a clean retry", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        let claimOnCommit = true;
+        const builder = new CertificationEvidenceBundleBuilder(
+            CERTIFICATION_TEST_POKIE_VERSION,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => {
+                if (!claimOnCommit) return;
+                fs.mkdirSync(certDir);
+                fs.writeFileSync(path.join(certDir, "caller-owned.txt"), "untouched");
+            },
+        );
+        const modes = [{modeName: "base", seed: "cert-seed-1", sampleCount: 3}];
+
+        await expect(builder.buildFromBundle(bundleDir, modes, certDir)).rejects.toThrow(/claimed/i);
+        expect(fs.readFileSync(path.join(certDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(siblingLeftovers(certDir)).toEqual([]);
+
+        fs.rmSync(certDir, {recursive: true, force: true});
+        claimOnCommit = false;
+        await expect(builder.buildFromBundle(bundleDir, modes, certDir)).resolves.toMatchObject({outDir: certDir, issues: []});
+        expect(fs.existsSync(path.join(certDir, "manifest.json"))).toBe(true);
+        expect(siblingLeftovers(certDir)).toEqual([]);
+    });
 });

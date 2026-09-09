@@ -1,5 +1,6 @@
 import {
     StakeEngineBundleModeInput,
+    StakeEngineBundleStreamingExporter,
     StakeEngineBundleStreamingExporting,
     StakeEngineExportModeInput,
     StakeEngineExporting,
@@ -8,6 +9,7 @@ import {
     StakeEngineImporting,
     StakeEngineImportWriting,
     ArtifactConversionPlanner,
+    OutcomeLibraryBundleWriter,
     PokieProject,
     PROJECT_TYPE_CAPABILITIES,
     ValidationIssue,
@@ -16,6 +18,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StakeEngineCommand} from "../../../cli/commands/StakeEngineCommand.js";
+import {buildStakeEngineTestLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
 
 const CONFIG_PATH = "/project/stake-config.json";
 const BASE_LIBRARY = {schemaVersion: 1, libraryId: "base-lib", outcomes: []};
@@ -147,6 +150,46 @@ describe("StakeEngineCommand", () => {
             fs.rmSync(outDir, {recursive: true, force: true});
             claimDestination = false;
             await expect(command.runPreparedImport(source, plan, stakeDir, outDir)).resolves.toBe(0);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("keeps a late claimant from the real streaming export boundary and succeeds once the caller releases it", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-command-late-claim-"));
+        const bundleDir = path.join(workDir, "bundle");
+        const outDir = path.join(workDir, "stake");
+        const configPath = path.join(workDir, "stake-config.json");
+        try {
+            const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
+            await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(
+                [{modeName: "base", libraryId: library.libraryId, schemaVersion: library.schemaVersion, outcomes: library.outcomes}],
+                bundleDir,
+            );
+            fs.writeFileSync(configPath, JSON.stringify({modes: [{modeName: "base", cost: 1, bundleDir: "./bundle"}]}));
+            let claimOnCommit = true;
+            const streamingExporter = new StakeEngineBundleStreamingExporter(
+                "1.3.0",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => {
+                    if (!claimOnCommit) return;
+                    fs.mkdirSync(outDir);
+                    fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+                },
+            );
+            const command = new StakeEngineCommand("1.3.0", undefined, undefined, undefined, undefined, undefined, streamingExporter);
+
+            await expect(command.run(["export", configPath, "--out", outDir])).rejects.toThrow(/claimed/i);
+            expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+
+            fs.rmSync(outDir, {recursive: true, force: true});
+            claimOnCommit = false;
+            await expect(command.run(["export", configPath, "--out", outDir])).resolves.toBe(0);
+            expect(fs.existsSync(path.join(outDir, "pokie-manifest.json"))).toBe(true);
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }

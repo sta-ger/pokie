@@ -115,6 +115,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
     private readonly now: () => Date;
     private readonly renameDirectory: (from: string, to: string) => void;
     private readonly removeDirectory: (dirPath: string) => void;
+    private readonly beforeCommit: (() => void) | undefined;
 
     constructor(
         pokieVersion: string,
@@ -123,6 +124,10 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
         now: () => Date = () => new Date(),
         renameDirectory: (from: string, to: string) => void = (from, to) => fs.renameSync(from, to),
         removeDirectory: (dirPath: string) => void = (dirPath) => fs.rmSync(dirPath, {recursive: true, force: true}),
+        // Kept as a final test seam so callers can exercise the real
+        // publication boundary without making the streaming writer expose a
+        // second, non-atomic publication path.
+        beforeCommit: (() => void) | undefined = undefined,
     ) {
         this.pokieVersion = pokieVersion;
         this.eventsProjector = eventsProjector;
@@ -130,6 +135,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
         this.now = now;
         this.renameDirectory = renameDirectory;
         this.removeDirectory = removeDirectory;
+        this.beforeCommit = beforeCommit;
     }
 
     public async exportToDirectory(modes: readonly StakeEngineBundleModeInput[], outDir: string): Promise<StakeEngineExportResult> {
@@ -208,6 +214,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                 ownership: destinationOwnership,
                 renameDirectory: this.renameDirectory,
                 removeDirectory: this.removeDirectory,
+                beforeCommit: this.beforeCommit,
                 writeFilesIntoTempDir: (tempDir) => {
                     for (const file of relativeFiles) {
                         this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
