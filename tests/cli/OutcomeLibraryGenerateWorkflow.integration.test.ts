@@ -324,7 +324,7 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(await new OutcomeSourceCommand().run(["sample", bundleDir, "--mode", "base", "--seed", "downstream-seed"])).toBe(0);
     });
 
-    it("cancellation during streamed raw generation removes disposable staging and a clean retry produces the complete library", async () => {
+    it("cancellation with --resume retains a usable checkpoint while removing partial raw publication state", async () => {
         const packageRoot = await buildPackage(largeButBoundedBlueprint("resume-cli-slot"), "pkg");
 
         // Ground truth: the same package, generated in one uninterrupted run.
@@ -368,13 +368,18 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(cancelExit).toBe(130);
         expect(cancelled).toBe(true);
         expect(fs.existsSync(partialFile)).toBe(false);
-        // Streamed exact publication partitions grids on disk. Those partitions
-        // are deliberately disposable: no checkpoint can safely refer to them
-        // after publication interrupts, so the public contract is retry rather
-        // than a misleading/unreachable resume token.
-        expect(fs.existsSync(checkpointFile)).toBe(false);
+        // --resume is the public durable-recovery contract. It selects the
+        // in-memory exact accumulator, so the checkpoint is self-contained
+        // and no raw publication temporary file is left behind.
+        expect(fs.existsSync(checkpointFile)).toBe(true);
+        expect(JSON.parse(fs.readFileSync(checkpointFile, "utf8"))).toEqual(expect.objectContaining({
+            processedRawIndex: "5000",
+            progressTotal: "8000",
+            grids: expect.any(Array),
+        }));
+        expect(fs.readdirSync(workDir).some((entry) => entry.includes(".partial.json.pokie-"))).toBe(false);
 
-        // Retry, against a real (non-cancelling) process. It produces the
+        // Resume, against a real (non-cancelling) process. It produces the
         // exact same complete library as an uninterrupted generation.
         const resumeExit = await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--out", partialFile, "--resume", checkpointFile]);
 

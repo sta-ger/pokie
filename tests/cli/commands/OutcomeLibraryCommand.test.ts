@@ -732,6 +732,7 @@ describe("OutcomeLibraryCommand", () => {
             const exitCode = await command.run(["generate", "/project/slot", "--resume", "/project/checkpoint.json", "--out", "/project/base.json"]);
 
             expect(exitCode).toBe(130);
+            expect(generate).toHaveBeenCalledWith(expect.objectContaining({preserveCheckpointOnCancellation: true}));
             expect(writeFile).toHaveBeenCalledWith("/project/checkpoint.json", expect.any(String));
             const written = JSON.parse((writeFile.mock.calls[0] as [string, string])[1]);
             expect(written).toEqual({
@@ -762,6 +763,7 @@ describe("OutcomeLibraryCommand", () => {
             const exitCode = await command.run(["generate", "/project/slot", "--out", "/project/base.json"]);
 
             expect(exitCode).toBe(130);
+            expect(generate).toHaveBeenCalledWith(expect.not.objectContaining({preserveCheckpointOnCancellation: true}));
             expect(writeFile).not.toHaveBeenCalled();
             expect(errorSpy.mock.calls.flat().join("\n")).toContain("no --resume");
         });

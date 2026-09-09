@@ -48,6 +48,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
         pokieVersion?: string,
         game?: PokieGame,
         writer?: OutcomeLibraryBundleWriter<string>,
+        generateLibrary = generateWeightedOutcomeLibrary,
     ): StudioOutcomeLibraryGenerateService {
         // The runtime seam deliberately does not turn this temporary directory
         // into a recognized package. Supply the already-prepared package plan
@@ -57,7 +58,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             pokieVersion ?? POKIE_VERSION,
             () => Promise.resolve(game ?? buildFixtureGame()),
             undefined,
-            undefined,
+            generateLibrary,
             writer,
             undefined,
             undefined,
@@ -851,6 +852,25 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                 const resumed = await service().generate(projectRoot, {});
                 expect(resumed).toMatchObject({status: "ok", generator: {strategy: "exact"}});
             }
+        });
+
+        it("retains a Studio exact checkpoint when the generator itself observes cancellation", async () => {
+            const checkpoint = {
+                processedRawIndex: BigInt(3), progressTotal: BigInt(6), sourceEnumerationId: "fixture-source", grids: new Map(),
+            };
+            const generate = jest.fn((request) => {
+                expect(request.preserveCheckpointOnCancellation).toBe(true);
+                return Promise.reject(new WeightedOutcomeLibraryGenerationCancelledError(BigInt(3), BigInt(6), checkpoint.grids, checkpoint.sourceEnumerationId));
+            });
+
+            const result = await service(undefined, undefined, undefined, generate).generate(projectRoot, {});
+
+            expect(result).toMatchObject({
+                status: "cancelled",
+                checkpoint: expect.objectContaining({processedRawIndex: BigInt(3), progressTotal: BigInt(6), sourceEnumerationId: "fixture-source"}),
+                recovery: expect.stringMatching(/resume/i),
+            });
+            expect(fs.existsSync(path.join(projectRoot, "outcomelibrary"))).toBe(false);
         });
 
         it("cancels after streamed bundle publication starts, removes staging, and cleanly retries", async () => {
