@@ -4,7 +4,7 @@ import path from "path";
 const RECOGNIZED_GENERATORS = new Set(["pokie outcomelibrary build", "pokie stakeengine import"]);
 
 /** Direct bundle publication may replace only a canonical POKIE container. */
-export function assertSafeToReplaceOutcomeLibraryBundleDirectory(outDir: string): void {
+export function assertSafeToReplaceOutcomeLibraryBundleDirectory(outDir: string, allowExistingEmptyDestination = false): void {
     let destination: fs.Stats;
     try {
         destination = fs.lstatSync(outDir);
@@ -19,6 +19,7 @@ export function assertSafeToReplaceOutcomeLibraryBundleDirectory(outDir: string)
     if (!destination.isDirectory()) {
         throw new Error(`"${outDir}" already exists and is not a directory. Choose a different output directory or remove it first.`);
     }
+    if (allowExistingEmptyDestination && fs.readdirSync(outDir).length === 0) return;
     try {
         const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")) as {generatedBy?: unknown};
         if (typeof manifest.generatedBy === "string" && RECOGNIZED_GENERATORS.has(manifest.generatedBy)) return;

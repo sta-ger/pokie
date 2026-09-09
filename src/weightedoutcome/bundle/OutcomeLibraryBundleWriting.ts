@@ -19,6 +19,11 @@ export type OutcomeLibraryBundleSupplementalFile = {
 
 export type OutcomeLibraryBundleWriteOptions = {
     readonly signal?: AbortSignal;
+    // Lifecycle callers which have already bound and verified a destination
+    // as available may publish into an empty directory supplied by their
+    // caller. The atomic publisher still captures and verifies that
+    // directory's identity, so this never authorizes replacing content.
+    readonly allowExistingEmptyDestination?: boolean;
     // The producer may run for long enough that a destination which was safe
     // at preflight is claimed before this writer reaches its atomic swap.
     // Invoke the owner's immutable destination policy at that last boundary.

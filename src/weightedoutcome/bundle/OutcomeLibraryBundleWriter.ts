@@ -100,7 +100,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
         }
-        assertSafeToReplaceOutcomeLibraryBundleDirectory(outDir);
+        assertSafeToReplaceOutcomeLibraryBundleDirectory(outDir, options?.allowExistingEmptyDestination);
         const destinationOwnership = capturePublishDirectoryOwnership(outDir);
 
         const stagingDir = `${outDir}.staging-${crypto.randomBytes(6).toString("hex")}`;

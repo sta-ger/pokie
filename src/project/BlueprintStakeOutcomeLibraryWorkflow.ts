@@ -207,6 +207,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 game,
                 configHash,
                 boundDestination,
+                destinationWasEmpty,
                 preparedRequest.outputDestinationSafety,
                 options,
                 preflight,
@@ -303,6 +304,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         game: PokieGame,
         configHash: string,
         destinationPath: string,
+        allowExistingEmptyDestination: boolean,
         destinationSafety: OutcomeLibraryGenerationDestinationSafety | undefined,
         options: ArtifactBuildOptions | undefined,
         preflight: ArtifactBuildPreflight,
@@ -368,6 +370,11 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             boundDestination,
             {
                 signal: options?.signal,
+                // The prepared request has explicitly accepted this
+                // caller-owned empty directory. Keep the writer's normal
+                // fail-closed direct-publication policy for every other
+                // destination shape.
+                allowExistingEmptyDestination,
                 assertDestinationAvailable: () => {
                     const revalidatedDestination = resolveOutcomeLibraryGenerationDestination(boundDestination, destinationSafety);
                     if (revalidatedDestination?.path !== boundDestination) {
