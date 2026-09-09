@@ -292,4 +292,34 @@ describe("publishDirectoryAtomically direct ownership contract", () => {
         expect(publish("retry")).toEqual({});
         expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(`{"value":"retry"}`);
     });
+
+    it("leaves a claimant that replaces the live name after the atomic exchange untouched", () => {
+        let claimed = false;
+
+        expect(() => publish("first", {
+            afterCommit: () => {
+                if (claimed) return;
+                claimed = true;
+                fs.rmSync(outDir, {recursive: true, force: true});
+                fs.mkdirSync(outDir);
+                fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+            },
+        })).toThrow(/claimed immediately after publication/i);
+
+        expect(claimed).toBe(true);
+        expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(siblingPublicationResidue(outDir)).toEqual([]);
+
+        fs.rmSync(outDir, {recursive: true, force: true});
+        expect(publish("retry")).toEqual({});
+        expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(`{"value":"retry"}`);
+    });
 });
+
+function siblingPublicationResidue(outDir: string): string[] {
+    const parentDir = path.dirname(outDir);
+    const base = path.basename(outDir);
+    return fs.readdirSync(parentDir)
+        .filter((name) => name.startsWith(`.${base}.tmp-`) || name.startsWith(`.${base}.rollback-`))
+        .sort();
+}

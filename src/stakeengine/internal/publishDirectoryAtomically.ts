@@ -18,7 +18,10 @@ export type PublishDirectoryAtomicallyOptions = {
     readonly afterCommit?: () => void;
 };
 
-export type PublishDirectoryAtomicallyDestinationIdentity = {readonly device: number; readonly inode: number};
+// An inode alone is not an ownership token: a fast remove/recreate can reuse
+// it on filesystems with aggressive inode recycling. Birth time remains
+// stable across the atomic rename, but distinguishes that replacement.
+export type PublishDirectoryAtomicallyDestinationIdentity = {readonly device: number; readonly inode: number; readonly birthTime: number};
 export type PublishDirectoryAtomicallyOwnership = {
     readonly destinationIdentity: PublishDirectoryAtomicallyDestinationIdentity | undefined;
     readonly destinationSnapshot: readonly SnapshotEntry[] | undefined;
@@ -41,7 +44,7 @@ export function isPublishDirectoryDestinationClaimedError(error: unknown): error
 export function capturePublishDirectoryIdentity(directory: string): PublishDirectoryAtomicallyDestinationIdentity | undefined {
     try {
         const stat = fs.lstatSync(directory);
-        return {device: stat.dev, inode: stat.ino};
+        return {device: stat.dev, inode: stat.ino, birthTime: stat.birthtimeMs};
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
         throw error;
@@ -269,7 +272,8 @@ function sameIdentity(
     left: PublishDirectoryAtomicallyDestinationIdentity | undefined,
     right: PublishDirectoryAtomicallyDestinationIdentity | undefined,
 ): boolean {
-    return left !== undefined && right !== undefined && left.device === right.device && left.inode === right.inode;
+    return left !== undefined && right !== undefined &&
+        left.device === right.device && left.inode === right.inode && left.birthTime === right.birthTime;
 }
 
 function assertDestinationUnchanged(
@@ -285,7 +289,7 @@ function assertDestinationUnchanged(
     }
     if (
         currentIdentity === undefined || ownership.destinationIdentity === undefined ||
-        currentIdentity.device !== ownership.destinationIdentity.device || currentIdentity.inode !== ownership.destinationIdentity.inode ||
+        !sameIdentity(currentIdentity, ownership.destinationIdentity) ||
         ownership.destinationSnapshot === undefined || !fs.lstatSync(outDir).isDirectory() ||
         !sameSnapshot(ownership.destinationSnapshot, snapshotDirectory(outDir))
     ) throw claimed(`Destination "${outDir}" was claimed while publication was being prepared.`);
