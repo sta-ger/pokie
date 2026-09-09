@@ -46,13 +46,15 @@ function siblingLeftovers(outDir: string): string[] {
 }
 
 describe("StakeEngineExporter", () => {
+    let tmpRoot: string;
     let outDir: string;
     let baseLibrary: WeightedOutcomeLibrary<string>;
     let bonusLibrary: WeightedOutcomeLibrary<string>;
     let modes: StakeEngineExportModeInput[];
 
     beforeEach(() => {
-        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-test-"));
+        tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-test-"));
+        outDir = path.join(tmpRoot, "out");
         baseLibrary = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
         bonusLibrary = buildStakeEngineTestLibrary({libraryId: "bonus-lib", betMode: "freeGames", stake: 100});
         modes = [
@@ -62,7 +64,6 @@ describe("StakeEngineExporter", () => {
     });
 
     afterEach(() => {
-        fs.rmSync(outDir, {recursive: true, force: true});
         // Clean up any sibling temp/stale directories a test might have deliberately triggered.
         const parentDir = path.dirname(outDir);
         const base = path.basename(outDir);
@@ -71,6 +72,7 @@ describe("StakeEngineExporter", () => {
                 fs.rmSync(path.join(parentDir, name), {recursive: true, force: true});
             }
         }
+        fs.rmSync(tmpRoot, {recursive: true, force: true});
     });
 
     it("writes index.json, per-mode lookup CSVs, per-mode zstd books, and pokie-manifest.json that all round-trip exactly, in Stake units", async () => {
@@ -182,7 +184,7 @@ describe("StakeEngineExporter", () => {
         expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-payout-multiplier-not-representable" && issue.severity === "error")).toBe(
             true,
         );
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("does not write anything when validation reports an error", async () => {
@@ -194,9 +196,7 @@ describe("StakeEngineExporter", () => {
         expect(result.files).toEqual([]);
         expect(result.manifest).toBeUndefined();
         expect(result.issues.some((issue) => issue.severity === "error")).toBe(true);
-        // outDir already exists (fs.mkdtempSync created it) — the point is that validation failing writes
-        // nothing into it at all.
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("honors cancellation from the final temporary-publish callback without committing an output", async () => {
@@ -212,7 +212,7 @@ describe("StakeEngineExporter", () => {
             }),
         ).rejects.toThrow(StakeEngineExportCancelledError);
 
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("removes only its newly published directory when cancellation arrives after the final commit", async () => {
@@ -245,7 +245,7 @@ describe("StakeEngineExporter", () => {
 
         expect(result.files).toEqual([]);
         expect(result.issues.some((issue) => issue.code === "stakeengine-mode-name-case-collision" && issue.severity === "error")).toBe(true);
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("blocks export when a custom events projector throws", async () => {
@@ -261,7 +261,7 @@ describe("StakeEngineExporter", () => {
         expect(result.files).toEqual([]);
         expect(result.manifest).toBeUndefined();
         expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-events-invalid" && issue.severity === "error")).toBe(true);
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("blocks export (via the real, default events projector) when an outcome's own featureEvents use a reserved type", async () => {
@@ -293,7 +293,7 @@ describe("StakeEngineExporter", () => {
 
         expect(result.files).toEqual([]);
         expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-events-invalid" && issue.message.includes("reserved"))).toBe(true);
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("blocks export when a custom events projector returns non-JSON-safe output (NaN)", async () => {
@@ -307,7 +307,7 @@ describe("StakeEngineExporter", () => {
         expect(result.files).toEqual([]);
         expect(result.manifest).toBeUndefined();
         expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-events-not-json-safe" && issue.severity === "error")).toBe(true);
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("is safe to re-export into the same directory (recognizes its own pokie-manifest.json)", async () => {
@@ -384,7 +384,9 @@ describe("StakeEngineExporter", () => {
 
         await expect(failingExporter.exportToDirectory(modes, outDir)).rejects.toThrow("simulated publish rename failure");
 
-        expect(renameCallCount).toBeGreaterThan(2);
+        // The injectable seam now stays inside private staging; the live
+        // directory exchange itself is deliberately not injectable.
+        expect(renameCallCount).toBe(2);
         expect(fs.readdirSync(outDir).sort()).toEqual(filesBefore);
         for (const name of filesBefore) {
             expect(fs.readFileSync(path.join(outDir, name))).toEqual(contentsBefore.get(name));
@@ -413,7 +415,7 @@ describe("StakeEngineExporter", () => {
     });
 
     it("leaves no temp directory when the initial publish rename fails for an outDir that doesn't exist yet", async () => {
-        const freshOutDir = path.join(outDir, "fresh-subdir");
+        const freshOutDir = path.join(tmpRoot, "fresh-subdir");
         const failingRenameDirectory = (): void => {
             throw new Error("simulated initial rename failure");
         };
@@ -422,7 +424,7 @@ describe("StakeEngineExporter", () => {
         await expect(exporter.exportToDirectory(modes, freshOutDir)).rejects.toThrow("simulated initial rename failure");
 
         expect(fs.existsSync(freshOutDir)).toBe(false);
-        const leftovers = fs.readdirSync(outDir).filter((name) => name.startsWith("fresh-subdir."));
+        const leftovers = fs.readdirSync(tmpRoot).filter((name) => name.startsWith("fresh-subdir."));
         expect(leftovers).toEqual([]);
     });
 
@@ -461,11 +463,30 @@ describe("StakeEngineExporter", () => {
     });
 
     it("refuses to replace an existing non-empty directory that isn't recognized as its own prior output", async () => {
+        fs.mkdirSync(outDir);
         fs.writeFileSync(path.join(outDir, "notes.txt"), "unrelated file");
         const exporter = new StakeEngineExporter<string>("1.3.0");
 
         await expect(exporter.exportToDirectory(modes, outDir)).rejects.toThrow(/was not generated by "pokie stakeengine export"/);
 
         expect(fs.readdirSync(outDir)).toEqual(["notes.txt"]);
+    });
+
+    it("rejects empty, external, and symlinked directories before direct export staging", async () => {
+        const exporter = new StakeEngineExporter<string>("1.3.0");
+        fs.mkdirSync(outDir);
+        await expect(exporter.exportToDirectory(modes, outDir)).rejects.toThrow(/was not generated by "pokie stakeengine export"/);
+        expect(fs.readdirSync(outDir)).toEqual([]);
+
+        fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+        await expect(exporter.exportToDirectory(modes, outDir)).rejects.toThrow(/was not generated by "pokie stakeengine export"/);
+        expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+
+        const externalDir = path.join(tmpRoot, "external");
+        fs.mkdirSync(externalDir);
+        fs.rmSync(outDir, {recursive: true, force: true});
+        fs.symlinkSync(externalDir, outDir, "dir");
+        await expect(exporter.exportToDirectory(modes, outDir)).rejects.toThrow(/symbolic link/i);
+        expect(fs.readdirSync(externalDir)).toEqual([]);
     });
 });

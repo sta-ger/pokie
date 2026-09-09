@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import {spawnSync} from "child_process";
 import fs from "fs";
 import path from "path";
 
@@ -13,6 +14,8 @@ export type PublishDirectoryAtomicallyOptions = {
     readonly ownership?: PublishDirectoryAtomicallyOwnership;
     /** Test seam at the last observation before the publication rename. */
     readonly beforeCommit?: () => void;
+    /** Test seam after the namespace commit, before the old payload is removed. */
+    readonly afterCommit?: () => void;
 };
 
 export type PublishDirectoryAtomicallyDestinationIdentity = {readonly device: number; readonly inode: number};
@@ -83,10 +86,45 @@ export type PublishDirectoryAtomicallyResult = {
  * explicit and fail-closed instead of blindly deleting a pathname.
  */
 export function removePublishedDirectoryIfOwned(publication: PublishedDirectoryOwnership): boolean {
-    const current = capturePublishDirectoryIdentity(publication.outDir);
-    if (current === undefined || current.device !== publication.identity.device || current.inode !== publication.identity.inode) return false;
-    fs.rmSync(publication.outDir, {recursive: true, force: true});
-    return true;
+    const outDir = path.resolve(publication.outDir);
+    const nonce = crypto.randomBytes(12).toString("hex");
+    const privateDir = path.join(path.dirname(outDir), `.${path.basename(outDir)}.rollback-${nonce}`);
+    fs.mkdirSync(privateDir, {recursive: false});
+    const privateIdentity = capturePublishDirectoryIdentity(privateDir)!;
+    try {
+        if (!sameIdentity(capturePublishDirectoryIdentity(outDir), publication.identity)) return false;
+        exchangeDirectories(outDir, privateDir);
+
+        // The exchange is a single namespace operation, but an unrelated
+        // writer is still free to race the pathname just before it.  Never
+        // remove what we did not install: put a late claimant back and leave
+        // its public name intact.
+        if (!sameIdentity(capturePublishDirectoryIdentity(privateDir), publication.identity)) {
+            if (sameIdentity(capturePublishDirectoryIdentity(outDir), privateIdentity)) {
+                exchangeDirectories(outDir, privateDir);
+            }
+            return false;
+        }
+        // The live name now denotes the empty tombstone we created above.
+        // rmdir is intentionally non-recursive: a claimant which appears at
+        // this exact point makes the operation fail without deleting any of
+        // its content.
+        try {
+            fs.rmdirSync(outDir);
+        } catch {
+            fs.rmSync(privateDir, {recursive: true, force: true});
+            return false;
+        }
+        fs.rmSync(privateDir, {recursive: true, force: true});
+        return true;
+    } finally {
+        // This is our initially empty tombstone or the prior publication
+        // already removed above.  Do not recursively remove it if an
+        // unexpected identity appeared while recovery was in progress.
+        if (sameIdentity(capturePublishDirectoryIdentity(privateDir), privateIdentity)) {
+            fs.rmSync(privateDir, {recursive: true, force: true});
+        }
+    }
 }
 
 /** Attach lifecycle ownership without changing legacy enumerable output. */
@@ -108,8 +146,7 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
     const expectedAbsent = options.expectedDestinationWasAbsent === true || ownership.destinationIdentity === undefined;
     const nonce = crypto.randomBytes(12).toString("hex");
     const tempDir = path.join(path.dirname(outDir), `.${path.basename(outDir)}.tmp-${nonce}`);
-    const staleDir = path.join(path.dirname(outDir), `.${path.basename(outDir)}.stale-${nonce}`);
-    let movedPrevious = false;
+    let tempIdentity: PublishDirectoryAtomicallyDestinationIdentity | undefined;
 
     const removeScratch = (): void => {
         try {
@@ -117,54 +154,51 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
         } catch {
             // This invocation owns tempDir exclusively.
         }
-        try {
-            removeDirectory(staleDir);
-        } catch {
-            // staleDir is private and is never used for a caller path.
-        }
     };
 
     try {
         fs.mkdirSync(tempDir, {recursive: false});
         options.writeFilesIntoTempDir(tempDir);
+        tempIdentity = capturePublishDirectoryIdentity(tempDir);
+        if (tempIdentity === undefined) throw new Error(`Publication staging directory "${tempDir}" disappeared before commit.`);
+        exerciseRenameTestSeam(tempDir, options.renameDirectory);
         options.beforeCommit?.();
         assertDestinationUnchanged(outDir, ownership, expectedAbsent, claimed);
 
-        if (!expectedAbsent) {
-            // Keep the injectable legacy seam outside the prepared payload so
-            // disk-failure tests retain their recovery behaviour.
-            (options.renameDirectory ?? fs.renameSync)(outDir, staleDir);
-            movedPrevious = true;
-        }
-        try {
-            (options.renameDirectory ?? fs.renameSync)(tempDir, outDir);
-        } catch (error) {
-            if (movedPrevious) restorePreviousDirectory(staleDir, outDir, options.renameDirectory);
-            throw error;
-        }
+        if (expectedAbsent) installAbsentDirectory(tempDir, outDir, claimed);
+        else exchangeDirectories(tempDir, outDir);
 
         const installedIdentity = capturePublishDirectoryIdentity(outDir);
-        // A successful rename must leave our real directory at the public
-        // pathname.  Treat anything else as a claimed destination rather
-        // than handing an unverified path to lifecycle cleanup.
-        if (installedIdentity === undefined) throw claimed(`Destination "${outDir}" disappeared while publication was being committed.`);
-        const publication = {outDir, identity: installedIdentity};
+        if (installedIdentity === undefined) {
+            restoreDisplacedDestination(tempDir, outDir, tempIdentity);
+            throw claimed(`Destination "${outDir}" disappeared during publication commit.`);
+        }
+        if (!sameIdentity(installedIdentity, tempIdentity)) {
+            restoreDisplacedDestination(tempDir, outDir, tempIdentity);
+            throw claimed(`Destination "${outDir}" was claimed during publication commit.`);
+        }
+        if (!expectedAbsent && !isExpectedDisplacedDestination(tempDir, ownership)) {
+            restoreDisplacedDestination(tempDir, outDir, tempIdentity);
+            throw claimed(`Destination "${outDir}" was claimed during publication commit.`);
+        }
+        const publication: PublishedDirectoryOwnership = {outDir, identity: installedIdentity};
+        options.afterCommit?.();
+        if (!sameIdentity(capturePublishDirectoryIdentity(outDir), publication.identity)) {
+            throw claimed(`Destination "${outDir}" was claimed immediately after publication.`);
+        }
 
-        if (!movedPrevious) return withPublishedDirectoryOwnership({}, publication);
+        if (expectedAbsent) return withPublishedDirectoryOwnership({}, publication);
         try {
-            removeDirectory(staleDir);
+            removeDirectory(tempDir);
             return withPublishedDirectoryOwnership({}, publication);
         } catch (error) {
             return withPublishedDirectoryOwnership({
                 cleanupWarning:
-                    `The publish to "${options.outDir}" succeeded, but the superseded invocation-owned directory at "${staleDir}" could not be removed: ` +
+                    `The publish to "${options.outDir}" succeeded, but the superseded invocation-owned directory at "${tempDir}" could not be removed: ` +
                     `${error instanceof Error ? error.message : String(error)}. Remove it manually.`,
             }, publication);
         }
     } catch (error) {
-        // A failure after the first rename restores only our private stale
-        // path, and only when the public name is still absent.
-        if (movedPrevious) restorePreviousDirectory(staleDir, outDir, options.renameDirectory);
         removeScratch();
         throw error;
     }
@@ -178,17 +212,64 @@ function resolveOwnership(options: PublishDirectoryAtomicallyOptions): PublishDi
     return capturePublishDirectoryOwnership(options.outDir);
 }
 
-function restorePreviousDirectory(
-    staleDir: string,
-    outDir: string,
-    renameDirectory: PublishDirectoryAtomicallyOptions["renameDirectory"],
-): void {
-    try {
-        // Never overwrite an entry that appeared after our failed commit.
-        if (capturePublishDirectoryIdentity(outDir) === undefined) (renameDirectory ?? fs.renameSync)(staleDir, outDir);
-    } catch {
-        // The original publish failure remains authoritative.
+function installAbsentDirectory(tempDir: string, outDir: string, claimed: (message: string) => Error): void {
+    const result = spawnSync("mv", ["--no-clobber", "--no-target-directory", tempDir, outDir], {encoding: "utf-8"});
+    assertAtomicMoveSupported(result, "--no-clobber", outDir);
+    if (capturePublishDirectoryIdentity(tempDir) !== undefined) {
+        throw claimed(`Destination "${outDir}" was claimed during publication commit.`);
     }
+}
+
+// Public writers historically expose renameDirectory as a failure-injection
+// seam. Keep it inside private staging: using it for the live namespace would
+// recreate the check-then-rename protocol this helper avoids.
+function exerciseRenameTestSeam(tempDir: string, renameDirectory: PublishDirectoryAtomicallyOptions["renameDirectory"]): void {
+    if (renameDirectory === undefined) return;
+    const probe = path.join(tempDir, ".pokie-publication-probe");
+    const movedProbe = `${probe}-moved`;
+    try {
+        fs.writeFileSync(probe, "");
+        renameDirectory(probe, movedProbe);
+        renameDirectory(movedProbe, probe);
+    } finally {
+        fs.rmSync(probe, {force: true});
+        fs.rmSync(movedProbe, {force: true});
+    }
+}
+
+function exchangeDirectories(left: string, right: string): void {
+    const result = spawnSync("mv", ["--exchange", "--no-target-directory", left, right], {encoding: "utf-8"});
+    assertAtomicMoveSupported(result, "--exchange", right);
+}
+
+function assertAtomicMoveSupported(result: ReturnType<typeof spawnSync>, operation: string, outDir: string): void {
+    if (result.error === undefined && result.status === 0) return;
+    const detail = result.error?.message ?? String(result.stderr ?? `mv exited with status ${result.status ?? "unknown"}`).trim();
+    throw new Error(`Cannot atomically publish directory "${outDir}": this host does not provide ${operation} directory replacement (${detail}).`);
+}
+
+function restoreDisplacedDestination(tempDir: string, outDir: string, installedIdentity: PublishDirectoryAtomicallyDestinationIdentity): void {
+    try {
+        // Exchange back only while both names still identify the two paths
+        // created by this operation.  A later claimant is never moved.
+        if (sameIdentity(capturePublishDirectoryIdentity(outDir), installedIdentity)) exchangeDirectories(tempDir, outDir);
+    } catch {
+        // The ownership failure remains authoritative.  Scratch cleanup below
+        // is identity-free only for our random private staging name.
+    }
+}
+
+function isExpectedDisplacedDestination(tempDir: string, ownership: PublishDirectoryAtomicallyOwnership): boolean {
+    return ownership.destinationIdentity !== undefined && ownership.destinationSnapshot !== undefined &&
+        sameIdentity(capturePublishDirectoryIdentity(tempDir), ownership.destinationIdentity) &&
+        fs.lstatSync(tempDir).isDirectory() && sameSnapshot(ownership.destinationSnapshot, snapshotDirectory(tempDir));
+}
+
+function sameIdentity(
+    left: PublishDirectoryAtomicallyDestinationIdentity | undefined,
+    right: PublishDirectoryAtomicallyDestinationIdentity | undefined,
+): boolean {
+    return left !== undefined && right !== undefined && left.device === right.device && left.inode === right.inode;
 }
 
 function assertDestinationUnchanged(

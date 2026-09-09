@@ -1,5 +1,6 @@
 import {
     CertificationEvidenceBundleBuildResult,
+    CertificationEvidenceBundleBuildCancelledError,
     CertificationEvidenceBundleBuilder,
     CertificationEvidenceBundleModeSampleInput,
     CertificationEvidenceVerifyOptions,
@@ -101,6 +102,16 @@ describe("CertificationCommand", () => {
     });
 
     describe("build", () => {
+        it("reports cancellation as a retryable build outcome", async () => {
+            const builder = {
+                buildFromBundle: () => Promise.reject(new CertificationEvidenceBundleBuildCancelledError()),
+            };
+            const command = new CertificationCommand("1.3.0", builder, undefined, createStubJsonStore({[CONFIG_PATH]: descriptor}));
+
+            await expect(command.run(["build", "/project/bundle", CONFIG_PATH])).resolves.toBe(130);
+            expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toMatch(/No incomplete evidence was published; retry/i);
+        });
+
         it("does not remove a caller's late publication claim and can build after a clean retry", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-certification-command-late-claim-"));
             const bundleDir = path.join(workDir, "bundle");

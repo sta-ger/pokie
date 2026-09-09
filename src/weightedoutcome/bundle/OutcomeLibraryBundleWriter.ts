@@ -12,6 +12,7 @@ import type {OutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleModeInpu
 import type {OutcomeLibraryBundleWriteResult} from "./OutcomeLibraryBundleWriteResult.js";
 import type {OutcomeLibraryBundleWriteValidating} from "./OutcomeLibraryBundleWriteValidating.js";
 import {OutcomeLibraryBundleWriteValidator} from "./OutcomeLibraryBundleWriteValidator.js";
+import {assertSafeToReplaceOutcomeLibraryBundleDirectory} from "./internal/assertSafeToReplaceOutcomeLibraryBundleDirectory.js";
 import {
     OutcomeLibraryBundleWriteCancelledError,
     OutcomeLibraryBundleDestinationClaimedError,
@@ -94,12 +95,13 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
         options?: OutcomeLibraryBundleWriteOptions,
     ): Promise<OutcomeLibraryBundleWriteResult> {
         assertNotCancelled(options);
-        const destinationOwnership = capturePublishDirectoryOwnership(outDir);
         const upfrontIssues = this.validator.validate(modes);
         const supplementalFiles = validateSupplementalFiles(options?.supplementalFiles, modes, upfrontIssues);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
         }
+        assertSafeToReplaceOutcomeLibraryBundleDirectory(outDir);
+        const destinationOwnership = capturePublishDirectoryOwnership(outDir);
 
         const stagingDir = `${outDir}.staging-${crypto.randomBytes(6).toString("hex")}`;
         fs.mkdirSync(stagingDir, {recursive: true});

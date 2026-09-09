@@ -1,5 +1,6 @@
 import {
     CertificationEvidenceBundleBuilder,
+    CertificationEvidenceBundleBuildCancelledError,
     CertificationEvidenceBundleBuilding,
     CertificationEvidenceBundleModeSampleInput,
     OutcomeLibraryBundleValidating,
@@ -85,6 +86,12 @@ export class StudioCertificationService {
             }
             return {status: "ok", manifest: result.manifest, files: result.files, warnings};
         } catch (error) {
+            if (error instanceof CertificationEvidenceBundleBuildCancelledError) {
+                return {
+                    status: "load-error",
+                    error: "Certification/evidence build was cancelled. No incomplete evidence was published; retry the build when ready.",
+                };
+            }
             return {
                 status: "load-error",
                 error: `Could not build a certification/evidence bundle from "${bundleDir}": ${error instanceof Error ? error.message : String(error)}`,

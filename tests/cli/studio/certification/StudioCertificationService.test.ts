@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {CertificationEvidenceBundleBuilder, OutcomeLibraryBundleValidating, ValidationIssue} from "pokie";
+import {CertificationEvidenceBundleBuildCancelledError, CertificationEvidenceBundleBuilder, OutcomeLibraryBundleValidating, ValidationIssue} from "pokie";
 import {StudioCertificationService} from "../../../../cli/studio/certification/StudioCertificationService.js";
 import {buildSourceOutcomeLibraryBundle, CERTIFICATION_TEST_POKIE_VERSION} from "../../../certification/CertificationEvidenceBundleTestFixtures.js";
 
@@ -82,6 +82,17 @@ describe("StudioCertificationService", () => {
     });
 
     describe("build", () => {
+        it("returns actionable retry semantics when its server signal cancels publication", async () => {
+            await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"), ["base"]);
+            const builder = {
+                buildFromBundle: () => Promise.reject(new CertificationEvidenceBundleBuildCancelledError()),
+            };
+            const service = new StudioCertificationService(CERTIFICATION_TEST_POKIE_VERSION, builder);
+
+            await expect(service.build(tmpRoot, "bundle", [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}], "certification", new AbortController().signal))
+                .resolves.toMatchObject({status: "load-error", error: expect.stringMatching(/No incomplete evidence was published; retry/i)});
+        });
+
         it("builds a certification bundle from a real source bundle and returns its manifest/files", async () => {
             await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"), ["base"]);
             const service = new StudioCertificationService(CERTIFICATION_TEST_POKIE_VERSION);

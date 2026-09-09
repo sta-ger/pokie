@@ -2457,11 +2457,20 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        this.sendJson(
-            res,
-            200,
-            await this.certificationService.build(this.currentContext.projectRoot, validated.bundleDir, validated.modes, validated.outDir),
-        );
+        const controller = new AbortController();
+        const cancel = () => controller.abort();
+        req.once("aborted", cancel);
+        res.once("close", cancel);
+        try {
+            this.sendJson(
+                res,
+                200,
+                await this.certificationService.build(this.currentContext.projectRoot, validated.bundleDir, validated.modes, validated.outDir, controller.signal),
+            );
+        } finally {
+            req.off("aborted", cancel);
+            res.off("close", cancel);
+        }
     }
 
     private async handleConfigureFairnessRound(req: IncomingMessage, res: ServerResponse): Promise<void> {

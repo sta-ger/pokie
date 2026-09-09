@@ -30,11 +30,13 @@ function blueprintProjectOf(rootPath: string): PokieProject {
 }
 
 describe("OutcomeLibraryArtifactBuilder", () => {
+    let sourceRoot: string;
     let sourceDir: string;
     let destinationDir: string;
 
     beforeEach(async () => {
-        sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcomelibrary-builder-source-"));
+        sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcomelibrary-builder-source-"));
+        sourceDir = path.join(sourceRoot, "bundle");
         destinationDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcomelibrary-builder-dest-"));
         fs.rmdirSync(destinationDir);
 
@@ -46,7 +48,7 @@ describe("OutcomeLibraryArtifactBuilder", () => {
     });
 
     afterEach(() => {
-        fs.rmSync(sourceDir, {recursive: true, force: true});
+        fs.rmSync(sourceRoot, {recursive: true, force: true});
         fs.rmSync(destinationDir, {recursive: true, force: true});
     });
 
