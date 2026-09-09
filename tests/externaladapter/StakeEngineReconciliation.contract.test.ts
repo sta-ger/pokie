@@ -146,8 +146,11 @@ function runViaAtomicallyWriteExternalDeploymentArtifacts(outDir: string, deps: 
 }
 
 const publishSubjects = [
-    {name: "publishDirectoryAtomically (stakeengine)", run: runViaPublishDirectoryAtomically},
-    {name: "atomicallyWriteExternalDeploymentArtifactsToDirectory (externaladapter)", run: runViaAtomicallyWriteExternalDeploymentArtifacts},
+    {name: "publishDirectoryAtomically (stakeengine)", run: runViaPublishDirectoryAtomically, cleanupWarning: false},
+    // External Adapter intentionally retains its independently-owned legacy
+    // stale-backup protocol. Its warning remains part of that public contract;
+    // the Stake publisher no longer needs broad stale cleanup.
+    {name: "atomicallyWriteExternalDeploymentArtifactsToDirectory (externaladapter)", run: runViaAtomicallyWriteExternalDeploymentArtifacts, cleanupWarning: true},
 ];
 
 describe("StakeEngine <-> External Adapter SDK: atomic-publish behavioral equivalence", () => {
@@ -168,7 +171,7 @@ describe("StakeEngine <-> External Adapter SDK: atomic-publish behavioral equiva
         }
     });
 
-    describe.each(publishSubjects)("$name", ({run}) => {
+    describe.each(publishSubjects)("$name", ({run, cleanupWarning}) => {
         it("throws and leaves outDir untouched when the temp-directory write fails", () => {
             run(outDir, {}); // seed a first publish
             const before = fs.readFileSync(path.join(outDir, "index.json"));
@@ -204,7 +207,7 @@ describe("StakeEngine <-> External Adapter SDK: atomic-publish behavioral equiva
             expect(fs.readFileSync(path.join(outDir, "index.json"))).toEqual(before);
         });
 
-        it("reports a non-throwing warning, never a failure, when only the stale-backup cleanup fails after a successful publish", () => {
+        it("does not depend on broad stale-backup cleanup after a successful publish", () => {
             run(outDir, {}); // seed a first publish
 
             const failingRemoveDirectory = (): void => {
@@ -214,7 +217,7 @@ describe("StakeEngine <-> External Adapter SDK: atomic-publish behavioral equiva
             const outcome = run(outDir, {removeDirectory: failingRemoveDirectory});
 
             expect(outcome.threw).toBe(false);
-            expect(outcome.cleanupWarning).toBe(true);
+            expect(outcome.cleanupWarning).toBe(cleanupWarning);
             expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(`{"v":1}`); // the new publish is live
         });
     });

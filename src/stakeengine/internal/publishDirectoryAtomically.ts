@@ -47,14 +47,22 @@ export type PublishDirectoryAtomicallyResult = {readonly cleanupWarning?: string
 
 type DirectoryReservation = {
     readonly verifyDirectory: (directory: string) => void;
-    readonly releaseAt: (directory: string) => void;
+    readonly verifyCommittedDirectory: (directory: string) => void;
+    readonly verifyDirectoryForFd: () => void;
+    readonly release: () => void;
+    readonly directoryFd: number;
+    readonly directoryIdentity: PublishDirectoryAtomicallyDestinationIdentity;
+    readonly createdDirectory: boolean;
+    readonly markerName: string;
 };
 
-// A directory rename has no compare-and-swap form. Checking a marker before
-// rename is therefore insufficient: another writer can replace the path
-// between that check and rename. We reserve from the start of publication and
-// verify the exact reserved directory only after it has been atomically moved
-// aside. A failed verification is restored before the temp can be published.
+// A directory rename has no compare-and-swap form. In particular, renaming a
+// reserved directory aside makes a claimant which wins the check/rename gap
+// part of our transaction. Do not ever rename the destination itself. Instead
+// keep an fd for the reserved inode and do all commit work through that fd.
+// On Linux /proc/self/fd keeps referring to that inode even if another process
+// unlinks and recreates the destination pathname. Thus a late pathname owner
+// is never moved, replaced, or cleaned up by this invocation.
 export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOptions): PublishDirectoryAtomicallyResult {
     const renameDirectory = options.renameDirectory ?? ((from: string, to: string) => fs.renameSync(from, to));
     const removeDirectory = options.removeDirectory ?? ((dirPath: string) => fs.rmSync(dirPath, {recursive: true, force: true}));
@@ -80,84 +88,98 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
         options.writeFilesIntoTempDir(tempDir);
     } catch (error) {
         removeBestEffort(tempDir);
-        reservation.releaseAt(options.outDir);
+        reservation.release();
         throw error;
     }
 
-    const stalePath = `${options.outDir}.stale-${crypto.randomBytes(6).toString("hex")}`;
     try {
-        // This validates the baseline captured before the caller's own work.
-        // An initially empty directory that acquired a caller file must not be
-        // adopted merely because it is still the same inode.
         reservation.verifyDirectory(options.outDir);
-        renameDirectory(options.outDir, stalePath);
-    } catch (error) {
+        commitIntoReservedDirectory(tempDir, reservation, renameDirectory, claimed);
+        reservation.verifyCommittedDirectory(options.outDir);
         removeBestEffort(tempDir);
-        // If a claimant appeared after the reservation check, it wins.  Only
-        // restore our old directory into a pathname which is still absent.
-        if (fs.existsSync(stalePath) && !fs.existsSync(options.outDir)) {
-            try {
-                renameDirectory(stalePath, options.outDir);
-            } catch {
-                // The original ownership failure is more useful to callers.
-            }
-        }
-        reservation.releaseAt(fs.existsSync(options.outDir) ? options.outDir : stalePath);
-        throw error;
-    }
-
-    try {
-        // This is deliberately after rename. A late claimant is in stalePath
-        // and is restored intact instead of being overwritten.
-        reservation.verifyDirectory(stalePath);
-    } catch (error) {
-        try {
-            renameDirectory(stalePath, options.outDir);
-        } finally {
-            removeBestEffort(tempDir);
-        }
-        reservation.releaseAt(options.outDir);
-        throw error;
-    }
-
-    // Remove only our marker, now from the private stale directory. The old
-    // output remains available until the new directory is live.
-    reservation.releaseAt(stalePath);
-    try {
-        // POSIX rename replaces an empty directory.  Check before the rename
-        // rather than treating a failed rename as the ownership protocol.
-        if (fs.existsSync(options.outDir)) {
-            throw claimed(`Destination "${options.outDir}" was claimed during publication commit.`);
-        }
-        renameDirectory(tempDir, options.outDir);
-    } catch (publishError) {
-        // Never overwrite a destination which appeared in the commit gap.
-        if (fs.existsSync(options.outDir)) {
-            removeBestEffort(tempDir);
-            // stalePath was proven invocation-owned before commit.  Do not
-            // strand it after a claimant wins the final gap.
-            removeBestEffort(stalePath);
-            throw publishError;
-        }
-        try {
-            renameDirectory(stalePath, options.outDir);
-        } catch (restoreError) {
-            removeBestEffort(tempDir);
-            throw new Error(
-                `Failed to publish "${options.outDir}", and failed to restore the previous directory afterward: ` +
-                `${publishError instanceof Error ? publishError.message : String(publishError)}; restore failure: ` +
-                `${restoreError instanceof Error ? restoreError.message : String(restoreError)}. The previous directory's contents are still intact at "${stalePath}".`,
-            );
-        }
-        removeBestEffort(tempDir);
-        throw publishError;
-    }
-
-    try {
-        removeDirectory(stalePath);
+        reservation.release();
         return {};
     } catch (error) {
-        return {cleanupWarning: `The publish to "${options.outDir}" succeeded, but the previous directory's stale backup at "${stalePath}" could not be removed: ${error instanceof Error ? error.message : String(error)}. Remove it manually.`};
+        removeBestEffort(tempDir);
+        // release only ever removes our marker from the inode acquired by this
+        // invocation. If the pathname now names somebody else's directory it
+        // is not traversed or modified.
+        let reportedError = error;
+        try {
+            reservation.verifyCommittedDirectory(options.outDir);
+        } catch (ownershipError) {
+            // A syscall through the held descriptor can legitimately fail
+            // ENOENT after the pathname owner removed the old inode. Surface
+            // the ownership result, not that implementation detail.
+            reportedError = ownershipError;
+        }
+        reservation.release();
+        throw reportedError;
+    }
+}
+
+function commitIntoReservedDirectory(
+    tempDir: string,
+    reservation: DirectoryReservation,
+    renameDirectory: (from: string, to: string) => void,
+    claimed: (message: string) => Error,
+): void {
+    const fdDirectory = `/proc/self/fd/${reservation.directoryFd}`;
+    if (!fs.existsSync(fdDirectory)) {
+        throw claimed(`Destination "${tempDir}" reservation was lost before publication commit.`);
+    }
+    const backupName = `.pokie-publication-backup-${crypto.randomBytes(12).toString("hex")}`;
+    const backupDir = path.join(fdDirectory, backupName);
+    const installed: string[] = [];
+    const moved: string[] = [];
+    try {
+        fs.mkdirSync(backupDir);
+        // The publishers all emit a flat directory. Refuse a nested payload
+        // rather than recursively walking an untrusted destination after the
+        // ownership decision.
+        const payloadEntries = fs.readdirSync(tempDir);
+        if (payloadEntries.some((entry) => !fs.lstatSync(path.join(tempDir, entry)).isFile())) {
+            throw new Error(`Atomic publication payload for "${tempDir}" must contain files only.`);
+        }
+        reservation.verifyDirectoryForFd();
+        for (const entry of fs.readdirSync(fdDirectory)) {
+            if (entry === reservation.markerName || entry === backupName) continue;
+            reservation.verifyDirectoryForFd();
+            renameDirectory(path.join(fdDirectory, entry), path.join(backupDir, entry));
+            moved.push(entry);
+        }
+        for (const entry of payloadEntries) {
+            reservation.verifyDirectoryForFd();
+            renameDirectory(path.join(tempDir, entry), path.join(fdDirectory, entry));
+            installed.push(entry);
+        }
+        reservation.verifyDirectoryForFd();
+        fs.rmSync(backupDir, {recursive: true, force: true});
+    } catch (error) {
+        // All paths below are reached through the held descriptor. They cannot
+        // resolve to a late replacement at outDir.
+        for (const entry of installed.reverse()) {
+            try {
+                fs.rmSync(path.join(fdDirectory, entry), {force: true});
+            } catch {
+                // owned scratch
+            }
+        }
+        for (const entry of moved.reverse()) {
+            const original = path.join(fdDirectory, entry);
+            const saved = path.join(backupDir, entry);
+            try {
+                if (!fs.existsSync(original) && fs.existsSync(saved)) renameDirectory(saved, original);
+            } catch {
+                // a claimant at the original name wins
+            }
+        }
+        try {
+            fs.rmSync(backupDir, {recursive: true, force: true});
+        } catch {
+            // owned scratch
+        }
+        throw error;
     }
 }
 
@@ -216,31 +238,82 @@ function reserveDirectory(
         throw claimed(`Destination "${outDir}" was claimed while publication was being prepared: ${error instanceof Error ? error.message : String(error)}`);
     }
     const snapshot = snapshotDirectory(outDir);
+    const directoryFd = fs.openSync(outDir, "r");
+    const reservedStat = fs.fstatSync(directoryFd);
+    const directoryIdentity = {device: reservedStat.dev, inode: reservedStat.ino};
+
+    const verifyDirectory = (directory: string): void => {
+        try {
+            const identity = capturePublishDirectoryIdentity(directory);
+            if (
+                identity === undefined ||
+                identity.device !== directoryIdentity.device ||
+                identity.inode !== directoryIdentity.inode ||
+                fs.readFileSync(path.join(directory, markerName), "utf-8") !== markerName ||
+                !sameSnapshot(snapshot, snapshotDirectory(directory))
+            ) {
+                throw new Error("reservation marker or reserved directory contents changed");
+            }
+        } catch (error) {
+            throw claimed(`Destination "${outDir}" was claimed while publication was being prepared: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    };
+
+    const fdDirectory = `/proc/self/fd/${directoryFd}`;
+    const verifyDirectoryForFd = (): void => {
+        try {
+            const stat = fs.fstatSync(directoryFd);
+            if (
+                stat.dev !== directoryIdentity.device || stat.ino !== directoryIdentity.inode ||
+                fs.readFileSync(path.join(fdDirectory, markerName), "utf-8") !== markerName
+            ) {
+                throw new Error("reservation marker or reserved directory contents changed");
+            }
+        } catch (error) {
+            throw claimed(`Destination "${outDir}" was claimed while publication was being prepared: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    };
 
     return {
-        verifyDirectory: (directory) => {
+        verifyDirectory,
+        verifyCommittedDirectory: (directory: string): void => {
             try {
-                if (fs.readFileSync(path.join(directory, markerName), "utf-8") !== markerName || !sameSnapshot(snapshot, snapshotDirectory(directory))) {
-                    throw new Error("reservation marker or reserved directory contents changed");
+                const identity = capturePublishDirectoryIdentity(directory);
+                if (identity === undefined || identity.device !== directoryIdentity.device || identity.inode !== directoryIdentity.inode || fs.readFileSync(path.join(directory, markerName), "utf-8") !== markerName) {
+                    throw new Error("reservation marker or reserved directory changed");
                 }
             } catch (error) {
-                throw claimed(`Destination "${outDir}" was claimed while publication was being prepared: ${error instanceof Error ? error.message : String(error)}`);
+                throw claimed(`Destination "${outDir}" was claimed while publication was being prepared; destination claimed during publication commit: ${error instanceof Error ? error.message : String(error)}`);
             }
         },
-        releaseAt: (directory) => {
+        verifyDirectoryForFd,
+        directoryFd,
+        directoryIdentity,
+        createdDirectory,
+        markerName,
+        release: () => {
             // The marker is the only path owned by this invocation. Never
-            // recursively clean a destination: it may now belong to another actor.
+            // recursively clean a destination pathname: it may now belong to
+            // another actor. The fd remains bound to the reserved inode.
             try {
-                fs.rmSync(path.join(directory, markerName), {force: true});
+                fs.rmSync(path.join(fdDirectory, markerName), {force: true});
             } catch {
                 // best effort.
             }
-            if (createdDirectory && directory === outDir) {
+            if (createdDirectory) {
                 try {
-                    fs.rmdirSync(directory);
+                    const current = capturePublishDirectoryIdentity(outDir);
+                    if (current !== undefined && current.device === directoryIdentity.device && current.inode === directoryIdentity.inode) {
+                        fs.rmdirSync(outDir);
+                    }
                 } catch {
                     // it acquired contents.
                 }
+            }
+            try {
+                fs.closeSync(directoryFd);
+            } catch {
+                // best effort
             }
         },
     };
