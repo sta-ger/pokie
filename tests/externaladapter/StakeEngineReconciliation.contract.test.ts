@@ -222,3 +222,75 @@ describe("StakeEngine <-> External Adapter SDK: atomic-publish behavioral equiva
         });
     });
 });
+
+describe("publishDirectoryAtomically direct ownership contract", () => {
+    let outDir: string;
+
+    const publish = (value: string, options: Omit<Parameters<typeof publishDirectoryAtomically>[0], "outDir" | "writeFilesIntoTempDir"> = {}) => publishDirectoryAtomically({
+        outDir,
+        ...options,
+        writeFilesIntoTempDir: (tempDir) => {
+            fs.writeFileSync(path.join(tempDir, "index.json"), JSON.stringify({value}));
+            fs.writeFileSync(path.join(tempDir, "complete.txt"), "complete payload");
+        },
+    });
+
+    beforeEach(() => {
+        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-direct-atomic-publish-"));
+        fs.rmSync(outDir, {recursive: true, force: true});
+    });
+
+    afterEach(() => {
+        const parentDir = path.dirname(outDir);
+        const base = path.basename(outDir);
+        for (const name of fs.readdirSync(parentDir)) {
+            if (name === base || name.startsWith(`${base}.`)) fs.rmSync(path.join(parentDir, name), {recursive: true, force: true});
+        }
+    });
+
+    it("snapshots the actual existing destination when direct re-publish omits ownership", () => {
+        expect(publish("first")).toEqual({});
+
+        expect(publish("second")).toEqual({});
+        expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(`{"value":"second"}`);
+        expect(fs.readFileSync(path.join(outDir, "complete.txt"), "utf-8")).toBe("complete payload");
+    });
+
+    it("keeps the new complete payload live and warns when only superseded cleanup fails", () => {
+        publish("first");
+
+        const result = publish("second", {
+            removeDirectory: () => {
+                throw new Error("simulated cleanup failure");
+            },
+        });
+
+        expect(result.cleanupWarning).toMatch(/superseded invocation-owned directory.*simulated cleanup failure/i);
+        expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(`{"value":"second"}`);
+        expect(fs.readFileSync(path.join(outDir, "complete.txt"), "utf-8")).toBe("complete payload");
+    });
+
+    it("rejects a destination claimed at the final commit boundary without touching it, then permits retry", () => {
+        publish("first");
+        let claimed = false;
+
+        expect(() => publish("second", {
+            renameDirectory: (from, to) => {
+                if (!claimed) {
+                    claimed = true;
+                    fs.rmSync(outDir, {recursive: true, force: true});
+                    fs.mkdirSync(outDir);
+                    fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+                }
+                fs.renameSync(from, to);
+            },
+        })).toThrow(/claimed while publication was being prepared/i);
+
+        expect(claimed).toBe(true);
+        expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+
+        fs.rmSync(outDir, {recursive: true, force: true});
+        expect(publish("retry")).toEqual({});
+        expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(`{"value":"retry"}`);
+    });
+});

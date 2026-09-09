@@ -72,6 +72,11 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
     try {
         fs.mkdirSync(tempDir, {recursive: false});
         options.writeFilesIntoTempDir(tempDir);
+        assertDestinationUnchanged(options.outDir, ownership, expectedAbsent, claimed);
+        // Keep the historical injectable rename seam at the final ownership
+        // boundary. Besides retaining disk-failure coverage, this lets callers
+        // prove that a destination claimed immediately before commit is never
+        // exchanged or cleaned up by this invocation.
         exerciseRenameTestSeam(tempDir, options.renameDirectory);
         assertDestinationUnchanged(options.outDir, ownership, expectedAbsent, claimed);
         if (expectedAbsent) installAbsentDirectory(tempDir, options.outDir, claimed);
