@@ -58,10 +58,7 @@ export type PublishDirectoryAtomicallyResult = {readonly cleanupWarning?: string
 export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOptions): PublishDirectoryAtomicallyResult {
     const removeDirectory = options.removeDirectory ?? ((dirPath: string) => fs.rmSync(dirPath, {recursive: true, force: true}));
     const claimed = (message: string): Error => options.destinationClaimedError?.(message) ?? new PublishDirectoryDestinationClaimedError(message);
-    const ownership = options.ownership ?? {
-        destinationIdentity: options.expectedDestinationIdentity,
-        destinationSnapshot: options.expectedDestinationIdentity === undefined ? undefined : snapshotDirectory(options.outDir),
-    };
+    const ownership = options.ownership ?? resolveOwnership(options);
     const expectedAbsent = options.expectedDestinationWasAbsent === true || ownership.destinationIdentity === undefined;
     const tempDir = `${options.outDir}.tmp-${crypto.randomBytes(12).toString("hex")}`;
     const removeTemp = (): void => {
@@ -88,6 +85,14 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
         removeTemp();
         throw error;
     }
+}
+
+function resolveOwnership(options: PublishDirectoryAtomicallyOptions): PublishDirectoryAtomicallyOwnership {
+    if (options.expectedDestinationWasAbsent === true) return {destinationIdentity: undefined, destinationSnapshot: undefined};
+    if (options.expectedDestinationIdentity !== undefined) {
+        return {destinationIdentity: options.expectedDestinationIdentity, destinationSnapshot: snapshotDirectory(options.outDir)};
+    }
+    return capturePublishDirectoryOwnership(options.outDir);
 }
 
 // Writers historically expose renameDirectory as an injectable disk-failure
