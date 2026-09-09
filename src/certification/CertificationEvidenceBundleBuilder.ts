@@ -5,7 +5,7 @@ import {computeRoundArtifactHash} from "../artifact/computeRoundArtifactHash.js"
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedOutcomeRandomSource.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
-import {publishDirectoryAtomically} from "../stakeengine/internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, publishDirectoryAtomically} from "../stakeengine/internal/publishDirectoryAtomically.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {OutcomeLibraryBundleManifest, OutcomeLibraryBundleManifestModeEntry} from "../weightedoutcome/bundle/OutcomeLibraryBundleManifest.js";
 import type {OutcomeLibraryBundleModeIndex} from "../weightedoutcome/bundle/OutcomeLibraryBundleModeIndex.js";
@@ -116,6 +116,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         modes: readonly CertificationEvidenceBundleModeSampleInput[],
         outDir: string,
     ): Promise<CertificationEvidenceBundleBuildResult> {
+        const destinationOwnership = capturePublishDirectoryOwnership(outDir);
         const upfrontIssues = this.validateModesInput(modes);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
@@ -223,6 +224,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
 
             const {cleanupWarning} = publishDirectoryAtomically({
                 outDir,
+                ownership: destinationOwnership,
                 renameDirectory: this.renameDirectory,
                 removeDirectory: this.removeDirectory,
                 writeFilesIntoTempDir: (tempDir) => {

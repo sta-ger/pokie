@@ -10,7 +10,7 @@ import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/Outcom
 import {assertSafeToReplaceStakeEngineExportDirectory} from "./internal/assertSafeToReplaceStakeEngineExportDirectory.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
-import {publishDirectoryAtomically} from "./internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, publishDirectoryAtomically} from "./internal/publishDirectoryAtomically.js";
 import type {StakeEngineBookLine} from "./StakeEngineBookLine.js";
 import type {StakeEngineBundleModeInput} from "./StakeEngineBundleModeInput.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
@@ -133,6 +133,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
     }
 
     public async exportToDirectory(modes: readonly StakeEngineBundleModeInput[], outDir: string): Promise<StakeEngineExportResult> {
+        const destinationOwnership = capturePublishDirectoryOwnership(outDir);
         const upfrontIssues = this.validateUpfront(modes);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
@@ -204,6 +205,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
             const {cleanupWarning} = publishDirectoryAtomically({
                 outDir,
+                ownership: destinationOwnership,
                 renameDirectory: this.renameDirectory,
                 removeDirectory: this.removeDirectory,
                 writeFilesIntoTempDir: (tempDir) => {

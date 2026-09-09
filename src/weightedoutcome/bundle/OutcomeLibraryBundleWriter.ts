@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import {capturePublishDirectoryIdentity, publishDirectoryAtomically} from "../../stakeengine/internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, publishDirectoryAtomically} from "../../stakeengine/internal/publishDirectoryAtomically.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION} from "../WeightedOutcomeLibrary.js";
 import {computeOnlineWeightedOutcomeLibraryAnalysis} from "./internal/computeOnlineWeightedOutcomeLibraryAnalysis.js";
@@ -94,7 +94,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
         options?: OutcomeLibraryBundleWriteOptions,
     ): Promise<OutcomeLibraryBundleWriteResult> {
         assertNotCancelled(options);
-        const destinationAtStart = capturePublishDirectoryIdentity(outDir);
+        const destinationOwnership = capturePublishDirectoryOwnership(outDir);
         const upfrontIssues = this.validator.validate(modes);
         const supplementalFiles = validateSupplementalFiles(options?.supplementalFiles, modes, upfrontIssues);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
@@ -248,8 +248,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             assertNotCancelled(options);
             const {cleanupWarning} = publishDirectoryAtomically({
                 outDir,
-                expectedDestinationIdentity: destinationAtStart,
-                expectedDestinationWasAbsent: destinationAtStart === undefined,
+                ownership: destinationOwnership,
                 renameDirectory: this.renameDirectory,
                 removeDirectory: this.removeDirectory,
                 destinationClaimedError: (message) => new OutcomeLibraryBundleDestinationClaimedError(message),

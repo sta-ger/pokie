@@ -13,9 +13,17 @@ export type PublishDirectoryAtomicallyOptions = {
     // because it happens to exist when reservation starts.
     readonly expectedDestinationIdentity?: PublishDirectoryAtomicallyDestinationIdentity | undefined;
     readonly expectedDestinationWasAbsent?: boolean;
+    // Full baseline captured before an async publisher starts preparing data.
+    // Identity-only checks cannot see a late write into an existing directory.
+    readonly ownership?: PublishDirectoryAtomicallyOwnership;
 };
 
 export type PublishDirectoryAtomicallyDestinationIdentity = {readonly device: number; readonly inode: number};
+
+export type PublishDirectoryAtomicallyOwnership = {
+    readonly destinationIdentity: PublishDirectoryAtomicallyDestinationIdentity | undefined;
+    readonly destinationSnapshot: readonly SnapshotEntry[] | undefined;
+};
 
 export function capturePublishDirectoryIdentity(directory: string): PublishDirectoryAtomicallyDestinationIdentity | undefined {
     try {
@@ -25,6 +33,14 @@ export function capturePublishDirectoryIdentity(directory: string): PublishDirec
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
         throw error;
     }
+}
+
+export function capturePublishDirectoryOwnership(directory: string): PublishDirectoryAtomicallyOwnership {
+    const destinationIdentity = capturePublishDirectoryIdentity(directory);
+    return {
+        destinationIdentity,
+        destinationSnapshot: destinationIdentity === undefined ? undefined : snapshotDirectory(directory),
+    };
 }
 
 export type PublishDirectoryAtomicallyResult = {readonly cleanupWarning?: string};
@@ -51,7 +67,13 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
         }
     };
 
-    const reservation = reserveDirectory(options.outDir, claimed, options.expectedDestinationIdentity, options.expectedDestinationWasAbsent === true);
+    const reservation = reserveDirectory(
+        options.outDir,
+        claimed,
+        options.ownership?.destinationIdentity ?? options.expectedDestinationIdentity,
+        options.ownership?.destinationSnapshot,
+        options.expectedDestinationWasAbsent === true || (options.ownership !== undefined && options.ownership.destinationIdentity === undefined),
+    );
     const tempDir = `${options.outDir}.tmp-${crypto.randomBytes(6).toString("hex")}`;
     try {
         fs.mkdirSync(tempDir, {recursive: true});
@@ -64,13 +86,23 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
 
     const stalePath = `${options.outDir}.stale-${crypto.randomBytes(6).toString("hex")}`;
     try {
-        // This cheap early check avoids moving an already-observed claimant.
-        // The second check below is the authoritative commit-window check.
+        // This validates the baseline captured before the caller's own work.
+        // An initially empty directory that acquired a caller file must not be
+        // adopted merely because it is still the same inode.
         reservation.verifyDirectory(options.outDir);
         renameDirectory(options.outDir, stalePath);
     } catch (error) {
         removeBestEffort(tempDir);
-        reservation.releaseAt(options.outDir);
+        // If a claimant appeared after the reservation check, it wins.  Only
+        // restore our old directory into a pathname which is still absent.
+        if (fs.existsSync(stalePath) && !fs.existsSync(options.outDir)) {
+            try {
+                renameDirectory(stalePath, options.outDir);
+            } catch {
+                // The original ownership failure is more useful to callers.
+            }
+        }
+        reservation.releaseAt(fs.existsSync(options.outDir) ? options.outDir : stalePath);
         throw error;
     }
 
@@ -92,15 +124,20 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
     // output remains available until the new directory is live.
     reservation.releaseAt(stalePath);
     try {
+        // POSIX rename replaces an empty directory.  Check before the rename
+        // rather than treating a failed rename as the ownership protocol.
+        if (fs.existsSync(options.outDir)) {
+            throw claimed(`Destination "${options.outDir}" was claimed during publication commit.`);
+        }
         renameDirectory(tempDir, options.outDir);
     } catch (publishError) {
         // Never overwrite a destination which appeared in the commit gap.
         if (fs.existsSync(options.outDir)) {
             removeBestEffort(tempDir);
-            throw new Error(
-                `Failed to publish "${options.outDir}" because it was claimed during commit; previous output remains at "${stalePath}": ` +
-                `${publishError instanceof Error ? publishError.message : String(publishError)}`,
-            );
+            // stalePath was proven invocation-owned before commit.  Do not
+            // strand it after a claimant wins the final gap.
+            removeBestEffort(stalePath);
+            throw publishError;
         }
         try {
             renameDirectory(stalePath, options.outDir);
@@ -124,7 +161,13 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
     }
 }
 
-function reserveDirectory(outDir: string, claimed: (message: string) => Error, expectedIdentity: PublishDirectoryAtomicallyDestinationIdentity | undefined, expectedAbsent: boolean): DirectoryReservation {
+function reserveDirectory(
+    outDir: string,
+    claimed: (message: string) => Error,
+    expectedIdentity: PublishDirectoryAtomicallyDestinationIdentity | undefined,
+    expectedSnapshot: readonly SnapshotEntry[] | undefined,
+    expectedAbsent: boolean,
+): DirectoryReservation {
     const markerName = `.pokie-publication-reservation-${crypto.randomBytes(12).toString("hex")}`;
     const markerPath = path.join(outDir, markerName);
     let createdDirectory = false;
@@ -137,6 +180,16 @@ function reserveDirectory(outDir: string, claimed: (message: string) => Error, e
     const currentIdentity = capturePublishDirectoryIdentity(outDir);
     if (currentIdentity === undefined || !fs.statSync(outDir).isDirectory()) throw claimed(`Destination "${outDir}" is not a directory and cannot be reserved for publication.`);
     if (expectedIdentity !== undefined && (expectedIdentity.device !== currentIdentity.device || expectedIdentity.inode !== currentIdentity.inode)) {
+        if (createdDirectory) {
+            try {
+                fs.rmdirSync(outDir);
+            } catch {
+                // late owner keeps it.
+            }
+        }
+        throw claimed(`Destination "${outDir}" was claimed while publication was being prepared.`);
+    }
+    if (expectedSnapshot !== undefined && !sameSnapshot(expectedSnapshot, snapshotDirectory(outDir))) {
         if (createdDirectory) {
             try {
                 fs.rmdirSync(outDir);

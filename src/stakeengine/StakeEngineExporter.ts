@@ -8,7 +8,7 @@ import {assertSafeToReplaceStakeEngineExportDirectory} from "./internal/assertSa
 import {compressStakeEngineBooksJsonl} from "./internal/compressStakeEngineBooksJsonl.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
-import {publishDirectoryAtomically} from "./internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, publishDirectoryAtomically, type PublishDirectoryAtomicallyOwnership} from "./internal/publishDirectoryAtomically.js";
 import {renderStakeEngineLookupCsv} from "./internal/renderStakeEngineLookupCsv.js";
 import type {StakeEngineBookLine} from "./StakeEngineBookLine.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
@@ -97,6 +97,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
     ): Promise<StakeEngineExportResult> {
         assertNotCancelled(options);
         try {
+            const destinationOwnership = capturePublishDirectoryOwnership(outDir);
             const structuralIssues = this.validator.validate(modes);
             if (structuralIssues.some((issue) => issue.severity === "error")) {
                 return {outDir, files: [], manifest: undefined, issues: structuralIssues};
@@ -147,7 +148,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
 
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
             assertNotCancelled(options);
-            const cleanupWarning = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest, options, completed);
+            const cleanupWarning = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest, options, completed, destinationOwnership);
             const finalIssues = cleanupWarning !== undefined ? [...allIssues, cleanupWarning] : allIssues;
 
             return {outDir, files: relativeFiles, manifest, issues: finalIssues};
@@ -172,9 +173,11 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         manifest: StakeEngineManifest,
         options: StakeEngineExportOptions | undefined,
         completed: bigint,
+        destinationOwnership: PublishDirectoryAtomicallyOwnership,
     ): ValidationIssue | undefined {
         const {cleanupWarning} = publishDirectoryAtomically({
             outDir,
+            ownership: destinationOwnership,
             renameDirectory: this.renameDirectory,
             removeDirectory: this.removeDirectory,
             writeFilesIntoTempDir: (tempDir) => {
