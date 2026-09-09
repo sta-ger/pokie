@@ -3,6 +3,7 @@ import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/Outcom
 import type {OutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleModeInput.js";
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
 import {OutcomeLibraryBundleDestinationClaimedError, type OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
+import {removePublishedDirectoryIfOwned, type PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {
@@ -66,6 +67,7 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
             );
         }
 
+        let publication: PublishedDirectoryOwnership | undefined;
         try {
             const manifest = await this.reader.readManifest(source.rootPath);
             const preflight = outcomePreflight(manifest);
@@ -113,6 +115,7 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
                     });
                 },
             });
+            publication = result.publication;
             assertArtifactBuildNotCancelled(options);
             const errors = result.issues.filter((issue) => issue.severity === "error");
             if (errors.length > 0 || result.manifest === undefined) {
@@ -126,7 +129,9 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
             return {outputPath: result.outDir, preflight};
         } catch (error) {
-            if (!finalDestinationRejected && !(error instanceof OutcomeLibraryBundleDestinationClaimedError)) {
+            if (publication !== undefined) {
+                removePublishedDirectoryIfOwned(publication);
+            } else if (!finalDestinationRejected && !(error instanceof OutcomeLibraryBundleDestinationClaimedError)) {
                 await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
             }
             if (options?.signal?.aborted) {

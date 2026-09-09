@@ -8,7 +8,7 @@ import {assertSafeToReplaceStakeEngineExportDirectory} from "./internal/assertSa
 import {compressStakeEngineBooksJsonl} from "./internal/compressStakeEngineBooksJsonl.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
-import {capturePublishDirectoryOwnership, publishDirectoryAtomically, type PublishDirectoryAtomicallyOwnership} from "./internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, publishDirectoryAtomically, removePublishedDirectoryIfOwned, withPublishedDirectoryOwnership, type PublishedDirectoryOwnership, type PublishDirectoryAtomicallyOwnership} from "./internal/publishDirectoryAtomically.js";
 import {renderStakeEngineLookupCsv} from "./internal/renderStakeEngineLookupCsv.js";
 import type {StakeEngineBookLine} from "./StakeEngineBookLine.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
@@ -156,10 +156,11 @@ export class StakeEngineExporter<T extends string | number = string> implements 
 
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
             assertNotCancelled(options);
-            const cleanupWarning = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest, options, completed, destinationOwnership);
+            const publication = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest, options, completed, destinationOwnership);
+            const cleanupWarning = publication.cleanupWarning;
             const finalIssues = cleanupWarning !== undefined ? [...allIssues, cleanupWarning] : allIssues;
 
-            return {outDir, files: relativeFiles, manifest, issues: finalIssues};
+            return withPublishedDirectoryOwnership({outDir, files: relativeFiles, manifest, issues: finalIssues}, publication.publication);
         } catch (error) {
             return Promise.reject(error);
         }
@@ -182,8 +183,8 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         options: StakeEngineExportOptions | undefined,
         completed: bigint,
         destinationOwnership: PublishDirectoryAtomicallyOwnership,
-    ): ValidationIssue | undefined {
-        const {cleanupWarning} = publishDirectoryAtomically({
+    ): {readonly publication: PublishedDirectoryOwnership; readonly cleanupWarning?: ValidationIssue} {
+        const {cleanupWarning, publication} = publishDirectoryAtomically({
             outDir,
             ownership: destinationOwnership,
             renameDirectory: this.renameDirectory,
@@ -213,10 +214,21 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             },
         });
 
-        assertNotCancelled(options);
-        return cleanupWarning !== undefined
-            ? {code: "stakeengine-stale-export-cleanup-failed", severity: "warning", message: cleanupWarning, details: {outDir}}
-            : undefined;
+        try {
+            // A signal can be raised by the last pre-commit seam after the
+            // publisher has installed its complete directory.  Do not report
+            // that now-cancelled invocation as successful, and do not leave
+            // its new output behind.  Identity-bound removal cannot erase a
+            // later claimant that replaced the public pathname.
+            assertNotCancelled(options);
+        } catch (error) {
+            removePublishedDirectoryIfOwned(publication);
+            throw error;
+        }
+        return {
+            publication,
+            ...(cleanupWarning === undefined ? {} : {cleanupWarning: {code: "stakeengine-stale-export-cleanup-failed", severity: "warning", message: cleanupWarning, details: {outDir}}}),
+        };
     }
 
     // Builds one mode's CSV/books content fully in memory (no disk access): projects every outcome's artifact

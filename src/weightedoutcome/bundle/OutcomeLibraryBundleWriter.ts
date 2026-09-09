@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import {capturePublishDirectoryOwnership, publishDirectoryAtomically} from "../../stakeengine/internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, publishDirectoryAtomically, removePublishedDirectoryIfOwned, withPublishedDirectoryOwnership} from "../../stakeengine/internal/publishDirectoryAtomically.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION} from "../WeightedOutcomeLibrary.js";
 import {computeOnlineWeightedOutcomeLibraryAnalysis} from "./internal/computeOnlineWeightedOutcomeLibraryAnalysis.js";
@@ -246,7 +246,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             // alone must never authorize this replacement.
             await options?.assertDestinationAvailable?.();
             assertNotCancelled(options);
-            const {cleanupWarning} = publishDirectoryAtomically({
+            const {cleanupWarning, publication} = publishDirectoryAtomically({
                 outDir,
                 ownership: destinationOwnership,
                 renameDirectory: this.renameDirectory,
@@ -267,13 +267,21 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
 
             // Keep the direct-writer contract true even if a custom atomic publisher grows a callback
             // boundary of its own: never report a completed bundle after its signal was cancelled.
-            assertNotCancelled(options);
+            try {
+                assertNotCancelled(options);
+            } catch (error) {
+                // Keep the direct-writer cancellation contract aligned with
+                // the identity-aware lifecycle callers.  If another actor
+                // has claimed this pathname, their output is left intact.
+                removePublishedDirectoryIfOwned(publication);
+                throw error;
+            }
             const finalIssues =
                 cleanupWarning !== undefined
                     ? [...issues, {code: "outcome-library-bundle-write-stale-cleanup-failed", severity: "warning" as const, message: cleanupWarning, details: {outDir}}]
                     : issues;
 
-            return {outDir, files: filesToPublish, manifest, issues: finalIssues};
+            return withPublishedDirectoryOwnership({outDir, files: filesToPublish, manifest, issues: finalIssues}, publication);
         } finally {
             try {
                 this.removeDirectory(stagingDir);

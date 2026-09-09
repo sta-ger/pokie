@@ -1,5 +1,6 @@
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {CertificationEvidenceBundleManifest} from "./CertificationEvidenceBundleManifest.js";
+import type {PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 
 // The result of CertificationEvidenceBundleBuilding.buildFromBundle. "manifest" is undefined if and only if
 // "issues" contains an error — the same "no partial bundle" guarantee OutcomeLibraryBundleWriteResult/
@@ -10,4 +11,6 @@ export type CertificationEvidenceBundleBuildResult = {
     readonly files: readonly string[];
     readonly manifest: CertificationEvidenceBundleManifest | undefined;
     readonly issues: readonly ValidationIssue[];
+    /** Present only when this invocation atomically installed outDir. */
+    readonly publication?: PublishedDirectoryOwnership;
 };

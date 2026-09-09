@@ -1,4 +1,5 @@
 import type {CertificationEvidenceBundleBuildResult} from "./CertificationEvidenceBundleBuildResult.js";
+import type {CertificationEvidenceBundleBuildOptions} from "./CertificationEvidenceBundleBuildOptions.js";
 import type {CertificationEvidenceBundleModeSampleInput} from "./CertificationEvidenceBundleModeSampleInput.js";
 
 // Not generic over T, same reasoning as OutcomeLibraryBundleValidating: nothing in this method's own signature
@@ -10,5 +11,6 @@ export interface CertificationEvidenceBundleBuilding {
         bundleDir: string,
         modes: readonly CertificationEvidenceBundleModeSampleInput[],
         outDir: string,
+        options?: CertificationEvidenceBundleBuildOptions,
     ): Promise<CertificationEvidenceBundleBuildResult>;
 }

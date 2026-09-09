@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    CertificationEvidenceBundleBuildCancelledError,
     CertificationEvidenceBundleBuilder,
     CertificationEvidenceBundleManifest,
     CertificationEvidenceBundleModeSampleInput,
@@ -150,6 +151,30 @@ describe("CertificationEvidenceBundleBuilder", () => {
 
         await builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}], certDir);
 
+        expect(siblingLeftovers(certDir)).toEqual([]);
+    });
+
+    it("removes its published evidence container when cancellation arrives after commit", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        const controller = new AbortController();
+        const builder = new CertificationEvidenceBundleBuilder(
+            CERTIFICATION_TEST_POKIE_VERSION,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => controller.abort(),
+        );
+
+        await expect(builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}], certDir, {signal: controller.signal}))
+            .rejects.toThrow(CertificationEvidenceBundleBuildCancelledError);
+
+        expect(fs.existsSync(certDir)).toBe(false);
         expect(siblingLeftovers(certDir)).toEqual([]);
     });
 

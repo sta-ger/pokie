@@ -33,6 +33,7 @@ import {
     prepareOutcomeLibraryGenerationFromEstimate,
     resolveOutcomeLibraryGenerationDestination,
     describeUnsupportedProjectOperation,
+    removePublishedDirectoryIfOwned,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -1060,7 +1061,9 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             // the writer's final atomic-swap boundary as well as the prepared
             // operation boundary above.
             publish: (modes) => this.writer.writeToDirectory(modes, outDir, {assertDestinationAvailable, signal}),
-            rollback: () => fs.promises.rm(outDir, {recursive: true, force: true}),
+            rollback: (result) => {
+                if (result.publication !== undefined) removePublishedDirectoryIfOwned(result.publication);
+            },
             ...(signal === undefined ? {} : {signal}),
         }};
     }

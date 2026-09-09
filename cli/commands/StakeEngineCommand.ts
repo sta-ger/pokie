@@ -38,6 +38,7 @@ import {
     WeightedOutcomeLibrary,
     OutcomeLibraryGeneratorDiagnostics,
     StakeEngineImportSourceProvenance,
+    removePublishedDirectoryIfOwned,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -494,7 +495,9 @@ export class StakeEngineCommand implements CliCommandHandling {
                     outDir,
                 )
                 : this.exporter.exportToDirectory(read.modes!, outDir),
-            rollback: () => fs.promises.rm(outDir, {recursive: true, force: true}),
+            rollback: (result) => {
+                if (result.publication !== undefined) removePublishedDirectoryIfOwned(result.publication);
+            },
             ...(signal === undefined ? {} : {signal}),
         }};
     }
@@ -554,7 +557,9 @@ export class StakeEngineCommand implements CliCommandHandling {
             // has returned, that directory belongs to this prepared operation
             // until its terminal result is reported; remove only this newly
             // allocated destination if a later lifecycle phase fails.
-            rollback: () => fs.promises.rm(options.outDir, {recursive: true, force: true}),
+            rollback: (result) => {
+                if (result.publication !== undefined) removePublishedDirectoryIfOwned(result.publication);
+            },
             cleanup: () => cancellation.cleanup(),
         });
         return this.reportImport(options, execution.read, execution.published, execution.publication);

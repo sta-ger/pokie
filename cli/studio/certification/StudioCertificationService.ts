@@ -59,6 +59,7 @@ export class StudioCertificationService {
         bundleDir: string,
         modes: readonly ValidatedCertificationBuildModeInput[],
         outDir: string,
+        signal?: AbortSignal,
     ): Promise<StudioCertificationBuildView> {
         const resolvedBundle = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
         if (resolvedBundle.status === "error") {
@@ -76,7 +77,7 @@ export class StudioCertificationService {
         }));
 
         try {
-            const result = await this.builder.buildFromBundle(resolvedBundle.resolvedPath, modeInputs, resolvedOutDir.resolvedPath);
+            const result = await this.builder.buildFromBundle(resolvedBundle.resolvedPath, modeInputs, resolvedOutDir.resolvedPath, {signal});
             const errors = result.issues.filter((issue) => issue.severity === "error");
             const warnings = result.issues.filter((issue) => issue.severity !== "error");
             if (result.manifest === undefined || errors.length > 0) {

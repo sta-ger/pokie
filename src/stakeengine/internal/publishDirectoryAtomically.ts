@@ -55,7 +55,45 @@ export function capturePublishDirectoryOwnership(directory: string): PublishDire
     };
 }
 
-export type PublishDirectoryAtomicallyResult = {readonly cleanupWarning?: string};
+/**
+ * The identity of the directory installed by one publication.  This is an
+ * ownership token, not merely an output path: lifecycle callers must retain
+ * it and use removePublishedDirectoryIfOwned() rather than recursively
+ * removing the public pathname after a later cancellation or registration
+ * failure.
+ */
+export type PublishedDirectoryOwnership = {
+    readonly outDir: string;
+    readonly identity: PublishDirectoryAtomicallyDestinationIdentity;
+};
+
+export type PublishDirectoryAtomicallyResult = {
+    readonly publication: PublishedDirectoryOwnership;
+    readonly cleanupWarning?: string;
+};
+
+/**
+ * Removes a completed publication only while the public pathname still names
+ * the exact directory this invocation installed.  A false result means a
+ * later claimant replaced or removed the pathname and must be left alone.
+ *
+ * The final lstat deliberately happens immediately before rm.  Node has no
+ * descriptor-relative recursive remove primitive; retaining the identity
+ * test here nevertheless makes every normal post-publication rollback
+ * explicit and fail-closed instead of blindly deleting a pathname.
+ */
+export function removePublishedDirectoryIfOwned(publication: PublishedDirectoryOwnership): boolean {
+    const current = capturePublishDirectoryIdentity(publication.outDir);
+    if (current === undefined || current.device !== publication.identity.device || current.inode !== publication.identity.inode) return false;
+    fs.rmSync(publication.outDir, {recursive: true, force: true});
+    return true;
+}
+
+/** Attach lifecycle ownership without changing legacy enumerable output. */
+export function withPublishedDirectoryOwnership<T extends object>(result: T, publication: PublishedDirectoryOwnership): T & {readonly publication: PublishedDirectoryOwnership} {
+    Reflect.defineProperty(result, "publication", {value: publication, enumerable: false, writable: false, configurable: false});
+    return result as T & {readonly publication: PublishedDirectoryOwnership};
+}
 
 // Publication deliberately leaves a real directory at outDir. Besides being
 // the longstanding public artifact shape, this makes ordinary rm -r cleanup
@@ -105,16 +143,23 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
             throw error;
         }
 
-        if (!movedPrevious) return {};
+        const installedIdentity = capturePublishDirectoryIdentity(outDir);
+        // A successful rename must leave our real directory at the public
+        // pathname.  Treat anything else as a claimed destination rather
+        // than handing an unverified path to lifecycle cleanup.
+        if (installedIdentity === undefined) throw claimed(`Destination "${outDir}" disappeared while publication was being committed.`);
+        const publication = {outDir, identity: installedIdentity};
+
+        if (!movedPrevious) return withPublishedDirectoryOwnership({}, publication);
         try {
             removeDirectory(staleDir);
-            return {};
+            return withPublishedDirectoryOwnership({}, publication);
         } catch (error) {
-            return {
+            return withPublishedDirectoryOwnership({
                 cleanupWarning:
                     `The publish to "${options.outDir}" succeeded, but the superseded invocation-owned directory at "${staleDir}" could not be removed: ` +
                     `${error instanceof Error ? error.message : String(error)}. Remove it manually.`,
-            };
+            }, publication);
         }
     } catch (error) {
         // A failure after the first rename restores only our private stale

@@ -10,7 +10,7 @@ import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/Outcom
 import {assertSafeToReplaceStakeEngineExportDirectory} from "./internal/assertSafeToReplaceStakeEngineExportDirectory.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
-import {capturePublishDirectoryOwnership, publishDirectoryAtomically} from "./internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, publishDirectoryAtomically, withPublishedDirectoryOwnership} from "./internal/publishDirectoryAtomically.js";
 import type {StakeEngineBookLine} from "./StakeEngineBookLine.js";
 import type {StakeEngineBundleModeInput} from "./StakeEngineBundleModeInput.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
@@ -211,7 +211,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
             fs.writeFileSync(path.join(stagingDir, "pokie-manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
 
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
-            const {cleanupWarning} = publishDirectoryAtomically({
+            const {cleanupWarning, publication} = publishDirectoryAtomically({
                 outDir,
                 ownership: destinationOwnership,
                 renameDirectory: this.renameDirectory,
@@ -229,7 +229,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                     ? [...issues, {code: "stakeengine-stale-export-cleanup-failed", severity: "warning", message: cleanupWarning, details: {outDir}}]
                     : issues;
 
-            return {outDir, files: relativeFiles, manifest, issues: finalIssues};
+            return withPublishedDirectoryOwnership({outDir, files: relativeFiles, manifest, issues: finalIssues}, publication);
         } finally {
             try {
                 this.removeDirectory(stagingDir);

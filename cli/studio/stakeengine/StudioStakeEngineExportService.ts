@@ -11,6 +11,7 @@ import {
     StakeEngineImporter,
     StakeEngineImporting,
     describeArtifactConversionPlanDiagnostic,
+    removePublishedDirectoryIfOwned,
 } from "pokie";
 import fs from "fs";
 import path from "path";
@@ -252,7 +253,9 @@ export class StudioStakeEngineExportService {
                 // staged directory.  This cleanup deliberately does not
                 // touch the selected Outcome bundle or a borrowed output.
                 cleanup: () => undefined,
-                rollback: () => fs.promises.rm(resolvedOutDir.resolvedPath, {recursive: true, force: true}),
+                rollback: (result) => {
+                    if (result.publication !== undefined) removePublishedDirectoryIfOwned(result.publication);
+                },
                 signal: controller.signal,
                 onTerminalFailure: (error) => {
                     terminalFailure = error;

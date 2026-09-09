@@ -215,6 +215,25 @@ describe("StakeEngineExporter", () => {
         expect(fs.readdirSync(outDir)).toEqual([]);
     });
 
+    it("removes only its newly published directory when cancellation arrives after the final commit", async () => {
+        const controller = new AbortController();
+        const exporter = new StakeEngineExporter<string>(
+            "1.3.0",
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => controller.abort(),
+        );
+
+        await expect(exporter.exportToDirectory(modes, outDir, {signal: controller.signal})).rejects.toThrow(StakeEngineExportCancelledError);
+
+        expect(fs.existsSync(outDir)).toBe(false);
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
     it("blocks export when two modeNames differ only in case (files would really conflict)", async () => {
         const exporter = new StakeEngineExporter<string>("1.3.0");
         const collidingModes: StakeEngineExportModeInput[] = [

@@ -3,6 +3,7 @@ import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/Outcom
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {StakeEngineImportResult} from "./StakeEngineImportResult.js";
 import type {StakeEngineImportWriteOptions, StakeEngineImportWriting} from "./StakeEngineImportWriting.js";
+import {withPublishedDirectoryOwnership} from "./internal/publishDirectoryAtomically.js";
 
 // A reconstructed Stake export is a reusable Outcome Library first, with a small config.json companion
 // that makes its modes immediately exportable to Stake again. Writing both through OutcomeLibraryBundleWriter
@@ -56,6 +57,8 @@ export class StakeEngineImportWriter<T extends string | number = string> impleme
                 ],
             },
         );
-        return {issues: result.issues};
+        return result.publication === undefined
+            ? {issues: result.issues}
+            : withPublishedDirectoryOwnership({issues: result.issues}, result.publication);
     }
 }

@@ -1,5 +1,4 @@
 import fs from "fs";
-import path from "path";
 import vm from "vm";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
@@ -30,6 +29,7 @@ import {ClusterWinCalculator} from "../session/videoslot/wincalculator/ClusterWi
 import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/winevaluation/SelectedEvaluatorGroupWinAggregationPolicy.js";
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
+import {removePublishedDirectoryIfOwned, type PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 import {generateStreamingWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
 import {
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
@@ -193,11 +193,11 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         // later atomically publish files into it.  Remember that ownership so
         // rollback never turns a harmless cancelled/failed build into a
         // destructive removal of the user's chosen destination.
-        const destinationExistedBeforeInvocation = fs.existsSync(boundDestination);
         // A destination which appears while generation is running belongs to
         // somebody else until this invocation has passed its final safety
         // check and entered the writer.  Rollback must not erase it.
-        const publication = {started: false};
+        const destinationWasEmpty = fs.existsSync(boundDestination) && fs.readdirSync(boundDestination).length === 0;
+        const publication: {started: boolean; ownership?: PublishedDirectoryOwnership} = {started: false};
         const preflight = outcomeGenerationPreflight(preparedRequest.preflight);
         reportArtifactBuildProgress(options, {status: "preflight", preflight});
         assertArtifactBuildNotCancelled(options);
@@ -229,8 +229,16 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         } catch (error) {
             // A generated bundle is not a managed Project until registerAndOpen commits the registry record.
             // Do not leave a complete-looking orphan behind when registry I/O or cancellation fails.
-            if (destinationExistedBeforeInvocation || publication.started) {
-                await this.cleanupFailedDestination(boundDestination, destinationExistedBeforeInvocation);
+            if (publication.ownership !== undefined && removePublishedDirectoryIfOwned(publication.ownership) && destinationWasEmpty) {
+                // An explicitly supplied empty directory remains caller-owned
+                // after a failed registration. If a late claimant won the
+                // pathname, removePublishedDirectoryIfOwned returned false
+                // and this mkdir is deliberately skipped.
+                try {
+                    fs.mkdirSync(boundDestination);
+                } catch (restoreError) {
+                    if ((restoreError as NodeJS.ErrnoException).code !== "EEXIST") throw restoreError;
+                }
             }
             if (options?.signal?.aborted) {
                 reportArtifactBuildProgress(options, {status: "cancelled", preflight});
@@ -299,7 +307,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         options: ArtifactBuildOptions | undefined,
         preflight: ArtifactBuildPreflight,
         generation: ManagedOutcomeGeneration,
-        publication: {started: boolean},
+        publication: {started: boolean; ownership?: PublishedDirectoryOwnership},
     ): Promise<void> {
         // destinationPath is already the immutable publication identity bound
         // by generatePrepared's domain request. Every per-mode execution below
@@ -382,31 +390,10 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         // invocation as owner only after its atomic publication succeeds, so
         // failure cleanup never removes that late external destination.
         publication.started = true;
+        publication.ownership = result.publication;
         const errors = result.issues.filter((issue) => issue.severity === "error");
         if (errors.length > 0 || result.manifest === undefined) {
             throw new Error(`Could not build Outcome Library from Blueprint "${blueprintPath}": ${errors.map((issue) => issue.message).join("; ")}`);
-        }
-    }
-
-    /** Remove only this invocation's publication while retaining an empty user-owned destination. */
-    private async cleanupFailedDestination(destination: string, existedBeforeInvocation: boolean): Promise<void> {
-        if (!existedBeforeInvocation) {
-            await fs.promises.rm(destination, {recursive: true, force: true}).catch(() => undefined);
-            return;
-        }
-        // OutcomeLibraryBundleWriter publishes atomically, so a cancellation
-        // before publication leaves the original directory untouched.  After
-        // publication, its manifest lists every invocation-owned file; remove
-        // exactly those files and retain the pre-existing directory itself.
-        try {
-            const manifestPath = path.join(destination, "manifest.json");
-            const manifest = JSON.parse(await fs.promises.readFile(manifestPath, "utf-8")) as {files?: unknown};
-            const files = Array.isArray(manifest.files) ? manifest.files.filter((file): file is string => typeof file === "string") : [];
-            await Promise.all(files.map((file) => fs.promises.rm(path.join(destination, file), {force: true})));
-            await fs.promises.rm(manifestPath, {force: true});
-        } catch {
-            // No manifest means publication did not complete. Staging is owned
-            // and cleaned by the writer; the original empty destination stays.
         }
     }
 
