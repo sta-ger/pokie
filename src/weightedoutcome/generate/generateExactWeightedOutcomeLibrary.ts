@@ -124,12 +124,8 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     // config/reel-layout -- two games or configs can coincidentally share the same raw outcome-space size, so
     // progressTotal alone is never enough to trust a checkpoint's accumulated grids.
     readonly resumeFrom?: ExactEnumerationCheckpoint;
-    /**
-     * Select the in-memory exact accumulator for a publisher that promises a
-     * durable resume action. Disk partitions deliberately report retry-only
-     * cancellation because their state is cleaned up with publication.
-     */
-    readonly preserveCheckpointOnCancellation?: boolean;
+    /** Persist bounded, partitioned exact-sweep state when cancellation is resumable. */
+    readonly durableCheckpointOnCancellation?: boolean;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
     readonly artifactValidator?: ValidationRule<RoundArtifact>;
@@ -191,7 +187,7 @@ function legacyOptionsForRequest(
         ...(prepared.stake === undefined ? {} : {stake: prepared.stake}),
         ...(prepared.outputDestination === undefined ? {} : {outputDestination: prepared.outputDestination}),
         maxOutcomeSpaceSize: prepared.maxExactOutcomeSpaceSize,
-        ...(prepared.preserveCheckpointOnCancellation === undefined ? {} : {preserveCheckpointOnCancellation: prepared.preserveCheckpointOnCancellation}),
+        ...(prepared.durableCheckpointOnCancellation === undefined ? {} : {durableCheckpointOnCancellation: prepared.durableCheckpointOnCancellation}),
         ...(prepared.generation === "exact" ? {exact: true} : {}),
         ...(prepared.generation === "sampled" ? {sampled: prepared.sample!} : {}),
         ...(prepared.generation === "bounded" ? {bounded: prepared.sample!} : {}),
@@ -218,6 +214,8 @@ type PreparedGeneration = {
     readonly configHash?: string;
     readonly initialGrids?: ReadonlyMap<string, UniqueGridWeightEntry<string>>;
     readonly initialProcessedRawCount?: bigint;
+    readonly durableStagingDirectory?: string;
+    readonly durableCheckpointId?: string;
 };
 
 function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedGeneration {
@@ -253,10 +251,10 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             "This exact generation was cancelled while using bounded disk staging, so its temporary grid accumulator was safely discarded. Retry the command from the beginning; this checkpoint cannot be resumed without changing exact weights.",
         );
     }
-    if (options.resumeFrom?.externalStagingDirectory !== undefined) {
+    if (options.resumeFrom?.durableStagingDirectory !== undefined && options.resumeFrom.durableCheckpointId === undefined) {
         throw new WeightedOutcomeLibraryGenerationError(
-            "weighted-outcome-library-generation-checkpoint-unsupported",
-            "This exact generation checkpoint depends on external disk staging, which is not a durable resume contract. Retry the command from the beginning; resuming it could omit already swept exact weights.",
+            "weighted-outcome-library-generation-checkpoint-mismatch",
+            "This resumable exact checkpoint is missing its invocation-owned disk identity. Start a new generation.",
         );
     }
     if (options.resumeFrom !== undefined && options.resumeFrom.progressTotal !== estimate.totalOutcomeSpaceSize) {
@@ -293,6 +291,19 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         );
     }
 
+    let resumeState: Pick<PreparedGeneration, "initialGrids" | "initialProcessedRawCount" | "durableStagingDirectory" | "durableCheckpointId"> = {};
+    if (options.resumeFrom !== undefined) {
+        if (options.resumeFrom.durableStagingDirectory === undefined) {
+            resumeState = {initialGrids: options.resumeFrom.grids, initialProcessedRawCount: options.resumeFrom.processedRawIndex};
+        } else {
+            resumeState = {
+                durableStagingDirectory: options.resumeFrom.durableStagingDirectory,
+                ...(options.resumeFrom.durableCheckpointId === undefined ? {} : {durableCheckpointId: options.resumeFrom.durableCheckpointId}),
+                initialProcessedRawCount: options.resumeFrom.processedRawIndex,
+            };
+        }
+    }
+
     if (strategy === "exact") {
         return {
             strategy,
@@ -303,9 +314,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             tuples: sweepStopTuples(reelSizes, options.resumeFrom?.processedRawIndex ?? BigInt(0)),
             sourceEnumerationId,
             ...(request.configHash === undefined ? {} : {configHash: request.configHash}),
-            ...(options.resumeFrom !== undefined
-                ? {initialGrids: options.resumeFrom.grids, initialProcessedRawCount: options.resumeFrom.processedRawIndex}
-                : {}),
+            ...resumeState,
         };
     }
 
@@ -417,23 +426,22 @@ async function *streamExactWeightedOutcomesInternal(
     };
 
     let processedRawCount: bigint;
-    // Resume checkpoints deliberately retain their historical in-memory
-    // representation. A streaming publisher must never silently discard that
-    // seeded prefix: use the materialising compatibility path for a valid
-    // legacy checkpoint. Publishers that expose durable cancellation resume
-    // choose the same path from the start; disk partitions remain available
-    // for fresh exact publication that is intentionally retry-only.
+    // Streaming publication always partitions distinct grids on disk. A
+    // resumable public adapter persists those partitions behind an
+    // invocation-owned checkpoint rather than switching to an in-memory map.
     if (
         prepared.strategy === "exact" &&
         useExternalStaging &&
-        !options.preserveCheckpointOnCancellation &&
-        prepared.initialProcessedRawCount === undefined
+        prepared.initialGrids === undefined
     ) {
         const external = externallyAccumulateExactGridWeights(prepared.reelWindows, prepared.tuples, prepared.progressTotal, {
             signal: options.signal,
             onProgress: options.onProgress,
             sourceEnumerationId: prepared.sourceEnumerationId,
+            ...(prepared.durableStagingDirectory === undefined ? {} : {stagingDirectory: prepared.durableStagingDirectory}),
+            ...(prepared.durableCheckpointId === undefined ? {} : {durableCheckpointId: prepared.durableCheckpointId}),
             ...(prepared.initialProcessedRawCount === undefined ? {} : {initialProcessedRawCount: prepared.initialProcessedRawCount}),
+            ...(options.durableCheckpointOnCancellation || prepared.durableStagingDirectory !== undefined ? {retainStagingOnCancellation: true} : {}),
         });
         let step = await external.next();
         while (!step.done) {
@@ -492,23 +500,66 @@ async function *externallyAccumulateExactGridWeights(
         readonly sourceEnumerationId: string;
         readonly stagingDirectory?: string;
         readonly initialProcessedRawCount?: bigint;
+        readonly retainStagingOnCancellation?: boolean;
+        readonly durableCheckpointId?: string;
     },
 ): AsyncGenerator<{readonly id: string; readonly entry: UniqueGridWeightEntry<string>}, bigint> {
     const stagingDir = options.stagingDirectory ?? fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-grids-"));
+    const checkpointMarker = path.join(stagingDir, ".pokie-exact-checkpoint.json");
+    const checkpointId = options.durableCheckpointId ?? crypto.randomUUID();
     const descriptors = new Map<number, number>();
     const bufferedLines = new Map<number, string>();
     let processedRawCount = options.initialProcessedRawCount ?? BigInt(0);
     let checkpointGrid: [string, UniqueGridWeightEntry<string>] | undefined;
+    let retainStaging = false;
+    let ownsStaging = options.stagingDirectory === undefined;
+    const flushBufferedLines = () => {
+        for (const [bucket, buffered] of bufferedLines) fs.writeSync(descriptors.get(bucket)!, buffered);
+        bufferedLines.clear();
+    };
+    const checkpoint = (processed: bigint, restartRequired: boolean): WeightedOutcomeLibraryGenerationCancelledError => {
+        const durable = options.retainStagingOnCancellation;
+        flushBufferedLines();
+        retainStaging = durable;
+        return new WeightedOutcomeLibraryGenerationCancelledError(
+            processed,
+            progressTotal,
+            new Map(checkpointGrid === undefined ? [] : [checkpointGrid]),
+            options.sourceEnumerationId,
+            restartRequired,
+            durable ? stagingDir : undefined,
+            durable ? checkpointId : undefined,
+        );
+    };
     try {
+        const expectedMarker = {sourceEnumerationId: options.sourceEnumerationId, progressTotal: progressTotal.toString(), checkpointId};
+        if (options.stagingDirectory === undefined) {
+            fs.writeFileSync(checkpointMarker, JSON.stringify(expectedMarker), {flag: "wx"});
+        } else {
+            let marker: unknown;
+            try {
+                marker = JSON.parse(fs.readFileSync(checkpointMarker, "utf8"));
+            } catch {
+                throw new WeightedOutcomeLibraryGenerationError(
+                    "weighted-outcome-library-generation-checkpoint-mismatch",
+                    "The resumable exact checkpoint no longer has its invocation-owned disk marker. Start a new generation.",
+                );
+            }
+            if (JSON.stringify(marker) !== JSON.stringify(expectedMarker)) {
+                throw new WeightedOutcomeLibraryGenerationError(
+                    "weighted-outcome-library-generation-checkpoint-mismatch",
+                    "The resumable exact checkpoint does not belong to this exact enumeration. Start a new generation.",
+                );
+            }
+            ownsStaging = true;
+        }
         for (const {tuple, rawIndex} of tuples) {
             if (options.signal?.aborted) {
-                // Disk partitions are an implementation detail of a streaming
-                // publication.  They are not a durable checkpoint: a caller
-                // can cancel after this generator yields but before it has
-                // persisted any checkpoint.  Never expose their path as a
-                // resumable token, otherwise publication cancellation leaves
-                // an unreachable staging directory behind.
-                throw new WeightedOutcomeLibraryGenerationCancelledError(rawIndex, progressTotal, new Map(checkpointGrid === undefined ? [] : [checkpointGrid]), options.sourceEnumerationId, true);
+                // Retain partitions only when the public adapter requested a
+                // checkpoint and can persist the returned identity. A stream
+                // closed later by publication still reaches finally below and
+                // remains an honest retry-only cancellation.
+                throw checkpoint(rawIndex, !options.retainStagingOnCancellation);
             }
             const grid = tuple.map((position, reelId) => reelWindows[reelId][position]);
             const gridKey = JSON.stringify(grid);
@@ -534,17 +585,14 @@ async function *externallyAccumulateExactGridWeights(
                 });
             }
         }
-        for (const [bucket, buffered] of bufferedLines) {
-            fs.writeSync(descriptors.get(bucket)!, buffered);
-        }
-        bufferedLines.clear();
+        flushBufferedLines();
         for (const descriptor of descriptors.values()) fs.closeSync(descriptor);
         descriptors.clear();
         options.onProgress?.(processedRawCount, progressTotal);
 
         for (let bucket = 0; bucket < EXTERNAL_GRID_BUCKETS; bucket++) {
             if (options.signal?.aborted) {
-                throw new WeightedOutcomeLibraryGenerationCancelledError(processedRawCount, progressTotal, new Map(checkpointGrid === undefined ? [] : [checkpointGrid]), options.sourceEnumerationId, true);
+                throw checkpoint(processedRawCount, !options.retainStagingOnCancellation);
             }
             const bucketPath = path.join(stagingDir, `${bucket.toString(16).padStart(2, "0")}.jsonl`);
             if (!fs.existsSync(bucketPath)) continue;
@@ -569,7 +617,7 @@ async function *externallyAccumulateExactGridWeights(
         // In that case no checkpoint is observable or persistable.  Always
         // remove external partitions; callers receive an honest retry-only
         // cancellation instead of an orphaned pseudo-resume directory.
-        fs.rmSync(stagingDir, {recursive: true, force: true});
+        if (!retainStaging && ownsStaging) fs.rmSync(stagingDir, {recursive: true, force: true});
     }
 }
 

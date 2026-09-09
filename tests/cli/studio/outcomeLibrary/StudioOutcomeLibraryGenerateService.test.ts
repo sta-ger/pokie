@@ -838,19 +838,28 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             });
         });
 
-        it("returns a retry-only cancellation result without publishing a partial bundle", async () => {
-            const controller = new AbortController();
-            controller.abort();
+        it("persists a bounded native Studio checkpoint without publishing a partial bundle, then resumes it", async () => {
+            let signalReads = 0;
+            const signal = {
+                get aborted() {
+                    signalReads++;
+                    return signalReads > 4;
+                },
+            } as AbortSignal;
 
-            const result = await service().generate(projectRoot, {signal: controller.signal});
+            const result = await service().generate(projectRoot, {signal});
 
-            expect(result).toMatchObject({status: "cancelled", processedRawIndex: BigInt(0), progressTotal: BigInt(6)});
+            expect(result).toMatchObject({status: "cancelled", progressTotal: BigInt(6)});
             expect(fs.existsSync(path.join(projectRoot, "outcomelibrary", "manifest.json"))).toBe(false);
             if (result.status === "cancelled") {
-                expect(result.checkpoint).toBeUndefined();
-                expect(result.recovery).toMatch(/retry/i);
-                const resumed = await service().generate(projectRoot, {});
+                expect(result.checkpoint).toEqual(expect.objectContaining({
+                    durableStagingDirectory: expect.any(String), durableCheckpointId: expect.any(String),
+                }));
+                expect(result.recovery).toMatch(/resume/i);
+                expect(fs.existsSync(result.checkpoint!.durableStagingDirectory!)).toBe(true);
+                const resumed = await service().generate(projectRoot, {resumeFrom: result.checkpoint});
                 expect(resumed).toMatchObject({status: "ok", generator: {strategy: "exact"}});
+                expect(fs.existsSync(result.checkpoint!.durableStagingDirectory!)).toBe(false);
             }
         });
 
@@ -859,7 +868,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                 processedRawIndex: BigInt(3), progressTotal: BigInt(6), sourceEnumerationId: "fixture-source", grids: new Map(),
             };
             const generate = jest.fn((request) => {
-                expect(request.preserveCheckpointOnCancellation).toBe(true);
+                expect(request.durableCheckpointOnCancellation).toBe(true);
                 return Promise.reject(new WeightedOutcomeLibraryGenerationCancelledError(BigInt(3), BigInt(6), checkpoint.grids, checkpoint.sourceEnumerationId));
             });
 

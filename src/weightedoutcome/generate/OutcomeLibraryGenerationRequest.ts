@@ -95,12 +95,11 @@ export type OutcomeLibraryGenerationRequest = {
     readonly outputDestinationSafety?: OutcomeLibraryGenerationDestinationSafety;
     readonly resumeFrom?: ExactEnumerationCheckpoint;
     /**
-     * Retain the exact grid accumulator in a cancellation checkpoint instead
-     * of using disposable disk partitions. Publishers which expose resume
-     * must opt in before the sweep starts; an external staging directory is
-     * deliberately not a durable resume contract.
+     * Persist an invocation-owned, partitioned disk checkpoint on exact
+     * cancellation. This is bounded streaming state; it never selects the
+     * in-memory grid accumulator.
      */
-    readonly preserveCheckpointOnCancellation?: boolean;
+    readonly durableCheckpointOnCancellation?: boolean;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
     readonly artifactValidator?: ValidationRule<RoundArtifact>;
@@ -182,10 +181,10 @@ function validateRequest(request: OutcomeLibraryGenerationRequest): void {
             "outputDestination must be a non-empty destination identity when present.",
         );
     }
-    if (request.preserveCheckpointOnCancellation !== undefined && typeof request.preserveCheckpointOnCancellation !== "boolean") {
+    if (request.durableCheckpointOnCancellation !== undefined && typeof request.durableCheckpointOnCancellation !== "boolean") {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-invalid-request",
-            "preserveCheckpointOnCancellation must be boolean when present.",
+            "durableCheckpointOnCancellation must be boolean when present.",
         );
     }
 }

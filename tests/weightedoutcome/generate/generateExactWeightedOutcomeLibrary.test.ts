@@ -645,7 +645,7 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         }
     });
 
-    it("rejects a legacy disk-staging checkpoint rather than resuming incomplete exact weights", async () => {
+    it("rejects a durable checkpoint whose invocation-owned marker is missing", async () => {
         await expect(generateExactWeightedOutcomeLibrary({
             libraryId: "fixture-lib",
             game: buildFixtureGame(),
@@ -655,11 +655,11 @@ describe("generateExactWeightedOutcomeLibrary", () => {
                 progressTotal: BigInt(6),
                 grids: new Map(),
                 sourceEnumerationId: "fixture-source",
-                externalStagingDirectory: "/obsolete/external-staging",
+                durableStagingDirectory: "/obsolete/external-staging",
             },
         })).rejects.toMatchObject({
             name: "WeightedOutcomeLibraryGenerationError",
-            code: "weighted-outcome-library-generation-checkpoint-unsupported",
+            code: "weighted-outcome-library-generation-checkpoint-mismatch",
         });
     });
 
@@ -682,13 +682,53 @@ describe("generateExactWeightedOutcomeLibrary", () => {
                     name: "WeightedOutcomeLibraryGenerationCancelledError",
                     checkpoint: {restartRequired: true},
                 });
-                expect(cancelled.checkpoint.externalStagingDirectory).toBeUndefined();
+                expect(cancelled.checkpoint.durableStagingDirectory).toBeUndefined();
             }
             expect(fs.existsSync(stagingDirectory)).toBe(false);
         } finally {
             createStagingDirectory.mockRestore();
             fs.rmSync(stagingDirectory, {recursive: true, force: true});
         }
+    });
+
+    it("persists a bounded streaming checkpoint and consumes its owned partitions on resume", async () => {
+        const stream = streamExactWeightedOutcomes({
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            signal: abortAfterReads(3),
+            durableCheckpointOnCancellation: true,
+        });
+        let cancelled: WeightedOutcomeLibraryGenerationCancelledError | undefined;
+        try {
+            await stream.next();
+            fail("expected streaming generation to be cancelled");
+        } catch (error) {
+            cancelled = error as WeightedOutcomeLibraryGenerationCancelledError;
+        }
+        expect(cancelled?.checkpoint).toMatchObject({
+            processedRawIndex: BigInt(3), progressTotal: BigInt(6),
+            durableStagingDirectory: expect.any(String), durableCheckpointId: expect.any(String),
+        });
+        expect(cancelled?.checkpoint.restartRequired).toBeUndefined();
+        const checkpoint = cancelled!.checkpoint;
+        expect(fs.existsSync(checkpoint.durableStagingDirectory!)).toBe(true);
+
+        const resumed = streamExactWeightedOutcomes({
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            resumeFrom: checkpoint,
+        });
+        const outcomes = [];
+        let next = await resumed.next();
+        while (!next.done) {
+            outcomes.push(next.value);
+            next = await resumed.next();
+        }
+        expect(outcomes).toHaveLength(4);
+        expect(next.value).toMatchObject({strategy: "exact", sampledRawCount: 6});
+        expect(fs.existsSync(checkpoint.durableStagingDirectory!)).toBe(false);
     });
 
     it("reports progress at least once for a small sweep", async () => {

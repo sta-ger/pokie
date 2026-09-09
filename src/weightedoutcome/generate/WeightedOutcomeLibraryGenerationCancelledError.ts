@@ -25,8 +25,14 @@ export type ExactEnumerationCheckpoint = {
      * swept weights.
      */
     readonly restartRequired?: boolean;
-    /** Opaque disk staging retained only for a cancelled exact sweep. */
-    readonly externalStagingDirectory?: string;
+    /**
+     * Opaque, invocation-owned disk state for a resumable streaming exact
+     * sweep.  It contains partitioned grid keys, never an in-memory outcome
+     * map, and is accepted only when its marker matches this checkpoint.
+     */
+    readonly durableStagingDirectory?: string;
+    /** Unforgeable binding between the checkpoint record and its disk state. */
+    readonly durableCheckpointId?: string;
 };
 
 // Thrown when the caller's own AbortSignal fires mid-enumeration. Unlike WeightedOutcomeLibraryGenerationError
@@ -46,7 +52,8 @@ export class WeightedOutcomeLibraryGenerationCancelledError extends Error {
         grids: ExactEnumerationCheckpoint["grids"],
         sourceEnumerationId: string,
         restartRequired?: boolean,
-        externalStagingDirectory?: string,
+        durableStagingDirectory?: string,
+        durableCheckpointId?: string,
     ) {
         super(`Weighted outcome library generation was cancelled after ${processedRawIndex} / ${progressTotal} raw draws.`);
         this.name = "WeightedOutcomeLibraryGenerationCancelledError";
@@ -58,7 +65,8 @@ export class WeightedOutcomeLibraryGenerationCancelledError extends Error {
             grids,
             sourceEnumerationId,
             ...(restartRequired === true ? {restartRequired: true} : {}),
-            ...(externalStagingDirectory === undefined ? {} : {externalStagingDirectory}),
+            ...(durableStagingDirectory === undefined ? {} : {durableStagingDirectory}),
+            ...(durableCheckpointId === undefined ? {} : {durableCheckpointId}),
         };
     }
 }

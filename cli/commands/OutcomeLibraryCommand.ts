@@ -137,7 +137,8 @@ type SerializedCheckpoint = {
     progressTotal: string;
     sourceEnumerationId: string;
     grids: [string, {grid: string[][]; weight: string}][];
-    externalStagingDirectory?: string;
+    durableStagingDirectory?: string;
+    durableCheckpointId?: string;
 };
 
 // Three CLI verbs ("pokie outcomelibrary generate"/"build"/"validate") sharing one command, the same
@@ -869,10 +870,9 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 outputDestinationSafety: {sourcePath: packageRoot, kind: "file", requireAvailable: true},
             }),
             ...(resumeFrom === undefined ? {} : {resumeFrom}),
-            // --resume is an explicit request for a durable exact
-            // cancellation checkpoint, so do not select disposable streaming
-            // partitions for this sweep.
-            ...(options.resume === undefined ? {} : {preserveCheckpointOnCancellation: true}),
+            // --resume persists the bounded disk-partition checkpoint owned
+            // by this invocation; it never chooses an in-memory accumulator.
+            ...(options.resume === undefined ? {} : {durableCheckpointOnCancellation: true}),
             ...(signal === undefined ? {} : {signal}),
             ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
         };
@@ -975,7 +975,8 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             progressTotal: checkpoint.progressTotal.toString(),
             sourceEnumerationId: checkpoint.sourceEnumerationId,
             grids: Array.from(checkpoint.grids.entries()).map(([key, entry]) => [key, {grid: entry.grid, weight: entry.weight.toString()}]),
-            ...(checkpoint.externalStagingDirectory === undefined ? {} : {externalStagingDirectory: checkpoint.externalStagingDirectory}),
+            ...(checkpoint.durableStagingDirectory === undefined ? {} : {durableStagingDirectory: checkpoint.durableStagingDirectory}),
+            ...(checkpoint.durableCheckpointId === undefined ? {} : {durableCheckpointId: checkpoint.durableCheckpointId}),
         };
     }
 
@@ -997,7 +998,8 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             progressTotal: BigInt(parsed.progressTotal),
             sourceEnumerationId: parsed.sourceEnumerationId,
             grids: new Map(parsed.grids.map(([key, entry]) => [key, {grid: entry.grid, weight: BigInt(entry.weight)}])),
-            ...(typeof parsed.externalStagingDirectory === "string" ? {externalStagingDirectory: parsed.externalStagingDirectory} : {}),
+            ...(typeof parsed.durableStagingDirectory === "string" ? {durableStagingDirectory: parsed.durableStagingDirectory} : {}),
+            ...(typeof parsed.durableCheckpointId === "string" ? {durableCheckpointId: parsed.durableCheckpointId} : {}),
         };
     }
 

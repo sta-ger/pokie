@@ -167,7 +167,36 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
 
         const packageRoot = await buildPackage(blueprint, "accepted-exact-package");
         const rawLibrary = path.join(workDir, "accepted-exact.json");
-        expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(0);
+        const checkpointFile = path.join(workDir, "accepted-exact.checkpoint.json");
+        const fakeProcess = new EventEmitter() as unknown as NodeJS.Process;
+        let cancelled = false;
+        (console.error as jest.Mock).mockImplementation((message: unknown) => {
+            if (!cancelled && typeof message === "string" && message.includes("progress")) {
+                cancelled = true;
+                fakeProcess.emit("SIGINT");
+            }
+        });
+        const cancellingCommand = new OutcomeLibraryCommand(
+            "1.3.0", undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, fakeProcess,
+        );
+        expect(await cancellingCommand.run([
+            "generate", packageRoot, "--exact", "--out", rawLibrary,
+            "--resume", checkpointFile, "--progress",
+        ])).toBe(130);
+        expect(cancelled).toBe(true);
+        expect(fs.existsSync(rawLibrary)).toBe(false);
+        const checkpoint = JSON.parse(fs.readFileSync(checkpointFile, "utf8")) as {durableStagingDirectory: string; durableCheckpointId: string};
+        expect(checkpoint).toEqual(expect.objectContaining({
+            durableStagingDirectory: expect.any(String), durableCheckpointId: expect.any(String),
+        }));
+        expect(fs.existsSync(checkpoint.durableStagingDirectory)).toBe(true);
+
+        // The resumed public CLI path consumes only this invocation-owned
+        // partition state, then removes it along with the checkpoint.
+        expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary, "--resume", checkpointFile])).toBe(0);
+        expect(fs.existsSync(checkpointFile)).toBe(false);
+        expect(fs.existsSync(checkpoint.durableStagingDirectory)).toBe(false);
         // Count directly from the durable JSON stream. Do not JSON.parse this
         // 614,656-outcome library: the assertion is specifically a public
         // streaming-regression boundary, not an in-memory fallback.
@@ -368,14 +397,16 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(cancelExit).toBe(130);
         expect(cancelled).toBe(true);
         expect(fs.existsSync(partialFile)).toBe(false);
-        // --resume is the public durable-recovery contract. It selects the
-        // in-memory exact accumulator, so the checkpoint is self-contained
-        // and no raw publication temporary file is left behind.
+        // --resume persists invocation-owned disk partitions, not an
+        // in-memory distinct-grid accumulator, and no raw publication
+        // temporary file is left behind.
         expect(fs.existsSync(checkpointFile)).toBe(true);
         expect(JSON.parse(fs.readFileSync(checkpointFile, "utf8"))).toEqual(expect.objectContaining({
             processedRawIndex: "5000",
             progressTotal: "8000",
             grids: expect.any(Array),
+            durableStagingDirectory: expect.any(String),
+            durableCheckpointId: expect.any(String),
         }));
         expect(fs.readdirSync(workDir).some((entry) => entry.includes(".partial.json.pokie-"))).toBe(false);
 

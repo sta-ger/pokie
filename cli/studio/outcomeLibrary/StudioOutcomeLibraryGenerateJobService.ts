@@ -56,7 +56,8 @@ type PersistedCheckpoint = {
         readonly progressTotal: string;
         readonly sourceEnumerationId: string;
         readonly grids: readonly {readonly key: string; readonly grid: string[][]; readonly weight: string}[];
-        readonly externalStagingDirectory?: string;
+        readonly durableStagingDirectory?: string;
+        readonly durableCheckpointId?: string;
     };
 };
 
@@ -285,7 +286,8 @@ export class StudioOutcomeLibraryGenerateJobService {
             checkpoint: {
                 processedRawIndex: checkpoint.processedRawIndex.toString(), progressTotal: checkpoint.progressTotal.toString(), sourceEnumerationId: checkpoint.sourceEnumerationId,
                 grids: Array.from(checkpoint.grids, ([key, entry]) => ({key, grid: entry.grid, weight: entry.weight.toString()})),
-                ...(checkpoint.externalStagingDirectory === undefined ? {} : {externalStagingDirectory: checkpoint.externalStagingDirectory}),
+                ...(checkpoint.durableStagingDirectory === undefined ? {} : {durableStagingDirectory: checkpoint.durableStagingDirectory}),
+                ...(checkpoint.durableCheckpointId === undefined ? {} : {durableCheckpointId: checkpoint.durableCheckpointId}),
             },
         };
         fs.writeFileSync(filePath, JSON.stringify(stored), "utf8");
@@ -370,7 +372,8 @@ function fromPersistedCheckpoint(checkpoint: PersistedCheckpoint["checkpoint"]):
     return {
         processedRawIndex: BigInt(checkpoint.processedRawIndex), progressTotal: BigInt(checkpoint.progressTotal), sourceEnumerationId: checkpoint.sourceEnumerationId,
         grids: new Map(checkpoint.grids.map((entry) => [entry.key, {grid: entry.grid, weight: BigInt(entry.weight)}])),
-        ...(checkpoint.externalStagingDirectory === undefined ? {} : {externalStagingDirectory: checkpoint.externalStagingDirectory}),
+        ...(checkpoint.durableStagingDirectory === undefined ? {} : {durableStagingDirectory: checkpoint.durableStagingDirectory}),
+        ...(checkpoint.durableCheckpointId === undefined ? {} : {durableCheckpointId: checkpoint.durableCheckpointId}),
     };
 }
 
