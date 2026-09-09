@@ -2,7 +2,7 @@ import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibra
 import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/OutcomeLibraryBundleReading.js";
 import type {OutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleModeInput.js";
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
-import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
+import {OutcomeLibraryBundleDestinationClaimedError, type OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {
@@ -126,7 +126,9 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
             return {outputPath: result.outDir, preflight};
         } catch (error) {
-            if (!finalDestinationRejected) await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            if (!finalDestinationRejected && !(error instanceof OutcomeLibraryBundleDestinationClaimedError)) {
+                await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            }
             if (options?.signal?.aborted) {
                 if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
             } else reportArtifactBuildProgress(options, {status: "failed", message: "Outcome-library publishing failed"});

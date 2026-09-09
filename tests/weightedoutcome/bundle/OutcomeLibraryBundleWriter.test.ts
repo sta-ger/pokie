@@ -244,6 +244,39 @@ describe("OutcomeLibraryBundleWriter", () => {
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
+    it("keeps a destination claimed after the final policy while the atomic publisher constructs its temp directory", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        let finalPolicySucceeded = false;
+        let claimedDuringPublish = false;
+
+        await expect(writer.writeToDirectory([modes()[0]], outDir, {
+            assertDestinationAvailable: async () => {
+                await Promise.resolve();
+                finalPolicySucceeded = true;
+            },
+            onProgress: () => {
+                if (!claimedDuringPublish) {
+                    // The writer has already exclusively reserved its empty
+                    // holder.  Model an outside process replacing that holder
+                    // while publishDirectoryAtomically is filling tempDir.
+                    claimedDuringPublish = true;
+                    fs.rmSync(outDir, {recursive: true, force: true});
+                    fs.mkdirSync(outDir);
+                    fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+                }
+            },
+        })).rejects.toThrow(/claimed while publication was being prepared/i);
+
+        expect(finalPolicySucceeded).toBe(true);
+        expect(claimedDuringPublish).toBe(true);
+        expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(siblingLeftovers(outDir)).toEqual([]);
+
+        fs.rmSync(outDir, {recursive: true, force: true});
+        await expect(writer.writeToDirectory([modes()[0]], outDir)).resolves.toMatchObject({outDir, issues: []});
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
     it("removes a mode's index/outcomes files when a re-write no longer includes that mode", async () => {
         const writer = new OutcomeLibraryBundleWriter("1.3.0");
         await writer.writeToDirectory(modes(), outDir);

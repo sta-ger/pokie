@@ -8,6 +8,12 @@ export type PublishDirectoryAtomicallyOptions = {
     readonly writeFilesIntoTempDir: (tempDir: string) => void;
     readonly renameDirectory?: (from: string, to: string) => void;
     readonly removeDirectory?: (dirPath: string) => void;
+    // Called immediately before an existing destination is moved aside.  A
+    // publisher which reserved an initially-absent (or initially-empty)
+    // destination uses this to prove that the directory is still its own;
+    // importantly, this is after temp construction and immediately adjacent
+    // to the swap, not a stale preflight observation.
+    readonly assertDestinationOwnership?: () => void;
 };
 
 export type PublishDirectoryAtomicallyResult = {
@@ -73,6 +79,16 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
         return {};
     }
 
+    // Do not ever infer ownership from existence here.  In particular, an
+    // outDir created while writeFilesIntoTempDir ran belongs to its creator,
+    // not to this invocation.  The reservation check is deliberately the
+    // final operation before rename(outDir, stalePath).
+    try {
+        options.assertDestinationOwnership?.();
+    } catch (error) {
+        removeBestEffort(tempDir);
+        throw error;
+    }
     const stalePath = `${outDir}.stale-${crypto.randomBytes(6).toString("hex")}`;
     try {
         renameDirectory(outDir, stalePath);

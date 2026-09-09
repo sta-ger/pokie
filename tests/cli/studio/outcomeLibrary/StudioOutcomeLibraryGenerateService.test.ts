@@ -887,17 +887,23 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(fs.existsSync(path.join(projectRoot, "outcomelibrary", "manifest.json"))).toBe(true);
         });
 
-        it("preserves a destination claimed after generation at the final bundle check and succeeds after retry", async () => {
+        it("preserves a destination claimed during atomic bundle publication and succeeds after retry", async () => {
             const nativeWriter = new OutcomeLibraryBundleWriter<string>(POKIE_VERSION);
-            const nativeWrite = nativeWriter.writeToDirectory.bind(nativeWriter);
             let claimDestination = true;
             const writer = {
-                writeToDirectory: (...args: Parameters<OutcomeLibraryBundleWriter<string>["writeToDirectory"]>) => {
-                    if (claimDestination) {
-                        fs.mkdirSync(args[1]);
-                        fs.writeFileSync(path.join(args[1], "caller-owned.txt"), "untouched");
-                    }
-                    return nativeWrite(...args);
+                writeToDirectory: (modes: Parameters<OutcomeLibraryBundleWriter<string>["writeToDirectory"]>[0], destination: string, options?: Parameters<OutcomeLibraryBundleWriter<string>["writeToDirectory"]>[2]) => {
+                    return nativeWriter.writeToDirectory(modes, destination, {
+                        ...options,
+                        onProgress: (progress) => {
+                            options?.onProgress?.(progress);
+                            if (claimDestination && progress.message.startsWith("Publishing Outcome file")) {
+                                fs.rmSync(destination, {recursive: true, force: true});
+                                fs.mkdirSync(destination);
+                                fs.writeFileSync(path.join(destination, "caller-owned.txt"), "untouched");
+                                claimDestination = false;
+                            }
+                        },
+                    });
                 },
             } as OutcomeLibraryBundleWriter<string>;
             const svc = service(POKIE_VERSION, buildFixtureGame(), writer);

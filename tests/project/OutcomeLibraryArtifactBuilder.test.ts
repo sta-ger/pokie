@@ -162,17 +162,26 @@ describe("OutcomeLibraryArtifactBuilder", () => {
         const nativeWriter = new OutcomeLibraryBundleWriter("1.3.0");
         let claimDestination = true;
         const writer = {
-            writeToDirectory: (...args: Parameters<OutcomeLibraryBundleWriter["writeToDirectory"]>) => {
-                if (claimDestination) {
-                    fs.mkdirSync(args[1]);
-                    fs.writeFileSync(path.join(args[1], "caller-owned.txt"), "untouched");
-                }
-                return nativeWriter.writeToDirectory(...args);
+            writeToDirectory: (modes: Parameters<OutcomeLibraryBundleWriter["writeToDirectory"]>[0], destination: string, options?: Parameters<OutcomeLibraryBundleWriter["writeToDirectory"]>[2]) => {
+                return nativeWriter.writeToDirectory(modes, destination, {
+                    ...options,
+                    onProgress: (progress) => {
+                        options?.onProgress?.(progress);
+                        if (claimDestination && progress.message.startsWith("Publishing Outcome file")) {
+                            // This runs after the adapter's final policy and
+                            // while the shared publisher is building tempDir.
+                            fs.rmSync(destination, {recursive: true, force: true});
+                            fs.mkdirSync(destination);
+                            fs.writeFileSync(path.join(destination, "caller-owned.txt"), "untouched");
+                            claimDestination = false;
+                        }
+                    },
+                });
             },
         } as OutcomeLibraryBundleWriter;
         const builder = new OutcomeLibraryArtifactBuilder("1.3.0", undefined, writer);
 
-        await expect(builder.build(outcomeLibraryProjectOf(sourceDir), destinationDir)).rejects.toThrow(ArtifactBuildConflictError);
+        await expect(builder.build(outcomeLibraryProjectOf(sourceDir), destinationDir)).rejects.toThrow(/claimed while publication was being prepared/i);
         expect(fs.readFileSync(path.join(destinationDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
         expect(fs.readdirSync(path.dirname(destinationDir)).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.`))).toEqual([]);
 

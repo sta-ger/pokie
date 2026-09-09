@@ -7,6 +7,7 @@ import {
     BlueprintStakeOutcomeLibraryWorkflow,
     loadGameBlueprint,
     ManagedOutcomeProjectService,
+    OutcomeLibraryBundleWriter,
     PROJECT_TYPE_CAPABILITIES,
     type PokieProject,
 } from "../../src/index.js";
@@ -236,7 +237,7 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
         }
     });
 
-    it("revalidates the bound destination immediately before publication without deleting a late external file", async () => {
+    it("keeps a destination claimed during the shared atomic publish unregistered and retries cleanly", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-managed-outcome-late-destination-"));
         const blueprintPath = path.join(workDir, "game.blueprint.json");
         const outcomeDir = path.join(workDir, "outcome");
@@ -250,20 +251,33 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
         let introducedLateDestination = false;
 
         try {
-            const workflow = new BlueprintStakeOutcomeLibraryWorkflow("1.3.0", loadGameBlueprint);
-            await expect(workflow.resolveOrGenerate(project, outcomeDir, {
-                onProgress: (event) => {
-                    if (!introducedLateDestination && event.status === "running") {
-                        introducedLateDestination = true;
-                        fs.mkdirSync(outcomeDir, {recursive: true});
-                        fs.writeFileSync(lateFile, "external destination owner");
-                    }
-                },
-            })).rejects.toThrow(/not available|destination changed/i);
+            const nativeWriter = new OutcomeLibraryBundleWriter("1.3.0");
+            const workflow = new BlueprintStakeOutcomeLibraryWorkflow("1.3.0", loadGameBlueprint, undefined, undefined, {
+                writeToDirectory: (modes, destination, options) => nativeWriter.writeToDirectory(modes, destination, {
+                    ...options,
+                    onProgress: (progress) => {
+                        options?.onProgress?.(progress);
+                        if (!introducedLateDestination && progress.message.startsWith("Publishing Outcome file")) {
+                            // Replace the writer's reservation only after the
+                            // final owner policy has succeeded and the atomic
+                            // publisher is constructing its temp directory.
+                            fs.rmSync(destination, {recursive: true, force: true});
+                            fs.mkdirSync(destination, {recursive: true});
+                            fs.writeFileSync(lateFile, "external destination owner");
+                            introducedLateDestination = true;
+                        }
+                    },
+                }),
+            });
+            await expect(workflow.resolveOrGenerate(project, outcomeDir)).rejects.toThrow(/claimed while publication was being prepared/i);
 
             expect(introducedLateDestination).toBe(true);
             expect(fs.readFileSync(lateFile, "utf-8")).toBe("external destination owner");
             expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(false);
+            expect(fs.existsSync(path.join(workDir, ".pokie", "outcome-libraries"))).toBe(false);
+
+            fs.rmSync(outcomeDir, {recursive: true, force: true});
+            await expect(workflow.resolveOrGenerate(project, outcomeDir)).resolves.toMatchObject({reused: false});
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }

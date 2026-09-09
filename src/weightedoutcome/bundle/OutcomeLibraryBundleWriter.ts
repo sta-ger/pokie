@@ -14,6 +14,7 @@ import type {OutcomeLibraryBundleWriteValidating} from "./OutcomeLibraryBundleWr
 import {OutcomeLibraryBundleWriteValidator} from "./OutcomeLibraryBundleWriteValidator.js";
 import {
     OutcomeLibraryBundleWriteCancelledError,
+    OutcomeLibraryBundleDestinationClaimedError,
     type OutcomeLibraryBundleWriteOptions,
     type OutcomeLibraryBundleWriting,
 } from "./OutcomeLibraryBundleWriting.js";
@@ -93,6 +94,11 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
         options?: OutcomeLibraryBundleWriteOptions,
     ): Promise<OutcomeLibraryBundleWriteResult> {
         assertNotCancelled(options);
+        // A missing destination is the common public-adapter case.  Record
+        // that fact before any asynchronous staging begins: a directory that
+        // appears later must never be mistaken for this invocation's old
+        // output by the atomic publisher.
+        const destinationAtStart = captureDestinationIdentity(outDir);
         const upfrontIssues = this.validator.validate(modes);
         const supplementalFiles = validateSupplementalFiles(options?.supplementalFiles, modes, upfrontIssues);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
@@ -244,22 +250,32 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             // alone must never authorize this replacement.
             await options?.assertDestinationAvailable?.();
             assertNotCancelled(options);
-            const {cleanupWarning} = publishDirectoryAtomically({
-                outDir,
-                renameDirectory: this.renameDirectory,
-                removeDirectory: this.removeDirectory,
-                writeFilesIntoTempDir: (tempDir) => {
-                    for (const file of filesToPublish) {
-                        assertNotCancelled(options);
-                        this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
-                        options?.onProgress?.({completed, message: `Publishing Outcome file ${file}`});
-                        // A progress listener is allowed to abort the work it is observing.  This check
-                        // must be after the callback as well as before the next file: the last callback
-                        // is immediately followed by the atomic swap below.
-                        assertNotCancelled(options);
-                    }
-                },
-            });
+            const reservation = reserveBundleDestination(outDir, destinationAtStart);
+            let cleanupWarning: string | undefined;
+            try {
+                ({cleanupWarning} = publishDirectoryAtomically({
+                    outDir,
+                    renameDirectory: this.renameDirectory,
+                    removeDirectory: this.removeDirectory,
+                    assertDestinationOwnership: reservation.assertOwned,
+                    writeFilesIntoTempDir: (tempDir) => {
+                        for (const file of filesToPublish) {
+                            assertNotCancelled(options);
+                            this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
+                            options?.onProgress?.({completed, message: `Publishing Outcome file ${file}`});
+                            // A progress listener is allowed to abort the work it is observing.  This check
+                            // must be after the callback as well as before the next file: the last callback
+                            // is immediately followed by the atomic swap below.
+                            assertNotCancelled(options);
+                        }
+                    },
+                }));
+            } finally {
+                // This only removes the marker and a directory we created
+                // when it is still empty.  It never recursively removes a
+                // destination another actor claimed during publication.
+                reservation.release();
+            }
 
             // Keep the direct-writer contract true even if a custom atomic publisher grows a callback
             // boundary of its own: never report a completed bundle after its signal was cancelled.
@@ -342,4 +358,103 @@ function validateSupplementalFiles<T extends string | number>(
 
 function assertNotCancelled(options: OutcomeLibraryBundleWriteOptions | undefined): void {
     if (options?.signal?.aborted) throw new OutcomeLibraryBundleWriteCancelledError();
+}
+
+type BundleDestinationReservation = {
+    readonly assertOwned: () => void;
+    readonly release: () => void;
+};
+
+type DestinationIdentity = {
+    readonly device: number;
+    readonly inode: number;
+};
+
+function captureDestinationIdentity(outDir: string): DestinationIdentity | undefined {
+    try {
+        const stat = fs.statSync(outDir);
+        return {device: stat.dev, inode: stat.ino};
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+        throw error;
+    }
+}
+
+// A marker makes an empty destination a durable reservation without changing
+// the public output shape.  If the destination was absent when writing began,
+// mkdir itself is the exclusive claim.  If it was an intentionally allowed
+// empty directory, the exclusive marker records that its emptiness was
+// consumed by this invocation.  Pre-existing non-empty output keeps the
+// established direct-writer rewrite behaviour.
+function reserveBundleDestination(outDir: string, destinationAtStart: DestinationIdentity | undefined): BundleDestinationReservation {
+    const token = crypto.randomBytes(12).toString("hex");
+    const markerName = `.pokie-bundle-reservation-${token}`;
+    const markerPath = path.join(outDir, markerName);
+    let ownsMarker = false;
+    let createdDirectory = false;
+
+    if (destinationAtStart === undefined) {
+        try {
+            fs.mkdirSync(outDir);
+            createdDirectory = true;
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+                throw new OutcomeLibraryBundleDestinationClaimedError(`Outcome Library destination "${outDir}" was claimed while publication was being prepared.`);
+            }
+            throw error;
+        }
+    }
+
+    if (destinationAtStart !== undefined) {
+        const current = captureDestinationIdentity(outDir);
+        if (current === undefined || current.device !== destinationAtStart.device || current.inode !== destinationAtStart.inode) {
+            throw new OutcomeLibraryBundleDestinationClaimedError(`Outcome Library destination "${outDir}" was replaced while publication was being prepared.`);
+        }
+    }
+
+    // A directory that existed at call start may be a supported re-write.  We
+    // only need a marker for an empty one, because a non-empty existing bundle
+    // remains the caller's explicitly selected replacement target.
+    if (createdDirectory || (fs.existsSync(outDir) && fs.statSync(outDir).isDirectory() && fs.readdirSync(outDir).length === 0)) {
+        try {
+            fs.writeFileSync(markerPath, token, {encoding: "utf-8", flag: "wx"});
+            ownsMarker = true;
+        } catch (error) {
+            releaseReservationMarker(outDir, markerPath, false);
+            throw error;
+        }
+    }
+
+    return {
+        assertOwned: () => {
+            if (!ownsMarker) return;
+            try {
+                if (!fs.existsSync(markerPath) || fs.readFileSync(markerPath, "utf-8") !== token) {
+                    throw new Error("reservation marker is missing or changed");
+                }
+                const entries = fs.readdirSync(outDir);
+                if (entries.length !== 1 || entries[0] !== markerName) {
+                    throw new Error("destination contains files not owned by this publication");
+                }
+            } catch (error) {
+                throw new OutcomeLibraryBundleDestinationClaimedError(
+                    `Outcome Library destination "${outDir}" was claimed while publication was being prepared: ` +
+                    `${error instanceof Error ? error.message : String(error)}`,
+                );
+            }
+        },
+        release: () => releaseReservationMarker(outDir, markerPath, createdDirectory),
+    };
+}
+
+function releaseReservationMarker(outDir: string, markerPath: string, createdDirectory: boolean): void {
+    try {
+        if (fs.existsSync(markerPath)) fs.rmSync(markerPath, {force: true});
+        // rmdir only succeeds for our still-empty holder.  Never use
+        // recursive cleanup here: an actor may have claimed the path.
+        if (createdDirectory && fs.existsSync(outDir)) fs.rmdirSync(outDir);
+    } catch {
+        // A caller-owned destination is safer left in place than aggressively
+        // cleaned up.  The marker is internal scratch and has no output role.
+    }
 }
