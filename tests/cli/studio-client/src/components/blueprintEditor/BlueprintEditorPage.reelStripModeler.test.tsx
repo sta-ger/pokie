@@ -25,8 +25,32 @@ async function selectGeneratedWeights(user: ReturnType<typeof userEvent.setup>):
     await user.click(screen.getByRole("radio", {name: "Weights"}));
 }
 
+async function addCanonicalSymbol(user: ReturnType<typeof userEvent.setup>, symbol: string): Promise<void> {
+    const newSymbolId = screen.queryByLabelText("New symbol id");
+    // In the guided editor the Symbols tab is deliberately lazy-mounted. Its recommended blueprint
+    // already supplies canonical symbols, so the literal picker below is the authoritative UI surface
+    // instead of opening an unrelated tab merely to inspect that backing list.
+    if (newSymbolId === null) {
+        return;
+    }
+    await user.type(newSymbolId, symbol);
+    await user.click(screen.getByRole("button", {name: "Add symbol"}));
+    expect(screen.getAllByLabelText(/Symbol \d+ id/).some((input) => (input as HTMLInputElement).value === symbol)).toBe(true);
+}
+
+async function ensureCanonicalSymbol(user: ReturnType<typeof userEvent.setup>, symbol: string): Promise<void> {
+    const existing = screen.queryAllByLabelText(/Symbol \d+ id/).some((input) => (input as HTMLInputElement).value === symbol);
+    if (!existing) {
+        await addCanonicalSymbol(user, symbol);
+    }
+}
+
 async function addLiteralSymbol(user: ReturnType<typeof userEvent.setup>, symbol = "A"): Promise<void> {
-    await user.type(screen.getByLabelText("New symbol id for reel 1"), symbol);
+    await ensureCanonicalSymbol(user, symbol);
+    const picker = screen.getByRole("combobox", {name: "Symbol picker for reel 1"});
+    await user.click(picker);
+    await user.type(picker, symbol);
+    await user.keyboard("{ArrowDown}{Enter}");
     await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
 }
 
@@ -103,8 +127,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
 
-        await user.type(screen.getByLabelText("New symbol id for reel 1"), "W");
-        await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+        await addLiteralSymbol(user, "A");
         expect(screen.getByText("Unapplied changes")).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Commit or discard")}));
@@ -294,8 +317,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         // request), and the edit itself immediately resets the preview back to idle (any blueprint change
         // invalidates a previously-shown/pending preview) -- so "Working…" disappearing here is the first
         // layer of protection.
-        await user.type(screen.getByLabelText("New symbol id"), "wild");
-        await user.click(screen.getByRole("button", {name: "Add symbol"}));
+        await addCanonicalSymbol(user, "wild");
         await waitFor(() => expect(screen.queryByText("Working…")).not.toBeInTheDocument());
 
         resolver?.(
@@ -356,8 +378,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
-        await user.type(screen.getByLabelText("New symbol id for reel 1"), "W");
-        await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+        await addLiteralSymbol(user, "A");
 
         await user.click(screen.getByRole("button", {name: stepperStep("Select reel", "Which reel")}));
         await user.click(screen.getByRole("button", {name: "Select reel 2"}));
@@ -377,7 +398,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         expect(screen.getByText("Reel 2")).toBeInTheDocument();
 
         // Switching back to reel 1 (now not dirty, since it was discarded, so no confirm needed) shows the
-        // original, unedited empty literal strip -- the "W" symbol never survived the switch.
+        // original, unedited empty literal strip -- the "A" symbol never survived the switch.
         await user.click(screen.getByRole("button", {name: stepperStep("Select reel", "Which reel")}));
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
         expect(screen.queryByText("Unapplied changes")).not.toBeInTheDocument();
@@ -390,8 +411,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
-        await user.type(screen.getByLabelText("New symbol id for reel 1"), "W");
-        await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+        await addLiteralSymbol(user, "A");
         expect(screen.getByText("Unapplied changes")).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Commit or discard")}));
@@ -400,7 +420,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         expect(screen.getByText(/draft matches what's already in the Reels draft/)).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: stepperStep("Edit or generate", "Literal or generated")}));
-        expect(screen.queryByDisplayValue("W")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Reel 1 symbol 1")).not.toBeInTheDocument();
     });
 
     it("clears reel selection, draft, and preview entirely when the blueprint is replaced (New Blueprint)", async () => {
@@ -410,8 +430,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
-        await user.type(screen.getByLabelText("New symbol id for reel 1"), "W");
-        await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+        await addLiteralSymbol(user, "A");
         expect(screen.getByText("Unapplied changes")).toBeInTheDocument();
 
         // "Add symbol to reel 1" already mutated the blueprint itself (reelStripGeneration is a real
@@ -426,10 +445,10 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         // trace of the previous blueprint's reel selection, draft, or dirty state.
         expect(screen.getByRole("button", {name: stepperStep("Select reel", "Which reel")})).toBeInTheDocument();
         expect(screen.queryByText("Unapplied changes")).not.toBeInTheDocument();
-        expect(screen.queryByLabelText("New symbol id for reel 1")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Symbol picker for reel 1")).not.toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
-        expect(screen.queryByDisplayValue("W")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Reel 1 symbol 1")).not.toBeInTheDocument();
     });
 
     it("invalidates a pending Check & preview response when the draft itself is edited while it's in flight", async () => {
@@ -452,8 +471,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         expect(await screen.findByText("Working…")).toBeInTheDocument();
 
         // Edit this reel's own draft (not another section) while its own request is still in flight.
-        await user.type(screen.getByLabelText("New symbol id for reel 1"), "W");
-        await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+        await addLiteralSymbol(user, "A");
         await waitFor(() => expect(screen.queryByText("Working…")).not.toBeInTheDocument());
 
         resolver?.(
@@ -495,8 +513,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         // Back to Edit or generate, and edit the draft again -- the preview just shown described the
         // draft *before* this edit and must no longer count as current.
         await user.click(screen.getByRole("button", {name: stepperStep("Edit or generate", "Literal or generated")}));
-        await user.type(screen.getByLabelText("New symbol id for reel 1"), "C");
-        await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+        await addLiteralSymbol(user, "A");
 
         // Inspect diagnostics is disabled again -- clicking it does nothing, so we're still on Edit or
         // generate (only step 1's own "Check & preview" button exists here).
@@ -584,8 +601,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
 
         // Edit the literal strip too, so there's actually something to discard -- toggling back to
         // Literal alone landed exactly on what's already applied (empty), leaving nothing dirty yet.
-        await user.type(screen.getByLabelText("New symbol id for reel 1"), "Z");
-        await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+        await addLiteralSymbol(user, "A");
 
         await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Commit or discard")}));
         await user.click(screen.getByRole("button", {name: "Discard"}));
@@ -619,8 +635,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
 
         // Edit the draft -- invalidates the first (still unresolved -- there is nothing to cancel over
         // plain fetch) request.
-        await user.type(screen.getByLabelText("New symbol id for reel 1"), "W");
-        await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+        await addLiteralSymbol(user, "A");
         await waitFor(() => expect(screen.queryByText("Working…")).not.toBeInTheDocument());
 
         // A brand new Check & preview must be allowed to start right away -- not silently swallowed by
