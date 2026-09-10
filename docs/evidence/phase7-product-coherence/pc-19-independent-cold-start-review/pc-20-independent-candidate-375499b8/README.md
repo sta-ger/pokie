@@ -37,3 +37,32 @@ records two fresh-profile candidate launches that repaired the previously
 unconfirmed Open Play transition and reached a completed rendered Spin. It also
 records the still-incomplete simulation/replay/export coverage without claiming
 a protocol-valid PC-19 pass or a product finding.
+
+## Final recovery, 2026-09-10
+
+Fresh profiles 21–23 reused the repaired persistent harness and candidate
+source launcher only. The final stable run reached a completed 100-round
+Simulation, a selected local Session Spin replay, the exact base Outcome
+Library terminal, a TypeScript package terminal, and the scoped Stake Engine
+export terminal. It also reached Game Model and each required Studio route.
+The full unretained rendered transcript is verifier-controlled at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-ddbc1b61bdffbdcc/launch-23-output/studio-transcript.txt`
+(SHA-256 `b5996bcfd5ada4cceddd395bbe357ae73374b9db5728faf3212ec88ebeda7f7f`).
+
+The final action was the exact enabled **Build** control in the `PAR sheet
+(.xlsx)` card. Its local ready state was `Status: Ready to build`; it was
+activated once at `2026-09-10T06:26:24.534Z`. For the following 120 seconds the
+same card rendered neither a pending/job state nor its own output/success/error
+surface. The recovered matcher was limited to the PAR heading's small card
+subtree and did not use the sibling Stake output. This remains an
+action-correlation driver gap, not a product finding.
+
+To avoid treating a missing verifier-owned receipt as an external prerequisite,
+the bounded empty blind finding list was frozen in
+`frozen-findings.json`. The external verifier-owned receipt is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-ddbc1b61bdffbdcc/pc-20-partial-freeze-receipt.json`
+(SHA-256 `a6d095c8ef083fcddd1ac529b9a6831fde45eaf09ab5e7c0c066d5ffbdf4e4b8`).
+The PC-19 validator received that exact identity and receipt; it correctly
+rejected completion because this partial run lacks `PROVENANCE.json`. No
+post-freeze comparison was opened. The receipt anchors the partial state only;
+it does not claim complete coverage or release approval.
