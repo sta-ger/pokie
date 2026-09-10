@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import {
     describeWasmLifecycleBoundary,
+    type ArtifactConversionPlan,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleValidator,
     Paytable,
@@ -18,12 +19,12 @@ import type {StudioOutcomeLibraryGenerateResultView} from "../../../../cli/studi
 import {StudioOutcomeLibraryGenerateJobService} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateJobService.js";
 import {StudioOutcomeLibraryGenerateService} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 
-const plannedOutcomeLibrary = {
-    status: "planned" as const,
-    source: {kind: "tsPackage" as const, capabilities: ["outcome-library-generate" as const]},
-    target: {kind: "outcomeLibrary" as const, capabilities: ["outcome-library-read" as const]},
-    steps: [{kind: "generateOutcomeLibrary" as const, choice: "materialize" as const, estimatedWork: "generate", input: {kind: "tsPackage" as const, capabilities: []}, output: {kind: "outcomeLibrary" as const, capabilities: []}}],
-    preflight: {destinationKind: "directory" as const, estimatedWork: "generate", losses: [], oneWay: false},
+const plannedOutcomeLibrary: ArtifactConversionPlan = {
+    status: "planned",
+    source: {kind: "tsPackage", capabilities: ["outcome-library-generate"]},
+    target: {kind: "outcomeLibrary", capabilities: ["outcome-library-read"]},
+    steps: [{kind: "generateOutcomeLibrary", choice: "materialize", estimatedWork: "generate", input: {kind: "tsPackage", capabilities: []}, output: {kind: "outcomeLibrary", capabilities: []}}],
+    preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false},
 };
 
 function build614656OutcomeGame(): PokieGame {
@@ -192,7 +193,7 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         };
         const generate = jest.fn(async (root: string, request: {readonly signal?: AbortSignal}) => {
             await new Promise<void>((resolve) => {
-                request.signal?.addEventListener("abort", resolve, {once: true});
+                request.signal?.addEventListener("abort", () => resolve(), {once: true});
             });
             return {status: "cancelled" as const, processedRawIndex: BigInt(1), progressTotal: BigInt(6), checkpoint, recovery: "resume", plan: createUnresolvedRuntimePlan(root, "outcomeLibrary")};
         });

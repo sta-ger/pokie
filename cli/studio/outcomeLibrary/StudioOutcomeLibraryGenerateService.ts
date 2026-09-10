@@ -1082,7 +1082,7 @@ export class StudioOutcomeLibraryGenerateService {
         const sample = resolveSample(request);
         // Transport requests deliberately cannot carry lifecycle capabilities.
         // Narrow before consulting the JobService-only recovery identity.
-        const lifecycleRequest = "resumeFrom" in request ? request : undefined;
+        const lifecycleRequest = "resumeFrom" in request || "recoveryAuthorityId" in request ? request : undefined;
         const recoveryAuthorityId = lifecycleRequest?.recoveryAuthorityId ?? lifecycleRequest?.resumeFrom?.recoveryAuthorityId ?? randomUUID();
         if (!(/^[0-9a-f-]{36}$/i).test(recoveryAuthorityId)) {
             throw new WeightedOutcomeLibraryGenerationError(
