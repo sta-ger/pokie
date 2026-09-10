@@ -31,3 +31,9 @@ record.
 
 The pre-existing PC-19 evidence directories were not edited. This directory is
 the only retained evidence delta from this inconclusive attempt.
+
+The subsequent [recovery-launch-2026-09-10.md](recovery-launch-2026-09-10.md)
+records two fresh-profile candidate launches that repaired the previously
+unconfirmed Open Play transition and reached a completed rendered Spin. It also
+records the still-incomplete simulation/replay/export coverage without claiming
+a protocol-valid PC-19 pass or a product finding.
