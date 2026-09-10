@@ -345,7 +345,7 @@ export const testSessionStateRoundTripCarriesModeAndNestedFreeGamesState = (
     innerSession.setFreeGamesBank(50);
 
     const state = session.toSessionState();
-    expect(state).toEqual({betModeId: "ante", base: {freeGamesNum: 1, freeGamesSum: 3, freeGamesBank: 50}});
+    expect(state).toEqual({betModeId: "ante", base: {freeGamesNum: 1, freeGamesSum: 3, freeGamesBank: 50, base: {}}});
 
     otherSession.fromSessionState(state);
 
