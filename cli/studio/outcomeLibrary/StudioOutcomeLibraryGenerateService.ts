@@ -7,8 +7,11 @@ import {
     OutcomeLibraryBundleReading,
     OutcomeLibraryBundleWriter,
     OutcomeLibraryBundleWriting,
+    OutcomeLibraryBundleWriteCancelledError,
     OutcomeSpaceEstimate,
     OutcomeLibraryGenerationRequest,
+    ExactEnumerationRecoveryAuthority,
+    issueExactEnumerationRecoveryAuthority,
     PokieGame,
     WeightedOutcomeLibraryGenerationError,
     WeightedOutcomeLibraryGenerationCancelledError,
@@ -24,11 +27,13 @@ import {
     computeArtifactInputBindingHash,
     isWasmComponentFile,
     estimateExactOutcomeSpaceSize,
+    generateStreamingWeightedOutcomeLibrary,
     generateWeightedOutcomeLibrary,
     prepareOutcomeLibraryGeneration,
 } from "pokie";
 import fs from "fs";
 import path from "path";
+import {randomUUID} from "crypto";
 import {resolveProjectDirectory} from "./resolveProjectDirectory.js";
 import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
 import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
@@ -122,6 +127,8 @@ export class StudioOutcomeLibraryGenerateService {
     private readonly pokieVersion: string;
     private readonly loadGame: typeof loadPokieGame;
     private readonly estimateSpace: (game: PokieGame) => OutcomeSpaceEstimate;
+    // Optional solely for existing in-process embeddings. The normal Studio
+    // service publishes the generator's stream directly to the bundle writer.
     private readonly generateLibrary: (request: OutcomeLibraryGenerationRequest) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
     private readonly writer: OutcomeLibraryBundleWriting<string>;
     private readonly bundleReader: OutcomeLibraryBundleReading<string>;
@@ -505,8 +512,38 @@ export class StudioOutcomeLibraryGenerateService {
                 readonly status: "ready";
                 readonly modes: readonly OutcomeLibraryBundleModeInput<string>[];
                 readonly libraryId: string;
-                readonly generator: GenerateExactWeightedOutcomeLibraryResult["diagnostics"];
+                readonly generator?: GenerateExactWeightedOutcomeLibraryResult["diagnostics"];
+                readonly getGenerator?: () => GenerateExactWeightedOutcomeLibraryResult["diagnostics"] | undefined;
             };
+        // Studio may intentionally regenerate a mode in an existing canonical
+        // bundle. A destination absent when this read began, however, remains
+        // caller-owned if it appears before the writer's final swap.
+        let destinationExistedWhenRead = false;
+        const assertDestinationAvailable = async () => {
+            // The token retains the managed Blueprint source identity, but
+            // publication must still re-check its physical output:
+            // OutcomeLibraryBundleWriter atomically replaces an existing
+            // directory. Use the registry's direct source-alias/missing-or-
+            // empty guard here rather than re-planning, so a cancelled retry
+            // does not depend on transient source recognition while a late
+            // caller-owned destination remains protected.
+            if (tokenBoundBlueprintPlan !== undefined) {
+                assertPreparedArtifactDestinationAvailable(
+                    tokenBoundBlueprintPlan.source.canonicalLocation,
+                    boundDestination,
+                    "directory",
+                );
+                return;
+            }
+            if (!destinationExistedWhenRead && fs.existsSync(boundDestination)) {
+                throw new Error(`The Outcome Library destination "${boundDestination}" was claimed after generation began.`);
+            }
+            const current = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
+            if (current.status === "planned") {
+                return;
+            }
+            throw new Error(current.diagnostic?.message ?? "The Outcome Library destination is unavailable.");
+        };
         try {
             const execution = await this.planner.executeConversionPlan(plan, {
                 // Rebind a managed Blueprint's canonical file before both the
@@ -522,6 +559,7 @@ export class StudioOutcomeLibraryGenerateService {
                     return (await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration)).source;
                 },
                 read: async (): Promise<PreparedGenerationRead> => {
+                    destinationExistedWhenRead = this.directoryExists(boundDestination);
                     const reuse = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
                     if (reuse !== undefined) {
                         const sourceDir = reuse.output.canonicalLocation;
@@ -532,8 +570,14 @@ export class StudioOutcomeLibraryGenerateService {
                             if (sourceMode?.generator === undefined) return {status: "terminal", view: {status: "load-error", error: `The prepared reusable Outcome Library does not contain generated provenance for mode "${modeName}". Regenerate that mode before reusing it.`, plan}};
                             const modes: OutcomeLibraryBundleModeInput<string>[] = [];
                             for (const entry of sourceManifest.modes) {
-                                const library = await this.bundleReader.readLibrary(sourceDir, entry.modeName);
-                                modes.push({modeName: entry.modeName, libraryId: library.libraryId, schemaVersion: library.schemaVersion, outcomes: library.outcomes, ...(entry.generator === undefined ? {} : {generator: entry.generator})});
+                                const index = await this.bundleReader.readModeIndex(sourceDir, entry.modeName);
+                                modes.push({
+                                    modeName: entry.modeName,
+                                    libraryId: index.libraryId,
+                                    schemaVersion: index.librarySchemaVersion,
+                                    outcomes: this.bundleReader.iterateModeOutcomes(sourceDir, entry.modeName),
+                                    ...(entry.generator === undefined ? {} : {generator: entry.generator}),
+                                });
                             }
                             return {status: "ready", modes, libraryId: sourceMode.libraryId, generator: sourceMode.generator};
                         } catch (error) {
@@ -544,12 +588,33 @@ export class StudioOutcomeLibraryGenerateService {
                         return {status: "terminal", view: {status: "load-error", error: "The prepared conversion has no executable Outcome Library generation or reuse step. Refresh the preview and retry.", plan}};
                     }
                     const libraryId = domainRequest.libraryId;
-                    let generated: GenerateExactWeightedOutcomeLibraryResult;
                     try {
-                        generated = await this.generateLibrary(domainRequest);
+                        const otherModes = await this.readOtherModes(boundDestination, modeName);
+                        if (otherModes.status === "error") return {status: "terminal", view: {status: "load-error", error: otherModes.message, plan}};
+                        if (this.generateLibrary !== generateWeightedOutcomeLibrary) {
+                            const generated = await this.generateLibrary(domainRequest);
+                            return {
+                                status: "ready",
+                                modes: [...otherModes.modes, {modeName, libraryId, schemaVersion: generated.library.schemaVersion, outcomes: generated.library.outcomes, generator: generated.diagnostics}],
+                                libraryId,
+                                generator: generated.diagnostics,
+                            };
+                        }
+                        const generated = generateStreamingWeightedOutcomeLibrary(domainRequest);
+                        return {
+                            status: "ready",
+                            modes: [...otherModes.modes, {
+                                modeName,
+                                libraryId,
+                                outcomes: generated.outcomes,
+                                getGenerator: generated.getDiagnostics,
+                            }],
+                            libraryId,
+                            getGenerator: generated.getDiagnostics,
+                        };
                     } catch (error) {
                         if (error instanceof WeightedOutcomeLibraryGenerationCancelledError) {
-                            const resumable = preparedRequest.preflight.strategy === "exact";
+                            const resumable = preparedRequest.preflight.strategy === "exact" && !error.checkpoint.restartRequired;
                             return {status: "terminal", view: {
                                 status: "cancelled",
                                 processedRawIndex: error.processedRawIndex,
@@ -557,7 +622,7 @@ export class StudioOutcomeLibraryGenerateService {
                                 ...(resumable ? {checkpoint: error.checkpoint} : {}),
                                 recovery: resumable
                                     ? "Generation was cancelled before publication. Resume this exact checkpoint while the game configuration is unchanged."
-                                    : "Generation was cancelled before publication. Retry the same bounded-coverage request to start a fresh deterministic sample.",
+                                    : "Generation was cancelled safely before publication. Retry the same request from the beginning.",
                                 plan,
                             }};
                         }
@@ -568,40 +633,18 @@ export class StudioOutcomeLibraryGenerateService {
                         }
                         throw error;
                     }
-                    const otherModes = await this.readOtherModes(boundDestination, modeName);
-                    if (otherModes.status === "error") return {status: "terminal", view: {status: "load-error", error: otherModes.message, plan}};
-                    return {
-                        status: "ready",
-                        modes: [...otherModes.modes, {modeName, libraryId, schemaVersion: generated.library.schemaVersion, outcomes: generated.library.outcomes, generator: generated.diagnostics}],
-                        libraryId,
-                        generator: generated.diagnostics,
-                    };
                 },
                 canPublish: (read) => read.status === "ready",
-                assertDestinationAvailable: async () => {
-                    // The token retains the managed Blueprint source identity,
-                    // but publication must still re-check its physical output:
-                    // OutcomeLibraryBundleWriter atomically replaces an
-                    // existing directory. Use the registry's direct
-                    // source-alias/missing-or-empty guard here rather than
-                    // re-planning, so a cancelled retry does not depend on
-                    // transient source recognition while a late caller-owned
-                    // destination remains protected.
-                    if (tokenBoundBlueprintPlan !== undefined) {
-                        assertPreparedArtifactDestinationAvailable(
-                            tokenBoundBlueprintPlan.source.canonicalLocation,
-                            boundDestination,
-                            "directory",
-                        );
-                        return;
-                    }
-                    const current = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
-                    if (current.status === "planned") return;
-                    throw new Error(current.diagnostic?.message ?? "The Outcome Library destination is unavailable.");
-                },
+                assertDestinationAvailable,
                 publish: (read) => {
                     if (read.status !== "ready") throw new Error("The prepared Outcome Library generation was not publishable.");
-                    return this.writer.writeToDirectory(read.modes, boundDestination);
+                    return this.writer.writeToDirectory(read.modes, boundDestination, {
+                        signal: request.signal,
+                        // The planner invokes this policy before publication;
+                        // retain that exact async policy for the writer's final
+                        // atomic replacement after streaming staging.
+                        assertDestinationAvailable,
+                    });
                 },
                 register: (writeResult) => {
                     if (writeResult.manifest !== undefined && !writeResult.issues.some((issue) => issue.severity === "error")) this.recordDiscoveredBundleDir(projectRoot, outDirRelative);
@@ -623,7 +666,9 @@ export class StudioOutcomeLibraryGenerateService {
 
             const read = execution.read;
             if (read.status !== "ready") return {status: "load-error", error: "The prepared Outcome Library generation lost its publishable source.", plan};
-            const coverage = read.generator.strategy === "exact" ? 1 : toNumberApprox(read.generator.sampledRawCount) / toNumberApprox(read.generator.totalOutcomeSpaceSize);
+            const generator = read.generator ?? read.getGenerator?.();
+            if (generator === undefined) return {status: "load-error", error: "The generated Outcome Library completed without provenance diagnostics.", plan};
+            const coverage = generator.strategy === "exact" ? 1 : toNumberApprox(generator.sampledRawCount) / toNumberApprox(generator.totalOutcomeSpaceSize);
 
             return {
                 status: "ok",
@@ -638,12 +683,46 @@ export class StudioOutcomeLibraryGenerateService {
                     totalWeight: modeEntry.totalWeight,
                     rtp: modeEntry.analysis.rtp,
                 },
-                generator: read.generator,
+                generator,
                 coverage,
                 selector: {kind: "bundle", bundleDir: outDirRelative, modeName},
                 plan,
             };
         } catch (error) {
+            // A streaming producer is consumed inside the writer rather than
+            // in read(). Preserve Studio's established action-local outcome
+            // for generator failures at that later boundary.
+            if (error instanceof WeightedOutcomeLibraryGenerationCancelledError) {
+                // Streaming publication uses disposable disk partitions.  A
+                // cancellation checkpoint marked restartRequired is progress
+                // reporting only, not a token Studio may persist and offer
+                // for resume after its staging has been removed.
+                const resumable = preparedRequest.preflight.strategy === "exact" && !error.checkpoint.restartRequired;
+                return {
+                    status: "cancelled",
+                    processedRawIndex: error.processedRawIndex,
+                    progressTotal: error.progressTotal,
+                    ...(resumable ? {checkpoint: error.checkpoint} : {}),
+                    recovery: resumable
+                        ? "Generation was cancelled before publication. Resume this exact checkpoint while the game configuration is unchanged."
+                        : "Generation was cancelled before publication. No partial bundle was published; retry the same request from the beginning.",
+                    plan,
+                };
+            }
+            if (error instanceof OutcomeLibraryBundleWriteCancelledError) {
+                return {
+                    status: "cancelled",
+                    processedRawIndex: BigInt(0),
+                    progressTotal: preparedRequest.preflight.estimate.totalOutcomeSpaceSize,
+                    recovery: "Publication was cancelled before the bundle could be atomically replaced. Retry the same prepared request.",
+                    plan,
+                };
+            }
+            if (error instanceof WeightedOutcomeLibraryGenerationError) {
+                return error.getCode() === "weighted-outcome-library-generation-unsupported"
+                    ? {status: "unsupported", error: error.message, plan}
+                    : {status: "generation-error", code: error.getCode(), error: error.message, plan};
+            }
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan};
         }
     }
@@ -905,12 +984,12 @@ export class StudioOutcomeLibraryGenerateService {
             if (entry.modeName === excludeModeName) {
                 continue;
             }
-            const library = await this.bundleReader.readLibrary(resolvedOutDir, entry.modeName);
+            const index = await this.bundleReader.readModeIndex(resolvedOutDir, entry.modeName);
             modes.push({
                 modeName: entry.modeName,
-                libraryId: library.libraryId,
-                schemaVersion: library.schemaVersion,
-                outcomes: library.outcomes,
+                libraryId: index.libraryId,
+                schemaVersion: index.librarySchemaVersion,
+                outcomes: this.bundleReader.iterateModeOutcomes(resolvedOutDir, entry.modeName),
                 ...(entry.generator !== undefined ? {generator: entry.generator} : {}),
             });
         }
@@ -1001,6 +1080,20 @@ export class StudioOutcomeLibraryGenerateService {
     ): OutcomeLibraryGenerationRequest {
         const manifest = game.getManifest();
         const sample = resolveSample(request);
+        // Transport requests deliberately cannot carry lifecycle capabilities.
+        // Narrow before consulting the JobService-only recovery identity.
+        const lifecycleRequest = "resumeFrom" in request || "recoveryAuthorityId" in request ? request : undefined;
+        const recoveryAuthorityId = lifecycleRequest?.recoveryAuthorityId ?? lifecycleRequest?.resumeFrom?.recoveryAuthorityId ?? randomUUID();
+        if (!(/^[0-9a-f-]{36}$/i).test(recoveryAuthorityId)) {
+            throw new WeightedOutcomeLibraryGenerationError(
+                "weighted-outcome-library-generation-checkpoint-mismatch",
+                "The persisted recovery authority is invalid. Start a new generation.",
+            );
+        }
+        const recoveryAuthority: ExactEnumerationRecoveryAuthority = issueExactEnumerationRecoveryAuthority(
+            path.resolve(this.projectStateRoot(projectRoot), ".pokie", "outcome-library-recovery"),
+            recoveryAuthorityId,
+        );
         return {
             libraryId: request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`,
             game,
@@ -1028,9 +1121,22 @@ export class StudioOutcomeLibraryGenerateService {
                 allowWithinSource: true,
             },
             ...("resumeFrom" in request && request.resumeFrom !== undefined ? {resumeFrom: request.resumeFrom} : {}),
+            // Every Studio job exposes cancellation recovery, including after
+            // a server restart. Its checkpoint is partitioned durable state,
+            // never an in-memory distinct-grid accumulator.
+            durableCheckpointOnCancellation: true,
+            recoveryAuthority,
             ...("signal" in request && request.signal !== undefined ? {signal: request.signal} : {}),
             ...("onProgress" in request && request.onProgress !== undefined ? {onProgress: request.onProgress} : {}),
         };
+    }
+
+    private projectStateRoot(projectRoot: string): string {
+        try {
+            return fs.statSync(projectRoot).isFile() ? path.dirname(projectRoot) : projectRoot;
+        } catch {
+            return projectRoot;
+        }
     }
 }
 

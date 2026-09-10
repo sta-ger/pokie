@@ -2,7 +2,8 @@ import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibra
 import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/OutcomeLibraryBundleReading.js";
 import type {OutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleModeInput.js";
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
-import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
+import {OutcomeLibraryBundleDestinationClaimedError, type OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
+import {removePublishedDirectoryIfOwned, type PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {
@@ -57,6 +58,7 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
         const destinationState = captureArtifactDestinationState(destinationPath, this.destinationKind);
+        let finalDestinationRejected = false;
 
         if (source.type !== "outcomeLibrary") {
             throw new Error(
@@ -65,6 +67,7 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
             );
         }
 
+        let publication: PublishedDirectoryOwnership | undefined;
         try {
             const manifest = await this.reader.readManifest(source.rootPath);
             const preflight = outcomePreflight(manifest);
@@ -89,6 +92,19 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: "Publishing outcome-library bundle"});
             const result = await this.writer.writeToDirectory(modes, destinationPath, {
                 signal: options?.signal,
+                assertDestinationAvailable: () => {
+                    try {
+                        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+                        assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+                    } catch (error) {
+                        // Do not let the generic failure cleanup remove a
+                        // directory claimed by another caller after our
+                        // preflight. The writer's staging is still removed by
+                        // its own finally block.
+                        finalDestinationRejected = true;
+                        throw error;
+                    }
+                },
                 onProgress: (progress) => {
                     reportArtifactBuildProgress(options, {
                         status: "running",
@@ -99,6 +115,7 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
                     });
                 },
             });
+            publication = result.publication;
             assertArtifactBuildNotCancelled(options);
             const errors = result.issues.filter((issue) => issue.severity === "error");
             if (errors.length > 0 || result.manifest === undefined) {
@@ -112,7 +129,11 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
             return {outputPath: result.outDir, preflight};
         } catch (error) {
-            await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            if (publication !== undefined) {
+                removePublishedDirectoryIfOwned(publication);
+            } else if (!finalDestinationRejected && !(error instanceof OutcomeLibraryBundleDestinationClaimedError)) {
+                await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            }
             if (options?.signal?.aborted) {
                 if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
             } else reportArtifactBuildProgress(options, {status: "failed", message: "Outcome-library publishing failed"});

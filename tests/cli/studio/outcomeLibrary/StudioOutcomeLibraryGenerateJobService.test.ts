@@ -1,11 +1,50 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {describeWasmLifecycleBoundary, type ExactEnumerationCheckpoint} from "pokie";
+import {
+    describeWasmLifecycleBoundary,
+    type ArtifactConversionPlan,
+    OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleValidator,
+    Paytable,
+    type ExactEnumerationCheckpoint,
+    type PokieGame,
+    type SymbolsCombinationsGenerating,
+    SymbolsSequence,
+    VideoSlotConfig,
+    VideoSlotSession,
+} from "pokie";
 import {createUnresolvedRuntimePlan} from "../../../../cli/studio/artifacts/createExternalArtifactConversionPlan.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateResultView.js";
 import {StudioOutcomeLibraryGenerateJobService} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateJobService.js";
-import type {StudioOutcomeLibraryGenerateService} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
+import {StudioOutcomeLibraryGenerateService} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
+
+const plannedOutcomeLibrary: ArtifactConversionPlan = {
+    status: "planned",
+    source: {kind: "tsPackage", capabilities: ["outcome-library-generate"]},
+    target: {kind: "outcomeLibrary", capabilities: ["outcome-library-read"]},
+    steps: [{kind: "generateOutcomeLibrary", choice: "materialize", estimatedWork: "generate", input: {kind: "tsPackage", capabilities: []}, output: {kind: "outcomeLibrary", capabilities: []}}],
+    preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false},
+};
+
+function build614656OutcomeGame(): PokieGame {
+    const symbols = Array.from({length: 28}, (_unused, index) => `S${index}`);
+    const config = new VideoSlotConfig<string>();
+    config.setReelsNumber(4);
+    config.setReelsSymbolsNumber(1);
+    config.setAvailableSymbols(symbols);
+    const paytable = new Paytable<string>(config.getAvailableBets(), symbols, [], 4);
+    paytable.setPayoutForSymbol("S0", 4, 1);
+    config.setPaytable(paytable);
+    config.setSymbolsSequences(Array.from({length: 4}, () => new SymbolsSequence<string>().fromNumbersOfSymbols(
+        Object.fromEntries(symbols.map((symbol) => [symbol, 1])),
+    )));
+    return {
+        getManifest: () => ({id: "studio-614656-slot", name: "Studio 614,656 Slot", version: "1.0.0"}),
+        createSession: () => new VideoSlotSession<string>(config),
+        createExactEnumerationSession: (generator: SymbolsCombinationsGenerating) => new VideoSlotSession<string>(config, generator),
+    };
+}
 
 describe("StudioOutcomeLibraryGenerateJobService", () => {
     let projectRoot: string;
@@ -138,6 +177,54 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         expect(fs.existsSync(path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${job.id}.json`))).toBe(false);
     });
 
+    it("reports a retry conflict for a missing persisted recovery instead of silently losing the job", async () => {
+        const jobs = new StudioOutcomeLibraryGenerateJobService({generate: jest.fn()} as unknown as StudioOutcomeLibraryGenerateService);
+
+        await expect(jobs.resumeForProject(projectRoot, "f8b7f8bb-2b27-4c87-a136-04910e1602fe")).resolves.toMatchObject({
+            status: "failed",
+            result: {status: "conflict", error: expect.stringMatching(/missing or corrupt/i)},
+        });
+        expect(fs.existsSync(path.join(projectRoot, "outcomelibrary"))).toBe(false);
+    });
+
+    it("rejects a persisted checkpoint whose recovery authority was redirected without touching external state", async () => {
+        const checkpoint: ExactEnumerationCheckpoint = {
+            processedRawIndex: BigInt(1), progressTotal: BigInt(6), sourceEnumerationId: "fixture-source", grids: new Map(),
+        };
+        const generate = jest.fn(async (root: string, request: {readonly signal?: AbortSignal}) => {
+            await new Promise<void>((resolve) => {
+                request.signal?.addEventListener("abort", () => resolve(), {once: true});
+            });
+            return {status: "cancelled" as const, processedRawIndex: BigInt(1), progressTotal: BigInt(6), checkpoint, recovery: "resume", plan: createUnresolvedRuntimePlan(root, "outcomeLibrary")};
+        });
+        const rebindCheckpointRequest = jest.fn();
+        const jobs = new StudioOutcomeLibraryGenerateJobService({generate, rebindCheckpointRequest} as unknown as StudioOutcomeLibraryGenerateService);
+        const job = jobs.start(projectRoot, {generation: "exact"});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        jobs.cancelForProject(projectRoot, job.id);
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        const checkpointPath = path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${job.id}.json`);
+        const persisted = JSON.parse(fs.readFileSync(checkpointPath, "utf8")) as {checkpoint: {recoveryAuthorityId: string}};
+        persisted.checkpoint.recoveryAuthorityId = "8cf7648a-6884-47f2-bffd-269811ab1d7c";
+        fs.writeFileSync(checkpointPath, JSON.stringify(persisted));
+        const externalDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-external-recovery-"));
+        const externalFile = path.join(externalDirectory, "untouched.txt");
+        fs.writeFileSync(externalFile, "external");
+        try {
+            await expect(jobs.resumeForProject(projectRoot, job.id)).resolves.toMatchObject({
+                status: "failed", result: {status: "conflict", error: expect.stringMatching(/missing or corrupt/i)},
+            });
+            expect(rebindCheckpointRequest).not.toHaveBeenCalled();
+            expect(fs.readFileSync(externalFile, "utf8")).toBe("external");
+        } finally {
+            fs.rmSync(externalDirectory, {recursive: true, force: true});
+        }
+    });
+
     it("rebinds an immutable checkpoint before resume and removes it after successful publication", async () => {
         const checkpoint: ExactEnumerationCheckpoint = {
             processedRawIndex: BigInt(1), progressTotal: BigInt(6), sourceEnumerationId: "fixture-source", grids: new Map(),
@@ -185,4 +272,56 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         expect(jobs.getStatusForProject(projectRoot, job.id)).toMatchObject({status: "completed"});
         expect(fs.existsSync(checkpointPath)).toBe(false);
     });
+
+    it("persists, restarts, and deeply validates a native 614,656-outcome Studio recovery", async () => {
+        const game = build614656OutcomeGame();
+        const createService = () => new StudioOutcomeLibraryGenerateService(
+            "9.9.9",
+            () => Promise.resolve(game),
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            {prepare: () => Promise.resolve(plannedOutcomeLibrary)},
+        );
+        const first = createService();
+        const preflight = await first.estimate(projectRoot, {generation: "exact"});
+        if (preflight.status !== "ok") throw new Error(`expected exact preflight, got ${preflight.status}`);
+        const initialJobs = new StudioOutcomeLibraryGenerateJobService(first);
+        const started = initialJobs.start(projectRoot, {generation: "exact", preflightToken: preflight.preflightToken});
+        let running = initialJobs.getStatusForProject(projectRoot, started.id);
+        while (running?.progress === undefined) {
+            await new Promise<void>((resolve) => {
+                setImmediate(resolve);
+            });
+            running = initialJobs.getStatusForProject(projectRoot, started.id);
+        }
+        initialJobs.cancelForProject(projectRoot, started.id);
+        do {
+            await new Promise<void>((resolve) => {
+                setImmediate(resolve);
+            });
+            running = initialJobs.getStatusForProject(projectRoot, started.id);
+        } while (running?.status === "queued" || running?.status === "running");
+        expect(running).toMatchObject({status: "cancelled", result: {checkpoint: {id: started.id, progressTotal: "614656"}}});
+
+        const checkpointPath = path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${started.id}.json`);
+        const stagingDirectory = path.join(projectRoot, ".pokie", "outcome-library-recovery", started.id);
+        expect(fs.existsSync(checkpointPath)).toBe(true);
+        expect(fs.existsSync(stagingDirectory)).toBe(true);
+
+        const restartedJobs = new StudioOutcomeLibraryGenerateJobService(createService());
+        await restartedJobs.resumeForProject(projectRoot, started.id);
+        let resumed = restartedJobs.getStatusForProject(projectRoot, started.id);
+        while (resumed?.status === "queued" || resumed?.status === "running") {
+            await new Promise<void>((resolve) => {
+                setImmediate(resolve);
+            });
+            resumed = restartedJobs.getStatusForProject(projectRoot, started.id);
+        }
+        expect(resumed).toMatchObject({status: "completed", result: {status: "ok", mode: {outcomeCount: 614_656}, generator: {strategy: "exact", totalOutcomeSpaceSize: 614_656}}});
+        const bundleDir = path.join(projectRoot, "outcomelibrary");
+        expect(await new OutcomeLibraryBundleValidator().validate(bundleDir, {deep: true})).toEqual([]);
+        const manifest = await new OutcomeLibraryBundleReader().readManifest(bundleDir);
+        expect(manifest).toMatchObject({game: {id: "studio-614656-slot"}, modes: [expect.objectContaining({outcomeCount: 614_656, generator: expect.objectContaining({strategy: "exact", totalOutcomeSpaceSize: 614_656})})]});
+        expect(fs.existsSync(checkpointPath)).toBe(false);
+        expect(fs.existsSync(stagingDirectory)).toBe(false);
+    }, 3_600_000);
 });

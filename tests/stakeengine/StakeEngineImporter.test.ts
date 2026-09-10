@@ -28,17 +28,18 @@ function writeBooksLines(filePath: string, lines: readonly unknown[]): void {
 }
 
 describe("StakeEngineImporter", () => {
+    let tmpRoot: string;
     let outDir: string;
     let importedOutDir: string;
 
     beforeEach(() => {
-        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-import-test-"));
-        importedOutDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-import-test-reexport-"));
+        tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-import-test-"));
+        outDir = path.join(tmpRoot, "out");
+        importedOutDir = path.join(tmpRoot, "reexport");
     });
 
     afterEach(() => {
-        fs.rmSync(outDir, {recursive: true, force: true});
-        fs.rmSync(importedOutDir, {recursive: true, force: true});
+        fs.rmSync(tmpRoot, {recursive: true, force: true});
     });
 
     it("reconstructs everything that's lossless (ids/weights/payoutMultiplier/betMode/stake/provenance/libraryId), and re-exporting reproduces byte-identical Stake output", async () => {

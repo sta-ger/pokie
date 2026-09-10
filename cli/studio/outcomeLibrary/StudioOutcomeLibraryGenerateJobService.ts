@@ -56,6 +56,7 @@ type PersistedCheckpoint = {
         readonly progressTotal: string;
         readonly sourceEnumerationId: string;
         readonly grids: readonly {readonly key: string; readonly grid: string[][]; readonly weight: string}[];
+        readonly recoveryAuthorityId?: string;
     };
 };
 
@@ -87,10 +88,11 @@ export class StudioOutcomeLibraryGenerateJobService {
         if (this.activeDestinationOwners.has(destinationKey)) {
             throw new Error("An Outcome Library generation is already active for this destination.");
         }
+        const id = resumedId ?? randomUUID();
         const record: JobRecord = {
             // UUIDs make checkpoints safely discoverable across a server restart without
             // reusing the old process-local 1, 2, … namespace.
-            id: resumedId ?? randomUUID(), projectRoot, request, controller: new AbortController(), status: "queued", cancellationRequested: false,
+            id, projectRoot, request: {...request, recoveryAuthorityId: id}, controller: new AbortController(), status: "queued", cancellationRequested: false,
             destinationKey,
             // Assigned below after the record exists for run() to update.
             completion: Promise.resolve(),
@@ -195,7 +197,17 @@ export class StudioOutcomeLibraryGenerateJobService {
         const wasmDiagnostic = this.generateService.wasmBoundaryDiagnostic?.(projectRoot);
         if (wasmDiagnostic !== undefined) throw new Error(wasmDiagnostic);
         const persisted = this.readCheckpoint(projectRoot, id);
-        if (persisted === undefined) return undefined;
+        if (persisted === undefined) {
+            // A recovery action is never silently downgraded to an absent
+            // job: after restart, a missing or corrupt persisted record must
+            // leave the destination untouched and tell the caller to retry.
+            return this.restoreRejectedResume(
+                projectRoot,
+                id,
+                {recoveryAuthorityId: id},
+                "The persisted Outcome Library checkpoint is missing or corrupt. No recovery state was consumed; start a new generation.",
+            );
+        }
         const request = fromPersistedRequest(persisted.request);
         if (requestIdentity(request) !== persisted.binding.requestIdentity) return this.restoreRejectedResume(projectRoot, id, request, "The persisted checkpoint request identity is invalid.");
         // A restarted server has no process-local token map. Re-preflight the
@@ -284,6 +296,11 @@ export class StudioOutcomeLibraryGenerateJobService {
             checkpoint: {
                 processedRawIndex: checkpoint.processedRawIndex.toString(), progressTotal: checkpoint.progressTotal.toString(), sourceEnumerationId: checkpoint.sourceEnumerationId,
                 grids: Array.from(checkpoint.grids, ([key, entry]) => ({key, grid: entry.grid, weight: entry.weight.toString()})),
+                // The JobService owns the persisted recovery namespace. An
+                // injected/direct generator may omit the capability id, but
+                // its checkpoint is still bound to this job rather than a
+                // checkpoint-controlled staging selector.
+                recoveryAuthorityId: checkpoint.recoveryAuthorityId ?? id,
             },
         };
         fs.writeFileSync(filePath, JSON.stringify(stored), "utf8");
@@ -295,7 +312,20 @@ export class StudioOutcomeLibraryGenerateJobService {
             const persisted = JSON.parse(fs.readFileSync(this.checkpointPath(projectRoot, id), "utf8")) as PersistedCheckpoint;
             // Old/unbound or hand-edited checkpoints must never be resumed into a
             // potentially different project state.
-            return persisted.binding !== undefined && requestIdentity(fromPersistedRequest(persisted.request)) === persisted.binding.requestIdentity ? persisted : undefined;
+            const checkpoint = persisted.checkpoint as PersistedCheckpoint["checkpoint"] & Record<string, unknown>;
+            if (
+                checkpoint === undefined ||
+                "durableStagingDirectory" in checkpoint ||
+                "durableCheckpointId" in checkpoint ||
+                (checkpoint.recoveryAuthorityId !== undefined && (typeof checkpoint.recoveryAuthorityId !== "string" || !(/^[0-9a-f-]{36}$/i).test(checkpoint.recoveryAuthorityId)))
+            ) return undefined;
+            if (
+                persisted.binding === undefined ||
+                requestIdentity(fromPersistedRequest(persisted.request)) !== persisted.binding.requestIdentity ||
+                checkpoint.recoveryAuthorityId !== id ||
+                !isPersistedExactCheckpoint(checkpoint)
+            ) return undefined;
+            return persisted;
         } catch {
             return undefined;
         }
@@ -368,7 +398,24 @@ function fromPersistedCheckpoint(checkpoint: PersistedCheckpoint["checkpoint"]):
     return {
         processedRawIndex: BigInt(checkpoint.processedRawIndex), progressTotal: BigInt(checkpoint.progressTotal), sourceEnumerationId: checkpoint.sourceEnumerationId,
         grids: new Map(checkpoint.grids.map((entry) => [entry.key, {grid: entry.grid, weight: BigInt(entry.weight)}])),
+        ...(checkpoint.recoveryAuthorityId === undefined ? {} : {recoveryAuthorityId: checkpoint.recoveryAuthorityId}),
     };
+}
+
+/** Reject malformed durable JSON before bigint/map conversion can consume it. */
+function isPersistedExactCheckpoint(checkpoint: PersistedCheckpoint["checkpoint"] & Record<string, unknown>): boolean {
+    return (
+        typeof checkpoint.processedRawIndex === "string" && (/^[0-9]+$/).test(checkpoint.processedRawIndex) &&
+        typeof checkpoint.progressTotal === "string" && (/^[0-9]+$/).test(checkpoint.progressTotal) &&
+        typeof checkpoint.sourceEnumerationId === "string" && checkpoint.sourceEnumerationId.length > 0 &&
+        Array.isArray(checkpoint.grids) &&
+        checkpoint.grids.every((entry) =>
+            entry !== null && typeof entry === "object" &&
+            typeof entry.key === "string" && Array.isArray(entry.grid) &&
+            entry.grid.every((row) => Array.isArray(row) && row.every((symbol) => typeof symbol === "string")) &&
+            typeof entry.weight === "string" && (/^[0-9]+$/).test(entry.weight),
+        )
+    );
 }
 
 function requestIdentity(request: ValidatedOutcomeLibraryGenerateRequest): string {

@@ -1,4 +1,4 @@
-import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleWriter, WeightedOutcomeLibrary} from "pokie";
+import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleWriter, StakeEngineExporter, WeightedOutcomeLibrary} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -298,6 +298,37 @@ describe("StudioStakeEngineExportService", () => {
             expect(view.files.length).toBeGreaterThan(0);
             expect(fs.existsSync(path.join(tmpRoot, "stakeengine", "index.json"))).toBe(true);
             expect(fs.existsSync(path.join(tmpRoot, "stakeengine", "pokie-manifest.json"))).toBe(true);
+        });
+
+        it("retains a late caller claim from the real Stake publication boundary and retries cleanly", async () => {
+            const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
+            await writeLibraryBundle(tmpRoot, "outcomelibrary", library);
+            const outDir = path.join(tmpRoot, "stakeengine");
+            let claimOnCommit = true;
+            const exporter = new StakeEngineExporter(
+                TEST_POKIE_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => {
+                    if (!claimOnCommit) return;
+                    fs.mkdirSync(outDir);
+                    fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+                },
+            );
+            const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION, exporter);
+            const modes = [{modeName: "base", librarySelector: bundleSelector("base"), cost: 1}];
+
+            await expect(service.export(tmpRoot, modes, "stakeengine", false)).resolves.toMatchObject({status: "load-error"});
+            expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+
+            fs.rmSync(outDir, {recursive: true, force: true});
+            claimOnCommit = false;
+            await expect(service.export(tmpRoot, modes, "stakeengine", false)).resolves.toMatchObject({status: "ok", outDir});
+            expect(fs.existsSync(path.join(outDir, "pokie-manifest.json"))).toBe(true);
         });
 
         it("exports a mode resolved from a canonical outcome-library bundle selector, and returns its manifest/files", async () => {

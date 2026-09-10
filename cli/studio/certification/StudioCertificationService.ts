@@ -1,5 +1,6 @@
 import {
     CertificationEvidenceBundleBuilder,
+    CertificationEvidenceBundleBuildCancelledError,
     CertificationEvidenceBundleBuilding,
     CertificationEvidenceBundleModeSampleInput,
     OutcomeLibraryBundleValidating,
@@ -59,6 +60,7 @@ export class StudioCertificationService {
         bundleDir: string,
         modes: readonly ValidatedCertificationBuildModeInput[],
         outDir: string,
+        signal?: AbortSignal,
     ): Promise<StudioCertificationBuildView> {
         const resolvedBundle = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
         if (resolvedBundle.status === "error") {
@@ -76,7 +78,7 @@ export class StudioCertificationService {
         }));
 
         try {
-            const result = await this.builder.buildFromBundle(resolvedBundle.resolvedPath, modeInputs, resolvedOutDir.resolvedPath);
+            const result = await this.builder.buildFromBundle(resolvedBundle.resolvedPath, modeInputs, resolvedOutDir.resolvedPath, {signal});
             const errors = result.issues.filter((issue) => issue.severity === "error");
             const warnings = result.issues.filter((issue) => issue.severity !== "error");
             if (result.manifest === undefined || errors.length > 0) {
@@ -84,6 +86,12 @@ export class StudioCertificationService {
             }
             return {status: "ok", manifest: result.manifest, files: result.files, warnings};
         } catch (error) {
+            if (error instanceof CertificationEvidenceBundleBuildCancelledError) {
+                return {
+                    status: "load-error",
+                    error: "Certification/evidence build was cancelled. No incomplete evidence was published; retry the build when ready.",
+                };
+            }
             return {
                 status: "load-error",
                 error: `Could not build a certification/evidence bundle from "${bundleDir}": ${error instanceof Error ? error.message : String(error)}`,

@@ -30,11 +30,13 @@ function blueprintProjectOf(rootPath: string): PokieProject {
 }
 
 describe("OutcomeLibraryArtifactBuilder", () => {
+    let sourceRoot: string;
     let sourceDir: string;
     let destinationDir: string;
 
     beforeEach(async () => {
-        sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcomelibrary-builder-source-"));
+        sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcomelibrary-builder-source-"));
+        sourceDir = path.join(sourceRoot, "bundle");
         destinationDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcomelibrary-builder-dest-"));
         fs.rmdirSync(destinationDir);
 
@@ -46,7 +48,7 @@ describe("OutcomeLibraryArtifactBuilder", () => {
     });
 
     afterEach(() => {
-        fs.rmSync(sourceDir, {recursive: true, force: true});
+        fs.rmSync(sourceRoot, {recursive: true, force: true});
         fs.rmSync(destinationDir, {recursive: true, force: true});
     });
 
@@ -156,6 +158,38 @@ describe("OutcomeLibraryArtifactBuilder", () => {
         );
         expect(fs.existsSync(destinationDir)).toBe(false);
         expect(fs.readdirSync(path.dirname(destinationDir)).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.`))).toEqual([]);
+    });
+
+    it("preserves a late caller-owned destination at the writer's final publication check and succeeds on retry", async () => {
+        const nativeWriter = new OutcomeLibraryBundleWriter("1.3.0");
+        let claimDestination = true;
+        const writer = {
+            writeToDirectory: (modes: Parameters<OutcomeLibraryBundleWriter["writeToDirectory"]>[0], destination: string, options?: Parameters<OutcomeLibraryBundleWriter["writeToDirectory"]>[2]) => {
+                return nativeWriter.writeToDirectory(modes, destination, {
+                    ...options,
+                    onProgress: (progress) => {
+                        options?.onProgress?.(progress);
+                        if (claimDestination && progress.message.startsWith("Publishing Outcome file")) {
+                            // This runs after the adapter's final policy and
+                            // while the shared publisher is building tempDir.
+                            fs.rmSync(destination, {recursive: true, force: true});
+                            fs.mkdirSync(destination);
+                            fs.writeFileSync(path.join(destination, "caller-owned.txt"), "untouched");
+                            claimDestination = false;
+                        }
+                    },
+                });
+            },
+        } as OutcomeLibraryBundleWriter;
+        const builder = new OutcomeLibraryArtifactBuilder("1.3.0", undefined, writer);
+
+        await expect(builder.build(outcomeLibraryProjectOf(sourceDir), destinationDir)).rejects.toThrow(/claimed while publication was being prepared/i);
+        expect(fs.readFileSync(path.join(destinationDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(fs.readdirSync(path.dirname(destinationDir)).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.`))).toEqual([]);
+
+        fs.rmSync(destinationDir, {recursive: true, force: true});
+        claimDestination = false;
+        await expect(builder.build(outcomeLibraryProjectOf(sourceDir), destinationDir)).resolves.toMatchObject({outputPath: destinationDir});
     });
 
     it("rejects a Blueprint instead of writing an unregistered Outcome bundle", async () => {

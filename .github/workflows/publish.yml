@@ -1,27 +1,45 @@
-name: Publish
+name: Authorized PC-20 publication
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
     inputs:
-      bump:
-        description: "Version bump type"
+      candidate_ref:
+        description: "Immutable accepted candidate SHA (not a branch or tag)"
         required: true
-        default: patch
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
+        type: string
+      pc20_release_config:
+        description: "Absolute config path provisioned only on the protected release runner"
+        required: true
+        type: string
+
+# develop is checked again on the remote immediately before publication.  Keep
+# dispatches serialized as well, so two authorized runners cannot race the
+# protected fast-forward window.
+concurrency:
+  group: pc20-protected-develop-publication
+  cancel-in-progress: false
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, pokie-release-runner]
     permissions:
       contents: write
+      id-token: write
+    environment: npm-publication
     steps:
+      - name: Reject non-SHA dispatches before checkout
+        run: test "${{ inputs.candidate_ref }}" = "$(printf '%s' '${{ inputs.candidate_ref }}' | grep -E '^[0-9a-fA-F]{40}$')"
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Require a clean immutable candidate checkout before its gate
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ inputs.candidate_ref }}"
+          test -z "$(git status --porcelain --untracked-files=all)"
 
       - uses: actions/setup-node@v4
         with:
@@ -29,28 +47,34 @@ jobs:
           cache: "npm"
           registry-url: "https://registry.npmjs.org"
 
-      - run: npm ci
-      - run: npm run check:release
-      - run: npm run build
-
-      - name: Configure release commit identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      # Defaults to a patch bump on a plain push to master; workflow_dispatch's "bump" input
-      # overrides it for an explicit minor/major release. The "[skip ci]" in the commit message is
-      # load-bearing: GitHub does not trigger workflow runs for a push whose head commit message
-      # contains it, which is what stops this workflow from re-triggering on the version-bump
-      # commit it's about to push.
-      - name: Bump version
-        run: |
-          npm version "${{ github.event.inputs.bump || 'patch' }}" -m "chore: release v%s [skip ci]"
-
-      - name: Push version bump and tag
-        run: git push --follow-tags
-
-      - name: Publish to npm
-        run: npm publish
+      - name: Verify explicit candidate checkout and protected release authority
         env:
+          PC20_CONFIG: ${{ inputs.pc20_release_config }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PC20_DRIVE_ACCESS_TOKEN: ${{ secrets.PC20_DRIVE_ACCESS_TOKEN }}
+        run: |
+          test -r "$PC20_CONFIG"
+          test -n "$NODE_AUTH_TOKEN"
+          test -n "$PC20_DRIVE_ACCESS_TOKEN"
+          test "$(git rev-parse HEAD)" = "${{ inputs.candidate_ref }}"
+          git remote get-url origin >/dev/null
+          npm whoami
+
+      - run: npm ci
+
+      - name: Run the one candidate-bound release gate and retain its archive receipt
+        env:
+          PC20_CONFIG: ${{ inputs.pc20_release_config }}
+        run: npm run release:pc20 -- --gate-only --config "$PC20_CONFIG"
+
+      - name: Merge, push, publish and Drive round-trip under the authorized runner
+        env:
+          PC20_CONFIG: ${{ inputs.pc20_release_config }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PC20_DRIVE_ACCESS_TOKEN: ${{ secrets.PC20_DRIVE_ACCESS_TOKEN }}
+        run: node scripts/pc-20-authorized-release-runner.mjs --config "$PC20_CONFIG" --candidate-ref "${{ inputs.candidate_ref }}"
+
+      - name: Append the receipt-bound PC-20 completion record
+        env:
+          PC20_CONFIG: ${{ inputs.pc20_release_config }}
+        run: npm run release:pc20 -- --config "$PC20_CONFIG"

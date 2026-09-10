@@ -1,4 +1,7 @@
 import crypto from "crypto";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import v8 from "v8";
 import {buildRoundArtifactFromSession} from "../../artifact/buildRoundArtifactFromSession.js";
 import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
@@ -18,11 +21,12 @@ import {sampleStopTuples} from "./internal/sampleStopTuples.js";
 import {sweepStopTuples} from "./internal/sweepStopTuples.js";
 import {toBigIntSafeDecimal} from "./internal/toBigIntSafeDecimal.js";
 import type {OutcomeLibraryGeneratorDiagnostics, OutcomeLibraryGenerationStrategy} from "./OutcomeLibraryGeneratorDiagnostics.js";
-import type {ExactEnumerationCheckpoint} from "./WeightedOutcomeLibraryGenerationCancelledError.js";
+import {WeightedOutcomeLibraryGenerationCancelledError, type ExactEnumerationCheckpoint} from "./WeightedOutcomeLibraryGenerationCancelledError.js";
 import {WeightedOutcomeLibraryGenerationError} from "./WeightedOutcomeLibraryGenerationError.js";
 import {
     adaptLegacyOutcomeLibraryGenerationRequest,
     type OutcomeLibraryGenerationRequest,
+    type ExactEnumerationRecoveryAuthority,
     prepareOutcomeLibraryGeneration,
 } from "./OutcomeLibraryGenerationRequest.js";
 
@@ -40,6 +44,16 @@ export {DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE} from "./OutcomeLibraryGenerationRe
 // a clean, actionable WeightedOutcomeLibraryGenerationError (see accumulateUniqueGridWeights) instead of an
 // uncatchable V8 "JavaScript heap out of memory" process abort.
 const HEAP_SAFETY_FRACTION = 0.85;
+// Exact enumeration can legitimately reach hundreds of thousands of distinct
+// grids. Keep that identity set on disk, partitioned by the same digest prefix
+// used by the canonical outcome id, so only one small sorted partition is live
+// while artifacts are constructed and published.
+const EXTERNAL_GRID_BUCKETS = 256;
+const EXTERNAL_YIELD_EVERY = BigInt(5000);
+// Keep staging writes bounded without paying a synchronous filesystem call for
+// every raw reel-stop tuple. At most one buffer per digest partition is live,
+// so even a sweep that touches all partitions retains only a few megabytes.
+const EXTERNAL_WRITE_BUFFER_BYTES = 16 * 1024;
 
 function defaultHeapUsedLimitBytes(): number {
     return v8.getHeapStatistics().heap_size_limit * HEAP_SAFETY_FRACTION;
@@ -111,6 +125,10 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     // config/reel-layout -- two games or configs can coincidentally share the same raw outcome-space size, so
     // progressTotal alone is never enough to trust a checkpoint's accumulated grids.
     readonly resumeFrom?: ExactEnumerationCheckpoint;
+    /** Persist bounded, partitioned exact-sweep state when cancellation is resumable. */
+    readonly durableCheckpointOnCancellation?: boolean;
+    /** Adapter-issued authority; checkpoints retain only its opaque id. */
+    readonly recoveryAuthority?: ExactEnumerationRecoveryAuthority;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
     readonly artifactValidator?: ValidationRule<RoundArtifact>;
@@ -129,6 +147,15 @@ export type GenerateExactWeightedOutcomeLibraryResult = {
     readonly diagnostics: OutcomeLibraryGeneratorDiagnostics;
 };
 
+// The bundle writer needs the generator diagnostics only after it has consumed
+// the outcome stream.  Keep that small terminal value separate from the
+// outcomes themselves so a managed publication never has to retain a complete
+// WeightedOutcomeLibrary merely to put provenance in its manifest.
+export type StreamingExactWeightedOutcomes = {
+    readonly outcomes: AsyncGenerator<WeightedOutcomeInput>;
+    readonly getDiagnostics: () => OutcomeLibraryGeneratorDiagnostics | undefined;
+};
+
 /**
  * Executes the public domain request without making callers choose legacy
  * `exact`/`bounded`/`sampled` option names. CLI, Studio, and managed builders
@@ -138,8 +165,21 @@ export type GenerateExactWeightedOutcomeLibraryResult = {
 export function generateWeightedOutcomeLibrary(
     request: OutcomeLibraryGenerationRequest,
 ): Promise<GenerateExactWeightedOutcomeLibraryResult> {
+    return generateExactWeightedOutcomeLibrary(legacyOptionsForRequest(request));
+}
+
+/** The streaming counterpart to generateWeightedOutcomeLibrary for bundle publishers. */
+export function generateStreamingWeightedOutcomeLibrary(
+    request: OutcomeLibraryGenerationRequest,
+): StreamingExactWeightedOutcomes {
+    return createStreamingExactWeightedOutcomes(legacyOptionsForRequest(request));
+}
+
+function legacyOptionsForRequest(
+    request: OutcomeLibraryGenerationRequest,
+): GenerateExactWeightedOutcomeLibraryOptions {
     const prepared = prepareOutcomeLibraryGeneration(request);
-    return generateExactWeightedOutcomeLibrary({
+    return {
         libraryId: prepared.libraryId,
         game: prepared.game,
         pokieVersion: prepared.pokieVersion,
@@ -150,6 +190,8 @@ export function generateWeightedOutcomeLibrary(
         ...(prepared.stake === undefined ? {} : {stake: prepared.stake}),
         ...(prepared.outputDestination === undefined ? {} : {outputDestination: prepared.outputDestination}),
         maxOutcomeSpaceSize: prepared.maxExactOutcomeSpaceSize,
+        ...(prepared.durableCheckpointOnCancellation === undefined ? {} : {durableCheckpointOnCancellation: prepared.durableCheckpointOnCancellation}),
+        ...(prepared.recoveryAuthority === undefined ? {} : {recoveryAuthority: prepared.recoveryAuthority}),
         ...(prepared.generation === "exact" ? {exact: true} : {}),
         ...(prepared.generation === "sampled" ? {sampled: prepared.sample!} : {}),
         ...(prepared.generation === "bounded" ? {bounded: prepared.sample!} : {}),
@@ -160,7 +202,7 @@ export function generateWeightedOutcomeLibrary(
         ...(prepared.now === undefined ? {} : {now: prepared.now}),
         ...(prepared.heapUsedLimitBytes === undefined ? {} : {heapUsedLimitBytes: prepared.heapUsedLimitBytes}),
         ...(prepared.getHeapUsedBytes === undefined ? {} : {getHeapUsedBytes: prepared.getHeapUsedBytes}),
-    });
+    };
 }
 
 type PreparedGeneration = {
@@ -176,6 +218,7 @@ type PreparedGeneration = {
     readonly configHash?: string;
     readonly initialGrids?: ReadonlyMap<string, UniqueGridWeightEntry<string>>;
     readonly initialProcessedRawCount?: bigint;
+    readonly recoveryAuthority?: ExactEnumerationRecoveryAuthority;
 };
 
 function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedGeneration {
@@ -203,6 +246,18 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             "weighted-outcome-library-generation-checkpoint-unsupported",
             `"${manifest.id}"'s outcome space now resolves to the "${strategy}" strategy, which has no resumable raw sweep ` +
                 "position to continue from; resumeFrom is only valid for a run that itself resolves to \"exact\".",
+        );
+    }
+    if (options.resumeFrom?.restartRequired) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-checkpoint-unsupported",
+            "This exact generation was cancelled while using bounded disk staging, so its temporary grid accumulator was safely discarded. Retry the command from the beginning; this checkpoint cannot be resumed without changing exact weights.",
+        );
+    }
+    if (options.resumeFrom?.recoveryAuthorityId !== undefined && options.recoveryAuthority?.id !== options.resumeFrom.recoveryAuthorityId) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-checkpoint-mismatch",
+            "This resumable exact checkpoint has no matching adapter-issued recovery authority. Start a new generation.",
         );
     }
     if (options.resumeFrom !== undefined && options.resumeFrom.progressTotal !== estimate.totalOutcomeSpaceSize) {
@@ -239,6 +294,20 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         );
     }
 
+    let resumeState: Pick<PreparedGeneration, "initialGrids" | "initialProcessedRawCount" | "recoveryAuthority"> = options.recoveryAuthority === undefined
+        ? {}
+        : {recoveryAuthority: options.recoveryAuthority};
+    if (options.resumeFrom !== undefined) {
+        if (options.resumeFrom.recoveryAuthorityId === undefined) {
+            resumeState = {initialGrids: options.resumeFrom.grids, initialProcessedRawCount: options.resumeFrom.processedRawIndex};
+        } else {
+            resumeState = {
+                recoveryAuthority: options.recoveryAuthority,
+                initialProcessedRawCount: options.resumeFrom.processedRawIndex,
+            };
+        }
+    }
+
     if (strategy === "exact") {
         return {
             strategy,
@@ -249,9 +318,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             tuples: sweepStopTuples(reelSizes, options.resumeFrom?.processedRawIndex ?? BigInt(0)),
             sourceEnumerationId,
             ...(request.configHash === undefined ? {} : {configHash: request.configHash}),
-            ...(options.resumeFrom !== undefined
-                ? {initialGrids: options.resumeFrom.grids, initialProcessedRawCount: options.resumeFrom.processedRawIndex}
-                : {}),
+            ...resumeState,
         };
     }
 
@@ -302,19 +369,23 @@ function toSafeWeightNumber(weight: bigint, id: string): number {
 export async function *streamExactWeightedOutcomes(
     options: GenerateExactWeightedOutcomeLibraryOptions,
 ): AsyncGenerator<WeightedOutcomeInput, OutcomeLibraryGeneratorDiagnostics> {
+    return yield* streamExactWeightedOutcomesInternal(options, true);
+}
+
+/**
+ * Public publishers use disk partitions so that a distinct-outcome workload
+ * never retains its whole grid set.  The legacy materialising API keeps its
+ * original in-memory checkpoint contract: it is the only caller that can
+ * actually retain a resumable checkpoint without also retaining an external
+ * staging directory after its caller has gone away.
+ */
+async function *streamExactWeightedOutcomesInternal(
+    options: GenerateExactWeightedOutcomeLibraryOptions,
+    useExternalStaging: boolean,
+): AsyncGenerator<WeightedOutcomeInput, OutcomeLibraryGeneratorDiagnostics> {
     const {game} = options;
     const manifest = game.getManifest();
     const prepared = prepare(options);
-
-    const {grids, processedRawCount} = await accumulateUniqueGridWeights<string>(prepared.reelWindows, prepared.tuples, prepared.progressTotal, {
-        signal: options.signal,
-        onProgress: options.onProgress,
-        initialGrids: prepared.initialGrids,
-        initialProcessedRawCount: prepared.initialProcessedRawCount,
-        sourceEnumerationId: prepared.sourceEnumerationId,
-        heapUsedLimitBytes: options.heapUsedLimitBytes ?? defaultHeapUsedLimitBytes(),
-        getHeapUsedBytes: options.getHeapUsedBytes ?? (() => process.memoryUsage().heapUsed),
-    });
 
     const provenance: RoundArtifactProvenance = {
         game: manifest,
@@ -322,15 +393,7 @@ export async function *streamExactWeightedOutcomes(
         ...(prepared.configHash !== undefined ? {configHash: prepared.configHash} : {}),
     };
 
-    // Canonically sorted by id before ever being yielded -- both so this function's own output already
-    // matches buildWeightedOutcomeLibrary's own sort order, and because a caller streaming this straight into
-    // OutcomeLibraryBundleModeInput.outcomes (see streamExactWeightedOutcomes's own doc comment) requires
-    // outcomes to already arrive in that order; the writer only ever verifies it, it never re-sorts.
-    const sortedUniqueGrids = Array.from(grids.entries())
-        .map(([gridKey, entry]) => ({id: outcomeIdForGrid(gridKey), entry}))
-        .sort((a, b) => compareIds(a.id, b.id));
-
-    for (const {id, entry} of sortedUniqueGrids) {
+    const createOutcome = (id: string, entry: UniqueGridWeightEntry<string>): WeightedOutcomeInput => {
         // Guaranteed non-null by prepare(): a game whose createExactEnumerationSession was undefined would
         // already have thrown before this point.
         const session = game.createExactEnumerationSession!(new ForcedSymbolsCombinationsGenerator<string>(entry.grid));
@@ -363,7 +426,50 @@ export async function *streamExactWeightedOutcomes(
             stake,
         });
 
-        yield {id, weight: toSafeWeightNumber(entry.weight, id), artifact};
+        return {id, weight: toSafeWeightNumber(entry.weight, id), artifact};
+    };
+
+    let processedRawCount: bigint;
+    // Streaming publication always partitions distinct grids on disk. A
+    // resumable public adapter persists those partitions behind an
+    // invocation-owned checkpoint rather than switching to an in-memory map.
+    if (
+        prepared.strategy === "exact" &&
+        useExternalStaging &&
+        prepared.initialGrids === undefined
+    ) {
+        const external = externallyAccumulateExactGridWeights(prepared.reelWindows, prepared.tuples, prepared.progressTotal, {
+            signal: options.signal,
+            onProgress: options.onProgress,
+            sourceEnumerationId: prepared.sourceEnumerationId,
+            ...(prepared.recoveryAuthority === undefined ? {} : {recoveryAuthority: prepared.recoveryAuthority}),
+            ...(prepared.initialProcessedRawCount === undefined ? {} : {initialProcessedRawCount: prepared.initialProcessedRawCount}),
+            ...((options.durableCheckpointOnCancellation && options.recoveryAuthority !== undefined) || prepared.recoveryAuthority !== undefined ? {retainStagingOnCancellation: true} : {}),
+        });
+        let step = await external.next();
+        while (!step.done) {
+            yield createOutcome(step.value.id, step.value.entry);
+            step = await external.next();
+        }
+        processedRawCount = step.value;
+    } else {
+        const {grids, processedRawCount: accumulatedRawCount} = await accumulateUniqueGridWeights<string>(prepared.reelWindows, prepared.tuples, prepared.progressTotal, {
+            signal: options.signal,
+            onProgress: options.onProgress,
+            initialGrids: prepared.initialGrids,
+            initialProcessedRawCount: prepared.initialProcessedRawCount,
+            sourceEnumerationId: prepared.sourceEnumerationId,
+            heapUsedLimitBytes: options.heapUsedLimitBytes ?? defaultHeapUsedLimitBytes(),
+            getHeapUsedBytes: options.getHeapUsedBytes ?? (() => process.memoryUsage().heapUsed),
+        });
+        const sortedUniqueGrids = Array.from(grids.entries())
+            .map(([gridKey, entry]) => ({id: outcomeIdForGrid(gridKey), entry}))
+            .sort((a, b) => compareIds(a.id, b.id));
+        grids.clear();
+        for (const {id, entry} of sortedUniqueGrids) {
+            yield createOutcome(id, entry);
+        }
+        processedRawCount = accumulatedRawCount;
     }
 
     return {
@@ -381,6 +487,177 @@ export async function *streamExactWeightedOutcomes(
     };
 }
 
+/**
+ * Spills raw grid keys into digest partitions, then deduplicates and sorts one
+ * partition at a time. The SHA-256 prefix is also the first part of an
+ * outcome id, therefore traversing buckets in numeric order preserves the
+ * writer's required canonical id ordering without retaining a global sort.
+ */
+async function *externallyAccumulateExactGridWeights(
+    reelWindows: readonly string[][][],
+    tuples: Generator<{tuple: number[]; rawIndex: bigint}>,
+    progressTotal: bigint,
+    options: {
+        readonly signal?: AbortSignal;
+        readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
+        readonly sourceEnumerationId: string;
+        readonly recoveryAuthority?: ExactEnumerationRecoveryAuthority;
+        readonly initialProcessedRawCount?: bigint;
+        readonly retainStagingOnCancellation?: boolean;
+    },
+): AsyncGenerator<{readonly id: string; readonly entry: UniqueGridWeightEntry<string>}, bigint> {
+    const issuedStaging = options.recoveryAuthority?.acquireStagingDirectory(options.initialProcessedRawCount !== undefined);
+    const stagingDir = issuedStaging?.stagingDirectory ?? fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-grids-"));
+    const checkpointMarker = path.join(stagingDir, ".pokie-exact-checkpoint.json");
+    const checkpointId = options.recoveryAuthority?.id ?? crypto.randomUUID();
+    const descriptors = new Map<number, number>();
+    const bufferedLines = new Map<number, string>();
+    let processedRawCount = options.initialProcessedRawCount ?? BigInt(0);
+    let checkpointGrid: [string, UniqueGridWeightEntry<string>] | undefined;
+    let retainStaging = false;
+    let expectedMarker: string | undefined;
+    // A recovery authority is issued by an adapter that has already confined
+    // this path to its own root; consuming it therefore owns only that one
+    // issued directory, never a caller-supplied checkpoint path.
+    const flushBufferedLines = () => {
+        for (const [bucket, buffered] of bufferedLines) fs.writeSync(descriptors.get(bucket)!, buffered);
+        bufferedLines.clear();
+    };
+    const checkpoint = (processed: bigint, restartRequired: boolean): WeightedOutcomeLibraryGenerationCancelledError => {
+        const durable = options.retainStagingOnCancellation ?? false;
+        flushBufferedLines();
+        retainStaging = durable;
+        return new WeightedOutcomeLibraryGenerationCancelledError(
+            processed,
+            progressTotal,
+            new Map(checkpointGrid === undefined ? [] : [checkpointGrid]),
+            options.sourceEnumerationId,
+            restartRequired,
+            durable ? checkpointId : undefined,
+        );
+    };
+    try {
+        expectedMarker = JSON.stringify({
+            sourceEnumerationId: options.sourceEnumerationId,
+            progressTotal: progressTotal.toString(),
+            checkpointId,
+            ...(issuedStaging === undefined ? {} : {markerProof: issuedStaging.markerProof}),
+        });
+        if (options.recoveryAuthority === undefined) {
+            fs.writeFileSync(checkpointMarker, expectedMarker, {flag: "wx"});
+        } else if (options.initialProcessedRawCount === undefined) {
+            fs.writeFileSync(checkpointMarker, expectedMarker, {flag: "wx"});
+        } else {
+            let marker: string;
+            try {
+                marker = fs.readFileSync(checkpointMarker, "utf8");
+            } catch {
+                throw new WeightedOutcomeLibraryGenerationError(
+                    "weighted-outcome-library-generation-checkpoint-mismatch",
+                    "The resumable exact checkpoint no longer has its invocation-owned disk marker. Start a new generation.",
+                );
+            }
+            if (marker !== expectedMarker) {
+                throw new WeightedOutcomeLibraryGenerationError(
+                    "weighted-outcome-library-generation-checkpoint-mismatch",
+                    "The resumable exact checkpoint does not belong to this exact enumeration. Start a new generation.",
+                );
+            }
+        }
+        for (const {tuple, rawIndex} of tuples) {
+            if (options.signal?.aborted) {
+                // Retain partitions only when the public adapter requested a
+                // checkpoint and can persist the returned identity. A stream
+                // closed later by publication still reaches finally below and
+                // remains an honest retry-only cancellation.
+                throw checkpoint(rawIndex, !options.retainStagingOnCancellation);
+            }
+            const grid = tuple.map((position, reelId) => reelWindows[reelId][position]);
+            const gridKey = JSON.stringify(grid);
+            checkpointGrid = [gridKey, {grid, weight: BigInt(1)}];
+            const bucket = Number.parseInt(crypto.createHash("sha256").update(gridKey).digest("hex").slice(0, 2), 16);
+            let descriptor = descriptors.get(bucket);
+            if (descriptor === undefined) {
+                descriptor = fs.openSync(path.join(stagingDir, `${bucket.toString(16).padStart(2, "0")}.jsonl`), "a");
+                descriptors.set(bucket, descriptor);
+            }
+            const buffered = `${bufferedLines.get(bucket) ?? ""}${gridKey}\n`;
+            if (buffered.length >= EXTERNAL_WRITE_BUFFER_BYTES) {
+                fs.writeSync(descriptor, buffered);
+                bufferedLines.delete(bucket);
+            } else {
+                bufferedLines.set(bucket, buffered);
+            }
+            processedRawCount++;
+            if (processedRawCount % EXTERNAL_YIELD_EVERY === BigInt(0)) {
+                options.onProgress?.(processedRawCount, progressTotal);
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+        }
+        flushBufferedLines();
+        for (const descriptor of descriptors.values()) fs.closeSync(descriptor);
+        descriptors.clear();
+        options.onProgress?.(processedRawCount, progressTotal);
+
+        for (let bucket = 0; bucket < EXTERNAL_GRID_BUCKETS; bucket++) {
+            if (options.signal?.aborted) {
+                throw checkpoint(processedRawCount, !options.retainStagingOnCancellation);
+            }
+            const bucketPath = path.join(stagingDir, `${bucket.toString(16).padStart(2, "0")}.jsonl`);
+            if (!fs.existsSync(bucketPath)) continue;
+            const weights = new Map<string, UniqueGridWeightEntry<string>>();
+            for (const line of fs.readFileSync(bucketPath, "utf-8").split("\n")) {
+                if (line.length === 0) continue;
+                const entry = weights.get(line);
+                if (entry !== undefined) entry.weight += BigInt(1);
+                else weights.set(line, {grid: JSON.parse(line) as string[][], weight: BigInt(1)});
+            }
+            const sorted = Array.from(weights.entries())
+                .map(([gridKey, entry]) => ({id: outcomeIdForGrid(gridKey), entry}))
+                .sort((left, right) => compareIds(left.id, right.id));
+            weights.clear();
+            for (const item of sorted) yield item;
+        }
+        return processedRawCount;
+    } finally {
+        for (const descriptor of descriptors.values()) fs.closeSync(descriptor);
+        // A stream can be closed by a raw/bundle publisher after aborting,
+        // without this generator ever throwing its own cancellation error.
+        // In that case no checkpoint is observable or persistable.  Always
+        // remove external partitions; callers receive an honest retry-only
+        // cancellation instead of an orphaned pseudo-resume directory.
+        if (!retainStaging) {
+            if (options.recoveryAuthority !== undefined && expectedMarker !== undefined) options.recoveryAuthority.releaseStagingDirectory(expectedMarker);
+            else fs.rmSync(stagingDir, {recursive: true, force: true});
+        }
+    }
+}
+
+/**
+ * Adapts the exact producer for a streaming bundle publisher.  `outcomes` is
+ * consumed once by the writer; once that consumption completes,
+ * `getDiagnostics` exposes the producer's small terminal diagnostic record.
+ * It deliberately never collects outcomes or their artifacts in an array.
+ */
+export function createStreamingExactWeightedOutcomes(
+    options: GenerateExactWeightedOutcomeLibraryOptions,
+): StreamingExactWeightedOutcomes {
+    const source = streamExactWeightedOutcomes(options);
+    let diagnostics: OutcomeLibraryGeneratorDiagnostics | undefined;
+    async function *captureDiagnostics(): AsyncGenerator<WeightedOutcomeInput> {
+        let step = await source.next();
+        while (!step.done) {
+            yield step.value;
+            step = await source.next();
+        }
+        diagnostics = step.value;
+        return step.value;
+    }
+    return {outcomes: captureDiagnostics(), getDiagnostics: () => diagnostics};
+}
+
 // Convenience over streamExactWeightedOutcomes for the common case: collects the whole stream (still one
 // unique outcome's artifact alive at a time while streaming -- see that function's own doc comment for what
 // "bounded memory" actually means here) and hands it to buildWeightedOutcomeLibrary, so a caller who wants a
@@ -391,7 +668,7 @@ export async function *streamExactWeightedOutcomes(
 export async function generateExactWeightedOutcomeLibrary(
     options: GenerateExactWeightedOutcomeLibraryOptions,
 ): Promise<GenerateExactWeightedOutcomeLibraryResult> {
-    const stream = streamExactWeightedOutcomes(options);
+    const stream = streamExactWeightedOutcomesInternal(options, false);
     const outcomes: WeightedOutcomeInput[] = [];
     let step = await stream.next();
     while (!step.done) {

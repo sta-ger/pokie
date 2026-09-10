@@ -38,6 +38,7 @@ import {
     WeightedOutcomeLibrary,
     OutcomeLibraryGeneratorDiagnostics,
     StakeEngineImportSourceProvenance,
+    removePublishedDirectoryIfOwned,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -494,7 +495,9 @@ export class StakeEngineCommand implements CliCommandHandling {
                     outDir,
                 )
                 : this.exporter.exportToDirectory(read.modes!, outDir),
-            rollback: () => fs.promises.rm(outDir, {recursive: true, force: true}),
+            rollback: (result) => {
+                if (result.publication !== undefined) removePublishedDirectoryIfOwned(result.publication);
+            },
             ...(signal === undefined ? {} : {signal}),
         }};
     }
@@ -534,21 +537,29 @@ export class StakeEngineCommand implements CliCommandHandling {
             return this.runImport(options, {source, plan});
         }
         const cancellation = createCliImportCancellation();
+        const assertDestinationAvailable = () => {
+            const destination = new ArtifactBuilderRegistry().checkDestination("outcomeLibrary", options.outDir, prepared.source.rootPath);
+            if (!destination.available) throw new Error(destination.message ?? `The import destination "${options.outDir}" is unavailable.`);
+        };
         const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, options.outDir, {
             read: () => this.importer.importFromDirectory(options.stakeDir),
             canPublish: (result) => result.issues.every((issue) => issue.severity !== "error"),
-            assertDestinationAvailable: () => {
-                const destination = new ArtifactBuilderRegistry().checkDestination("outcomeLibrary", options.outDir, prepared.source.rootPath);
-                if (!destination.available) throw new Error(destination.message ?? `The import destination "${options.outDir}" is unavailable.`);
-            },
-            publish: (result) => this.importWriter.writeToDirectory(result, options.outDir),
+            assertDestinationAvailable,
+            // The same owner policy must run again after the importer has
+            // reconstructed its modes and immediately before bundle swap.
+            publish: (result) => this.importWriter.writeToDirectory(result, options.outDir, {
+                signal: cancellation.signal,
+                assertDestinationAvailable,
+            }),
             signal: cancellation.signal,
             register: this.registerImport,
             // StakeEngineImportWriter publishes an atomic directory.  Once it
             // has returned, that directory belongs to this prepared operation
             // until its terminal result is reported; remove only this newly
             // allocated destination if a later lifecycle phase fails.
-            rollback: () => fs.promises.rm(options.outDir, {recursive: true, force: true}),
+            rollback: (result) => {
+                if (result.publication !== undefined) removePublishedDirectoryIfOwned(result.publication);
+            },
             cleanup: () => cancellation.cleanup(),
         });
         return this.reportImport(options, execution.read, execution.published, execution.publication);

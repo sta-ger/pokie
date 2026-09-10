@@ -46,13 +46,15 @@ function siblingLeftovers(outDir: string): string[] {
 }
 
 describe("StakeEngineExporter", () => {
+    let tmpRoot: string;
     let outDir: string;
     let baseLibrary: WeightedOutcomeLibrary<string>;
     let bonusLibrary: WeightedOutcomeLibrary<string>;
     let modes: StakeEngineExportModeInput[];
 
     beforeEach(() => {
-        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-test-"));
+        tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-test-"));
+        outDir = path.join(tmpRoot, "out");
         baseLibrary = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
         bonusLibrary = buildStakeEngineTestLibrary({libraryId: "bonus-lib", betMode: "freeGames", stake: 100});
         modes = [
@@ -62,7 +64,6 @@ describe("StakeEngineExporter", () => {
     });
 
     afterEach(() => {
-        fs.rmSync(outDir, {recursive: true, force: true});
         // Clean up any sibling temp/stale directories a test might have deliberately triggered.
         const parentDir = path.dirname(outDir);
         const base = path.basename(outDir);
@@ -71,6 +72,7 @@ describe("StakeEngineExporter", () => {
                 fs.rmSync(path.join(parentDir, name), {recursive: true, force: true});
             }
         }
+        fs.rmSync(tmpRoot, {recursive: true, force: true});
     });
 
     it("writes index.json, per-mode lookup CSVs, per-mode zstd books, and pokie-manifest.json that all round-trip exactly, in Stake units", async () => {
@@ -182,7 +184,7 @@ describe("StakeEngineExporter", () => {
         expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-payout-multiplier-not-representable" && issue.severity === "error")).toBe(
             true,
         );
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("does not write anything when validation reports an error", async () => {
@@ -194,9 +196,7 @@ describe("StakeEngineExporter", () => {
         expect(result.files).toEqual([]);
         expect(result.manifest).toBeUndefined();
         expect(result.issues.some((issue) => issue.severity === "error")).toBe(true);
-        // outDir already exists (fs.mkdtempSync created it) — the point is that validation failing writes
-        // nothing into it at all.
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("honors cancellation from the final temporary-publish callback without committing an output", async () => {
@@ -212,7 +212,25 @@ describe("StakeEngineExporter", () => {
             }),
         ).rejects.toThrow(StakeEngineExportCancelledError);
 
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
+    });
+
+    it("removes only its newly published directory when cancellation arrives after the final commit", async () => {
+        const controller = new AbortController();
+        const exporter = new StakeEngineExporter<string>(
+            "1.3.0",
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => controller.abort(),
+        );
+
+        await expect(exporter.exportToDirectory(modes, outDir, {signal: controller.signal})).rejects.toThrow(StakeEngineExportCancelledError);
+
+        expect(fs.existsSync(outDir)).toBe(false);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
@@ -227,7 +245,7 @@ describe("StakeEngineExporter", () => {
 
         expect(result.files).toEqual([]);
         expect(result.issues.some((issue) => issue.code === "stakeengine-mode-name-case-collision" && issue.severity === "error")).toBe(true);
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("blocks export when a custom events projector throws", async () => {
@@ -243,7 +261,7 @@ describe("StakeEngineExporter", () => {
         expect(result.files).toEqual([]);
         expect(result.manifest).toBeUndefined();
         expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-events-invalid" && issue.severity === "error")).toBe(true);
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("blocks export (via the real, default events projector) when an outcome's own featureEvents use a reserved type", async () => {
@@ -275,7 +293,7 @@ describe("StakeEngineExporter", () => {
 
         expect(result.files).toEqual([]);
         expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-events-invalid" && issue.message.includes("reserved"))).toBe(true);
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("blocks export when a custom events projector returns non-JSON-safe output (NaN)", async () => {
@@ -289,7 +307,7 @@ describe("StakeEngineExporter", () => {
         expect(result.files).toEqual([]);
         expect(result.manifest).toBeUndefined();
         expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-events-not-json-safe" && issue.severity === "error")).toBe(true);
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("is safe to re-export into the same directory (recognizes its own pokie-manifest.json)", async () => {
@@ -351,8 +369,9 @@ describe("StakeEngineExporter", () => {
         const filesBefore = fs.readdirSync(outDir).sort();
         const contentsBefore = new Map(filesBefore.map((name) => [name, fs.readFileSync(path.join(outDir, name))]));
 
-        // Call 1 (outDir -> stale) is real; call 2 (tempDir -> outDir, the "publish" step) is the simulated
-        // failure; call 3, if our own recovery logic runs, is the restore (stale -> outDir) and must also be real.
+        // The fd-owned protocol moves only entries below the reserved inode.
+        // Fail while installing the replacement and prove the original files
+        // are restored without ever renaming the destination directory.
         let renameCallCount = 0;
         const failingRenameDirectory = (from: string, to: string): void => {
             renameCallCount++;
@@ -365,7 +384,9 @@ describe("StakeEngineExporter", () => {
 
         await expect(failingExporter.exportToDirectory(modes, outDir)).rejects.toThrow("simulated publish rename failure");
 
-        expect(renameCallCount).toBe(3);
+        // The injectable seam now stays inside private staging; the live
+        // directory exchange itself is deliberately not injectable.
+        expect(renameCallCount).toBe(2);
         expect(fs.readdirSync(outDir).sort()).toEqual(filesBefore);
         for (const name of filesBefore) {
             expect(fs.readFileSync(path.join(outDir, name))).toEqual(contentsBefore.get(name));
@@ -373,57 +394,7 @@ describe("StakeEngineExporter", () => {
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
-    it("cleans up the temp directory but preserves the stale backup byte-for-byte when both the publish rename and the rollback rename fail", async () => {
-        const exporter = new StakeEngineExporter<string>("1.3.0");
-        await exporter.exportToDirectory(modes, outDir);
-        const filesBefore = fs.readdirSync(outDir).sort();
-        const contentsBefore = new Map(filesBefore.map((name) => [name, fs.readFileSync(path.join(outDir, name))]));
-
-        // Call 1 (outDir -> stale) is real; call 2 (the publish rename) fails; call 3 (our own rollback attempt,
-        // stale -> outDir) fails too — the one truly unrecoverable-without-help case.
-        let renameCallCount = 0;
-        const failingRenameDirectory = (from: string, to: string): void => {
-            renameCallCount++;
-            if (renameCallCount === 1) {
-                fs.renameSync(from, to);
-                return;
-            }
-            throw new Error(renameCallCount === 2 ? "simulated publish failure" : "simulated rollback failure");
-        };
-        const failingExporter = new StakeEngineExporter<string>("1.3.0", undefined, undefined, undefined, undefined, failingRenameDirectory);
-
-        let thrown: Error | undefined;
-        try {
-            await failingExporter.exportToDirectory(modes, outDir);
-        } catch (error) {
-            thrown = error as Error;
-        }
-
-        expect(renameCallCount).toBe(3);
-        expect(thrown).toBeDefined();
-        expect(thrown?.message).toContain("simulated publish failure");
-        expect(thrown?.message).toContain("simulated rollback failure");
-
-        // outDir itself is gone (never restored) — that's exactly why this case needs manual recovery.
-        expect(fs.existsSync(outDir)).toBe(false);
-
-        // The temp directory must not linger...
-        const siblings = siblingLeftovers(outDir);
-        expect(siblings.filter((name) => name.includes(".tmp-"))).toEqual([]);
-
-        // ...but the stale backup must: it's the only remaining copy of the previous export, byte for byte, and
-        // the thrown error must say exactly where to find it.
-        const staleSiblings = siblings.filter((name) => name.includes(".stale-"));
-        expect(staleSiblings.length).toBe(1);
-        const stalePath = path.join(path.dirname(outDir), staleSiblings[0]);
-        expect(thrown?.message).toContain(stalePath);
-        expect(fs.readdirSync(stalePath).sort()).toEqual(filesBefore);
-        for (const name of filesBefore) {
-            expect(fs.readFileSync(path.join(stalePath, name))).toEqual(contentsBefore.get(name));
-        }
-    });
-
-    it("surfaces a warning (not a failed export) when removing the stale backup fails after a successful publish", async () => {
+    it("reports superseded-output cleanup failure without failing a successful publish", async () => {
         const exporter = new StakeEngineExporter<string>("1.3.0");
         await exporter.exportToDirectory(modes, outDir);
 
@@ -434,7 +405,6 @@ describe("StakeEngineExporter", () => {
 
         const result = await failingExporter.exportToDirectory(modes, outDir);
 
-        // The export itself is a success — the new directory is fully live — despite the cleanup failure.
         expect(result.manifest).toBeDefined();
         expect(result.files.length).toBeGreaterThan(0);
         expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);
@@ -442,14 +412,10 @@ describe("StakeEngineExporter", () => {
 
         const index = JSON.parse(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")) as StakeEngineIndex;
         expect(index.modes.map((entry) => entry.name)).toEqual(["base", "bonus"]);
-
-        // The stale backup itself is left behind, intact, for manual removal — not lost or corrupted.
-        const staleDirs = siblingLeftovers(outDir).filter((name) => name.includes(".stale-"));
-        expect(staleDirs.length).toBe(1);
     });
 
     it("leaves no temp directory when the initial publish rename fails for an outDir that doesn't exist yet", async () => {
-        const freshOutDir = path.join(outDir, "fresh-subdir");
+        const freshOutDir = path.join(tmpRoot, "fresh-subdir");
         const failingRenameDirectory = (): void => {
             throw new Error("simulated initial rename failure");
         };
@@ -458,7 +424,7 @@ describe("StakeEngineExporter", () => {
         await expect(exporter.exportToDirectory(modes, freshOutDir)).rejects.toThrow("simulated initial rename failure");
 
         expect(fs.existsSync(freshOutDir)).toBe(false);
-        const leftovers = fs.readdirSync(outDir).filter((name) => name.startsWith("fresh-subdir."));
+        const leftovers = fs.readdirSync(tmpRoot).filter((name) => name.startsWith("fresh-subdir."));
         expect(leftovers).toEqual([]);
     });
 
@@ -472,12 +438,55 @@ describe("StakeEngineExporter", () => {
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
+    it("fails closed when a caller replaces the reserved destination during the fd-owned commit, then permits retry", async () => {
+        const exporter = new StakeEngineExporter<string>("1.3.0");
+        await exporter.exportToDirectory(modes, outDir);
+        let claimed = false;
+        const racingExportOptions = {
+            onProgress: ({message}: {readonly message: string}): void => {
+                if (!claimed && message === "Publishing Stake file pokie-manifest.json") {
+                    claimed = true;
+                    fs.rmSync(outDir, {recursive: true, force: true});
+                    fs.mkdirSync(outDir);
+                    fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+                }
+            },
+        };
+
+        await expect(exporter.exportToDirectory(modes, outDir, racingExportOptions)).rejects.toThrow(/claimed while publication was being prepared/i);
+        expect(claimed).toBe(true);
+        expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(siblingLeftovers(outDir)).toEqual([]);
+
+        fs.rmSync(outDir, {recursive: true, force: true});
+        await expect(exporter.exportToDirectory(modes, outDir)).resolves.toMatchObject({outDir});
+    });
+
     it("refuses to replace an existing non-empty directory that isn't recognized as its own prior output", async () => {
+        fs.mkdirSync(outDir);
         fs.writeFileSync(path.join(outDir, "notes.txt"), "unrelated file");
         const exporter = new StakeEngineExporter<string>("1.3.0");
 
         await expect(exporter.exportToDirectory(modes, outDir)).rejects.toThrow(/was not generated by "pokie stakeengine export"/);
 
         expect(fs.readdirSync(outDir)).toEqual(["notes.txt"]);
+    });
+
+    it("rejects empty, external, and symlinked directories before direct export staging", async () => {
+        const exporter = new StakeEngineExporter<string>("1.3.0");
+        fs.mkdirSync(outDir);
+        await expect(exporter.exportToDirectory(modes, outDir)).rejects.toThrow(/was not generated by "pokie stakeengine export"/);
+        expect(fs.readdirSync(outDir)).toEqual([]);
+
+        fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+        await expect(exporter.exportToDirectory(modes, outDir)).rejects.toThrow(/was not generated by "pokie stakeengine export"/);
+        expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+
+        const externalDir = path.join(tmpRoot, "external");
+        fs.mkdirSync(externalDir);
+        fs.rmSync(outDir, {recursive: true, force: true});
+        fs.symlinkSync(externalDir, outDir, "dir");
+        await expect(exporter.exportToDirectory(modes, outDir)).rejects.toThrow(/symbolic link/i);
+        expect(fs.readdirSync(externalDir)).toEqual([]);
     });
 });

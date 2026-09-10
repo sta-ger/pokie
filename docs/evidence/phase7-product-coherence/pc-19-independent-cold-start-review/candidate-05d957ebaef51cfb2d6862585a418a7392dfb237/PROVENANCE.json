@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 3,
+  "reviewId": "pc-19-05d957eb-independent-20260909",
+  "startedAt": "2026-09-09T18:00:00Z",
+  "frozenAt": "2026-09-09T18:15:30Z",
+  "frozenFindingsSha256": "20a5fba49227eacfd0598119f4443a6b4fc04185ed323f7166e7d5e8271ff3a6",
+  "reviewer": "independent-host-side verifier",
+  "cleanRoomAttestation": "I recorded blind findings before reading roadmap, source, completed evidence, known findings, fixes, or prior acceptance evidence.",
+  "candidate": {
+    "id": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+    "packageSpecifier": "pokie@1.3.0",
+    "installedExecutable": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-7-product-coherence/task_PC-20-20260907195332/dist/cli/pokie.js",
+    "packageArtifact": {
+      "evidenceId": "E001",
+      "path": "artifacts/pokie-1.3.0.tgz",
+      "sha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "sizeBytes": 3210821,
+      "capturedAt": "2026-09-09T18:03:00Z",
+      "kind": "candidate-package-archive",
+      "summary": "Exact candidate npm package archive.",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+    }
+  },
+  "commandRecords": [
+    {
+      "commandId": "C001",
+      "command": "npm pack --pack-destination verifier-harness/package",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+      "startedAt": "2026-09-09T18:02:00Z",
+      "endedAt": "2026-09-09T18:03:30Z",
+      "exitStatus": 0,
+      "stdout": {
+        "evidenceId": "E002",
+        "path": "commands/package-archive.md",
+        "sha256": "37c6f98082ace024befaff59a8e3fe8e6c631fbaa6491d31c6f047953b90ac3c",
+        "sizeBytes": 226,
+        "capturedAt": "2026-09-09T18:03:30Z",
+        "kind": "command-stdout-summary",
+        "summary": "Bounded package archive result.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      },
+      "stderr": {
+        "evidenceId": "E003",
+        "path": "commands/package-archive.stderr.md",
+        "sha256": "aa2154e4735037fbfb1567c116af6fd155d5aac4c8b7d2e6d0f2efa255b87844",
+        "sizeBytes": 53,
+        "capturedAt": "2026-09-09T18:03:30Z",
+        "kind": "command-stderr-summary",
+        "summary": "Bounded package archive stderr result.",
+        "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+        "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+      }
+    }
+  ],
+  "studioSession": {
+    "sessionId": "pc20-source-studio-launch-1",
+    "launcher": "pokie",
+    "execution": "public-launcher-rendered-controls",
+    "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+    "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b",
+    "startedAt": "2026-09-09T18:04:00Z",
+    "endedAt": "2026-09-09T18:15:00Z",
+    "freshProfile": {
+      "path": "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/PC-20-bd8078b6995cf286/chromium-profile-launch-1",
+      "createdAt": "2026-09-09T18:03:45Z"
+    },
+    "transcript": {
+      "evidenceId": "E004",
+      "path": "reviews/studio-transcript.md",
+      "sha256": "165603f6c5dca9b8fa0e47f87258f78bb4eb5cf9babf47da11e8cc35f8f411ff",
+      "sizeBytes": 831,
+      "capturedAt": "2026-09-09T18:15:00Z",
+      "kind": "studio-rendered-transcript-summary",
+      "summary": "Fresh source-launcher rendered workflow transcript.",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+    }
+  },
+  "artifactLedger": [
+    {
+      "evidenceId": "E005",
+      "path": "commands/package-archive.md",
+      "sha256": "37c6f98082ace024befaff59a8e3fe8e6c631fbaa6491d31c6f047953b90ac3c",
+      "sizeBytes": 226,
+      "capturedAt": "2026-09-09T18:15:10Z",
+      "kind": "artifact-ledger",
+      "summary": "Candidate archive ledger.",
+      "candidateId": "05d957ebaef51cfb2d6862585a418a7392dfb237",
+      "candidatePackageSha256": "f9c1b9bb14b3a9b493b846ed7a533f06e6b5b8703618231d6c9c9dd08cd6523b"
+    }
+  ]
+}

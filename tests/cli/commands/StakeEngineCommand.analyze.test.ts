@@ -134,7 +134,8 @@ describe("StakeEngineCommand analyze", () => {
     });
 
     it("end to end: analyzes a real Stake Engine directory with no pokie-manifest.json at all", async () => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-test-"));
+        const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-test-"));
+        const dir = path.join(rootDir, "out");
         try {
             const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "cli-lib", betMode: "base", stake: 1, totalWin: 5});
             const modes: StakeEngineExportModeInput[] = [{modeName: "base", cost: 1, library}];
@@ -151,7 +152,7 @@ describe("StakeEngineCommand analyze", () => {
             expect(parsed.analysis?.modes[0].modeName).toBe("base");
             expect(parsed.analysis?.modes[0].rtp).toBe(5);
         } finally {
-            fs.rmSync(dir, {recursive: true, force: true});
+            fs.rmSync(rootDir, {recursive: true, force: true});
         }
     });
 
@@ -363,7 +364,8 @@ describe("StakeEngineCommand analyze", () => {
     });
 
     it("end to end: replaces an existing analysis report without using diff publication diagnostics", async () => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-existing-out-test-"));
+        const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-existing-out-test-"));
+        const dir = path.join(rootDir, "out");
         const outFile = path.join(dir, "analysis.json");
         try {
             const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "cli-lib", betMode: "base", stake: 1, totalWin: 5});
@@ -376,7 +378,7 @@ describe("StakeEngineCommand analyze", () => {
             expect(JSON.parse(fs.readFileSync(outFile, "utf-8"))).toMatchObject({stakeDir: dir, issues: []});
             expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).not.toContain("Cannot write Stake Engine diff");
         } finally {
-            fs.rmSync(dir, {recursive: true, force: true});
+            fs.rmSync(rootDir, {recursive: true, force: true});
         }
     });
 });

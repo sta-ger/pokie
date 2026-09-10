@@ -5,7 +5,7 @@ import {computeRoundArtifactHash} from "../artifact/computeRoundArtifactHash.js"
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedOutcomeRandomSource.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
-import {publishDirectoryAtomically} from "../stakeengine/internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, publishDirectoryAtomically, removePublishedDirectoryIfOwned, type PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {OutcomeLibraryBundleManifest, OutcomeLibraryBundleManifestModeEntry} from "../weightedoutcome/bundle/OutcomeLibraryBundleManifest.js";
 import type {OutcomeLibraryBundleModeIndex} from "../weightedoutcome/bundle/OutcomeLibraryBundleModeIndex.js";
@@ -22,16 +22,22 @@ import {
     type CertificationEvidenceBundleModeEntry,
 } from "./CertificationEvidenceBundleManifest.js";
 import type {CertificationEvidenceBundleBuildResult} from "./CertificationEvidenceBundleBuildResult.js";
+import {CertificationEvidenceBundleBuildCancelledError, type CertificationEvidenceBundleBuildOptions} from "./CertificationEvidenceBundleBuildOptions.js";
 import type {CertificationEvidenceBundleBuilding} from "./CertificationEvidenceBundleBuilding.js";
 import type {CertificationEvidenceBundleModeSampleInput} from "./CertificationEvidenceBundleModeSampleInput.js";
 import {CertificationEvidenceBundleValidator} from "./CertificationEvidenceBundleValidator.js";
 import type {CertificationEvidenceBundleValidating} from "./CertificationEvidenceBundleValidating.js";
 import type {CertificationEvidenceSampleRecord} from "./CertificationEvidenceSampleRecord.js";
 import {isPositiveSafeInteger, MODE_NAME_PATTERN} from "./internal/certificationEvidenceBundleShapeGuards.js";
+import {assertSafeToReplaceCertificationEvidenceDirectory} from "./internal/assertSafeToReplaceCertificationEvidenceDirectory.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
 function hashManifest(manifest: OutcomeLibraryBundleManifest): string {
     return sha256OfBytes(JSON.stringify(toCanonicalJson(manifest)));
+}
+
+function assertNotCancelled(options: CertificationEvidenceBundleBuildOptions | undefined): void {
+    if (options?.signal?.aborted) throw new CertificationEvidenceBundleBuildCancelledError();
 }
 
 // The exact hash of a whole mode index, not just its own libraryHash field — closes a gap a libraryHash-only
@@ -84,6 +90,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
     private readonly renameDirectory: (from: string, to: string) => void;
     private readonly removeDirectory: (dirPath: string) => void;
     private readonly selfValidator: CertificationEvidenceBundleValidating;
+    private readonly beforeCommit: (() => void) | undefined;
 
     constructor(
         pokieVersion: string,
@@ -98,6 +105,9 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         // Appended last (rather than grouped next to bundleValidator) so existing positional constructor calls
         // never shift — see every other constructor parameter above.
         selfValidator: CertificationEvidenceBundleValidating = new CertificationEvidenceBundleValidator(),
+        // Lets the direct builder contract test the final shared-publication
+        // boundary while preserving the production writer's single path.
+        beforeCommit: (() => void) | undefined = undefined,
     ) {
         this.pokieVersion = pokieVersion;
         this.reader = reader;
@@ -109,13 +119,21 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         this.renameDirectory = renameDirectory;
         this.removeDirectory = removeDirectory;
         this.selfValidator = selfValidator;
+        this.beforeCommit = beforeCommit;
     }
 
     public async buildFromBundle(
         bundleDir: string,
         modes: readonly CertificationEvidenceBundleModeSampleInput[],
         outDir: string,
+        options?: CertificationEvidenceBundleBuildOptions,
     ): Promise<CertificationEvidenceBundleBuildResult> {
+        assertNotCancelled(options);
+        // Ownership is a publication precondition, not a post-sampling
+        // cleanup decision. This leaves an external directory untouched and
+        // avoids allocating adjacent staging output for a refused request.
+        assertSafeToReplaceCertificationEvidenceDirectory(outDir);
+        const destinationOwnership = capturePublishDirectoryOwnership(outDir);
         const upfrontIssues = this.validateModesInput(modes);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
@@ -175,9 +193,11 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
 
         const stagingDir = `${outDir}.staging-${crypto.randomBytes(6).toString("hex")}`;
         fs.mkdirSync(stagingDir, {recursive: true});
+        let publication: PublishedDirectoryOwnership | undefined;
         try {
             const modeEntries: CertificationEvidenceBundleModeEntry[] = [];
             for (const modeInput of modes) {
+                assertNotCancelled(options);
                 // Safe: checked to exist against sourceManifest.modes above.
                 const sourceEntry = sourceManifest.modes.find((entry) => entry.modeName === modeInput.modeName)!;
                 // Safe: captured for every requested mode in readModeIndexes above.
@@ -221,23 +241,30 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
                 return this.failed(outDir, upfrontIssues, [...deepValidationIssues, ...stagingIssues]);
             }
 
-            const {cleanupWarning} = publishDirectoryAtomically({
+            const published = publishDirectoryAtomically({
                 outDir,
+                ownership: destinationOwnership,
                 renameDirectory: this.renameDirectory,
                 removeDirectory: this.removeDirectory,
+                beforeCommit: this.beforeCommit,
                 writeFilesIntoTempDir: (tempDir) => {
                     for (const file of relativeFiles) {
                         this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
                     }
                 },
             });
+            publication = published.publication;
+            assertNotCancelled(options);
 
             const finalIssues = [...upfrontIssues, ...deepValidationIssues];
-            if (cleanupWarning !== undefined) {
-                finalIssues.push({code: "certification-evidence-build-stale-cleanup-failed", severity: "warning", message: cleanupWarning, details: {outDir}});
+            if (published.cleanupWarning !== undefined) {
+                finalIssues.push({code: "certification-evidence-build-stale-cleanup-failed", severity: "warning", message: published.cleanupWarning, details: {outDir}});
             }
 
-            return {outDir, files: relativeFiles, manifest, issues: finalIssues};
+            return {outDir, files: relativeFiles, manifest, issues: finalIssues, publication};
+        } catch (error) {
+            if (publication !== undefined) removePublishedDirectoryIfOwned(publication);
+            throw error;
         } finally {
             try {
                 this.removeDirectory(stagingDir);

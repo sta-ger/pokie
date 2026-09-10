@@ -6,6 +6,8 @@ import {
     ArtifactConversionPlanner,
     computeArtifactInputBindingHash,
     ExactEnumerationCheckpoint,
+    ExactEnumerationRecoveryAuthority,
+    issueExactEnumerationRecoveryAuthority,
     GenerateExactWeightedOutcomeLibraryResult,
     OutcomeLibraryGenerationRequest,
     ResolvedOutcomeLibraryGenerationRequest,
@@ -27,11 +29,13 @@ import {
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
     estimateExactOutcomeSpaceSize,
+    generateStreamingWeightedOutcomeLibrary,
     generateWeightedOutcomeLibrary,
     loadPokieGame,
     prepareOutcomeLibraryGenerationFromEstimate,
     resolveOutcomeLibraryGenerationDestination,
     describeUnsupportedProjectOperation,
+    removePublishedDirectoryIfOwned,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -135,6 +139,7 @@ type SerializedCheckpoint = {
     progressTotal: string;
     sourceEnumerationId: string;
     grids: [string, {grid: string[][]; weight: string}][];
+    recoveryAuthorityId?: string;
 };
 
 // Three CLI verbs ("pokie outcomelibrary generate"/"build"/"validate") sharing one command, the same
@@ -150,6 +155,9 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     private readonly streamOutcomes: (filePath: string) => AsyncGenerator<WeightedOutcomeInput>;
     private readonly pokieVersion: string;
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
+    // Kept only as an embedding/test compatibility seam. The ordinary CLI
+    // path uses generateStreamingWeightedOutcomeLibrary when it has a durable
+    // --out destination, so it never first constructs a complete library.
     private readonly generate: (request: OutcomeLibraryGenerationRequest) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
     private readonly estimateSpace: (game: PokieGame) => OutcomeSpaceEstimate;
     private readonly writeFile: (filePath: string, contents: string) => void;
@@ -540,6 +548,19 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     "bounded-coverage strategy with --sample <n> --seed <string>.",
                 );
             }
+            // A raw library is an array-shaped JSON document.  Printing it
+            // would necessarily retain every generated outcome until
+            // JSON.stringify has completed, which defeats the streaming
+            // contract for an otherwise accepted exact request.  Decide this
+            // after preflight so a cap-exceeded request still receives its
+            // more specific sampled-recovery diagnostic, but before any
+            // generation work starts.
+            if (options.out === undefined) {
+                throw new Error(
+                    `--out <file> is required for generation. Outcome libraries are streamed directly to a durable file; ` +
+                    `use --estimate to inspect the request without generating. ${GENERATE_USAGE}`,
+                );
+            }
             const prepared = this.prepareRawGenerationOperation(
                 packageRoot,
                 options,
@@ -559,6 +580,13 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     );
                     return 130;
                 }
+                if (error.checkpoint.restartRequired) {
+                    console.error(
+                        `Generation of "${packageRoot}" was cancelled after ${error.processedRawIndex} / ${error.progressTotal} raw draws. ` +
+                            "No incomplete library was published; this run has no resumable exact checkpoint, so retry the same command from the beginning.",
+                    );
+                    return 130;
+                }
                 if (options.resume === undefined) {
                     console.error(
                         `Generation of "${packageRoot}" was cancelled after ${error.processedRawIndex} / ${error.progressTotal} raw draws, ` +
@@ -574,6 +602,13 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 return 130;
             }
             if (error instanceof WeightedOutcomeLibraryGenerationError) {
+                if (error.getCode() === "weighted-outcome-library-generation-cancelled") {
+                    console.error(
+                        `Generation of "${packageRoot}" was cancelled during raw-library publication. ` +
+                        "No incomplete library was published; retry the same command from the beginning.",
+                    );
+                    return 130;
+                }
                 // Destination safety is a synchronous invocation precondition
                 // (the same public behavior raw --out historically exposed),
                 // while other generation diagnostics are command results.
@@ -636,12 +671,13 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     await this.assertGenerationSourceIsRunnable(packageRoot);
                     const game = await this.loadGame(packageRoot);
                     const resumeFrom = options.resume !== undefined && this.fileExists(options.resume) ? this.readCheckpoint(options.resume) : undefined;
+                    const recoveryAuthority = options.resume === undefined ? undefined : this.createRecoveryAuthority(options.resume, resumeFrom);
                     // Rebind the live package immediately before generation;
                     // a config change after planning cannot inherit the old
                     // request's provenance merely because its destination is
                     // still the same bound publication identity.
                     const reboundRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game),
-                        this.createGenerationRequest(game, packageRoot, options, sampling, signal, resumeFrom),
+                        this.createGenerationRequest(game, packageRoot, options, sampling, signal, resumeFrom, recoveryAuthority),
                     );
                     if (
                         reboundRequest.configHash !== resolvedRequest.configHash ||
@@ -656,7 +692,16 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                             "The loaded package configuration or output destination changed after preflight. Re-run generation from a fresh preflight.",
                         );
                     }
-                    return this.generate(reboundRequest);
+                    // Legacy embedding callers that supply a generator retain
+                    // their exact result shape. The public CLI's native path
+                    // instead hands the writer the domain stream directly.
+                    // rawOutput is guaranteed above for every non-estimate
+                    // public invocation; keeping the guard makes this
+                    // prepared operation safe for direct internal callers.
+                    if (this.generate !== generateWeightedOutcomeLibrary) {
+                        return this.generate(reboundRequest);
+                    }
+                    return generateStreamingWeightedOutcomeLibrary(reboundRequest);
                 },
                 canPublish: () => rawOutput !== undefined,
                 // Generation can take long enough for another actor to create
@@ -677,11 +722,15 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                         );
                     }
                 },
-                publish: (result: GenerateExactWeightedOutcomeLibraryResult) => {
+                publish: async (result: GenerateExactWeightedOutcomeLibraryResult | ReturnType<typeof generateStreamingWeightedOutcomeLibrary>) => {
                     // The operation has already established a fresh destination.
                     // Keep the legacy injectable writer so test and embedding
                     // callers retain their narrow file-system boundary.
-                    this.writeFile(rawOutput!, JSON.stringify(result.library, null, 4));
+                    if ("library" in result) {
+                        this.writeFile(rawOutput!, JSON.stringify(result.library, null, 4));
+                    } else {
+                        await this.writeStreamingRawLibrary(rawOutput!, resolvedRequest.libraryId, result.outcomes, signal);
+                    }
                     publishedOutput = true;
                 },
                 rollback: () => {
@@ -691,7 +740,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     if (error === undefined && options.resume !== undefined && this.fileExists(options.resume)) this.removeFile(options.resume);
                 },
                 onTerminalFailure: (error: unknown) => {
-                    if (resolvedRequest.preflight.strategy === "exact" && error instanceof WeightedOutcomeLibraryGenerationCancelledError && options.resume !== undefined) {
+                    if (resolvedRequest.preflight.strategy === "exact" && error instanceof WeightedOutcomeLibraryGenerationCancelledError && !error.checkpoint.restartRequired && options.resume !== undefined) {
                         this.writeFile(options.resume, JSON.stringify(this.serializeCheckpoint(error.checkpoint), null, 4));
                     }
                 },
@@ -800,6 +849,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         sampling: {sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}},
         signal?: AbortSignal,
         resumeFrom?: ExactEnumerationCheckpoint,
+        recoveryAuthority?: ExactEnumerationRecoveryAuthority,
     ): OutcomeLibraryGenerationRequest {
         const sample = sampling.sampled ?? sampling.bounded;
         let generation: OutcomeLibraryGenerationRequest["generation"] = "default";
@@ -823,21 +873,95 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 outputDestinationSafety: {sourcePath: packageRoot, kind: "file", requireAvailable: true},
             }),
             ...(resumeFrom === undefined ? {} : {resumeFrom}),
+            // --resume persists the bounded disk-partition checkpoint owned
+            // by this invocation; it never chooses an in-memory accumulator.
+            ...(options.resume === undefined ? {} : {durableCheckpointOnCancellation: true}),
+            ...(recoveryAuthority === undefined ? {} : {recoveryAuthority}),
             ...(signal === undefined ? {} : {signal}),
             ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
         };
     }
 
-    private printGenerateResult(result: GenerateExactWeightedOutcomeLibraryResult, options: GenerateCliOptions): void {
+    /**
+     * Writes the historical raw WeightedOutcomeLibrary JSON shape without
+     * retaining its outcomes array. A sibling temporary file is linked into
+     * place, rather than renamed, so a destination claimed after preflight is
+     * never overwritten. The temporary file is always removed on failure.
+     */
+    private async writeStreamingRawLibrary(
+        outputPath: string,
+        libraryId: string,
+        outcomes: AsyncIterable<WeightedOutcomeInput>,
+        signal: AbortSignal,
+    ): Promise<void> {
+        const tempPath = path.join(path.dirname(outputPath), `.${path.basename(outputPath)}.pokie-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`);
+        let fd: number | undefined;
+        try {
+            fd = fs.openSync(tempPath, "wx");
+            fs.writeSync(fd, `{"schemaVersion":1,"libraryId":${JSON.stringify(libraryId)},"outcomes":[`);
+            let first = true;
+            for await (const outcome of outcomes) {
+                if (signal.aborted) {
+                    throw new WeightedOutcomeLibraryGenerationError(
+                        "weighted-outcome-library-generation-cancelled",
+                        "Generation was cancelled before raw Outcome Library publication completed.",
+                    );
+                }
+                if (!first) fs.writeSync(fd, ",");
+                fs.writeSync(fd, JSON.stringify(outcome));
+                first = false;
+            }
+            if (signal.aborted) {
+                throw new WeightedOutcomeLibraryGenerationError(
+                    "weighted-outcome-library-generation-cancelled",
+                    "Generation was cancelled before raw Outcome Library publication completed.",
+                );
+            }
+            fs.writeSync(fd, "]}");
+            fs.fsyncSync(fd);
+            fs.closeSync(fd);
+            fd = undefined;
+            try {
+                fs.linkSync(tempPath, outputPath);
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+                    throw new WeightedOutcomeLibraryGenerationError(
+                        "weighted-outcome-library-generation-destination-conflict",
+                        `The output destination "${outputPath}" was created after preflight and was left untouched. Re-run generation with a fresh destination.`,
+                    );
+                }
+                throw error;
+            }
+        } finally {
+            if (fd !== undefined) fs.closeSync(fd);
+            fs.rmSync(tempPath, {force: true});
+        }
+    }
+
+    private printGenerateResult(
+        result: GenerateExactWeightedOutcomeLibraryResult | ReturnType<typeof generateStreamingWeightedOutcomeLibrary>,
+        options: GenerateCliOptions,
+    ): void {
+        const streamed = !("library" in result);
+        const diagnostics = streamed ? result.getDiagnostics() : result.diagnostics;
+        if (diagnostics === undefined) throw new Error("Outcome generation completed without diagnostics.");
+        const libraryId = streamed ? undefined : result.library.libraryId;
+        const outcomeCount = streamed ? undefined : result.library.outcomes.length;
         if (options.format === "json") {
-            console.log(JSON.stringify(result, null, 4));
+            // The raw --out file remains the complete backwards-compatible
+            // library document. Stdout intentionally reports a bounded
+            // publication summary instead of duplicating that document in
+            // memory merely to print it.
+            console.log(JSON.stringify(streamed
+                ? {library: {schemaVersion: 1, libraryId: options.libraryId, outcomeCount: "streamed"}, diagnostics}
+                : result, null, 4));
         } else {
-            console.log(`Generated outcome library "${result.library.libraryId}" (${result.diagnostics.strategy}):`);
-            console.log(`  outcomes          ${result.library.outcomes.length}`);
-            console.log(`  total raw space   ${result.diagnostics.totalOutcomeSpaceSize}`);
-            console.log(`  sampled raw count ${result.diagnostics.sampledRawCount}`);
-            if (result.diagnostics.seed !== undefined) {
-                console.log(`  seed              ${result.diagnostics.seed}`);
+            console.log(`Generated outcome library "${libraryId ?? options.libraryId ?? "streamed"}" (${diagnostics.strategy}):`);
+            console.log(`  outcomes          ${outcomeCount ?? "streamed to output"}`);
+            console.log(`  total raw space   ${diagnostics.totalOutcomeSpaceSize}`);
+            console.log(`  sampled raw count ${diagnostics.sampledRawCount}`);
+            if (diagnostics.seed !== undefined) {
+                console.log(`  seed              ${diagnostics.seed}`);
             }
             if (options.out !== undefined) {
                 console.log(`\nLibrary written to "${options.out}".`);
@@ -855,6 +979,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             progressTotal: checkpoint.progressTotal.toString(),
             sourceEnumerationId: checkpoint.sourceEnumerationId,
             grids: Array.from(checkpoint.grids.entries()).map(([key, entry]) => [key, {grid: entry.grid, weight: entry.weight.toString()}]),
+            ...(checkpoint.recoveryAuthorityId === undefined ? {} : {recoveryAuthorityId: checkpoint.recoveryAuthorityId}),
         };
     }
 
@@ -866,7 +991,12 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             typeof parsed.processedRawIndex !== "string" ||
             typeof parsed.progressTotal !== "string" ||
             typeof parsed.sourceEnumerationId !== "string" ||
-            !Array.isArray(parsed.grids)
+            !Array.isArray(parsed.grids) ||
+            (parsed.recoveryAuthorityId !== undefined && (typeof parsed.recoveryAuthorityId !== "string" || !(/^[0-9a-f-]{36}$/i).test(parsed.recoveryAuthorityId))) ||
+            // Reject the retired self-describing staging shape rather than
+            // silently treating its partial grids as a complete in-memory
+            // checkpoint. It has no adapter authority and cannot be resumed.
+            "durableStagingDirectory" in parsed || "durableCheckpointId" in parsed
         ) {
             throw new Error(`"${filePath}" is not a valid --resume checkpoint file (see a WeightedOutcomeLibraryGenerationCancelledError's own checkpoint).`);
         }
@@ -876,7 +1006,16 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             progressTotal: BigInt(parsed.progressTotal),
             sourceEnumerationId: parsed.sourceEnumerationId,
             grids: new Map(parsed.grids.map(([key, entry]) => [key, {grid: entry.grid, weight: BigInt(entry.weight)}])),
+            ...(typeof parsed.recoveryAuthorityId === "string" ? {recoveryAuthorityId: parsed.recoveryAuthorityId} : {}),
         };
+    }
+
+    /** Resolve a checkpoint only beneath the resume file's adapter-owned root. */
+    private createRecoveryAuthority(resumePath: string, checkpoint: ExactEnumerationCheckpoint | undefined): ExactEnumerationRecoveryAuthority {
+        return issueExactEnumerationRecoveryAuthority(
+            `${path.resolve(resumePath)}.pokie-recovery`,
+            checkpoint?.recoveryAuthorityId,
+        );
     }
 
     private async executeBuild(configPath: string, outDir: string): Promise<number> {
@@ -915,6 +1054,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for ExportCommand
     public prepareDescriptorBuildOperation(configPath: string, outDir: string, signal?: AbortSignal) {
         const currentSource = () => this.buildDescriptorSource(configPath);
+        const assertDestinationAvailable = () => {
+            const destination = new ArtifactBuilderRegistry(this.pokieVersion).checkDestination("outcomeLibrary", outDir, configPath);
+            if (!destination.available) throw new Error(destination.message);
+        };
         return {plan: this.planner.planIdentity(currentSource(), "outcomeLibrary", {destinationPath: outDir}), validate: () => this.validateBuildSource(configPath), execution: {
             currentSource,
             read: () => {
@@ -934,12 +1077,14 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 return modes;
             },
             canPublish: () => true,
-            assertDestinationAvailable: () => {
-                const destination = new ArtifactBuilderRegistry(this.pokieVersion).checkDestination("outcomeLibrary", outDir, configPath);
-                if (!destination.available) throw new Error(destination.message);
+            assertDestinationAvailable,
+            // Keep the descriptor owner's source-aware destination policy at
+            // the writer's final atomic-swap boundary as well as the prepared
+            // operation boundary above.
+            publish: (modes) => this.writer.writeToDirectory(modes, outDir, {assertDestinationAvailable, signal}),
+            rollback: (result) => {
+                if (result.publication !== undefined) removePublishedDirectoryIfOwned(result.publication);
             },
-            publish: (modes) => this.writer.writeToDirectory(modes, outDir),
-            rollback: () => fs.promises.rm(outDir, {recursive: true, force: true}),
             ...(signal === undefined ? {} : {signal}),
         }};
     }

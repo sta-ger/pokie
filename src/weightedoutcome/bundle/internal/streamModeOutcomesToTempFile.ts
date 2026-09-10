@@ -41,7 +41,11 @@ export type StreamModeOutcomesResult<T extends string | number> = {
     // Present if and only if "issues" contains no error — the same all-or-nothing contract as every other
     // builder/exporter in this codebase.
     readonly built?: {
-        readonly entries: readonly OutcomeLibraryBundleIndexEntry[];
+        // Test/custom-writer callers retain this small-fixture compatibility
+        // shape. Native publication instead stages JSON index entries on disk.
+        readonly entries?: readonly OutcomeLibraryBundleIndexEntry[];
+        readonly entriesPath?: string;
+        readonly outcomeCount: number;
         readonly totalWeight: number;
         readonly libraryHash: string;
         readonly firstOutcome: WeightedOutcomeInput<T>;
@@ -72,6 +76,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     schemaVersion: number,
     filePath: string,
     options?: OutcomeLibraryBundleWriteOptions,
+    entriesPath?: string,
     completedBefore = BigInt(0),
 ): Promise<StreamModeOutcomesResult<T>> {
     const issues: ValidationIssue[] = [];
@@ -79,8 +84,8 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     const hash = crypto.createHash("sha256");
     hash.update(`{"libraryId":${JSON.stringify(libraryId)},"outcomes":[`);
 
-    const entries: OutcomeLibraryBundleIndexEntry[] = [];
-    const seenIds = new Set<string>();
+    const entries: OutcomeLibraryBundleIndexEntry[] | undefined = entriesPath === undefined ? [] : undefined;
+    let entriesDescriptor: number | undefined;
     let previousId: string | undefined;
     let alreadyReportedUnsorted = false;
     let reference: OutcomeHomogeneityKey | undefined;
@@ -92,6 +97,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
 
     const fd = fs.openSync(filePath, "w");
     try {
+        if (entriesPath !== undefined) entriesDescriptor = fs.openSync(entriesPath, "w");
         for await (const outcome of outcomes) {
             assertNotCancelled(options);
             if (!isNonEmptyString(outcome.id)) {
@@ -104,25 +110,26 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
                 continue;
             }
 
-            if (seenIds.has(outcome.id)) {
-                issues.push({
-                    code: "outcome-library-bundle-write-duplicate-outcome-id",
-                    severity: "error",
-                    message: `mode "${modeName}": outcome id "${outcome.id}" is used by more than one outcome.`,
-                    details: {modeName, id: outcome.id},
-                });
-                continue;
-            }
-            seenIds.add(outcome.id);
-
-            if (!alreadyReportedUnsorted && previousId !== undefined && compareIds(previousId, outcome.id) >= 0) {
-                issues.push({
-                    code: "outcome-library-bundle-write-outcomes-not-sorted",
-                    severity: "error",
-                    message: `mode "${modeName}": outcomes must arrive in strictly increasing canonical id order — "${outcome.id}" does not come after "${previousId}".`,
-                    details: {modeName, id: outcome.id},
-                });
-                alreadyReportedUnsorted = true;
+            if (previousId !== undefined) {
+                const order = compareIds(previousId, outcome.id);
+                if (order === 0) {
+                    issues.push({
+                        code: "outcome-library-bundle-write-duplicate-outcome-id",
+                        severity: "error",
+                        message: `mode "${modeName}": outcome id "${outcome.id}" is used by more than one outcome.`,
+                        details: {modeName, id: outcome.id},
+                    });
+                    continue;
+                }
+                if (!alreadyReportedUnsorted && order > 0) {
+                    issues.push({
+                        code: "outcome-library-bundle-write-outcomes-not-sorted",
+                        severity: "error",
+                        message: `mode "${modeName}": outcomes must arrive in strictly increasing canonical id order — "${outcome.id}" does not come after "${previousId}".`,
+                        details: {modeName, id: outcome.id},
+                    });
+                    alreadyReportedUnsorted = true;
+                }
             }
             previousId = outcome.id;
 
@@ -206,7 +213,13 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
             fs.writeSync(fd, lineBuffer);
             fs.writeSync(fd, "\n");
             const recordHash = `sha256:${crypto.createHash("sha256").update(lineBuffer).digest("hex")}`;
-            entries.push({id: outcome.id, weight: outcome.weight, byteOffset: offset, byteLength: lineBuffer.byteLength, recordHash});
+            const indexEntry = {id: outcome.id, weight: outcome.weight, byteOffset: offset, byteLength: lineBuffer.byteLength, recordHash};
+            if (entries !== undefined) entries.push(indexEntry);
+            else {
+                if (entriesDescriptor === undefined) throw new Error("Outcome Library index staging file was not opened.");
+                if (hashedCount > 0) fs.writeSync(entriesDescriptor, ",");
+                fs.writeSync(entriesDescriptor, JSON.stringify(indexEntry));
+            }
             offset += lineBuffer.byteLength + 1;
 
             if (hashedCount > 0) {
@@ -229,9 +242,10 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
         }
     } finally {
         fs.closeSync(fd);
+        if (entriesDescriptor !== undefined) fs.closeSync(entriesDescriptor);
     }
 
-    if (entries.length === 0) {
+    if (hashedCount === 0) {
         issues.push({
             code: "outcome-library-bundle-write-outcomes-empty",
             severity: "error",
@@ -256,13 +270,22 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     hash.update(`],"schemaVersion":${JSON.stringify(schemaVersion)}}`);
     const libraryHash = `sha256:${hash.digest("hex")}`;
 
-    // Unreachable: reference/firstOutcome are always set together with the first entry ever pushed, and
-    // entries.length === 0 already returned above.
+    // Unreachable: reference/firstOutcome are always set together with the first accepted entry, and
+    // hashedCount === 0 already returned above.
     if (firstOutcome === undefined) {
         throw new Error(`mode "${modeName}": no outcome was accepted despite entries being non-empty — this should be unreachable.`);
     }
 
-    return {issues, built: {entries, totalWeight, libraryHash, firstOutcome}};
+    return {
+        issues,
+        built: {
+            ...(entries === undefined ? {entriesPath} : {entries}),
+            outcomeCount: hashedCount,
+            totalWeight,
+            libraryHash,
+            firstOutcome,
+        },
+    };
 }
 
 function assertNotCancelled(options: OutcomeLibraryBundleWriteOptions | undefined): void {

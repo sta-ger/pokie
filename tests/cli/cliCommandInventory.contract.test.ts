@@ -1315,7 +1315,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
         // use the same deferValueUnlessCalled convention replay/report/par's own --out already does.
         // --estimate/--dry-run's "false" default is observed from INSIDE the real generate() stub, since
         // reaching it at all (rather than short-circuiting to estimateSpace) already proves neither fired.
-        "outcomelibrary::generate <packageRoot> (no options — default output/estimate off, human summary)": (key) => {
+        "outcomelibrary::generate <packageRoot> --out <file> (default generation options, human summary)": (key) => {
             let writeFileCalled = false;
             let fileExistsCalled = false;
             deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
@@ -1359,7 +1359,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),
                 (filePath) => {
                     writeFileCalled = true;
-                    observe(key, "--out", filePath);
+                    observe(key, "--out", path.basename(filePath));
                 },
                 (filePath) => {
                     fileExistsCalled = true;
@@ -1410,7 +1410,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     () => undefined,
                     fakeProcess(),
                 ),
-        "outcomelibrary::generate <packageRoot> --bounded --sample-size --seed (accepted bounded-coverage options)": (key) =>
+        "outcomelibrary::generate <packageRoot> --bounded --sample-size --seed --out (accepted bounded-coverage options)": (key) =>
             new OutcomeLibraryCommand(
                 TEST_VERSION,
                 undefined,
@@ -1439,12 +1439,12 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     );
                 },
                 () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),
-                undefined,
+                () => undefined,
                 undefined,
                 undefined,
                 fakeProcess(),
             ),
-        "outcomelibrary::generate <packageRoot> --exact (accepted explicit exact choice)": (key) =>
+        "outcomelibrary::generate <packageRoot> --exact --out (accepted explicit exact choice)": (key) =>
             new OutcomeLibraryCommand(
                 TEST_VERSION,
                 undefined,
@@ -1457,12 +1457,12 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     return Promise.resolve(stub<GenerateExactWeightedOutcomeLibraryResult>({library: {schemaVersion: 1, libraryId: options.libraryId, outcomes: []}, diagnostics: {algorithm: "pokie-exact-reel-enumeration-v1", strategy: "exact", totalOutcomeSpaceSize: 6, sampledRawCount: 6, pokieVersion: TEST_VERSION, game: {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"}, generatedAt: "2026-01-01T00:00:00.000Z"}}));
                 },
                 () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),
-                undefined,
+                () => undefined,
                 undefined,
                 undefined,
                 fakeProcess(),
             ),
-        "outcomelibrary::generate <packageRoot> --sample --seed (accepted direct sampled choice)": (key) =>
+        "outcomelibrary::generate <packageRoot> --sample --seed --out (accepted direct sampled choice)": (key) =>
             new OutcomeLibraryCommand(
                 TEST_VERSION,
                 undefined,
@@ -1476,7 +1476,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     return Promise.resolve(stub<GenerateExactWeightedOutcomeLibraryResult>({library: {schemaVersion: 1, libraryId: options.libraryId, outcomes: []}, diagnostics: {algorithm: "pokie-exact-reel-enumeration-v1", strategy: "bounded-coverage", totalOutcomeSpaceSize: 6, sampledRawCount: 1000, seed: "seed-1", pokieVersion: TEST_VERSION, game: {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"}, generatedAt: "2026-01-01T00:00:00.000Z"}}));
                 },
                 () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),
-                undefined,
+                () => undefined,
                 undefined,
                 undefined,
                 fakeProcess(),
@@ -1495,6 +1495,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     throw new Error("generate() must not run for --estimate");
                 },
                 () => {
+                    observe(key, "--out", undefined);
                     observe(key, "--estimate", true);
                     return stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)});
                 },

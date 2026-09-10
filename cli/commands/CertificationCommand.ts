@@ -5,6 +5,7 @@ import {
     CERTIFICATION_BUILD_OPERATION,
     CERTIFICATION_VERIFY_OPERATION,
     CertificationEvidenceBundleBuilder,
+    CertificationEvidenceBundleBuildCancelledError,
     CertificationEvidenceBundleBuildResult,
     CertificationEvidenceBundleBuilding,
     CertificationEvidenceBundleModeSampleInput,
@@ -145,7 +146,14 @@ export class CertificationCommand implements CliCommandHandling {
                     throw new Error(`Unknown option "${excess[0]}". ${BUILD_USAGE}`);
                 }
                 const outDir = options.out ?? path.join(path.dirname(configPath), "certification");
-                exitCodeRef.value = await this.executeBuild(bundleDir, configPath, outDir);
+                const controller = new AbortController();
+                const onCancel = () => controller.abort();
+                process.once("SIGINT", onCancel);
+                try {
+                    exitCodeRef.value = await this.executeBuild(bundleDir, configPath, outDir, controller.signal);
+                } finally {
+                    process.off("SIGINT", onCancel);
+                }
             });
 
         parent
@@ -167,7 +175,7 @@ export class CertificationCommand implements CliCommandHandling {
         return parent;
     }
 
-    private async executeBuild(bundleDir: string, configPath: string, outDir: string): Promise<number> {
+    private async executeBuild(bundleDir: string, configPath: string, outDir: string, signal?: AbortSignal): Promise<number> {
         await this.checkOutcomeLibrarySource(bundleDir, CERTIFICATION_BUILD_OPERATION);
 
         const descriptor = this.loadDescriptor(configPath);
@@ -178,7 +186,16 @@ export class CertificationCommand implements CliCommandHandling {
             sampleCount: entry.sampleCount,
         }));
 
-        const result: CertificationEvidenceBundleBuildResult = await this.builder.buildFromBundle(bundleDir, modes, outDir);
+        let result: CertificationEvidenceBundleBuildResult;
+        try {
+            result = await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal});
+        } catch (error) {
+            if (error instanceof CertificationEvidenceBundleBuildCancelledError) {
+                console.error("Certification/evidence build was cancelled. No incomplete evidence was published; retry the same command when ready.");
+                return 130;
+            }
+            throw error;
+        }
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
 

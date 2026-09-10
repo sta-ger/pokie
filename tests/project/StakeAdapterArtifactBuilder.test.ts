@@ -171,4 +171,32 @@ describe("StakeAdapterArtifactBuilder", () => {
         expect(fs.existsSync(destinationDir)).toBe(false);
         expect(fs.readdirSync(path.dirname(destinationDir)).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.`))).toEqual([]);
     });
+
+    it("does not clean up a late caller claim from the real Stake publication window and allows retry", async () => {
+        let claimOnCommit = true;
+        const exporter = new StakeEngineExporter(
+            "1.3.0",
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => {
+                if (!claimOnCommit) return;
+                fs.mkdirSync(destinationDir);
+                fs.writeFileSync(path.join(destinationDir, "caller-owned.txt"), "untouched");
+            },
+        );
+        const builder = new StakeAdapterArtifactBuilder("1.3.0", undefined, exporter);
+
+        await expect(builder.build(stakeAdapterProjectOf(sourceDir), destinationDir)).rejects.toThrow(/claimed/i);
+        expect(fs.readFileSync(path.join(destinationDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(fs.readdirSync(path.dirname(destinationDir)).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.`))).toEqual([]);
+
+        fs.rmSync(destinationDir, {recursive: true, force: true});
+        claimOnCommit = false;
+        await expect(builder.build(stakeAdapterProjectOf(sourceDir), destinationDir)).resolves.toMatchObject({outputPath: destinationDir});
+        expect(fs.existsSync(path.join(destinationDir, "pokie-manifest.json"))).toBe(true);
+    });
 });

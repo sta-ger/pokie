@@ -8,7 +8,7 @@ import {assertSafeToReplaceStakeEngineExportDirectory} from "./internal/assertSa
 import {compressStakeEngineBooksJsonl} from "./internal/compressStakeEngineBooksJsonl.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
-import {publishDirectoryAtomically} from "./internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, publishDirectoryAtomically, removePublishedDirectoryIfOwned, withPublishedDirectoryOwnership, type PublishedDirectoryOwnership, type PublishDirectoryAtomicallyOwnership} from "./internal/publishDirectoryAtomically.js";
 import {renderStakeEngineLookupCsv} from "./internal/renderStakeEngineLookupCsv.js";
 import type {StakeEngineBookLine} from "./StakeEngineBookLine.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
@@ -64,6 +64,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
     private readonly writeFile: (filePath: string, data: string | Buffer) => void;
     private readonly renameDirectory: (from: string, to: string) => void;
     private readonly removeDirectory: (dirPath: string) => void;
+    private readonly beforeCommit: (() => void) | undefined;
 
     constructor(
         pokieVersion: string,
@@ -73,6 +74,9 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         writeFile: (filePath: string, data: string | Buffer) => void = (filePath, data) => fs.writeFileSync(filePath, data),
         renameDirectory: (from: string, to: string) => void = (from, to) => fs.renameSync(from, to),
         removeDirectory: (dirPath: string) => void = (dirPath) => fs.rmSync(dirPath, {recursive: true, force: true}),
+        // Final-boundary seam for direct consumers that need to prove a
+        // claimant arriving after file preparation is never adopted.
+        beforeCommit: (() => void) | undefined = undefined,
     ) {
         this.pokieVersion = pokieVersion;
         this.validator = validator;
@@ -81,6 +85,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         this.writeFile = writeFile;
         this.renameDirectory = renameDirectory;
         this.removeDirectory = removeDirectory;
+        this.beforeCommit = beforeCommit;
     }
 
     // Runs full validation itself (StakeEngineExportValidator, which always runs WeightedOutcomeLibraryValidator
@@ -101,6 +106,10 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             if (structuralIssues.some((issue) => issue.severity === "error")) {
                 return {outDir, files: [], manifest: undefined, issues: structuralIssues};
             }
+            // Reject an external holder before mode construction can allocate
+            // any publication scratch beside it.
+            assertSafeToReplaceStakeEngineExportDirectory(outDir);
+            const destinationOwnership = capturePublishDirectoryOwnership(outDir);
 
             const buildResults: ModeBuildResult[] = [];
             let completed = BigInt(0);
@@ -147,10 +156,11 @@ export class StakeEngineExporter<T extends string | number = string> implements 
 
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
             assertNotCancelled(options);
-            const cleanupWarning = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest, options, completed);
+            const publication = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest, options, completed, destinationOwnership);
+            const cleanupWarning = publication.cleanupWarning;
             const finalIssues = cleanupWarning !== undefined ? [...allIssues, cleanupWarning] : allIssues;
 
-            return {outDir, files: relativeFiles, manifest, issues: finalIssues};
+            return withPublishedDirectoryOwnership({outDir, files: relativeFiles, manifest, issues: finalIssues}, publication.publication);
         } catch (error) {
             return Promise.reject(error);
         }
@@ -172,11 +182,14 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         manifest: StakeEngineManifest,
         options: StakeEngineExportOptions | undefined,
         completed: bigint,
-    ): ValidationIssue | undefined {
-        const {cleanupWarning} = publishDirectoryAtomically({
+        destinationOwnership: PublishDirectoryAtomicallyOwnership,
+    ): {readonly publication: PublishedDirectoryOwnership; readonly cleanupWarning?: ValidationIssue} {
+        const {cleanupWarning, publication} = publishDirectoryAtomically({
             outDir,
+            ownership: destinationOwnership,
             renameDirectory: this.renameDirectory,
             removeDirectory: this.removeDirectory,
+            beforeCommit: this.beforeCommit,
             writeFilesIntoTempDir: (tempDir) => {
                 for (const builtMode of builtModes) {
                     assertNotCancelled(options);
@@ -201,10 +214,21 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             },
         });
 
-        assertNotCancelled(options);
-        return cleanupWarning !== undefined
-            ? {code: "stakeengine-stale-export-cleanup-failed", severity: "warning", message: cleanupWarning, details: {outDir}}
-            : undefined;
+        try {
+            // A signal can be raised by the last pre-commit seam after the
+            // publisher has installed its complete directory.  Do not report
+            // that now-cancelled invocation as successful, and do not leave
+            // its new output behind.  Identity-bound removal cannot erase a
+            // later claimant that replaced the public pathname.
+            assertNotCancelled(options);
+        } catch (error) {
+            removePublishedDirectoryIfOwned(publication);
+            throw error;
+        }
+        return {
+            publication,
+            ...(cleanupWarning === undefined ? {} : {cleanupWarning: {code: "stakeengine-stale-export-cleanup-failed", severity: "warning", message: cleanupWarning, details: {outDir}}}),
+        };
     }
 
     // Builds one mode's CSV/books content fully in memory (no disk access): projects every outcome's artifact

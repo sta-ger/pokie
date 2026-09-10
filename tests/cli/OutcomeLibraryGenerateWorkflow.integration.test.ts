@@ -65,6 +65,27 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         };
     }
 
+    // 28^4 is the independently accepted 614,656-outcome exact workload.
+    // Each stop has its own symbol. A visible grid retains a separate cell
+    // for every reel, so four copies of this strip still produce 28^4 distinct
+    // canonical grids (and hence real round artifacts), rather than merely
+    // exercising the raw sweep while collapsing its output to a tiny library.
+    function acceptedExactWorkloadBlueprint(id: string): GameBlueprint {
+        const reel = Array.from({length: 28}, (_unused, stop) => `S${stop}`);
+        return {
+            manifest: {id, name: "Accepted Exact Workload Slot", version: "1.0.0"},
+            reels: 4,
+            rows: 1,
+            symbols: reel,
+            // A public Blueprint permits symbols without payouts. Keep one
+            // reachable payout so this remains a real game workload, while
+            // avoiding an unrelated 28-way paytable scan for each of the
+            // 614,656 distinct outcome artifacts.
+            paytable: {S0: {4: 1}},
+            reelStrips: [reel, reel, reel, reel],
+        };
+    }
+
     function freeGamesBlueprint(id: string): GameBlueprint {
         return {
             manifest: {id, name: "Free Games CLI Slot", version: "1.0.0"},
@@ -96,6 +117,127 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
     function readLibrary(filePath: string): WeightedOutcomeLibrary {
         return JSON.parse(fs.readFileSync(filePath, "utf-8")) as WeightedOutcomeLibrary;
     }
+
+    function countRawOutcomes(filePath: string): number {
+        const descriptor = fs.openSync(filePath, "r");
+        const buffer = Buffer.allocUnsafe(64 * 1024);
+        let carry = "";
+        let count = 0;
+        try {
+            let bytesRead = fs.readSync(descriptor, buffer, 0, buffer.length, null);
+            while (bytesRead > 0) {
+                const text = carry + buffer.subarray(0, bytesRead).toString("utf-8");
+                const lastQuote = text.lastIndexOf('"id":"outcome-');
+                const complete = lastQuote === -1 ? text : text.slice(0, lastQuote);
+                count += complete.split('"id":"outcome-').length - 1;
+                carry = lastQuote === -1 ? text : text.slice(lastQuote);
+                bytesRead = fs.readSync(descriptor, buffer, 0, buffer.length, null);
+            }
+            return count + (carry.split('"id":"outcome-').length - 1);
+        } finally {
+            fs.closeSync(descriptor);
+        }
+    }
+
+    function readRawLibraryPrefix(filePath: string, length: number): string {
+        const descriptor = fs.openSync(filePath, "r");
+        const buffer = Buffer.allocUnsafe(length);
+        try {
+            const bytesRead = fs.readSync(descriptor, buffer, 0, buffer.length, 0);
+            return buffer.subarray(0, bytesRead).toString("utf-8");
+        } finally {
+            fs.closeSync(descriptor);
+        }
+    }
+
+    it("streams 614,656 distinct canonical outcomes through public build and generate commands", async () => {
+        const blueprint = acceptedExactWorkloadBlueprint("accepted-exact-workload-slot");
+        const blueprintPath = path.join(workDir, "accepted-exact.blueprint.json");
+        fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
+
+        const bundleDir = path.join(workDir, "accepted-exact-bundle");
+        expect(await new BuildCommand("1.3.0").run([blueprintPath, "--target", "outcomeLibrary", "--exact", "--out", bundleDir])).toBe(0);
+        const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, "manifest.json"), "utf-8")) as {game: {id: string}; modes: Array<{outcomeCount: number; generator?: {strategy: string; totalOutcomeSpaceSize: number}}>};
+        expect(manifest.game.id).toBe("accepted-exact-workload-slot");
+        expect(manifest.modes[0]).toEqual(expect.objectContaining({outcomeCount: 614_656, totalWeight: 614_656, generator: expect.objectContaining({strategy: "exact", totalOutcomeSpaceSize: 614_656})}));
+        // This reads the staged byte index back against every record; it is
+        // intentionally the bundle reader's real integrity boundary, not an
+        // in-memory manifest-only assertion.
+        expect(await new OutcomeLibraryCommand("1.3.0").run(["validate", bundleDir, "--deep"])).toBe(0);
+
+        const packageRoot = await buildPackage(blueprint, "accepted-exact-package");
+        const rawLibrary = path.join(workDir, "accepted-exact.json");
+        const checkpointFile = path.join(workDir, "accepted-exact.checkpoint.json");
+        const fakeProcess = new EventEmitter() as unknown as NodeJS.Process;
+        let cancelled = false;
+        (console.error as jest.Mock).mockImplementation((message: unknown) => {
+            if (!cancelled && typeof message === "string" && message.includes("progress")) {
+                cancelled = true;
+                fakeProcess.emit("SIGINT");
+            }
+        });
+        const cancellingCommand = new OutcomeLibraryCommand(
+            "1.3.0", undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, fakeProcess,
+        );
+        expect(await cancellingCommand.run([
+            "generate", packageRoot, "--exact", "--out", rawLibrary,
+            "--resume", checkpointFile, "--progress",
+        ])).toBe(130);
+        expect(cancelled).toBe(true);
+        expect(fs.existsSync(rawLibrary)).toBe(false);
+        const checkpoint = JSON.parse(fs.readFileSync(checkpointFile, "utf8")) as {recoveryAuthorityId: string};
+        expect(checkpoint).toEqual(expect.objectContaining({
+            recoveryAuthorityId: expect.any(String),
+        }));
+        const stagingDirectory = path.join(`${path.resolve(checkpointFile)}.pokie-recovery`, checkpoint.recoveryAuthorityId);
+        expect(fs.existsSync(stagingDirectory)).toBe(true);
+
+        // The resumed public CLI path consumes only this invocation-owned
+        // partition state, then removes it along with the checkpoint.
+        expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary, "--resume", checkpointFile])).toBe(0);
+        expect(fs.existsSync(checkpointFile)).toBe(false);
+        expect(fs.existsSync(stagingDirectory)).toBe(false);
+        // Count directly from the durable JSON stream. Do not JSON.parse this
+        // 614,656-outcome library: the assertion is specifically a public
+        // streaming-regression boundary, not an in-memory fallback.
+        expect(countRawOutcomes(rawLibrary)).toBe(614_656);
+        expect(readRawLibraryPrefix(rawLibrary, 1024)).toContain('"provenance":{"game":{"id":"accepted-exact-workload-slot"');
+    }, 3_600_000);
+
+    it("cancels raw publication without retaining an unreachable staging directory or partial destination", async () => {
+        const packageRoot = await buildPackage(finiteBlueprint("raw-publication-cancel-slot"), "raw-publication-package");
+        const rawLibrary = path.join(workDir, "cancelled-raw.json");
+        const fakeProcess = new EventEmitter() as unknown as NodeJS.Process;
+        const originalOpen = fs.openSync;
+        let cancelled = false;
+        const openSync = jest.spyOn(fs, "openSync").mockImplementation(((...args: Parameters<typeof fs.openSync>) => {
+            const descriptor = originalOpen(...args);
+            if (!cancelled && String(args[0]).includes(".cancelled-raw.json.pokie-")) {
+                cancelled = true;
+                fakeProcess.emit("SIGINT");
+            }
+            return descriptor;
+        }) as typeof fs.openSync);
+        try {
+            const command = new OutcomeLibraryCommand(
+                "1.3.0", undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined, fakeProcess,
+            );
+            expect(await command.run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(130);
+            expect(cancelled).toBe(true);
+            expect(fs.existsSync(rawLibrary)).toBe(false);
+            expect(fs.readdirSync(workDir).some((entry) => entry.includes(".cancelled-raw.json.pokie-"))).toBe(false);
+
+            // Cancellation has no durable checkpoint or hidden staging to
+            // resume, so the public retry starts cleanly and owns the exact
+            // destination it publishes.
+            expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(0);
+            expect(readLibrary(rawLibrary).outcomes).toHaveLength(4);
+        } finally {
+            openSync.mockRestore();
+        }
+    });
 
     it("package -> generate -> validate -> analyze -> bundle: exact weights match the hand-computable fixture", async () => {
         const packageRoot = await buildPackage(finiteBlueprint("exact-cli-slot"), "pkg");
@@ -212,7 +354,7 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(await new OutcomeSourceCommand().run(["sample", bundleDir, "--mode", "base", "--seed", "downstream-seed"])).toBe(0);
     });
 
-    it("resume/cancel: a SIGINT-cancelled sweep's checkpoint resumes into the exact same complete library an uninterrupted sweep would produce", async () => {
+    it("cancellation with --resume retains a usable checkpoint while removing partial raw publication state", async () => {
         const packageRoot = await buildPackage(largeButBoundedBlueprint("resume-cli-slot"), "pkg");
 
         // Ground truth: the same package, generated in one uninterrupted run.
@@ -256,24 +398,30 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(cancelExit).toBe(130);
         expect(cancelled).toBe(true);
         expect(fs.existsSync(partialFile)).toBe(false);
+        // --resume persists invocation-owned disk partitions, not an
+        // in-memory distinct-grid accumulator, and no raw publication
+        // temporary file is left behind.
         expect(fs.existsSync(checkpointFile)).toBe(true);
-        const checkpoint = JSON.parse(fs.readFileSync(checkpointFile, "utf-8")) as {processedRawIndex: string; progressTotal: string};
-        expect(checkpoint.progressTotal).toBe("8000");
-        expect(Number(checkpoint.processedRawIndex)).toBeGreaterThanOrEqual(5000);
-        expect(Number(checkpoint.processedRawIndex)).toBeLessThan(8000);
+        expect(JSON.parse(fs.readFileSync(checkpointFile, "utf8"))).toEqual(expect.objectContaining({
+            processedRawIndex: "5000",
+            progressTotal: "8000",
+            grids: expect.any(Array),
+            recoveryAuthorityId: expect.any(String),
+        }));
+        expect(fs.readdirSync(workDir).some((entry) => entry.includes(".partial.json.pokie-"))).toBe(false);
 
-        // Resume, against a real (non-cancelling) process -- completes the remaining raw sweep, merges
-        // it with the checkpoint's own already-accumulated grid weights, and produces the exact same
-        // complete library the uninterrupted run above did.
+        // Resume, against a real (non-cancelling) process. It produces the
+        // exact same complete library as an uninterrupted generation.
         const resumeExit = await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--out", partialFile, "--resume", checkpointFile]);
 
         expect(resumeExit).toBe(0);
         expect(fs.existsSync(partialFile)).toBe(true);
-        // The completed checkpoint is stale once the sweep it belonged to has actually finished -- never
-        // left behind to be silently (and wrongly) reused by an unrelated later "generate" run.
+        // No stale checkpoint is left behind to be silently reused by an
+        // unrelated later generation run.
         expect(fs.existsSync(checkpointFile)).toBe(false);
 
         const resumedLibrary = readLibrary(partialFile);
         expect(resumedLibrary.outcomes).toEqual(fullLibrary.outcomes);
     });
+
 });

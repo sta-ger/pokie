@@ -1,4 +1,5 @@
 import {StakeEngineExporter} from "../stakeengine/StakeEngineExporter.js";
+import {isPublishDirectoryDestinationClaimedError, removePublishedDirectoryIfOwned, type PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 import type {StakeEngineExporting} from "../stakeengine/StakeEngineExporting.js";
 import {StakeEngineImporter} from "../stakeengine/StakeEngineImporter.js";
 import type {StakeEngineImporting} from "../stakeengine/StakeEngineImporting.js";
@@ -64,6 +65,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
         const destinationState = captureArtifactDestinationState(destinationPath, this.destinationKind);
 
+        let publication: PublishedDirectoryOwnership | undefined;
         try {
             const modes = source.type === "outcomeLibrary" ? await this.readOutcomeLibraryModes(source.rootPath) : await this.readStakeModes(source.rootPath);
             const preflight = stakePreflight(modes);
@@ -89,6 +91,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
                     });
                 },
             });
+            publication = result.publication;
             assertArtifactBuildNotCancelled(options);
             const exportErrors = result.issues.filter((issue) => issue.severity === "error");
             if (exportErrors.length > 0 || result.manifest === undefined) {
@@ -102,7 +105,14 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
             return {outputPath: result.outDir, preflight, stakeManifest: result.manifest, stakeFiles: result.files};
         } catch (error) {
-            await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            // A late claimant owns the pathname.  Generic artifact cleanup is
+            // intentionally broad for invocation-owned output, so it must not
+            // run for this typed shared-publication outcome.
+            if (publication !== undefined) {
+                removePublishedDirectoryIfOwned(publication);
+            } else if (!isPublishDirectoryDestinationClaimedError(error)) {
+                await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            }
             if (options?.signal?.aborted) {
                 if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
             } else reportArtifactBuildProgress(options, {status: "failed", message: "Stake export failed"});

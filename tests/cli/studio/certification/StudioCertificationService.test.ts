@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleValidating, ValidationIssue} from "pokie";
+import {CertificationEvidenceBundleBuildCancelledError, CertificationEvidenceBundleBuilder, OutcomeLibraryBundleValidating, ValidationIssue} from "pokie";
 import {StudioCertificationService} from "../../../../cli/studio/certification/StudioCertificationService.js";
 import {buildSourceOutcomeLibraryBundle, CERTIFICATION_TEST_POKIE_VERSION} from "../../../certification/CertificationEvidenceBundleTestFixtures.js";
 
@@ -82,6 +82,17 @@ describe("StudioCertificationService", () => {
     });
 
     describe("build", () => {
+        it("returns actionable retry semantics when its server signal cancels publication", async () => {
+            await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"), ["base"]);
+            const builder = {
+                buildFromBundle: () => Promise.reject(new CertificationEvidenceBundleBuildCancelledError()),
+            };
+            const service = new StudioCertificationService(CERTIFICATION_TEST_POKIE_VERSION, builder);
+
+            await expect(service.build(tmpRoot, "bundle", [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}], "certification", new AbortController().signal))
+                .resolves.toMatchObject({status: "load-error", error: expect.stringMatching(/No incomplete evidence was published; retry/i)});
+        });
+
         it("builds a certification bundle from a real source bundle and returns its manifest/files", async () => {
             await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"), ["base"]);
             const service = new StudioCertificationService(CERTIFICATION_TEST_POKIE_VERSION);
@@ -96,6 +107,39 @@ describe("StudioCertificationService", () => {
             expect(view.manifest.evidenceContentHash).toMatch(/^sha256:/);
             expect(view.files.length).toBeGreaterThan(0);
             expect(fs.existsSync(path.join(tmpRoot, "certification", "manifest.json"))).toBe(true);
+        });
+
+        it("returns a failure view without deleting a late caller claim, then builds after retry", async () => {
+            await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"), ["base"]);
+            const certDir = path.join(tmpRoot, "certification");
+            let claimOnCommit = true;
+            const builder = new CertificationEvidenceBundleBuilder(
+                CERTIFICATION_TEST_POKIE_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => {
+                    if (!claimOnCommit) return;
+                    fs.mkdirSync(certDir);
+                    fs.writeFileSync(path.join(certDir, "caller-owned.txt"), "untouched");
+                },
+            );
+            const service = new StudioCertificationService(CERTIFICATION_TEST_POKIE_VERSION, builder);
+            const modes = [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}];
+
+            await expect(service.build(tmpRoot, "bundle", modes, "certification")).resolves.toMatchObject({status: "load-error"});
+            expect(fs.readFileSync(path.join(certDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+
+            fs.rmSync(certDir, {recursive: true, force: true});
+            claimOnCommit = false;
+            await expect(service.build(tmpRoot, "bundle", modes, "certification")).resolves.toMatchObject({status: "ok"});
+            expect(fs.existsSync(path.join(certDir, "manifest.json"))).toBe(true);
         });
 
         it("returns an error view (no manifest) when a requested mode isn't in the source bundle", async () => {

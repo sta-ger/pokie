@@ -49,6 +49,8 @@ function toBundleModeInput(modeName: string, library: WeightedOutcomeLibrary<str
 }
 
 describe("StakeEngineBundleStreamingExporter", () => {
+    let tmpRoot: string;
+    let bundleRoot: string;
     let outDir: string;
     let bundleDir: string;
     let baseLibrary: WeightedOutcomeLibrary<string>;
@@ -56,8 +58,10 @@ describe("StakeEngineBundleStreamingExporter", () => {
     let bundleModes: StakeEngineBundleModeInput[];
 
     beforeEach(async () => {
-        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-bundle-exporter-test-"));
-        bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-bundle-exporter-bundle-"));
+        tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-bundle-exporter-test-"));
+        bundleRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-bundle-exporter-bundle-"));
+        outDir = path.join(tmpRoot, "out");
+        bundleDir = path.join(bundleRoot, "bundle");
         baseLibrary = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
         bonusLibrary = buildStakeEngineTestLibrary({libraryId: "bonus-lib", betMode: "freeGames", stake: 100});
 
@@ -73,17 +77,17 @@ describe("StakeEngineBundleStreamingExporter", () => {
     });
 
     afterEach(() => {
-        fs.rmSync(outDir, {recursive: true, force: true});
-        fs.rmSync(bundleDir, {recursive: true, force: true});
         for (const name of siblingLeftovers(outDir)) {
             fs.rmSync(path.join(path.dirname(outDir), name), {recursive: true, force: true});
         }
+        fs.rmSync(tmpRoot, {recursive: true, force: true});
+        fs.rmSync(bundleRoot, {recursive: true, force: true});
     });
 
     it("produces index.json/CSV/books content identical to StakeEngineExporter exporting the same libraries directly", async () => {
         const bundleExporter = new StakeEngineBundleStreamingExporter<string>("1.3.0");
-        const outDirFromBundle = path.join(outDir, "from-bundle");
-        const outDirFromLibrary = path.join(outDir, "from-library");
+        const outDirFromBundle = path.join(tmpRoot, "from-bundle");
+        const outDirFromLibrary = path.join(tmpRoot, "from-library");
 
         const bundleResult = await bundleExporter.exportToDirectory(bundleModes, outDirFromBundle);
 
@@ -154,7 +158,7 @@ describe("StakeEngineBundleStreamingExporter", () => {
 
         expect(result.files).toEqual([]);
         expect(result.issues.some((issue) => issue.code === "stakeengine-mode-name-case-collision" && issue.severity === "error")).toBe(true);
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("reports stakeengine-mode-cost-invalid and writes nothing for a non-positive cost", async () => {
@@ -165,11 +169,12 @@ describe("StakeEngineBundleStreamingExporter", () => {
 
         expect(result.files).toEqual([]);
         expect(result.issues.some((issue) => issue.code === "stakeengine-mode-cost-invalid" && issue.severity === "error")).toBe(true);
-        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 
     it("reports stakeengine-cross-mode-provenance-mismatch and writes nothing when two modes come from different games", async () => {
-        const otherGameBundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-bundle-exporter-othergame-"));
+        const otherGameBundleRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-bundle-exporter-othergame-"));
+        const otherGameBundleDir = path.join(otherGameBundleRoot, "bundle");
         try {
             const otherGameLibrary = buildWeightedOutcomeLibrary({
                 libraryId: "other-game-lib",
@@ -199,9 +204,9 @@ describe("StakeEngineBundleStreamingExporter", () => {
 
             expect(result.files).toEqual([]);
             expect(result.issues.some((issue) => issue.code === "stakeengine-cross-mode-provenance-mismatch" && issue.severity === "error")).toBe(true);
-            expect(fs.readdirSync(outDir)).toEqual([]);
+            expect(fs.existsSync(outDir)).toBe(false);
         } finally {
-            fs.rmSync(otherGameBundleDir, {recursive: true, force: true});
+            fs.rmSync(otherGameBundleRoot, {recursive: true, force: true});
         }
     });
 
@@ -214,5 +219,33 @@ describe("StakeEngineBundleStreamingExporter", () => {
         await exporter.exportToDirectory([bundleModes[0]], outDir);
         expect(siblingLeftovers(outDir)).toEqual([]);
         expect(fs.existsSync(path.join(outDir, "lookup_bonus.csv"))).toBe(false);
+    });
+
+    it("preserves a destination claimed at the final publication boundary and cleanly retries after it is released", async () => {
+        const claimedOutDir = path.join(tmpRoot, "late-claim");
+        let claimOnCommit = true;
+        const exporter = new StakeEngineBundleStreamingExporter<string>(
+            "1.3.0",
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => {
+                if (!claimOnCommit) return;
+                fs.mkdirSync(claimedOutDir);
+                fs.writeFileSync(path.join(claimedOutDir, "caller-owned.txt"), "untouched");
+            },
+        );
+
+        await expect(exporter.exportToDirectory(bundleModes, claimedOutDir)).rejects.toThrow(/claimed/i);
+        expect(fs.readFileSync(path.join(claimedOutDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(siblingLeftovers(claimedOutDir)).toEqual([]);
+
+        fs.rmSync(claimedOutDir, {recursive: true, force: true});
+        claimOnCommit = false;
+        await expect(exporter.exportToDirectory(bundleModes, claimedOutDir)).resolves.toMatchObject({outDir: claimedOutDir, issues: []});
+        expect(fs.existsSync(path.join(claimedOutDir, "pokie-manifest.json"))).toBe(true);
+        expect(siblingLeftovers(claimedOutDir)).toEqual([]);
     });
 });

@@ -37,9 +37,10 @@ describe("isRecognizedStakeEngineExportDirectory", () => {
     it("returns true for a directory a real StakeEngineExporter run just produced", async () => {
         const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
         const exporter = new StakeEngineExporter<string>("1.3.0");
+        const exportDir = path.join(outDir, "export");
 
-        await exporter.exportToDirectory([{modeName: "base", cost: 1, library}], outDir);
+        await exporter.exportToDirectory([{modeName: "base", cost: 1, library}], exportDir);
 
-        expect(isRecognizedStakeEngineExportDirectory(outDir)).toBe(true);
+        expect(isRecognizedStakeEngineExportDirectory(exportDir)).toBe(true);
     });
 });

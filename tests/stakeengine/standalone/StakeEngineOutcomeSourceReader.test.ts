@@ -42,10 +42,11 @@ describe("StakeEngineOutcomeSourceReader", () => {
     it("normalizes a real 'pokie stakeengine export' output with pokie-manifest.json removed -- id/weight/payoutMultiplier/ratio/events all recovered exactly, without ever reading a manifest", async () => {
         const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
         const modes: StakeEngineExportModeInput[] = [{modeName: "base", cost: 1, library}];
-        await new StakeEngineExporter("1.3.0").exportToDirectory(modes, dir);
-        fs.rmSync(path.join(dir, "pokie-manifest.json"));
+        const exportDir = path.join(dir, "export");
+        await new StakeEngineExporter("1.3.0").exportToDirectory(modes, exportDir);
+        fs.rmSync(path.join(exportDir, "pokie-manifest.json"));
 
-        const result = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
+        const result = await new StakeEngineOutcomeSourceReader().readFromDirectory(exportDir);
 
         expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);
         expect(result.issues.some((issue) => issue.code.includes("manifest"))).toBe(false);
@@ -72,11 +73,12 @@ describe("StakeEngineOutcomeSourceReader", () => {
     it("reads the exact same result whether or not pokie-manifest.json is present -- it's never looked at", async () => {
         const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "single-lib", betMode: "base", stake: 1, totalWin: 5});
         const modes: StakeEngineExportModeInput[] = [{modeName: "base", cost: 1, library}];
-        await new StakeEngineExporter("1.3.0").exportToDirectory(modes, dir);
+        const exportDir = path.join(dir, "export");
+        await new StakeEngineExporter("1.3.0").exportToDirectory(modes, exportDir);
 
-        const withManifest = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
-        fs.rmSync(path.join(dir, "pokie-manifest.json"));
-        const withoutManifest = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
+        const withManifest = await new StakeEngineOutcomeSourceReader().readFromDirectory(exportDir);
+        fs.rmSync(path.join(exportDir, "pokie-manifest.json"));
+        const withoutManifest = await new StakeEngineOutcomeSourceReader().readFromDirectory(exportDir);
 
         expect(withManifest.modes).toEqual(withoutManifest.modes);
     });
@@ -131,16 +133,17 @@ describe("StakeEngineOutcomeSourceReader", () => {
     it("reports stakeengine-standalone-outcome-ratio-not-representable (a warning, not blocking) when a payoutMultiplier can't be reversed without hidden rounding, and still returns the mode", async () => {
         const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "tamper-lib", betMode: "base", stake: 1, totalWin: 0});
         const modes: StakeEngineExportModeInput[] = [{modeName: "base", cost: 3, library}];
-        await new StakeEngineExporter("1.3.0").exportToDirectory(modes, dir);
+        const exportDir = path.join(dir, "export");
+        await new StakeEngineExporter("1.3.0").exportToDirectory(modes, exportDir);
 
-        const csvPath = path.join(dir, "lookup_base.csv");
+        const csvPath = path.join(exportDir, "lookup_base.csv");
         fs.writeFileSync(csvPath, fs.readFileSync(csvPath, "utf-8").replace(/,\d+$/m, ",1"));
-        const booksPath = path.join(dir, "books_base.jsonl.zst");
+        const booksPath = path.join(exportDir, "books_base.jsonl.zst");
         const lines = readBooksLines(booksPath);
         lines[0].payoutMultiplier = 1;
         fs.writeFileSync(booksPath, zlib.zstdCompressSync(Buffer.from(lines.map((line) => JSON.stringify(line)).join("\n") + "\n", "utf-8")));
 
-        const result = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
+        const result = await new StakeEngineOutcomeSourceReader().readFromDirectory(exportDir);
 
         expect(result.issues.some((issue) => issue.code === "stakeengine-standalone-outcome-ratio-not-representable" && issue.severity === "warning")).toBe(true);
         expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);

@@ -2,7 +2,8 @@ import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibra
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {StakeEngineImportResult} from "./StakeEngineImportResult.js";
-import type {StakeEngineImportWriting} from "./StakeEngineImportWriting.js";
+import type {StakeEngineImportWriteOptions, StakeEngineImportWriting} from "./StakeEngineImportWriting.js";
+import {withPublishedDirectoryOwnership} from "./internal/publishDirectoryAtomically.js";
 
 // A reconstructed Stake export is a reusable Outcome Library first, with a small config.json companion
 // that makes its modes immediately exportable to Stake again. Writing both through OutcomeLibraryBundleWriter
@@ -18,7 +19,11 @@ export class StakeEngineImportWriter<T extends string | number = string> impleme
         this.bundleWriter = bundleWriter;
     }
 
-    public async writeToDirectory(importResult: StakeEngineImportResult<T>, outDir: string): Promise<{issues: readonly ValidationIssue[]}> {
+    public async writeToDirectory(
+        importResult: StakeEngineImportResult<T>,
+        outDir: string,
+        options?: StakeEngineImportWriteOptions,
+    ): Promise<{issues: readonly ValidationIssue[]}> {
         const result = await this.bundleWriter.writeToDirectory(
             importResult.modes.map((mode) => ({
                 modeName: mode.modeName,
@@ -29,6 +34,8 @@ export class StakeEngineImportWriter<T extends string | number = string> impleme
             })),
             outDir,
             {
+                signal: options?.signal,
+                assertDestinationAvailable: options?.assertDestinationAvailable,
                 generatedBy: "pokie stakeengine import",
                 supplementalFiles: [
                     {
@@ -50,6 +57,8 @@ export class StakeEngineImportWriter<T extends string | number = string> impleme
                 ],
             },
         );
-        return {issues: result.issues};
+        return result.publication === undefined
+            ? {issues: result.issues}
+            : withPublishedDirectoryOwnership({issues: result.issues}, result.publication);
     }
 }

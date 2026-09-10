@@ -1,4 +1,5 @@
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
+import type {PublishedDirectoryOwnership} from "../../stakeengine/internal/publishDirectoryAtomically.js";
 import type {OutcomeLibraryBundleManifest} from "./OutcomeLibraryBundleManifest.js";
 
 // The result of OutcomeLibraryBundleWriting.writeToDirectory. "manifest" is undefined if and only if "issues"
@@ -9,4 +10,6 @@ export type OutcomeLibraryBundleWriteResult = {
     readonly files: readonly string[];
     readonly manifest: OutcomeLibraryBundleManifest | undefined;
     readonly issues: readonly ValidationIssue[];
+    /** Present only when this invocation atomically installed outDir. */
+    readonly publication?: PublishedDirectoryOwnership;
 };

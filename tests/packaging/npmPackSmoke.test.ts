@@ -1,4 +1,5 @@
 import {ChildProcessWithoutNullStreams, execFileSync, spawn, spawnSync} from "child_process";
+import {createHash} from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -8,10 +9,21 @@ import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOve
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 
-function buildPackageForSmoke(): void {
+async function buildPackageForSmoke(): Promise<void> {
     const run = (command: string, args: string[]): void => {
         execFileSync(command, args, {cwd: REPO_ROOT, stdio: "inherit"});
     };
+    const runInParallel = (command: string, args: string[]): Promise<void> => new Promise((resolve, reject) => {
+        const child = spawn(command, args, {cwd: REPO_ROOT, stdio: "inherit"});
+        child.once("error", reject);
+        child.once("exit", (code, signal) => {
+            if (code === 0) {
+                resolve();
+                return;
+            }
+            reject(new Error(`${command} ${args.join(" ")} exited with code ${code ?? "unknown"}${signal === null ? "" : ` (signal ${signal})`}`));
+        });
+    });
     const node = process.execPath;
     const tsc = path.join(REPO_ROOT, "node_modules", "typescript", "bin", "tsc");
     const shx = path.join(REPO_ROOT, "node_modules", "shx", "lib", "cli.js");
@@ -22,16 +34,27 @@ function buildPackageForSmoke(): void {
     // build the candidate without turning the test into an invocation of the release build gate.
     run(node, [path.join(REPO_ROOT, "generate-barrels.js")]);
     fs.rmSync(path.join(REPO_ROOT, "dist"), {recursive: true, force: true});
-    run(node, [tsc, "--project", "tsconfig.prod.json"]);
+    // ESM and CJS have separate output directories and no generated-file dependency between
+    // them. Building them concurrently keeps the smoke boundary identical while leaving enough
+    // time for this intentionally real packaging test to complete inside the changed-tests gate.
+    await Promise.all([
+        runInParallel(node, [tsc, "--project", "tsconfig.prod.json"]),
+        runInParallel(node, [tsc, "--project", "tsconfig.prod.json", "--module", "CommonJS", "--outDir", "dist/cjs"]),
+    ]);
     run(node, [shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
-    run(node, [tsc, "--project", "tsconfig.prod.json", "--module", "CommonJS", "--outDir", "dist/cjs"]);
     run(node, [path.join(REPO_ROOT, "write-cjs-package-json.js")]);
     run(node, [shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
-    run(node, [tsc, "--project", "tsconfig.cli.json"]);
-    run(node, [tsc, "--project", "tsconfig.client.json"]);
+
+    // The remaining build commands own separate output trees. Running the type checks and Vite
+    // bundle together preserves the full production-package boundary while keeping this real smoke
+    // suite below the changed-tests gate's timeout.
+    await Promise.all([
+        runInParallel(node, [tsc, "--project", "tsconfig.cli.json"]),
+        runInParallel(node, [tsc, "--project", "tsconfig.client.json"]),
+        runInParallel(node, [tsc, "--project", "cli/studio-client/tsconfig.json", "--noEmit"]),
+        runInParallel(node, [vite, "build", "--config", "cli/studio-client/vite.config.ts"]),
+    ]);
     run(node, [shx, "cp", "cli/client/index.html", "cli/client/style.css", "dist/cli/client/"]);
-    run(node, [tsc, "--project", "cli/studio-client/tsconfig.json", "--noEmit"]);
-    run(node, [vite, "build", "--config", "cli/studio-client/vite.config.ts"]);
     run(node, [shx, "test", "-f", "dist/cli/studio-client/index.html"]);
     run(node, [shx, "chmod", "+x", "dist/cli/pokie.js"]);
 }
@@ -98,13 +121,73 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     let tarballPath: string | undefined;
     let installDir: string | undefined;
     let pokieBinPath: string;
+    const smokeResults = {cli: false, studioApi: false, studioAssets: false, libraryWorker: false, processesDrained: false};
+    const completedSmokeTests = new Set<string>();
+    const spawnedSmokeChildren = new Set<ChildProcessWithoutNullStreams>();
+    const spawnSmokeChild = (args: string[], cwd: string): ChildProcessWithoutNullStreams => {
+        const child = spawn(pokieBinPath, args, {cwd}) as ChildProcessWithoutNullStreams;
+        spawnedSmokeChildren.add(child);
+        return child;
+    };
+    const verifySmokeProcessCleanup = (): boolean => [...spawnedSmokeChildren].every((child) => child.exitCode !== null || child.signalCode !== null);
+    const smokeIt = (name: string, implementation: () => unknown | Promise<unknown>): void => {
+        it(name, async () => {
+            await implementation();
+            completedSmokeTests.add(name);
+        });
+    };
 
-    beforeAll(() => {
+    function stageReleaseSmokeArchive(): void {
+        const receiptPath = process.env.POKIE_PACK_SMOKE_RECEIPT;
+        const archivePath = process.env.POKIE_PACK_SMOKE_ARCHIVE_PATH;
+        if (receiptPath === undefined && archivePath === undefined) return;
+        expect(receiptPath).toBeDefined();
+        expect(archivePath).toBeDefined();
+        expect(process.env.POKIE_PACK_SMOKE_CANDIDATE_ID).toMatch(/^[a-f0-9]{40}$/i);
+        // A release receipt is a result, never a finally-block assertion.  In
+        // particular, an earlier failed suite must not be able to leave a
+        // seemingly successful installed/cleanup receipt behind.
+        if (!smokeResults.cli || !smokeResults.studioApi || !smokeResults.studioAssets || !smokeResults.libraryWorker) return;
+        const archive = fs.readFileSync(tarballPath!);
+        const archiveSha256 = createHash("sha256").update(archive).digest("hex");
+        expect(archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
+        fs.mkdirSync(path.dirname(archivePath!), {recursive: true});
+        fs.copyFileSync(tarballPath!, archivePath!, fs.constants.COPYFILE_EXCL);
+    }
+
+    function retainReleaseSmokeReceipt(suitePassed: boolean, cleanup: {temporaryInstallRemoved: boolean; temporaryPackDirectoryRemoved: boolean; processesDrained: boolean}): void {
+        const receiptPath = process.env.POKIE_PACK_SMOKE_RECEIPT;
+        const archivePath = process.env.POKIE_PACK_SMOKE_ARCHIVE_PATH;
+        if (receiptPath === undefined && archivePath === undefined) return;
+        expect(receiptPath).toBeDefined();
+        expect(archivePath).toBeDefined();
+        if (!suitePassed || !Object.values(smokeResults).every(Boolean) || !Object.values(cleanup).every(Boolean)) return;
+        const archive = fs.readFileSync(archivePath!);
+        const archiveSha256 = createHash("sha256").update(archive).digest("hex");
+        const ownPackage = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {name: string; version: string};
+        fs.writeFileSync(receiptPath!, `${JSON.stringify({
+            schemaVersion: 1,
+            kind: "npm-pack-install-smoke",
+            candidateId: process.env.POKIE_PACK_SMOKE_CANDIDATE_ID,
+            candidatePackageSha256: archiveSha256,
+            packageName: ownPackage.name,
+            packageVersion: ownPackage.version,
+            archivePath: path.resolve(archivePath!),
+            archiveSha256,
+            archiveSizeBytes: archive.length,
+            complete: true,
+            suitePassed: true,
+            installed: smokeResults,
+            cleanup,
+        }, null, 2)}\n`, {flag: "wx"});
+    }
+
+    beforeAll(async () => {
         // Build explicitly, then keep the real tarball and npm's output outside the candidate tree.
         // `npm pack --json` includes one record per shipped file; once the package exceeded 8,000
         // files that output crossed execFileSync's default 1 MiB buffer and failed with ENOBUFS.
         // Silent non-JSON mode emits only the tarball filename and remains bounded as the package grows.
-        buildPackageForSmoke();
+        await buildPackageForSmoke();
         packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
         const filename = execFileSync(
             "npm",
@@ -120,7 +203,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             path.join(installDir, "package.json"),
             JSON.stringify({name: "pokie-smoke-test", version: "0.0.0", private: true}),
         );
-        execFileSync("npm", ["install", tarballPath, "--no-audit", "--no-fund"], {cwd: installDir, encoding: "utf-8"});
+        // The tarball and its dependency metadata are already local. Prefer npm's cache for matching
+        // dependencies while retaining a real `npm install` boundary (and its normal network fallback
+        // for a cold cache), so this smoke suite cannot time out merely on registry metadata latency.
+        execFileSync("npm", ["install", tarballPath, "--no-audit", "--no-fund", "--prefer-offline"], {cwd: installDir, encoding: "utf-8"});
 
         pokieBinPath = path.join(installDir, "node_modules", ".bin", "pokie");
         expect(fs.existsSync(pokieBinPath)).toBe(true);
@@ -134,16 +220,36 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     });
 
     afterAll(() => {
+        // Jest reaches afterAll only after every real installed CLI, Studio/API/assets and worker
+        // assertion above has completed; the receipt is therefore an append-only release artifact,
+        // not a pre-flight checklist written before the smoke boundary ran.
+        // Every test in this describe is registered through smokeIt.  Keep the
+        // expected count explicit so adding an unwrapped test cannot silently
+        // make a release receipt describe only a subset of this suite.
+        const suitePassed = completedSmokeTests.size === 21;
+        if (suitePassed && smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker) {
+            stageReleaseSmokeArchive();
+        }
         if (installDir !== undefined) {
             fs.rmSync(installDir, {recursive: true, force: true});
         }
         if (packDir !== undefined) {
             fs.rmSync(packDir, {recursive: true, force: true});
         }
+        // This is a real handle audit, not a finally-block declaration. A
+        // receipt can claim cleanup only once every smoke-launched server has
+        // delivered an exit outcome after its stop attempt.
+        smokeResults.processesDrained = verifySmokeProcessCleanup();
+        const cleanup = {
+            temporaryInstallRemoved: installDir === undefined || !fs.existsSync(installDir),
+            temporaryPackDirectoryRemoved: packDir === undefined || !fs.existsSync(packDir),
+            processesDrained: smokeResults.processesDrained,
+        };
+        retainReleaseSmokeReceipt(suitePassed, cleanup);
     });
 
-    it("runs `pokie --no-open` (Home mode): serves the app shell/assets and a healthy API", async () => {
-        const child = spawn(pokieBinPath, ["--no-open", "--port", "0"], {cwd: installDir}) as ChildProcessWithoutNullStreams;
+    smokeIt("runs `pokie --no-open` (Home mode): serves the app shell/assets and a healthy API", async () => {
+        const child = spawnSmokeChild(["--no-open", "--port", "0"], installDir!);
         try {
             const port = await waitForListeningPort(child);
             const baseUrl = `http://127.0.0.1:${port}`;
@@ -180,13 +286,16 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const styleCss = await fetch(`${baseUrl}${stylesheetHref}`);
             expect(styleCss.status).toBe(200);
             expect(styleCss.headers.get("content-type")).toContain("css");
+            smokeResults.cli = true;
+            smokeResults.studioApi = true;
+            smokeResults.studioAssets = true;
         } finally {
             await stopChild(child);
         }
     });
 
-    it("runs `pokie . --no-open` (Project mode) against a non-package directory: starts cleanly, reports an error dashboard, never crashes", async () => {
-        const child = spawn(pokieBinPath, [".", "--no-open", "--port", "0"], {cwd: installDir}) as ChildProcessWithoutNullStreams;
+    smokeIt("runs `pokie . --no-open` (Project mode) against a non-package directory: starts cleanly, reports an error dashboard, never crashes", async () => {
+        const child = spawnSmokeChild([".", "--no-open", "--port", "0"], installDir!);
         try {
             const port = await waitForListeningPort(child);
             const baseUrl = `http://127.0.0.1:${port}`;
@@ -213,7 +322,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }
     });
 
-    it("imports ParallelSimulationRunner from the installed \"pokie\" package and runs a workers=2 simulation, exiting cleanly with no lingering worker threads", () => {
+    smokeIt("imports ParallelSimulationRunner from the installed \"pokie\" package and runs a workers=2 simulation, exiting cleanly with no lingering worker threads", () => {
         const fixtureRoot = path.join(REPO_ROOT, "tests", "cli", "fixtures", "playable-game");
         const scriptPath = path.join(installDir!, "run-parallel-simulation.mjs");
         // Deliberately not importing anything from this repo's own src/cli — this script only ever
@@ -253,6 +362,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const output = execFileSync("node", [scriptPath], {cwd: installDir, encoding: "utf-8", timeout: 60000});
 
         expect(output).toContain('PARALLEL_SIMULATION_SMOKE_OK {"workers":2,"rounds":20000}');
+        smokeResults.libraryWorker = true;
     });
 
     // Studio startup targeting, against the real installed binary: which of Home / a project dashboard
@@ -279,7 +389,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         });
 
         async function contextOf(args: string[], cwd: string): Promise<unknown> {
-            const child = spawn(pokieBinPath, [...args, "--no-open", "--port", "0"], {cwd}) as ChildProcessWithoutNullStreams;
+            const child = spawnSmokeChild([...args, "--no-open", "--port", "0"], cwd);
             try {
                 const port = await waitForListeningPort(child);
                 return await (await fetch(`http://127.0.0.1:${port}/api/context`)).json();
@@ -288,23 +398,23 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             }
         }
 
-        it("`pokie` inside a project opens that project", async () => {
+        smokeIt("`pokie` inside a project opens that project", async () => {
             expect(await contextOf([], projectRoot)).toEqual({mode: "project", projectRoot});
         });
 
-        it("`pokie` from a nested directory inside a project still opens that project", async () => {
+        smokeIt("`pokie` from a nested directory inside a project still opens that project", async () => {
             const nested = path.join(projectRoot, "dist");
             expect(fs.existsSync(nested)).toBe(true);
 
             expect(await contextOf([], nested)).toEqual({mode: "project", projectRoot});
         });
 
-        it("`pokie` outside any project opens Home", async () => {
+        smokeIt("`pokie` outside any project opens Home", async () => {
             // installDir has a package.json of its own, but no "pokie.entry" — not a game package.
             expect(await contextOf([], installDir!)).toEqual({mode: "home"});
         });
 
-        it("`pokie .` opens the project it was pointed at", async () => {
+        smokeIt("`pokie .` opens the project it was pointed at", async () => {
             expect(await contextOf(["."], projectRoot)).toEqual({mode: "project", projectRoot});
         });
     });
@@ -313,7 +423,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     // surfacing as a thrown error, and so a root invocation that wrongly reaches the implicit Studio
     // entry — which would sit there serving instead of exiting — fails on the timeout rather than
     // hanging the suite.
-    it("prints actionable first-contact guidance for bare `pokie`, exiting 0 without starting Studio", () => {
+    smokeIt("prints actionable first-contact guidance for bare `pokie`, exiting 0 without starting Studio", () => {
         const result = spawnSync(pokieBinPath, [], {cwd: installDir, encoding: "utf-8", timeout: 60000});
 
         expect(result.status).toBe(0);
@@ -323,15 +433,17 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stderr).toBe("");
     });
 
-    it.each([["--help"], ["-h"]])("prints the general usage and the full command list for `pokie %s`, exiting 0", (flag) => {
+    for (const [flag] of [["--help"], ["-h"]]) smokeIt(`prints the general usage and the full command list for \`pokie ${flag}\`, exiting 0`, () => {
         const result = spawnSync(pokieBinPath, [flag], {cwd: installDir, encoding: "utf-8", timeout: 60000});
 
         expect(result.status).toBe(0);
         expect(result.stdout).toContain("Usage: pokie <command>");
         expect(result.stdout).toContain("Commands:");
-        // A representative spread of registered commands, including the longest name, so a truncated
-        // or partially-rendered list is caught rather than just "some text was printed".
-        for (const commandName of ["build", "create", "diff", "export", "generate", "inspect", "sample", "certification", "validate"]) {
+        // Assert the whole public inventory from one installed-binary invocation. The later
+        // artifact-producing workflow runs every command and nested verb with real inputs; spawning
+        // another process for every individual help page only duplicates that coverage and makes this
+        // release-boundary smoke test exceed the changed-tests gate's bounded runtime.
+        for (const commandName of ["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "replay", "report", "sample", "serve", "sim", "validate"]) {
             expect(result.stdout).toMatch(new RegExp(`^ {2}${commandName} `, "m"));
         }
         // Storage-format namespaces stay private implementation details: their public lifecycle
@@ -343,7 +455,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stdout).not.toMatch(/^ {2}(name|studio)\b/m);
     });
 
-    it.each([["--version"], ["-V"]])("prints the installed version for `pokie %s`, exiting 0", (flag) => {
+    for (const [flag] of [["--version"], ["-V"]]) smokeIt(`prints the installed version for \`pokie ${flag}\`, exiting 0`, () => {
         const result = spawnSync(pokieBinPath, [flag], {cwd: installDir, encoding: "utf-8", timeout: 60000});
         const {version} = JSON.parse(fs.readFileSync(path.join(installDir!, "node_modules", "pokie", "package.json"), "utf-8")) as {
             version: string;
@@ -354,33 +466,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stderr).toBe("");
     });
 
-    it("runs every public command and nested-verb help page from the freshly installed binary without exposing legacy namespaces", () => {
-        const publicCommands = [
-            "build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "replay", "report", "sample", "serve", "sim", "validate",
-        ];
-        const nestedVerbs = [
-            ["certification", "build"], ["certification", "verify"], ["fairness", "commit"], ["fairness", "reveal"], ["fairness", "seed-commit"], ["fairness", "verify"], ["par", "export"], ["par", "import"], ["reel", "generate"],
-        ];
-
-        for (const command of publicCommands) {
-            const result = spawnSync(pokieBinPath, [command, "--help"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
-            expect(result.status).toBe(0);
-            expect(result.stdout).toContain(`Usage: ${command}`);
-            expect(result.stdout).not.toMatch(/\b(?:__studio|outcomesource)\b/);
-        }
-        for (const [parent, child] of nestedVerbs) {
-            const result = spawnSync(pokieBinPath, [parent, child, "--help"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
-            expect(result.status).toBe(0);
-            expect(result.stdout).toContain(`Usage: ${parent} ${child}`);
-        }
-
-        const implicitStudio = spawnSync(pokieBinPath, ["--no-open", "--help"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
-        expect(implicitStudio.status).toBe(0);
-        expect(implicitStudio.stdout).toContain("Usage: pokie [options] [projectRoot] [excess...]");
-        expect(implicitStudio.stdout).not.toContain("Usage: studio");
-    });
-
-    it("`pokie <unrecognized command>` explains how to recover and exits 1", () => {
+    smokeIt("`pokie <unrecognized command>` explains how to recover and exits 1", () => {
         const result = spawnSync(pokieBinPath, ["totally-bogus-pokie-command-xyz-12345"], {
             cwd: installDir,
             encoding: "utf-8",
@@ -394,7 +480,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         );
     });
 
-    it("suggests the intended command for a close top-level typo and exits 1", () => {
+    smokeIt("suggests the intended command for a close top-level typo and exits 1", () => {
         const result = spawnSync(pokieBinPath, ["creat"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
 
         expect(result.status).toBe(1);
@@ -402,7 +488,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stderr.trim()).toBe('Unknown command "creat". Did you mean `create`? Run `pokie create --help` for usage.');
     });
 
-    it("reports usage and recovery text when a command is missing required input", () => {
+    smokeIt("reports usage and recovery text when a command is missing required input", () => {
         const result = spawnSync(pokieBinPath, ["build"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
 
         expect(result.status).toBe(1);
@@ -413,7 +499,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stderr).toContain("<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary");
     });
 
-    it("scaffolds a package in place via a fully non-interactive `pokie init <directory>`, installing/building it entirely on its own -- its scaffolded \"pokie\" dependency resolves against this exact installed binary's own root during install (never the registry, never a manual rewrite), then is left with a portable version range, and it validates and simulates", () => {
+    smokeIt("scaffolds a package in place via a fully non-interactive `pokie init <directory>`, installing/building it entirely on its own -- its scaffolded \"pokie\" dependency resolves against this exact installed binary's own root during install (never the registry, never a manual rewrite), then is left with a portable version range, and it validates and simulates", () => {
         const projectRoot = path.join(installDir!, "sample-slot");
         // No --no-prepare, no --no-install, no manual package.json rewrite: "pokie init" now resolves its
         // own scaffolded "pokie" dependency against the running installation's own root (readOwnPackageRoot()
@@ -476,7 +562,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     // tests/testUtils/offlinePokieDependencyOverride.ts's own doc comment) -- rather than skipped
     // outright, so this still exercises a real spawned npm wherever that offline substitution is itself
     // runnable. Runs before the rename-based move test below, which consumes "sample-slot" in place.
-    it("copies the initialized package -- without node_modules, without any of 'npm install's own resolution -- to a new location, and a real, independent 'npm install' there resolves \"pokie\" fresh from only the portable persisted package.json/package-lock.json", async () => {
+    smokeIt("copies the initialized package -- without node_modules, without any of 'npm install's own resolution -- to a new location, and a real, independent 'npm install' there resolves \"pokie\" fresh from only the portable persisted package.json/package-lock.json", async () => {
         const sourceRoot = path.join(installDir!, "sample-slot");
         const reinstalledRoot = path.join(installDir!, "sample-slot-reinstalled");
         for (const relativeFile of [
@@ -527,7 +613,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     // stripLocalPokieLockEntries) -- checked here against the real lockfile a real spawned "pokie init"
     // (above) actually wrote, not just the hand-reproduced shape PackageCommandRunner.test.ts's own unit
     // coverage exercises.
-    it("moves the initialized package (with its already-resolved node_modules) to a new location and still loads/validates there without ever running npm install again -- proving the persisted package.json AND package-lock.json carry no absolute path back to where it was installed", () => {
+    smokeIt("moves the initialized package (with its already-resolved node_modules) to a new location and still loads/validates there without ever running npm install again -- proving the persisted package.json AND package-lock.json carry no absolute path back to where it was installed", () => {
         const sourceRoot = path.join(installDir!, "sample-slot");
         const movedRoot = path.join(installDir!, "sample-slot-moved");
         fs.renameSync(sourceRoot, movedRoot);
@@ -552,7 +638,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(validate.status).toBe(0);
     });
 
-    it("runs the public outcome-library lifecycle against a package built by the installed binary itself", () => {
+    smokeIt("runs the public outcome-library lifecycle against a package built by the installed binary itself", () => {
         // Same small, hand-computable, exactly-enumerable blueprint as
         // tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts's own finiteBlueprint(): 2 reels of
         // 3/2 stops, no stateful mechanics, so "generate" resolves the exact strategy without --bounded.
@@ -621,7 +707,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(sample.status).toBe(0);
     });
 
-    it("runs a data-driven, artifact-producing workflow for every public command and nested verb from the installed binary", async () => {
+    smokeIt("runs a data-driven, artifact-producing workflow for every public command and nested verb from the installed binary", async () => {
         // This is intentionally not another recursive-help assertion.  Each row below is a command the
         // tarball-installed executable actually runs with a concrete input, expected exit status, and a
         // produced/consumed artifact (or, for the non-interactive edit boundary, its actionable recovery).
@@ -648,7 +734,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const expectFile = (filePath: string): void => expect(fs.existsSync(filePath)).toBe(true);
         const expectDirectory = (directoryPath: string): void => expect(fs.statSync(directoryPath).isDirectory()).toBe(true);
         const runListeningWorkflow = async (id: string, args: string[], assertion: (baseUrl: string) => Promise<void>): Promise<void> => {
-            const child = spawn(pokieBinPath, args, {cwd: workflowRoot}) as ChildProcessWithoutNullStreams;
+            const child = spawnSmokeChild(args, workflowRoot);
             workflowIds.push(id);
             exercisedPublicWorkflows.add(args[0]);
             try {
@@ -791,7 +877,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     // GamePackageGenerator's own doc comment) that the older format used to write directly into the
     // package. Running a real `npm pack` against one proves that contract at the one boundary that
     // actually matters to a consumer: what a real `npm publish` would ship, not just what's on disk.
-    it("`npm pack`s a package built by the installed binary itself: ships the canonical runtime/source files, nothing from the pre-migration build-info/blueprint/src-generated format", () => {
+    smokeIt("`npm pack`s a package built by the installed binary itself: ships the canonical runtime/source files, nothing from the pre-migration build-info/blueprint/src-generated format", () => {
         const blueprintPath = path.join(installDir!, "npm-pack-built-package.blueprint.json");
         fs.writeFileSync(
             blueprintPath,

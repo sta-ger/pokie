@@ -23,4 +23,8 @@ export type OutcomeLibraryBundleModeInput<T extends string | number = string> = 
     // this mode's own manifest entry (see OutcomeLibraryBundleManifestModeEntry.generator); never inferred or
     // recomputed by the writer, and never required for a mode built from any other outcome source.
     readonly generator?: OutcomeLibraryGeneratorDiagnostics;
+    // A generated stream only learns its terminal diagnostics after the writer
+    // has consumed it. This accessor preserves those diagnostics in the
+    // manifest without requiring a second, in-memory outcome library.
+    readonly getGenerator?: () => OutcomeLibraryGeneratorDiagnostics | undefined;
 };

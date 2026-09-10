@@ -146,8 +146,11 @@ function runViaAtomicallyWriteExternalDeploymentArtifacts(outDir: string, deps: 
 }
 
 const publishSubjects = [
-    {name: "publishDirectoryAtomically (stakeengine)", run: runViaPublishDirectoryAtomically},
-    {name: "atomicallyWriteExternalDeploymentArtifactsToDirectory (externaladapter)", run: runViaAtomicallyWriteExternalDeploymentArtifacts},
+    {name: "publishDirectoryAtomically (stakeengine)", run: runViaPublishDirectoryAtomically, cleanupWarning: true},
+    // External Adapter intentionally retains its independently-owned legacy
+    // stale-backup protocol. Both publishers report post-publication cleanup
+    // failures as warnings, never as failed publication.
+    {name: "atomicallyWriteExternalDeploymentArtifactsToDirectory (externaladapter)", run: runViaAtomicallyWriteExternalDeploymentArtifacts, cleanupWarning: true},
 ];
 
 describe("StakeEngine <-> External Adapter SDK: atomic-publish behavioral equivalence", () => {
@@ -168,7 +171,7 @@ describe("StakeEngine <-> External Adapter SDK: atomic-publish behavioral equiva
         }
     });
 
-    describe.each(publishSubjects)("$name", ({run}) => {
+    describe.each(publishSubjects)("$name", ({run, cleanupWarning}) => {
         it("throws and leaves outDir untouched when the temp-directory write fails", () => {
             run(outDir, {}); // seed a first publish
             const before = fs.readFileSync(path.join(outDir, "index.json"));
@@ -204,7 +207,7 @@ describe("StakeEngine <-> External Adapter SDK: atomic-publish behavioral equiva
             expect(fs.readFileSync(path.join(outDir, "index.json"))).toEqual(before);
         });
 
-        it("reports a non-throwing warning, never a failure, when only the stale-backup cleanup fails after a successful publish", () => {
+        it("does not depend on broad stale-backup cleanup after a successful publish", () => {
             run(outDir, {}); // seed a first publish
 
             const failingRemoveDirectory = (): void => {
@@ -214,8 +217,109 @@ describe("StakeEngine <-> External Adapter SDK: atomic-publish behavioral equiva
             const outcome = run(outDir, {removeDirectory: failingRemoveDirectory});
 
             expect(outcome.threw).toBe(false);
-            expect(outcome.cleanupWarning).toBe(true);
+            expect(outcome.cleanupWarning).toBe(cleanupWarning);
             expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(`{"v":1}`); // the new publish is live
         });
     });
 });
+
+describe("publishDirectoryAtomically direct ownership contract", () => {
+    let outDir: string;
+
+    const publish = (value: string, options: Omit<Parameters<typeof publishDirectoryAtomically>[0], "outDir" | "writeFilesIntoTempDir"> = {}) => publishDirectoryAtomically({
+        outDir,
+        ...options,
+        writeFilesIntoTempDir: (tempDir) => {
+            fs.writeFileSync(path.join(tempDir, "index.json"), JSON.stringify({value}));
+            fs.writeFileSync(path.join(tempDir, "complete.txt"), "complete payload");
+        },
+    });
+
+    beforeEach(() => {
+        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-direct-atomic-publish-"));
+        fs.rmSync(outDir, {recursive: true, force: true});
+    });
+
+    afterEach(() => {
+        const parentDir = path.dirname(outDir);
+        const base = path.basename(outDir);
+        for (const name of fs.readdirSync(parentDir)) {
+            if (name === base || name.startsWith(`${base}.`)) fs.rmSync(path.join(parentDir, name), {recursive: true, force: true});
+        }
+    });
+
+    it("snapshots the actual existing destination when direct re-publish omits ownership", () => {
+        expect(publish("first")).toEqual({});
+
+        expect(publish("second")).toEqual({});
+        expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(`{"value":"second"}`);
+        expect(fs.readFileSync(path.join(outDir, "complete.txt"), "utf-8")).toBe("complete payload");
+    });
+
+    it("keeps the new complete payload live and warns when only superseded cleanup fails", () => {
+        publish("first");
+
+        const result = publish("second", {
+            removeDirectory: () => {
+                throw new Error("simulated cleanup failure");
+            },
+        });
+
+        expect(result.cleanupWarning).toMatch(/superseded invocation-owned directory.*simulated cleanup failure/i);
+        expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(`{"value":"second"}`);
+        expect(fs.readFileSync(path.join(outDir, "complete.txt"), "utf-8")).toBe("complete payload");
+    });
+
+    it("rejects a destination claimed at the real commit boundary without touching it, then permits retry", () => {
+        publish("first");
+        let claimed = false;
+
+        expect(() => publish("second", {
+            beforeCommit: () => {
+                if (!claimed) {
+                    claimed = true;
+                    fs.rmSync(outDir, {recursive: true, force: true});
+                    fs.mkdirSync(outDir);
+                    fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+                }
+            },
+        })).toThrow(/claimed while publication was being prepared/i);
+
+        expect(claimed).toBe(true);
+        expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+
+        fs.rmSync(outDir, {recursive: true, force: true});
+        expect(publish("retry")).toEqual({});
+        expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(`{"value":"retry"}`);
+    });
+
+    it("leaves a claimant that replaces the live name after the atomic exchange untouched", () => {
+        let claimed = false;
+
+        expect(() => publish("first", {
+            afterCommit: () => {
+                if (claimed) return;
+                claimed = true;
+                fs.rmSync(outDir, {recursive: true, force: true});
+                fs.mkdirSync(outDir);
+                fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");
+            },
+        })).toThrow(/claimed immediately after publication/i);
+
+        expect(claimed).toBe(true);
+        expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(siblingPublicationResidue(outDir)).toEqual([]);
+
+        fs.rmSync(outDir, {recursive: true, force: true});
+        expect(publish("retry")).toEqual({});
+        expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(`{"value":"retry"}`);
+    });
+});
+
+function siblingPublicationResidue(outDir: string): string[] {
+    const parentDir = path.dirname(outDir);
+    const base = path.basename(outDir);
+    return fs.readdirSync(parentDir)
+        .filter((name) => name.startsWith(`.${base}.tmp-`) || name.startsWith(`.${base}.rollback-`))
+        .sort();
+}

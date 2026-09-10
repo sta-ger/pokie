@@ -4,6 +4,9 @@ import {
     estimateExactOutcomeSpaceSize,
     GameBlueprint,
     GamePackageGenerator,
+    createStreamingExactWeightedOutcomes,
+    ExactEnumerationCheckpoint,
+    issueExactEnumerationRecoveryAuthority,
     generateExactWeightedOutcomeLibrary,
     generateSampledWeightedOutcomeLibrary,
     generateWeightedOutcomeLibrary,
@@ -13,13 +16,14 @@ import {
     prepareOutcomeLibraryGeneration,
     prepareOutcomeLibraryGenerationFromEstimate,
     preflightOutcomeLibraryGenerationFromEstimate,
-    streamExactWeightedOutcomes,
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
     VideoSlotSession,
     VideoSlotWithBetModesSession,
 } from "pokie";
 import {buildAlternateFixtureGame, buildFixtureConfig, buildFixtureGame, buildUnplayableFixtureGame, buildUnsupportedFixtureGame} from "./GenerateTestFixtures.js";
+import {streamExactWeightedOutcomes} from "../../../src/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
+import type {WeightedOutcomeInput} from "../../../src/weightedoutcome/buildWeightedOutcomeLibrary.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -498,7 +502,7 @@ describe("generateExactWeightedOutcomeLibrary", () => {
     }
 
     it("resumes a cancelled exact sweep, via its own checkpoint, into a complete library identical to an uninterrupted run", async () => {
-        expect.assertions(9);
+        expect.assertions(10);
 
         let cancelled: WeightedOutcomeLibraryGenerationCancelledError | undefined;
         try {
@@ -544,6 +548,19 @@ describe("generateExactWeightedOutcomeLibrary", () => {
 
         // Same outcome ids, weights, and full artifacts as an uninterrupted sweep over the whole space.
         expect(resumed.library.outcomes).toEqual(uninterrupted.library.outcomes);
+
+        // A legacy durable checkpoint remains correct through the streaming
+        // adapter too. It takes the compatible in-memory resume route rather
+        // than silently skipping the checkpoint's accumulated prefix.
+        const streamed: Array<Awaited<ReturnType<typeof generateExactWeightedOutcomeLibrary>>["library"]["outcomes"][number]> = [];
+        for await (const outcome of streamExactWeightedOutcomes({
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            resumeFrom: cancelled?.checkpoint,
+            now: () => new Date("2026-01-01T00:00:00.000Z"),
+        })) streamed.push(outcome);
+        expect(streamed).toEqual(uninterrupted.library.outcomes);
     });
 
     it("fails closed when resumeFrom's checkpoint comes from a different source that merely shares the same outcome-space size", async () => {
@@ -631,6 +648,140 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         }
     });
 
+    it("rejects a durable checkpoint whose invocation-owned marker is missing", async () => {
+        await expect(generateExactWeightedOutcomeLibrary({
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            resumeFrom: {
+                processedRawIndex: BigInt(3),
+                progressTotal: BigInt(6),
+                grids: new Map(),
+                sourceEnumerationId: "fixture-source",
+                recoveryAuthorityId: "f8b7f8bb-2b27-4c87-a136-04910e1602fe",
+            },
+        })).rejects.toMatchObject({
+            name: "WeightedOutcomeLibraryGenerationError",
+            code: "weighted-outcome-library-generation-checkpoint-mismatch",
+        });
+    });
+
+    it("removes streaming disk staging on cancellation and returns an honest retry-only checkpoint", async () => {
+        const stagingDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-stream-cancel-"));
+        const createStagingDirectory = jest.spyOn(fs, "mkdtempSync").mockReturnValue(stagingDirectory);
+        try {
+            const stream = streamExactWeightedOutcomes({
+                libraryId: "fixture-lib",
+                game: buildFixtureGame(),
+                pokieVersion: "1.3.0",
+                signal: abortAfterReads(3),
+            });
+            try {
+                await stream.next();
+                fail("expected streaming generation to be cancelled");
+            } catch (error) {
+                const cancelled = error as WeightedOutcomeLibraryGenerationCancelledError;
+                expect(cancelled).toMatchObject({
+                    name: "WeightedOutcomeLibraryGenerationCancelledError",
+                    checkpoint: {restartRequired: true},
+                });
+                expect(cancelled.checkpoint.recoveryAuthorityId).toBeUndefined();
+            }
+            expect(fs.existsSync(stagingDirectory)).toBe(false);
+        } finally {
+            createStagingDirectory.mockRestore();
+            fs.rmSync(stagingDirectory, {recursive: true, force: true});
+        }
+    });
+
+    it("persists a bounded streaming checkpoint and consumes its owned partitions on resume", async () => {
+        const recoveryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-recovery-"));
+        const recoveryAuthorityId = "f8b7f8bb-2b27-4c87-a136-04910e1602fe";
+        const stagingDirectory = path.join(recoveryRoot, recoveryAuthorityId);
+        const recoveryAuthority = issueExactEnumerationRecoveryAuthority(recoveryRoot, recoveryAuthorityId);
+        const stream = streamExactWeightedOutcomes({
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            signal: abortAfterReads(3),
+            durableCheckpointOnCancellation: true,
+            recoveryAuthority,
+        });
+        let cancelled: WeightedOutcomeLibraryGenerationCancelledError | undefined;
+        try {
+            await stream.next();
+            fail("expected streaming generation to be cancelled");
+        } catch (error) {
+            cancelled = error as WeightedOutcomeLibraryGenerationCancelledError;
+        }
+        expect(cancelled?.checkpoint).toMatchObject({
+            processedRawIndex: BigInt(3), progressTotal: BigInt(6),
+            recoveryAuthorityId,
+        });
+        expect(cancelled?.checkpoint.restartRequired).toBeUndefined();
+        const checkpoint = cancelled!.checkpoint;
+        expect(fs.existsSync(stagingDirectory)).toBe(true);
+
+        const resumed = streamExactWeightedOutcomes({
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            resumeFrom: checkpoint,
+            recoveryAuthority,
+        });
+        const outcomes: WeightedOutcomeInput[] = [];
+        let next = await resumed.next();
+        while (!next.done) {
+            outcomes.push(next.value);
+            next = await resumed.next();
+        }
+        expect(outcomes).toHaveLength(4);
+        expect(next.value).toMatchObject({strategy: "exact", sampledRawCount: 6});
+        expect(fs.existsSync(stagingDirectory)).toBe(false);
+        fs.rmSync(recoveryRoot, {recursive: true, force: true});
+    });
+
+    it("fails closed without consuming a copied owned marker through a redirected recovery directory", async () => {
+        const recoveryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-authenticated-recovery-"));
+        const externalDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-external-"));
+        const id = "1e8a4e13-13e7-4db9-9b81-8d4f7e4db041";
+        const stagingDirectory = path.join(recoveryRoot, id);
+        const externalFile = path.join(externalDirectory, "must-not-be-consumed.txt");
+        fs.writeFileSync(externalFile, "external");
+        try {
+            const initial = streamExactWeightedOutcomes({
+                libraryId: "fixture-lib", game: buildFixtureGame(), pokieVersion: "1.3.0",
+                signal: abortAfterReads(3), durableCheckpointOnCancellation: true,
+                recoveryAuthority: issueExactEnumerationRecoveryAuthority(recoveryRoot, id),
+            });
+            let checkpoint: ExactEnumerationCheckpoint | undefined;
+            try {
+                await initial.next();
+                fail("expected cancellation");
+            } catch (error) {
+                checkpoint = (error as WeightedOutcomeLibraryGenerationCancelledError).checkpoint;
+            }
+            const copiedMarker = fs.readFileSync(path.join(stagingDirectory, ".pokie-exact-checkpoint.json"));
+            fs.rmSync(stagingDirectory, {recursive: true, force: true});
+            fs.writeFileSync(path.join(externalDirectory, ".pokie-exact-checkpoint.json"), copiedMarker);
+            fs.symlinkSync(externalDirectory, stagingDirectory, "dir");
+
+            const resumed = streamExactWeightedOutcomes({
+                libraryId: "fixture-lib", game: buildFixtureGame(), pokieVersion: "1.3.0", resumeFrom: checkpoint,
+                recoveryAuthority: issueExactEnumerationRecoveryAuthority(recoveryRoot, id),
+            });
+            await expect(resumed.next()).rejects.toMatchObject({
+                name: "WeightedOutcomeLibraryGenerationError",
+                code: "weighted-outcome-library-generation-checkpoint-mismatch",
+            });
+            expect(fs.readFileSync(externalFile, "utf8")).toBe("external");
+            expect(fs.existsSync(path.join(externalDirectory, ".pokie-exact-checkpoint.json"))).toBe(true);
+        } finally {
+            fs.rmSync(recoveryRoot, {recursive: true, force: true});
+            fs.rmSync(externalDirectory, {recursive: true, force: true});
+        }
+    });
+
     it("reports progress at least once for a small sweep", async () => {
         const onProgress = jest.fn();
         await generateExactWeightedOutcomeLibrary({
@@ -654,14 +805,16 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         fs.rmdirSync(outDir);
         try {
             const writer = new OutcomeLibraryBundleWriter("1.3.0");
+            const stream = createStreamingExactWeightedOutcomes({libraryId: "fixture-lib", game: buildFixtureGame(), pokieVersion: "1.3.0"});
             const result = await writer.writeToDirectory(
-                [{modeName: "base", libraryId: "fixture-lib", outcomes: streamExactWeightedOutcomes({libraryId: "fixture-lib", game: buildFixtureGame(), pokieVersion: "1.3.0"})}],
+                [{modeName: "base", libraryId: "fixture-lib", outcomes: stream.outcomes, getGenerator: stream.getDiagnostics}],
                 outDir,
             );
 
             expect(result.issues.filter((issue) => issue.severity === "error")).toHaveLength(0);
             expect(result.manifest?.modes[0].outcomeCount).toBe(4);
             expect(result.manifest?.modes[0].totalWeight).toBe(6);
+            expect(result.manifest?.modes[0].generator).toMatchObject({strategy: "exact", sampledRawCount: 6});
 
             const reader = new OutcomeLibraryBundleReader();
             const library = await reader.readLibrary(outDir, "base");

@@ -1,5 +1,7 @@
 import {
     CertificationEvidenceBundleBuildResult,
+    CertificationEvidenceBundleBuildCancelledError,
+    CertificationEvidenceBundleBuilder,
     CertificationEvidenceBundleModeSampleInput,
     CertificationEvidenceVerifyOptions,
     ProjectTargetResolver,
@@ -9,6 +11,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {CertificationCommand} from "../../../cli/commands/CertificationCommand.js";
+import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
 
 const CONFIG_PATH = "/project/certification-config.json";
 
@@ -99,6 +102,56 @@ describe("CertificationCommand", () => {
     });
 
     describe("build", () => {
+        it("reports cancellation as a retryable build outcome", async () => {
+            const builder = {
+                buildFromBundle: () => Promise.reject(new CertificationEvidenceBundleBuildCancelledError()),
+            };
+            const command = new CertificationCommand("1.3.0", builder, undefined, createStubJsonStore({[CONFIG_PATH]: descriptor}));
+
+            await expect(command.run(["build", "/project/bundle", CONFIG_PATH])).resolves.toBe(130);
+            expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toMatch(/No incomplete evidence was published; retry/i);
+        });
+
+        it("does not remove a caller's late publication claim and can build after a clean retry", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-certification-command-late-claim-"));
+            const bundleDir = path.join(workDir, "bundle");
+            const certDir = path.join(workDir, "certification");
+            const configPath = path.join(workDir, "certification-config.json");
+            try {
+                await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+                fs.writeFileSync(configPath, JSON.stringify({modes: [{modeName: "base", seed: "cert-seed", sampleCount: 3}]}));
+                let claimOnCommit = true;
+                const builder = new CertificationEvidenceBundleBuilder(
+                    "1.3.0",
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    () => {
+                        if (!claimOnCommit) return;
+                        fs.mkdirSync(certDir);
+                        fs.writeFileSync(path.join(certDir, "caller-owned.txt"), "untouched");
+                    },
+                );
+                const command = new CertificationCommand("1.3.0", builder);
+
+                await expect(command.run(["build", bundleDir, configPath, "--out", certDir])).rejects.toThrow(/claimed/i);
+                expect(fs.readFileSync(path.join(certDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+
+                fs.rmSync(certDir, {recursive: true, force: true});
+                claimOnCommit = false;
+                await expect(command.run(["build", bundleDir, configPath, "--out", certDir])).resolves.toBe(0);
+                expect(fs.existsSync(path.join(certDir, "manifest.json"))).toBe(true);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
         it("loads the descriptor and writes to the default --out dir", async () => {
             const builder = createStubBuilder(successResult);
             const loadJson = createStubJsonStore({[CONFIG_PATH]: descriptor});

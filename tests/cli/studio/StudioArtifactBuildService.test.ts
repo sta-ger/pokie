@@ -426,7 +426,6 @@ describe("StudioArtifactBuildService", () => {
             const stakePath = path.join(workDir, "cancelled-par-stake");
             const controller = new AbortController();
             fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
-            fs.mkdirSync(stakePath);
             service = new StudioArtifactBuildService(
                 "1.3.0",
                 undefined,
@@ -440,7 +439,7 @@ describe("StudioArtifactBuildService", () => {
             await expect(service.build(workbookPath, "stakeAdapter", stakePath, {signal: controller.signal})).resolves.toMatchObject({status: "cancelled"});
 
             expect(fs.existsSync(workbookPath)).toBe(true);
-            expect(fs.readdirSync(stakePath)).toEqual([]);
+            expect(fs.existsSync(stakePath)).toBe(false);
             expect(fs.existsSync(path.join(stakePath, ".pokie", "par-import", "conversion-evidence.json"))).toBe(false);
             expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
         });
@@ -473,12 +472,11 @@ describe("StudioArtifactBuildService", () => {
             };
             const registry = new ArtifactBuilderRegistry("1.3.0", undefined, cancellationAfterPromotion);
             fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
-            fs.mkdirSync(destination);
             service = new StudioArtifactBuildService("1.3.0", registry);
 
             await expect(service.build(workbookPath, target, destination, {signal: controller.signal})).resolves.toMatchObject({status: "cancelled"});
 
-            expect(fs.readdirSync(destination)).toEqual([]);
+            expect(fs.existsSync(destination)).toBe(false);
             expect(await projectRegistration.list()).toEqual([]);
             expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
         });
@@ -527,7 +525,6 @@ describe("StudioArtifactBuildService", () => {
             const republishedOutcomePath = path.join(workDir, "republished-outcome");
             const controller = new AbortController();
             await expect(service.build(blueprintPath, "outcomeLibrary", originalOutcomePath)).resolves.toMatchObject({status: "ok"});
-            fs.mkdirSync(republishedOutcomePath);
             const cancellingService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => {
                 controller.abort();
                 return Promise.resolve();
@@ -536,7 +533,7 @@ describe("StudioArtifactBuildService", () => {
             await expect(cancellingService.build(blueprintPath, "outcomeLibrary", republishedOutcomePath, {signal: controller.signal})).resolves.toMatchObject({status: "cancelled"});
 
             expect(fs.existsSync(originalOutcomePath)).toBe(true);
-            expect(fs.readdirSync(republishedOutcomePath)).toEqual([]);
+            expect(fs.existsSync(republishedOutcomePath)).toBe(false);
             const managedRegistry = JSON.parse(fs.readFileSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"), "utf8")) as {projects: readonly {rootPath: string}[]};
             expect(managedRegistry.projects.map((project) => project.rootPath)).toEqual([originalOutcomePath]);
         });

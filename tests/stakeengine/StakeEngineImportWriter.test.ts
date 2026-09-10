@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleValidator, StakeEngineImportResult, StakeEngineImportWriter} from "pokie";
+import {OutcomeLibraryBundleValidator, OutcomeLibraryBundleWriter, StakeEngineImportResult, StakeEngineImportWriter} from "pokie";
 import {buildOutcomeLibraryBundleTestLibrary} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function resultWithModes(modeNames: readonly string[]): StakeEngineImportResult {
@@ -51,5 +51,39 @@ describe("StakeEngineImportWriter", () => {
         expect(fs.existsSync(path.join(outDir, "index_bonus.json"))).toBe(false);
         expect(fs.existsSync(path.join(outDir, "outcomes_bonus.jsonl"))).toBe(false);
         expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).toEqual([]);
+    });
+
+    it("forwards an async final destination policy, leaves a late caller-owned directory untouched, and retries cleanly", async () => {
+        const nativeWriter = new OutcomeLibraryBundleWriter("1.3.0");
+        let claimDestination = true;
+        const writer = new StakeEngineImportWriter("1.3.0", {
+            writeToDirectory: (modes, destination, options) => nativeWriter.writeToDirectory(modes, destination, {
+                ...options,
+                onProgress: (progress) => {
+                    options?.onProgress?.(progress);
+                    if (claimDestination && progress.message.startsWith("Publishing Outcome file")) {
+                        fs.rmSync(destination, {recursive: true, force: true});
+                        fs.mkdirSync(destination);
+                        fs.writeFileSync(path.join(destination, "caller-owned.txt"), "untouched");
+                        claimDestination = false;
+                    }
+                },
+            }),
+        });
+        let finalPolicySucceeded = false;
+
+        await expect(writer.writeToDirectory(resultWithModes(["base"]), outDir, {
+            assertDestinationAvailable: async () => {
+                await Promise.resolve();
+                finalPolicySucceeded = true;
+            },
+        })).rejects.toThrow(/claimed while publication was being prepared/i);
+
+        expect(finalPolicySucceeded).toBe(true);
+        expect(fs.readFileSync(path.join(outDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
+        expect(fs.readdirSync(path.dirname(outDir)).filter((entry) => entry.startsWith(`${path.basename(outDir)}.`))).toEqual([]);
+
+        fs.rmSync(outDir, {recursive: true, force: true});
+        await expect(writer.writeToDirectory(resultWithModes(["base"]), outDir)).resolves.toEqual({issues: []});
     });
 });
