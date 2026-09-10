@@ -78,6 +78,22 @@ test("rejects alternate evidence locations, package identity drift, and altered 
     } finally { await testFixture.cleanup(); }
 });
 
+test("rejects retained gate output tampering and an incomplete pre-existing completion record", async () => {
+    const testFixture = await fixture();
+    try {
+        const gateRun = await validatePc20ReleaseGate(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state, runReleaseGate:retainedGate});
+        await writeFile(paths()[5], "tampered release output\n");
+        await assert.rejects(() => validatePc20ReleaseGate(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state}), /stdout artifact digest/i);
+        await writeFile(paths()[5], "real candidate gate output\n");
+        const receipt = lifecycle(gateRun.gate.sha256);
+        const contents = `${JSON.stringify(receipt, null, 2)}\n`;
+        await writeFile(testFixture.lifecycleReceiptPath, contents);
+        testFixture.config.lifecycleReceiptSha256 = hash(contents);
+        await writeFile(paths()[2], `${JSON.stringify({candidateId, releaseGateSha256:gateRun.gate.sha256, lifecycleReceiptSha256:testFixture.config.lifecycleReceiptSha256})}\n`);
+        await assert.rejects(() => validatePc20ReleaseCompletion(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state}), /existing completion record/i);
+    } finally { await testFixture.cleanup(); }
+});
+
 test("drains a real detached process tree on success, timeout, cancellation, and spawn error", async () => {
     const registries = [];
     const options = () => { const resourceRegistryPath = registryPath("bounded"); registries.push(resourceRegistryPath); return {cwd:repositoryDirectory, resourceRegistryPath}; };
@@ -325,13 +341,17 @@ test("executes the authorized runner CLI against a controlled Git remote and rej
         const archivePath = path.join(evidence, `pc-20-${candidate}-package.tgz`);
         const smokePath = path.join(evidence, `pc-20-${candidate}-npm-pack-smoke.json`);
         const gatePath = path.join(evidence, `pc-20-${candidate}-release-gate.json`);
+        const stdoutPath = path.join(evidence, `pc-20-${candidate}-release-gate.stdout.txt`);
+        const stderrPath = path.join(evidence, `pc-20-${candidate}-release-gate.stderr.txt`);
         const fixtureArchive = Buffer.from("authorized runner fixture archive\n");
         const fixtureSha = hash(fixtureArchive);
         await writeFile(archivePath, fixtureArchive);
         const smoke = {schemaVersion:1, kind:"npm-pack-install-smoke", candidateId:candidate, candidatePackageSha256:fixtureSha, packageName:"pc20-runner-fixture", packageVersion:"1.0.0", archivePath, archiveSha256:fixtureSha, archiveSizeBytes:fixtureArchive.length, complete:true, suitePassed:true, installed:{cli:true, studioApi:true, studioAssets:true, libraryWorker:true, processesDrained:true}, cleanup:{temporaryInstallRemoved:true, temporaryPackDirectoryRemoved:true, processesDrained:true}};
         const smokeContents = `${JSON.stringify(smoke)}\n`;
         await writeFile(smokePath, smokeContents);
-        const gate = {schemaVersion:1, kind:"release-gate", candidateId:candidate, candidatePackageSha256:fixtureSha, command:"npm run check:release", exitCode:0, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedProcessIdentities:[], ownedResources:[], startedAt:"2026-09-07T20:00:00.000Z", endedAt:"2026-09-07T20:01:00.000Z", stdoutSha256:"a".repeat(64), stderrSha256:"b".repeat(64), packagingSmokeSha256:hash(smokeContents), archiveSha256:fixtureSha};
+        const stdout = "fixture release output\n", stderr = "(no stderr)\n";
+        await Promise.all([writeFile(stdoutPath, stdout), writeFile(stderrPath, stderr)]);
+        const gate = {schemaVersion:1, kind:"release-gate", candidateId:candidate, candidatePackageSha256:fixtureSha, command:"npm run check:release", exitCode:0, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedProcessIdentities:[], ownedResources:[], startedAt:"2026-09-07T20:00:00.000Z", endedAt:"2026-09-07T20:01:00.000Z", stdoutPath:path.basename(stdoutPath), stdoutSha256:hash(stdout), stderrPath:path.basename(stderrPath), stderrSha256:hash(stderr), packagingSmokePath:path.basename(smokePath), packagingSmokeSha256:hash(smokeContents), archivePath:path.basename(archivePath), archiveSha256:fixtureSha};
         await writeFile(gatePath, `${JSON.stringify(gate)}\n`);
         const freezePath = path.join(sandbox, "freeze.json"), lifecyclePath = path.join(sandbox, "lifecycle.json");
         await writeFile(freezePath, "fixture freeze\n");
