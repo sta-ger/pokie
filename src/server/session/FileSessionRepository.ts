@@ -123,16 +123,17 @@ export class FileSessionRepository implements VersionedSessionRepository {
         try {
             const {fs} = await this.nodeRuntime;
             const raw = await fs.readFile(await this.filePathFor(sessionId), "utf-8");
-            const parsed = JSON.parse(raw) as {version?: unknown; state?: unknown};
-            if (typeof parsed.version === "number" && parsed.state !== undefined) {
-                return {version: parsed.version, state: parsed.state as PokieSessionState};
+            try {
+                return parseStoredRecord(JSON.parse(raw));
+            } catch (error) {
+                throw new SessionStateCorruptError(sessionId, error);
             }
-            // Pre-versioning file: a raw PokieSessionState with no envelope. Treated as version 0 so
-            // the very next save (through either save() or saveVersioned()) upgrades it in place.
-            return {version: 0, state: parsed as unknown as PokieSessionState};
         } catch (error) {
             if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
                 return undefined;
+            }
+            if (error instanceof SessionStateCorruptError) {
+                throw error;
             }
             if (error instanceof SyntaxError) {
                 throw new SessionStateCorruptError(sessionId, error);
@@ -142,6 +143,10 @@ export class FileSessionRepository implements VersionedSessionRepository {
     }
 
     private async writeRecord(sessionId: string, record: VersionedSessionState): Promise<void> {
+        assertValidSessionState(record.state);
+        if (!Number.isSafeInteger(record.version) || record.version < 0) {
+            throw new Error("Session record version must be a non-negative safe integer.");
+        }
         const {fs, crypto} = await this.nodeRuntime;
         await fs.mkdir(this.directory, {recursive: true});
         const destination = await this.filePathFor(sessionId);
@@ -163,4 +168,44 @@ export class FileSessionRepository implements VersionedSessionRepository {
         const fileName = crypto.createHash("sha256").update(sessionId).digest("hex");
         return path.join(this.directory, `${fileName}.json`);
     }
+}
+
+function parseStoredRecord(value: unknown): VersionedSessionState {
+    if (!isRecord(value)) {
+        throw new Error("Session record must be a JSON object.");
+    }
+    if (hasOwn(value, "version") || hasOwn(value, "state")) {
+        if (!Number.isSafeInteger(value.version) || (value.version as number) < 0 || !hasOwn(value, "state")) {
+            throw new Error("Session record envelope must contain a non-negative safe-integer version and state.");
+        }
+        assertValidSessionState(value.state);
+        return {version: value.version as number, state: value.state};
+    }
+
+    // Legacy raw PokieSessionState records are version 0, but are still
+    // validated before being allowed back into a live runtime.
+    assertValidSessionState(value);
+    return {version: 0, state: value};
+}
+
+function assertValidSessionState(value: unknown): asserts value is PokieSessionState {
+    if (!isRecord(value)) {
+        throw new Error("Session state must be a JSON object.");
+    }
+    for (const key of ["bet", "win"] as const) {
+        if (typeof value[key] !== "number" || !Number.isFinite(value[key])) {
+            throw new Error(`Session state.${key} must be finite.`);
+        }
+    }
+    if (value.screen !== undefined && !Array.isArray(value.screen)) {
+        throw new Error("Session state.screen must be an array when present.");
+    }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+    return Object.prototype.hasOwnProperty.call(value, key);
 }

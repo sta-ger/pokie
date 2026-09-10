@@ -57,6 +57,8 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             volatility: statistics.volatility,
             payoutHistogram: {...statistics.payoutHistogram},
             maxWinFrequency: statistics.maxWinFrequency ?? 0,
+            averagePayoutConfidenceInterval95: statistics.averagePayoutConfidenceInterval95,
+            rtpConfidenceInterval95: statistics.rtpConfidenceInterval95,
             stopReason,
             convergence,
         };

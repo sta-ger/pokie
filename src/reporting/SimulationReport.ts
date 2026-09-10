@@ -71,6 +71,8 @@ export type SimulationReport = {
     // PayoutHistogramBucketOrder.ts) — a derived read of payoutHistogram, not a new statistic: how
     // often a round produced a payout on the scale of the biggest one observed.
     maxWinFrequency?: number;
+    averagePayoutConfidenceInterval95?: {low: number; high: number};
+    rtpConfidenceInterval95?: {low: number; high: number};
     // Why this run stopped at `rounds` rather than necessarily playing every `requestedRounds` — see
     // SimulationStopReason. Optional only for backward compatibility with a SimulationReport JSON that
     // predates this field (every current caller, pokie sim included, always sets it).

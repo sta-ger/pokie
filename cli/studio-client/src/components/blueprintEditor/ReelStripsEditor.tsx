@@ -1,4 +1,4 @@
-import {Button, Group, List, TextInput} from "@mantine/core";
+import {Button, Group, List, Select} from "@mantine/core";
 import {useState} from "react";
 import {
     addReelStripSymbol,
@@ -18,8 +18,8 @@ function asReelStrips(value: unknown): string[][] {
     return Array.isArray(value) ? value.map((strip) => (Array.isArray(strip) ? strip.filter((item): item is string => typeof item === "string") : [])) : [];
 }
 
-function ReelStripFieldset({reelIndex, strip, mutate, artwork}: {reelIndex: number; strip: string[]; mutate: BlueprintMutate; artwork: ReturnType<typeof symbolArtworkFromBlueprint>}) {
-    const [newSymbolId, setNewSymbolId] = useState("");
+function ReelStripFieldset({reelIndex, strip, symbols, mutate, artwork}: {reelIndex: number; strip: string[]; symbols: string[]; mutate: BlueprintMutate; artwork: ReturnType<typeof symbolArtworkFromBlueprint>}) {
+    const [newSymbolId, setNewSymbolId] = useState<string | null>(null);
 
     return (
         <PageSection legend={`Reel ${reelIndex + 1}`}>
@@ -47,21 +47,22 @@ function ReelStripFieldset({reelIndex, strip, mutate, artwork}: {reelIndex: numb
                 ))}
             </List>
             <QuickActions>
-                <TextInput
-                    placeholder="New symbol id"
-                    aria-label={`New symbol id for reel ${reelIndex + 1}`}
+                <Select
+                    searchable
+                    placeholder="Choose canonical symbol"
+                    aria-label={`Symbol picker for reel ${reelIndex + 1}`}
+                    data={symbols}
                     value={newSymbolId}
-                    onChange={(event) => setNewSymbolId(event.currentTarget.value)}
+                    onChange={setNewSymbolId}
                 />
                 <Button
                     variant="default"
                     onClick={() => {
-                        const id = newSymbolId.trim();
-                        if (id.length === 0) {
+                        if (newSymbolId === null) {
                             return;
                         }
-                        mutate((b) => addReelStripSymbol(b, reelIndex, id));
-                        setNewSymbolId("");
+                        mutate((b) => addReelStripSymbol(b, reelIndex, newSymbolId));
+                        setNewSymbolId(null);
                     }}
                 >
                     Add symbol
@@ -73,11 +74,12 @@ function ReelStripFieldset({reelIndex, strip, mutate, artwork}: {reelIndex: numb
 
 export function ReelStripsEditor({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
     const strips = asReelStrips(blueprint.reelStrips);
+    const symbols = Array.isArray(blueprint.symbols) ? blueprint.symbols.filter((symbol): symbol is string => typeof symbol === "string") : [];
     const artwork = symbolArtworkFromBlueprint(blueprint);
     return (
         <div>
             {strips.map((strip, reelIndex) => (
-                <ReelStripFieldset key={reelIndex} reelIndex={reelIndex} strip={strip} mutate={mutate} artwork={artwork} />
+                <ReelStripFieldset key={reelIndex} reelIndex={reelIndex} strip={strip} symbols={symbols} mutate={mutate} artwork={artwork} />
             ))}
         </div>
     );

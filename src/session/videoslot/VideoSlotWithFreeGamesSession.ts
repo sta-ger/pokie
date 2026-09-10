@@ -86,13 +86,24 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     }
 
     public toSessionState(): VideoSlotWithFreeGamesSessionState {
-        return {freeGamesNum: this.freeGamesNum, freeGamesSum: this.freeGamesSum, freeGamesBank: this.freeBank};
+        const state: VideoSlotWithFreeGamesSessionState = {
+            freeGamesNum: this.freeGamesNum,
+            freeGamesSum: this.freeGamesSum,
+            freeGamesBank: this.freeBank,
+        };
+        if (this.supportsSessionStateCapture(this.baseSession)) {
+            state.base = this.baseSession.toSessionState();
+        }
+        return state;
     }
 
     public fromSessionState(value: VideoSlotWithFreeGamesSessionState): this {
         this.freeGamesNum = value.freeGamesNum;
         this.freeGamesSum = value.freeGamesSum;
         this.freeBank = value.freeGamesBank;
+        if (value.base !== undefined && this.supportsSessionStateRestore(this.baseSession)) {
+            this.baseSession.fromSessionState(value.base);
+        }
         return this;
     }
 
@@ -140,5 +151,13 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
 
     private hasUnfinishedFreeGames(): boolean {
         return this.freeGamesSum > 0 && this.freeGamesNum < this.freeGamesSum;
+    }
+
+    private supportsSessionStateCapture(session: VideoSlotSessionHandling<T>): session is VideoSlotSessionHandling<T> & ConvertableToSessionState<unknown> {
+        return typeof (session as Partial<ConvertableToSessionState<unknown>>).toSessionState === "function";
+    }
+
+    private supportsSessionStateRestore(session: VideoSlotSessionHandling<T>): session is VideoSlotSessionHandling<T> & BuildableFromSessionState<unknown> {
+        return typeof (session as Partial<BuildableFromSessionState<unknown>>).fromSessionState === "function";
     }
 }

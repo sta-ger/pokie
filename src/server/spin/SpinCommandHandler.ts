@@ -386,18 +386,21 @@ export class SpinCommandHandler implements SpinCommandHandling {
             };
         }
 
-        // The command has now passed every rejecting precondition. Apply the
-        // exact same validated selection to the live session immediately
-        // before the transactional path begins.
-        // Promote the successful validation reconstruction when there was no
-        // cached live instance. This keeps the normal successful path from
-        // constructing the same session twice, while a rejected request still
-        // never enters `liveSessions` at all.
+        // A legacy session may have ephemeral state that it intentionally does
+        // not serialize, so retain that cache when it has no feature snapshot.
+        // For every durable runtime, however, re-apply the exact persisted
+        // snapshot that validation reconstructed before executing it. This
+        // prevents a stale cached RNG/feature chain from playing a different
+        // round than the one canPlayNextGame() just approved.
         const session = this.liveSessions.get(sessionId) ?? validationSession;
-        if (!this.liveSessions.has(sessionId)) this.liveSessions.set(sessionId, session);
+        if (session !== validationSession) {
+            session.setBet(state.bet);
+            restoreFeatureState(session, state.featureState);
+        }
         if (bet !== undefined) session.setBet(bet);
         if (mode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(mode);
         session.setCreditsAmount(balanceBeforePlay);
+        this.liveSessions.set(sessionId, session);
 
         return this.playAndSettle(sessionId, session, state, version, balanceBeforePlay, requestId);
     }

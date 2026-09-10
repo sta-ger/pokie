@@ -792,6 +792,19 @@ describe("SimulationReportBuilder new metrics (volatility/distribution/averageBe
         expect(report.payoutHistogram).toEqual(statistics.payoutHistogram);
     });
 
+    test("preserves both canonical confidence intervals from the accumulator", () => {
+        const accumulator = new SimulationAccumulator();
+        accumulator.addRound(1, 0);
+        accumulator.addRound(2, 5);
+        accumulator.addRound(4, 10);
+        const statistics = accumulator.getStatistics();
+
+        const report = new SimulationReportBuilder().build({manifest, requestedRounds: 3, statistics, durationMs: 10});
+
+        expect(report.averagePayoutConfidenceInterval95).toEqual(statistics.averagePayoutConfidenceInterval95);
+        expect(report.rtpConfidenceInterval95).toEqual(statistics.rtpConfidenceInterval95);
+    });
+
     test("computes averageBet/averagePayout as totalBet/totalWin divided by rounds", () => {
         const accumulator = new SimulationAccumulator();
         accumulator.addRound(2, 0);

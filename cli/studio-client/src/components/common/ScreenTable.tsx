@@ -1,3 +1,4 @@
+import type {ReactNode} from "react";
 import {Table} from "@mantine/core";
 
 // A plain, unhighlighted reel-major screen preview -- `screen` is reel-major (screen[reelIndex][rowIndex]),
@@ -11,7 +12,7 @@ import {Table} from "@mantine/core";
 // mounts cli/client/player's own canonical DOM grid/highlight functions directly (see its own doc
 // comment), not this table. ScreenTable itself is only ever a bare preview grid today (Blueprint Editor's
 // own reel-strip generation window), with no win/payline data of its own to show.
-export function ScreenTable({screen}: {screen: string[][]}) {
+export function ScreenTable({screen, renderCell}: {screen: string[][]; renderCell?: (symbolId: string) => ReactNode}) {
     const rowCount = Math.max(0, ...screen.map((reel) => reel.length));
     const rows = Array.from({length: rowCount}, (_, rowIndex) => screen.map((reel) => reel[rowIndex]));
 
@@ -23,7 +24,7 @@ export function ScreenTable({screen}: {screen: string[][]}) {
                         <Table.Tr key={rowIndex}>
                             {row.map((cell, cellIndex) => (
                                 <Table.Td key={cellIndex} ta="center">
-                                    {cell}
+                                    {cell === undefined ? undefined : renderCell?.(cell) ?? cell}
                                 </Table.Td>
                             ))}
                         </Table.Tr>

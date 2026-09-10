@@ -8,6 +8,7 @@ import {
     PokieGame,
     SymbolsCombination,
     SymbolsCombinationsGenerating,
+    VideoSlotSessionHandling,
 } from "pokie";
 import fs from "fs";
 import os from "os";
@@ -727,6 +728,20 @@ describe("GamePackageGenerator", () => {
             ["B", "A"],
         ]);
         expect(Object.keys(embedded)).not.toContain("reelStripGeneration");
+    });
+
+    it("materializes symbolWeights once into the model, independently of round seed", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const result = generator.generate(buildBlueprint({symbolWeights: {A: 3, B: 2}}), cwd);
+        const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
+
+        const first = (game.createSession({seed: "round-seed-a"}) as VideoSlotSessionHandling).getSymbolsSequences().map((reel) => reel.toArray());
+        const second = (game.createSession({seed: "round-seed-b"}) as VideoSlotSessionHandling).getSymbolsSequences().map((reel) => reel.toArray());
+
+        expect(second).toEqual(first);
+        const resolvedModel = {...buildBlueprint({symbolWeights: {A: 3, B: 2}}), reelStrips: first};
+        Reflect.deleteProperty(resolvedModel, "symbolWeights");
+        expect(game.getConfigHash?.()).toBe(computeGameBlueprintHash(resolvedModel));
     });
 
     it("self-resolves reelStripGeneration when called directly without a pre-resolved 4th argument", () => {

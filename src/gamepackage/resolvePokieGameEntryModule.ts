@@ -1,6 +1,5 @@
 import {isPokieGame} from "./isPokieGame.js";
 import {readPokiePackageConfig} from "./readPokiePackageConfig.js";
-import crypto from "crypto";
 import fs from "fs";
 import {createRequire} from "module";
 import path from "path";
@@ -23,52 +22,54 @@ export type PokieGameEntryModuleLoading = (entryPath: string) => Promise<Record<
 // host limitation. createRequire is anchored at the entry so its transitive dependencies resolve
 // exactly as they would for a consumer loading that package directly.
 async function importPokieGameEntryModule(entryPath: string): Promise<Record<string, unknown>> {
-    // A Studio/CLI process is long-lived. Native import caches a module by URL,
-    // while CommonJS caches it by resolved filename; re-opening a rebuilt
-    // package at the same path must not execute yesterday's entry module.
-    // Content identity rather than a clock is used so coarse filesystem mtimes
-    // cannot accidentally reuse a changed build.
-    const entryRequire = createRequire(entryPath);
-    clearCommonJsPackageCache(entryRequire, entryPath);
+    // Both Node loaders cache *dependencies* independently of an entry. A
+    // content-query on only index.js therefore still runs yesterday's model.js.
+    // Load an invocation-owned package snapshot instead: all relative ESM/CJS
+    // imports receive fresh absolute paths, while bare dependencies still
+    // resolve from the original package's node_modules ancestor.
+    const snapshot = createRuntimeSnapshot(entryPath);
+    const snapshotEntry = path.join(snapshot.root, snapshot.relativeEntry);
+    const entryRequire = createRequire(snapshotEntry);
     try {
-        return (await import(freshEntrySpecifier(entryPath))) as Record<string, unknown>;
+        return (await import(pathToFileURL(snapshotEntry).href)) as Record<string, unknown>;
     } catch (error) {
-        // Jest's VM loader intentionally does not understand file-URL query
-        // specifiers. It still honors the preceding CommonJS cache eviction,
-        // so fall back to the ordinary absolute specifier there; real Node ESM
-        // hosts retain the content-keyed URL path above.
+        // Some embedded VM hosts reject file URLs outright. Fall back to the
+        // snapshot's ordinary absolute specifier there; its invocation-owned
+        // path still prevents either loader from reusing old dependencies.
         if (isModuleNotFoundError(error) && errorMessage(error).includes("file://")) {
-            return (await import(entryPath)) as Record<string, unknown>;
+            return (await import(snapshotEntry)) as Record<string, unknown>;
         }
         if (!isVmDynamicImportUnavailable(error)) {
             throw error;
         }
-        return entryRequire(entryPath) as Record<string, unknown>;
+        return entryRequire(snapshotEntry) as Record<string, unknown>;
+    } finally {
+        fs.rmSync(snapshot.root, {recursive: true, force: true});
     }
 }
 
-function freshEntrySpecifier(entryPath: string): string {
-    // import() with a file URL is required here: an absolute path plus `?v=` is
-    // not a portable Node module specifier. The URL query changes only loader
-    // identity, never the on-disk path passed to game code.
-    const contentHash = crypto.createHash("sha256").update(fs.readFileSync(entryPath)).digest("hex");
-    const url = pathToFileURL(entryPath);
-    url.searchParams.set("pokie-load", contentHash);
-    return url.href;
-}
-
-function clearCommonJsPackageCache(entryRequire: NodeRequire, entryPath: string): void {
-    const resolvedEntry = entryRequire.resolve(entryPath);
-    // Evict the entry itself. This is deliberately narrower than walking
-    // every dependency: a game may legitimately resolve `pokie` from its
-    // parent installation, and evicting that shared runtime while it is in the
-    // middle of loading can create recursive loader failures. A rebuilt game
-    // package's public behavior is rooted at its declared entry; dependencies
-    // are separately versioned package inputs and should be restarted when
-    // they themselves change.
-    Reflect.deleteProperty(entryRequire.cache, resolvedEntry);
-    if (typeof require === "function") {
-        Reflect.deleteProperty(require.cache, resolvedEntry);
+function createRuntimeSnapshot(entryPath: string): {root: string; relativeEntry: string} {
+    let packageRoot = path.dirname(entryPath);
+    while (path.dirname(packageRoot) !== packageRoot) {
+        if (fs.existsSync(path.join(packageRoot, "package.json"))) break;
+        packageRoot = path.dirname(packageRoot);
+    }
+    const relativeEntry = path.relative(packageRoot, entryPath);
+    if (relativeEntry.startsWith(`..${path.sep}`) || path.isAbsolute(relativeEntry)) {
+        throw new Error(`Could not locate package root for entry "${entryPath}".`);
+    }
+    const cacheParent = path.join(packageRoot, ".pokie-runtime-cache");
+    fs.mkdirSync(cacheParent, {recursive: true});
+    const root = fs.mkdtempSync(path.join(cacheParent, "load-"));
+    try {
+        for (const name of fs.readdirSync(packageRoot)) {
+            if (name === "node_modules" || name === ".pokie-runtime-cache") continue;
+            fs.cpSync(path.join(packageRoot, name), path.join(root, name), {recursive: true});
+        }
+        return {root, relativeEntry};
+    } catch (error) {
+        fs.rmSync(root, {recursive: true, force: true});
+        throw error;
     }
 }
 

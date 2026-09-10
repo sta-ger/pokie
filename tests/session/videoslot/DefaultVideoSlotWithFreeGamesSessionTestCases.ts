@@ -35,7 +35,7 @@ export const testSessionStateCaptureAndRestore = (
     session.setFreeGamesBank(250);
 
     const state = session.toSessionState();
-    expect(state).toEqual({freeGamesNum: 3, freeGamesSum: 10, freeGamesBank: 250});
+    expect(state).toEqual({freeGamesNum: 3, freeGamesSum: 10, freeGamesBank: 250, base: {}});
 
     otherSession.fromSessionState(state);
 

@@ -66,6 +66,18 @@ describe("FileSessionRepository", () => {
         await expect(repository.load("session-1")).rejects.toBeInstanceOf(SessionStateCorruptError);
     });
 
+    it("rejects invalid envelope versions and non-finite state numbers instead of restoring them", async () => {
+        const repository = new FileSessionRepository(directory);
+        await repository.save("session-1", {bet: 5, win: 0});
+        const [fileName] = fs.readdirSync(directory);
+
+        fs.writeFileSync(path.join(directory, fileName), JSON.stringify({version: -1, state: {bet: 5, win: 0}}));
+        await expect(repository.load("session-1")).rejects.toBeInstanceOf(SessionStateCorruptError);
+
+        fs.writeFileSync(path.join(directory, fileName), JSON.stringify({version: 1, state: {bet: 5, win: "NaN"}}));
+        await expect(repository.load("session-1")).rejects.toBeInstanceOf(SessionStateCorruptError);
+    });
+
     it("does not let a sessionId escape the target directory via path traversal", async () => {
         const repository = new FileSessionRepository(directory);
         const outsideFile = path.join(os.tmpdir(), "pokie-session-repo-traversal-marker.json");

@@ -1,5 +1,7 @@
 import type {GameBlueprint} from "./GameBlueprint.js";
 import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGeneration.js";
+import {computeGameBlueprintHash} from "./computeGameBlueprintHash.js";
+import {ReelStripGenerator} from "../reels/ReelStripGenerator.js";
 
 // Derives the plain, literal reelStrips a blueprint's per-reel reelStripGeneration resolves to, for
 // embedding in the generated runtime module — never re-runs generation itself, just combines each
@@ -20,7 +22,7 @@ import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGen
 export function materializeReelStrips(blueprint: GameBlueprint, reelStripGeneration: GameBuildInfoReelStripGeneration | undefined): GameBlueprint {
     const specs = blueprint.reelStripGeneration;
     if (specs === undefined) {
-        return blueprint;
+        return materializeSharedSymbolWeights(blueprint);
     }
 
     const stripsByReelIndex = new Map<number, string[]>();
@@ -50,5 +52,52 @@ export function materializeReelStrips(blueprint: GameBlueprint, reelStripGenerat
 
     const materialized: GameBlueprint = {...blueprint, reelStrips};
     Reflect.deleteProperty(materialized, "reelStripGeneration");
+    return materializeSharedSymbolWeights(materialized);
+}
+
+// `symbolWeights` is an authored distribution, not per-round entropy.  Resolving it here makes one
+// literal reel model part of the game identity before any runtime/session RNG is created.  The seed is
+// derived from the authored model hash (and reel index), never a player/simulation seed: the same
+// authored model therefore produces the same runtime, simulation, export and config hash.
+function materializeSharedSymbolWeights(blueprint: GameBlueprint): GameBlueprint {
+    if (blueprint.symbolWeights === undefined || blueprint.reelStrips !== undefined) {
+        return blueprint;
+    }
+
+    const weights = blueprint.symbolWeights;
+    const length = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
+    if (!Number.isSafeInteger(length) || length <= 0) {
+        throw new Error("symbolWeights must resolve to a positive safe-integer reel length.");
+    }
+
+    const modelHash = computeGameBlueprintHash(blueprint);
+    const generator = new ReelStripGenerator();
+    const reelStrips: string[][] = [];
+    for (let reelIndex = 0; reelIndex < blueprint.reels; reelIndex++) {
+        const result = generator.generateFromSymbolWeights({
+            length,
+            symbolWeights: weights,
+            seed: seedForResolvedReel(modelHash, reelIndex),
+        });
+        if (!result.success || result.strip === undefined) {
+            throw new Error(`symbolWeights could not materialize reel ${reelIndex}.`);
+        }
+        reelStrips.push(result.strip.toArray());
+    }
+
+    const materialized: GameBlueprint = {...blueprint, reelStrips};
+    Reflect.deleteProperty(materialized, "symbolWeights");
     return materialized;
+}
+
+function seedForResolvedReel(modelHash: string, reelIndex: number): number {
+    // FNV-1a is only a deterministic string-to-uint32 bridge for ReelStripGenerator's seed API;
+    // it is not used as a fairness or round-RNG primitive.
+    let hash = 0x811c9dc5;
+    const value = `${modelHash}:resolved-reel:${reelIndex}`;
+    for (let i = 0; i < value.length; i++) {
+        hash ^= value.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return hash >>> 0;
 }

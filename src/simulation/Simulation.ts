@@ -1,6 +1,7 @@
 import type {AsyncSimulationHandling} from "./AsyncSimulationHandling.js";
 import type {BetForNextSimulationRoundSetting} from "./BetForNextSimulationRoundSetting.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
+import type {StakeAmountDetermining} from "../session/StakeAmountDetermining.js";
 import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessionRoundPlayableDetermining.js";
 import type {SimulationConfigRepresenting} from "./SimulationConfigRepresenting.js";
 
@@ -44,29 +45,39 @@ export class Simulation implements AsyncSimulationHandling {
     }
 
     public runAsync(chunkSize = 1000, delayBetweenChunks = 0): Promise<void> {
-        return new Promise((resolve) => {
+        if (!Number.isSafeInteger(chunkSize) || chunkSize <= 0) {
+            return Promise.reject(new RangeError("chunkSize must be a positive safe integer."));
+        }
+        if (!Number.isFinite(delayBetweenChunks) || delayBetweenChunks < 0) {
+            return Promise.reject(new RangeError("delayBetweenChunks must be a finite non-negative number."));
+        }
+        return new Promise((resolve, reject) => {
             let currentRound = 0;
 
             const playChunk = (): void => {
-                const chunkEnd = Math.min(currentRound + chunkSize, this.numberOfRounds);
+                try {
+                    const chunkEnd = Math.min(currentRound + chunkSize, this.numberOfRounds);
 
-                for (let i = currentRound; i < chunkEnd; i++) {
-                    if (this.canPlayNextGame()) {
-                        this.doPlay();
+                    for (let i = currentRound; i < chunkEnd; i++) {
+                        if (this.canPlayNextGame()) {
+                            this.doPlay();
+                        } else {
+                            this.onFinished();
+                            resolve();
+                            return;
+                        }
+                    }
+
+                    currentRound = chunkEnd;
+
+                    if (currentRound < this.numberOfRounds) {
+                        setTimeout(playChunk, delayBetweenChunks);
                     } else {
                         this.onFinished();
                         resolve();
-                        return;
                     }
-                }
-
-                currentRound = chunkEnd;
-
-                if (currentRound < this.numberOfRounds) {
-                    setTimeout(playChunk, delayBetweenChunks);
-                } else {
-                    this.onFinished();
-                    resolve();
+                } catch (error) {
+                    reject(error);
                 }
             };
 
@@ -184,8 +195,9 @@ export class Simulation implements AsyncSimulationHandling {
         }
         this.currentRoundNumber++;
         this.setBetBeforePlay();
-        this.totalBetAmount += this.session.getBet();
-        this.betsPerRound.push(this.session.getBet());
+        const stake = this.supportsStakeAmount(this.session) ? this.session.getStakeAmount() : this.session.getBet();
+        this.totalBetAmount += stake;
+        this.betsPerRound.push(stake);
         this.session.play();
         this.totalPayoutAmount += this.session.getWinAmount();
         this.allPayouts.push(this.session.getWinAmount());
@@ -197,5 +209,9 @@ export class Simulation implements AsyncSimulationHandling {
         if (this.afterPlayCallback) {
             this.afterPlayCallback();
         }
+    }
+
+    private supportsStakeAmount(session: GameSessionHandling): session is GameSessionHandling & StakeAmountDetermining {
+        return typeof (session as Partial<StakeAmountDetermining>).getStakeAmount === "function";
     }
 }

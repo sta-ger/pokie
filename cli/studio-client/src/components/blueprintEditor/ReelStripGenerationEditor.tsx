@@ -1,4 +1,4 @@
-import {Alert, Badge, Button, Group, List, MultiSelect, NumberInput, Radio, Select, Switch, Table, Text, TextInput, Textarea} from "@mantine/core";
+import {Alert, Badge, Button, Group, List, MultiSelect, NumberInput, Radio, Select, Switch, Table, Text, Textarea} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState} from "react";
 import {previewReelStripGeneration} from "../../api/apiClient";
@@ -52,6 +52,7 @@ import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RowActions} from "../common/RowActions";
 import {ScreenTable} from "../common/ScreenTable";
+import {symbolArtworkFromBlueprint, SymbolPresentation} from "../common/SymbolPresentation";
 
 function asRecord(value: unknown): Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -118,9 +119,9 @@ function makeScratchBlueprint(reelIndex: number, entry: Record<string, unknown>)
     return {reelStripGeneration: Array.from({length: reelIndex + 1}, (_, i) => (i === reelIndex ? entry : {type: "literal", strip: []}))};
 }
 
-function LiteralStripEditor({reelIndex, entry, mutate, issues}: {reelIndex: number; entry: Record<string, unknown>; mutate: BlueprintMutate; issues: DraftIssue[]}) {
+function LiteralStripEditor({reelIndex, entry, symbols, mutate, issues}: {reelIndex: number; entry: Record<string, unknown>; symbols: string[]; mutate: BlueprintMutate; issues: DraftIssue[]}) {
     const strip = asStringList(entry.strip);
-    const [newSymbolId, setNewSymbolId] = useState("");
+    const [newSymbolId, setNewSymbolId] = useState<string | null>(null);
     const [page, setPage] = useState(0);
     const pageSize = 100;
     const lastPage = Math.max(0, Math.ceil(strip.length / pageSize) - 1);
@@ -166,22 +167,23 @@ function LiteralStripEditor({reelIndex, entry, mutate, issues}: {reelIndex: numb
                 })}
             </List>
             <QuickActions>
-                <TextInput
-                    placeholder="New symbol id"
-                    aria-label={`New symbol id for reel ${reelIndex + 1}`}
+                <Select
+                    searchable
+                    placeholder="Choose canonical symbol"
+                    aria-label={`Symbol picker for reel ${reelIndex + 1}`}
+                    data={symbols}
                     value={newSymbolId}
-                    onChange={(event) => setNewSymbolId(event.currentTarget.value)}
+                    onChange={setNewSymbolId}
                 />
                 <Button
                     variant="default"
                     aria-label={`Add symbol to reel ${reelIndex + 1}`}
                     onClick={() => {
-                        const id = newSymbolId.trim();
-                        if (id.length === 0) {
+                        if (newSymbolId === null) {
                             return;
                         }
-                        mutate((b) => addReelStripGenerationLiteralSymbol(b, reelIndex, id));
-                        setNewSymbolId("");
+                        mutate((b) => addReelStripGenerationLiteralSymbol(b, reelIndex, newSymbolId));
+                        setNewSymbolId(null);
                     }}
                 >
                     Add symbol
@@ -867,6 +869,7 @@ export function ReelStripGenerationEditor({
     const confirm = useConfirm();
     const entries = asReelStripGenerationEntries(blueprint.reelStripGeneration);
     const symbols = asStringList(blueprint.symbols);
+    const artwork = symbolArtworkFromBlueprint(blueprint);
     const defaultRows = typeof blueprint.rows === "number" && blueprint.rows > 0 ? blueprint.rows : 3;
 
     const [activeStep, setActiveStep] = useState(0);
@@ -1224,7 +1227,7 @@ export function ReelStripGenerationEditor({
                                 issues={draftIssues}
                             />
                         ) : (
-                            <LiteralStripEditor key={`${selectedReelIndex}-${draftGeneration}`} reelIndex={selectedReelIndex} entry={draftEntry} mutate={localMutate} issues={draftIssues} />
+                            <LiteralStripEditor key={`${selectedReelIndex}-${draftGeneration}`} reelIndex={selectedReelIndex} entry={draftEntry} symbols={symbols} mutate={localMutate} issues={draftIssues} />
                         )}
 
                         <QuickActions>
@@ -1318,7 +1321,7 @@ export function ReelStripGenerationEditor({
                                 />
                                 <NumberInput label="Visible rows" min={1} step={1} value={rows} onChange={(value) => setRows(typeof value === "number" ? value : defaultRows)} />
                             </QuickActions>
-                            <ScreenTable screen={[window]} />
+                            <ScreenTable screen={[window]} renderCell={(symbolId) => <SymbolPresentation symbolId={symbolId} artwork={artwork} />} />
                         </PageSection>
 
                         <QuickActions>

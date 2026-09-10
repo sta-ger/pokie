@@ -207,8 +207,24 @@ export function PlayTab({
                         Spin
                     </Button>
                 </QuickActions>
+                {errorNotice}
+                {loading && <LoadingState label="Spinning…" />}
+                {(!loading || playedRound !== undefined) && roundResult}
             </PageSection>
 
+            <PageSection legend="Session">
+                {modeField}
+                <AdvancedDisclosure detail="seed">
+                    {seedField}
+                </AdvancedDisclosure>
+                <QuickActions>
+                    <Button variant="default" loading={loading} onClick={() => onNewSession(seed.trim() || undefined, selectedMode ?? undefined)}>
+                        Reset Play session
+                    </Button>
+                </QuickActions>
+            </PageSection>
+
+            <AdvancedDisclosure detail="scenarios">
             <PageSection legend="Scenarios">
                 <Text size="sm" c="dimmed" mb="sm">
                     Scenario searches use real settled spins and leave their final round in this Play session.
@@ -246,23 +262,7 @@ export function PlayTab({
                     style={{maxWidth: 240}}
                 />
             </PageSection>
-
-            <PageSection legend="Session">
-                {modeField}
-                <AdvancedDisclosure detail="seed">
-                    {seedField}
-                </AdvancedDisclosure>
-                <QuickActions>
-                    <Button variant="default" loading={loading} onClick={() => onNewSession(seed.trim() || undefined, selectedMode ?? undefined)}>
-                        Reset Play session
-                    </Button>
-                </QuickActions>
-            </PageSection>
-
-            {errorNotice}
-
-            {loading && <LoadingState label="Spinning…" />}
-            {(!loading || playedRound !== undefined) && roundResult}
+            </AdvancedDisclosure>
         </div>
     );
 }
