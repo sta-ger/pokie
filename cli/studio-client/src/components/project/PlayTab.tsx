@@ -225,43 +225,43 @@ export function PlayTab({
             </PageSection>
 
             <AdvancedDisclosure detail="scenarios">
-            <PageSection legend="Scenarios">
-                <Text size="sm" c="dimmed" mb="sm">
+                <PageSection legend="Scenarios">
+                    <Text size="sm" c="dimmed" mb="sm">
                     Scenario searches use real settled spins and leave their final round in this Play session.
-                </Text>
-                <QuickActions>
-                    <Button variant="default" loading={loading} onClick={onFindAnyWin}>
+                    </Text>
+                    <QuickActions>
+                        <Button variant="default" loading={loading} onClick={onFindAnyWin}>
                         Find any win
-                    </Button>
-                    <Button
-                        variant="default"
-                        loading={loading}
-                        disabled={!selectedSymbol}
-                        onClick={() => selectedSymbol !== null && onFindSymbolWin(selectedSymbol)}
-                    >
+                        </Button>
+                        <Button
+                            variant="default"
+                            loading={loading}
+                            disabled={!selectedSymbol}
+                            onClick={() => selectedSymbol !== null && onFindSymbolWin(selectedSymbol)}
+                        >
                         Find symbol win
-                    </Button>
-                    <Button variant="default" loading={loading} onClick={onFindFreeGames}>
+                        </Button>
+                        <Button variant="default" loading={loading} onClick={onFindFreeGames}>
                         Find free games
-                    </Button>
-                </QuickActions>
-                <Select
-                    aria-label="Symbol"
-                    label="Symbol"
-                    description={
-                        availableSymbols !== undefined && availableSymbols.length > 0
-                            ? "The symbol Find symbol win searches for in a real, already-evaluated win."
-                            : "Find symbol win is unavailable because this game does not expose selectable symbols."
-                    }
-                    placeholder={availableSymbols !== undefined && availableSymbols.length > 0 ? "Choose a symbol" : "No symbols available"}
-                    data={availableSymbols ?? []}
-                    value={selectedSymbol}
-                    onChange={setSelectedSymbol}
-                    disabled={availableSymbols === undefined || availableSymbols.length === 0}
-                    mb="sm"
-                    style={{maxWidth: 240}}
-                />
-            </PageSection>
+                        </Button>
+                    </QuickActions>
+                    <Select
+                        aria-label="Symbol"
+                        label="Symbol"
+                        description={
+                            availableSymbols !== undefined && availableSymbols.length > 0
+                                ? "The symbol Find symbol win searches for in a real, already-evaluated win."
+                                : "Find symbol win is unavailable because this game does not expose selectable symbols."
+                        }
+                        placeholder={availableSymbols !== undefined && availableSymbols.length > 0 ? "Choose a symbol" : "No symbols available"}
+                        data={availableSymbols ?? []}
+                        value={selectedSymbol}
+                        onChange={setSelectedSymbol}
+                        disabled={availableSymbols === undefined || availableSymbols.length === 0}
+                        mb="sm"
+                        style={{maxWidth: 240}}
+                    />
+                </PageSection>
             </AdvancedDisclosure>
         </div>
     );
