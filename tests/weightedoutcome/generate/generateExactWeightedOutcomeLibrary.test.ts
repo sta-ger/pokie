@@ -5,6 +5,8 @@ import {
     GameBlueprint,
     GamePackageGenerator,
     createStreamingExactWeightedOutcomes,
+    ExactEnumerationCheckpoint,
+    issueExactEnumerationRecoveryAuthority,
     generateExactWeightedOutcomeLibrary,
     generateSampledWeightedOutcomeLibrary,
     generateWeightedOutcomeLibrary,
@@ -694,7 +696,9 @@ describe("generateExactWeightedOutcomeLibrary", () => {
 
     it("persists a bounded streaming checkpoint and consumes its owned partitions on resume", async () => {
         const recoveryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-recovery-"));
-        const recoveryAuthority = {id: "f8b7f8bb-2b27-4c87-a136-04910e1602fe", stagingDirectory: path.join(recoveryRoot, "f8b7f8bb-2b27-4c87-a136-04910e1602fe")};
+        const recoveryAuthorityId = "f8b7f8bb-2b27-4c87-a136-04910e1602fe";
+        const stagingDirectory = path.join(recoveryRoot, recoveryAuthorityId);
+        const recoveryAuthority = issueExactEnumerationRecoveryAuthority(recoveryRoot, recoveryAuthorityId);
         const stream = streamExactWeightedOutcomes({
             libraryId: "fixture-lib",
             game: buildFixtureGame(),
@@ -712,11 +716,11 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         }
         expect(cancelled?.checkpoint).toMatchObject({
             processedRawIndex: BigInt(3), progressTotal: BigInt(6),
-            recoveryAuthorityId: recoveryAuthority.id,
+            recoveryAuthorityId,
         });
         expect(cancelled?.checkpoint.restartRequired).toBeUndefined();
         const checkpoint = cancelled!.checkpoint;
-        expect(fs.existsSync(recoveryAuthority.stagingDirectory)).toBe(true);
+        expect(fs.existsSync(stagingDirectory)).toBe(true);
 
         const resumed = streamExactWeightedOutcomes({
             libraryId: "fixture-lib",
@@ -733,8 +737,49 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         }
         expect(outcomes).toHaveLength(4);
         expect(next.value).toMatchObject({strategy: "exact", sampledRawCount: 6});
-        expect(fs.existsSync(recoveryAuthority.stagingDirectory)).toBe(false);
+        expect(fs.existsSync(stagingDirectory)).toBe(false);
         fs.rmSync(recoveryRoot, {recursive: true, force: true});
+    });
+
+    it("fails closed without consuming a copied owned marker through a redirected recovery directory", async () => {
+        const recoveryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-authenticated-recovery-"));
+        const externalDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-external-"));
+        const id = "1e8a4e13-13e7-4db9-9b81-8d4f7e4db041";
+        const stagingDirectory = path.join(recoveryRoot, id);
+        const externalFile = path.join(externalDirectory, "must-not-be-consumed.txt");
+        fs.writeFileSync(externalFile, "external");
+        try {
+            const initial = streamExactWeightedOutcomes({
+                libraryId: "fixture-lib", game: buildFixtureGame(), pokieVersion: "1.3.0",
+                signal: abortAfterReads(3), durableCheckpointOnCancellation: true,
+                recoveryAuthority: issueExactEnumerationRecoveryAuthority(recoveryRoot, id),
+            });
+            let checkpoint: ExactEnumerationCheckpoint | undefined;
+            try {
+                await initial.next();
+                fail("expected cancellation");
+            } catch (error) {
+                checkpoint = (error as WeightedOutcomeLibraryGenerationCancelledError).checkpoint;
+            }
+            const copiedMarker = fs.readFileSync(path.join(stagingDirectory, ".pokie-exact-checkpoint.json"));
+            fs.rmSync(stagingDirectory, {recursive: true, force: true});
+            fs.writeFileSync(path.join(externalDirectory, ".pokie-exact-checkpoint.json"), copiedMarker);
+            fs.symlinkSync(externalDirectory, stagingDirectory, "dir");
+
+            const resumed = streamExactWeightedOutcomes({
+                libraryId: "fixture-lib", game: buildFixtureGame(), pokieVersion: "1.3.0", resumeFrom: checkpoint,
+                recoveryAuthority: issueExactEnumerationRecoveryAuthority(recoveryRoot, id),
+            });
+            await expect(resumed.next()).rejects.toMatchObject({
+                name: "WeightedOutcomeLibraryGenerationError",
+                code: "weighted-outcome-library-generation-checkpoint-mismatch",
+            });
+            expect(fs.readFileSync(externalFile, "utf8")).toBe("external");
+            expect(fs.existsSync(path.join(externalDirectory, ".pokie-exact-checkpoint.json"))).toBe(true);
+        } finally {
+            fs.rmSync(recoveryRoot, {recursive: true, force: true});
+            fs.rmSync(externalDirectory, {recursive: true, force: true});
+        }
     });
 
     it("reports progress at least once for a small sweep", async () => {

@@ -296,7 +296,11 @@ export class StudioOutcomeLibraryGenerateJobService {
             checkpoint: {
                 processedRawIndex: checkpoint.processedRawIndex.toString(), progressTotal: checkpoint.progressTotal.toString(), sourceEnumerationId: checkpoint.sourceEnumerationId,
                 grids: Array.from(checkpoint.grids, ([key, entry]) => ({key, grid: entry.grid, weight: entry.weight.toString()})),
-                ...(checkpoint.recoveryAuthorityId === undefined ? {} : {recoveryAuthorityId: checkpoint.recoveryAuthorityId}),
+                // The JobService owns the persisted recovery namespace. An
+                // injected/direct generator may omit the capability id, but
+                // its checkpoint is still bound to this job rather than a
+                // checkpoint-controlled staging selector.
+                recoveryAuthorityId: checkpoint.recoveryAuthorityId ?? id,
             },
         };
         fs.writeFileSync(filePath, JSON.stringify(stored), "utf8");
@@ -315,7 +319,13 @@ export class StudioOutcomeLibraryGenerateJobService {
                 "durableCheckpointId" in checkpoint ||
                 (checkpoint.recoveryAuthorityId !== undefined && (typeof checkpoint.recoveryAuthorityId !== "string" || !(/^[0-9a-f-]{36}$/i).test(checkpoint.recoveryAuthorityId)))
             ) return undefined;
-            return persisted.binding !== undefined && requestIdentity(fromPersistedRequest(persisted.request)) === persisted.binding.requestIdentity ? persisted : undefined;
+            if (
+                persisted.binding === undefined ||
+                requestIdentity(fromPersistedRequest(persisted.request)) !== persisted.binding.requestIdentity ||
+                checkpoint.recoveryAuthorityId !== id ||
+                !isPersistedExactCheckpoint(checkpoint)
+            ) return undefined;
+            return persisted;
         } catch {
             return undefined;
         }
@@ -390,6 +400,22 @@ function fromPersistedCheckpoint(checkpoint: PersistedCheckpoint["checkpoint"]):
         grids: new Map(checkpoint.grids.map((entry) => [entry.key, {grid: entry.grid, weight: BigInt(entry.weight)}])),
         ...(checkpoint.recoveryAuthorityId === undefined ? {} : {recoveryAuthorityId: checkpoint.recoveryAuthorityId}),
     };
+}
+
+/** Reject malformed durable JSON before bigint/map conversion can consume it. */
+function isPersistedExactCheckpoint(checkpoint: PersistedCheckpoint["checkpoint"] & Record<string, unknown>): boolean {
+    return (
+        typeof checkpoint.processedRawIndex === "string" && (/^[0-9]+$/).test(checkpoint.processedRawIndex) &&
+        typeof checkpoint.progressTotal === "string" && (/^[0-9]+$/).test(checkpoint.progressTotal) &&
+        typeof checkpoint.sourceEnumerationId === "string" && checkpoint.sourceEnumerationId.length > 0 &&
+        Array.isArray(checkpoint.grids) &&
+        checkpoint.grids.every((entry) =>
+            entry !== null && typeof entry === "object" &&
+            typeof entry.key === "string" && Array.isArray(entry.grid) &&
+            entry.grid.every((row) => Array.isArray(row) && row.every((symbol) => typeof symbol === "string")) &&
+            typeof entry.weight === "string" && (/^[0-9]+$/).test(entry.weight),
+        )
+    );
 }
 
 function requestIdentity(request: ValidatedOutcomeLibraryGenerateRequest): string {

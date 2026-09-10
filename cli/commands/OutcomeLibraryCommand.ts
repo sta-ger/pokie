@@ -1,13 +1,13 @@
 import {Command} from "commander";
 import fs from "fs";
 import path from "path";
-import {randomUUID} from "crypto";
 import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
     computeArtifactInputBindingHash,
     ExactEnumerationCheckpoint,
     ExactEnumerationRecoveryAuthority,
+    issueExactEnumerationRecoveryAuthority,
     GenerateExactWeightedOutcomeLibraryResult,
     OutcomeLibraryGenerationRequest,
     ResolvedOutcomeLibraryGenerationRequest,
@@ -1012,12 +1012,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
     /** Resolve a checkpoint only beneath the resume file's adapter-owned root. */
     private createRecoveryAuthority(resumePath: string, checkpoint: ExactEnumerationCheckpoint | undefined): ExactEnumerationRecoveryAuthority {
-        const id = checkpoint?.recoveryAuthorityId ?? randomUUID();
-        if (!(/^[0-9a-f-]{36}$/i).test(id)) throw new Error(`"${resumePath}" has an invalid recovery authority. Start a new generation.`);
-        const root = `${path.resolve(resumePath)}.pokie-recovery`;
-        const stagingDirectory = path.resolve(root, id);
-        if (path.dirname(stagingDirectory) !== root) throw new Error(`"${resumePath}" has an unsafe recovery authority. Start a new generation.`);
-        return {id, stagingDirectory};
+        return issueExactEnumerationRecoveryAuthority(
+            `${path.resolve(resumePath)}.pokie-recovery`,
+            checkpoint?.recoveryAuthorityId,
+        );
     }
 
     private async executeBuild(configPath: string, outDir: string): Promise<number> {

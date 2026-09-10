@@ -294,7 +294,9 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         );
     }
 
-    let resumeState: Pick<PreparedGeneration, "initialGrids" | "initialProcessedRawCount" | "recoveryAuthority"> = {};
+    let resumeState: Pick<PreparedGeneration, "initialGrids" | "initialProcessedRawCount" | "recoveryAuthority"> = options.recoveryAuthority === undefined
+        ? {}
+        : {recoveryAuthority: options.recoveryAuthority};
     if (options.resumeFrom !== undefined) {
         if (options.resumeFrom.recoveryAuthorityId === undefined) {
             resumeState = {initialGrids: options.resumeFrom.grids, initialProcessedRawCount: options.resumeFrom.processedRawIndex};
@@ -504,7 +506,8 @@ async function *externallyAccumulateExactGridWeights(
         readonly retainStagingOnCancellation?: boolean;
     },
 ): AsyncGenerator<{readonly id: string; readonly entry: UniqueGridWeightEntry<string>}, bigint> {
-    const stagingDir = options.recoveryAuthority?.stagingDirectory ?? fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-grids-"));
+    const issuedStaging = options.recoveryAuthority?.acquireStagingDirectory(options.initialProcessedRawCount !== undefined);
+    const stagingDir = issuedStaging?.stagingDirectory ?? fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-grids-"));
     const checkpointMarker = path.join(stagingDir, ".pokie-exact-checkpoint.json");
     const checkpointId = options.recoveryAuthority?.id ?? crypto.randomUUID();
     const descriptors = new Map<number, number>();
@@ -512,10 +515,10 @@ async function *externallyAccumulateExactGridWeights(
     let processedRawCount = options.initialProcessedRawCount ?? BigInt(0);
     let checkpointGrid: [string, UniqueGridWeightEntry<string>] | undefined;
     let retainStaging = false;
+    let expectedMarker: string | undefined;
     // A recovery authority is issued by an adapter that has already confined
     // this path to its own root; consuming it therefore owns only that one
     // issued directory, never a caller-supplied checkpoint path.
-    let ownsStaging = true;
     const flushBufferedLines = () => {
         for (const [bucket, buffered] of bufferedLines) fs.writeSync(descriptors.get(bucket)!, buffered);
         bufferedLines.clear();
@@ -534,29 +537,32 @@ async function *externallyAccumulateExactGridWeights(
         );
     };
     try {
-        const expectedMarker = {sourceEnumerationId: options.sourceEnumerationId, progressTotal: progressTotal.toString(), checkpointId};
+        expectedMarker = JSON.stringify({
+            sourceEnumerationId: options.sourceEnumerationId,
+            progressTotal: progressTotal.toString(),
+            checkpointId,
+            ...(issuedStaging === undefined ? {} : {markerProof: issuedStaging.markerProof}),
+        });
         if (options.recoveryAuthority === undefined) {
-            fs.writeFileSync(checkpointMarker, JSON.stringify(expectedMarker), {flag: "wx"});
+            fs.writeFileSync(checkpointMarker, expectedMarker, {flag: "wx"});
         } else if (options.initialProcessedRawCount === undefined) {
-            fs.mkdirSync(stagingDir, {recursive: true});
-            fs.writeFileSync(checkpointMarker, JSON.stringify(expectedMarker), {flag: "wx"});
+            fs.writeFileSync(checkpointMarker, expectedMarker, {flag: "wx"});
         } else {
-            let marker: unknown;
+            let marker: string;
             try {
-                marker = JSON.parse(fs.readFileSync(checkpointMarker, "utf8"));
+                marker = fs.readFileSync(checkpointMarker, "utf8");
             } catch {
                 throw new WeightedOutcomeLibraryGenerationError(
                     "weighted-outcome-library-generation-checkpoint-mismatch",
                     "The resumable exact checkpoint no longer has its invocation-owned disk marker. Start a new generation.",
                 );
             }
-            if (JSON.stringify(marker) !== JSON.stringify(expectedMarker)) {
+            if (marker !== expectedMarker) {
                 throw new WeightedOutcomeLibraryGenerationError(
                     "weighted-outcome-library-generation-checkpoint-mismatch",
                     "The resumable exact checkpoint does not belong to this exact enumeration. Start a new generation.",
                 );
             }
-            ownsStaging = true;
         }
         for (const {tuple, rawIndex} of tuples) {
             if (options.signal?.aborted) {
@@ -622,7 +628,10 @@ async function *externallyAccumulateExactGridWeights(
         // In that case no checkpoint is observable or persistable.  Always
         // remove external partitions; callers receive an honest retry-only
         // cancellation instead of an orphaned pseudo-resume directory.
-        if (!retainStaging && ownsStaging) fs.rmSync(stagingDir, {recursive: true, force: true});
+        if (!retainStaging) {
+            if (options.recoveryAuthority !== undefined && expectedMarker !== undefined) options.recoveryAuthority.releaseStagingDirectory(expectedMarker);
+            else fs.rmSync(stagingDir, {recursive: true, force: true});
+        }
     }
 }
 

@@ -3,6 +3,7 @@ import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {ValidationRule} from "../../validation/ValidationRule.js";
 import fs from "fs";
 import path from "path";
+import {randomUUID} from "crypto";
 import {estimateExactOutcomeSpaceSize} from "./estimateExactOutcomeSpaceSize.js";
 import type {OutcomeSpaceEstimate} from "./OutcomeSpaceEstimate.js";
 import type {ExactEnumerationCheckpoint} from "./WeightedOutcomeLibraryGenerationCancelledError.js";
@@ -36,11 +37,140 @@ export const MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY = {
 export type OutcomeLibraryGenerationSample = {readonly sampleSize: bigint; readonly seed: string};
 export type OutcomeLibraryGenerationMode = "default" | "exact" | "sampled" | "bounded";
 
-/** An adapter-owned capability for the bounded disk state of one exact run. */
+/**
+ * An adapter-owned capability for the bounded disk state of one exact run.
+ *
+ * Checkpoints carry only `id`.  In particular, they never carry a staging
+ * path or the proof needed to open it: those remain in an adapter-owned
+ * registry outside the checkpoint document.  This prevents a hand-edited
+ * checkpoint from turning recovery cleanup into a recursive delete of an
+ * arbitrary directory.
+ */
 export type ExactEnumerationRecoveryAuthority = {
     readonly id: string;
-    readonly stagingDirectory: string;
+    readonly acquireStagingDirectory: (resuming: boolean) => {
+        readonly stagingDirectory: string;
+        readonly markerProof: string;
+    };
+    /** Removes state only after the producer proves the exact issued marker. */
+    readonly releaseStagingDirectory: (expectedMarker: string) => void;
 };
+
+type RecoveryAuthorityRecord = {
+    readonly schemaVersion: 1;
+    readonly id: string;
+    readonly markerProof: string;
+};
+
+function recoveryConflict(message: string): WeightedOutcomeLibraryGenerationError {
+    return new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-checkpoint-mismatch", message);
+}
+
+/**
+ * Issues the durable capability used by CLI and Studio recovery adapters.
+ * The registry is deliberately sibling state, not data serialized into a
+ * checkpoint.  A checkpoint author can at most name an existing registry
+ * entry beneath this adapter-selected root; it cannot select a filesystem
+ * path or forge the marker proof for another entry.
+ */
+export function issueExactEnumerationRecoveryAuthority(recoveryRoot: string, requestedId?: string): ExactEnumerationRecoveryAuthority {
+    const id = requestedId ?? randomUUID();
+    if (!(/^[0-9a-f-]{36}$/i).test(id)) throw recoveryConflict("The recovery authority is invalid. Start a new generation.");
+    const root = path.resolve(recoveryRoot);
+    const stagingDirectory = path.join(root, id);
+    const registryDirectory = path.join(root, ".authorities");
+    const recordPath = path.join(registryDirectory, `${id}.json`);
+
+    const establishedRoot = (): string => {
+        fs.mkdirSync(root, {recursive: true, mode: 0o700});
+        const realRoot = fs.realpathSync(root);
+        if (path.dirname(stagingDirectory) !== root || path.dirname(registryDirectory) !== root) {
+            throw recoveryConflict("The recovery authority resolves outside its adapter-owned root. Start a new generation.");
+        }
+        return realRoot;
+    };
+    const assertOwnedStagingDirectory = (realRoot: string): void => {
+        let stat: fs.Stats;
+        try {
+            stat = fs.lstatSync(stagingDirectory);
+        } catch {
+            throw recoveryConflict("The resumable exact checkpoint no longer has its invocation-owned disk state. Start a new generation.");
+        }
+        if (!stat.isDirectory() || stat.isSymbolicLink()) {
+            throw recoveryConflict("The resumable exact checkpoint staging state is not an owned directory. Start a new generation.");
+        }
+        const realStaging = fs.realpathSync(stagingDirectory);
+        if (path.dirname(realStaging) !== realRoot || path.basename(realStaging) !== id) {
+            throw recoveryConflict("The resumable exact checkpoint staging state resolves outside its owned recovery root. Start a new generation.");
+        }
+    };
+    const readRecord = (): RecoveryAuthorityRecord => {
+        let record: unknown;
+        try {
+            record = JSON.parse(fs.readFileSync(recordPath, "utf8"));
+        } catch {
+            throw recoveryConflict("The resumable exact checkpoint has no authenticated adapter recovery record. Start a new generation.");
+        }
+        if (
+            record === null || typeof record !== "object" ||
+            (record as Partial<RecoveryAuthorityRecord>).schemaVersion !== 1 ||
+            (record as Partial<RecoveryAuthorityRecord>).id !== id ||
+            typeof (record as Partial<RecoveryAuthorityRecord>).markerProof !== "string" ||
+            (record as Partial<RecoveryAuthorityRecord>).markerProof!.length < 32
+        ) {
+            throw recoveryConflict("The resumable exact checkpoint recovery record is corrupt. Start a new generation.");
+        }
+        return record as RecoveryAuthorityRecord;
+    };
+
+    return {
+        id,
+        acquireStagingDirectory: (resuming) => {
+            const realRoot = establishedRoot();
+            if (resuming) {
+                const record = readRecord();
+                assertOwnedStagingDirectory(realRoot);
+                return {stagingDirectory, markerProof: record.markerProof};
+            }
+            fs.mkdirSync(registryDirectory, {recursive: true, mode: 0o700});
+            const record: RecoveryAuthorityRecord = {schemaVersion: 1, id, markerProof: randomUUID() + randomUUID()};
+            try {
+                fs.writeFileSync(recordPath, JSON.stringify(record), {flag: "wx", mode: 0o600});
+                fs.mkdirSync(stagingDirectory, {mode: 0o700});
+            } catch (error) {
+                // The record is invocation-owned only when it still matches
+                // the value written above; never remove a pre-existing entry.
+                try {
+                    if (fs.readFileSync(recordPath, "utf8") === JSON.stringify(record)) fs.rmSync(recordPath, {force: true});
+                } catch {
+                    // A failed issue remains a safe conflict; no untrusted state is cleaned up.
+                }
+                throw recoveryConflict((error as NodeJS.ErrnoException | undefined)?.code === "EEXIST"
+                    ? "Recovery state already exists for this invocation. Start a new generation."
+                    : "Could not issue authenticated recovery state. Start a new generation.");
+            }
+            return {stagingDirectory, markerProof: record.markerProof};
+        },
+        releaseStagingDirectory: (expectedMarker) => {
+            const realRoot = establishedRoot();
+            const record = readRecord();
+            assertOwnedStagingDirectory(realRoot);
+            let marker: string;
+            try {
+                marker = fs.readFileSync(path.join(stagingDirectory, ".pokie-exact-checkpoint.json"), "utf8");
+            } catch {
+                throw recoveryConflict("The owned recovery marker is missing; recovery state was left untouched. Start a new generation.");
+            }
+            if (marker !== expectedMarker || !marker.includes(record.markerProof)) {
+                throw recoveryConflict("The owned recovery marker is corrupt; recovery state was left untouched. Start a new generation.");
+            }
+            fs.rmSync(stagingDirectory, {recursive: true, force: true});
+            // The record was checked above and is not checkpoint-selected;
+            // remove it only after its matching issued staging state is gone.
+            fs.rmSync(recordPath, {force: true});
+        },
+    };
+}
 
 /**
  * The publication identity resolved together with a generation request.  The

@@ -11,6 +11,7 @@ import {
     OutcomeSpaceEstimate,
     OutcomeLibraryGenerationRequest,
     ExactEnumerationRecoveryAuthority,
+    issueExactEnumerationRecoveryAuthority,
     PokieGame,
     WeightedOutcomeLibraryGenerationError,
     WeightedOutcomeLibraryGenerationCancelledError,
@@ -1089,18 +1090,10 @@ export class StudioOutcomeLibraryGenerateService {
                 "The persisted recovery authority is invalid. Start a new generation.",
             );
         }
-        const recoveryRoot = path.resolve(this.projectStateRoot(projectRoot), ".pokie", "outcome-library-recovery");
-        const stagingDirectory = path.resolve(recoveryRoot, recoveryAuthorityId);
-        if (path.dirname(stagingDirectory) !== recoveryRoot) {
-            throw new WeightedOutcomeLibraryGenerationError(
-                "weighted-outcome-library-generation-checkpoint-mismatch",
-                "The persisted recovery authority is outside Studio's owned recovery root. Start a new generation.",
-            );
-        }
-        const recoveryAuthority: ExactEnumerationRecoveryAuthority = {
-            id: recoveryAuthorityId,
-            stagingDirectory,
-        };
+        const recoveryAuthority: ExactEnumerationRecoveryAuthority = issueExactEnumerationRecoveryAuthority(
+            path.resolve(this.projectStateRoot(projectRoot), ".pokie", "outcome-library-recovery"),
+            recoveryAuthorityId,
+        );
         return {
             libraryId: request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`,
             game,
