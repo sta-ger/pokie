@@ -1,5 +1,6 @@
 import {VideoSlotWithFreeGamesConfig} from "../session/videoslot/VideoSlotWithFreeGamesConfig.js";
 import {VideoSlotWithFreeGamesSession} from "../session/videoslot/VideoSlotWithFreeGamesSession.js";
+import type {VideoSlotWithFreeGamesSessionState} from "../session/videoslot/VideoSlotWithFreeGamesSessionState.js";
 import {WinningLine} from "../session/videoslot/WinningLine.js";
 import type {WinningLineDescribing} from "../session/videoslot/WinningLineDescribing.js";
 import {WinningScatter} from "../session/videoslot/WinningScatter.js";
@@ -95,6 +96,15 @@ class Pc12FreeGamesSession extends VideoSlotWithFreeGamesSession {
     public play(): void {
         super.play();
         this.fixtureConfig.setFreeGamesMode(this.getFreeGamesSum() > 0 && this.getFreeGamesNum() !== this.getFreeGamesSum());
+    }
+
+    public override fromSessionState(value: VideoSlotWithFreeGamesSessionState): this {
+        super.fromSessionState(value);
+        // This fixture's alternate reel/payout policy is selected from free-games progress. Rebuild
+        // that derived view after a durable restore too; otherwise the nested base RNG is correct
+        // but the next free round is evaluated against the paid-round configuration.
+        this.fixtureConfig.setFreeGamesMode(this.getFreeGamesSum() > 0 && this.getFreeGamesNum() !== this.getFreeGamesSum());
+        return this;
     }
 }
 
