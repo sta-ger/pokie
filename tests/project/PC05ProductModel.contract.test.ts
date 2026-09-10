@@ -495,7 +495,11 @@ describe("PC-05 product-model contract", () => {
         expect(repository).toContain("export class FileSessionRepository implements VersionedSessionRepository");
         expect(repository).toContain('createHash("sha256").update(sessionId).digest("hex")');
         expect(repository).toContain(["return path.join(this.directory, `", String.fromCharCode(36), "{fileName}.json`)"].join(""));
-        expect(repository).toContain("return {version: 0, state: parsed as unknown as PokieSessionState}");
+        expect(repository).toContain("function parseStoredRecord(value: unknown): VersionedSessionState");
+        expect(repository).toContain("assertValidSessionState(value.state)");
+        expect(repository).toContain("return {version: 0, state: value}");
+        expect(repository).toContain("function assertValidSessionState(value: unknown): asserts value is PokieSessionState");
+        expect(repository).toContain(["Session state.", String.fromCharCode(36), "{key} must be finite."].join(""));
         expect(repository).toContain("if ((error as NodeJS.ErrnoException)?.code === \"ENOENT\") {");
         expect(repository).toContain("throw new SessionStateCorruptError(sessionId, error)");
         expect(repository).toContain("throw new SessionStateReadError(sessionId, error)");
