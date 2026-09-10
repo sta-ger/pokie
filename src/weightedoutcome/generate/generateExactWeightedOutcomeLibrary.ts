@@ -518,7 +518,7 @@ async function *externallyAccumulateExactGridWeights(
         bufferedLines.clear();
     };
     const checkpoint = (processed: bigint, restartRequired: boolean): WeightedOutcomeLibraryGenerationCancelledError => {
-        const durable = options.retainStagingOnCancellation;
+        const durable = options.retainStagingOnCancellation ?? false;
         flushBufferedLines();
         retainStaging = durable;
         return new WeightedOutcomeLibraryGenerationCancelledError(

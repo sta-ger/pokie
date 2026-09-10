@@ -21,6 +21,7 @@ import {
 } from "pokie";
 import {buildAlternateFixtureGame, buildFixtureConfig, buildFixtureGame, buildUnplayableFixtureGame, buildUnsupportedFixtureGame} from "./GenerateTestFixtures.js";
 import {streamExactWeightedOutcomes} from "../../../src/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
+import type {WeightedOutcomeInput} from "../../../src/weightedoutcome/buildWeightedOutcomeLibrary.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -720,7 +721,7 @@ describe("generateExactWeightedOutcomeLibrary", () => {
             pokieVersion: "1.3.0",
             resumeFrom: checkpoint,
         });
-        const outcomes = [];
+        const outcomes: WeightedOutcomeInput[] = [];
         let next = await resumed.next();
         while (!next.done) {
             outcomes.push(next.value);
