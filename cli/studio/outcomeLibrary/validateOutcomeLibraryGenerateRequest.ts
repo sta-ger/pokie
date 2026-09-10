@@ -48,6 +48,8 @@ export type ValidatedOutcomeLibraryGenerateRequest = ValidatedOutcomeLibraryGene
     readonly resumeFrom?: ExactEnumerationCheckpoint;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
+    /** Opaque JobService identity; never accepted from Studio transport JSON. */
+    readonly recoveryAuthorityId?: string;
 };
 
 /**

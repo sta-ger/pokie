@@ -138,6 +138,16 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         expect(fs.existsSync(path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${job.id}.json`))).toBe(false);
     });
 
+    it("reports a retry conflict for a missing persisted recovery instead of silently losing the job", async () => {
+        const jobs = new StudioOutcomeLibraryGenerateJobService({generate: jest.fn()} as unknown as StudioOutcomeLibraryGenerateService);
+
+        await expect(jobs.resumeForProject(projectRoot, "f8b7f8bb-2b27-4c87-a136-04910e1602fe")).resolves.toMatchObject({
+            status: "failed",
+            result: {status: "conflict", error: expect.stringMatching(/missing or corrupt/i)},
+        });
+        expect(fs.existsSync(path.join(projectRoot, "outcomelibrary"))).toBe(false);
+    });
+
     it("rebinds an immutable checkpoint before resume and removes it after successful publication", async () => {
         const checkpoint: ExactEnumerationCheckpoint = {
             processedRawIndex: BigInt(1), progressTotal: BigInt(6), sourceEnumerationId: "fixture-source", grids: new Map(),

@@ -853,13 +853,14 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(fs.existsSync(path.join(projectRoot, "outcomelibrary", "manifest.json"))).toBe(false);
             if (result.status === "cancelled") {
                 expect(result.checkpoint).toEqual(expect.objectContaining({
-                    durableStagingDirectory: expect.any(String), durableCheckpointId: expect.any(String),
+                    recoveryAuthorityId: expect.any(String),
                 }));
                 expect(result.recovery).toMatch(/resume/i);
-                expect(fs.existsSync(result.checkpoint!.durableStagingDirectory!)).toBe(true);
+                const stagingDirectory = path.join(projectRoot, ".pokie", "outcome-library-recovery", result.checkpoint!.recoveryAuthorityId!);
+                expect(fs.existsSync(stagingDirectory)).toBe(true);
                 const resumed = await service().generate(projectRoot, {resumeFrom: result.checkpoint});
                 expect(resumed).toMatchObject({status: "ok", generator: {strategy: "exact"}});
-                expect(fs.existsSync(result.checkpoint!.durableStagingDirectory!)).toBe(false);
+                expect(fs.existsSync(stagingDirectory)).toBe(false);
             }
         });
 

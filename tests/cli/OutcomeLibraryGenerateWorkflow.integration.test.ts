@@ -186,17 +186,18 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         ])).toBe(130);
         expect(cancelled).toBe(true);
         expect(fs.existsSync(rawLibrary)).toBe(false);
-        const checkpoint = JSON.parse(fs.readFileSync(checkpointFile, "utf8")) as {durableStagingDirectory: string; durableCheckpointId: string};
+        const checkpoint = JSON.parse(fs.readFileSync(checkpointFile, "utf8")) as {recoveryAuthorityId: string};
         expect(checkpoint).toEqual(expect.objectContaining({
-            durableStagingDirectory: expect.any(String), durableCheckpointId: expect.any(String),
+            recoveryAuthorityId: expect.any(String),
         }));
-        expect(fs.existsSync(checkpoint.durableStagingDirectory)).toBe(true);
+        const stagingDirectory = path.join(`${path.resolve(checkpointFile)}.pokie-recovery`, checkpoint.recoveryAuthorityId);
+        expect(fs.existsSync(stagingDirectory)).toBe(true);
 
         // The resumed public CLI path consumes only this invocation-owned
         // partition state, then removes it along with the checkpoint.
         expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary, "--resume", checkpointFile])).toBe(0);
         expect(fs.existsSync(checkpointFile)).toBe(false);
-        expect(fs.existsSync(checkpoint.durableStagingDirectory)).toBe(false);
+        expect(fs.existsSync(stagingDirectory)).toBe(false);
         // Count directly from the durable JSON stream. Do not JSON.parse this
         // 614,656-outcome library: the assertion is specifically a public
         // streaming-regression boundary, not an in-memory fallback.
@@ -405,8 +406,7 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
             processedRawIndex: "5000",
             progressTotal: "8000",
             grids: expect.any(Array),
-            durableStagingDirectory: expect.any(String),
-            durableCheckpointId: expect.any(String),
+            recoveryAuthorityId: expect.any(String),
         }));
         expect(fs.readdirSync(workDir).some((entry) => entry.includes(".partial.json.pokie-"))).toBe(false);
 

@@ -36,6 +36,12 @@ export const MANAGED_OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_POLICY = {
 export type OutcomeLibraryGenerationSample = {readonly sampleSize: bigint; readonly seed: string};
 export type OutcomeLibraryGenerationMode = "default" | "exact" | "sampled" | "bounded";
 
+/** An adapter-owned capability for the bounded disk state of one exact run. */
+export type ExactEnumerationRecoveryAuthority = {
+    readonly id: string;
+    readonly stagingDirectory: string;
+};
+
 /**
  * The publication identity resolved together with a generation request.  The
  * generator does not write files itself, but publishers must consume this
@@ -100,6 +106,8 @@ export type OutcomeLibraryGenerationRequest = {
      * in-memory grid accumulator.
      */
     readonly durableCheckpointOnCancellation?: boolean;
+    /** Never serialized into a checkpoint; supplied again by its owning adapter on resume. */
+    readonly recoveryAuthority?: ExactEnumerationRecoveryAuthority;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
     readonly artifactValidator?: ValidationRule<RoundArtifact>;

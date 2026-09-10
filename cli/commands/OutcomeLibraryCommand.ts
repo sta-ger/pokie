@@ -1,11 +1,13 @@
 import {Command} from "commander";
 import fs from "fs";
 import path from "path";
+import {randomUUID} from "crypto";
 import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
     computeArtifactInputBindingHash,
     ExactEnumerationCheckpoint,
+    ExactEnumerationRecoveryAuthority,
     GenerateExactWeightedOutcomeLibraryResult,
     OutcomeLibraryGenerationRequest,
     ResolvedOutcomeLibraryGenerationRequest,
@@ -137,8 +139,7 @@ type SerializedCheckpoint = {
     progressTotal: string;
     sourceEnumerationId: string;
     grids: [string, {grid: string[][]; weight: string}][];
-    durableStagingDirectory?: string;
-    durableCheckpointId?: string;
+    recoveryAuthorityId?: string;
 };
 
 // Three CLI verbs ("pokie outcomelibrary generate"/"build"/"validate") sharing one command, the same
@@ -670,12 +671,13 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     await this.assertGenerationSourceIsRunnable(packageRoot);
                     const game = await this.loadGame(packageRoot);
                     const resumeFrom = options.resume !== undefined && this.fileExists(options.resume) ? this.readCheckpoint(options.resume) : undefined;
+                    const recoveryAuthority = options.resume === undefined ? undefined : this.createRecoveryAuthority(options.resume, resumeFrom);
                     // Rebind the live package immediately before generation;
                     // a config change after planning cannot inherit the old
                     // request's provenance merely because its destination is
                     // still the same bound publication identity.
                     const reboundRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game),
-                        this.createGenerationRequest(game, packageRoot, options, sampling, signal, resumeFrom),
+                        this.createGenerationRequest(game, packageRoot, options, sampling, signal, resumeFrom, recoveryAuthority),
                     );
                     if (
                         reboundRequest.configHash !== resolvedRequest.configHash ||
@@ -847,6 +849,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         sampling: {sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}},
         signal?: AbortSignal,
         resumeFrom?: ExactEnumerationCheckpoint,
+        recoveryAuthority?: ExactEnumerationRecoveryAuthority,
     ): OutcomeLibraryGenerationRequest {
         const sample = sampling.sampled ?? sampling.bounded;
         let generation: OutcomeLibraryGenerationRequest["generation"] = "default";
@@ -873,6 +876,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             // --resume persists the bounded disk-partition checkpoint owned
             // by this invocation; it never chooses an in-memory accumulator.
             ...(options.resume === undefined ? {} : {durableCheckpointOnCancellation: true}),
+            ...(recoveryAuthority === undefined ? {} : {recoveryAuthority}),
             ...(signal === undefined ? {} : {signal}),
             ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
         };
@@ -975,8 +979,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             progressTotal: checkpoint.progressTotal.toString(),
             sourceEnumerationId: checkpoint.sourceEnumerationId,
             grids: Array.from(checkpoint.grids.entries()).map(([key, entry]) => [key, {grid: entry.grid, weight: entry.weight.toString()}]),
-            ...(checkpoint.durableStagingDirectory === undefined ? {} : {durableStagingDirectory: checkpoint.durableStagingDirectory}),
-            ...(checkpoint.durableCheckpointId === undefined ? {} : {durableCheckpointId: checkpoint.durableCheckpointId}),
+            ...(checkpoint.recoveryAuthorityId === undefined ? {} : {recoveryAuthorityId: checkpoint.recoveryAuthorityId}),
         };
     }
 
@@ -988,7 +991,12 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             typeof parsed.processedRawIndex !== "string" ||
             typeof parsed.progressTotal !== "string" ||
             typeof parsed.sourceEnumerationId !== "string" ||
-            !Array.isArray(parsed.grids)
+            !Array.isArray(parsed.grids) ||
+            (parsed.recoveryAuthorityId !== undefined && (typeof parsed.recoveryAuthorityId !== "string" || !(/^[0-9a-f-]{36}$/i).test(parsed.recoveryAuthorityId))) ||
+            // Reject the retired self-describing staging shape rather than
+            // silently treating its partial grids as a complete in-memory
+            // checkpoint. It has no adapter authority and cannot be resumed.
+            "durableStagingDirectory" in parsed || "durableCheckpointId" in parsed
         ) {
             throw new Error(`"${filePath}" is not a valid --resume checkpoint file (see a WeightedOutcomeLibraryGenerationCancelledError's own checkpoint).`);
         }
@@ -998,9 +1006,18 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             progressTotal: BigInt(parsed.progressTotal),
             sourceEnumerationId: parsed.sourceEnumerationId,
             grids: new Map(parsed.grids.map(([key, entry]) => [key, {grid: entry.grid, weight: BigInt(entry.weight)}])),
-            ...(typeof parsed.durableStagingDirectory === "string" ? {durableStagingDirectory: parsed.durableStagingDirectory} : {}),
-            ...(typeof parsed.durableCheckpointId === "string" ? {durableCheckpointId: parsed.durableCheckpointId} : {}),
+            ...(typeof parsed.recoveryAuthorityId === "string" ? {recoveryAuthorityId: parsed.recoveryAuthorityId} : {}),
         };
+    }
+
+    /** Resolve a checkpoint only beneath the resume file's adapter-owned root. */
+    private createRecoveryAuthority(resumePath: string, checkpoint: ExactEnumerationCheckpoint | undefined): ExactEnumerationRecoveryAuthority {
+        const id = checkpoint?.recoveryAuthorityId ?? randomUUID();
+        if (!(/^[0-9a-f-]{36}$/i).test(id)) throw new Error(`"${resumePath}" has an invalid recovery authority. Start a new generation.`);
+        const root = `${path.resolve(resumePath)}.pokie-recovery`;
+        const stagingDirectory = path.resolve(root, id);
+        if (path.dirname(stagingDirectory) !== root) throw new Error(`"${resumePath}" has an unsafe recovery authority. Start a new generation.`);
+        return {id, stagingDirectory};
     }
 
     private async executeBuild(configPath: string, outDir: string): Promise<number> {

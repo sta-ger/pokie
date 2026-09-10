@@ -26,6 +26,7 @@ import {WeightedOutcomeLibraryGenerationError} from "./WeightedOutcomeLibraryGen
 import {
     adaptLegacyOutcomeLibraryGenerationRequest,
     type OutcomeLibraryGenerationRequest,
+    type ExactEnumerationRecoveryAuthority,
     prepareOutcomeLibraryGeneration,
 } from "./OutcomeLibraryGenerationRequest.js";
 
@@ -126,6 +127,8 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     readonly resumeFrom?: ExactEnumerationCheckpoint;
     /** Persist bounded, partitioned exact-sweep state when cancellation is resumable. */
     readonly durableCheckpointOnCancellation?: boolean;
+    /** Adapter-issued authority; checkpoints retain only its opaque id. */
+    readonly recoveryAuthority?: ExactEnumerationRecoveryAuthority;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
     readonly artifactValidator?: ValidationRule<RoundArtifact>;
@@ -188,6 +191,7 @@ function legacyOptionsForRequest(
         ...(prepared.outputDestination === undefined ? {} : {outputDestination: prepared.outputDestination}),
         maxOutcomeSpaceSize: prepared.maxExactOutcomeSpaceSize,
         ...(prepared.durableCheckpointOnCancellation === undefined ? {} : {durableCheckpointOnCancellation: prepared.durableCheckpointOnCancellation}),
+        ...(prepared.recoveryAuthority === undefined ? {} : {recoveryAuthority: prepared.recoveryAuthority}),
         ...(prepared.generation === "exact" ? {exact: true} : {}),
         ...(prepared.generation === "sampled" ? {sampled: prepared.sample!} : {}),
         ...(prepared.generation === "bounded" ? {bounded: prepared.sample!} : {}),
@@ -214,8 +218,7 @@ type PreparedGeneration = {
     readonly configHash?: string;
     readonly initialGrids?: ReadonlyMap<string, UniqueGridWeightEntry<string>>;
     readonly initialProcessedRawCount?: bigint;
-    readonly durableStagingDirectory?: string;
-    readonly durableCheckpointId?: string;
+    readonly recoveryAuthority?: ExactEnumerationRecoveryAuthority;
 };
 
 function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedGeneration {
@@ -251,10 +254,10 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             "This exact generation was cancelled while using bounded disk staging, so its temporary grid accumulator was safely discarded. Retry the command from the beginning; this checkpoint cannot be resumed without changing exact weights.",
         );
     }
-    if (options.resumeFrom?.durableStagingDirectory !== undefined && options.resumeFrom.durableCheckpointId === undefined) {
+    if (options.resumeFrom?.recoveryAuthorityId !== undefined && options.recoveryAuthority?.id !== options.resumeFrom.recoveryAuthorityId) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-checkpoint-mismatch",
-            "This resumable exact checkpoint is missing its invocation-owned disk identity. Start a new generation.",
+            "This resumable exact checkpoint has no matching adapter-issued recovery authority. Start a new generation.",
         );
     }
     if (options.resumeFrom !== undefined && options.resumeFrom.progressTotal !== estimate.totalOutcomeSpaceSize) {
@@ -291,14 +294,13 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         );
     }
 
-    let resumeState: Pick<PreparedGeneration, "initialGrids" | "initialProcessedRawCount" | "durableStagingDirectory" | "durableCheckpointId"> = {};
+    let resumeState: Pick<PreparedGeneration, "initialGrids" | "initialProcessedRawCount" | "recoveryAuthority"> = {};
     if (options.resumeFrom !== undefined) {
-        if (options.resumeFrom.durableStagingDirectory === undefined) {
+        if (options.resumeFrom.recoveryAuthorityId === undefined) {
             resumeState = {initialGrids: options.resumeFrom.grids, initialProcessedRawCount: options.resumeFrom.processedRawIndex};
         } else {
             resumeState = {
-                durableStagingDirectory: options.resumeFrom.durableStagingDirectory,
-                ...(options.resumeFrom.durableCheckpointId === undefined ? {} : {durableCheckpointId: options.resumeFrom.durableCheckpointId}),
+                recoveryAuthority: options.recoveryAuthority,
                 initialProcessedRawCount: options.resumeFrom.processedRawIndex,
             };
         }
@@ -438,10 +440,9 @@ async function *streamExactWeightedOutcomesInternal(
             signal: options.signal,
             onProgress: options.onProgress,
             sourceEnumerationId: prepared.sourceEnumerationId,
-            ...(prepared.durableStagingDirectory === undefined ? {} : {stagingDirectory: prepared.durableStagingDirectory}),
-            ...(prepared.durableCheckpointId === undefined ? {} : {durableCheckpointId: prepared.durableCheckpointId}),
+            ...(prepared.recoveryAuthority === undefined ? {} : {recoveryAuthority: prepared.recoveryAuthority}),
             ...(prepared.initialProcessedRawCount === undefined ? {} : {initialProcessedRawCount: prepared.initialProcessedRawCount}),
-            ...(options.durableCheckpointOnCancellation || prepared.durableStagingDirectory !== undefined ? {retainStagingOnCancellation: true} : {}),
+            ...((options.durableCheckpointOnCancellation && options.recoveryAuthority !== undefined) || prepared.recoveryAuthority !== undefined ? {retainStagingOnCancellation: true} : {}),
         });
         let step = await external.next();
         while (!step.done) {
@@ -498,21 +499,23 @@ async function *externallyAccumulateExactGridWeights(
         readonly signal?: AbortSignal;
         readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
         readonly sourceEnumerationId: string;
-        readonly stagingDirectory?: string;
+        readonly recoveryAuthority?: ExactEnumerationRecoveryAuthority;
         readonly initialProcessedRawCount?: bigint;
         readonly retainStagingOnCancellation?: boolean;
-        readonly durableCheckpointId?: string;
     },
 ): AsyncGenerator<{readonly id: string; readonly entry: UniqueGridWeightEntry<string>}, bigint> {
-    const stagingDir = options.stagingDirectory ?? fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-grids-"));
+    const stagingDir = options.recoveryAuthority?.stagingDirectory ?? fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exact-grids-"));
     const checkpointMarker = path.join(stagingDir, ".pokie-exact-checkpoint.json");
-    const checkpointId = options.durableCheckpointId ?? crypto.randomUUID();
+    const checkpointId = options.recoveryAuthority?.id ?? crypto.randomUUID();
     const descriptors = new Map<number, number>();
     const bufferedLines = new Map<number, string>();
     let processedRawCount = options.initialProcessedRawCount ?? BigInt(0);
     let checkpointGrid: [string, UniqueGridWeightEntry<string>] | undefined;
     let retainStaging = false;
-    let ownsStaging = options.stagingDirectory === undefined;
+    // A recovery authority is issued by an adapter that has already confined
+    // this path to its own root; consuming it therefore owns only that one
+    // issued directory, never a caller-supplied checkpoint path.
+    let ownsStaging = true;
     const flushBufferedLines = () => {
         for (const [bucket, buffered] of bufferedLines) fs.writeSync(descriptors.get(bucket)!, buffered);
         bufferedLines.clear();
@@ -527,13 +530,15 @@ async function *externallyAccumulateExactGridWeights(
             new Map(checkpointGrid === undefined ? [] : [checkpointGrid]),
             options.sourceEnumerationId,
             restartRequired,
-            durable ? stagingDir : undefined,
             durable ? checkpointId : undefined,
         );
     };
     try {
         const expectedMarker = {sourceEnumerationId: options.sourceEnumerationId, progressTotal: progressTotal.toString(), checkpointId};
-        if (options.stagingDirectory === undefined) {
+        if (options.recoveryAuthority === undefined) {
+            fs.writeFileSync(checkpointMarker, JSON.stringify(expectedMarker), {flag: "wx"});
+        } else if (options.initialProcessedRawCount === undefined) {
+            fs.mkdirSync(stagingDir, {recursive: true});
             fs.writeFileSync(checkpointMarker, JSON.stringify(expectedMarker), {flag: "wx"});
         } else {
             let marker: unknown;

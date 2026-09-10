@@ -10,6 +10,7 @@ import {
     OutcomeLibraryBundleWriteCancelledError,
     OutcomeSpaceEstimate,
     OutcomeLibraryGenerationRequest,
+    ExactEnumerationRecoveryAuthority,
     PokieGame,
     WeightedOutcomeLibraryGenerationError,
     WeightedOutcomeLibraryGenerationCancelledError,
@@ -31,6 +32,7 @@ import {
 } from "pokie";
 import fs from "fs";
 import path from "path";
+import {randomUUID} from "crypto";
 import {resolveProjectDirectory} from "./resolveProjectDirectory.js";
 import {StudioArtifactConversionPlanning, StudioArtifactConversionPlanningService} from "../artifacts/StudioArtifactConversionPlanningService.js";
 import {describePreparedArtifactPlanDrift} from "../artifacts/describePreparedArtifactPlanDrift.js";
@@ -1077,6 +1079,25 @@ export class StudioOutcomeLibraryGenerateService {
     ): OutcomeLibraryGenerationRequest {
         const manifest = game.getManifest();
         const sample = resolveSample(request);
+        const recoveryAuthorityId = request.recoveryAuthorityId ?? request.resumeFrom?.recoveryAuthorityId ?? randomUUID();
+        if (!(/^[0-9a-f-]{36}$/i).test(recoveryAuthorityId)) {
+            throw new WeightedOutcomeLibraryGenerationError(
+                "weighted-outcome-library-generation-checkpoint-mismatch",
+                "The persisted recovery authority is invalid. Start a new generation.",
+            );
+        }
+        const recoveryRoot = path.resolve(this.projectStateRoot(projectRoot), ".pokie", "outcome-library-recovery");
+        const stagingDirectory = path.resolve(recoveryRoot, recoveryAuthorityId);
+        if (path.dirname(stagingDirectory) !== recoveryRoot) {
+            throw new WeightedOutcomeLibraryGenerationError(
+                "weighted-outcome-library-generation-checkpoint-mismatch",
+                "The persisted recovery authority is outside Studio's owned recovery root. Start a new generation.",
+            );
+        }
+        const recoveryAuthority: ExactEnumerationRecoveryAuthority = {
+            id: recoveryAuthorityId,
+            stagingDirectory,
+        };
         return {
             libraryId: request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`,
             game,
@@ -1108,9 +1129,18 @@ export class StudioOutcomeLibraryGenerateService {
             // a server restart. Its checkpoint is partitioned durable state,
             // never an in-memory distinct-grid accumulator.
             durableCheckpointOnCancellation: true,
+            recoveryAuthority,
             ...("signal" in request && request.signal !== undefined ? {signal: request.signal} : {}),
             ...("onProgress" in request && request.onProgress !== undefined ? {onProgress: request.onProgress} : {}),
         };
+    }
+
+    private projectStateRoot(projectRoot: string): string {
+        try {
+            return fs.statSync(projectRoot).isFile() ? path.dirname(projectRoot) : projectRoot;
+        } catch {
+            return projectRoot;
+        }
     }
 }
 
