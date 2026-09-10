@@ -20,6 +20,15 @@ describe("SeededRandomNumberGenerator", () => {
         expect(drawsFrom(42)).not.toEqual(drawsFrom(43));
     });
 
+    test("continues byte-for-byte after serializing and restoring RNG state", () => {
+        const live = new SeededRandomNumberGenerator("continuation-seed");
+        for (let i = 0; i < 17; i++) live.getRandomInt(0, 1000);
+        const restored = new SeededRandomNumberGenerator("continuation-seed").fromSessionState(live.toSessionState());
+        const nextLive = new Array(20).fill(0).map(() => live.getRandomInt(0, 1000));
+        const nextRestored = new Array(20).fill(0).map(() => restored.getRandomInt(0, 1000));
+        expect(nextRestored).toEqual(nextLive);
+    });
+
     test("different seeds produce different sequences across a range of nearby seed values", () => {
         const drawsFrom = (seed: number): number[] => {
             const generator = new SeededRandomNumberGenerator(seed);

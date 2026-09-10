@@ -78,7 +78,8 @@ describe("AggregateSimulationRunner breakdown", () => {
         expect(breakdown.base.hitFrequency).toBeCloseTo(5 / 40, 10);
         expect(breakdown.base.maxWin).toBe(10);
 
-        expect(breakdown.freeGames.totalBet).toBe(10);
+        // A free continuation has nominal bet metadata but charges no actual stake.
+        expect(breakdown.freeGames.totalBet).toBe(0);
         expect(breakdown.freeGames.totalWin).toBe(0);
         expect(breakdown.freeGames.rtp).toBe(0);
         expect(breakdown.freeGames.hitFrequency).toBe(0);

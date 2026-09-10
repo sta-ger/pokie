@@ -937,6 +937,37 @@ describe("StudioServer", () => {
         expect(status).toBe(404);
     });
 
+    it("rejects cross-origin API writes before they can reach a Studio session", async () => {
+        const response = await fetch(`${baseUrl}/api/home/projects/open`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json", Origin: "http://attacker.invalid"},
+            body: JSON.stringify({projectRoot: "./sample-slot"}),
+        });
+
+        expect(response.status).toBe(403);
+        await expect(response.json()).resolves.toEqual({error: "Studio API requests must come from the same Studio origin."});
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("returns explicit HTTP errors for invalid JSON content type, syntax, and an oversized body", async () => {
+        const endpoint = `${baseUrl}/api/home/projects/open`;
+        const wrongContentType = await fetch(endpoint, {method: "POST", headers: {"Content-Type": "text/plain"}, body: "{}"});
+        expect(wrongContentType.status).toBe(415);
+        await expect(wrongContentType.json()).resolves.toEqual({error: "Request body must use Content-Type: application/json."});
+
+        const invalidJson = await fetch(endpoint, {method: "POST", headers: {"Content-Type": "application/json"}, body: "{"});
+        expect(invalidJson.status).toBe(400);
+        await expect(invalidJson.json()).resolves.toEqual({error: "Request body is not valid JSON."});
+
+        const oversized = await fetch(endpoint, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({projectRoot: "x".repeat(1_048_576)}),
+        });
+        expect(oversized.status).toBe(413);
+        await expect(oversized.json()).resolves.toMatchObject({error: expect.stringMatching(/exceeds the 1048576-byte limit/)});
+    });
+
     it("starts with an empty recent-projects list", async () => {
         const {status, body} = await get(`${baseUrl}/api/home/recent-projects`);
 

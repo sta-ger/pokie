@@ -781,7 +781,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(stakeRequest).toBeUndefined();
     });
 
-    it("keeps visible progress on the Outcome library card while generation is still running", async () => {
+    it("shows finalization rather than a misleading generation label once raw work is complete", async () => {
         const user = userEvent.setup();
         const routes = {
             ...BASE_ROUTES,
@@ -794,7 +794,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                 return Promise.resolve({
                     ok: true,
                     status: 202,
-                    json: () => Promise.resolve({status: "created", job: {id: "generate-running", status: "running", cancellationRequested: false}}),
+                    json: () => Promise.resolve({status: "created", job: {id: "generate-running", status: "running", cancellationRequested: false, lifecycleStage: "finalization", progress: {processedRawIndex: "6", progressTotal: "6"}}}),
                 });
             }
             if (path === "/api/project/outcome-libraries/generate/jobs/generate-running") {
@@ -810,7 +810,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await user.click(await screen.findByRole("button", {name: "Generate exact outcome library (base)"}));
 
-        expect(await screen.findByText("Generating outcome library from this project's current build…")).toBeInTheDocument();
+        expect(await screen.findByText("Finalizing generated outcomes…")).toBeInTheDocument();
     });
 
     it("refreshes the preflight binding after cancellation so an unchanged retry starts a new safe job", async () => {

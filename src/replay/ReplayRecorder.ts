@@ -28,7 +28,11 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         let totalBet = 0;
         let totalWin = 0;
         for (let played = 0; played < round; played++) {
-            totalBet += session.getBet();
+            if (!session.canPlayNextGame()) {
+                throw new Error(`Replay target round ${round} is unreachable: session stopped after ${played} round(s).`);
+            }
+            const stake = getActualStake(session);
+            totalBet += stake;
             session.play();
             totalWin += session.getWinAmount();
         }
@@ -77,4 +81,9 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
     private hasSymbolsCombination(session: GameSessionHandling): session is SessionWithSymbolsCombination {
         return typeof (session as Partial<SessionWithSymbolsCombination>).getSymbolsCombination === "function";
     }
+}
+
+function getActualStake(session: GameSessionHandling): number {
+    const stakeSession = session as GameSessionHandling & {getStakeAmount?: () => number};
+    return stakeSession.getStakeAmount?.() ?? session.getBet();
 }

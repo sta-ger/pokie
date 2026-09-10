@@ -82,6 +82,7 @@ export class StudioSimulationService {
     // Blueprint source path itself.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
     private readonly onCompleted: (record: StudioSimulationJobRecord) => void;
+    private readonly pokieVersion: string | undefined;
 
     constructor(
         repository: StudioSimulationRepository = new InMemoryStudioSimulationRepository(),
@@ -103,6 +104,7 @@ export class StudioSimulationService {
         outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
         onCompleted: (record: StudioSimulationJobRecord) => void = () => undefined,
+        pokieVersion: string | undefined = undefined,
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -116,6 +118,7 @@ export class StudioSimulationService {
         this.outcomeLibraryReader = outcomeLibraryReader;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
         this.onCompleted = onCompleted;
+        this.pokieVersion = pokieVersion;
     }
 
     // Returns immediately with a "queued" job — the actual simulation runs in the background (see
@@ -359,6 +362,8 @@ export class StudioSimulationService {
                 statistics: result.statistics,
                 durationMs: record.durationMs,
                 packageRoot: record.projectRoot,
+                configHash: result.configHash,
+                pokieVersion: this.pokieVersion,
                 breakdown: result.breakdown,
                 workers: result.workers,
                 workerSeedStrategy: result.workerSeedStrategy,
@@ -502,6 +507,7 @@ export class StudioSimulationService {
             durationMs: record.durationMs,
             packageRoot: record.projectRoot,
             workers: 1,
+            pokieVersion: this.pokieVersion,
         });
 
         record.status = "completed";

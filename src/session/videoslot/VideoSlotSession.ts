@@ -17,8 +17,10 @@ import type {WinningLineDescribing} from "./WinningLineDescribing.js";
 import type {WinningScatterDescribing} from "./WinningScatterDescribing.js";
 import {LegacyWinEvaluationResultAdapter} from "./winevaluation/LegacyWinEvaluationResultAdapter.js";
 import {WinEvaluationResult} from "./winevaluation/WinEvaluationResult.js";
+import type {ConvertableToSessionState} from "../ConvertableToSessionState.js";
+import type {BuildableFromSessionState} from "../BuildableFromSessionState.js";
 
-export class VideoSlotSession<T extends string | number | symbol = string> implements VideoSlotSessionHandling<T> {
+export class VideoSlotSession<T extends string | number | symbol = string> implements VideoSlotSessionHandling<T>, ConvertableToSessionState<{rngState?: unknown}>, BuildableFromSessionState<{rngState?: unknown}> {
     private readonly baseSession: GameSessionHandling;
     private readonly config: VideoSlotConfigRepresenting<T>;
     private readonly combinationsGenerator: SymbolsCombinationsGenerating<T>;
@@ -129,6 +131,20 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         this.winCalculator.calculateWin(this.getBet(), this.symbolsCombination);
         this.winAmount = this.getWinAmount();
         this.setCreditsAmount(this.getCreditsAmount() + this.winAmount);
+    }
+
+    public toSessionState(): {rngState?: unknown} {
+        const rngState = (this.combinationsGenerator as {getRandomState?: () => unknown}).getRandomState?.();
+        return rngState === undefined ? {} : {rngState};
+    }
+
+    public fromSessionState(state: {rngState?: unknown}): this {
+        if (state?.rngState !== undefined) {
+            const generator = this.combinationsGenerator as {setRandomState?: (value: unknown) => void};
+            if (generator.setRandomState === undefined) throw new Error("This video-slot session cannot restore its RNG state.");
+            generator.setRandomState(state.rngState);
+        }
+        return this;
     }
 
     public isSymbolWild(symbolId: T): boolean {

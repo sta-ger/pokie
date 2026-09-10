@@ -4,7 +4,11 @@ import {randomUUID} from "crypto";
 import type {ExactEnumerationCheckpoint} from "pokie";
 import {createUnresolvedRuntimePlan} from "../artifacts/createExternalArtifactConversionPlan.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "./StudioOutcomeLibraryGenerateResultView.js";
-import {StudioOutcomeLibraryGenerateService, type StudioOutcomeLibraryPreflightBinding} from "./StudioOutcomeLibraryGenerateService.js";
+import {
+    StudioOutcomeLibraryGenerateService,
+    type StudioOutcomeLibraryGenerationLifecycleStage,
+    type StudioOutcomeLibraryPreflightBinding,
+} from "./StudioOutcomeLibraryGenerateService.js";
 import type {ValidatedOutcomeLibraryGenerateRequest} from "./validateOutcomeLibraryGenerateRequest.js";
 
 export type StudioOutcomeLibraryCheckpointView = {
@@ -29,6 +33,7 @@ export type StudioOutcomeLibraryGenerateJobView = {
     readonly id: string;
     readonly status: "queued" | "running" | "completed" | "failed" | "cancelled";
     readonly cancellationRequested: boolean;
+    readonly lifecycleStage?: StudioOutcomeLibraryGenerationLifecycleStage;
     readonly progress?: {readonly processedRawIndex: string; readonly progressTotal: string};
     readonly result?: StudioOutcomeLibraryGenerateJobResultView;
 };
@@ -40,6 +45,7 @@ type JobRecord = {
     readonly controller: AbortController;
     status: StudioOutcomeLibraryGenerateJobView["status"];
     cancellationRequested: boolean;
+    lifecycleStage?: StudioOutcomeLibraryGenerationLifecycleStage;
     progress?: {processedRawIndex: string; progressTotal: string};
     result?: StudioOutcomeLibraryGenerateJobResultView;
     /** Resolves only after generation has reached its cleanup-safe terminal state. */
@@ -92,7 +98,7 @@ export class StudioOutcomeLibraryGenerateJobService {
         const record: JobRecord = {
             // UUIDs make checkpoints safely discoverable across a server restart without
             // reusing the old process-local 1, 2, … namespace.
-            id, projectRoot, request: {...request, recoveryAuthorityId: id}, controller: new AbortController(), status: "queued", cancellationRequested: false,
+            id, projectRoot, request: {...request, recoveryAuthorityId: id}, controller: new AbortController(), status: "queued", cancellationRequested: false, lifecycleStage: "generation",
             destinationKey,
             // Assigned below after the record exists for run() to update.
             completion: Promise.resolve(),
@@ -231,6 +237,8 @@ export class StudioOutcomeLibraryGenerateJobService {
             onProgress: (processedRawIndex, progressTotal) => {
                 record.progress = {processedRawIndex: processedRawIndex.toString(), progressTotal: progressTotal.toString()};
             },
+        }, (stage) => {
+            record.lifecycleStage = stage;
         });
         if (result.status === "cancelled") {
             const cancelledResult: StudioOutcomeLibraryGenerateJobResultView = {
@@ -251,7 +259,7 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     private toView(record: JobRecord): StudioOutcomeLibraryGenerateJobView {
-        return {id: record.id, status: record.status, cancellationRequested: record.cancellationRequested, ...(record.progress === undefined ? {} : {progress: record.progress}), ...(record.result === undefined ? {} : {result: record.result})};
+        return {id: record.id, status: record.status, cancellationRequested: record.cancellationRequested, ...(record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}), ...(record.progress === undefined ? {} : {progress: record.progress}), ...(record.result === undefined ? {} : {result: record.result})};
     }
 
     private checkpointPath(projectRoot: string, id: string): string {

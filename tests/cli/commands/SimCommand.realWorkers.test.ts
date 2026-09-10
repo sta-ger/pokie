@@ -50,6 +50,17 @@ describe("SimCommand (integration, real loadPokieGame + --workers, real worker t
         expect(report.workers).toBe(4);
     });
 
+    it("carries the resolved model config hash from real workers into the canonical report", async () => {
+        const command = new SimCommand(loadPokieGame, undefined, undefined, TEST_WORKER_ENTRY_URL);
+        const outFile = path.join(outDir, "config-hash-report.json");
+        const configFixture = path.join(__dirname, "..", "fixtures", "playable-game-with-config-hash");
+
+        await command.run([configFixture, "--rounds", "100", "--seed", "model-identity", "--workers", "2", "--out", outFile]);
+
+        const report = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimulationReport;
+        expect(report.reproducibility?.configHash).toBe("sha256:fixture-config-hash");
+    });
+
     it("--workers 1 explicitly given still works without a worker entry point (in-process path)", async () => {
         const command = new SimCommand(loadPokieGame);
         const outFile = path.join(outDir, "report.json");

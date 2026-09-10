@@ -3,6 +3,7 @@ import {
     captureInitialPokieSessionState,
     captureRoundPokieSessionState,
     captureScreen,
+    determineStakeAmount,
     describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
     isWasmComponentFile,
@@ -325,6 +326,11 @@ export class StudioReplayExecutionService {
 
                 const chunkRounds = Math.min(this.chunkSize, roundsRemaining);
                 for (let played = 0; played < chunkRounds; played++) {
+                    const actualRound = record.completedRounds + played;
+                    if (!session.canPlayNextGame()) {
+                        this.fail(record, new Error(`Replay target round ${record.round} is unreachable: session stopped after ${actualRound} round(s).`));
+                        return;
+                    }
                     // True exactly once across the whole replay, on the very last play() call overall,
                     // regardless of chunking -- snapshotting every round would be wasted work for a
                     // `round` that can be up to 100000 (see validateReplayRequest), when only the target
@@ -334,10 +340,11 @@ export class StudioReplayExecutionService {
                         stateBeforeFinal = this.captureBoundaryState(record.round === 1, context, session, initialState, serializer);
                     }
 
-                    totalBet += session.getBet();
+                    const stake = determineStakeAmount(session, session.getBet());
+                    totalBet += stake;
                     session.play();
                     totalWin += session.getWinAmount();
-                    playerCredits = playerCredits - session.getBet() + session.getWinAmount();
+                    playerCredits = playerCredits - stake + session.getWinAmount();
 
                     if (isFinalPlay) {
                         stateAfterFinal = this.captureBoundaryState(false, context, session, initialState, serializer);

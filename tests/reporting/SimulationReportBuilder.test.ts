@@ -16,6 +16,27 @@ describe("SimulationReportBuilder", () => {
         expect(report.game).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
     });
 
+    test("keeps the resolved model identity and POKIE runtime version in reproducibility metadata", () => {
+        const accumulator = new SimulationAccumulator();
+        accumulator.addRound(1, 0);
+
+        const report = new SimulationReportBuilder().build({
+            manifest,
+            requestedRounds: 1,
+            seed: "fixed-seed",
+            statistics: accumulator.getStatistics(),
+            durationMs: 1,
+            configHash: "sha256:resolved-model",
+            pokieVersion: "9.8.7",
+        });
+
+        expect(report.reproducibility).toMatchObject({
+            seed: "fixed-seed",
+            configHash: "sha256:resolved-model",
+            pokieVersion: "9.8.7",
+        });
+    });
+
     test("carries totalBet/totalWin/rtp/maxWin straight from the statistics", () => {
         const accumulator = new SimulationAccumulator();
         accumulator.addRound(10, 0);
@@ -863,13 +884,10 @@ describe("SimulationReportBuilder betMode", () => {
         expect(report.rtp).toBe(accumulator.getStatistics().rtp);
     });
 
-    test("with betMode, core totalBet/totalWin/rtp/hitFrequency/maxWin are derived from the (stake-based) breakdown, not nominal-bet statistics", () => {
+    test("with betMode, canonical actual-stake statistics remain the core source of truth", () => {
         const accumulator = new SimulationAccumulator();
-        // Nominal-bet-based statistics a real ante-mode-locked AggregateSimulationRunner would still
-        // produce for its OWN accumulator (unconditionally nominal, see its own doc comment) --
-        // understates the real 1.25x ante cost, which is exactly why betMode must override this.
         for (let i = 0; i < 100; i++) {
-            accumulator.addRound(1, i % 10 === 0 ? 8 : 0);
+            accumulator.addRound(1.25, i % 10 === 0 ? 8 : 0);
         }
         const builder = new SimulationReportBuilder();
 
@@ -883,15 +901,18 @@ describe("SimulationReportBuilder betMode", () => {
         });
 
         expect(report.betMode).toBe("ante");
-        expect(report.totalBet).toBe(125); // the breakdown's stake-based figure, not statistics.totalBet (100)
+        expect(report.totalBet).toBe(125);
         expect(report.totalWin).toBe(80);
         expect(report.rtp).toBeCloseTo(80 / 125, 10);
         expect(report.hitFrequency).toBe(0.1);
         expect(report.maxWin).toBe(8);
     });
 
-    test("sums multiple breakdown categories (e.g. a buy-bonus mode's base + freeGames) into the core metrics", () => {
-        const statistics = new SimulationAccumulator().getStatistics();
+    test("keeps totals/RTP/CI coherent for a paid entry followed by free continuations", () => {
+        const accumulator = new SimulationAccumulator();
+        for (let i = 0; i < 25; i++) accumulator.addRound(50, 36);
+        for (let i = 0; i < 75; i++) accumulator.addRound(0, 8);
+        const statistics = accumulator.getStatistics();
         const builder = new SimulationReportBuilder();
 
         const report = builder.build({
@@ -906,13 +927,14 @@ describe("SimulationReportBuilder betMode", () => {
             },
         });
 
-        expect(report.totalBet).toBe(1250); // freeGames' own 0 contributes nothing
+        expect(report.totalBet).toBe(1250);
         expect(report.totalWin).toBe(1500);
         expect(report.rtp).toBeCloseTo(1500 / 1250, 10);
-        expect(report.maxWin).toBe(60);
+        expect(report.maxWin).toBe(36);
+        expect(Number.isFinite(statistics.rtpConfidenceInterval95.low)).toBe(true);
     });
 
-    test("warns (falling back to nominal statistics) when betMode is set but no breakdown is available", () => {
+    test("does not invent a breakdown warning when canonical stake statistics are available", () => {
         const accumulator = new SimulationAccumulator();
         accumulator.addRound(1, 0);
         const builder = new SimulationReportBuilder();
@@ -925,9 +947,9 @@ describe("SimulationReportBuilder betMode", () => {
             betMode: "ante",
         });
 
-        expect(report.totalBet).toBe(accumulator.getStatistics().totalBet); // fell back, not silently wrong
-        expect(report.warnings).toEqual(
-            expect.arrayContaining([expect.stringContaining('Bet mode "ante" was locked for this run, but no per-round categorization')]),
+        expect(report.totalBet).toBe(accumulator.getStatistics().totalBet);
+        expect(report.warnings).not.toEqual(
+            expect.arrayContaining([expect.stringContaining('no per-round categorization')]),
         );
     });
 

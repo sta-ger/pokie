@@ -74,6 +74,7 @@ export type ParallelSimulationRunOptions = {
 
 export type ParallelSimulationResult = {
     manifest: PokieGameManifest;
+    configHash?: string;
     statistics: SimulationStatistics;
     breakdown?: Record<string, SimulationBreakdownComponent>;
     // Present only when the session exposed JackpotStatisticsProviding — see that interface's own doc
@@ -171,6 +172,7 @@ export class ParallelSimulationRunner {
 
         return {
             manifest: game.getManifest(),
+            configHash: game.getConfigHash?.(),
             statistics: accumulator.getStatistics(),
             breakdown,
             jackpot,
@@ -210,6 +212,7 @@ export class ParallelSimulationRunner {
 
         return {
             manifest: results[0].manifest,
+            configHash: this.resolveConfigHash(results),
             statistics: merged.statistics,
             breakdown: merged.breakdown,
             jackpot: merged.jackpot,
@@ -290,6 +293,14 @@ export class ParallelSimulationRunner {
             consecutiveStableChecks: Math.min(...outcomes.map((outcome) => outcome.consecutiveStableChecks)),
             achievedRtpHalfWidth: Math.max(...outcomes.map((outcome) => outcome.achievedRtpHalfWidth)),
         };
+    }
+
+    private resolveConfigHash(results: SimulationWorkerResult[]): string | undefined {
+        const hashes = Array.from(new Set(results.map((result) => result.configHash).filter((hash): hash is string => hash !== undefined)));
+        if (hashes.length > 1) {
+            throw new Error("Simulation workers loaded different resolved game models; refusing to publish a mixed-model report.");
+        }
+        return hashes[0];
     }
 
     private reportProgress(progressByWorker: Map<number, number>, progress: {workerIndex: number; roundsCompleted: number}): void {

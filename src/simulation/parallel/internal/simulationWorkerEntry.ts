@@ -51,6 +51,7 @@ async function main(): Promise<void> {
             type: "result",
             workerIndex: request.workerIndex,
             manifest: game.getManifest(),
+            configHash: game.getConfigHash?.(),
             accumulator: accumulator.toSnapshot(),
             breakdown,
             jackpot,

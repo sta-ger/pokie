@@ -503,6 +503,7 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
 
         expect(status).toBe(404);
         expect(typeof body.error).toBe("string");
+        await server.stop();
     });
 
     it("seeds the default wallet from the session's own starting credits when no wallet is configured", async () => {
@@ -601,6 +602,9 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
         game.lastSession?.setFreeGamesSum(3);
         game.lastSession?.setFreeGamesNum(0);
         game.lastSession?.setFreeGamesBank(0);
+        const forcedState = await sharedRepository.load(sessionId);
+        if (forcedState === undefined || game.lastSession === undefined) throw new Error("Expected persisted free-games session.");
+        await sharedRepository.save(sessionId, {...forcedState, featureState: game.lastSession.toSessionState()});
 
         const spun = await postJson(`${baseUrlA}/sessions/${sessionId}/spin`);
         expect(spun.status).toBe(200); // canPlayNextGame() is true despite 0 credits: free games are unfinished
@@ -634,7 +638,8 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
         // charged because VideoSlotWithFreeGamesSession explicitly reports it via
         // StakeAmountDetermining, not because the wallet balance happened to be too low to charge.
         const game = createRealFreeGamesGame(manifest);
-        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, wallet: new InMemoryWallet(1000)});
+        const sharedRepository = new InMemorySessionRepository();
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: sharedRepository, wallet: new InMemoryWallet(1000)});
         const address = await server.start();
         const baseUrl = `http://${address.host}:${address.port}`;
 
@@ -645,6 +650,9 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
         game.lastSession?.setFreeGamesSum(3);
         game.lastSession?.setFreeGamesNum(0);
         game.lastSession?.setFreeGamesBank(0);
+        const forcedState = await sharedRepository.load(sessionId);
+        if (forcedState === undefined || game.lastSession === undefined) throw new Error("Expected persisted free-games session.");
+        await sharedRepository.save(sessionId, {...forcedState, featureState: game.lastSession.toSessionState()});
 
         const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
 
@@ -1600,7 +1608,7 @@ describe("PokieDevServer (integration, FileSessionRepository across a simulated 
         await serverB.stop();
     });
 
-    it("returns 404 instead of 500 when a session's persisted file is corrupted", async () => {
+    it("returns an explicit server error rather than treating a corrupted persisted session as missing", async () => {
         const game = await loadPokieGame(fixtureRoot);
         const server = new PokieDevServer(game, {
             host: "127.0.0.1",
@@ -1618,7 +1626,7 @@ describe("PokieDevServer (integration, FileSessionRepository across a simulated 
 
         const {status, body} = await getJson(`${baseUrl}/sessions/${sessionId}`);
 
-        expect(status).toBe(404);
+        expect(status).toBe(500);
         expect(typeof body.error).toBe("string");
 
         await server.stop();

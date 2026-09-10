@@ -65,12 +65,27 @@ describe("SimulationAccumulator", () => {
         expect(stats.rtpConfidenceInterval95).toEqual({low: 0, high: 0});
     });
 
-    test("addRound rejects a non-positive bet with a clear error instead of corrupting the running stats", () => {
+    test("accepts a zero-stake free continuation but rejects a negative stake", () => {
         const accumulator = new SimulationAccumulator();
-        expect(() => accumulator.addRound(0, 5)).toThrow(/bet > 0/);
-        expect(() => accumulator.addRound(-10, 5)).toThrow(/bet > 0/);
+        accumulator.addRound(0, 5);
+        expect(() => accumulator.addRound(-10, 5)).toThrow(/bet >= 0/);
 
-        // the rejected rounds must not have been counted
+        expect(accumulator.getStatistics()).toMatchObject({rounds: 1, totalBet: 0, totalPayout: 5, rtp: 0});
+    });
+
+    test("rejects NaN/Infinity before any accumulator state is mutated", () => {
+        const accumulator = new SimulationAccumulator();
+        for (const [bet, payout] of [[Number.NaN, 1], [Infinity, 1], [1, Number.NaN], [1, Infinity], [1, -1]]) {
+            expect(() => accumulator.addRound(bet, payout)).toThrow(/finite/);
+            expect(accumulator.getStatistics().rounds).toBe(0);
+        }
+    });
+
+    test("rejects an invalid worker snapshot before it can contaminate a merge", () => {
+        const accumulator = new SimulationAccumulator();
+        const snapshot = accumulator.toSnapshot();
+        snapshot.totalPayout = Number.NaN;
+        expect(() => SimulationAccumulator.fromSnapshot(snapshot)).toThrow(/invalid totalPayout/);
         expect(accumulator.getStatistics().rounds).toBe(0);
     });
 
@@ -145,7 +160,7 @@ describe("SimulationAccumulator", () => {
         expect(left.payoutStandardDeviation).toBeCloseTo(right.payoutStandardDeviation, 10);
     });
 
-    test("variable bet sizes do not break aggregation: rtp uses per-round return ratios, not raw payout averages", () => {
+    test("variable stakes and free continuations use ratio-of-totals RTP with a finite CI", () => {
         const accumulator = new SimulationAccumulator();
         accumulator.addRound(1, 1); // return ratio 1
         accumulator.addRound(100, 0); // return ratio 0
@@ -155,9 +170,10 @@ describe("SimulationAccumulator", () => {
         expect(stats.rounds).toBe(3);
         expect(stats.totalBet).toBe(111);
         expect(stats.totalPayout).toBe(11);
-        // rtp is the mean of per-round ratios (1, 0, 1) / 3, not totalPayout / totalBet
-        expect(stats.rtp).toBeCloseTo(2 / 3, 10);
-        expect(stats.rtp).not.toBeCloseTo(stats.totalPayout / stats.totalBet, 5);
+        expect(stats.rtp).toBeCloseTo(stats.totalPayout / stats.totalBet, 10);
+        expect(stats.rtp).toBeCloseTo(11 / 111, 10);
+        expect(Number.isFinite(stats.rtpConfidenceInterval95.low)).toBe(true);
+        expect(Number.isFinite(stats.rtpConfidenceInterval95.high)).toBe(true);
     });
 
     test("toSnapshot()/fromSnapshot() round-trips to an equivalent accumulator", () => {

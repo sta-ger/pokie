@@ -67,7 +67,7 @@ export class SimulationWorkerCoordinator {
         const createWorker = this.createWorker ?? (await this.buildDefaultCreateWorker());
 
         return new Promise((resolve, reject) => {
-            const workers = requests.map((request) => createWorker(request));
+            const workers: Worker[] = [];
             // .fill(undefined) matters: new Array(n) alone produces holes, not actual `undefined`
             // elements, and Array.prototype.every() silently skips holes — which would make the
             // "every result is in" check below resolve prematurely after only the first worker
@@ -95,6 +95,24 @@ export class SimulationWorkerCoordinator {
 
             signal?.addEventListener("abort", onAbort);
 
+            // Creation itself is a lifecycle boundary too.  A failure while
+            // creating worker N used to escape before the coordinator owned a
+            // promise, leaking workers 0..N-1.  Keep the partial list and run
+            // it through the same settled cleanup path as every later error.
+            for (let index = 0; index < requests.length; index++) {
+                if (settled || signal?.aborted) {
+                    onAbort();
+                    return;
+                }
+                try {
+                    workers.push(createWorker(requests[index]));
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    finish(() => reject(new SimulationWorkerFailureError(requests[index].workerIndex, `could not create worker: ${message}`)));
+                    return;
+                }
+            }
+
             workers.forEach((worker, index) => {
                 const request = requests[index];
 
@@ -121,9 +139,13 @@ export class SimulationWorkerCoordinator {
                             const result: SimulationWorkerResult = {
                                 workerIndex: message.workerIndex,
                                 manifest: message.manifest,
+                                configHash: message.configHash,
                                 accumulator: message.accumulator,
                                 breakdown: message.breakdown,
+                                jackpot: message.jackpot,
                                 roundsCompleted: message.roundsCompleted,
+                                stopReason: message.stopReason,
+                                convergence: message.convergence,
                             };
                             results[index] = result;
                             if (results.every((entry) => entry !== undefined)) {

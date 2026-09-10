@@ -278,12 +278,18 @@ export class SpinCommandHandler implements SpinCommandHandling {
     private enqueue<T>(sessionId: string, work: () => Promise<T>): Promise<T> {
         const previous = this.sessionQueues.get(sessionId) ?? Promise.resolve();
         const result = previous.then(work, work);
-        this.sessionQueues.set(
-            sessionId,
-            result.then(
-                () => undefined,
-                () => undefined,
-            ),
+        const tail = result.then(
+            () => undefined,
+            () => undefined,
+        );
+        this.sessionQueues.set(sessionId, tail);
+        tail.then(
+            () => {
+                if (this.sessionQueues.get(sessionId) === tail) {
+                    this.sessionQueues.delete(sessionId);
+                }
+            },
+            () => undefined,
         );
         return result;
     }
@@ -325,36 +331,41 @@ export class SpinCommandHandler implements SpinCommandHandling {
             };
         }
 
-        const session = this.resolveSession(sessionId, state);
+        // Validate a command against a throw-away reconstruction first.  A
+        // live cached session is deliberately not a validation scratchpad:
+        // selecting a valid bet and then rejecting an invalid mode (or finding
+        // insufficient credits) used to leave that cached session changed even
+        // though the command returned "blocked" and no state was persisted.
+        const validationSession = this.createSessionFromState(state);
 
-        if (bet !== undefined && !session.getAvailableBets().includes(bet)) {
+        if (bet !== undefined && !validationSession.getAvailableBets().includes(bet)) {
             return {
                 status: "blocked",
                 sessionId,
-                reason: `Session "${sessionId}" does not support bet ${bet} (available bets: ${session.getAvailableBets().join(", ")}).`,
+                reason: `Session "${sessionId}" does not support bet ${bet} (available bets: ${validationSession.getAvailableBets().join(", ")}).`,
             };
         }
         if (bet !== undefined) {
-            session.setBet(bet);
+            validationSession.setBet(bet);
         }
 
         if (mode !== undefined) {
-            if (!supportsBetModeSelecting(session)) {
+            if (!supportsBetModeSelecting(validationSession)) {
                 return {
                     status: "blocked",
                     sessionId,
                     reason: `Session "${sessionId}" does not support bet mode selection.`,
                 };
             }
-            if (!session.getAvailableBetModeIds().includes(mode)) {
+            if (!validationSession.getAvailableBetModeIds().includes(mode)) {
                 return {
                     status: "blocked",
                     sessionId,
-                    reason: `Session "${sessionId}" does not support bet mode "${mode}" (available modes: ${session.getAvailableBetModeIds().join(", ")}).`,
+                    reason: `Session "${sessionId}" does not support bet mode "${mode}" (available modes: ${validationSession.getAvailableBetModeIds().join(", ")}).`,
                 };
             }
             try {
-                session.setBetMode(mode);
+                validationSession.setBetMode(mode);
             } catch (error) {
                 return {
                     status: "blocked",
@@ -365,15 +376,28 @@ export class SpinCommandHandler implements SpinCommandHandling {
         }
 
         const balanceBeforePlay = await this.wallet.getBalance(sessionId);
-        session.setCreditsAmount(balanceBeforePlay);
+        validationSession.setCreditsAmount(balanceBeforePlay);
 
-        if (!session.canPlayNextGame()) {
+        if (!validationSession.canPlayNextGame()) {
             return {
                 status: "blocked",
                 sessionId,
                 reason: `Session "${sessionId}" cannot play the next round (canPlayNextGame() returned false).`,
             };
         }
+
+        // The command has now passed every rejecting precondition. Apply the
+        // exact same validated selection to the live session immediately
+        // before the transactional path begins.
+        // Promote the successful validation reconstruction when there was no
+        // cached live instance. This keeps the normal successful path from
+        // constructing the same session twice, while a rejected request still
+        // never enters `liveSessions` at all.
+        const session = this.liveSessions.get(sessionId) ?? validationSession;
+        if (!this.liveSessions.has(sessionId)) this.liveSessions.set(sessionId, session);
+        if (bet !== undefined) session.setBet(bet);
+        if (mode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(mode);
+        session.setCreditsAmount(balanceBeforePlay);
 
         return this.playAndSettle(sessionId, session, state, version, balanceBeforePlay, requestId);
     }
@@ -638,11 +662,16 @@ export class SpinCommandHandler implements SpinCommandHandling {
     private resolveSession(sessionId: string, state: PokieSessionState): GameSessionHandling {
         let session = this.liveSessions.get(sessionId);
         if (!session) {
-            session = this.game.createSession(state.context);
-            session.setBet(state.bet);
-            restoreFeatureState(session, state.featureState);
+            session = this.createSessionFromState(state);
             this.liveSessions.set(sessionId, session);
         }
+        return session;
+    }
+
+    private createSessionFromState(state: PokieSessionState): GameSessionHandling {
+        const session = this.game.createSession(state.context);
+        session.setBet(state.bet);
+        restoreFeatureState(session, state.featureState);
         return session;
     }
 }

@@ -8,7 +8,7 @@ import {assertSafeToReplaceStakeEngineExportDirectory} from "./internal/assertSa
 import {compressStakeEngineBooksJsonl} from "./internal/compressStakeEngineBooksJsonl.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
-import {capturePublishDirectoryOwnership, publishDirectoryAtomically, removePublishedDirectoryIfOwned, withPublishedDirectoryOwnership, type PublishedDirectoryOwnership, type PublishDirectoryAtomicallyOwnership} from "./internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, preflightAtomicDirectoryPublication, publishDirectoryAtomically, removePublishedDirectoryIfOwned, withPublishedDirectoryOwnership, type PublishedDirectoryOwnership, type PublishDirectoryAtomicallyOwnership} from "./internal/publishDirectoryAtomically.js";
 import {renderStakeEngineLookupCsv} from "./internal/renderStakeEngineLookupCsv.js";
 import type {StakeEngineBookLine} from "./StakeEngineBookLine.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
@@ -110,6 +110,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             // any publication scratch beside it.
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
             const destinationOwnership = capturePublishDirectoryOwnership(outDir);
+            preflightAtomicDirectoryPublication(outDir, destinationOwnership.destinationIdentity === undefined);
 
             const buildResults: ModeBuildResult[] = [];
             let completed = BigInt(0);

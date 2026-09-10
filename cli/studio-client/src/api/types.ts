@@ -1127,6 +1127,7 @@ export type StudioOutcomeLibraryGenerateJobView = {
     id: string;
     status: "queued" | "running" | "completed" | "failed" | "cancelled";
     cancellationRequested: boolean;
+    lifecycleStage?: "generation" | "finalization" | "serialization" | "validation" | "publication";
     progress?: {processedRawIndex: string; progressTotal: string};
     result?: StudioOutcomeLibraryGenerateResultView;
 };

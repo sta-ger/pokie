@@ -29,6 +29,18 @@ export class SeededRandomNumberGenerator implements RandomNumberGenerating {
         return min + Math.floor(this.nextFloat() * (max - min));
     }
 
+    public toSessionState(): number {
+        return this.state;
+    }
+
+    public fromSessionState(state: number): this {
+        if (!Number.isSafeInteger(state) || state < 0 || state > 0xffffffff) {
+            throw new Error(`Invalid seeded RNG state: ${state}.`);
+        }
+        this.state = state >>> 0;
+        return this;
+    }
+
     private nextFloat(): number {
         this.state = (this.state + 0x6d2b79f5) >>> 0;
         let t = this.state;

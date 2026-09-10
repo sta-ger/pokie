@@ -12,5 +12,7 @@ export type SimulationStatistics = {
     payoutStandardDeviation: number;
     returnStandardDeviation: number;
     maxWin: number;
+    /** Frequency of the exact largest positive payout, never a histogram bucket proxy. */
+    maxWinFrequency?: number;
     payoutHistogram: Record<string, number>;
 };

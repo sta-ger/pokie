@@ -165,6 +165,22 @@ import type {StudioToolHandling} from "./StudioToolHandling.js";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3200;
+const MAX_JSON_BODY_BYTES = 1_048_576;
+const REMOTE_NO_ORIGIN_SAFE_POST_PATHS = new Set([
+    // These host-action routes already return "unavailable" before doing anything for a remote
+    // peer.  Keeping that deliberate response is more useful than collapsing it into a generic
+    // trust failure, and cannot mutate a Studio session or the host.
+    "/api/home/fs/native-browse",
+    "/api/home/fs/open-folder",
+    "/api/home/fs/reveal-path",
+]);
+
+class StudioHttpRequestError extends Error {
+    constructor(public readonly statusCode: number, message: string) {
+        super(message);
+        this.name = "StudioHttpRequestError";
+    }
+}
 
 // Create Project has already persisted a fresh Blueprint before this registration boundary. A brief
 // registry I/O interruption must not strand a valid recommended model behind a generic completion
@@ -330,6 +346,7 @@ export class StudioServer implements StudioServerHandling {
                 undefined,
                 this.resolveRuntimePackageRoot,
                 (record) => this.recordOutcomeSourceSimulation(record),
+                this.pokieVersion,
             );
         this.replayService =
             options.replayService ??
@@ -428,7 +445,9 @@ export class StudioServer implements StudioServerHandling {
         return new Promise((resolve, reject) => {
             const server = http.createServer((req, res) => {
                 this.handleRequest(req, res).catch((error) => {
-                    this.sendJson(res, 500, {error: error instanceof Error ? error.message : String(error)});
+                    if (res.writableEnded || res.destroyed) return;
+                    const statusCode = error instanceof StudioHttpRequestError ? error.statusCode : 500;
+                    this.sendJson(res, statusCode, {error: error instanceof Error ? error.message : String(error)});
                 });
             });
             server.once("error", reject);
@@ -579,6 +598,8 @@ export class StudioServer implements StudioServerHandling {
     private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const method = req.method ?? "GET";
         const url = new URL(req.url ?? "/", "http://localhost");
+
+        this.assertTrustedApiRequest(req, method, url);
 
         if (method === "GET" && url.pathname === "/api/health") {
             this.sendJson(res, 200, {status: "ok"});
@@ -3192,19 +3213,95 @@ export class StudioServer implements StudioServerHandling {
         if (!raw) {
             return undefined;
         }
+        const contentType = req.headers["content-type"];
+        if (typeof contentType !== "string" || !(/^application\/json(?:\s*;|\s*$)/i).test(contentType)) {
+            throw new StudioHttpRequestError(415, "Request body must use Content-Type: application/json.");
+        }
         try {
             return JSON.parse(raw);
         } catch {
-            return undefined;
+            throw new StudioHttpRequestError(400, "Request body is not valid JSON.");
         }
+    }
+
+    // Studio deliberately has one process-local mutable context, not user accounts or cookies. A
+    // browser request which changes that context must therefore be same-origin: otherwise any web
+    // page reachable by a user on the same network could drive its filesystem/project API.  Direct
+    // loopback automation remains supported without an Origin header; a remote client without one
+    // is read-only.  The three remote-safe host-action routes are excluded above because they do
+    // not perform an action for a remote peer at all.
+    //
+    // Host is treated as an HTTP authority, never as an arbitrary reflected string, and Origin is
+    // compared to that authority (scheme included). This is the same-origin boundary for Studio's
+    // single session; Studio intentionally sends no CORS opt-in headers.
+    private assertTrustedApiRequest(req: IncomingMessage, method: string, url: URL): void {
+        if (!url.pathname.startsWith("/api/")) return;
+
+        const host = req.headers.host;
+        if (host !== undefined && (typeof host !== "string" || !this.isValidHttpAuthority(host))) {
+            throw new StudioHttpRequestError(400, "Request Host header is invalid.");
+        }
+
+        const origin = req.headers.origin;
+        if (origin !== undefined) {
+            if (typeof origin !== "string" || host === undefined) {
+                throw new StudioHttpRequestError(403, "Studio API requests with Origin must identify the same Studio origin.");
+            }
+            let parsedOrigin: URL;
+            try {
+                parsedOrigin = new URL(origin);
+            } catch {
+                throw new StudioHttpRequestError(403, "Studio API request Origin is invalid.");
+            }
+            if (parsedOrigin.protocol !== "http:" || parsedOrigin.host.toLowerCase() !== host.toLowerCase()) {
+                throw new StudioHttpRequestError(403, "Studio API requests must come from the same Studio origin.");
+            }
+            return;
+        }
+
+        const isStateChanging = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+        if (isStateChanging && !this.isLoopbackRequest(req) && !REMOTE_NO_ORIGIN_SAFE_POST_PATHS.has(url.pathname)) {
+            throw new StudioHttpRequestError(403, "Remote Studio API writes require a same-origin Origin header.");
+        }
+    }
+
+    private isValidHttpAuthority(value: string): boolean {
+        // No whitespace, userinfo, path, query or fragment. Host/IP names plus an optional port are
+        // enough for Studio's direct HTTP listener; the stricter grammar also keeps comparisons with
+        // URL.host unambiguous for IPv6 bracket notation.
+        return (/^(?:[a-z0-9.-]+|\[[0-9a-f:.]+\])(?::[0-9]{1,5})?$/i).test(value);
     }
 
     private readBody(req: IncomingMessage): Promise<string> {
         return new Promise((resolve, reject) => {
             const chunks: Buffer[] = [];
-            req.on("data", (chunk: Buffer) => chunks.push(chunk));
-            req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-            req.on("error", reject);
+            let totalBytes = 0;
+            let settled = false;
+            const finish = (callback: () => void): void => {
+                if (settled) return;
+                settled = true;
+                req.off("data", onData);
+                req.off("end", onEnd);
+                req.off("aborted", onAborted);
+                req.off("error", onError);
+                callback();
+            };
+            const onData = (chunk: Buffer): void => {
+                totalBytes += chunk.length;
+                if (totalBytes > MAX_JSON_BODY_BYTES) {
+                    finish(() => reject(new StudioHttpRequestError(413, `Request body exceeds the ${MAX_JSON_BODY_BYTES}-byte limit.`)));
+                    req.resume();
+                    return;
+                }
+                chunks.push(chunk);
+            };
+            const onEnd = (): void => finish(() => resolve(Buffer.concat(chunks).toString("utf-8")));
+            const onAborted = (): void => finish(() => reject(new StudioHttpRequestError(400, "Request was aborted before its body completed.")));
+            const onError = (error: Error): void => finish(() => reject(error));
+            req.on("data", onData);
+            req.once("end", onEnd);
+            req.once("aborted", onAborted);
+            req.once("error", onError);
         });
     }
 

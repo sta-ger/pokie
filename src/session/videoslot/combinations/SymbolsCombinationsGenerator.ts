@@ -32,6 +32,16 @@ implements SymbolsCombinationsGenerating<T> {
         return [...this.lastStopPositions];
     }
 
+    public getRandomState(): unknown {
+        return (this.rng as {toSessionState?: () => unknown}).toSessionState?.();
+    }
+
+    public setRandomState(state: unknown): void {
+        const rng = this.rng as {fromSessionState?: (value: unknown) => unknown};
+        if (rng.fromSessionState === undefined) throw new Error("This symbols-combination RNG does not support state restoration.");
+        rng.fromSessionState(state);
+    }
+
     private getRandomReelSymbols(reelId: number): {symbols: T[]; position: number} {
         const sequence = this.config.getSymbolsSequences()[reelId];
         const position = this.rng.getRandomInt(0, sequence.getSize());

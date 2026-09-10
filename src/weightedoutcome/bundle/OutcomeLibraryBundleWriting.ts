@@ -8,6 +8,11 @@ export type OutcomeLibraryBundleWriteProgress = {
     readonly message: string;
 };
 
+// These are observable boundaries after a streaming producer has started: they deliberately do
+// not pretend that a raw-combination percentage is the whole job. Studio uses them to distinguish
+// completed enumeration from the remaining finalization, serialization, validation and atomic swap.
+export type OutcomeLibraryBundleWriteLifecycleStage = "finalization" | "serialization" | "validation" | "publication";
+
 // A caller may keep a small, non-bundle companion document beside a canonical bundle (for example,
 // a deployment descriptor that refers back to this bundle). These files are intentionally excluded
 // from manifest.files: that inventory remains the exact canonical bundle contract validated by
@@ -33,6 +38,7 @@ export type OutcomeLibraryBundleWriteOptions = {
     // it is not itself relied upon as the ownership mechanism.
     readonly assertDestinationAvailable?: () => Promise<void> | void;
     readonly onProgress?: (progress: OutcomeLibraryBundleWriteProgress) => void;
+    readonly onLifecycleStage?: (stage: OutcomeLibraryBundleWriteLifecycleStage) => void;
     readonly supplementalFiles?: readonly OutcomeLibraryBundleSupplementalFile[];
     readonly generatedBy?: string;
 };

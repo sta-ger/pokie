@@ -71,6 +71,7 @@ function resolveSample(request: {sample?: {sampleSize: bigint; seed: string}; sa
 }
 
 type OtherModesResult = {readonly status: "ok"; readonly modes: readonly OutcomeLibraryBundleModeInput<string>[]} | {readonly status: "error"; readonly message: string};
+export type StudioOutcomeLibraryGenerationLifecycleStage = "generation" | "finalization" | "serialization" | "validation" | "publication";
 
 /** Immutable source/destination snapshot behind a Studio preflight token. */
 export type StudioOutcomeLibraryPreflightBinding = {
@@ -403,7 +404,11 @@ export class StudioOutcomeLibraryGenerateService {
     // into the project's own conventional outcome-library bundle via OutcomeLibraryBundleWriter, the same
     // writer "pokie outcomelibrary build" uses. Every other mode already in that bundle is preserved (see
     // this class's own doc comment); only "request.mode ?? 'base'" is (re)computed.
-    public async generate(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest): Promise<StudioOutcomeLibraryGenerateResultView> {
+    public async generate(
+        projectRoot: string,
+        request: ValidatedOutcomeLibraryGenerateRequest,
+        onLifecycleStage?: (stage: StudioOutcomeLibraryGenerationLifecycleStage) => void,
+    ): Promise<StudioOutcomeLibraryGenerateResultView> {
         // HTTP callers always supply the snapshot they just displayed, but
         // retained in-process callers need the same immutable source binding.
         // In particular, a managed Blueprint must not be re-recognized after
@@ -506,6 +511,7 @@ export class StudioOutcomeLibraryGenerateService {
         if (planDrift !== undefined) {
             return {status: "load-error", error: planDrift, plan};
         }
+        onLifecycleStage?.("generation");
         type PreparedGenerationRead =
             | {readonly status: "terminal"; readonly view: StudioOutcomeLibraryGenerateResultView}
             | {
@@ -640,6 +646,7 @@ export class StudioOutcomeLibraryGenerateService {
                     if (read.status !== "ready") throw new Error("The prepared Outcome Library generation was not publishable.");
                     return this.writer.writeToDirectory(read.modes, boundDestination, {
                         signal: request.signal,
+                        onLifecycleStage,
                         // The planner invokes this policy before publication;
                         // retain that exact async policy for the writer's final
                         // atomic replacement after streaming staging.

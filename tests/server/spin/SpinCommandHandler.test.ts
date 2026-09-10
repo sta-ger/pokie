@@ -966,6 +966,25 @@ describe("SpinCommandHandler", () => {
             await expect(sessionRepository.load("session-1")).resolves.toEqual({bet: 5, win: 0});
         });
 
+        it("does not mutate a cached live session when a later command validation step rejects", async () => {
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new RecordingTransactionalWallet();
+            const handler = new SpinCommandHandler(createFakeGameWithSelectableBetMode(), sessionRepository, wallet);
+            await createSpinnableSessionOn(sessionRepository, wallet, "session-1", 1000);
+            const live = createFakeSessionWithSelectableBetMode();
+            handler.primeSession("session-1", live);
+
+            // The bet is valid and would mutate a session; the following invalid mode makes the
+            // whole command blocked. This is the former cache-poisoning sequence.
+            const result = await handler.handle("session-1", undefined, undefined, 5, "not-a-mode");
+
+            expect(result.status).toBe("blocked");
+            expect(live.getBet()).toBe(5);
+            expect(live.getBetModeId()).toBe("base");
+            expect(wallet.debitCalls).toEqual([]);
+            await expect(sessionRepository.load("session-1")).resolves.toEqual({bet: 5, win: 0});
+        });
+
         it("plays at the session's own current bet, unchanged, when no bet is given", async () => {
             const game = createFakeGameWithSelectableBet();
             const sessionRepository = new InMemorySessionRepository();

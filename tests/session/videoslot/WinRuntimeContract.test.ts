@@ -278,7 +278,9 @@ describe("WinRuntimeContract", () => {
 
         const stats = accumulator.getStatistics();
         expect(stats.averagePayout).toBe(1);
-        expect(stats.rtp).toBeCloseTo((1 + 1 + 0) / 3, 10);
+        // RTP is total payout divided by actual paid stake, not an unweighted
+        // mean of per-round payout ratios: 3 payout / (1 + 2 + 4) stake.
+        expect(stats.rtp).toBeCloseTo(3 / 7, 10);
         expect(stats.averagePayoutConfidenceInterval95.high).not.toBe(stats.rtpConfidenceInterval95.high);
     });
 

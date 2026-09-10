@@ -60,6 +60,21 @@ describe("SimulationWorkerCoordinator", () => {
         expect(results.map((r) => r.workerIndex).sort()).toEqual([0, 1]);
     });
 
+    test("preserves all terminal result fields across the worker transport boundary", async () => {
+        const worker = new FakeWorker();
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
+        const promise = coordinator.run([makeRequest(0)]);
+        worker.emit("message", {
+            type: "result",
+            ...makeResult(0),
+            jackpot: {awardCount: 1, totalAwarded: 10, totalContributed: 1, pools: {}},
+            stopReason: "converged",
+            convergence: {minRounds: 10, rtpTolerance: 0.01, checkIntervalRounds: 5, stableChecks: 2, checksPerformed: 3, consecutiveStableChecks: 2, achievedRtpHalfWidth: 0.005},
+        });
+
+        await expect(promise).resolves.toMatchObject([{jackpot: {totalAwarded: 10}, stopReason: "converged", convergence: {checksPerformed: 3}}]);
+    });
+
     test("resolves with an empty array without spawning anything when given no requests", async () => {
         const coordinator = new SimulationWorkerCoordinator(undefined, () => {
             throw new Error("should never be called");
@@ -227,6 +242,19 @@ describe("SimulationWorkerCoordinator", () => {
 
         await expect(promise).rejects.toThrow();
         workers.forEach((worker) => expect(worker.terminateCallCount).toBe(1));
+    });
+
+    test("a partial startup failure rejects and terminates workers already created", async () => {
+        const first = new FakeWorker();
+        let creates = 0;
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => {
+            creates++;
+            if (creates === 1) return first as unknown as Worker;
+            throw new Error("thread quota exhausted");
+        });
+
+        await expect(coordinator.run([makeRequest(0), makeRequest(1)])).rejects.toThrow(/could not create worker: thread quota exhausted/);
+        expect(first.terminateCallCount).toBe(1);
     });
 
     test("a worker rejecting terminate() never masks the original failure reason", async () => {

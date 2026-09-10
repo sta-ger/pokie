@@ -12,6 +12,10 @@ export type SimulationReportInput = {
     statistics: SimulationStatistics;
     durationMs: number;
     packageRoot?: string;
+    /** Resolved runtime-model identity, not merely the package path/manifest. */
+    configHash?: string;
+    /** Version of the POKIE runtime that executed this simulation, when known. */
+    pokieVersion?: string;
     // From AggregateSimulationRunner.getBreakdownStatistics(); undefined when the session never
     // exposed the optional categorization contract, in which case the report simply won't have a
     // "breakdown" field (same additive-optional pattern as reproducibility/warnings/recommendations).

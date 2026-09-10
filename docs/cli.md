@@ -3079,7 +3079,10 @@ A **Documentation** section links into this repository's docs.
 
 Options:
 
-- `--port <number>` / `--host <string>` — where Studio listens (default `127.0.0.1:3200`).
+- `--port <number>` / `--host <string>` — where Studio listens (default `127.0.0.1:3200`). Studio is a
+  single-user, process-local session, not a multi-user service: browser writes must be same-origin (and remote
+  headerless writes are refused), Studio emits no CORS opt-in, and the native file picker/reveal actions are
+  available only to a loopback peer. Do not expose an unauthenticated Studio listener to an untrusted network.
 - `--no-open` — don't try to open a browser.
 
 ### Project Dashboard

@@ -14,6 +14,8 @@ export type SimulationReportReproducibility = {
     // caller populated this reproducibility block at all (see SimulationReportBuilder). Optional only
     // for backward compatibility with older SimulationReport JSON that predates --workers.
     workerSeedStrategy?: string;
+    configHash?: string;
+    pokieVersion?: string;
 };
 
 export type SimulationReport = {

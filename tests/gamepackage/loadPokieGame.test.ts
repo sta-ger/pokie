@@ -139,4 +139,5 @@ describe("loadPokieGame", () => {
             fs.rmSync(packageRoot, {recursive: true, force: true});
         }
     });
+
 });

@@ -496,7 +496,9 @@ describe("PC-05 product-model contract", () => {
         expect(repository).toContain('createHash("sha256").update(sessionId).digest("hex")');
         expect(repository).toContain(["return path.join(this.directory, `", String.fromCharCode(36), "{fileName}.json`)"].join(""));
         expect(repository).toContain("return {version: 0, state: parsed as unknown as PokieSessionState}");
-        expect(repository).toContain("} catch {\n            return undefined;");
+        expect(repository).toContain("if ((error as NodeJS.ErrnoException)?.code === \"ENOENT\") {");
+        expect(repository).toContain("throw new SessionStateCorruptError(sessionId, error)");
+        expect(repository).toContain("throw new SessionStateReadError(sessionId, error)");
         expect(repository).toContain("there is no OS-level file lock");
         expect(server).toContain("this.sessionRepository = options.sessionRepository ?? new InMemorySessionRepository()");
         expect(server).toContain("await this.sessionRepository.save(sessionId, state)");

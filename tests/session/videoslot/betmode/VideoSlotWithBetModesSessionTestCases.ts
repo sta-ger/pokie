@@ -323,7 +323,9 @@ export const testSessionStateRoundTripCarriesModeAlone = (
     session.setBetMode("ante");
 
     const state = session.toSessionState();
-    expect(state).toEqual({betModeId: "ante"});
+    // Base state now carries deterministic RNG/feature continuation state as
+    // well; the selected mode remains part of that persisted snapshot.
+    expect(state).toEqual({base: {}, betModeId: "ante"});
 
     otherSession.fromSessionState(state);
     expect(otherSession.getBetModeId()).toBe("ante");

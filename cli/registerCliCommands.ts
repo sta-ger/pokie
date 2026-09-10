@@ -87,6 +87,10 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
             undefined,
             undefined,
             createMaterializingRuntimePackageResolver(version, SIM_OPERATION, pokiePackageRoot),
+            undefined,
+            undefined,
+            undefined,
+            version,
         ),
         new InternalStudioCommand(new StudioCommand(version, pokiePackageRoot, {studioRoot})),
         new ValidateCommand(

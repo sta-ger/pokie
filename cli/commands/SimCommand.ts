@@ -119,6 +119,10 @@ export class SimCommand implements CliCommandHandling {
     // OutcomeSourceCommand's own "sample" verb makes, so "--seed" behaves identically everywhere a caller draws
     // from a canonical outcome source.
     private readonly buildRandomSource: (seed?: string) => WeightedOutcomeRandomSource;
+    // Supplied by the root CLI composition.  Keep it optional for library/tests that construct a
+    // command directly, but never invent a version from the target package: reproducibility must
+    // identify the POKIE runtime which performed the run.
+    private readonly pokieVersion: string | undefined;
 
     constructor(
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
@@ -135,6 +139,7 @@ export class SimCommand implements CliCommandHandling {
         simulateOutcomeSource: SimulateOutcomeSourceFn = simulateOutcomeSourceProject,
         buildRandomSource: (seed?: string) => WeightedOutcomeRandomSource = (seed) =>
             seed !== undefined ? new SeededWeightedOutcomeRandomSource(seed) : new SecureWeightedOutcomeRandomSource(),
+        pokieVersion: string | undefined = undefined,
     ) {
         this.loadGame = loadGame;
         this.writeFile = writeFile;
@@ -145,6 +150,7 @@ export class SimCommand implements CliCommandHandling {
         this.resolveProject = resolveProject;
         this.simulateOutcomeSource = simulateOutcomeSource;
         this.buildRandomSource = buildRandomSource;
+        this.pokieVersion = pokieVersion;
     }
 
     public getName(): string {
@@ -445,6 +451,8 @@ export class SimCommand implements CliCommandHandling {
             statistics: result.statistics,
             durationMs,
             packageRoot: options.packageRoot,
+            configHash: result.configHash,
+            pokieVersion: this.pokieVersion,
             breakdown: result.breakdown,
             jackpot: result.jackpot,
             workers: result.workers,

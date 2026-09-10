@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import {capturePublishDirectoryOwnership, publishDirectoryAtomically, removePublishedDirectoryIfOwned, withPublishedDirectoryOwnership} from "../../stakeengine/internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, preflightAtomicDirectoryPublication, publishDirectoryAtomically, removePublishedDirectoryIfOwned, withPublishedDirectoryOwnership} from "../../stakeengine/internal/publishDirectoryAtomically.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION} from "../WeightedOutcomeLibrary.js";
 import {computeOnlineWeightedOutcomeLibraryAnalysis} from "./internal/computeOnlineWeightedOutcomeLibraryAnalysis.js";
@@ -102,6 +102,10 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
         }
         assertSafeToReplaceOutcomeLibraryBundleDirectory(outDir, options?.allowExistingEmptyDestination);
         const destinationOwnership = capturePublishDirectoryOwnership(outDir);
+        // A mode's `outcomes` may be a huge lazy generator. Prove the real `mv` primitive against
+        // this destination filesystem before consuming even its first item, not after generation has
+        // filled a staging directory and publication is the only work left.
+        preflightAtomicDirectoryPublication(outDir, destinationOwnership.destinationIdentity === undefined);
 
         const stagingDir = `${outDir}.staging-${crypto.randomBytes(6).toString("hex")}`;
         fs.mkdirSync(stagingDir, {recursive: true});
@@ -144,6 +148,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 if (result.built === undefined) {
                     continue;
                 }
+                options?.onLifecycleStage?.("finalization");
                 completed += BigInt(result.built.outcomeCount);
 
                 const current = provenanceKeyOf(result.built.firstOutcome as never);
@@ -188,6 +193,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 manifestEntries.push(manifestEntry);
 
                 const indexPath = path.join(stagingDir, indexFile);
+                options?.onLifecycleStage?.("serialization");
                 if (result.built.entriesPath !== undefined) {
                     this.writeNativeIndex(indexPath, {
                         schemaVersion: OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION,
@@ -217,6 +223,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             }
 
             assertNotCancelled(options);
+            options?.onLifecycleStage?.("validation");
             if (issues.some((issue) => issue.severity === "error") || gameManifest === undefined || artifactPokieVersion === undefined) {
                 return {outDir, files: [], manifest: undefined, issues};
             }
@@ -248,6 +255,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             // alone must never authorize this replacement.
             await options?.assertDestinationAvailable?.();
             assertNotCancelled(options);
+            options?.onLifecycleStage?.("publication");
             const {cleanupWarning, publication} = publishDirectoryAtomically({
                 outDir,
                 ownership: destinationOwnership,

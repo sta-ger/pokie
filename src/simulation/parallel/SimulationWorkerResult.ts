@@ -12,6 +12,8 @@ import type {SimulationStopReason} from "../SimulationStopReason.js";
 export type SimulationWorkerResult = {
     workerIndex: number;
     manifest: PokieGameManifest;
+    /** Authoritative identity of the resolved runtime model, when supplied by the game. */
+    configHash?: string;
     accumulator: SimulationAccumulatorSnapshot;
     breakdown?: Record<string, SimulationBreakdownComponent>;
     // Present only when this worker's own session exposed JackpotStatisticsProviding — see that

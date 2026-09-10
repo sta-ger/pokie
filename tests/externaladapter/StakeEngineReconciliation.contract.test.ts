@@ -16,7 +16,7 @@ import {
     buildWeightedOutcomeLibrary,
     createLocalJsonExternalDeploymentTarget,
 } from "pokie";
-import {publishDirectoryAtomically} from "../../src/stakeengine/internal/publishDirectoryAtomically.js";
+import {preflightAtomicDirectoryPublication, publishDirectoryAtomically} from "../../src/stakeengine/internal/publishDirectoryAtomically.js";
 
 // This file exists specifically because Stake Engine Export (src/stakeengine/) and the External Adapter SDK
 // (src/externaladapter/) are *deliberately* kept as separate, sibling pipelines rather than one being built on
@@ -313,6 +313,34 @@ describe("publishDirectoryAtomically direct ownership contract", () => {
         fs.rmSync(outDir, {recursive: true, force: true});
         expect(publish("retry")).toEqual({});
         expect(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")).toBe(`{"value":"retry"}`);
+    });
+});
+
+describe("atomic directory publication capability preflight", () => {
+    let outDir: string;
+
+    beforeEach(() => {
+        outDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pokie-atomic-preflight-")), "artifact");
+    });
+
+    afterEach(() => {
+        fs.rmSync(path.dirname(outDir), {recursive: true, force: true});
+    });
+
+    it("proves both an absent install and an existing-directory exchange before generation", () => {
+        expect(() => preflightAtomicDirectoryPublication(outDir, true)).not.toThrow();
+        fs.mkdirSync(outDir);
+        expect(() => preflightAtomicDirectoryPublication(outDir, false)).not.toThrow();
+        expect(fs.existsSync(outDir)).toBe(true);
+        expect(fs.readdirSync(path.dirname(outDir)).filter((name) => name.includes("atomic-preflight"))).toEqual([]);
+    });
+
+    it("fails closed and removes its private probe when the host move capability is unavailable", () => {
+        expect(() =>
+            preflightAtomicDirectoryPublication(outDir, true, () => ({status: 1, stderr: "unsupported option"})),
+        ).toThrow(/Cannot atomically publish directory.*--no-clobber.*unsupported option/i);
+        expect(fs.readdirSync(path.dirname(outDir)).filter((name) => name.includes("atomic-preflight"))).toEqual([]);
+        expect(fs.existsSync(outDir)).toBe(false);
     });
 });
 

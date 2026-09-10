@@ -408,7 +408,7 @@ function TargetCard({
                     </Button>
                     {outcomeLibraryRun.status === "running" && (
                         <>
-                            <LoadingState label={outcomeLibraryRun.job.progress === undefined ? "Generating outcome library from this project's current build…" : `Generating outcome library: ${outcomeLibraryRun.job.progress.processedRawIndex} / ${outcomeLibraryRun.job.progress.progressTotal} raw combinations…`} />
+                            <LoadingState label={describeOutcomeLibraryLifecycle(outcomeLibraryRun.job)} />
                             <Button size="xs" color="red" variant="light" mt="xs" onClick={onCancelOutcomeLibrary}>Cancel generation</Button>
                         </>
                     )}
@@ -747,6 +747,18 @@ function TargetCard({
             </AdvancedDisclosure>
         </div>
     );
+}
+
+function describeOutcomeLibraryLifecycle(job: StudioOutcomeLibraryGenerateJobView): string {
+    const progress = job.progress === undefined ? undefined : `${job.progress.processedRawIndex} / ${job.progress.progressTotal} raw combinations`;
+    switch (job.lifecycleStage) {
+        case "finalization": return "Finalizing generated outcomes…";
+        case "serialization": return "Serializing Outcome Library records…";
+        case "validation": return "Validating the complete Outcome Library…";
+        case "publication": return "Atomically publishing the validated Outcome Library…";
+        case "generation": return progress === undefined ? "Generating outcome library from this project's current build…" : `Generating outcome library: ${progress}…`;
+        default: return progress === undefined ? "Preparing outcome library generation…" : `Generating outcome library: ${progress}…`;
+    }
 }
 
 // The sole Studio Build/Export surface -- lists every applicable builder this project's own resolved

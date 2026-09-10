@@ -137,6 +137,29 @@ describe("ReplayRecorder", () => {
         expect(descriptor.durationMs).toBeGreaterThanOrEqual(0);
         expect(descriptor.timestamp).toBeGreaterThanOrEqual(before);
     });
+
+    it("fails explicitly instead of fabricating an unreachable target round", () => {
+        const stoppingGame: PokieGame = {
+            getManifest: () => manifest,
+            createSession: () => {
+                let played = false;
+                return {
+                    getCreditsAmount: () => 1,
+                    setCreditsAmount: () => undefined,
+                    getBet: () => 1,
+                    setBet: () => undefined,
+                    getAvailableBets: () => [1],
+                    canPlayNextGame: () => !played,
+                    play: () => {
+                        played = true;
+                    },
+                    getWinAmount: () => 0,
+                };
+            },
+        };
+
+        expect(() => new ReplayRecorder().record({game: stoppingGame, round: 2})).toThrow(/target round 2 is unreachable/i);
+    });
 });
 
 describe("ReplayRecorder (integration, real loadPokieGame + fixture game package)", () => {

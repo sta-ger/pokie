@@ -114,7 +114,7 @@ describe("AggregateSimulationRunner with a locked bet mode", () => {
             new FixedBetModeForNextSimulationRoundSetting("buy-bonus"),
         );
 
-        runner.run();
+        const statistics = runner.run().getStatistics();
         const breakdown = runner.getBreakdownStatistics();
 
         expect(Object.keys(breakdown!).sort()).toEqual(["base", "freeGames"]);
@@ -126,6 +126,13 @@ describe("AggregateSimulationRunner with a locked bet mode", () => {
         // Every buy round is charged the full mode-locked buy cost; every free round costs nothing.
         expect(breakdown!.base.totalBet).toBe(bet * 50 * breakdown!.base.rounds);
         expect(breakdown!.freeGames.totalBet).toBe(0);
+        // Overall/report accounting has exactly the same actual-stake denominator as category
+        // accounting: paid buy entries count, free continuations don't, and their payouts still do.
+        const breakdownTotalBet = breakdown!.base.totalBet + breakdown!.freeGames.totalBet;
+        expect(statistics.totalBet).toBe(breakdownTotalBet);
+        expect(statistics.rtp).toBeCloseTo(statistics.totalPayout / statistics.totalBet, 12);
+        expect(Number.isFinite(statistics.rtpConfidenceInterval95.low)).toBe(true);
+        expect(Number.isFinite(statistics.rtpConfidenceInterval95.high)).toBe(true);
         // The mode itself never lingers as "selected" past the purchase that bought it.
         expect(session.getBetModeId()).toBe("base");
         // The bought bonus rounds actually happened, not just the buy spins.

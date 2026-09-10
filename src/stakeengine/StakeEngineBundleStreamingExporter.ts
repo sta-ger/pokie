@@ -10,7 +10,7 @@ import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/Outcom
 import {assertSafeToReplaceStakeEngineExportDirectory} from "./internal/assertSafeToReplaceStakeEngineExportDirectory.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
-import {capturePublishDirectoryOwnership, publishDirectoryAtomically, withPublishedDirectoryOwnership} from "./internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, preflightAtomicDirectoryPublication, publishDirectoryAtomically, withPublishedDirectoryOwnership} from "./internal/publishDirectoryAtomically.js";
 import type {StakeEngineBookLine} from "./StakeEngineBookLine.js";
 import type {StakeEngineBundleModeInput} from "./StakeEngineBundleModeInput.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
@@ -142,6 +142,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
         // Keep an external destination out of the staging lifecycle entirely.
         assertSafeToReplaceStakeEngineExportDirectory(outDir);
         const destinationOwnership = capturePublishDirectoryOwnership(outDir);
+        preflightAtomicDirectoryPublication(outDir, destinationOwnership.destinationIdentity === undefined);
         const upfrontIssues = this.validateUpfront(modes);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};

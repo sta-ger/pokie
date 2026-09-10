@@ -177,6 +177,27 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         expect(fs.existsSync(path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${job.id}.json`))).toBe(false);
     });
 
+    it("exposes the writer's real terminal lifecycle stages instead of leaving 100% work labelled as generation", async () => {
+        const generate = jest.fn((root: string, _request: unknown, onLifecycleStage?: (stage: "finalization") => void) => {
+            onLifecycleStage?.("finalization");
+            return {
+                status: "cancelled" as const,
+                processedRawIndex: BigInt(5),
+                progressTotal: BigInt(5),
+                recovery: "Retry after finalization.",
+                plan: createUnresolvedRuntimePlan(root, "outcomeLibrary"),
+            };
+        });
+        const jobs = new StudioOutcomeLibraryGenerateJobService({generate} as unknown as StudioOutcomeLibraryGenerateService);
+        const started = jobs.start(projectRoot, {generation: "sampled"});
+
+        expect(started).toMatchObject({status: "queued", lifecycleStage: "generation"});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(jobs.getStatusForProject(projectRoot, started.id)).toMatchObject({status: "cancelled", lifecycleStage: "finalization"});
+    });
+
     it("reports a retry conflict for a missing persisted recovery instead of silently losing the job", async () => {
         const jobs = new StudioOutcomeLibraryGenerateJobService({generate: jest.fn()} as unknown as StudioOutcomeLibraryGenerateService);
 

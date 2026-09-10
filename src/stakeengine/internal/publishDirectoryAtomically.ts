@@ -78,6 +78,55 @@ export type PublishDirectoryAtomicallyResult = {
     readonly cleanupWarning?: string;
 };
 
+type AtomicMoveResult = {error?: Error; status?: number | null; stderr?: string | Buffer | null};
+type AtomicMoveRunning = (
+    command: string,
+    args: readonly string[],
+    options: {encoding: "utf-8"},
+) => AtomicMoveResult;
+
+// Proves the exact directory move primitive publication will need *before* a caller spends time
+// generating/compressing an artifact. The probes live beside the requested destination, so they
+// exercise its actual filesystem and the same system `mv`, but never inspect, rename, or create the
+// public pathname itself. `expectedDestinationWasAbsent` selects the eventual commit operation:
+// no-clobber install for a new destination, exchange for a replacement.
+export function preflightAtomicDirectoryPublication(
+    outDir: string,
+    expectedDestinationWasAbsent: boolean,
+    runMove: AtomicMoveRunning = spawnSync,
+): void {
+    const destination = path.resolve(outDir);
+    const parent = path.dirname(destination);
+    fs.mkdirSync(parent, {recursive: true});
+    const probeRoot = path.join(parent, `.${path.basename(destination)}.atomic-preflight-${crypto.randomBytes(12).toString("hex")}`);
+    fs.mkdirSync(probeRoot, {recursive: false});
+    try {
+        if (expectedDestinationWasAbsent) {
+            const source = path.join(probeRoot, "source");
+            const target = path.join(probeRoot, "target");
+            fs.mkdirSync(source);
+            assertAtomicMoveSupported(runMove("mv", ["--no-clobber", "--no-target-directory", source, target], {encoding: "utf-8"}), "--no-clobber", destination);
+            if (capturePublishDirectoryIdentity(source) !== undefined || capturePublishDirectoryIdentity(target) === undefined) {
+                throw new Error(`Cannot atomically publish directory "${destination}": --no-clobber did not perform the expected directory move.`);
+            }
+            return;
+        }
+
+        const left = path.join(probeRoot, "left");
+        const right = path.join(probeRoot, "right");
+        fs.mkdirSync(left);
+        fs.mkdirSync(right);
+        const leftIdentity = capturePublishDirectoryIdentity(left)!;
+        const rightIdentity = capturePublishDirectoryIdentity(right)!;
+        assertAtomicMoveSupported(runMove("mv", ["--exchange", "--no-target-directory", left, right], {encoding: "utf-8"}), "--exchange", destination);
+        if (!sameIdentity(capturePublishDirectoryIdentity(left), rightIdentity) || !sameIdentity(capturePublishDirectoryIdentity(right), leftIdentity)) {
+            throw new Error(`Cannot atomically publish directory "${destination}": --exchange did not atomically exchange two directories.`);
+        }
+    } finally {
+        fs.rmSync(probeRoot, {recursive: true, force: true});
+    }
+}
+
 /**
  * Removes a completed publication only while the public pathname still names
  * the exact directory this invocation installed.  A false result means a
@@ -245,7 +294,7 @@ function exchangeDirectories(left: string, right: string): void {
     assertAtomicMoveSupported(result, "--exchange", right);
 }
 
-function assertAtomicMoveSupported(result: ReturnType<typeof spawnSync>, operation: string, outDir: string): void {
+function assertAtomicMoveSupported(result: AtomicMoveResult, operation: string, outDir: string): void {
     if (result.error === undefined && result.status === 0) return;
     const detail = result.error?.message ?? String(result.stderr ?? `mv exited with status ${result.status ?? "unknown"}`).trim();
     throw new Error(`Cannot atomically publish directory "${outDir}": this host does not provide ${operation} directory replacement (${detail}).`);

@@ -7,6 +7,22 @@ type NodeCrypto = typeof import("node:crypto");
 type NodePath = typeof import("node:path");
 type NodeFileRuntime = {readonly fs: NodeFileSystem; readonly crypto: NodeCrypto; readonly path: NodePath};
 
+/** A stored session exists but cannot be parsed as a valid JSON record. */
+export class SessionStateCorruptError extends Error {
+    constructor(sessionId: string, cause: unknown) {
+        super(`Stored session "${sessionId}" is corrupt: ${cause instanceof Error ? cause.message : String(cause)}`);
+        this.name = "SessionStateCorruptError";
+    }
+}
+
+/** The repository could not read an existing session for an operational reason. */
+export class SessionStateReadError extends Error {
+    constructor(sessionId: string, cause: unknown) {
+        super(`Could not read stored session "${sessionId}": ${cause instanceof Error ? cause.message : String(cause)}`);
+        this.name = "SessionStateReadError";
+    }
+}
+
 // This module remains part of the root package entry point for its server-side public API. Keep its
 // Node built-ins behind a runtime boundary so a browser consumer importing an unrelated root export
 // (such as a game model) does not fail its production bundle while resolving `fs.promises`.
@@ -17,8 +33,8 @@ function loadNodeFileRuntime(): Promise<NodeFileRuntime> {
 // Persists one JSON file per session under `directory`, so sessions restore after a `pokie serve`
 // restart. Filenames are a SHA-256 hash of the sessionId rather than the sessionId itself, since
 // sessionId ends up in a URL segment and must never be usable for path traversal into `directory`.
-// A missing or corrupted (unparsable) file is treated as "no state" rather than thrown, so a
-// restart-with-stale-or-tampered-file behaves the same as an unknown sessionId (404), not a crash.
+// Only an absent file means "no state". Corruption and operational read errors are explicit: treating
+// either as a missing session turns a recoverable storage incident into an apparent data loss.
 //
 // Also implements VersionedSessionRepository: each file stores `{version, state}` rather than a raw
 // PokieSessionState. save()/saveVersioned() for a given sessionId are serialized through an
@@ -85,12 +101,20 @@ export class FileSessionRepository implements VersionedSessionRepository {
     private enqueue<T>(sessionId: string, work: () => Promise<T>): Promise<T> {
         const previous = this.writeQueues.get(sessionId) ?? Promise.resolve();
         const result = previous.then(work, work);
-        this.writeQueues.set(
-            sessionId,
-            result.then(
-                () => undefined,
-                () => undefined,
-            ),
+        const tail = result.then(
+            () => undefined,
+            () => undefined,
+        );
+        this.writeQueues.set(sessionId, tail);
+        // The map is a serialization aid, not a historical log.  Delete only
+        // our own tail so a newer enqueue cannot be accidentally removed.
+        tail.then(
+            () => {
+                if (this.writeQueues.get(sessionId) === tail) {
+                    this.writeQueues.delete(sessionId);
+                }
+            },
+            () => undefined,
         );
         return result;
     }
@@ -106,15 +130,32 @@ export class FileSessionRepository implements VersionedSessionRepository {
             // Pre-versioning file: a raw PokieSessionState with no envelope. Treated as version 0 so
             // the very next save (through either save() or saveVersioned()) upgrades it in place.
             return {version: 0, state: parsed as unknown as PokieSessionState};
-        } catch {
-            return undefined;
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+                return undefined;
+            }
+            if (error instanceof SyntaxError) {
+                throw new SessionStateCorruptError(sessionId, error);
+            }
+            throw new SessionStateReadError(sessionId, error);
         }
     }
 
     private async writeRecord(sessionId: string, record: VersionedSessionState): Promise<void> {
-        const {fs} = await this.nodeRuntime;
+        const {fs, crypto} = await this.nodeRuntime;
         await fs.mkdir(this.directory, {recursive: true});
-        await fs.writeFile(await this.filePathFor(sessionId), JSON.stringify(record), "utf-8");
+        const destination = await this.filePathFor(sessionId);
+        // Same-directory rename is atomic on every filesystem POKIE supports.
+        // A reader therefore sees either the previous complete record or the
+        // new complete record, never a briefly absent/truncated target.
+        const temporary = `${destination}.tmp-${crypto.randomUUID()}`;
+        try {
+            await fs.writeFile(temporary, JSON.stringify(record), "utf-8");
+            await fs.rename(temporary, destination);
+        } catch (error) {
+            await fs.rm(temporary, {force: true}).catch(() => undefined);
+            throw error;
+        }
     }
 
     private async filePathFor(sessionId: string): Promise<string> {

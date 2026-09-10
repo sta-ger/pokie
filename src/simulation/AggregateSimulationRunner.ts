@@ -49,11 +49,10 @@ export class AggregateSimulationRunner {
         roundCategoryDeterminer: SimulationRoundCategoryDetermining = createDefaultRoundCategoryDeterminer(),
         // Locks the run to one bet mode (see FixedBetModeForNextSimulationRoundSetting) — absent by
         // default, so an existing caller that never touches bet modes gets byte-identical behavior.
-        // Its presence also switches the *breakdown's* own bet accounting from the nominal getBet()
-        // (used for the overall accumulator below, unconditionally, exactly as always) to
-        // getStakeAmount() (see resolveStakeAmount()): a mode-locked run's whole point is measuring
-        // what a bet mode actually costs, which is exactly what StakeAmountDetermining -- already the
-        // runtime's own source of truth, never recomputed here -- reports.
+        // Both the overall accumulator and every breakdown read getStakeAmount() (see
+        // resolveStakeAmount()): a mode-locked run's whole point is measuring what a bet mode
+        // actually costs, which is exactly what StakeAmountDetermining -- already the runtime's own
+        // source of truth, never recomputed here -- reports.
         betModeSelector: BetModeForNextSimulationRoundSetting | undefined = undefined,
     ) {
         this.session = session;
@@ -82,10 +81,9 @@ export class AggregateSimulationRunner {
             }
             this.betModeSelector?.setBetModeForNextRound(this.session);
 
-            const nominalBet = this.session.getBet();
-            // Read before play(), same as nominalBet — getStakeAmount()'s own contract (see
+            // Read before play(); getStakeAmount()'s own contract (see
             // StakeAmountDetermining) is "what the *next* play() will actually charge".
-            const stakeAmount = this.betModeSelector ? this.resolveStakeAmount() : nominalBet;
+            const stakeAmount = this.resolveStakeAmount();
             const supportsCategorization = this.roundCategoryDeterminer.supportsRoundCategorization(this.session);
             // Normalized/validated here, centrally, regardless of which determiner produced it — an
             // injected custom SimulationRoundCategoryDetermining (see the extension point) gets the same
@@ -99,11 +97,12 @@ export class AggregateSimulationRunner {
 
             this.session.play();
             const payout = this.session.getWinAmount();
-            // Unconditionally nominal-bet-based, exactly as before betModeSelector existed — free/bonus
-            // rounds still count at their nominal wager value here, which is what makes this the right
-            // basis for the *overall*, mode-blind accumulator (see SimulationAccumulator's own bet > 0
-            // requirement: stakeAmount is 0 mid a free round, which this never feeds it).
-            accumulator.addRound(nominalBet, payout);
+            // Canonical accounting: nominalBet is the displayed denomination;
+            // stakeAmount is what the player actually paid for this round;
+            // a free continuation therefore contributes 0 stake but its full
+            // payout. This same denominator reaches accumulator, breakdown,
+            // worker merge and report -- no mode-specific alternate RTP.
+            accumulator.addRound(stakeAmount, payout);
 
             if (category !== undefined) {
                 categorizationSupported = true;

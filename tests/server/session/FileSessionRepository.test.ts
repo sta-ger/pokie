@@ -1,4 +1,4 @@
-import {FileSessionRepository, PokieSessionState, SessionVersionConflictError} from "pokie";
+import {FileSessionRepository, PokieSessionState, SessionStateCorruptError, SessionVersionConflictError} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -38,14 +38,32 @@ describe("FileSessionRepository", () => {
         await expect(reloaded.load("session-1")).resolves.toEqual(state);
     });
 
-    it("treats a corrupted state file as missing state instead of throwing", async () => {
+    it("never transiently reports an existing valid session as missing while saves race loads", async () => {
+        const repository = new FileSessionRepository(directory);
+        await repository.save("session-1", {bet: 5, win: 0});
+
+        const saves = Array.from({length: 30}, (_, index) => repository.save("session-1", {bet: 5, win: index + 1}));
+        const reads = Array.from({length: 100}, async () => {
+            await new Promise<void>((resolve) => {
+                setImmediate(resolve);
+            });
+            return repository.load("session-1");
+        });
+        const results = await Promise.all([...saves, ...reads]);
+        const readResults = results.slice(saves.length) as Array<PokieSessionState | undefined>;
+
+        expect(readResults).toHaveLength(100);
+        expect(readResults.every((state) => state !== undefined && state.bet === 5 && Number.isInteger(state.win))).toBe(true);
+    });
+
+    it("distinguishes a corrupted state file from a missing session", async () => {
         const repository = new FileSessionRepository(directory);
         await repository.save("session-1", {bet: 5, win: 0});
 
         const [fileName] = fs.readdirSync(directory);
         fs.writeFileSync(path.join(directory, fileName), "{not valid json", "utf-8");
 
-        await expect(repository.load("session-1")).resolves.toBeUndefined();
+        await expect(repository.load("session-1")).rejects.toBeInstanceOf(SessionStateCorruptError);
     });
 
     it("does not let a sessionId escape the target directory via path traversal", async () => {
@@ -118,14 +136,14 @@ describe("FileSessionRepository", () => {
             await expect(repository.loadVersioned("session-1")).resolves.toEqual({state: {bet: 5, win: 15}, version: 1});
         });
 
-        it("treats a corrupted state file as missing from loadVersioned too, instead of throwing", async () => {
+        it("reports a corrupted state file from loadVersioned too", async () => {
             const repository = new FileSessionRepository(directory);
             await repository.save("session-1", {bet: 5, win: 0});
 
             const [fileName] = fs.readdirSync(directory);
             fs.writeFileSync(path.join(directory, fileName), "{not valid json", "utf-8");
 
-            await expect(repository.loadVersioned("session-1")).resolves.toBeUndefined();
+            await expect(repository.loadVersioned("session-1")).rejects.toBeInstanceOf(SessionStateCorruptError);
         });
 
         it("serializes two truly concurrent saveVersioned calls against the SAME instance for one sessionId: exactly one wins, nothing is lost", async () => {

@@ -9,9 +9,16 @@ export type SimulationAccumulatorSnapshot = {
     totalBet: number;
     totalPayout: number;
     maxWin: number;
+    maxWinCount?: number;
     meanPayout: number;
     meanSquareDelta: number;
     meanReturnRatio: number;
     meanReturnRatioSquareDelta: number;
+    // Added with the actual-stake accounting contract. Optional only so an
+    // older persisted worker snapshot can still be read; newly produced
+    // snapshots always include the complete ratio-estimator state.
+    meanBet?: number;
+    betSquareDelta?: number;
+    payoutBetCoMoment?: number;
     payoutHistogram: Record<string, number>;
 };

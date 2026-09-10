@@ -2,8 +2,6 @@ import type {JackpotStatisticsSnapshot} from "../session/JackpotStatisticsSnapsh
 import {BASE_SIMULATION_CATEGORY} from "../simulation/SimulationCategoryNames.js";
 import {SimulationCategoryOrdering} from "../simulation/SimulationCategoryOrdering.js";
 import type {SimulationBreakdownComponent} from "../simulation/SimulationBreakdownComponent.js";
-import {summarizeSimulationBreakdown} from "../simulation/SimulationBreakdownMerging.js";
-import {PAYOUT_HISTOGRAM_BUCKET_ORDER} from "./PayoutHistogramBucketOrder.js";
 import type {SimulationReport, SimulationReportReproducibility} from "./SimulationReport.js";
 import type {SimulationReportBreakdown, SimulationReportBreakdownComponent} from "./SimulationReportBreakdown.js";
 import type {SimulationReportBuilding} from "./SimulationReportBuilding.js";
@@ -23,24 +21,15 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
     public static readonly MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING: number = 20;
 
     public build(input: SimulationReportInput): SimulationReport {
-        const {manifest, requestedRounds, seed, statistics, durationMs, packageRoot, workerSeedStrategy, betMode, targetRtp, stopReason, convergence} =
+        const {manifest, requestedRounds, seed, statistics, durationMs, packageRoot, workerSeedStrategy, betMode, targetRtp, stopReason, convergence, configHash, pokieVersion} =
             input;
         const workers = input.workers ?? 1;
         const spinsPerSecond = Math.round(statistics.rounds / (Math.max(durationMs, 1) / 1000));
 
-        // A locked bet mode's own totals — summed across whatever categories the breakdown has (see
-        // AggregateSimulationRunner's betModeSelector parameter, which makes those categories
-        // stake-based rather than nominal-bet-based) — are the correct core rtp/totalBet/totalWin/
-        // hitFrequency/maxWin for that mode; `statistics` alone stays nominal-bet-based always (see its
-        // own doc comment), which would understate an ante/buy mode's real cost.
-        const betModeSummary = betMode !== undefined && input.breakdown ? summarizeSimulationBreakdown(input.breakdown) : undefined;
-        const betModeSummaryMissing = betMode !== undefined && betModeSummary === undefined;
-        const nominalHitFrequency = statistics.rounds > 0 ? statistics.hitCount / statistics.rounds : 0;
-
         const rounds = statistics.rounds;
-        const totalBet = betModeSummary ? betModeSummary.totalBet : statistics.totalBet;
-        const totalWin = betModeSummary ? betModeSummary.totalWin : statistics.totalPayout;
-        const rtp = betModeSummary ? betModeSummary.rtp : statistics.rtp;
+        const totalBet = statistics.totalBet;
+        const totalWin = statistics.totalPayout;
+        const rtp = statistics.rtp;
 
         const core: CoreMetrics = {
             game: {id: manifest.id, name: manifest.name, version: manifest.version},
@@ -50,8 +39,8 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             totalBet,
             totalWin,
             rtp,
-            hitFrequency: betModeSummary ? betModeSummary.hitFrequency : nominalHitFrequency,
-            maxWin: betModeSummary ? betModeSummary.maxWin : statistics.maxWin,
+            hitFrequency: rounds > 0 ? statistics.hitCount / rounds : 0,
+            maxWin: statistics.maxWin,
             durationMs,
             spinsPerSecond,
             workers,
@@ -67,7 +56,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             // through from statistics (see SimulationReport.ts's own doc comment).
             volatility: statistics.volatility,
             payoutHistogram: {...statistics.payoutHistogram},
-            maxWinFrequency: this.computeMaxWinFrequency(statistics.payoutHistogram, rounds),
+            maxWinFrequency: statistics.maxWinFrequency ?? 0,
             stopReason,
             convergence,
         };
@@ -75,34 +64,14 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         const breakdown = this.buildBreakdown(input.breakdown, core.totalBet);
         const jackpot = this.buildJackpot(input.jackpot, core.totalBet);
         const warnings = this.buildWarnings(core, breakdown);
-        if (betModeSummaryMissing) {
-            warnings.push(
-                `Bet mode "${betMode}" was locked for this run, but no per-round categorization was available — ` +
-                    `rtp/totalBet/totalWin reflect the nominal bet, not "${betMode}"'s actual stake.`,
-            );
-        }
-
         return {
             ...core,
             breakdown,
             jackpot,
-            reproducibility: this.buildReproducibility(core, packageRoot, workerSeedStrategy),
+            reproducibility: this.buildReproducibility(core, packageRoot, workerSeedStrategy, configHash, pokieVersion),
             warnings,
             recommendations: this.buildRecommendations(core),
         };
-    }
-
-    // The frequency (0..1) of rounds whose payout landed in the same fixed histogram bucket as the
-    // biggest payout observed this run -- i.e. how often a round paid out "on the scale of" the max
-    // win, not merely how often the exact max-win amount recurred. A derived read of the already-
-    // computed payoutHistogram (see PayoutHistogramBucketOrder.ts), never a new statistic collected
-    // during simulation.
-    private computeMaxWinFrequency(payoutHistogram: Record<string, number>, rounds: number): number {
-        if (rounds === 0) {
-            return 0;
-        }
-        const topBucket = PAYOUT_HISTOGRAM_BUCKET_ORDER.find((bucket) => (payoutHistogram[bucket] ?? 0) > 0);
-        return topBucket ? payoutHistogram[topBucket] / rounds : 0;
     }
 
     private hasSeed(core: CoreMetrics): boolean {
@@ -113,6 +82,8 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         core: CoreMetrics,
         packageRoot: string | undefined,
         workerSeedStrategy: string | undefined,
+        configHash: string | undefined,
+        pokieVersion: string | undefined,
     ): SimulationReportReproducibility {
         const target = packageRoot && packageRoot.trim().length > 0 ? packageRoot : "<packageRoot>";
         const parts = ["pokie", "sim", target, "--rounds", String(core.requestedRounds)];
@@ -145,6 +116,8 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             actualRounds: core.rounds,
             command: parts.join(" "),
             workerSeedStrategy,
+            ...(configHash === undefined ? {} : {configHash}),
+            ...(pokieVersion === undefined ? {} : {pokieVersion}),
         };
     }
 
