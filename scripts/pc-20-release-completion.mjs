@@ -22,6 +22,7 @@ export const PC20_EVIDENCE_DIRECTORY = path.join(repositoryRoot, "docs", "eviden
 const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
 const gitSha = (value) => typeof value === "string" && /^[a-f0-9]{40}$/i.test(value);
 const utc = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value) && !Number.isNaN(Date.parse(value));
+const follows = (later, earlier) => Date.parse(later) > Date.parse(earlier);
 const digest = (contents) => createHash("sha256").update(contents).digest("hex");
 const fail = (message) => { throw new Error(`PC-20 release completion is invalid: ${message}`); };
 const now = () => new Date().toISOString();
@@ -406,8 +407,18 @@ async function verifySmokeReceipt(config, paths) {
     return {value:receipt.value, sha256:digest(receipt.contents)};
 }
 
+async function verifyGateArtifacts(gate, config, paths) {
+    validateGate(gate, config);
+    if (gate.archivePath !== path.basename(paths.archive) || gate.archiveSha256 !== config.candidatePackageSha256) fail("release gate record is not bound to the retained candidate archive");
+    for (const [label, target, expectedDigest] of [["stdout", paths.stdout, gate.stdoutSha256], ["stderr", paths.stderr, gate.stderrSha256]]) {
+        let contents;
+        try { contents = await readFile(target); } catch { fail(`release gate ${label} artifact is missing`); }
+        if (digest(contents) !== expectedDigest) fail(`release gate ${label} artifact digest differs from its retained record`);
+    }
+}
+
 function validateGate(gate, config) {
-    if (!gate || gate.schemaVersion !== PC20_SCHEMA_VERSION || gate.kind !== "release-gate" || gate.candidateId !== config.candidateId || gate.candidatePackageSha256 !== config.candidatePackageSha256 || gate.command !== "npm run check:release" || gate.exitCode !== 0 || gate.timedOut || gate.cancelled || gate.processGroupDrained !== true || gate.processTreeDrained !== true || gate.resourcesDrained !== true || !Array.isArray(gate.ownedResources) || !Array.isArray(gate.ownedProcessIdentities) || !gate.ownedProcessIdentities.every((owned) => Number.isInteger(owned?.pid) && owned.pid > 0 && typeof owned.processIdentity === "string" && owned.processIdentity) || !sha(gate.stdoutSha256) || !sha(gate.stderrSha256) || !sha(gate.packagingSmokeSha256) || !utc(gate.startedAt) || !utc(gate.endedAt) || Date.parse(gate.startedAt) > Date.parse(gate.endedAt)) fail("release gate record is incomplete, failed, or bound to a different candidate");
+    if (!gate || gate.schemaVersion !== PC20_SCHEMA_VERSION || gate.kind !== "release-gate" || gate.candidateId !== config.candidateId || gate.candidatePackageSha256 !== config.candidatePackageSha256 || gate.command !== "npm run check:release" || gate.exitCode !== 0 || gate.timedOut || gate.cancelled || gate.processGroupDrained !== true || gate.processTreeDrained !== true || gate.resourcesDrained !== true || !Array.isArray(gate.ownedResources) || !Array.isArray(gate.ownedProcessIdentities) || !gate.ownedProcessIdentities.every((owned) => Number.isInteger(owned?.pid) && owned.pid > 0 && typeof owned.processIdentity === "string" && owned.processIdentity) || gate.stdoutPath !== path.basename(outputPaths(config).stdout) || gate.stderrPath !== path.basename(outputPaths(config).stderr) || gate.packagingSmokePath !== path.basename(outputPaths(config).smoke) || gate.archivePath !== path.basename(outputPaths(config).archive) || !sha(gate.stdoutSha256) || !sha(gate.stderrSha256) || !sha(gate.packagingSmokeSha256) || gate.archiveSha256 !== config.candidatePackageSha256 || !utc(gate.startedAt) || !utc(gate.endedAt) || Date.parse(gate.startedAt) > Date.parse(gate.endedAt)) fail("release gate record is incomplete, failed, or bound to a different candidate");
 }
 
 function validateFailedGate(gate, config) {
@@ -434,7 +445,7 @@ async function obtainGate(config, dependencies) {
     }
     if (existsSync(paths.gate)) {
         const existing = await readJson(paths.gate, "release gate record");
-        validateGate(existing.value, config);
+        await verifyGateArtifacts(existing.value, config, paths);
         const smoke = await verifySmokeReceipt(config, paths);
         if (existing.value.packagingSmokeSha256 !== smoke.sha256) fail("release gate record is not bound to its retained packaging smoke receipt");
         return {gate:existing.value, sha256:digest(existing.contents), reused:true};
@@ -456,6 +467,7 @@ async function obtainGate(config, dependencies) {
         validateGate(gate, config);
         const contents = `${JSON.stringify(gate, null, 2)}\n`;
         await writeFile(paths.gate, contents, {flag:"wx"});
+        await verifyGateArtifacts(gate, config, paths);
         return {gate, sha256:digest(contents), reused:false};
     } catch (error) {
         await cleanPartialGateArtifacts(paths);
@@ -472,6 +484,7 @@ function validateLifecycleReceipt(receipt, config, gateSha256) {
     if (!publication || publication.published !== true || publication.packageName !== config.packageName || publication.packageVersion !== config.packageVersion || publication.packageSha256 !== config.candidatePackageSha256 || publication.registryArchiveSha256 !== config.candidatePackageSha256 || publication.publishedSha !== config.candidateId || typeof publication.registryIdentity !== "string" || !publication.registryIdentity || !utc(publication.publishedAt)) fail("external lifecycle receipt lacks the exact registry publication identity");
     const drive = receipt.drive;
     if (!drive || drive.uploaded !== true || drive.readBack !== true || drive.releaseGateSha256 !== gateSha256 || drive.readBackSha256 !== gateSha256 || typeof drive.uploadId !== "string" || !drive.uploadId || !utc(drive.uploadedAt) || !utc(drive.readBackAt)) fail("external lifecycle receipt lacks a successful Drive upload/read-back tied to the release gate");
+    if (!follows(publication.publishedAt, git.pushedAt) || !follows(drive.uploadedAt, publication.publishedAt) || !follows(drive.readBackAt, drive.uploadedAt) || !follows(receipt.issuedAt, drive.readBackAt)) fail("external lifecycle receipt chronology must be push, publication, Drive upload/read-back, then receipt issuance");
 }
 
 async function readTrustedLifecycleReceipt(config, gateSha256) {
@@ -513,7 +526,7 @@ export async function validatePc20RetainedReleaseGate(config, dependencies = {})
     assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, pc20CandidateReceiptPaths(config.candidateId, {includeCompletion:false, includeFailed:false})), config.candidateId, "before the authorized lifecycle");
     if (!existsSync(paths.gate)) fail("the authorized lifecycle requires an existing immutable green release gate");
     const existing = await readJson(paths.gate, "release gate record");
-    validateGate(existing.value, config);
+    await verifyGateArtifacts(existing.value, config, paths);
     const smoke = await verifySmokeReceipt(config, paths);
     if (existing.value.packagingSmokeSha256 !== smoke.sha256) fail("release gate record is not bound to its retained packaging smoke receipt");
     return {gate:existing.value, sha256:digest(existing.contents), reused:true};
@@ -525,13 +538,20 @@ export async function validatePc20ReleaseCompletion(config, dependencies = {}) {
     const paths = outputPaths(config);
     if (existsSync(paths.completion)) {
         const existing = await readJson(paths.completion, "completion record");
-        if (existing.value.candidateId !== config.candidateId || existing.value.releaseGateSha256 !== gate.sha256 || existing.value.lifecycleReceiptSha256 !== lifecycle.sha256) fail("existing completion record is not the exact immutable completion being requested");
+        validateCompletion(existing.value, config, pc19, gate.sha256, lifecycle.sha256, lifecycle.value.issuedAt);
         return {...existing.value, reused:true};
     }
-    const completion = {schemaVersion:PC20_SCHEMA_VERSION, kind:"campaign-completion", campaign:"phase7-product-coherence", stepId:"PC-20", completedAt:now(), candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, pc19:{frozenFindingsSha256:pc19.frozenFindingsSha256, freezeReceiptSha256:pc19.freezeReceiptSha256, coverageIds:pc19.coverageIds}, releaseGateSha256:gate.sha256, lifecycleReceiptSha256:lifecycle.sha256};
+    const completedAt = now();
+    if (!follows(completedAt, lifecycle.value.issuedAt)) fail("completion record must follow lifecycle receipt issuance");
+    const completion = {schemaVersion:PC20_SCHEMA_VERSION, kind:"campaign-completion", campaign:"phase7-product-coherence", stepId:"PC-20", completedAt, candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, pc19:{frozenFindingsSha256:pc19.frozenFindingsSha256, freezeReceiptSha256:pc19.freezeReceiptSha256, coverageIds:pc19.coverageIds}, releaseGateSha256:gate.sha256, lifecycleReceiptSha256:lifecycle.sha256};
     const contents = `${JSON.stringify(completion, null, 2)}\n`;
     try { await writeFile(paths.completion, contents, {flag:"wx"}); } catch { fail("completion record was concurrently created; retry so its immutable contents can be validated"); }
     return completion;
+}
+
+function validateCompletion(completion, config, pc19, gateSha256, lifecycleSha256, lifecycleIssuedAt) {
+    if (!completion || completion.schemaVersion !== PC20_SCHEMA_VERSION || completion.kind !== "campaign-completion" || completion.campaign !== "phase7-product-coherence" || completion.stepId !== "PC-20" || !utc(completion.completedAt) || completion.candidateId !== config.candidateId || completion.candidatePackageSha256 !== config.candidatePackageSha256 || completion.releaseGateSha256 !== gateSha256 || completion.lifecycleReceiptSha256 !== lifecycleSha256 || !completion.pc19 || completion.pc19.frozenFindingsSha256 !== pc19.frozenFindingsSha256 || completion.pc19.freezeReceiptSha256 !== pc19.freezeReceiptSha256 || !Array.isArray(completion.pc19.coverageIds) || completion.pc19.coverageIds.length !== pc19.coverageIds.length || completion.pc19.coverageIds.some((coverageId, index) => coverageId !== pc19.coverageIds[index])) fail("existing completion record is not the exact immutable completion being requested");
+    if (!follows(completion.completedAt, lifecycleIssuedAt)) fail("existing completion record must follow lifecycle receipt issuance");
 }
 
 function usage() { throw new Error("Usage: node scripts/pc-20-release-completion.mjs [--gate-only] --config <absolute-release-config.json>"); }

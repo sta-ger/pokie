@@ -78,6 +78,62 @@ test("rejects alternate evidence locations, package identity drift, and altered 
     } finally { await testFixture.cleanup(); }
 });
 
+test("rejects retained gate output tampering and an incomplete pre-existing completion record", async () => {
+    const testFixture = await fixture();
+    try {
+        const gateRun = await validatePc20ReleaseGate(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state, runReleaseGate:retainedGate});
+        await writeFile(paths()[5], "tampered release output\n");
+        await assert.rejects(() => validatePc20ReleaseGate(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state}), /stdout artifact digest/i);
+        await writeFile(paths()[5], "real candidate gate output\n");
+        const receipt = lifecycle(gateRun.gate.sha256);
+        const contents = `${JSON.stringify(receipt, null, 2)}\n`;
+        await writeFile(testFixture.lifecycleReceiptPath, contents);
+        testFixture.config.lifecycleReceiptSha256 = hash(contents);
+        await writeFile(paths()[2], `${JSON.stringify({candidateId, releaseGateSha256:gateRun.gate.sha256, lifecycleReceiptSha256:testFixture.config.lifecycleReceiptSha256})}\n`);
+        await assert.rejects(() => validatePc20ReleaseCompletion(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state}), /existing completion record/i);
+    } finally { await testFixture.cleanup(); }
+});
+
+test("fails closed on lifecycle chronology and preserves an append-only completion issued after its receipt", async () => {
+    const testFixture = await fixture();
+    const writeLifecycle = async (receipt) => {
+        const contents = `${JSON.stringify(receipt, null, 2)}\n`;
+        await writeFile(testFixture.lifecycleReceiptPath, contents);
+        testFixture.config.lifecycleReceiptSha256 = hash(contents);
+    };
+    try {
+        const gateRun = await validatePc20ReleaseGate(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state, runReleaseGate:retainedGate});
+        const reversedChronologies = [
+            (receipt) => { receipt.git.pushedAt = "2026-09-07T20:01:31.000Z"; },
+            (receipt) => { receipt.publication.publishedAt = "2026-09-07T20:01:41.000Z"; },
+            (receipt) => { receipt.drive.readBackAt = "2026-09-07T20:01:39.000Z"; },
+            (receipt) => { receipt.issuedAt = "2026-09-07T20:01:45.000Z"; },
+            (receipt) => { receipt.git.pushedAt = receipt.publication.publishedAt; },
+            (receipt) => { receipt.publication.publishedAt = receipt.drive.uploadedAt; },
+            (receipt) => { receipt.drive.readBackAt = receipt.drive.uploadedAt; },
+            (receipt) => { receipt.issuedAt = receipt.drive.readBackAt; },
+        ];
+        for (const reverseChronology of reversedChronologies) {
+            const receipt = lifecycle(gateRun.gate.sha256);
+            reverseChronology(receipt);
+            await writeLifecycle(receipt);
+            await assert.rejects(() => validatePc20ReleaseCompletion(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state}), /receipt chronology/i);
+        }
+        const receipt = lifecycle(gateRun.gate.sha256);
+        await writeLifecycle(receipt);
+        const completion = {schemaVersion:PC20_SCHEMA_VERSION, kind:"campaign-completion", campaign:"phase7-product-coherence", stepId:"PC-20", completedAt:"2026-09-07T20:01:59.000Z", candidateId, candidatePackageSha256:packageSha, pc19:{frozenFindingsSha256:"c".repeat(64), freezeReceiptSha256:"d".repeat(64), coverageIds:acceptedPc19().coverageIds}, releaseGateSha256:gateRun.gate.sha256, lifecycleReceiptSha256:testFixture.config.lifecycleReceiptSha256};
+        await writeFile(paths()[2], `${JSON.stringify(completion, null, 2)}\n`, {flag:"wx"});
+        await assert.rejects(() => validatePc20ReleaseCompletion(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state}), /completion record must follow lifecycle receipt issuance/i);
+        await rm(paths()[2]);
+        completion.completedAt = "2026-09-07T20:02:01.000Z";
+        const appendOnlyContents = `${JSON.stringify(completion, null, 2)}\n`;
+        await writeFile(paths()[2], appendOnlyContents, {flag:"wx"});
+        const reused = await validatePc20ReleaseCompletion(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state});
+        assert.equal(reused.reused, true);
+        assert.equal(await readFile(paths()[2], "utf8"), appendOnlyContents);
+    } finally { await testFixture.cleanup(); }
+});
+
 test("drains a real detached process tree on success, timeout, cancellation, and spawn error", async () => {
     const registries = [];
     const options = () => { const resourceRegistryPath = registryPath("bounded"); registries.push(resourceRegistryPath); return {cwd:repositoryDirectory, resourceRegistryPath}; };
@@ -199,6 +255,37 @@ test("requires an explicit release for provider and container resources even whe
         const released = await runBoundedProcess(process.execPath, script("provider", true), {cwd:repositoryDirectory, resourceRegistryPath:releasedRegistry});
         assert.equal(released.resourcesDrained, true);
     } finally { await Promise.all([rm(providerRegistry, {force:true}), rm(containerRegistry, {force:true}), rm(releasedRegistry, {force:true})]); }
+});
+
+test("issues a controller-accepted authorized receipt with strict lifecycle timestamps despite a tied clock", async () => {
+    const testFixture = await fixture();
+    const calls = [];
+    const gateRun = await validatePc20ReleaseGate(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state, runReleaseGate:retainedGate});
+    try {
+        const request = async (url) => {
+            if (url === "https://registry.example/pokie.tgz") return {arrayBuffer:async () => archive};
+            if (url.includes("upload")) return {ok:true, json:async () => ({id:"drive-file-1"})};
+            return {ok:true, arrayBuffer:async () => Buffer.from(await readFile(paths()[0]))};
+        };
+        const command = (name, args) => {
+            calls.push(`${name} ${args.join(" ")}`);
+            if (name === "git" && args[0] === "rev-parse") return candidateId;
+            if (name === "git" && args[0] === "remote") return "origin";
+            if (name === "git" && args[0] === "ls-remote") return `${candidateId}\trefs/heads/develop`;
+            if (name === "npm" && args[0] === "view") return JSON.stringify({tarball:"https://registry.example/pokie.tgz"});
+            return "";
+        };
+        const receipt = await runAuthorizedPc20Lifecycle(testFixture.config, candidateId, {
+            environment:{NODE_AUTH_TOKEN:"test", PC20_DRIVE_ACCESS_TOKEN:"test"}, run:command, validateGate:async () => {},
+            assertCandidateCheckout:() => {}, assertDevelopClean:() => {}, fetch:request, now:() => "2026-09-07T20:03:00.000Z",
+        });
+        assert.deepEqual([receipt.git.pushedAt, receipt.publication.publishedAt, receipt.drive.uploadedAt, receipt.drive.readBackAt, receipt.issuedAt], ["2026-09-07T20:03:00.000Z", "2026-09-07T20:03:00.001Z", "2026-09-07T20:03:00.002Z", "2026-09-07T20:03:00.003Z", "2026-09-07T20:03:00.004Z"]);
+        const contents = await readFile(testFixture.lifecycleReceiptPath, "utf8");
+        testFixture.config.lifecycleReceiptSha256 = hash(contents);
+        const completion = await validatePc20ReleaseCompletion(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state});
+        assert.equal(completion.candidateId, candidateId);
+        assert.equal(gateRun.gate.reused, false);
+    } finally { await testFixture.cleanup(); }
 });
 
 test("executes the authorized gate-to-fast-forward handoff before any push or publication", async () => {
@@ -325,13 +412,17 @@ test("executes the authorized runner CLI against a controlled Git remote and rej
         const archivePath = path.join(evidence, `pc-20-${candidate}-package.tgz`);
         const smokePath = path.join(evidence, `pc-20-${candidate}-npm-pack-smoke.json`);
         const gatePath = path.join(evidence, `pc-20-${candidate}-release-gate.json`);
+        const stdoutPath = path.join(evidence, `pc-20-${candidate}-release-gate.stdout.txt`);
+        const stderrPath = path.join(evidence, `pc-20-${candidate}-release-gate.stderr.txt`);
         const fixtureArchive = Buffer.from("authorized runner fixture archive\n");
         const fixtureSha = hash(fixtureArchive);
         await writeFile(archivePath, fixtureArchive);
         const smoke = {schemaVersion:1, kind:"npm-pack-install-smoke", candidateId:candidate, candidatePackageSha256:fixtureSha, packageName:"pc20-runner-fixture", packageVersion:"1.0.0", archivePath, archiveSha256:fixtureSha, archiveSizeBytes:fixtureArchive.length, complete:true, suitePassed:true, installed:{cli:true, studioApi:true, studioAssets:true, libraryWorker:true, processesDrained:true}, cleanup:{temporaryInstallRemoved:true, temporaryPackDirectoryRemoved:true, processesDrained:true}};
         const smokeContents = `${JSON.stringify(smoke)}\n`;
         await writeFile(smokePath, smokeContents);
-        const gate = {schemaVersion:1, kind:"release-gate", candidateId:candidate, candidatePackageSha256:fixtureSha, command:"npm run check:release", exitCode:0, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedProcessIdentities:[], ownedResources:[], startedAt:"2026-09-07T20:00:00.000Z", endedAt:"2026-09-07T20:01:00.000Z", stdoutSha256:"a".repeat(64), stderrSha256:"b".repeat(64), packagingSmokeSha256:hash(smokeContents), archiveSha256:fixtureSha};
+        const stdout = "fixture release output\n", stderr = "(no stderr)\n";
+        await Promise.all([writeFile(stdoutPath, stdout), writeFile(stderrPath, stderr)]);
+        const gate = {schemaVersion:1, kind:"release-gate", candidateId:candidate, candidatePackageSha256:fixtureSha, command:"npm run check:release", exitCode:0, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedProcessIdentities:[], ownedResources:[], startedAt:"2026-09-07T20:00:00.000Z", endedAt:"2026-09-07T20:01:00.000Z", stdoutPath:path.basename(stdoutPath), stdoutSha256:hash(stdout), stderrPath:path.basename(stderrPath), stderrSha256:hash(stderr), packagingSmokePath:path.basename(smokePath), packagingSmokeSha256:hash(smokeContents), archivePath:path.basename(archivePath), archiveSha256:fixtureSha};
         await writeFile(gatePath, `${JSON.stringify(gate)}\n`);
         const freezePath = path.join(sandbox, "freeze.json"), lifecyclePath = path.join(sandbox, "lifecycle.json");
         await writeFile(freezePath, "fixture freeze\n");

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 3,
+  "reviewId": "pc-19-03dd9b9b-complete-20260910",
+  "candidateId": "03dd9b9bef33e1c13e224ac6dd0e51601957200d",
+  "candidatePackageSha256": "3ba7cde00e67d1205def985ef20958198ec2aca16ee6207e89ee632a57662622",
+  "frozenAt": "2026-09-10T11:51:30Z",
+  "findings": []
+}
