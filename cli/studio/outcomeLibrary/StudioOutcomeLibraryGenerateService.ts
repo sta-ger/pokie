@@ -1079,7 +1079,10 @@ export class StudioOutcomeLibraryGenerateService {
     ): OutcomeLibraryGenerationRequest {
         const manifest = game.getManifest();
         const sample = resolveSample(request);
-        const recoveryAuthorityId = request.recoveryAuthorityId ?? request.resumeFrom?.recoveryAuthorityId ?? randomUUID();
+        // Transport requests deliberately cannot carry lifecycle capabilities.
+        // Narrow before consulting the JobService-only recovery identity.
+        const lifecycleRequest = "resumeFrom" in request ? request : undefined;
+        const recoveryAuthorityId = lifecycleRequest?.recoveryAuthorityId ?? lifecycleRequest?.resumeFrom?.recoveryAuthorityId ?? randomUUID();
         if (!(/^[0-9a-f-]{36}$/i).test(recoveryAuthorityId)) {
             throw new WeightedOutcomeLibraryGenerationError(
                 "weighted-outcome-library-generation-checkpoint-mismatch",
