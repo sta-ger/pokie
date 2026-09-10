@@ -108,6 +108,10 @@ test("fails closed on lifecycle chronology and preserves an append-only completi
             (receipt) => { receipt.publication.publishedAt = "2026-09-07T20:01:41.000Z"; },
             (receipt) => { receipt.drive.readBackAt = "2026-09-07T20:01:39.000Z"; },
             (receipt) => { receipt.issuedAt = "2026-09-07T20:01:45.000Z"; },
+            (receipt) => { receipt.git.pushedAt = receipt.publication.publishedAt; },
+            (receipt) => { receipt.publication.publishedAt = receipt.drive.uploadedAt; },
+            (receipt) => { receipt.drive.readBackAt = receipt.drive.uploadedAt; },
+            (receipt) => { receipt.issuedAt = receipt.drive.readBackAt; },
         ];
         for (const reverseChronology of reversedChronologies) {
             const receipt = lifecycle(gateRun.gate.sha256);
@@ -251,6 +255,37 @@ test("requires an explicit release for provider and container resources even whe
         const released = await runBoundedProcess(process.execPath, script("provider", true), {cwd:repositoryDirectory, resourceRegistryPath:releasedRegistry});
         assert.equal(released.resourcesDrained, true);
     } finally { await Promise.all([rm(providerRegistry, {force:true}), rm(containerRegistry, {force:true}), rm(releasedRegistry, {force:true})]); }
+});
+
+test("issues a controller-accepted authorized receipt with strict lifecycle timestamps despite a tied clock", async () => {
+    const testFixture = await fixture();
+    const calls = [];
+    const gateRun = await validatePc20ReleaseGate(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state, runReleaseGate:retainedGate});
+    try {
+        const request = async (url) => {
+            if (url === "https://registry.example/pokie.tgz") return {arrayBuffer:async () => archive};
+            if (url.includes("upload")) return {ok:true, json:async () => ({id:"drive-file-1"})};
+            return {ok:true, arrayBuffer:async () => Buffer.from(await readFile(paths()[0]))};
+        };
+        const command = (name, args) => {
+            calls.push(`${name} ${args.join(" ")}`);
+            if (name === "git" && args[0] === "rev-parse") return candidateId;
+            if (name === "git" && args[0] === "remote") return "origin";
+            if (name === "git" && args[0] === "ls-remote") return `${candidateId}\trefs/heads/develop`;
+            if (name === "npm" && args[0] === "view") return JSON.stringify({tarball:"https://registry.example/pokie.tgz"});
+            return "";
+        };
+        const receipt = await runAuthorizedPc20Lifecycle(testFixture.config, candidateId, {
+            environment:{NODE_AUTH_TOKEN:"test", PC20_DRIVE_ACCESS_TOKEN:"test"}, run:command, validateGate:async () => {},
+            assertCandidateCheckout:() => {}, assertDevelopClean:() => {}, fetch:request, now:() => "2026-09-07T20:03:00.000Z",
+        });
+        assert.deepEqual([receipt.git.pushedAt, receipt.publication.publishedAt, receipt.drive.uploadedAt, receipt.drive.readBackAt, receipt.issuedAt], ["2026-09-07T20:03:00.000Z", "2026-09-07T20:03:00.001Z", "2026-09-07T20:03:00.002Z", "2026-09-07T20:03:00.003Z", "2026-09-07T20:03:00.004Z"]);
+        const contents = await readFile(testFixture.lifecycleReceiptPath, "utf8");
+        testFixture.config.lifecycleReceiptSha256 = hash(contents);
+        const completion = await validatePc20ReleaseCompletion(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state});
+        assert.equal(completion.candidateId, candidateId);
+        assert.equal(gateRun.gate.reused, false);
+    } finally { await testFixture.cleanup(); }
 });
 
 test("executes the authorized gate-to-fast-forward handoff before any push or publication", async () => {
