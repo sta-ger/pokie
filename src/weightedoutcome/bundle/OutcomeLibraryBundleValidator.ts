@@ -10,7 +10,7 @@ import {compareIds} from "../internal/compareIds.js";
 import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION} from "../WeightedOutcomeLibrary.js";
 import {computeOnlineWeightedOutcomeLibraryAnalysis} from "./internal/computeOnlineWeightedOutcomeLibraryAnalysis.js";
 import {iterateOutcomesJsonl} from "./internal/iterateOutcomesJsonl.js";
-import {readAndVerifyOutcomeAtByteRange} from "./internal/readOutcomeAtByteRange.js";
+import {readAndVerifyOutcomeAtByteRangeFromFileDescriptor} from "./internal/readOutcomeAtByteRange.js";
 import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION, type OutcomeLibraryBundleManifest, type OutcomeLibraryBundleManifestModeEntry} from "./OutcomeLibraryBundleManifest.js";
 import {OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION, type OutcomeLibraryBundleIndexEntry, type OutcomeLibraryBundleModeIndex} from "./OutcomeLibraryBundleModeIndex.js";
 import type {OutcomeLibraryBundleValidateOptions, OutcomeLibraryBundleValidating} from "./OutcomeLibraryBundleValidating.js";
@@ -513,17 +513,22 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
         entries: readonly OutcomeLibraryBundleIndexEntry[],
         issues: ValidationIssue[],
     ): void {
-        for (const entry of entries) {
-            try {
-                readAndVerifyOutcomeAtByteRange(modeName, outcomesPath, entry);
-            } catch (error) {
-                issues.push({
-                    code: "outcome-library-bundle-outcomes-byte-range-mismatch",
-                    severity: "error",
-                    message: error instanceof Error ? error.message : String(error),
-                    details: {modeName, id: entry.id},
-                });
+        const fd = fs.openSync(outcomesPath, "r");
+        try {
+            for (const entry of entries) {
+                try {
+                    readAndVerifyOutcomeAtByteRangeFromFileDescriptor(modeName, fd, entry);
+                } catch (error) {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-byte-range-mismatch",
+                        severity: "error",
+                        message: error instanceof Error ? error.message : String(error),
+                        details: {modeName, id: entry.id},
+                    });
+                }
             }
+        } finally {
+            fs.closeSync(fd);
         }
     }
 

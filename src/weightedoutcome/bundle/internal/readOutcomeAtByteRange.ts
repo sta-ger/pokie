@@ -58,15 +58,26 @@ export function readAndVerifyOutcomeAtByteRange<T extends string | number = stri
     entry: OutcomeLibraryBundleIndexEntry,
 ): WeightedOutcome<T> {
     const fd = fs.openSync(outcomesFilePath, "r");
-    let buffer: Buffer;
-    let value: unknown;
     try {
-        buffer = Buffer.alloc(entry.byteLength);
-        fs.readSync(fd, buffer, 0, entry.byteLength, entry.byteOffset);
-        value = JSON.parse(buffer.toString("utf-8"));
+        return readAndVerifyOutcomeAtByteRangeFromFileDescriptor<T>(modeName, fd, entry);
     } finally {
         fs.closeSync(fd);
     }
+}
+
+// The validator verifies every entry in a mode and must keep the same random-access integrity
+// checks as a public one-off read.  It owns a single descriptor for that full scan, avoiding one
+// open/close pair per record (which turns a large exact bundle into hundreds of thousands of
+// needless filesystem operations).  Callers that own the descriptor remain responsible for
+// closing it; the public path above preserves the one-off ownership contract.
+export function readAndVerifyOutcomeAtByteRangeFromFileDescriptor<T extends string | number = string>(
+    modeName: string,
+    fileDescriptor: number,
+    entry: OutcomeLibraryBundleIndexEntry,
+): WeightedOutcome<T> {
+    const buffer = Buffer.alloc(entry.byteLength);
+    fs.readSync(fileDescriptor, buffer, 0, entry.byteLength, entry.byteOffset);
+    const value: unknown = JSON.parse(buffer.toString("utf-8"));
 
     if (!isWeightedOutcomeShape(value)) {
         throw new OutcomeLibraryBundleInvariantError(

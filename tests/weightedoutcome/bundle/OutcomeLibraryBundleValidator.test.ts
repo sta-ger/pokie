@@ -318,6 +318,26 @@ describe("OutcomeLibraryBundleValidator", () => {
             fs.writeFileSync(filePath, buffer);
         }
 
+        it("reuses one descriptor for the full random-access verification pass", async () => {
+            const outcomesPath = path.join(outDir, "outcomes_base.jsonl");
+            const openSpy = jest.spyOn(fs, "openSync");
+            let outcomeFileOpens: number;
+
+            try {
+                expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).toEqual([]);
+                outcomeFileOpens = openSpy.mock.calls.filter(([filePath]) => filePath === outcomesPath).length;
+            } finally {
+                openSpy.mockRestore();
+            }
+
+            // One open belongs to the shallow byte-layout check and one belongs to deep random-access
+            // verification. The latter must not open the file once per index entry: large exact
+            // libraries contain hundreds of thousands of entries, and that turns final validation
+            // into an apparent stalled lifecycle stage.
+            expect(readIndex(outDir, "base").entries.length).toBeGreaterThan(1);
+            expect(outcomeFileOpens!).toBe(2);
+        });
+
         it("catches content corruption shallow mode misses", async () => {
             corruptContentPreservingByteLayout(outDir, "base");
 
