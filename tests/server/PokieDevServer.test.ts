@@ -690,7 +690,8 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
 
     it("still spins a session with a 0 balance when canPlayNextGame() returns true (e.g. an active free-games feature)", async () => {
         const game = createFakeFreeGamesGame(manifest);
-        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+        const repository = new InMemorySessionRepository();
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository});
         const address = await server.start();
         const baseUrl = `http://${address.host}:${address.port}`;
 
@@ -698,7 +699,14 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
         const sessionId = created.body.sessionId as string;
         expect(created.body.credits).toBe(0); // the fake free-games session's own default credits
 
+        // A live-object-only mutation is not an authoritative game transition: the spin command
+        // deliberately reconstructs its validation session from the persisted snapshot and
+        // refreshes durable sessions from that same snapshot before play().  Persist this forced
+        // fixture state exactly as a real free-games-triggering round would have done.
         game.lastSession?.grantFreeSpins(3);
+        const stored = await repository.load(sessionId);
+        if (stored === undefined || game.lastSession === undefined) throw new Error("Expected persisted free-games session.");
+        await repository.save(sessionId, {...stored, featureState: game.lastSession.toSessionState()});
         const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
 
         expect(spun.status).toBe(200);
