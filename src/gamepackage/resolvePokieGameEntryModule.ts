@@ -107,7 +107,6 @@ function createDependencyOverlay(snapshotRoot: string, startPath: string): void 
         if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) dependencyRoots.push(candidate);
         current = path.dirname(current);
     }
-    if (dependencyRoots.length === 0) return;
     fs.mkdirSync(overlay);
     // Link only the package's declared runtime dependencies, never every entry in an ancestor
     // workspace node_modules.  The linked package keeps its physical nested dependency tree, so
@@ -117,15 +116,23 @@ function createDependencyOverlay(snapshotRoot: string, startPath: string): void 
     // standardized may omit it from package.json, yet were loadable from a
     // normal workspace ancestor. Keep that single compatibility dependency;
     // every other overlay entry remains manifest-declared.
-    for (const dependencyName of new Set(["pokie", ...declaredRuntimeDependencies(startPath)])) {
-        const source = dependencyRoots.map((dependencyRoot) => path.join(dependencyRoot, dependencyName)).find((candidate) => fs.existsSync(candidate))
-            // A game package is permitted to omit its host runtime from its own ancestry: for
-            // example, an embedding application can load a fixture outside its install tree. In
-            // that layout the snapshot still must bind `require("pokie")` to the *same installed
-            // runtime that invoked the loader*, rather than assuming the fixture's source checkout
-            // has a sibling node_modules/pokie. This is especially important in worker_threads,
-            // whose loader starts from the snapshot path and otherwise loses the embedding app's
-            // resolution chain entirely.
+    const declaredDependencies = declaredRuntimeDependencies(startPath);
+    for (const dependencyName of new Set(["pokie", ...declaredDependencies])) {
+        // An explicit package dependency remains authoritative. The compatibility `pokie`
+        // overlay for old packages that omit it is different: bind that name to the embedding
+        // runtime first, so a stray legacy/local `node_modules/pokie` cannot make a worker load a
+        // source checkout rather than the installed API that created it.
+        const hostRuntime = dependencyName === "pokie" && !declaredDependencies.includes("pokie")
+            ? resolveHostPokieRuntimeRoot()
+            : undefined;
+        // A game package is permitted to omit its host runtime from its own ancestry: for
+        // example, an embedding application can load a fixture outside its install tree. In that
+        // layout the snapshot still must bind `require("pokie")` to the *same installed runtime*
+        // that invoked the loader, rather than assuming the fixture's source checkout has a
+        // sibling node_modules/pokie. This is especially important in worker_threads, whose loader
+        // starts from the snapshot path and otherwise loses the embedding app's resolution chain.
+        const source = hostRuntime
+            ?? dependencyRoots.map((dependencyRoot) => path.join(dependencyRoot, dependencyName)).find((candidate) => fs.existsSync(candidate))
             ?? (dependencyName === "pokie" ? resolveHostPokieRuntimeRoot() : undefined);
         if (source === undefined) continue;
         const destination = path.join(overlay, dependencyName);

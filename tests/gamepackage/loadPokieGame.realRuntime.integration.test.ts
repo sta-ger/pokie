@@ -87,6 +87,8 @@ describe("loadPokieGame (real long-lived CJS runtime)", () => {
         try {
             fs.mkdirSync(path.join(hostRoot, "node_modules"), {recursive: true});
             fs.symlinkSync(COMPILED_CJS_ENTRY.slice(0, -"index.js".length), path.join(hostRoot, "node_modules", "pokie"), process.platform === "win32" ? "junction" : "dir");
+            fs.mkdirSync(path.join(packageRoot, "node_modules", "pokie"), {recursive: true});
+            fs.writeFileSync(path.join(packageRoot, "node_modules", "pokie", "index.js"), "throw new Error('stale local runtime must not be selected');\n");
             fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "host-fallback-game", version: "1.0.0", pokie: {entry: "./game.js"}}));
             fs.writeFileSync(
                 path.join(packageRoot, "game.js"),
