@@ -205,86 +205,86 @@ export class StudioOutcomeLibraryGenerateService {
         }
 
         try {
-        const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
-        let preparedRequest;
-        try {
+            const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
+            let preparedRequest;
+            try {
             // This is deliberately the same prepared request generation will
             // execute. It owns loaded configuration identity and the resolved
             // destination rather than leaving either as estimate-only DTO data.
-            preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(game, request, outDirRelative, projectRoot));
-        } catch (error) {
-            const unresolvedPlan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
-            if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-configuration-conflict") {
-                return {status: "conflict", error: error.message, plan: unresolvedPlan};
+                preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(game, request, outDirRelative, projectRoot));
+            } catch (error) {
+                const unresolvedPlan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
+                if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-configuration-conflict") {
+                    return {status: "conflict", error: error.message, plan: unresolvedPlan};
+                }
+                if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-destination-conflict") {
+                    return {status: "conflict", error: error.message, plan: unresolvedPlan};
+                }
+                if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-unsupported") {
+                    return {status: "unsupported", error: error.message, plan: unresolvedPlan};
+                }
+                return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: unresolvedPlan};
             }
-            if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-destination-conflict") {
-                return {status: "conflict", error: error.message, plan: unresolvedPlan};
+            const {estimate} = preparedRequest.preflight;
+            const boundDestination = preparedRequest.preflight.destination?.path;
+            if (boundDestination === undefined) {
+                return {status: "load-error", error: "The prepared Outcome Library request has no publication destination.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
             }
-            if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-unsupported") {
-                return {status: "unsupported", error: error.message, plan: unresolvedPlan};
+            const resolvedConfigHash = preparedRequest.configHash;
+            // A preflight is not just an outcome-space calculation: it prepares the
+            // same destination and resolved strategy that execution will consume.
+            const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
+            const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
+            if (plan.status === "conflict") {
+                return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
             }
-            return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: unresolvedPlan};
-        }
-        const {estimate} = preparedRequest.preflight;
-        const boundDestination = preparedRequest.preflight.destination?.path;
-        if (boundDestination === undefined) {
-            return {status: "load-error", error: "The prepared Outcome Library request has no publication destination.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
-        }
-        const resolvedConfigHash = preparedRequest.configHash;
-        // A preflight is not just an outcome-space calculation: it prepares the
-        // same destination and resolved strategy that execution will consume.
-        const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
-        const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
-        if (plan.status === "conflict") {
-            return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
-        }
-        if (plan.status !== "planned") {
-            return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
-        }
-        const preflightToken = String(this.nextPreflightToken++);
-        let managedBlueprint: ManagedBlueprintSourceBinding | undefined;
-        try {
-            managedBlueprint = this.captureManagedBlueprintBinding(plan);
-        } catch (error) {
-            return {
-                status: "load-error",
-                error: error instanceof Error ? error.message : String(error),
-                plan,
-            };
-        }
-        this.preflightSnapshots.set(preflightToken, {
-            binding: {
-                requestKey: generationRequestKey(request), gameId: game.getManifest().id, gameVersion: game.getManifest().version,
-                ...(resolvedConfigHash === undefined ? {} : {configHash: resolvedConfigHash}), destination: boundDestination,
-                requiresBounded: preparedRequest.preflight.requiresSampledOptIn,
-            },
-            plan,
-            ...(managedBlueprint === undefined ? {} : {managedBlueprint}),
-        });
-        return {
-            status: "ok",
-            game: game.getManifest(),
-            reelsNumber: estimate.reelsNumber,
-            reelsSymbolsNumber: estimate.reelsSymbolsNumber,
-            reelSizes: estimate.reelSizes,
-            totalOutcomeSpaceSize: formatBigIntSafely(estimate.totalOutcomeSpaceSize),
-            maxOutcomeSpaceSize: formatBigIntSafely(preparedRequest.preflight.maxExactOutcomeSpaceSize),
-            strategy: preparedRequest.preflight.strategy,
-            requiresBounded: preparedRequest.preflight.requiresSampledOptIn,
-            expectedRawWork: formatBigIntSafely(preparedRequest.preflight.expectedRawWork),
-            warnings: preparedRequest.preflight.warnings,
-            ...(preparedRequest.preflight.sample === undefined ? {} : {sampleSize: formatBigIntSafely(preparedRequest.preflight.sample.sampleSize), seed: preparedRequest.preflight.sample.seed}),
-            plan,
-            defaults: {
-                compatibilityVersion: OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
-                maxExactOutcomeSpaceSize: formatBigIntSafely(DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE),
-                boundedSample: {
-                    sampleSize: formatBigIntSafely(DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE),
-                    seed: DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
+            if (plan.status !== "planned") {
+                return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
+            }
+            const preflightToken = String(this.nextPreflightToken++);
+            let managedBlueprint: ManagedBlueprintSourceBinding | undefined;
+            try {
+                managedBlueprint = this.captureManagedBlueprintBinding(plan);
+            } catch (error) {
+                return {
+                    status: "load-error",
+                    error: error instanceof Error ? error.message : String(error),
+                    plan,
+                };
+            }
+            this.preflightSnapshots.set(preflightToken, {
+                binding: {
+                    requestKey: generationRequestKey(request), gameId: game.getManifest().id, gameVersion: game.getManifest().version,
+                    ...(resolvedConfigHash === undefined ? {} : {configHash: resolvedConfigHash}), destination: boundDestination,
+                    requiresBounded: preparedRequest.preflight.requiresSampledOptIn,
                 },
-            },
-            preflightToken,
-        };
+                plan,
+                ...(managedBlueprint === undefined ? {} : {managedBlueprint}),
+            });
+            return {
+                status: "ok",
+                game: game.getManifest(),
+                reelsNumber: estimate.reelsNumber,
+                reelsSymbolsNumber: estimate.reelsSymbolsNumber,
+                reelSizes: estimate.reelSizes,
+                totalOutcomeSpaceSize: formatBigIntSafely(estimate.totalOutcomeSpaceSize),
+                maxOutcomeSpaceSize: formatBigIntSafely(preparedRequest.preflight.maxExactOutcomeSpaceSize),
+                strategy: preparedRequest.preflight.strategy,
+                requiresBounded: preparedRequest.preflight.requiresSampledOptIn,
+                expectedRawWork: formatBigIntSafely(preparedRequest.preflight.expectedRawWork),
+                warnings: preparedRequest.preflight.warnings,
+                ...(preparedRequest.preflight.sample === undefined ? {} : {sampleSize: formatBigIntSafely(preparedRequest.preflight.sample.sampleSize), seed: preparedRequest.preflight.sample.seed}),
+                plan,
+                defaults: {
+                    compatibilityVersion: OUTCOME_LIBRARY_GENERATION_COMPATIBILITY_VERSION,
+                    maxExactOutcomeSpaceSize: formatBigIntSafely(DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE),
+                    boundedSample: {
+                        sampleSize: formatBigIntSafely(DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE),
+                        seed: DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
+                    },
+                },
+                preflightToken,
+            };
         } finally {
             await releasePokieGame(game);
         }
@@ -463,72 +463,72 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
         try {
-        try {
-            domainRequest = this.createDomainRequest(game, request, outDirRelative, projectRoot);
-            domainRequest = {
-                ...domainRequest,
-                onPostEnumeration: () => onLifecycleStage?.("finalization"),
-                ...(onPostEnumerationProgress === undefined ? {} : {onPostEnumerationProgress}),
-            };
-            preparedRequest = prepareOutcomeLibraryGeneration(domainRequest);
-        } catch (error) {
-            const unresolvedPlan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
-            if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-configuration-conflict") {
-                return {status: "conflict", error: error.message, plan: unresolvedPlan};
+            try {
+                domainRequest = this.createDomainRequest(game, request, outDirRelative, projectRoot);
+                domainRequest = {
+                    ...domainRequest,
+                    onPostEnumeration: () => onLifecycleStage?.("finalization"),
+                    ...(onPostEnumerationProgress === undefined ? {} : {onPostEnumerationProgress}),
+                };
+                preparedRequest = prepareOutcomeLibraryGeneration(domainRequest);
+            } catch (error) {
+                const unresolvedPlan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
+                if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-configuration-conflict") {
+                    return {status: "conflict", error: error.message, plan: unresolvedPlan};
+                }
+                if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-destination-conflict") {
+                    return {status: "conflict", error: error.message, plan: unresolvedPlan};
+                }
+                if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-unsupported") {
+                    return {status: "unsupported", error: error.message, plan: unresolvedPlan};
+                }
+                return {status: "generation-error", code: error instanceof WeightedOutcomeLibraryGenerationError ? error.getCode() : "weighted-outcome-library-generation-invalid-request", error: error instanceof Error ? error.message : String(error), plan: unresolvedPlan};
             }
-            if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-destination-conflict") {
-                return {status: "conflict", error: error.message, plan: unresolvedPlan};
+            const binding = snapshot?.binding;
+            const loadedConfigHash = game.getConfigHash?.();
+            if (binding !== undefined && (binding.requestKey !== generationRequestKey(request) || binding.destination !== preparedRequest.preflight.destination?.path || binding.gameId !== game.getManifest().id || binding.gameVersion !== game.getManifest().version || binding.configHash !== loadedConfigHash)) {
+                return {status: "conflict", error: "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
             }
-            if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-unsupported") {
-                return {status: "unsupported", error: error.message, plan: unresolvedPlan};
+            const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
+            const boundDestination = preparedRequest.preflight.destination?.path;
+            if (boundDestination === undefined) {
+                return {status: "load-error", error: "The prepared Outcome Library request has no publication destination.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
             }
-            return {status: "generation-error", code: error instanceof WeightedOutcomeLibraryGenerationError ? error.getCode() : "weighted-outcome-library-generation-invalid-request", error: error instanceof Error ? error.message : String(error), plan: unresolvedPlan};
-        }
-        const binding = snapshot?.binding;
-        const loadedConfigHash = game.getConfigHash?.();
-        if (binding !== undefined && (binding.requestKey !== generationRequestKey(request) || binding.destination !== preparedRequest.preflight.destination?.path || binding.gameId !== game.getManifest().id || binding.gameVersion !== game.getManifest().version || binding.configHash !== loadedConfigHash)) {
-            return {status: "conflict", error: "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
-        }
-        const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
-        const boundDestination = preparedRequest.preflight.destination?.path;
-        if (boundDestination === undefined) {
-            return {status: "load-error", error: "The prepared Outcome Library request has no publication destination.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
-        }
-        // A successful preflight has already resolved and bound the exact
-        // managed Blueprint source. Reuse that plan for this token after the
-        // runtime identity check above; direct/no-token and package callers
-        // retain the ordinary fresh planner lookup. This prevents a cancelled
-        // Blueprint job's cleanup from turning an unchanged retry into an
-        // unrecognized-source failure without weakening package byte-drift
-        // detection at the execution boundary.
-        const tokenBoundBlueprintPlan = snapshot?.plan.source.kind === "blueprint" ? snapshot.plan : undefined;
-        const plan = tokenBoundBlueprintPlan ?? await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
-        if (plan.status === "conflict") {
-            return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
-        }
-        if (plan.status === "unavailable") {
-            return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
-        }
-        // Studio addresses a managed project by its directory, while the
-        // conversion planner correctly binds that project's editable source
-        // as `blueprint.json`.  Compare a token-bound Blueprint plan against
-        // its canonical source identity, not the enclosing dashboard path;
-        // otherwise every lifecycle phase can falsely report source drift
-        // before cancellation or a refreshed retry reaches generation.
-        const planSourcePath = tokenBoundBlueprintPlan?.source.canonicalLocation ?? projectRoot;
-        const planDrift = describePreparedArtifactPlanDrift(
-            plan,
-            planSourcePath,
-            "outcomeLibrary",
-            boundDestination,
-            requestedGeneration.generationSemantics,
-            preparedRequest.preflight.sample?.sampleSize,
-            preparedRequest.preflight.sample?.seed,
-        );
-        if (planDrift !== undefined) {
-            return {status: "load-error", error: planDrift, plan};
-        }
-        onLifecycleStage?.("generation");
+            // A successful preflight has already resolved and bound the exact
+            // managed Blueprint source. Reuse that plan for this token after the
+            // runtime identity check above; direct/no-token and package callers
+            // retain the ordinary fresh planner lookup. This prevents a cancelled
+            // Blueprint job's cleanup from turning an unchanged retry into an
+            // unrecognized-source failure without weakening package byte-drift
+            // detection at the execution boundary.
+            const tokenBoundBlueprintPlan = snapshot?.plan.source.kind === "blueprint" ? snapshot.plan : undefined;
+            const plan = tokenBoundBlueprintPlan ?? await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
+            if (plan.status === "conflict") {
+                return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
+            }
+            if (plan.status === "unavailable") {
+                return {status: "unsupported", error: describeArtifactConversionPlanDiagnostic(plan) ?? plan.diagnostic?.message ?? "Outcome library generation is unavailable.", plan};
+            }
+            // Studio addresses a managed project by its directory, while the
+            // conversion planner correctly binds that project's editable source
+            // as `blueprint.json`.  Compare a token-bound Blueprint plan against
+            // its canonical source identity, not the enclosing dashboard path;
+            // otherwise every lifecycle phase can falsely report source drift
+            // before cancellation or a refreshed retry reaches generation.
+            const planSourcePath = tokenBoundBlueprintPlan?.source.canonicalLocation ?? projectRoot;
+            const planDrift = describePreparedArtifactPlanDrift(
+                plan,
+                planSourcePath,
+                "outcomeLibrary",
+                boundDestination,
+                requestedGeneration.generationSemantics,
+                preparedRequest.preflight.sample?.sampleSize,
+                preparedRequest.preflight.sample?.seed,
+            );
+            if (planDrift !== undefined) {
+                return {status: "load-error", error: planDrift, plan};
+            }
+            onLifecycleStage?.("generation");
         type PreparedGenerationRead =
             | {readonly status: "terminal"; readonly view: StudioOutcomeLibraryGenerateResultView}
             | {
@@ -774,50 +774,50 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error)};
         }
         try {
-        const currentGame = game.getManifest();
+            const currentGame = game.getManifest();
 
-        const discovered: {bundleDir: string; manifest: OutcomeLibraryBundleManifest}[] = [];
-        for (const bundleDir of this.discoverBundleDirs(projectRoot)) {
-            const resolved = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
-            if (resolved.status === "error") {
-                return {status: "load-error", error: resolved.message};
-            }
-            if (!this.directoryExists(resolved.resolvedPath)) {
-                continue;
+            const discovered: {bundleDir: string; manifest: OutcomeLibraryBundleManifest}[] = [];
+            for (const bundleDir of this.discoverBundleDirs(projectRoot)) {
+                const resolved = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
+                if (resolved.status === "error") {
+                    return {status: "load-error", error: resolved.message};
+                }
+                if (!this.directoryExists(resolved.resolvedPath)) {
+                    continue;
+                }
+
+                let manifest: OutcomeLibraryBundleManifest;
+                try {
+                    manifest = await this.bundleReader.readManifest(resolved.resolvedPath);
+                } catch (error) {
+                    return {
+                        status: "load-error",
+                        error: `Could not read the outcome library bundle at "${bundleDir}": ${error instanceof Error ? error.message : String(error)}`,
+                    };
+                }
+                discovered.push({bundleDir, manifest});
             }
 
-            let manifest: OutcomeLibraryBundleManifest;
-            try {
-                manifest = await this.bundleReader.readManifest(resolved.resolvedPath);
-            } catch (error) {
-                return {
-                    status: "load-error",
-                    error: `Could not read the outcome library bundle at "${bundleDir}": ${error instanceof Error ? error.message : String(error)}`,
-                };
+            if (discovered.length === 0) {
+                return {status: "ok", bundleDir: StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR, buildStatus: "missing"};
             }
-            discovered.push({bundleDir, manifest});
-        }
 
-        if (discovered.length === 0) {
-            return {status: "ok", bundleDir: StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR, buildStatus: "missing"};
-        }
-
-        const currentConfigHash = game.getConfigHash?.();
-        const classify = (manifest: OutcomeLibraryBundleManifest): "compatible" | "stale" | "wrong" => {
-            if (manifest.game.id !== currentGame.id) {
-                return "wrong";
-            }
-            if (manifest.game.version !== currentGame.version || manifest.artifactPokieVersion !== this.pokieVersion) {
-                return "stale";
-            }
-            // Game id/version are user-authored metadata and commonly stay unchanged while a
-            // Blueprint's reels, pays, or mechanics change. A library without the current runtime's
-            // exact configuration hash therefore cannot be presented as usable for this Project.
-            if (currentConfigHash !== undefined && manifest.configHash !== currentConfigHash) {
-                return "stale";
-            }
-            return "compatible";
-        };
+            const currentConfigHash = game.getConfigHash?.();
+            const classify = (manifest: OutcomeLibraryBundleManifest): "compatible" | "stale" | "wrong" => {
+                if (manifest.game.id !== currentGame.id) {
+                    return "wrong";
+                }
+                if (manifest.game.version !== currentGame.version || manifest.artifactPokieVersion !== this.pokieVersion) {
+                    return "stale";
+                }
+                // Game id/version are user-authored metadata and commonly stay unchanged while a
+                // Blueprint's reels, pays, or mechanics change. A library without the current runtime's
+                // exact configuration hash therefore cannot be presented as usable for this Project.
+                if (currentConfigHash !== undefined && manifest.configHash !== currentConfigHash) {
+                    return "stale";
+                }
+                return "compatible";
+            };
 
         type ModeCandidate = {bundleDir: string; manifest: OutcomeLibraryBundleManifest; entry: OutcomeLibraryBundleManifest["modes"][number]};
         const latestByMode = new Map<string, ModeCandidate>();

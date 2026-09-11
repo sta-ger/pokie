@@ -12,7 +12,9 @@ describe("Studio remote origin trust policy", () => {
             const request = http.request({hostname: "127.0.0.1", port, path: "/api/home/projects/open", method: "POST", headers: {Host: host, Origin: origin, "Content-Type": "application/json"}}, (response) => {
                 let body = "";
                 response.setEncoding("utf8");
-                response.on("data", (chunk: string) => { body += chunk; });
+                response.on("data", (chunk: string) => {
+                    body += chunk;
+                });
                 response.on("end", () => resolve({status: response.statusCode ?? 0, body}));
             });
             request.on("error", reject);
