@@ -1002,7 +1002,7 @@ export class ArtifactBuilderRegistry {
         // generation lifecycle has always published there. Keep every other
         // descendant blocked (including aliases), while retaining normal
         // occupied-destination checks for this one canonical managed output.
-        const destination = this.checkDestination(target, options.destinationPath, this.destinationSafetySource(plan, source));
+        const destination = this.checkDestination(target, options.destinationPath, this.destinationSafetySource(plan, source, options));
         if (destination.available) return plan;
         return {
             ...plan,
@@ -1022,7 +1022,17 @@ export class ArtifactBuilderRegistry {
      * execution must use this exact rule so a successful preview cannot turn
      * into a source/descendant conflict when publishing.
      */
-    private destinationSafetySource(plan: ArtifactConversionPlan, source: PokieProject): string | undefined {
+    private destinationSafetySource(
+        plan: ArtifactConversionPlan,
+        source: PokieProject,
+        options: Pick<ArtifactConversionPlanningOptions, "allowManagedOutcomeWithinSource"> = {},
+    ): string | undefined {
+        // Studio is the sole caller that opts into an arbitrary *project-owned*
+        // Outcome Library sidecar. Its domain request independently requires
+        // project containment (including symlink resolution) and binds this
+        // exact path through preflight/execution. Keep the generic CLI policy
+        // strict unless that explicit capability accompanies planning.
+        if (options.allowManagedOutcomeWithinSource && plan.target.kind === "outcomeLibrary") return undefined;
         const isCanonicalPackageManagedOutcome =
             source.type === "tsPackage" &&
             plan.target.kind === "outcomeLibrary" &&

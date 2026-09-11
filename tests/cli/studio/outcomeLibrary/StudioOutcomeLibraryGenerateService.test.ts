@@ -326,8 +326,8 @@ describe("StudioOutcomeLibraryGenerateService", () => {
 
             expect(estimate).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
             expect(generated).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
-            expect(planning.prepare).toHaveBeenNthCalledWith(1, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
-            expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
+            expect(planning.prepare).toHaveBeenNthCalledWith(1, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact", allowManagedOutcomeWithinSource: true});
+            expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact", allowManagedOutcomeWithinSource: true});
         });
 
         it("publishes a managed Blueprint retry when cancellation recovery's destination probe cannot re-recognize the source", async () => {

@@ -119,10 +119,10 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
             "generate", packageRoot, "--mode", "base", "--stake", "1", "--library-id", "parity-lib", "--sample", "19", "--seed", "parity-seed", "--out", cliOutput, "--format", "json",
         ])).toBe(0);
 
-        const studio = new StudioOutcomeLibraryGenerateService(
-            "1.3.0", loadPokieGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            {prepare: () => Promise.resolve(plan)},
-        );
+        // Use the real Studio planner: a caller-selected project-relative
+        // sidecar must receive the same acceptance at preflight and execution
+        // as the default outcomelibrary directory.
+        const studio = new StudioOutcomeLibraryGenerateService("1.3.0", loadPokieGame);
         const studioRequest = {libraryId: "parity-lib", mode: "base", stake: 1, generation: "sampled" as const, sample: {sampleSize: BigInt(19), seed: "parity-seed"}, outDir: "studio-library"};
         const preview = await studio.estimate(packageRoot, studioRequest);
         if (preview.status !== "ok") throw new Error("Expected sampled Studio preflight.");

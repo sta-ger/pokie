@@ -309,7 +309,7 @@ function TargetCard({
                     <Group align="start" grow mt="sm">
                         <TextInput
                             label="Output destination"
-                            description="Project-relative bundle directory. Existing modes are preserved safely."
+                            description="Project-relative bundle directory (for example, libraries/release). Absolute and outside-project paths are not supported; existing modes are preserved safely."
                             value={outcomeLibraryGenerationOptions.outDir}
                             onChange={(event) =>
                                 onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, outDir: event.currentTarget.value})

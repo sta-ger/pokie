@@ -11,6 +11,15 @@ export type PokieSessionState = {
     // returned, restored via BuildableFromSessionState.fromSessionState() on the next reconstruction.
     // Absent for games that implement neither (snapshot-only fallback: bet/win/screen still restore).
     featureState?: unknown;
+    // Declares whether this snapshot is sufficient to reconstruct the session
+    // after its process-local instance has gone away.  A game that exposes a
+    // matching toSessionState()/fromSessionState() pair can carry its hidden
+    // RNG, feature and finite-round progress durably; a game without that
+    // pair cannot.  New captures always set this marker.  It is deliberately
+    // optional only for records written before the contract existed: those
+    // legacy records retain their historical best-effort behaviour rather
+    // than being reclassified from incomplete evidence.
+    executionState?: "durably-restorable" | "live-only";
     // Present only when the loaded PokieGame implements the optional getSessionSerializer() —
     // captured once, at session creation, from that serializer's getInitialData(session) (see
     // captureInitialPokieSessionState.ts). Carried forward unchanged on every subsequent spin (see

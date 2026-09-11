@@ -396,6 +396,14 @@ export type ArtifactConversionPlanningOptions = {
     readonly pokieVersion?: string;
     /** A registry lookup may offer a managed outcome bundle. It is reusable only when independently verified. */
     readonly managedOutcome?: {readonly identity: ArtifactIdentity; readonly verified: boolean; readonly staleReason?: string};
+    /**
+     * Explicitly permits a project-owned Outcome Library sidecar below its
+     * source root.  This is for Studio's managed, project-relative generation
+     * route only; ordinary CLI exports retain the stricter separate-output
+     * policy.  The caller must still bind the same destination through the
+     * domain request and enforce containment/availability at publication.
+     */
+    readonly allowManagedOutcomeWithinSource?: boolean;
 };
 
 /**

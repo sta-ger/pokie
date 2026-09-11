@@ -13,7 +13,16 @@ export function captureBaseSessionState(
     context: PokieGameContext | undefined,
     session: GameSessionHandling,
 ): PokieSessionState {
-    const state: PokieSessionState = {context, bet: session.getBet(), win: session.getWinAmount()};
+    const state: PokieSessionState = {
+        context,
+        bet: session.getBet(),
+        win: session.getWinAmount(),
+        // A snapshot-only session is safe while its executable object remains
+        // live, but is not evidence that a later reconstruction can continue
+        // the same RNG/feature stream.  Mark that distinction at capture time
+        // so a cache miss never silently turns into a reset.
+        executionState: canRoundTripFeatureState(session) ? "durably-restorable" : "live-only",
+    };
 
     const screen = captureScreen(session);
     if (screen !== null) {
@@ -26,4 +35,9 @@ export function captureBaseSessionState(
     }
 
     return state;
+}
+
+function canRoundTripFeatureState(session: GameSessionHandling): boolean {
+    const candidate = session as {toSessionState?: unknown; fromSessionState?: unknown};
+    return typeof candidate.toSessionState === "function" && typeof candidate.fromSessionState === "function";
 }

@@ -14,6 +14,12 @@ function createFakeSession(): GameSessionHandling {
 }
 
 describe("captureInitialPokieSessionState", () => {
+    it("marks a snapshot-only session as live-only instead of claiming it can survive a restart", () => {
+        const state = captureInitialPokieSessionState(undefined, createFakeSession());
+
+        expect(state.executionState).toBe("live-only");
+    });
+
     it("omits initialPayload entirely when no serializer is given", () => {
         const state = captureInitialPokieSessionState(undefined, createFakeSession());
 

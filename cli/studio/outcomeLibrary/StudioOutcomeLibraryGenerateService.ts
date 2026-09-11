@@ -234,7 +234,10 @@ export class StudioOutcomeLibraryGenerateService {
             // A preflight is not just an outcome-space calculation: it prepares the
             // same destination and resolved strategy that execution will consume.
             const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
-            const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
+            const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, {
+                ...requestedGeneration,
+                allowManagedOutcomeWithinSource: true,
+            });
             if (plan.status === "conflict") {
                 return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
             }
@@ -500,7 +503,10 @@ export class StudioOutcomeLibraryGenerateService {
             // unrecognized-source failure without weakening package byte-drift
             // detection at the execution boundary.
             const tokenBoundBlueprintPlan = snapshot?.plan.source.kind === "blueprint" ? snapshot.plan : undefined;
-            const plan = tokenBoundBlueprintPlan ?? await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
+            const plan = tokenBoundBlueprintPlan ?? await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, {
+                ...requestedGeneration,
+                allowManagedOutcomeWithinSource: true,
+            });
             if (plan.status === "conflict") {
                 return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
             }
@@ -559,7 +565,10 @@ export class StudioOutcomeLibraryGenerateService {
             if (!destinationExistedWhenRead && fs.existsSync(boundDestination)) {
                 throw new Error(`The Outcome Library destination "${boundDestination}" was claimed after generation began.`);
             }
-            const current = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration);
+            const current = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, {
+                ...requestedGeneration,
+                allowManagedOutcomeWithinSource: true,
+            });
             if (current.status === "planned") {
                 return;
             }
@@ -580,7 +589,10 @@ export class StudioOutcomeLibraryGenerateService {
                         this.assertManagedBlueprintBinding(snapshot, game);
                         return tokenBoundBlueprintPlan.source;
                     }
-                    return (await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration)).source;
+                    return (await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, {
+                        ...requestedGeneration,
+                        allowManagedOutcomeWithinSource: true,
+                    })).source;
                 },
                 read: async (): Promise<PreparedGenerationRead> => {
                     destinationExistedWhenRead = this.directoryExists(boundDestination);

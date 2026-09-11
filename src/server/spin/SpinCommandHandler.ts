@@ -340,6 +340,20 @@ export class SpinCommandHandler implements SpinCommandHandling {
             };
         }
 
+        // `live-only` is an explicit promise made by a newly captured record:
+        // it has no complete executable-state round trip, so rebuilding it
+        // after losing the live object could restart an RNG or finite feature
+        // stream.  Do not turn that uncertainty into a paid spin.  Records
+        // written before this marker existed remain on the documented legacy
+        // best-effort path for compatibility; all new captures are marked.
+        if (state.executionState === "live-only" && !this.liveSessions.has(sessionId)) {
+            return {
+                status: "blocked",
+                sessionId,
+                reason: `Session "${sessionId}" cannot continue after restart because its game does not persist complete executable session state.`,
+            };
+        }
+
         // Validate a command against a throw-away reconstruction first.  A
         // live cached session is deliberately not a validation scratchpad:
         // selecting a valid bet and then rejecting an invalid mode (or finding

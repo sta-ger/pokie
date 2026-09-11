@@ -350,6 +350,31 @@ async function createSpinnableSessionOn(
 }
 
 describe("SpinCommandHandler", () => {
+    it("never reconstructs and resets a newly captured live-only session after its live instance is gone", async () => {
+        const sessionRepository = new InMemorySessionRepository();
+        const wallet = new InMemoryWallet();
+        let createSessionCalls = 0;
+        const game: PokieGame = {
+            getManifest: () => manifest,
+            createSession: () => {
+                createSessionCalls++;
+                return createFakeSession();
+            },
+        };
+        const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+        await wallet.setBalance("live-only", 1_000);
+        await sessionRepository.save("live-only", {bet: 5, win: 0, executionState: "live-only"});
+
+        await expect(handler.handle("live-only")).resolves.toMatchObject({
+            status: "blocked",
+            sessionId: "live-only",
+            reason: expect.stringContaining("does not persist complete executable session state"),
+        });
+        expect(createSessionCalls).toBe(0);
+        await expect(wallet.getBalance("live-only")).resolves.toBe(1_000);
+        await expect(sessionRepository.load("live-only")).resolves.toEqual({bet: 5, win: 0, executionState: "live-only"});
+    });
+
     it("plays a spin, settles the wallet, and persists the new state", async () => {
         const game = createFakeGame();
         const sessionRepository = new InMemorySessionRepository();
