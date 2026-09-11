@@ -644,7 +644,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
 
             await svc.generate(projectRoot, {bounded: {sampleSize: BigInt(2), seed: "fixture-seed"}});
 
-            expect(planning.prepare).toHaveBeenCalledWith(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact"});
+            expect(planning.prepare).toHaveBeenCalledWith(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact", allowManagedOutcomeWithinSource: true});
         });
 
         it("reports the exact strategy for a small fixture game", async () => {
