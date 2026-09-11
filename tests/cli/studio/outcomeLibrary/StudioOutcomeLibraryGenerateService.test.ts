@@ -11,6 +11,7 @@ import {
     WeightedOutcomeLibraryGenerationCancelledError,
     generateWeightedOutcomeLibrary,
 } from "pokie";
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -18,6 +19,20 @@ import {StudioOutcomeLibraryGenerateService} from "../../../../cli/studio/outcom
 import {buildAlternateFixtureGame, buildFixtureGame, buildUnsupportedFixtureGame} from "../../../weightedoutcome/generate/GenerateTestFixtures.js";
 
 const POKIE_VERSION = "9.9.9";
+
+function runtimeSnapshotsForPackage(packageName: string): string[] {
+    return fs
+        .readdirSync(os.tmpdir())
+        .filter((entry) => entry.startsWith("pokie-runtime-"))
+        .map((entry) => path.join(os.tmpdir(), entry))
+        .filter((root) => {
+            try {
+                return JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).name === packageName;
+            } catch {
+                return false;
+            }
+        });
+}
 
 const plannedOutcomeLibrary: ArtifactConversionPlan = {
     status: "planned",
@@ -689,6 +704,26 @@ describe("StudioOutcomeLibraryGenerateService", () => {
         it("reports unsupported for a game that never opted into exact enumeration", async () => {
             const result = await service(POKIE_VERSION, buildUnsupportedFixtureGame()).estimate(projectRoot, {});
             expect(result.status).toBe("unsupported");
+        });
+
+        it("releases each real runtime snapshot after repeated unsupported package estimates", async () => {
+            const packageRoot = path.join(projectRoot, "unsupported-package");
+            const packageName = `studio-unsupported-estimate-${crypto.randomUUID()}`;
+            fs.cpSync(path.join(__dirname, "..", "..", "fixtures", "playable-game"), packageRoot, {
+                recursive: true,
+                filter: (source) => path.basename(source) !== ".pokie-runtime-cache",
+            });
+            fs.writeFileSync(
+                path.join(packageRoot, "package.json"),
+                JSON.stringify({name: packageName, version: "1.0.0", pokie: {entry: "./index.js"}}),
+            );
+            const studio = new StudioOutcomeLibraryGenerateService(POKIE_VERSION);
+
+            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+            for (let attempt = 0; attempt < 3; attempt++) {
+                await expect(studio.estimate(packageRoot, {generation: "exact"})).resolves.toMatchObject({status: "unsupported"});
+                expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+            }
         });
 
         it("reports load-error when the package fails to load", async () => {
