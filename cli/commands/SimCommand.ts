@@ -12,6 +12,7 @@ import {
     PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
+    releasePokieGame,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     simulateOutcomeSourceProject,
@@ -401,7 +402,12 @@ export class SimCommand implements CliCommandHandling {
         // ParallelSimulationRunner loads the package again itself (in-process or per worker thread) to
         // actually run rounds; that's unrelated and unaffected by this extra, cheap metadata-only load.
         const game = await this.loadGame(options.packageRoot);
-        const declaredModes = game.getBetModes?.();
+        let declaredModes;
+        try {
+            declaredModes = game.getBetModes?.();
+        } finally {
+            await releasePokieGame(game);
+        }
 
         if (options.mode === ALL_MODES) {
             await this.runAllModes(options, declaredModes);

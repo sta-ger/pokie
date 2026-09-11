@@ -10,6 +10,7 @@ import {
     replayOutcomeSourceProject,
     ReplayRecorder,
     ReplayRecording,
+    releasePokieGame,
     REPLAY_OPERATION,
 } from "pokie";
 import fs from "fs";
@@ -122,7 +123,12 @@ export class ReplayCommand implements CliCommandHandling {
         } finally {
             await resolution.release();
         }
-        const descriptor = this.recorder.record({game, seed: options.seed, round: options.round});
+        let descriptor;
+        try {
+            descriptor = this.recorder.record({game, seed: options.seed, round: options.round});
+        } finally {
+            await releasePokieGame(game);
+        }
         const json = JSON.stringify(descriptor, null, 4);
 
         if (options.out) {
