@@ -4,6 +4,7 @@ import {
     describeUnsupportedProjectOperation,
     isWasmComponentFile,
     loadPokieGame,
+    releasePokieGame,
     ProjectTargetResolver,
     type PokieGame,
 } from "pokie";
@@ -47,6 +48,10 @@ export async function resolveCurrentBuildModeIds(
         return undefined;
     }
 
-    const modeIds = (game.getBetModes?.() ?? []).map((mode) => mode.id.trim()).filter((id) => id.length > 0);
-    return modeIds.length > 0 ? modeIds : undefined;
+    try {
+        const modeIds = (game.getBetModes?.() ?? []).map((mode) => mode.id.trim()).filter((id) => id.length > 0);
+        return modeIds.length > 0 ? modeIds : undefined;
+    } finally {
+        await releasePokieGame(game).catch(() => undefined);
+    }
 }

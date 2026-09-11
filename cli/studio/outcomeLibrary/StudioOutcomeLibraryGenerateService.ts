@@ -773,6 +773,7 @@ export class StudioOutcomeLibraryGenerateService {
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error)};
         }
+        try {
         const currentGame = game.getManifest();
 
         const discovered: {bundleDir: string; manifest: OutcomeLibraryBundleManifest}[] = [];
@@ -858,6 +859,9 @@ export class StudioOutcomeLibraryGenerateService {
                 ...(entry.generator !== undefined ? {strategy: entry.generator.strategy, generatedAt: entry.generator.generatedAt} : {}),
             })),
         };
+        } finally {
+            await releasePokieGame(game).catch(() => undefined);
+        }
     }
 
     /** Converts an implicit caller's failed server-owned preflight into the existing generation DTO. */
