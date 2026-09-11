@@ -139,50 +139,50 @@ export class ParallelSimulationRunner {
         const loadGame = this.options.loadGame ?? loadPokieGame;
         const game = await loadGame(this.packageRoot);
         try {
-        const session = game.createSession(this.options.seed === undefined ? undefined : {seed: this.options.seed});
-        // Simulations measure RTP/volatility, not risk of ruin — same as every other simulation path.
-        session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+            const session = game.createSession(this.options.seed === undefined ? undefined : {seed: this.options.seed});
+            // Simulations measure RTP/volatility, not risk of ruin — same as every other simulation path.
+            session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
 
-        const convergence = this.options.convergence;
-        const convergenceChecker = convergence ? new SimulationConvergenceChecker(convergence) : undefined;
-        // A convergence check can only happen at a chunk boundary, so checkIntervalRounds — not a
-        // caller-supplied chunkSize — becomes the effective chunk size once convergence is enabled.
-        const chunkSize = Math.max(1, convergence?.checkIntervalRounds ?? this.options.chunkSize ?? this.rounds);
-        const yieldToEventLoop = this.options.yieldToEventLoop ?? defaultYieldToEventLoop;
-        const betModeSelector =
+            const convergence = this.options.convergence;
+            const convergenceChecker = convergence ? new SimulationConvergenceChecker(convergence) : undefined;
+            // A convergence check can only happen at a chunk boundary, so checkIntervalRounds — not a
+            // caller-supplied chunkSize — becomes the effective chunk size once convergence is enabled.
+            const chunkSize = Math.max(1, convergence?.checkIntervalRounds ?? this.options.chunkSize ?? this.rounds);
+            const yieldToEventLoop = this.options.yieldToEventLoop ?? defaultYieldToEventLoop;
+            const betModeSelector =
             this.options.betModeId !== undefined ? new FixedBetModeForNextSimulationRoundSetting(this.options.betModeId) : undefined;
 
-        const {accumulator, breakdown, jackpot, stopReason} = await runChunkedSimulation(
-            session,
-            this.rounds,
-            chunkSize,
-            {
-                shouldStop: () => this.options.signal?.aborted ?? false,
-                onChunkComplete: async ({roundsCompleted, isFinished}) => {
-                    this.options.onProgress?.(roundsCompleted);
-                    if (!isFinished) {
-                        await yieldToEventLoop();
-                    }
+            const {accumulator, breakdown, jackpot, stopReason} = await runChunkedSimulation(
+                session,
+                this.rounds,
+                chunkSize,
+                {
+                    shouldStop: () => this.options.signal?.aborted ?? false,
+                    onChunkComplete: async ({roundsCompleted, isFinished}) => {
+                        this.options.onProgress?.(roundsCompleted);
+                        if (!isFinished) {
+                            await yieldToEventLoop();
+                        }
+                    },
+                    checkConvergence: convergenceChecker
+                        ? (acc, roundsCompleted) => convergenceChecker.check(acc, roundsCompleted).converged
+                        : undefined,
                 },
-                checkConvergence: convergenceChecker
-                    ? (acc, roundsCompleted) => convergenceChecker.check(acc, roundsCompleted).converged
-                    : undefined,
-            },
-            betModeSelector,
-        );
+                betModeSelector,
+            );
 
-        return {
-            manifest: game.getManifest(),
-            configHash: game.getConfigHash?.(),
-            statistics: accumulator.getStatistics(),
-            breakdown,
-            jackpot,
-            workers: 1,
-            workerSeedStrategy: WorkerSeedStrategy.describe(this.options.seed, 1),
-            betMode: this.options.betModeId,
-            stopReason,
-            convergence: convergenceChecker?.buildOutcome(),
-        };
+            return {
+                manifest: game.getManifest(),
+                configHash: game.getConfigHash?.(),
+                statistics: accumulator.getStatistics(),
+                breakdown,
+                jackpot,
+                workers: 1,
+                workerSeedStrategy: WorkerSeedStrategy.describe(this.options.seed, 1),
+                betMode: this.options.betModeId,
+                stopReason,
+                convergence: convergenceChecker?.buildOutcome(),
+            };
         } finally {
             await releasePokieGame(game);
         }
