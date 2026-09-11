@@ -10,8 +10,25 @@ import {
     SimulationWorkerRequest,
     SimulationWorkerResult,
 } from "pokie";
+import fs from "fs";
+import os from "os";
+import path from "path";
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+function runtimeSnapshotsForPackage(packageName: string): string[] {
+    return fs
+        .readdirSync(os.tmpdir())
+        .filter((entry) => entry.startsWith("pokie-runtime-"))
+        .map((entry) => path.join(os.tmpdir(), entry))
+        .filter((root) => {
+            try {
+                return JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf-8")).name === packageName;
+            } catch {
+                return false;
+            }
+        });
+}
 
 function createFakeSession(seed?: string): GameSessionHandling {
     let credits = 1_000_000;
@@ -63,6 +80,31 @@ function createFakeGame(): PokieGame & {createdWith: (PokieGameContext | undefin
 type PokieGameContext = {seed?: string | number};
 
 describe("ParallelSimulationRunner (workers=1, in-process)", () => {
+    test("releases every real package-runtime snapshot after repeated completed runs", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-parallel-runtime-lease-"));
+        const packageRoot = path.join(workDir, "game");
+        const packageName = "parallel-runtime-lease-fixture";
+        fs.cpSync(path.join(__dirname, "..", "..", "cli", "fixtures", "playable-game"), packageRoot, {
+            recursive: true,
+            filter: (source) => path.basename(source) !== ".pokie-runtime-cache",
+        });
+        fs.writeFileSync(
+            path.join(packageRoot, "package.json"),
+            JSON.stringify({name: packageName, version: "1.0.0", pokie: {entry: "./index.js"}}),
+        );
+
+        try {
+            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+            for (let run = 0; run < 3; run++) {
+                const result = await new ParallelSimulationRunner(packageRoot, 4, {seed: `lease-${run}`}).run();
+                expect(result.statistics.rounds).toBe(4);
+                expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+            }
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     test("plays every requested round using the injected loadGame, without any worker entry point", async () => {
         const game = createFakeGame();
         const runner = new ParallelSimulationRunner("/fake/root", 100, {
