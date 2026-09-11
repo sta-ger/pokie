@@ -3332,7 +3332,10 @@ export class StudioServer implements StudioServerHandling {
         // loopback service.  Local browser origins must name a loopback authority on this actual
         // listener's port.  Origin-less loopback automation remains deliberately allowed above.
         const parsed = new URL(origin);
-        const hostname = parsed.hostname.toLowerCase();
+        // WHATWG URL keeps IPv6 brackets in hostname on current Node releases,
+        // while Node's listener address is unbracketed. Compare canonical host
+        // values rather than rejecting a valid browser Origin such as [::1].
+        const hostname = this.normalizeHostName(parsed.hostname);
         if (hostname !== "localhost" && hostname !== "127.0.0.1" && hostname !== "::1") return false;
         const address = this.server?.address();
         const listenerPort = typeof address === "object" && address !== null ? address.port : this.port;
@@ -3341,10 +3344,15 @@ export class StudioServer implements StudioServerHandling {
         // loopback address family. Only accept an authority this listener can
         // actually serve: a v4-only binding is not an IPv6 listener and vice
         // versa. Wildcard bindings deliberately serve either local family.
-        const listenerHost = typeof address === "object" && address !== null ? address.address.toLowerCase() : this.host.toLowerCase();
+        const listenerHost = this.normalizeHostName(typeof address === "object" && address !== null ? address.address : this.host);
         if (listenerHost === "127.0.0.1") return hostname === "127.0.0.1" || hostname === "localhost";
         if (listenerHost === "::1") return hostname === "::1" || hostname === "localhost";
         return true;
+    }
+
+    private normalizeHostName(hostname: string): string {
+        const normalized = hostname.toLowerCase();
+        return normalized.startsWith("[") && normalized.endsWith("]") ? normalized.slice(1, -1) : normalized;
     }
 
     private normalizeTrustedOrigin(origin: string): string {

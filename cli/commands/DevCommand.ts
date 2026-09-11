@@ -279,7 +279,9 @@ export class DevCommand implements CliCommandHandling {
         const shutdown = (): void => {
             if (stopping) return;
             stopping = true;
-            Promise.all([apiServer.stop(), clientServer.stop(), releasePokieGame(game)]).then(
+            // Stop both listeners before releasing the game's snapshot. In particular, the API
+            // listener must drain an accepted JSON body before any lazy package read disappears.
+            Promise.all([apiServer.stop(), clientServer.stop()]).then(() => releasePokieGame(game)).then(
                 () => this.process.exit(0),
                 () => this.process.exit(1),
             );
