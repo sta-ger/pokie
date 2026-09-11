@@ -80,6 +80,31 @@ describe("loadPokieGame (real long-lived CJS runtime)", () => {
         }
     });
 
+    it("binds an ancestor-less package to the embedding runtime installed at the process working directory", () => {
+        const hostRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-host-fallback-"));
+        const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-host-fallback-game-"));
+        const scriptPath = path.join(hostRoot, "load.cjs");
+        try {
+            fs.mkdirSync(path.join(hostRoot, "node_modules"), {recursive: true});
+            fs.symlinkSync(COMPILED_CJS_ENTRY.slice(0, -"index.js".length), path.join(hostRoot, "node_modules", "pokie"), process.platform === "win32" ? "junction" : "dir");
+            fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "host-fallback-game", version: "1.0.0", pokie: {entry: "./game.js"}}));
+            fs.writeFileSync(
+                path.join(packageRoot, "game.js"),
+                "const runtime = require('pokie'); module.exports = {getManifest() { return {id: 'host-fallback-game', name: typeof runtime.loadPokieGame, version: '1.0.0'}; }, createSession() { return {}; }};\n",
+            );
+            fs.writeFileSync(
+                scriptPath,
+                "const {loadPokieGame, releasePokieGame} = require(process.argv[2]); (async () => { const game = await loadPokieGame(process.argv[3]); process.stdout.write(game.getManifest().name); await releasePokieGame(game); })().catch((error) => { console.error(error); process.exitCode = 1; });\n",
+            );
+
+            const output = execFileSync(process.execPath, [scriptPath, COMPILED_CJS_ENTRY, packageRoot], {cwd: hostRoot, encoding: "utf-8"});
+            expect(output).toBe("function");
+        } finally {
+            fs.rmSync(hostRoot, {recursive: true, force: true});
+            fs.rmSync(packageRoot, {recursive: true, force: true});
+        }
+    });
+
     it("executes a rebuilt ESM dependency when the same entry path is reopened", () => {
         const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-real-runtime-esm-dependency-reload-"));
         const scriptPath = path.join(packageRoot, "reload.cjs");

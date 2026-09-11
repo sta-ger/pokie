@@ -118,12 +118,43 @@ function createDependencyOverlay(snapshotRoot: string, startPath: string): void 
     // normal workspace ancestor. Keep that single compatibility dependency;
     // every other overlay entry remains manifest-declared.
     for (const dependencyName of new Set(["pokie", ...declaredRuntimeDependencies(startPath)])) {
-        const source = dependencyRoots.map((dependencyRoot) => path.join(dependencyRoot, dependencyName)).find((candidate) => fs.existsSync(candidate));
+        const source = dependencyRoots.map((dependencyRoot) => path.join(dependencyRoot, dependencyName)).find((candidate) => fs.existsSync(candidate))
+            // A game package is permitted to omit its host runtime from its own ancestry: for
+            // example, an embedding application can load a fixture outside its install tree. In
+            // that layout the snapshot still must bind `require("pokie")` to the *same installed
+            // runtime that invoked the loader*, rather than assuming the fixture's source checkout
+            // has a sibling node_modules/pokie. This is especially important in worker_threads,
+            // whose loader starts from the snapshot path and otherwise loses the embedding app's
+            // resolution chain entirely.
+            ?? (dependencyName === "pokie" ? resolveHostPokieRuntimeRoot() : undefined);
         if (source === undefined) continue;
         const destination = path.join(overlay, dependencyName);
         fs.mkdirSync(path.dirname(destination), {recursive: true});
         fs.symlinkSync(source, destination, process.platform === "win32" ? "junction" : "dir");
     }
+}
+
+function resolveHostPokieRuntimeRoot(): string | undefined {
+    try {
+        // Anchor resolution at the embedding process's working directory. A package invoked from a
+        // third-party install therefore finds that install's `node_modules/pokie`; a normal game
+        // package with a nearer declared dependency was already selected above and never reaches
+        // this fallback. Avoid `__dirname`/this source checkout, which would silently bind an
+        // externally-installed runtime to whatever development tree happens to contain it.
+        const hostEntry = createRequire(path.join(process.cwd(), "__pokie_runtime_resolver__.cjs")).resolve("pokie");
+        return findPackageRoot(hostEntry);
+    } catch {
+        return undefined;
+    }
+}
+
+function findPackageRoot(filePath: string): string | undefined {
+    let current = path.dirname(filePath);
+    while (path.dirname(current) !== current) {
+        if (fs.existsSync(path.join(current, "package.json"))) return current;
+        current = path.dirname(current);
+    }
+    return undefined;
 }
 
 function declaredRuntimeDependencies(packageRoot: string): string[] {
