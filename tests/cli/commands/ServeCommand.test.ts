@@ -79,11 +79,13 @@ function createStubServer(
     };
 }
 
+type SignalHandler = () => void;
+
 class FakeProcess {
     public readonly exitCalls: number[] = [];
-    private readonly handlers = new Map<string, () => void>();
+    private readonly handlers = new Map<string, SignalHandler>();
 
-    public once(event: string, handler: () => void): FakeProcess {
+    public once(event: string, handler: SignalHandler): FakeProcess {
         this.handlers.set(event, handler);
         return this;
     }
@@ -140,7 +142,9 @@ describe("ServeCommand", () => {
             await command.run([packageRoot]);
             expect(runtimeSnapshotsForPackage(packageName)).toHaveLength(1);
             fakeProcess.trigger("SIGINT");
-            await new Promise<void>((resolve) => setImmediate(resolve));
+            await new Promise<void>((resolve) => {
+                setImmediate(resolve);
+            });
             expect(server.stopCalls).toBe(1);
             expect(fakeProcess.exitCalls).toEqual([0]);
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);

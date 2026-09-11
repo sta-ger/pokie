@@ -121,7 +121,9 @@ describe("DevCommand", () => {
             await command.run([packageRoot, "--no-open"]);
             expect(runtimeSnapshotsForPackage(packageName)).toHaveLength(1);
             fakeProcess.trigger("SIGTERM");
-            await new Promise<void>((resolve) => setImmediate(resolve));
+            await new Promise<void>((resolve) => {
+                setImmediate(resolve);
+            });
             expect(apiServer.stopCalls).toBe(1);
             expect(clientServer.stopCalls).toBe(1);
             expect(fakeProcess.exitCalls).toEqual([0]);
