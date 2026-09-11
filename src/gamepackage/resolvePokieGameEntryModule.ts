@@ -68,10 +68,7 @@ function createRuntimeSnapshot(entryPath: string): {root: string; entryPath: str
         // node_modules directory (fixtures and Studio materializations do). Keep that normal
         // Node resolution chain available from the external snapshot without copying dependencies
         // or writing anything into the authored package.
-        const dependencyRoot = findNearestNodeModules(packageRoot);
-        if (dependencyRoot !== undefined) {
-            fs.symlinkSync(dependencyRoot, path.join(root, "node_modules"), process.platform === "win32" ? "junction" : "dir");
-        }
+        createDependencyOverlay(root, packageRoot);
         const snapshotEntry = path.join(root, relativeEntry);
         let released = false;
         return {
@@ -101,14 +98,44 @@ function createRuntimeSnapshot(entryPath: string): {root: string; entryPath: str
     }
 }
 
-function findNearestNodeModules(startPath: string): string | undefined {
+function createDependencyOverlay(snapshotRoot: string, startPath: string): void {
+    const overlay = path.join(snapshotRoot, "node_modules");
+    const dependencyRoots: string[] = [];
     let current = startPath;
     while (path.dirname(current) !== current) {
         const candidate = path.join(current, "node_modules");
-        if (fs.existsSync(candidate)) return candidate;
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) dependencyRoots.push(candidate);
         current = path.dirname(current);
     }
-    return undefined;
+    if (dependencyRoots.length === 0) return;
+    fs.mkdirSync(overlay);
+    // Link only the package's declared runtime dependencies, never every entry in an ancestor
+    // workspace node_modules.  The linked package keeps its physical nested dependency tree, so
+    // Node resolves its transitive dependencies normally without a recursive copy or overlay scan.
+    for (const dependencyName of declaredRuntimeDependencies(startPath)) {
+        const source = dependencyRoots.map((dependencyRoot) => path.join(dependencyRoot, dependencyName)).find((candidate) => fs.existsSync(candidate));
+        if (source === undefined) continue;
+        const destination = path.join(overlay, dependencyName);
+        fs.mkdirSync(path.dirname(destination), {recursive: true});
+        fs.symlinkSync(source, destination, process.platform === "win32" ? "junction" : "dir");
+    }
+}
+
+function declaredRuntimeDependencies(packageRoot: string): string[] {
+    try {
+        const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf-8")) as {
+            dependencies?: Record<string, unknown>;
+            optionalDependencies?: Record<string, unknown>;
+            peerDependencies?: Record<string, unknown>;
+        };
+        return Array.from(new Set([
+            ...Object.keys(manifest.dependencies ?? {}),
+            ...Object.keys(manifest.optionalDependencies ?? {}),
+            ...Object.keys(manifest.peerDependencies ?? {}),
+        ]));
+    } catch {
+        return [];
+    }
 }
 
 export async function resolvePokieGameEntryModule(

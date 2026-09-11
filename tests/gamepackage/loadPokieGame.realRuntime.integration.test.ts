@@ -61,6 +61,25 @@ describe("loadPokieGame (real long-lived CJS runtime)", () => {
         }
     });
 
+    it("preserves ancestor dependencies when a package also has its own node_modules", () => {
+        const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-ancestor-dependencies-"));
+        const packageRoot = path.join(workspaceRoot, "game");
+        const scriptPath = path.join(workspaceRoot, "load.cjs");
+        try {
+            fs.mkdirSync(path.join(packageRoot, "node_modules", "local-dependency"), {recursive: true});
+            fs.mkdirSync(path.join(workspaceRoot, "node_modules", "ancestor-dependency"), {recursive: true});
+            fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "ancestor-dependencies", version: "1.0.0", dependencies: {"local-dependency": "1.0.0", "ancestor-dependency": "1.0.0"}, pokie: {entry: "./game.js"}}));
+            fs.writeFileSync(path.join(packageRoot, "node_modules", "local-dependency", "index.js"), "module.exports = 'local';\n");
+            fs.writeFileSync(path.join(workspaceRoot, "node_modules", "ancestor-dependency", "index.js"), "module.exports = 'ancestor';\n");
+            fs.writeFileSync(path.join(packageRoot, "game.js"), "const local = require('local-dependency'); const ancestor = require('ancestor-dependency'); module.exports = {getManifest() { return {id: 'ancestor-dependencies', name: local + '-' + ancestor, version: '1.0.0'}; }, createSession() { return {}; }};\n");
+            fs.writeFileSync(scriptPath, `const {loadPokieGame} = require(process.argv[2]); (async () => { const game = await loadPokieGame(process.argv[3]); process.stdout.write(game.getManifest().name); })().catch((error) => { console.error(error); process.exitCode = 1; });\n`);
+            const output = execFileSync(process.execPath, [scriptPath, COMPILED_CJS_ENTRY, packageRoot], {encoding: "utf-8"});
+            expect(output).toBe("local-ancestor");
+        } finally {
+            fs.rmSync(workspaceRoot, {recursive: true, force: true});
+        }
+    });
+
     it("executes a rebuilt ESM dependency when the same entry path is reopened", () => {
         const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-real-runtime-esm-dependency-reload-"));
         const scriptPath = path.join(packageRoot, "reload.cjs");
