@@ -133,7 +133,7 @@ export class ServeCommand implements CliCommandHandling {
             // server.stop() closes the listener and drains requests already accepted by Node.
             // The package snapshot remains executable until that drain finishes: releasing it in
             // parallel lets an accepted request resume into ENOENT after SIGTERM.
-            void server.stop().then(() => releasePokieGame(game)).then(
+            server.stop().then(() => releasePokieGame(game)).then(
                 () => this.process.exit(0),
                 () => this.process.exit(1),
             );

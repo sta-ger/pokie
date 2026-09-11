@@ -223,7 +223,9 @@ describe("ServeCommand", () => {
 
             await expect(response).resolves.toMatchObject({status: 201, body: {sessionId: expect.any(String)}});
             for (let tick = 0; tick < 50 && fakeProcess.exitCalls.length === 0; tick++) {
-                await new Promise<void>((resolve) => setTimeout(resolve, 10));
+                await new Promise<void>((resolve) => {
+                    setTimeout(resolve, 10);
+                });
             }
             expect(fakeProcess.exitCalls).toEqual([0]);
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
