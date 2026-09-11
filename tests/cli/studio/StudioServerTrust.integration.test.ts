@@ -31,8 +31,47 @@ describe("Studio remote origin trust policy", () => {
             const address = await server.start();
             const hostileOrigin = `http://untrusted.audit.invalid:${address.port}`;
             await expect(rawPost(address.port, `untrusted.audit.invalid:${address.port}`, hostileOrigin)).resolves.toEqual(expect.objectContaining({status: 403}));
-            const context = await fetch(`http://127.0.0.1:${address.port}/api/context`).then((response) => response.json()) as {context: {mode: string}};
-            expect(context.context.mode).toBe("home");
+            const context = await fetch(`http://127.0.0.1:${address.port}/api/context`).then((response) => response.json()) as {mode: string};
+            expect(context.mode).toBe("home");
+        } finally {
+            await server.stop();
+            fs.rmSync(studioRoot, {recursive: true, force: true});
+        }
+    });
+
+    it("does not accept an IPv6 Host/Origin spoof against a v4-only listener", async () => {
+        const studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-address-family-trust-"));
+        fs.writeFileSync(path.join(studioRoot, "index.html"), "<html>studio</html>");
+        const home = new StudioHomeService("1.3.0");
+        const server = new StudioServer({pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot, homeService: home, blueprintService: new StudioBlueprintService("1.3.0", studioRoot, home)});
+        try {
+            const address = await server.start();
+            const ipv6Origin = `http://[::1]:${address.port}`;
+            await expect(rawPost(address.port, `[::1]:${address.port}`, ipv6Origin)).resolves.toEqual(expect.objectContaining({status: 403}));
+        } finally {
+            await server.stop();
+            fs.rmSync(studioRoot, {recursive: true, force: true});
+        }
+    });
+
+    it("permits only an explicitly configured reverse-proxy browser authority", async () => {
+        const studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-proxy-trust-"));
+        fs.writeFileSync(path.join(studioRoot, "index.html"), "<html>studio</html>");
+        const trustedOrigin = "http://studio.proxy.test:4310";
+        const home = new StudioHomeService("1.3.0");
+        const server = new StudioServer({
+            pokieVersion: "1.3.0",
+            host: "127.0.0.1",
+            port: 0,
+            studioRoot,
+            trustedOrigins: [trustedOrigin],
+            homeService: home,
+            blueprintService: new StudioBlueprintService("1.3.0", studioRoot, home),
+        });
+        try {
+            const address = await server.start();
+            const response = await rawPost(address.port, "studio.proxy.test:4310", trustedOrigin);
+            expect(response.status).not.toBe(403);
         } finally {
             await server.stop();
             fs.rmSync(studioRoot, {recursive: true, force: true});

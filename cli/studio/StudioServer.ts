@@ -3336,7 +3336,15 @@ export class StudioServer implements StudioServerHandling {
         if (hostname !== "localhost" && hostname !== "127.0.0.1" && hostname !== "::1") return false;
         const address = this.server?.address();
         const listenerPort = typeof address === "object" && address !== null ? address.port : this.port;
-        return Number(parsed.port || 80) === listenerPort;
+        if (Number(parsed.port || 80) !== listenerPort) return false;
+        // A raw loopback TCP peer can forge Host/Origin for the *other*
+        // loopback address family. Only accept an authority this listener can
+        // actually serve: a v4-only binding is not an IPv6 listener and vice
+        // versa. Wildcard bindings deliberately serve either local family.
+        const listenerHost = typeof address === "object" && address !== null ? address.address.toLowerCase() : this.host.toLowerCase();
+        if (listenerHost === "127.0.0.1") return hostname === "127.0.0.1" || hostname === "localhost";
+        if (listenerHost === "::1") return hostname === "::1" || hostname === "localhost";
+        return true;
     }
 
     private normalizeTrustedOrigin(origin: string): string {
