@@ -33,7 +33,6 @@ import {
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     SpinCommandHandler,
-    SpinCommandHandling,
     TransactionalWalletAdapter,
     releasePokieGame,
     WeightedOutcomeRandomSource,
@@ -61,16 +60,14 @@ export type StudioPlaySessionOptions = {readonly signal?: AbortSignal};
 type ActiveRuntimeSession = {
     readonly kind: "runtime";
     readonly manifest: {id: string; name: string; version: string};
-    readonly spinHandler: SpinCommandHandling;
+    readonly spinHandler: SpinCommandHandler;
     // Retained so this session keeps ownership of its isolated executable package until reset.
     readonly game: PokieGame;
-    // The exact same live object primed into spinHandler (see newSession()) -- spinHandler.handle() plays
-    // this same instance in place on every real spin (see SpinCommandHandler's own liveSessions cache), so
-    // reading it back here after a spin sees that spin's own just-computed state directly. This is what
-    // lets findAnyWin()/findSymbolWin() below drive the engine's own PlayUntilAnyWinStrategy/
-    // PlayUntilSymbolWinStrategy against a real session rather than re-deriving an equivalent check from
-    // the wire-shaped response.
-    readonly session: GameSessionHandling;
+    // The current session the command actually executed. SpinCommandHandler deliberately validates and
+    // executes a fresh reconstruction rather than treating its cache as authority, so this is refreshed
+    // after every played result instead of retaining the object initially primed into the handler.
+    // Scenario strategies then inspect the exact transient state of the round that just completed.
+    session: GameSessionHandling;
     // This session's own creation parameters -- stamped onto every round this session ever produces (see
     // spin()) as that round's own `studioProjectRoot`/`studioSeed`. `seed` is only ever set when
     // newSession() was actually given one, never invented for a session created without one.
@@ -326,6 +323,17 @@ export class StudioPlayService {
                 // in the (unreachable in normal operation) case they somehow ever did.
                 result = {status: "error", error: handled.reason};
             } else {
+                const settledSession = active.spinHandler.getLiveSession(sessionId);
+                if (settledSession === undefined) {
+                    return {status: "error", error: "The settled Play session is no longer available."};
+                }
+                // A new/reset session may have won the race while the prior command was settling. The
+                // prior command is still valid for its old in-memory stores, but must never overwrite the
+                // current Play presentation state with it.
+                if (this.active !== active || this.currentSessionId !== sessionId) {
+                    return {status: "not-found"};
+                }
+                active.session = settledSession;
                 result = {
                     status: "ok",
                     session: this.buildSessionView(
@@ -335,7 +343,7 @@ export class StudioPlayService {
                         handled.credits,
                         handled.win,
                         handled.state.roundPayload,
-                        active.session,
+                        settledSession,
                     ),
                 };
             }

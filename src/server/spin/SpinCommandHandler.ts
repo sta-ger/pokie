@@ -226,6 +226,15 @@ export class SpinCommandHandler implements SpinCommandHandling {
         this.liveSessions.set(sessionId, session);
     }
 
+    // Observes the process-local session that the most recent successful command for this id actually
+    // executed. This is intentionally a concrete-handler hook rather than part of the transport-facing
+    // SpinCommandHandling contract: callers must not mutate it or use it in place of persisted state.
+    // Studio Play uses it only to inspect transient details of the already-settled round, which a
+    // continuation snapshot cannot necessarily recreate (such as the last evaluated screen).
+    public getLiveSession(sessionId: string): GameSessionHandling | undefined {
+        return this.liveSessions.get(sessionId);
+    }
+
     // Reconciles one (sessionId, requestId)'s own SpinOperationRecord, the same way an interrupted
     // requestId retried through handle() would trigger internally (see reconcilePendingAttempt()) — but
     // callable directly, e.g. from an ops tool. Routed through the same per-session enqueue() queue
