@@ -3,6 +3,7 @@ import {
     DEV_OPERATION,
     describeUnsupportedProjectOperation,
     loadPokieGame,
+    releasePokieGame,
     PokieClientServer,
     PokieClientServerHandling,
     PokieClientServerOptions,
@@ -180,9 +181,13 @@ export class DevCommand implements CliCommandHandling {
                 this.openBrowserImpl(`http://${clientAddress.host}:${clientAddress.port}`);
             }
 
-            this.registerShutdown(apiServer, clientServer);
+            // Once both listeners are live, their process-shutdown handler owns the package
+            // lease.  A Play/session object inside PokieDevServer can keep using the isolated
+            // snapshot until then; it is never released during successful startup.
+            this.registerShutdown(apiServer, clientServer, game);
         } catch (error) {
             await this.stopAll(startedServers);
+            await releasePokieGame(game).catch(() => undefined);
             throw error;
         }
     }
@@ -269,9 +274,12 @@ export class DevCommand implements CliCommandHandling {
         }
     }
 
-    private registerShutdown(apiServer: PokieDevServerHandling, clientServer: PokieClientServerHandling): void {
+    private registerShutdown(apiServer: PokieDevServerHandling, clientServer: PokieClientServerHandling, game: PokieGame): void {
+        let stopping = false;
         const shutdown = (): void => {
-            Promise.all([apiServer.stop(), clientServer.stop()]).then(
+            if (stopping) return;
+            stopping = true;
+            Promise.all([apiServer.stop(), clientServer.stop(), releasePokieGame(game)]).then(
                 () => this.process.exit(0),
                 () => this.process.exit(1),
             );

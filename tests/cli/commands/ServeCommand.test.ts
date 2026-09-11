@@ -19,6 +19,7 @@ import {
     replayOutcomeSourceProject,
 } from "pokie";
 import ExcelJS from "exceljs";
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -78,6 +79,38 @@ function createStubServer(
     };
 }
 
+class FakeProcess {
+    public readonly exitCalls: number[] = [];
+    private readonly handlers = new Map<string, () => void>();
+
+    public once(event: string, handler: () => void): FakeProcess {
+        this.handlers.set(event, handler);
+        return this;
+    }
+
+    public exit(code: number): void {
+        this.exitCalls.push(code);
+    }
+
+    public trigger(event: string): void {
+        this.handlers.get(event)?.();
+    }
+}
+
+function runtimeSnapshotsForPackage(packageName: string): string[] {
+    return fs
+        .readdirSync(os.tmpdir())
+        .filter((entry) => entry.startsWith("pokie-runtime-"))
+        .map((entry) => path.join(os.tmpdir(), entry))
+        .filter((root) => {
+            try {
+                return JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).name === packageName;
+            } catch {
+                return false;
+            }
+        });
+}
+
 describe("ServeCommand", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
@@ -86,6 +119,35 @@ describe("ServeCommand", () => {
 
         expect(command.getName()).toBe("serve");
         expect(command.getDescription().length).toBeGreaterThan(0);
+    });
+
+    it("keeps a real loaded package alive while serving, then releases its snapshot on SIGINT", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-serve-runtime-lease-"));
+        const packageRoot = path.join(workDir, "game");
+        const packageName = `serve-runtime-lease-${crypto.randomUUID()}`;
+        fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game"), packageRoot, {
+            recursive: true,
+            filter: (source) => path.basename(source) !== ".pokie-runtime-cache",
+        });
+        fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: packageName, version: "1.0.0", pokie: {entry: "./index.js"}}));
+        const server = createStubServer({host: "127.0.0.1", port: 0});
+        const fakeProcess = new FakeProcess();
+        const command = new ServeCommand(loadPokieGame, () => server, passthroughRuntimePackageResolver, new ProjectTargetResolver(), undefined, fakeProcess as unknown as NodeJS.Process);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        try {
+            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+            await command.run([packageRoot]);
+            expect(runtimeSnapshotsForPackage(packageName)).toHaveLength(1);
+            fakeProcess.trigger("SIGINT");
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            expect(server.stopCalls).toBe(1);
+            expect(fakeProcess.exitCalls).toEqual([0]);
+            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+        } finally {
+            logSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("throws when run without a packageRoot", async () => {

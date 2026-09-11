@@ -2,6 +2,7 @@ import {Command} from "commander";
 import {
     describeUnsupportedProjectOperation,
     loadPokieGame,
+    releasePokieGame,
     OUTCOME_SOURCE_SERVE_OPERATION,
     OutcomeSourceDevServer,
     PokieDevServer,
@@ -40,6 +41,7 @@ export class ServeCommand implements CliCommandHandling {
     // resolved "stakeAdapter" project's own missing-capability diagnostic is thrown before this is ever
     // called at all (see runOutcomeSourceServe).
     private readonly createOutcomeSourceServer: (project: PokieProject, modeName: string, options: PokieDevServerOptions) => PokieDevServerHandling;
+    private readonly process: NodeJS.Process;
 
     constructor(
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
@@ -52,12 +54,14 @@ export class ServeCommand implements CliCommandHandling {
             modeName,
             options,
         ) => new OutcomeSourceDevServer(project, modeName, options),
+        processLike: NodeJS.Process = process,
     ) {
         this.loadGame = loadGame;
         this.createServer = createServer;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
         this.resolveProject = resolveProject;
         this.createOutcomeSourceServer = createOutcomeSourceServer;
+        this.process = processLike;
     }
 
     public getName(): string {
@@ -105,16 +109,34 @@ export class ServeCommand implements CliCommandHandling {
         }
 
         const game = await this.loadRuntimeGame(options.packageRoot);
-        const server = this.createServer(game, {host: options.host, port: options.port});
         let address;
         try {
+            const server = this.createServer(game, {host: options.host, port: options.port});
             address = await server.start();
+            // The listener owns the game only after it is live: its sessions must retain the
+            // runtime snapshot, while startup failures below still release it immediately.
+            this.registerShutdown(server, game);
         } catch (error) {
+            await releasePokieGame(game).catch(() => undefined);
             throw describeLocalServerStartError(error, "POKIE dev server", "--port");
         }
 
         console.log(`POKIE dev server listening on http://${address.host}:${address.port}`);
         console.log("This is a local/dev reference server for a single game package — not a casino backend or RGS.");
+    }
+
+    private registerShutdown(server: PokieDevServerHandling, game: PokieGame): void {
+        let stopping = false;
+        const shutdown = (): void => {
+            if (stopping) return;
+            stopping = true;
+            Promise.all([server.stop(), releasePokieGame(game)]).then(
+                () => this.process.exit(0),
+                () => this.process.exit(1),
+            );
+        };
+        this.process.once("SIGINT", shutdown);
+        this.process.once("SIGTERM", shutdown);
     }
 
     // Builds the exact Commander tree parseArgs() itself parses argv with -- the same object graph both
