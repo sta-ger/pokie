@@ -1,6 +1,7 @@
 import {
     GenerateExactWeightedOutcomeLibraryResult,
     loadPokieGame,
+    releasePokieGame,
     OutcomeLibraryBundleManifest,
     OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleReader,
@@ -203,6 +204,7 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
 
+        try {
         const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
         let preparedRequest;
         try {
@@ -283,6 +285,9 @@ export class StudioOutcomeLibraryGenerateService {
             },
             preflightToken,
         };
+        } finally {
+            await releasePokieGame(game);
+        }
     }
 
     /**

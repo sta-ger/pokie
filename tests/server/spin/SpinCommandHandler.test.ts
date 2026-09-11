@@ -414,9 +414,11 @@ describe("SpinCommandHandler", () => {
         await expect(sessionRepository.load("session-1")).resolves.toMatchObject({bet: 5, win: 0});
     });
 
-    it("guards and plays the same cached legacy session when no feature snapshot exists", async () => {
+    it("never executes a stale cached legacy session after guarding a reconstruction", async () => {
         let credits = 100;
         let roundsRemaining = 1;
+        let staleLivePlayCalls = 0;
+        let reconstructedPlayCalls = 0;
         const live: GameSessionHandling = {
             getCreditsAmount: () => credits,
             setCreditsAmount: (value) => {
@@ -427,6 +429,7 @@ describe("SpinCommandHandler", () => {
             getAvailableBets: () => [5],
             canPlayNextGame: () => roundsRemaining > 0,
             play: () => {
+                staleLivePlayCalls++;
                 roundsRemaining--;
                 credits += 2;
             },
@@ -434,9 +437,11 @@ describe("SpinCommandHandler", () => {
         };
         const game: PokieGame = {
             getManifest: () => manifest,
-            // A reconstruction deliberately looks playable: the legacy live session's exhausted
-            // ephemeral state is not serialised in PokieSessionState.featureState.
-            createSession: () => ({...live, canPlayNextGame: () => true}),
+            // The stale cached object deliberately differs from a reconstruction.  The command
+            // must guard and execute the latter, not approve one then replay the former's round.
+            createSession: () => ({...live, canPlayNextGame: () => true, play: () => {
+                reconstructedPlayCalls++;
+            }}),
         };
         const sessionRepository = new InMemorySessionRepository();
         const wallet = new InMemoryWallet();
@@ -446,14 +451,10 @@ describe("SpinCommandHandler", () => {
         handler.primeSession("legacy", live);
 
         expect((await handler.handle("legacy")).status).toBe("played");
-        const persistedAfterFirst = await sessionRepository.load("legacy");
-        const creditsAfterFirst = await wallet.getBalance("legacy");
-        const second = await handler.handle("legacy");
-
-        expect(second.status).toBe("blocked");
-        await expect(sessionRepository.load("legacy")).resolves.toEqual(persistedAfterFirst);
-        await expect(wallet.getBalance("legacy")).resolves.toBe(creditsAfterFirst);
-        expect(roundsRemaining).toBe(0);
+        expect((await handler.handle("legacy", undefined, undefined, 5)).status).toBe("played");
+        expect(reconstructedPlayCalls).toBe(2);
+        expect(staleLivePlayCalls).toBe(0);
+        expect(roundsRemaining).toBe(1);
     });
 
     it("replays a stored result for a repeated requestId instead of spinning again", async () => {

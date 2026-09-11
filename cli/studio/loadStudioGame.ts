@@ -1,11 +1,9 @@
 import {loadPokieGame, PokieGamePackageValidator, resolvePokieGameEntryModule, type PokieGameEntryModuleLoading} from "pokie";
 import fs from "fs";
-import {createRequire} from "module";
+import Module, {createRequire} from "module";
 import path from "path";
-import vm from "vm";
 
 type DynamicModuleImporting = (entryPath: string) => Promise<Record<string, unknown>>;
-type CommonJsModule = {exports: Record<string, unknown>; require: (request: string) => unknown};
 
 // Keep this native dynamic import even when Studio's own CJS build is executing under Jest or an
 // embedded host.  TypeScript otherwise rewrites `import()` to require(), which cannot load an ESM
@@ -83,11 +81,22 @@ function isMissingPokieRuntime(error: unknown): boolean {
 
 function loadCommonJsEntryWithStudioRuntime(entryPath: string, studioRequire: NodeJS.Require): Record<string, unknown> {
     const projectRequire = createRequire(entryPath);
-    const requireFromProject = (request: string): unknown => (request === "pokie" ? studioRequire("pokie") : projectRequire(request));
-    const module: CommonJsModule = {exports: {}, require: requireFromProject};
-    const execute = vm.runInThisContext(`(function (exports, require, module, __filename, __dirname) {\n${fs.readFileSync(entryPath, "utf-8")}\n})`, {
-        filename: entryPath,
-    }) as (exports: Record<string, unknown>, require: (request: string) => unknown, module: CommonJsModule, filename: string, dirname: string) => void;
-    execute(module.exports, requireFromProject, module, entryPath, path.dirname(entryPath));
-    return module.exports;
+    // Do not evaluate user CJS in a hand-written vm wrapper.  Besides being subtly different from
+    // Node's module wrapper, that loses require.resolve and leaves dynamic import() without Node's
+    // callback.  Use Node's ordinary loader and intercept only the one dependency Studio owns.
+    // Evaluation of a CJS entry is synchronous, so this narrowly scoped hook cannot leak into a
+    // later lazy import/resource call; those retain normal Node resolution from the loaded module.
+    const nodeModule = Module as unknown as { _resolveFilename: (request: string, parent: unknown, isMain: boolean, options?: unknown) => string };
+    const originalResolveFilename = nodeModule._resolveFilename;
+    const studioPokiePath = studioRequire.resolve("pokie");
+    // Keep Node's real CJS module wrapper, cache, dynamic-import callback and require.resolve().
+    // Only resolution of the missing runtime is substituted; every other package and relative
+    // dependency follows the package's ordinary Node resolution graph.
+    nodeModule._resolveFilename = (request, parent, isMain, options) =>
+        request === "pokie" ? studioPokiePath : originalResolveFilename.call(nodeModule, request, parent, isMain, options);
+    try {
+        return projectRequire(entryPath) as Record<string, unknown>;
+    } finally {
+        nodeModule._resolveFilename = originalResolveFilename;
+    }
 }

@@ -1,4 +1,4 @@
-import {loadPokieGame} from "../../gamepackage/loadPokieGame.js";
+import {loadPokieGame, releasePokieGame} from "../../gamepackage/loadPokieGame.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
 import type {JackpotStatisticsSnapshot} from "../../session/JackpotStatisticsSnapshot.js";
@@ -138,6 +138,7 @@ export class ParallelSimulationRunner {
     private async runInProcess(): Promise<ParallelSimulationResult> {
         const loadGame = this.options.loadGame ?? loadPokieGame;
         const game = await loadGame(this.packageRoot);
+        try {
         const session = game.createSession(this.options.seed === undefined ? undefined : {seed: this.options.seed});
         // Simulations measure RTP/volatility, not risk of ruin — same as every other simulation path.
         session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
@@ -182,6 +183,9 @@ export class ParallelSimulationRunner {
             stopReason,
             convergence: convergenceChecker?.buildOutcome(),
         };
+        } finally {
+            await releasePokieGame(game);
+        }
     }
 
     // When options.convergence is set, each worker evaluates it independently against its own share's

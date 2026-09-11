@@ -34,7 +34,7 @@ describe("createStudioEntryModuleLoader", () => {
             fs.writeFileSync(path.join(packageRoot, "model.js"), "module.exports = {name: 'Before rebuild'};\n");
             fs.writeFileSync(
                 path.join(packageRoot, "game.js"),
-                "const runtime = require('pokie'); const model = require('./model.js'); module.exports = { getManifest() { return {id: 'studio-cjs', name: model.name, version: typeof runtime.loadPokieGame === 'function' ? '1.0.0' : ''}; }, createSession() { return {name: model.name}; } };\n",
+                "const runtime = require('pokie'); const runtimePath = require.resolve('pokie'); const model = require('./model.js'); module.exports = { getManifest() { return {id: 'studio-cjs', name: model.name, version: typeof runtime.loadPokieGame === 'function' && runtimePath ? '1.0.0' : ''}; }, createSession() { return {name: model.name}; }, runtimePath };\n",
             );
             const loadGame = createStudioGameLoader(REPO_ROOT);
             const before = await loadGame(packageRoot);
@@ -43,6 +43,7 @@ describe("createStudioEntryModuleLoader", () => {
 
             expect(before.getManifest().name).toBe("Before rebuild");
             expect(after.getManifest().name).toBe("After rebuild");
+            expect((before as unknown as {runtimePath: string}).runtimePath).toEqual(expect.any(String));
             await releasePokieGame(before);
             await releasePokieGame(after);
             expect(fs.existsSync(path.join(packageRoot, ".pokie-runtime-cache"))).toBe(false);

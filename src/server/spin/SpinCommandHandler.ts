@@ -378,21 +378,13 @@ export class SpinCommandHandler implements SpinCommandHandling {
         const balanceBeforePlay = await this.wallet.getBalance(sessionId);
         validationSession.setCreditsAmount(balanceBeforePlay);
 
-        const liveSession = this.liveSessions.get(sessionId);
-        // A legacy session can legitimately keep execution-relevant state that predates (or opts
-        // out of) feature snapshots.  For an unchanged command, that cached object is therefore
-        // the only authoritative execution state: approving a fresh reconstruction and then
-        // playing the cached object can approve one round and execute another.  Calling the guard
-        // itself is read-only, and we only select the live object when its wallet-derived credits
-        // already agree, so a rejected request cannot alter live or persisted state.
-        const useLegacyLiveSession =
-            liveSession !== undefined &&
-            state.featureState === undefined &&
-            bet === undefined &&
-            mode === undefined &&
-            liveSession.getCreditsAmount() === balanceBeforePlay;
-        const guardedSession = useLegacyLiveSession ? liveSession : validationSession;
-        if (!guardedSession.canPlayNextGame()) {
+        // The reconstructed session is the authoritative command state.  It is deliberately the
+        // same object that is guarded and then played below.  A cached legacy session may contain
+        // state the old partial persistence format cannot represent, but using it after approving
+        // a reconstruction made one command validate one round and execute another (notably after
+        // an explicit bet/mode or a wallet change).  A cache is therefore only a presentation
+        // reference, never an alternate execution authority.
+        if (!validationSession.canPlayNextGame()) {
             return {
                 status: "blocked",
                 sessionId,
@@ -400,24 +392,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
             };
         }
 
-        // A legacy session may have ephemeral state that it intentionally does
-        // not serialize, so retain that cache when it has no feature snapshot.
-        // For every durable runtime, however, re-apply the exact persisted
-        // snapshot that validation reconstructed before executing it. This
-        // prevents a stale cached RNG/feature chain from playing a different
-        // round than the one canPlayNextGame() just approved.
-        // Validation above is entirely scratch state. Once it has admitted the command, a durable
-        // cached session is restored from that same persisted snapshot before execution so Studio's
-        // live scenario/player reference observes the round it actually played. The legacy no-
-        // snapshot case already guarded that exact object; it must not be reconstructed here.
-        const session = useLegacyLiveSession ? guardedSession : (liveSession ?? validationSession);
-        if (session !== validationSession && !useLegacyLiveSession) {
-            session.setBet(state.bet);
-            restoreFeatureState(session, state.featureState);
-            if (bet !== undefined) session.setBet(bet);
-            if (mode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(mode);
-            session.setCreditsAmount(balanceBeforePlay);
-        }
+        const session = validationSession;
         this.liveSessions.set(sessionId, session);
 
         return this.playAndSettle(sessionId, session, state, version, balanceBeforePlay, requestId);

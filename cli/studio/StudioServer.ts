@@ -3301,7 +3301,7 @@ export class StudioServer implements StudioServerHandling {
                 throw new StudioHttpRequestError(403, "Studio API requests must come from the same Studio origin.");
             }
             const canonicalOrigin = this.normalizeTrustedOrigin(parsedOrigin.origin);
-            if (!this.isLoopbackRequest(req) && !this.isTrustedRemoteOrigin(canonicalOrigin)) {
+            if (!this.isTrustedBrowserOrigin(canonicalOrigin, req)) {
                 throw new StudioHttpRequestError(403, "Remote Studio API writes require an explicitly trusted Studio origin.");
             }
             return;
@@ -3322,6 +3322,21 @@ export class StudioServer implements StudioServerHandling {
 
     private isTrustedRemoteOrigin(origin: string): boolean {
         return this.configuredTrustedOrigins.has(origin);
+    }
+
+    private isTrustedBrowserOrigin(origin: string, req: IncomingMessage): boolean {
+        if (this.isTrustedRemoteOrigin(origin)) return true;
+        if (!this.isLoopbackRequest(req)) return false;
+        // A local TCP peer is not itself proof that an arbitrary Host/Origin points at this
+        // listener: browsers can send a same-origin-looking request for a hostile authority to a
+        // loopback service.  Local browser origins must name a loopback authority on this actual
+        // listener's port.  Origin-less loopback automation remains deliberately allowed above.
+        const parsed = new URL(origin);
+        const hostname = parsed.hostname.toLowerCase();
+        if (hostname !== "localhost" && hostname !== "127.0.0.1" && hostname !== "::1") return false;
+        const address = this.server?.address();
+        const listenerPort = typeof address === "object" && address !== null ? address.port : this.port;
+        return Number(parsed.port || 80) === listenerPort;
     }
 
     private normalizeTrustedOrigin(origin: string): string {
