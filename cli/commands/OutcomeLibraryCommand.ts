@@ -32,6 +32,7 @@ import {
     generateStreamingWeightedOutcomeLibrary,
     generateWeightedOutcomeLibrary,
     loadPokieGame,
+    releasePokieGame,
     prepareOutcomeLibraryGenerationFromEstimate,
     resolveOutcomeLibraryGenerationDestination,
     describeUnsupportedProjectOperation,
@@ -515,11 +516,15 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
         if (options.estimate || options.dryRun) {
             const game = await this.loadGame(packageRoot);
-            // Estimate is a real preflight, not a separate planning shortcut:
-            // construct exactly the request execution would receive so loaded
-            // configuration assertions and the resolved publication identity
-            // fail or bind consistently before either path reports success.
-            return this.executeEstimate(game, options, this.createGenerationRequest(game, packageRoot, options, sampling));
+            try {
+                // Estimate is a real preflight, not a separate planning shortcut:
+                // construct exactly the request execution would receive so loaded
+                // configuration assertions and the resolved publication identity
+                // fail or bind consistently before either path reports success.
+                return this.executeEstimate(game, options, this.createGenerationRequest(game, packageRoot, options, sampling));
+            } finally {
+                await releasePokieGame(game);
+            }
         }
 
         const controller = new AbortController();
@@ -527,8 +532,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         this.process.once("SIGINT", onCancel);
 
         let resolvedStrategy: ResolvedOutcomeLibraryGenerationRequest["preflight"]["strategy"] | undefined;
+        let preflightGame: PokieGame | undefined;
         try {
             const game = await this.loadGame(packageRoot);
+            preflightGame = game;
             const request = this.createGenerationRequest(game, packageRoot, options, sampling, controller.signal);
             // The public request preparation is the one authority for source
             // provenance, destination identity, and conditional-bounded
@@ -618,6 +625,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             }
             throw error;
         } finally {
+            if (preflightGame !== undefined) await releasePokieGame(preflightGame).catch(() => undefined);
             this.process.off("SIGINT", onCancel);
         }
     }
@@ -662,6 +670,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         });
         const rawOutput = resolvedRequest.preflight.destination?.path;
         let publishedOutput = false;
+        let reboundGame: PokieGame | undefined;
         return {
             plan: this.planner.planRawOutcomeLibraryJsonPublication(currentSource(), rawOutput),
             execution: {
@@ -670,38 +679,47 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 read: async () => {
                     await this.assertGenerationSourceIsRunnable(packageRoot);
                     const game = await this.loadGame(packageRoot);
-                    const resumeFrom = options.resume !== undefined && this.fileExists(options.resume) ? this.readCheckpoint(options.resume) : undefined;
-                    const recoveryAuthority = options.resume === undefined ? undefined : this.createRecoveryAuthority(options.resume, resumeFrom);
-                    // Rebind the live package immediately before generation;
-                    // a config change after planning cannot inherit the old
-                    // request's provenance merely because its destination is
-                    // still the same bound publication identity.
-                    const reboundRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game),
-                        this.createGenerationRequest(game, packageRoot, options, sampling, signal, resumeFrom, recoveryAuthority),
-                    );
-                    if (
-                        reboundRequest.configHash !== resolvedRequest.configHash ||
-                        reboundRequest.preflight.destination?.path !== rawOutput ||
-                        reboundRequest.preflight.strategy !== resolvedRequest.preflight.strategy ||
-                        reboundRequest.preflight.maxExactOutcomeSpaceSize !== resolvedRequest.preflight.maxExactOutcomeSpaceSize ||
-                        reboundRequest.preflight.sample?.sampleSize !== resolvedRequest.preflight.sample?.sampleSize ||
-                        reboundRequest.preflight.sample?.seed !== resolvedRequest.preflight.sample?.seed
-                    ) {
-                        throw new WeightedOutcomeLibraryGenerationError(
-                            "weighted-outcome-library-generation-configuration-conflict",
-                            "The loaded package configuration or output destination changed after preflight. Re-run generation from a fresh preflight.",
+                    try {
+                        const resumeFrom = options.resume !== undefined && this.fileExists(options.resume) ? this.readCheckpoint(options.resume) : undefined;
+                        const recoveryAuthority = options.resume === undefined ? undefined : this.createRecoveryAuthority(options.resume, resumeFrom);
+                        // Rebind the live package immediately before generation;
+                        // a config change after planning cannot inherit the old
+                        // request's provenance merely because its destination is
+                        // still the same bound publication identity.
+                        const reboundRequest = prepareOutcomeLibraryGenerationFromEstimate(this.estimateSpace(game),
+                            this.createGenerationRequest(game, packageRoot, options, sampling, signal, resumeFrom, recoveryAuthority),
                         );
+                        if (
+                            reboundRequest.configHash !== resolvedRequest.configHash ||
+                            reboundRequest.preflight.destination?.path !== rawOutput ||
+                            reboundRequest.preflight.strategy !== resolvedRequest.preflight.strategy ||
+                            reboundRequest.preflight.maxExactOutcomeSpaceSize !== resolvedRequest.preflight.maxExactOutcomeSpaceSize ||
+                            reboundRequest.preflight.sample?.sampleSize !== resolvedRequest.preflight.sample?.sampleSize ||
+                            reboundRequest.preflight.sample?.seed !== resolvedRequest.preflight.sample?.seed
+                        ) {
+                            throw new WeightedOutcomeLibraryGenerationError(
+                                "weighted-outcome-library-generation-configuration-conflict",
+                                "The loaded package configuration or output destination changed after preflight. Re-run generation from a fresh preflight.",
+                            );
+                        }
+                        // The planner may consume a streaming result after read()
+                        // returns. Transfer this lease to its cleanup boundary;
+                        // releasing here would break lazy imports/resources.
+                        reboundGame = game;
+                        // Legacy embedding callers that supply a generator retain
+                        // their exact result shape. The public CLI's native path
+                        // instead hands the writer the domain stream directly.
+                        // rawOutput is guaranteed above for every non-estimate
+                        // public invocation; keeping the guard makes this
+                        // prepared operation safe for direct internal callers.
+                        if (this.generate !== generateWeightedOutcomeLibrary) {
+                            return this.generate(reboundRequest);
+                        }
+                        return generateStreamingWeightedOutcomeLibrary(reboundRequest);
+                    } catch (error) {
+                        await releasePokieGame(game).catch(() => undefined);
+                        throw error;
                     }
-                    // Legacy embedding callers that supply a generator retain
-                    // their exact result shape. The public CLI's native path
-                    // instead hands the writer the domain stream directly.
-                    // rawOutput is guaranteed above for every non-estimate
-                    // public invocation; keeping the guard makes this
-                    // prepared operation safe for direct internal callers.
-                    if (this.generate !== generateWeightedOutcomeLibrary) {
-                        return this.generate(reboundRequest);
-                    }
-                    return generateStreamingWeightedOutcomeLibrary(reboundRequest);
                 },
                 canPublish: () => rawOutput !== undefined,
                 // Generation can take long enough for another actor to create
@@ -736,8 +754,16 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 rollback: () => {
                     if (publishedOutput && rawOutput !== undefined) this.removeFile(rawOutput);
                 },
-                cleanup: ({error}: {readonly error?: unknown}) => {
-                    if (error === undefined && options.resume !== undefined && this.fileExists(options.resume)) this.removeFile(options.resume);
+                cleanup: async ({error}: {readonly error?: unknown}) => {
+                    try {
+                        if (error === undefined && options.resume !== undefined && this.fileExists(options.resume)) this.removeFile(options.resume);
+                    } finally {
+                        if (reboundGame !== undefined) {
+                            const game = reboundGame;
+                            reboundGame = undefined;
+                            await releasePokieGame(game).catch(() => undefined);
+                        }
+                    }
                 },
                 onTerminalFailure: (error: unknown) => {
                     if (resolvedRequest.preflight.strategy === "exact" && error instanceof WeightedOutcomeLibraryGenerationCancelledError && !error.checkpoint.restartRequired && options.resume !== undefined) {
