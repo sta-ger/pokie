@@ -794,6 +794,22 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         expect(onProgress).toHaveBeenCalledWith(BigInt(6), BigInt(6));
     });
 
+    it("reports the post-enumeration boundary before evaluating each unique outcome", async () => {
+        const events: string[] = [];
+        await generateWeightedOutcomeLibrary({
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            onProgress: (completed, total) => events.push(`raw:${completed}/${total}`),
+            onPostEnumeration: () => events.push("post-enumeration"),
+            onPostEnumerationProgress: (emitted) => events.push(`outcome:${emitted}`),
+        });
+
+        expect(events).toContain("raw:6/6");
+        expect(events.indexOf("post-enumeration")).toBeGreaterThan(events.indexOf("raw:6/6"));
+        expect(events.filter((event) => event.startsWith("outcome:"))).toEqual(["outcome:1", "outcome:2", "outcome:3", "outcome:4"]);
+    });
+
     it("fails closed when createExactEnumerationSession returns a session that cannot afford one round", async () => {
         await expect(
             generateExactWeightedOutcomeLibrary({libraryId: "fixture-lib", game: buildUnplayableFixtureGame(), pokieVersion: "1.3.0"}),

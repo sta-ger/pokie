@@ -122,6 +122,32 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         }
     });
 
+    it("publishes post-enumeration evaluation progress instead of leaving a completed raw sweep at generation", async () => {
+        const generate = jest.fn((
+            root: string,
+            request: {readonly onProgress?: (processed: bigint, total: bigint) => void},
+            onLifecycleStage?: (stage: "generation" | "finalization" | "serialization" | "validation" | "publication") => void,
+            onPostEnumerationProgress?: (emitted: bigint) => void,
+        ) => {
+            request.onProgress?.(BigInt(512), BigInt(512));
+            onLifecycleStage?.("finalization");
+            onPostEnumerationProgress?.(BigInt(3));
+            return {status: "generation-error" as const, code: "fixture", error: "stop", plan: createUnresolvedRuntimePlan(root, "outcomeLibrary")};
+        });
+        const jobs = new StudioOutcomeLibraryGenerateJobService({generate} as unknown as StudioOutcomeLibraryGenerateService);
+
+        const started = jobs.start(projectRoot, {});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        const view = jobs.getStatusForProject(projectRoot, started.id);
+
+        expect(view).toMatchObject({
+            lifecycleStage: "finalization",
+            progress: {processedRawIndex: "512", progressTotal: "512", emittedOutcomes: "3"},
+        });
+    });
+
     it("keeps one resolved bundle destination owned until cancelled work finishes cleanup", async () => {
         const checkpoint: ExactEnumerationCheckpoint = {
             processedRawIndex: BigInt(1), progressTotal: BigInt(2), sourceEnumerationId: "fixture-source", grids: new Map(),

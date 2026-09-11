@@ -22,8 +22,9 @@ export class PokieGamePackageValidator implements PokieGamePackageValidating {
 
     public async validate(packageRoot: string): Promise<PokieGamePackageValidationReport> {
         let candidate: unknown;
+        let release: (() => Promise<void>) | undefined;
         try {
-            ({candidate} = await this.resolveEntryModule(packageRoot));
+            ({candidate, release} = await this.resolveEntryModule(packageRoot));
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             return this.buildReport(packageRoot, null, [
@@ -31,8 +32,12 @@ export class PokieGamePackageValidator implements PokieGamePackageValidating {
             ]);
         }
 
-        const issues = this.contractRule.validate(candidate);
-        return this.buildReport(packageRoot, this.extractGame(candidate), issues);
+        try {
+            const issues = this.contractRule.validate(candidate);
+            return this.buildReport(packageRoot, this.extractGame(candidate), issues);
+        } finally {
+            await release?.();
+        }
     }
 
     private extractGame(candidate: unknown): PokieGamePackageValidationReport["game"] {

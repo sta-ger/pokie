@@ -618,6 +618,8 @@ export type SimulationReportReproducibility = {
     actualRounds: number;
     command: string;
     workerSeedStrategy?: string;
+    configHash?: string;
+    pokieVersion?: string;
 };
 
 // The server's copy of this same type lives in "pokie" itself (src/reporting/SimulationReport.ts) —
@@ -644,6 +646,8 @@ export type SimulationReport = {
     volatility?: number;
     payoutHistogram?: Record<string, number>;
     maxWinFrequency?: number;
+    averagePayoutConfidenceInterval95?: {low: number; high: number};
+    rtpConfidenceInterval95?: {low: number; high: number};
     stopReason?: "maxRounds" | "sessionStopped" | "converged";
     convergence?: {
         minRounds: number;
@@ -1128,7 +1132,7 @@ export type StudioOutcomeLibraryGenerateJobView = {
     status: "queued" | "running" | "completed" | "failed" | "cancelled";
     cancellationRequested: boolean;
     lifecycleStage?: "generation" | "finalization" | "serialization" | "validation" | "publication";
-    progress?: {processedRawIndex: string; progressTotal: string};
+    progress?: {processedRawIndex: string; progressTotal: string; emittedOutcomes?: string};
     result?: StudioOutcomeLibraryGenerateResultView;
 };
 

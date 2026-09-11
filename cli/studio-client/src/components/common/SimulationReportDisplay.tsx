@@ -187,6 +187,13 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                     {view.reproducibilityCommand}
                 </Text>
             )}
+            {(view.configHash !== undefined || view.pokieVersion !== undefined) && (
+                <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
+                    {view.configHash !== undefined ? `Model/config hash: ${view.configHash}` : ""}
+                    {view.configHash !== undefined && view.pokieVersion !== undefined ? " · " : ""}
+                    {view.pokieVersion !== undefined ? `POKIE/runtime: ${view.pokieVersion}` : ""}
+                </Text>
+            )}
         </div>
     );
 }

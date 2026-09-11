@@ -5,6 +5,7 @@ import {
     computeGameBlueprintHash,
     GameBlueprint,
     GamePackageGenerator,
+    generateWeightedOutcomeLibrary,
     PokieGame,
     SymbolsCombination,
     SymbolsCombinationsGenerating,
@@ -742,6 +743,38 @@ describe("GamePackageGenerator", () => {
         const resolvedModel = {...buildBlueprint({symbolWeights: {A: 3, B: 2}}), reelStrips: first};
         Reflect.deleteProperty(resolvedModel, "symbolWeights");
         expect(game.getConfigHash?.()).toBe(computeGameBlueprintHash(resolvedModel));
+    });
+
+    it("materializes an implicit default reel model once, independently of round seed", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const source = buildBlueprint();
+        const result = generator.generate(source, cwd);
+        const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
+
+        const first = (game.createSession({seed: "round-seed-a"}) as VideoSlotSessionHandling).getSymbolsSequences().map((reel) => reel.toArray());
+        const second = (game.createSession({seed: "round-seed-b"}) as VideoSlotSessionHandling).getSymbolsSequences().map((reel) => reel.toArray());
+
+        expect(second).toEqual(first);
+        expect(game.getConfigHash?.()).toBe(computeGameBlueprintHash({...source, reelStrips: first}));
+    });
+
+    it("uses that one implicit resolved model for repeatable sampled outcome libraries", async () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const result = generator.generate(buildBlueprint(), cwd);
+        const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
+        const request = {
+            libraryId: "implicit-default-sample",
+            game,
+            pokieVersion: "1.3.0",
+            generation: "sampled" as const,
+            sample: {sampleSize: BigInt(11), seed: "same-sample-seed"},
+        };
+
+        const first = await generateWeightedOutcomeLibrary(request);
+        const second = await generateWeightedOutcomeLibrary(request);
+
+        expect(second.library).toEqual(first.library);
+        expect(second.diagnostics.configHash).toBe(first.diagnostics.configHash);
     });
 
     it("self-resolves reelStripGeneration when called directly without a pre-resolved 4th argument", () => {

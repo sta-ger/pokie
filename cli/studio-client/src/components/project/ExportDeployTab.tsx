@@ -751,8 +751,9 @@ function TargetCard({
 
 function describeOutcomeLibraryLifecycle(job: StudioOutcomeLibraryGenerateJobView): string {
     const progress = job.progress === undefined ? undefined : `${job.progress.processedRawIndex} / ${job.progress.progressTotal} raw combinations`;
+    const emitted = job.progress?.emittedOutcomes === undefined ? undefined : `${job.progress.emittedOutcomes} outcome record${job.progress.emittedOutcomes === "1" ? "" : "s"} evaluated`;
     switch (job.lifecycleStage) {
-        case "finalization": return "Finalizing generated outcomes…";
+        case "finalization": return emitted === undefined ? "Finalizing generated outcomes…" : `Finalizing generated outcomes: ${emitted}…`;
         case "serialization": return "Serializing Outcome Library records…";
         case "validation": return "Validating the complete Outcome Library…";
         case "publication": return "Atomically publishing the validated Outcome Library…";

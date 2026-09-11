@@ -414,6 +414,48 @@ describe("SpinCommandHandler", () => {
         await expect(sessionRepository.load("session-1")).resolves.toMatchObject({bet: 5, win: 0});
     });
 
+    it("guards and plays the same cached legacy session when no feature snapshot exists", async () => {
+        let credits = 100;
+        let roundsRemaining = 1;
+        const live: GameSessionHandling = {
+            getCreditsAmount: () => credits,
+            setCreditsAmount: (value) => {
+                credits = value;
+            },
+            getBet: () => 5,
+            setBet: () => undefined,
+            getAvailableBets: () => [5],
+            canPlayNextGame: () => roundsRemaining > 0,
+            play: () => {
+                roundsRemaining--;
+                credits += 2;
+            },
+            getWinAmount: () => 7,
+        };
+        const game: PokieGame = {
+            getManifest: () => manifest,
+            // A reconstruction deliberately looks playable: the legacy live session's exhausted
+            // ephemeral state is not serialised in PokieSessionState.featureState.
+            createSession: () => ({...live, canPlayNextGame: () => true}),
+        };
+        const sessionRepository = new InMemorySessionRepository();
+        const wallet = new InMemoryWallet();
+        const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+        await sessionRepository.save("legacy", {bet: 5, win: 0});
+        await wallet.setBalance("legacy", 100);
+        handler.primeSession("legacy", live);
+
+        expect((await handler.handle("legacy")).status).toBe("played");
+        const persistedAfterFirst = await sessionRepository.load("legacy");
+        const creditsAfterFirst = await wallet.getBalance("legacy");
+        const second = await handler.handle("legacy");
+
+        expect(second.status).toBe("blocked");
+        await expect(sessionRepository.load("legacy")).resolves.toEqual(persistedAfterFirst);
+        await expect(wallet.getBalance("legacy")).resolves.toBe(creditsAfterFirst);
+        expect(roundsRemaining).toBe(0);
+    });
+
     it("replays a stored result for a repeated requestId instead of spinning again", async () => {
         const game = createFakeGame();
         const sessionRepository = new InMemorySessionRepository();

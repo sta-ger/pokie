@@ -131,6 +131,8 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     readonly recoveryAuthority?: ExactEnumerationRecoveryAuthority;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
+    readonly onPostEnumeration?: () => void;
+    readonly onPostEnumerationProgress?: (emittedOutcomes: bigint) => void;
     readonly artifactValidator?: ValidationRule<RoundArtifact>;
     readonly now?: () => Date;
     // Runtime memory safety net for the accumulation phase (see accumulateUniqueGridWeights and
@@ -198,6 +200,8 @@ function legacyOptionsForRequest(
         ...(prepared.resumeFrom === undefined ? {} : {resumeFrom: prepared.resumeFrom}),
         ...(prepared.signal === undefined ? {} : {signal: prepared.signal}),
         ...(prepared.onProgress === undefined ? {} : {onProgress: prepared.onProgress}),
+        ...(request.onPostEnumeration === undefined ? {} : {onPostEnumeration: request.onPostEnumeration}),
+        ...(request.onPostEnumerationProgress === undefined ? { } : {onPostEnumerationProgress: request.onPostEnumerationProgress}),
         ...(prepared.artifactValidator === undefined ? {} : {artifactValidator: prepared.artifactValidator}),
         ...(prepared.now === undefined ? {} : {now: prepared.now}),
         ...(prepared.heapUsedLimitBytes === undefined ? {} : {heapUsedLimitBytes: prepared.heapUsedLimitBytes}),
@@ -447,8 +451,11 @@ async function *streamExactWeightedOutcomesInternal(
             ...((options.durableCheckpointOnCancellation && options.recoveryAuthority !== undefined) || prepared.recoveryAuthority !== undefined ? {retainStagingOnCancellation: true} : {}),
         });
         let step = await external.next();
+        options.onPostEnumeration?.();
+        let emittedOutcomes = BigInt(0);
         while (!step.done) {
             yield createOutcome(step.value.id, step.value.entry);
+            options.onPostEnumerationProgress?.(++emittedOutcomes);
             step = await external.next();
         }
         processedRawCount = step.value;
@@ -466,8 +473,11 @@ async function *streamExactWeightedOutcomesInternal(
             .map(([gridKey, entry]) => ({id: outcomeIdForGrid(gridKey), entry}))
             .sort((a, b) => compareIds(a.id, b.id));
         grids.clear();
+        options.onPostEnumeration?.();
+        let emittedOutcomes = BigInt(0);
         for (const {id, entry} of sortedUniqueGrids) {
             yield createOutcome(id, entry);
+            options.onPostEnumerationProgress?.(++emittedOutcomes);
         }
         processedRawCount = accumulatedRawCount;
     }

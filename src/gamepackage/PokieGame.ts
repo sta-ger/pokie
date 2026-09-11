@@ -11,6 +11,11 @@ export interface PokieGame {
 
     createSession(context?: PokieGameContext): GameSessionHandling;
 
+    // Present on a game returned by loadPokieGame().  It releases that loader invocation's isolated
+    // package snapshot after every session using this game has been destroyed. Hand-authored games do
+    // not need to implement it; use loadPokieGameRuntime() when an explicit lease is preferable.
+    release?(): Promise<void>;
+
     // Optional, feature-detected (same pattern as ConvertableToSessionState/StakeAmountDetermining):
     // a game MAY expose the net/ serializer that knows how to turn its own session type into a rich,
     // game-specific JSON payload — see src/net/GameSessionSerializing.ts and its VideoSlot(WithFreeGames)

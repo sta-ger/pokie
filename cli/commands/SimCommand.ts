@@ -572,12 +572,18 @@ export class SimCommand implements CliCommandHandling {
         console.log(`  total bet       ${report.totalBet.toFixed(2)}`);
         console.log(`  total win       ${report.totalWin.toFixed(2)}`);
         console.log(`  rtp             ${(report.rtp * 100).toFixed(2)}%`);
+        if (report.rtpConfidenceInterval95 !== undefined) {
+            console.log(`  rtp 95% ci      ${(report.rtpConfidenceInterval95.low * 100).toFixed(2)}% – ${(report.rtpConfidenceInterval95.high * 100).toFixed(2)}%`);
+        }
         if (report.targetRtp !== undefined) {
             console.log(`  target rtp      ${(report.targetRtp * 100).toFixed(2)}%`);
             console.log(`  rtp deviation   ${((report.rtpDeviation as number) * 100).toFixed(2)} pp`);
         }
         console.log(`  hit frequency   ${(report.hitFrequency * 100).toFixed(2)}%`);
         console.log(`  average payout  ${(report.averagePayout ?? 0).toFixed(2)}`);
+        if (report.averagePayoutConfidenceInterval95 !== undefined) {
+            console.log(`  payout 95% ci   ${report.averagePayoutConfidenceInterval95.low.toFixed(2)} – ${report.averagePayoutConfidenceInterval95.high.toFixed(2)}`);
+        }
         console.log(`  max win         ${report.maxWin.toFixed(2)}`);
         if (report.volatility !== undefined) {
             console.log(`  volatility      ${report.volatility.toFixed(2)}`);
@@ -596,6 +602,12 @@ export class SimCommand implements CliCommandHandling {
                     `checkInterval ${c.checkIntervalRounds}, checks ${c.checksPerformed}, ` +
                     `stable ${c.consecutiveStableChecks}/${c.stableChecks}, achieved half-width ${(c.achievedRtpHalfWidth * 100).toFixed(3)}pp`,
             );
+        }
+        if (report.reproducibility?.configHash !== undefined) {
+            console.log(`  config hash     ${report.reproducibility.configHash}`);
+        }
+        if (report.reproducibility?.pokieVersion !== undefined) {
+            console.log(`  pokie version   ${report.reproducibility.pokieVersion}`);
         }
 
         if (report.breakdown) {

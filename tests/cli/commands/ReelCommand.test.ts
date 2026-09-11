@@ -257,7 +257,7 @@ describe("ReelCommand", () => {
             expect(writeFile.mock.calls[0][0]).toBe("custom.json");
         });
 
-        it("is a no-op copy for a blueprint with no reelStripGeneration at all", async () => {
+        it("resolves deterministic default reels for a blueprint with no explicit reel source", async () => {
             const writeFile = jest.fn();
             const command = new ReelCommand(loaderFor(noReelStripGenerationBlueprint), writeFile);
 
@@ -266,7 +266,7 @@ describe("ReelCommand", () => {
             expect(exitCode).toBe(0);
             const parsed = JSON.parse(logSpy.mock.calls[0][0] as string);
             expect(parsed.materialized).toBe(true);
-            expect(parsed.reelCount).toBe(0);
+            expect(parsed.reelCount).toBe(noReelStripGenerationBlueprint.reels);
         });
 
         it("does not write anything and returns 1 when a reel's constraints are unsatisfiable", async () => {

@@ -85,6 +85,8 @@ export type SimulationReportView = {
     recommendations: string[];
     payoutHistogram?: Record<string, number>;
     reproducibilityCommand?: string;
+    configHash?: string;
+    pokieVersion?: string;
 };
 
 // Bundles a completed job's SimulationReport with the extra statistics Studio surfaces alongside it
@@ -115,12 +117,14 @@ export function describeSimulationReport(
         workers: report.workers ?? 1,
         volatility: statistics?.volatility,
         payoutStandardDeviation: statistics?.payoutStandardDeviation,
-        rtpConfidenceInterval95: statistics?.rtpConfidenceInterval95,
-        averagePayoutConfidenceInterval95: statistics?.averagePayoutConfidenceInterval95,
+        rtpConfidenceInterval95: statistics?.rtpConfidenceInterval95 ?? report.rtpConfidenceInterval95,
+        averagePayoutConfidenceInterval95: statistics?.averagePayoutConfidenceInterval95 ?? report.averagePayoutConfidenceInterval95,
         breakdown: describeBreakdown(report),
         warnings: report.warnings ?? [],
         recommendations: report.recommendations ?? [],
         payoutHistogram: statistics?.payoutHistogram,
         reproducibilityCommand: report.reproducibility?.command,
+        configHash: report.reproducibility?.configHash,
+        pokieVersion: report.reproducibility?.pokieVersion,
     };
 }

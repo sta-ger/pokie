@@ -63,6 +63,20 @@ describe("MarkdownSimulationReportRenderer", () => {
         expect(markdown).toContain("**Re-run command**: `pokie sim <packageRoot> --rounds 10000 --seed demo`");
     });
 
+    it("renders canonical confidence intervals and optional model/runtime provenance without recomputing them", () => {
+        const markdown = new MarkdownSimulationReportRenderer().render({
+            ...report,
+            rtpConfidenceInterval95: {low: 0.91, high: 0.99},
+            averagePayoutConfidenceInterval95: {low: 0.9, high: 1.1},
+            reproducibility: {...report.reproducibility!, configHash: "sha256:model", pokieVersion: "1.3.0"},
+        });
+
+        expect(markdown).toContain("**RTP 95% confidence interval**: 91.00% – 99.00%");
+        expect(markdown).toContain("**Average payout 95% confidence interval**: 0.90 – 1.10");
+        expect(markdown).toContain("**Resolved model/config hash**: `sha256:model`");
+        expect(markdown).toContain("**POKIE/runtime version**: 1.3.0");
+    });
+
     it("omits the Reproducibility section when the report has no reproducibility field (old report JSON)", () => {
         const withoutReproducibility: SimulationReport = {...report, reproducibility: undefined};
         const markdown = new MarkdownSimulationReportRenderer().render(withoutReproducibility);

@@ -1,4 +1,4 @@
-import {isWasmComponentFile, loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, wasmProductContractView, type ProjectType} from "pokie";
+import {isWasmComponentFile, loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, releasePokieGame, wasmProductContractView, type ProjectType} from "pokie";
 import path from "path";
 import {BlueprintMaterializationError} from "../materialize/BlueprintMaterializationError.js";
 import {RuntimePreparationError} from "../materialize/RuntimePreparationError.js";
@@ -152,17 +152,21 @@ export async function loadProjectDashboardContext(
         try {
             assertDashboardLoadCurrent(options);
             const game = await loadGame(resolution.runtimePath);
-            assertDashboardLoadCurrent(options);
-            const identity = await describeLocation(projectRoot).catch(() => undefined);
-            assertDashboardLoadCurrent(options);
-            return {
-                status: "loaded",
-                projectRoot: resolvedRoot,
-                game: game.getManifest(),
-                type: identity?.type,
-                capabilities: identity?.capabilities,
-                origin: identity?.origin,
-            };
+            try {
+                assertDashboardLoadCurrent(options);
+                const identity = await describeLocation(projectRoot).catch(() => undefined);
+                assertDashboardLoadCurrent(options);
+                return {
+                    status: "loaded",
+                    projectRoot: resolvedRoot,
+                    game: game.getManifest(),
+                    type: identity?.type,
+                    capabilities: identity?.capabilities,
+                    origin: identity?.origin,
+                };
+            } finally {
+                await releasePokieGame(game).catch(() => undefined);
+            }
         } finally {
             await resolution.release();
         }

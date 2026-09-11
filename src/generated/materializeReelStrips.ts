@@ -2,6 +2,8 @@ import type {GameBlueprint} from "./GameBlueprint.js";
 import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGeneration.js";
 import {computeGameBlueprintHash} from "./computeGameBlueprintHash.js";
 import {ReelStripGenerator} from "../reels/ReelStripGenerator.js";
+import {ReelsSymbolsSequencesGenerator} from "../session/videoslot/combinations/ReelsSymbolsSequencesGenerator.js";
+import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/SeededRandomNumberGenerator.js";
 
 // Derives the plain, literal reelStrips a blueprint's per-reel reelStripGeneration resolves to, for
 // embedding in the generated runtime module — never re-runs generation itself, just combines each
@@ -60,8 +62,12 @@ export function materializeReelStrips(blueprint: GameBlueprint, reelStripGenerat
 // derived from the authored model hash (and reel index), never a player/simulation seed: the same
 // authored model therefore produces the same runtime, simulation, export and config hash.
 function materializeSharedSymbolWeights(blueprint: GameBlueprint): GameBlueprint {
-    if (blueprint.symbolWeights === undefined || blueprint.reelStrips !== undefined) {
+    if (blueprint.reelStrips !== undefined) {
         return blueprint;
+    }
+
+    if (blueprint.symbolWeights === undefined) {
+        return materializeImplicitDefaultReels(blueprint);
     }
 
     const weights = blueprint.symbolWeights;
@@ -88,6 +94,20 @@ function materializeSharedSymbolWeights(blueprint: GameBlueprint): GameBlueprint
     const materialized: GameBlueprint = {...blueprint, reelStrips};
     Reflect.deleteProperty(materialized, "symbolWeights");
     return materialized;
+}
+
+// Omitting every explicit reel source is still a complete model choice, not permission for a
+// session's round RNG to choose the model later.  Reproduce VideoSlotConfig's documented default
+// distribution once here with a seed derived from the authored model, then embed the resulting
+// strips just like every other source.  This keeps old, valid minimal blueprints playable while
+// making runtime, simulation, sampled libraries and exports agree on one resolved reel model.
+function materializeImplicitDefaultReels(blueprint: GameBlueprint): GameBlueprint {
+    const modelHash = computeGameBlueprintHash(blueprint);
+    const strips = new ReelsSymbolsSequencesGenerator<string>(new SeededRandomNumberGenerator(seedForResolvedReel(modelHash, 0)))
+        .generate(blueprint.reels, blueprint.symbols, blueprint.wilds ?? [], blueprint.scatters ?? [])
+        .map((strip) => strip.toArray());
+
+    return {...blueprint, reelStrips: strips};
 }
 
 function seedForResolvedReel(modelHash: string, reelIndex: number): number {

@@ -408,6 +408,7 @@ export class StudioOutcomeLibraryGenerateService {
         projectRoot: string,
         request: ValidatedOutcomeLibraryGenerateRequest,
         onLifecycleStage?: (stage: StudioOutcomeLibraryGenerationLifecycleStage) => void,
+        onPostEnumerationProgress?: (emittedOutcomes: bigint) => void,
     ): Promise<StudioOutcomeLibraryGenerateResultView> {
         // HTTP callers always supply the snapshot they just displayed, but
         // retained in-process callers need the same immutable source binding.
@@ -453,6 +454,11 @@ export class StudioOutcomeLibraryGenerateService {
         }
         try {
             domainRequest = this.createDomainRequest(game, request, outDirRelative, projectRoot);
+            domainRequest = {
+                ...domainRequest,
+                onPostEnumeration: () => onLifecycleStage?.("finalization"),
+                ...(onPostEnumerationProgress === undefined ? {} : {onPostEnumerationProgress}),
+            };
             preparedRequest = prepareOutcomeLibraryGeneration(domainRequest);
         } catch (error) {
             const unresolvedPlan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");

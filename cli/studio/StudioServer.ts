@@ -11,6 +11,7 @@ import {
     PokieGamePackageValidating,
     PokieGamePackageValidationReport,
     PokieGamePackageValidator,
+    ParSheetImporter,
     PokieJsonRoundArtifactProjector,
     PokieProject,
     PreGeneratedRoundReplayDescriptor,
@@ -227,6 +228,7 @@ const CONTENT_TYPES: Record<string, string> = {
 export class StudioServer implements StudioServerHandling {
     private readonly host: string;
     private readonly port: number;
+    private readonly configuredTrustedOrigins: ReadonlySet<string>;
     private readonly pokieVersion: string;
     private readonly studioRoot: string;
     private readonly homeService: StudioHomeService;
@@ -305,6 +307,7 @@ export class StudioServer implements StudioServerHandling {
     constructor(options: StudioServerOptions) {
         this.host = options.host ?? DEFAULT_HOST;
         this.port = options.port ?? DEFAULT_PORT;
+        this.configuredTrustedOrigins = new Set((options.trustedOrigins ?? []).map((origin) => this.normalizeTrustedOrigin(origin)));
         this.pokieVersion = options.pokieVersion;
         this.studioRoot = path.resolve(options.studioRoot);
         this.homeService = options.homeService;
@@ -1787,6 +1790,10 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 200, await this.inspectOutcomeSourceProject(resolved));
             return;
         }
+        if (resolved?.type === "parWorkbook") {
+            this.sendJson(res, 200, await this.inspectParWorkbookProject(resolved));
+            return;
+        }
         if (resolved?.type === "wasm") {
             this.sendJson(res, 200, await this.inspectWasmProject(resolved));
             return;
@@ -1811,6 +1818,10 @@ export class StudioServer implements StudioServerHandling {
         }
         if (resolved !== undefined && (resolved.type === "outcomeLibrary" || resolved.type === "stakeAdapter")) {
             this.sendJson(res, 200, await this.validateOutcomeSourceProject(resolved));
+            return;
+        }
+        if (resolved?.type === "parWorkbook") {
+            this.sendJson(res, 200, await this.validateParWorkbookProject(resolved));
             return;
         }
         if (resolved?.type === "wasm") {
@@ -1926,6 +1937,7 @@ export class StudioServer implements StudioServerHandling {
             {
                 loadBlueprint: (root) => this.blueprintService.load(root),
                 inspectPackage: (root) => this.gamePackageInspector.inspect(root),
+                importParWorkbook: (root) => new ParSheetImporter().importFromFile(root),
                 readWasmManifest: readWasmComponentManifest,
             },
             seed,
@@ -1991,6 +2003,37 @@ export class StudioServer implements StudioServerHandling {
             return {packageRoot: report.rootPath, valid: false, error: errorIssue.message};
         }
         return {packageRoot: report.rootPath, valid: true};
+    }
+
+    private async inspectParWorkbookProject(project: PokieProject): Promise<GamePackageInspectionReport> {
+        try {
+            const imported = await new ParSheetImporter().importFromFile(project.rootPath);
+            const error = imported.issues.find((issue) => issue.severity === "error");
+            return error === undefined
+                ? {packageRoot: project.rootPath, valid: true, packageJson: readBlueprintManifest(imported.blueprint)}
+                : {packageRoot: project.rootPath, valid: false, error: error.message};
+        } catch (error) {
+            return {packageRoot: project.rootPath, valid: false, error: error instanceof Error ? error.message : String(error)};
+        }
+    }
+
+    private async validateParWorkbookProject(project: PokieProject): Promise<PokieGamePackageValidationReport> {
+        try {
+            const imported = await new ParSheetImporter().importFromFile(project.rootPath);
+            const errors = imported.issues.filter((issue) => issue.severity === "error");
+            const warnings = imported.issues.filter((issue) => issue.severity !== "error");
+            const suggestions = [...new Set([...errors, ...warnings].map((issue) => issue.suggestion).filter((suggestion): suggestion is string => Boolean(suggestion)))];
+            return {packageRoot: project.rootPath, valid: errors.length === 0, game: readBlueprintGameIdentity(imported.blueprint), errors, warnings, suggestions};
+        } catch (error) {
+            return {
+                packageRoot: project.rootPath,
+                valid: false,
+                game: null,
+                errors: [{code: "par-workbook-load-failed", severity: "error", message: error instanceof Error ? error.message : String(error)}],
+                warnings: [],
+                suggestions: [],
+            };
+        }
     }
 
     // Validate's own "outcomeLibrary"/"stakeAdapter" counterpart -- runs the exact same
@@ -3231,9 +3274,10 @@ export class StudioServer implements StudioServerHandling {
     // is read-only.  The three remote-safe host-action routes are excluded above because they do
     // not perform an action for a remote peer at all.
     //
-    // Host is treated as an HTTP authority, never as an arbitrary reflected string, and Origin is
-    // compared to that authority (scheme included). This is the same-origin boundary for Studio's
-    // single session; Studio intentionally sends no CORS opt-in headers.
+    // Host is treated as an HTTP authority, never as an arbitrary reflected string. Origin equality
+    // establishes browser same-origin, then a non-loopback client must independently match either an
+    // explicit operator allowlist or the actual loopback listener authority. Studio intentionally
+    // sends no CORS opt-in headers.
     private assertTrustedApiRequest(req: IncomingMessage, method: string, url: URL): void {
         if (!url.pathname.startsWith("/api/")) return;
 
@@ -3256,6 +3300,10 @@ export class StudioServer implements StudioServerHandling {
             if (parsedOrigin.protocol !== "http:" || parsedOrigin.host.toLowerCase() !== host.toLowerCase()) {
                 throw new StudioHttpRequestError(403, "Studio API requests must come from the same Studio origin.");
             }
+            const canonicalOrigin = this.normalizeTrustedOrigin(parsedOrigin.origin);
+            if (!this.isLoopbackRequest(req) && !this.isTrustedRemoteOrigin(canonicalOrigin)) {
+                throw new StudioHttpRequestError(403, "Remote Studio API writes require an explicitly trusted Studio origin.");
+            }
             return;
         }
 
@@ -3270,6 +3318,23 @@ export class StudioServer implements StudioServerHandling {
         // enough for Studio's direct HTTP listener; the stricter grammar also keeps comparisons with
         // URL.host unambiguous for IPv6 bracket notation.
         return (/^(?:[a-z0-9.-]+|\[[0-9a-f:.]+\])(?::[0-9]{1,5})?$/i).test(value);
+    }
+
+    private isTrustedRemoteOrigin(origin: string): boolean {
+        return this.configuredTrustedOrigins.has(origin);
+    }
+
+    private normalizeTrustedOrigin(origin: string): string {
+        let parsed: URL;
+        try {
+            parsed = new URL(origin);
+        } catch {
+            throw new Error(`Studio trusted origin "${origin}" must be an absolute http:// origin.`);
+        }
+        if (parsed.protocol !== "http:" || parsed.pathname !== "/" || parsed.search !== "" || parsed.hash !== "" || parsed.username !== "" || parsed.password !== "") {
+            throw new Error(`Studio trusted origin "${origin}" must be an absolute http:// origin with no path, credentials, query, or fragment.`);
+        }
+        return parsed.origin.toLowerCase();
     }
 
     private readBody(req: IncomingMessage): Promise<string> {

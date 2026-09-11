@@ -17,6 +17,9 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **Total bet**: ${report.totalBet.toFixed(2)}`,
             `- **Total win**: ${report.totalWin.toFixed(2)}`,
             `- **RTP**: ${(report.rtp * 100).toFixed(2)}%`,
+            ...(report.rtpConfidenceInterval95 !== undefined
+                ? [`- **RTP 95% confidence interval**: ${formatPercentInterval(report.rtpConfidenceInterval95)}`]
+                : []),
             ...(report.targetRtp !== undefined
                 ? [
                     `- **RTP target**: ${(report.targetRtp * 100).toFixed(2)}%`,
@@ -25,6 +28,9 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
                 : []),
             `- **Hit frequency**: ${(report.hitFrequency * 100).toFixed(2)}%`,
             `- **Average payout**: ${(report.averagePayout ?? 0).toFixed(2)}`,
+            ...(report.averagePayoutConfidenceInterval95 !== undefined
+                ? [`- **Average payout 95% confidence interval**: ${formatAmountInterval(report.averagePayoutConfidenceInterval95)}`]
+                : []),
             `- **Max win**: ${report.maxWin.toFixed(2)}`,
             ...(report.volatility !== undefined ? [`- **Volatility**: ${report.volatility.toFixed(2)}`] : []),
             ...(report.maxWinFrequency !== undefined ? [`- **Max win frequency**: ${(report.maxWinFrequency * 100).toFixed(4)}%`] : []),
@@ -102,6 +108,12 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             if (reproducibility.workerSeedStrategy) {
                 lines.push(`- **Worker seed strategy**: ${reproducibility.workerSeedStrategy}`);
             }
+            if (reproducibility.configHash !== undefined) {
+                lines.push(`- **Resolved model/config hash**: \`${reproducibility.configHash}\``);
+            }
+            if (reproducibility.pokieVersion !== undefined) {
+                lines.push(`- **POKIE/runtime version**: ${reproducibility.pokieVersion}`);
+            }
         }
 
         if (report.warnings && report.warnings.length > 0) {
@@ -178,4 +190,12 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
     private demoteHeadings(rendered: string): string {
         return rendered.replace(/^(#+ )/gm, "#$1");
     }
+}
+
+function formatPercentInterval(interval: {low: number; high: number}): string {
+    return `${(interval.low * 100).toFixed(2)}% – ${(interval.high * 100).toFixed(2)}%`;
+}
+
+function formatAmountInterval(interval: {low: number; high: number}): string {
+    return `${interval.low.toFixed(2)} – ${interval.high.toFixed(2)}`;
 }

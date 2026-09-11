@@ -1,4 +1,4 @@
-import {loadPokieGame, readPokiePackageConfig} from "pokie";
+import {loadPokieGame, readPokiePackageConfig, releasePokieGame} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -27,8 +27,12 @@ describe("readPokiePackageConfig", () => {
 describe("loadPokieGame", () => {
     it("loads a valid game package and returns its PokieGame export", async () => {
         const game = await loadPokieGame(path.join(fixturesRoot, "valid-game"));
-        expect(game.getManifest()).toEqual({id: "valid-game", name: "Valid Game", version: "1.0.0"});
-        expect(typeof game.createSession).toBe("function");
+        try {
+            expect(game.getManifest()).toEqual({id: "valid-game", name: "Valid Game", version: "1.0.0"});
+            expect(typeof game.createSession).toBe("function");
+        } finally {
+            await releasePokieGame(game);
+        }
     });
 
     it("throws when the entry module does not export a valid PokieGame", async () => {
@@ -57,7 +61,11 @@ describe("loadPokieGame", () => {
 
     it("unwraps a double-nested default (as produced by Node's native ESM loader for a tsc esModuleInterop-compiled entry)", async () => {
         const game = await loadPokieGame(path.join(fixturesRoot, "nested-default-game"));
-        expect(game.getManifest()).toEqual({id: "nested-default-game", name: "Nested Default Game", version: "1.0.0"});
+        try {
+            expect(game.getManifest()).toEqual({id: "nested-default-game", name: "Nested Default Game", version: "1.0.0"});
+        } finally {
+            await releasePokieGame(game);
+        }
     });
 
     it("gives an actionable recovery step (never a raw \"Cannot find module\") when the entry module's dist output is missing", async () => {
@@ -115,7 +123,11 @@ describe("loadPokieGame", () => {
             fs.utimesSync(distEntryPath, buildTime, buildTime);
 
             const game = await loadPokieGame(packageRoot);
-            expect(game.getManifest()).toEqual({id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"});
+            try {
+                expect(game.getManifest()).toEqual({id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"});
+            } finally {
+                await releasePokieGame(game);
+            }
 
             // Simulate editing the source after that build completed, without rebuilding.
             const editTime = new Date();

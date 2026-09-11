@@ -1,4 +1,4 @@
-import {loadPokieGame} from "../../../gamepackage/loadPokieGame.js";
+import {loadPokieGame, releasePokieGame} from "../../../gamepackage/loadPokieGame.js";
 import {parentPort, workerData} from "worker_threads";
 import {FixedBetModeForNextSimulationRoundSetting} from "../../FixedBetModeForNextSimulationRoundSetting.js";
 import {SimulationConvergenceChecker} from "../../SimulationConvergenceChecker.js";
@@ -21,8 +21,10 @@ async function main(): Promise<void> {
     const port = parentPort;
     const request = workerData as SimulationWorkerRequest;
 
+    let game: Awaited<ReturnType<typeof loadPokieGame>> | undefined;
+    let terminal: SimulationWorkerMessage;
     try {
-        const game = await loadPokieGame(request.packageRoot);
+        game = await loadPokieGame(request.packageRoot);
         const session = game.createSession(request.seed === undefined ? undefined : {seed: request.seed});
         // Simulations measure RTP/volatility, not risk of ruin — same as every other simulation path.
         session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
@@ -47,7 +49,7 @@ async function main(): Promise<void> {
             betModeSelector,
         );
 
-        const result: SimulationWorkerMessage = {
+        terminal = {
             type: "result",
             workerIndex: request.workerIndex,
             manifest: game.getManifest(),
@@ -59,15 +61,28 @@ async function main(): Promise<void> {
             stopReason,
             convergence: convergenceChecker?.buildOutcome(),
         };
-        port.postMessage(result);
     } catch (error) {
-        const message: SimulationWorkerMessage = {
+        terminal = {
             type: "error",
             workerIndex: request.workerIndex,
             message: error instanceof Error ? error.message : String(error),
         };
-        port.postMessage(message);
+    } finally {
+        if (game !== undefined) {
+            try {
+                await releasePokieGame(game);
+            } catch (error) {
+                terminal = {
+                    type: "error",
+                    workerIndex: request.workerIndex,
+                    message: `could not release game runtime: ${error instanceof Error ? error.message : String(error)}`,
+                };
+            }
+        }
     }
+    // The coordinator terminates workers immediately after their terminal message. Publish only after
+    // releasing the invocation-owned snapshot, otherwise that termination races the worker's cleanup.
+    port.postMessage(terminal!);
 }
 
 main().catch((error) => {

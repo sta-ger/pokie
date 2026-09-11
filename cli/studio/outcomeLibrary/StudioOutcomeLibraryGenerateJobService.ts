@@ -34,7 +34,7 @@ export type StudioOutcomeLibraryGenerateJobView = {
     readonly status: "queued" | "running" | "completed" | "failed" | "cancelled";
     readonly cancellationRequested: boolean;
     readonly lifecycleStage?: StudioOutcomeLibraryGenerationLifecycleStage;
-    readonly progress?: {readonly processedRawIndex: string; readonly progressTotal: string};
+    readonly progress?: {readonly processedRawIndex: string; readonly progressTotal: string; readonly emittedOutcomes?: string};
     readonly result?: StudioOutcomeLibraryGenerateJobResultView;
 };
 
@@ -46,7 +46,7 @@ type JobRecord = {
     status: StudioOutcomeLibraryGenerateJobView["status"];
     cancellationRequested: boolean;
     lifecycleStage?: StudioOutcomeLibraryGenerationLifecycleStage;
-    progress?: {processedRawIndex: string; progressTotal: string};
+    progress?: {processedRawIndex: string; progressTotal: string; emittedOutcomes?: string};
     result?: StudioOutcomeLibraryGenerateJobResultView;
     /** Resolves only after generation has reached its cleanup-safe terminal state. */
     completion: Promise<void>;
@@ -239,6 +239,9 @@ export class StudioOutcomeLibraryGenerateJobService {
             },
         }, (stage) => {
             record.lifecycleStage = stage;
+        }, (emittedOutcomes) => {
+            if (record.progress !== undefined) record.progress.emittedOutcomes = emittedOutcomes.toString();
+            else record.progress = {processedRawIndex: "0", progressTotal: "0", emittedOutcomes: emittedOutcomes.toString()};
         });
         if (result.status === "cancelled") {
             const cancelledResult: StudioOutcomeLibraryGenerateJobResultView = {

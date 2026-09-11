@@ -1,4 +1,4 @@
-import {buildGameModelProjection, describeUnavailableWasmComponent, describeWasmGameModelBoundary, GameBlueprint, GameModelProjection, GamePackageInspectionReport, isWasmComponentFile, PokieProject, readWasmComponentManifest} from "pokie";
+import {buildGameModelProjection, describeUnavailableWasmComponent, describeWasmGameModelBoundary, GameBlueprint, GameModelProjection, GamePackageInspectionReport, isWasmComponentFile, ParSheetImportResult, PokieProject, readWasmComponentManifest} from "pokie";
 import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 
 // The collaborators GET /api/project/gameModel's own resolved-project-type dispatch needs to actually
@@ -8,6 +8,7 @@ import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 export type GameModelSourceReaders = {
     loadBlueprint: (projectRoot: string) => StudioBlueprintLoadView;
     inspectPackage: (projectRoot: string) => GamePackageInspectionReport;
+    importParWorkbook: (projectRoot: string) => Promise<ParSheetImportResult>;
     readWasmManifest: typeof readWasmComponentManifest;
 };
 
@@ -55,6 +56,22 @@ export async function buildProjectGameModel(
         return buildGameModelProjection(undefined, {
             reason: "This project is a pre-generated outcome source, not a Blueprint -- Studio never derives a game model from outcome data.",
         });
+    }
+
+    // PAR is an exchange file, not a package directory.  Its only canonical game-model read is
+    // the same importer used by `pokie par import`; projecting that immutable reconstructed
+    // blueprint keeps Game Model useful without pretending the workbook contains package.json.
+    if (resolved?.type === "parWorkbook") {
+        try {
+            const imported = await readers.importParWorkbook(resolved.rootPath);
+            const errors = imported.issues.filter((issue) => issue.severity === "error");
+            if (errors.length > 0) {
+                return buildGameModelProjection(undefined, {reason: `This PAR workbook could not be projected: ${errors.map((issue) => issue.message).join("; ")}`});
+            }
+            return buildGameModelProjection(imported.blueprint, undefined, {sharedWeightsSampleSeed});
+        } catch (error) {
+            return buildGameModelProjection(undefined, {reason: `This PAR workbook could not be read: ${error instanceof Error ? error.message : String(error)}`});
+        }
     }
 
     if (resolved !== undefined && resolved.type === "wasm") {

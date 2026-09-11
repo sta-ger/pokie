@@ -240,6 +240,10 @@ export type OutcomeLibraryGenerationRequest = {
     readonly recoveryAuthority?: ExactEnumerationRecoveryAuthority;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
+    // The raw reel-stop sweep is only the first half of exact generation.  Publishers use these
+    // hooks to distinguish its completion from evaluating/deduplicating the resulting visible grids.
+    readonly onPostEnumeration?: () => void;
+    readonly onPostEnumerationProgress?: (emittedOutcomes: bigint) => void;
     readonly artifactValidator?: ValidationRule<RoundArtifact>;
     readonly now?: () => Date;
     readonly heapUsedLimitBytes?: number;

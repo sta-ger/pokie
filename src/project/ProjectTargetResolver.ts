@@ -16,7 +16,7 @@ import {WasmProjectTargetAdapter, wasmComponentManifestSidecarPath} from "./Wasm
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
-import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
+import {loadPokieGame, releasePokieGame} from "../gamepackage/loadPokieGame.js";
 import {computeArtifactInputBindingHash, computeProjectInputBindingHash, type ArtifactConfigurationProvenance} from "./ArtifactConversionPlanner.js";
 import {recognizeParWorkbookFile} from "./internal/looksLikeParWorkbookFile.js";
 import {describeWasmSidecarFailure} from "./WasmProductContract.js";
@@ -197,15 +197,19 @@ export class ProjectTargetResolver implements ProjectResolving {
             }
             if (type === "tsPackage") {
                 const game = await loadPokieGame(rootPath);
-                const manifest = game.getManifest();
-                const configurationHash = game.getConfigHash?.();
-                return {
-                    ...(configurationHash === undefined ? {} : {configurationHash}),
-                    inputBindingHash: computeProjectInputBindingHash({type, rootPath}),
-                    gameId: manifest.id,
-                    gameVersion: manifest.version,
-                    manifestIdentity: `${manifest.id}@${manifest.version}`,
-                };
+                try {
+                    const manifest = game.getManifest();
+                    const configurationHash = game.getConfigHash?.();
+                    return {
+                        ...(configurationHash === undefined ? {} : {configurationHash}),
+                        inputBindingHash: computeProjectInputBindingHash({type, rootPath}),
+                        gameId: manifest.id,
+                        gameVersion: manifest.version,
+                        manifestIdentity: `${manifest.id}@${manifest.version}`,
+                    };
+                } finally {
+                    await releasePokieGame(game);
+                }
             }
             if (type === "parWorkbook") {
                 const inputBindingHash = computeArtifactInputBindingHash([rootPath]);

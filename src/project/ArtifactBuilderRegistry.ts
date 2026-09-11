@@ -28,7 +28,7 @@ import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
 import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibraryWorkflow.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
-import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
+import {loadPokieGame, releasePokieGame} from "../gamepackage/loadPokieGame.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
@@ -414,7 +414,8 @@ export class ArtifactBuilderRegistry {
         }
 
         if (source.type === "tsPackage") {
-            await loadPokieGame(source.rootPath);
+            const game = await loadPokieGame(source.rootPath);
+            await releasePokieGame(game);
             return;
         }
 

@@ -68,6 +68,9 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             ["Total bet", report.totalBet.toFixed(2)],
             ["Total win", report.totalWin.toFixed(2)],
             ["RTP", `${(report.rtp * 100).toFixed(2)}%`],
+            ...(report.rtpConfidenceInterval95 !== undefined
+                ? ([["RTP 95% confidence interval", formatPercentInterval(report.rtpConfidenceInterval95)]] as Array<[string, string]>)
+                : []),
             ...(report.targetRtp !== undefined
                 ? ([
                     ["RTP target", `${(report.targetRtp * 100).toFixed(2)}%`],
@@ -76,6 +79,9 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
                 : []),
             ["Hit frequency", `${(report.hitFrequency * 100).toFixed(2)}%`],
             ["Average payout", (report.averagePayout ?? 0).toFixed(2)],
+            ...(report.averagePayoutConfidenceInterval95 !== undefined
+                ? ([["Average payout 95% confidence interval", formatAmountInterval(report.averagePayoutConfidenceInterval95)]] as Array<[string, string]>)
+                : []),
             ["Max win", report.maxWin.toFixed(2)],
             ...(report.volatility !== undefined ? ([["Volatility", report.volatility.toFixed(2)]] as Array<[string, string]>) : []),
             ...(report.maxWinFrequency !== undefined
@@ -270,6 +276,12 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
         if (reproducibility.workerSeedStrategy) {
             items.push(`Worker seed strategy: ${this.escapeHtml(reproducibility.workerSeedStrategy)}`);
         }
+        if (reproducibility.configHash !== undefined) {
+            items.push(`Resolved model/config hash: <code>${this.escapeHtml(reproducibility.configHash)}</code>`);
+        }
+        if (reproducibility.pokieVersion !== undefined) {
+            items.push(`POKIE/runtime version: ${this.escapeHtml(reproducibility.pokieVersion)}`);
+        }
 
         return [
             "        <section>",
@@ -304,4 +316,12 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#39;");
     }
+}
+
+function formatPercentInterval(interval: {low: number; high: number}): string {
+    return `${(interval.low * 100).toFixed(2)}% – ${(interval.high * 100).toFixed(2)}%`;
+}
+
+function formatAmountInterval(interval: {low: number; high: number}): string {
+    return `${interval.low.toFixed(2)} – ${interval.high.toFixed(2)}`;
 }

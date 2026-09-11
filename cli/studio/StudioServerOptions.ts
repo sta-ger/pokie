@@ -22,6 +22,10 @@ import type {StudioToolHandling} from "./StudioToolHandling.js";
 export type StudioServerOptions = {
     host?: string;
     port?: number;
+    // Remote Studio is opt-in: when binding a non-loopback listener, enumerate the browser origins
+    // allowed to mutate its single process-local session (for example "http://review.example:3200").
+    // Host/Origin equality alone is not an authority policy because both are request-controlled text.
+    trustedOrigins?: readonly string[];
     // Embedded in GET /api/studio/diagnostics' studioVersion field — the same value StudioCommand
     // already resolves via readOwnVersion() and threads into homeService/blueprintService below.
     // Required rather than defaulted for the same reason those are: StudioServer has no business

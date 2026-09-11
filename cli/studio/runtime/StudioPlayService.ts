@@ -35,6 +35,7 @@ import {
     SpinCommandHandler,
     SpinCommandHandling,
     TransactionalWalletAdapter,
+    releasePokieGame,
     WeightedOutcomeRandomSource,
     type RoundArtifactJson,
     type VideoSlotSessionHandling,
@@ -61,6 +62,8 @@ type ActiveRuntimeSession = {
     readonly kind: "runtime";
     readonly manifest: {id: string; name: string; version: string};
     readonly spinHandler: SpinCommandHandling;
+    // Retained so this session keeps ownership of its isolated executable package until reset.
+    readonly game: PokieGame;
     // The exact same live object primed into spinHandler (see newSession()) -- spinHandler.handle() plays
     // this same instance in place on every real spin (see SpinCommandHandler's own liveSessions cache), so
     // reading it back here after a spin sees that spin's own just-computed state directly. This is what
@@ -194,6 +197,7 @@ export class StudioPlayService {
     // on why a "tsPackage" project's own release() is already a no-op) -- released immediately afterward,
     // never held for this session's own lifetime.
     public async newSession(projectRoot: string, seed?: string | number, modeName?: string, options: StudioPlaySessionOptions = {}): Promise<StudioPlaySessionResult> {
+        await this.releaseActiveRuntime();
         const generation = ++this.sessionGeneration;
         const assertCurrent = (): void => {
             if (options.signal?.aborted || generation !== this.sessionGeneration) {
@@ -265,10 +269,11 @@ export class StudioPlayService {
             await sessionRepository.save(sessionId, state);
             assertCurrent();
         } catch (error) {
+            await releasePokieGame(game).catch(() => undefined);
             return this.fail(error);
         }
 
-        this.active = {kind: "runtime", manifest, spinHandler, session, projectRoot, seed};
+        this.active = {kind: "runtime", manifest, game, spinHandler, session, projectRoot, seed};
         this.currentSessionId = sessionId;
 
         const credits = await wallet.getBalance(sessionId);
@@ -421,9 +426,7 @@ export class StudioPlayService {
     // (see newSession()'s own doc comment on why materialization is never held past loadGame), so this is
     // just discarding in-memory references, never an async teardown.
     public reset(): void {
-        this.sessionGeneration++;
-        this.active = undefined;
-        this.currentSessionId = undefined;
+        this.releaseActiveRuntime().catch(() => undefined);
     }
 
     // A Play session is a snapshot of an executable package, not permission
@@ -437,11 +440,21 @@ export class StudioPlayService {
             const project = await this.resolveProject.resolve(active.projectRoot);
             if (project?.type !== "wasm") return undefined;
             const diagnostic = describeUnsupportedProjectOperation(project, PLAY_OPERATION);
-            this.reset();
+            await this.releaseActiveRuntime();
             return diagnostic?.message ?? "POKIE Studio Play is unavailable for this POKIE WASM component.";
         } catch (error) {
-            this.reset();
+            await this.releaseActiveRuntime();
             return error instanceof Error ? error.message : String(error);
+        }
+    }
+
+    private async releaseActiveRuntime(): Promise<void> {
+        const active = this.active;
+        this.sessionGeneration++;
+        this.active = undefined;
+        this.currentSessionId = undefined;
+        if (active?.kind === "runtime") {
+            await releasePokieGame(active.game).catch(() => undefined);
         }
     }
 

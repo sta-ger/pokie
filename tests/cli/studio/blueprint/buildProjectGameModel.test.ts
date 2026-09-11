@@ -15,6 +15,9 @@ function readers(overrides: Partial<GameModelSourceReaders> = {}): GameModelSour
         inspectPackage: () => {
             throw new Error("inspectPackage should not be called");
         },
+        importParWorkbook: () => {
+            throw new Error("importParWorkbook should not be called");
+        },
         readWasmManifest: () => {
             throw new Error("readWasmManifest should not be called");
         },

@@ -195,6 +195,27 @@ describe("describeSimulationReport", () => {
         expect(view.averagePayoutConfidenceInterval95).toBeUndefined();
     });
 
+    it("uses canonical report confidence intervals and reproducibility provenance when an old Studio job has no side statistics", () => {
+        const view = describeSimulationReport(createReport({
+            rtpConfidenceInterval95: {low: 0.93, high: 0.97},
+            averagePayoutConfidenceInterval95: {low: 0.9, high: 1.1},
+            reproducibility: {
+                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                seed: "demo",
+                requestedRounds: 1000,
+                actualRounds: 1000,
+                command: "pokie sim <packageRoot> --rounds 1000 --seed demo",
+                configHash: "sha256:model",
+                pokieVersion: "1.3.0",
+            },
+        }));
+
+        expect(view.rtpConfidenceInterval95).toEqual({low: 0.93, high: 0.97});
+        expect(view.averagePayoutConfidenceInterval95).toEqual({low: 0.9, high: 1.1});
+        expect(view.configHash).toBe("sha256:model");
+        expect(view.pokieVersion).toBe("1.3.0");
+    });
+
     it("includes the breakdown rows when the report has one", () => {
         const report = createReport({
             breakdown: {

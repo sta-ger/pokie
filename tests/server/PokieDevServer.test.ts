@@ -1,6 +1,5 @@
 import {
     BuildableFromSessionState,
-    computeGameBlueprintHash,
     ConvertableToSessionState,
     FileSessionRepository,
     GameBlueprint,
@@ -944,6 +943,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
         let projectRoot: string;
         let server: PokieDevServer;
         let baseUrl: string;
+        let resolvedConfigHash: string | undefined;
 
         beforeAll(() => {
             buildCwd = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-dev-server-built-blueprint-"));
@@ -956,6 +956,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
 
         beforeEach(async () => {
             const game = await loadPokieGame(projectRoot);
+            resolvedConfigHash = game.getConfigHash?.();
             server = new PokieDevServer(game, {
                 host: "127.0.0.1",
                 port: 0,
@@ -970,7 +971,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             await server.stop();
         });
 
-        it("carries the built package's own computeGameBlueprintHash(blueprint) result into the persisted RoundArtifact's provenance", async () => {
+        it("carries the built package's resolved-model hash into the persisted RoundArtifact's provenance", async () => {
             const created = await postJson(`${baseUrl}/sessions`);
             const sessionId = created.body.sessionId as string;
 
@@ -981,7 +982,7 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             expect(artifact.provenance).toEqual({
                 game: {id: "built-blueprint-game", name: "Built Blueprint Game", version: "1.0.0"},
                 pokieVersion: "9.9.9",
-                configHash: computeGameBlueprintHash(blueprint),
+                configHash: resolvedConfigHash,
             });
         });
     });

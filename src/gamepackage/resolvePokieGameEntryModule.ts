@@ -2,12 +2,18 @@ import {isPokieGame} from "./isPokieGame.js";
 import {readPokiePackageConfig} from "./readPokiePackageConfig.js";
 import fs from "fs";
 import {createRequire} from "module";
+import os from "os";
 import path from "path";
 import {pathToFileURL} from "url";
 
 export type ResolvedPokieGameEntryModule = {
     entryPath: string;
     candidate: unknown;
+    // The executable module is loaded from an invocation-owned snapshot so a long-lived process
+    // cannot accidentally retain yesterday's relative ESM/CJS dependency graph.  Consumers which
+    // retain `candidate` for later execution must retain this lease too; inspection-only callers
+    // release it as soon as they have read the metadata they need.
+    release: () => Promise<void>;
 };
 
 // Kept injectable for hosts such as Studio that can supply the POKIE runtime to an otherwise complete
@@ -22,33 +28,24 @@ export type PokieGameEntryModuleLoading = (entryPath: string) => Promise<Record<
 // host limitation. createRequire is anchored at the entry so its transitive dependencies resolve
 // exactly as they would for a consumer loading that package directly.
 async function importPokieGameEntryModule(entryPath: string): Promise<Record<string, unknown>> {
-    // Both Node loaders cache *dependencies* independently of an entry. A
-    // content-query on only index.js therefore still runs yesterday's model.js.
-    // Load an invocation-owned package snapshot instead: all relative ESM/CJS
-    // imports receive fresh absolute paths, while bare dependencies still
-    // resolve from the original package's node_modules ancestor.
-    const snapshot = createRuntimeSnapshot(entryPath);
-    const snapshotEntry = path.join(snapshot.root, snapshot.relativeEntry);
-    const entryRequire = createRequire(snapshotEntry);
+    const entryRequire = createRequire(entryPath);
     try {
-        return (await import(pathToFileURL(snapshotEntry).href)) as Record<string, unknown>;
+        return (await import(pathToFileURL(entryPath).href)) as Record<string, unknown>;
     } catch (error) {
         // Some embedded VM hosts reject file URLs outright. Fall back to the
         // snapshot's ordinary absolute specifier there; its invocation-owned
         // path still prevents either loader from reusing old dependencies.
         if (isModuleNotFoundError(error) && errorMessage(error).includes("file://")) {
-            return (await import(snapshotEntry)) as Record<string, unknown>;
+            return (await import(entryPath)) as Record<string, unknown>;
         }
         if (!isVmDynamicImportUnavailable(error)) {
             throw error;
         }
-        return entryRequire(snapshotEntry) as Record<string, unknown>;
-    } finally {
-        fs.rmSync(snapshot.root, {recursive: true, force: true});
+        return entryRequire(entryPath) as Record<string, unknown>;
     }
 }
 
-function createRuntimeSnapshot(entryPath: string): {root: string; relativeEntry: string} {
+function createRuntimeSnapshot(entryPath: string): {root: string; entryPath: string; release: () => Promise<void>} {
     let packageRoot = path.dirname(entryPath);
     while (path.dirname(packageRoot) !== packageRoot) {
         if (fs.existsSync(path.join(packageRoot, "package.json"))) break;
@@ -58,19 +55,60 @@ function createRuntimeSnapshot(entryPath: string): {root: string; relativeEntry:
     if (relativeEntry.startsWith(`..${path.sep}`) || path.isAbsolute(relativeEntry)) {
         throw new Error(`Could not locate package root for entry "${entryPath}".`);
     }
-    const cacheParent = path.join(packageRoot, ".pokie-runtime-cache");
-    fs.mkdirSync(cacheParent, {recursive: true});
-    const root = fs.mkdtempSync(path.join(cacheParent, "load-"));
+    // Never put loader state inside the package being read: project input hashes and atomic
+    // conversion plans correctly treat every package-root byte as authored source. An external
+    // snapshot directory would otherwise fabricate source drift between preflight and execution.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-"));
     try {
         for (const name of fs.readdirSync(packageRoot)) {
             if (name === "node_modules" || name === ".pokie-runtime-cache") continue;
             fs.cpSync(path.join(packageRoot, name), path.join(root, name), {recursive: true});
         }
-        return {root, relativeEntry};
+        // A package may legitimately inherit its runtime dependency from a parent workspace
+        // node_modules directory (fixtures and Studio materializations do). Keep that normal
+        // Node resolution chain available from the external snapshot without copying dependencies
+        // or writing anything into the authored package.
+        const dependencyRoot = findNearestNodeModules(packageRoot);
+        if (dependencyRoot !== undefined) {
+            fs.symlinkSync(dependencyRoot, path.join(root, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+        }
+        const snapshotEntry = path.join(root, relativeEntry);
+        let released = false;
+        return {
+            root,
+            entryPath: snapshotEntry,
+            release: () => {
+                if (released) return Promise.resolve();
+                released = true;
+                // CommonJS keeps its own module objects forever unless their cache entries are
+                // explicitly forgotten.  Removing precisely this snapshot's entries means a
+                // repeated load cannot grow require.cache while leaving unrelated application
+                // modules untouched.  ESM's URL cache cannot be purged, but its modules have
+                // snapshot-only URLs and become unreachable after the caller releases them.
+                const cache = createRequire(snapshotEntry).cache;
+                for (const cachedPath of Object.keys(cache)) {
+                    if (cachedPath === root || cachedPath.startsWith(`${root}${path.sep}`)) {
+                        Reflect.deleteProperty(cache, cachedPath);
+                    }
+                }
+                fs.rmSync(root, {recursive: true, force: true});
+                return Promise.resolve();
+            },
+        };
     } catch (error) {
         fs.rmSync(root, {recursive: true, force: true});
         throw error;
     }
+}
+
+function findNearestNodeModules(startPath: string): string | undefined {
+    let current = startPath;
+    while (path.dirname(current) !== current) {
+        const candidate = path.join(current, "node_modules");
+        if (fs.existsSync(candidate)) return candidate;
+        current = path.dirname(current);
+    }
+    return undefined;
 }
 
 export async function resolvePokieGameEntryModule(
@@ -122,13 +160,20 @@ export async function resolvePokieGameEntryModule(
         }
     }
 
+    // Both Node loaders cache *dependencies* independently of an entry.  Load every invocation
+    // from a whole-package snapshot so an entry and all of its relative dependencies agree on one
+    // immutable version.  Crucially, the snapshot is *not* removed after import: a game may read
+    // model.json or lazily import/require a sibling while a session is still live.  Its owner gets
+    // the release lease returned below.
+    const snapshot = createRuntimeSnapshot(entryPath);
     let entryModule: Record<string, unknown>;
     try {
         // A plain absolute path, not a file:// URL: TypeScript downlevels `import()` to
         // `require()` in the CJS build (dist/cjs and ts-jest both compile to CommonJS), and
         // require() does not accept file:// URLs as module specifiers.
-        entryModule = await loadEntryModule(entryPath);
+        entryModule = await loadEntryModule(snapshot.entryPath);
     } catch (error) {
+        await snapshot.release();
         if (isModuleNotFoundError(error)) {
             // entryPath itself exists (checked above), so this is a *different* module the entry
             // file itself requires that can't be found -- almost always a stale/incomplete build
@@ -153,7 +198,7 @@ export async function resolvePokieGameEntryModule(
     const candidate =
         isPokieGame(firstLevelCandidate) || !isPokieGame(nestedDefault) ? firstLevelCandidate : nestedDefault;
 
-    return {entryPath, candidate};
+    return {entryPath, candidate, release: snapshot.release};
 }
 
 // Deliberately not an `instanceof Error` check: dynamic `import()` of a real on-disk module runs

@@ -80,4 +80,45 @@ describe("loadPokieGame (real long-lived CJS runtime)", () => {
             fs.rmSync(packageRoot, {recursive: true, force: true});
         }
     });
+
+    it("keeps lazy CJS assets alive until release, then removes both snapshot files and require cache entries", () => {
+        const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-lease-cjs-"));
+        const scriptPath = path.join(packageRoot, "lease.cjs");
+        try {
+            fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "lease-cjs", version: "1.0.0", pokie: {entry: "./game.js"}}));
+            fs.writeFileSync(path.join(packageRoot, "model.json"), JSON.stringify({name: "lazy model"}));
+            fs.writeFileSync(
+                path.join(packageRoot, "game.js"),
+                "const fs = require('fs'); const path = require('path'); module.exports = { getManifest() { return {id: 'lease-cjs', name: 'Lease CJS', version: '1.0.0'}; }, createSession() { return { model: JSON.parse(fs.readFileSync(path.join(__dirname, 'model.json'), 'utf8')).name }; } };\n",
+            );
+            fs.writeFileSync(
+                scriptPath,
+                `const fs = require('fs'); const path = require('path'); const {loadPokieGameRuntime} = require(process.argv[2]);\n` +
+                    `(async () => { const root = process.argv[3]; const loaded = await loadPokieGameRuntime(root); const value = loaded.game.createSession().model; await loaded.release(); const cache = Object.keys(require.cache).filter((file) => /[\\/]pokie-runtime-[A-Za-z0-9]{6}[\\/]/.test(file)); const sourceWasMutated = fs.existsSync(path.join(root, '.pokie-runtime-cache')); process.stdout.write(JSON.stringify({value, cache, sourceWasMutated})); })().catch((error) => { console.error(error); process.exitCode = 1; });\n`,
+            );
+            const output = execFileSync(process.execPath, [scriptPath, COMPILED_CJS_ENTRY, packageRoot], {encoding: "utf-8"});
+            expect(JSON.parse(output)).toEqual({value: "lazy model", cache: [], sourceWasMutated: false});
+        } finally {
+            fs.rmSync(packageRoot, {recursive: true, force: true});
+        }
+    });
+
+    it("keeps old and new package versions isolated while both leases are live", () => {
+        const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-lease-version-"));
+        const scriptPath = path.join(packageRoot, "versions.cjs");
+        try {
+            fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "lease-version", version: "1.0.0", pokie: {entry: "./game.js"}}));
+            fs.writeFileSync(path.join(packageRoot, "model.js"), "module.exports = {name: 'Before rebuild'};\n");
+            fs.writeFileSync(path.join(packageRoot, "game.js"), "const model = require('./model.js'); module.exports = {getManifest() { return {id: 'lease-version', name: model.name, version: '1.0.0'}; }, createSession() { return {name: model.name}; }};\n");
+            fs.writeFileSync(
+                scriptPath,
+                `const fs = require('fs'); const {loadPokieGameRuntime} = require(process.argv[2]);\n` +
+                    `(async () => { const root = process.argv[3]; const before = await loadPokieGameRuntime(root); fs.writeFileSync(root + '/model.js', "module.exports = {name: 'After rebuild'};\\n"); const after = await loadPokieGameRuntime(root); const result = [before.game.createSession().name, after.game.createSession().name]; await before.release(); await after.release(); process.stdout.write(JSON.stringify(result)); })().catch((error) => { console.error(error); process.exitCode = 1; });\n`,
+            );
+            const output = execFileSync(process.execPath, [scriptPath, COMPILED_CJS_ENTRY, packageRoot], {encoding: "utf-8"});
+            expect(JSON.parse(output)).toEqual(["Before rebuild", "After rebuild"]);
+        } finally {
+            fs.rmSync(packageRoot, {recursive: true, force: true});
+        }
+    });
 });

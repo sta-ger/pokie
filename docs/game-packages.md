@@ -142,6 +142,10 @@ session.play();
 session.getWinAmount();
 ```
 
+Each load uses an isolated runtime snapshot so rebuilding the same package path cannot reuse stale
+relative dependencies. If a long-lived host keeps the returned game/session, call `await game.release?.()`
+after its final session is destroyed (or use `loadPokieGameRuntime()` for an explicit `{game, release}` lease).
+
 It rejects if `package.json` has no `pokie.entry` field, or if the entry module's default export fails
 `PokieGameContractValidationRule` — missing `getManifest()`/`createSession()`, `getManifest()` throwing, or a
 manifest with a missing/empty `id`, `name`, or `version`. The rejection error lists every failing check by code
