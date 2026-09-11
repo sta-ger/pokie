@@ -112,6 +112,20 @@ async function post(url: string, body?: unknown): Promise<{status: number; body:
     return {status: response.status, body: await response.json()};
 }
 
+function runtimeSnapshotsForPackage(packageName: string): string[] {
+    return fs
+        .readdirSync(os.tmpdir())
+        .filter((entry) => entry.startsWith("pokie-runtime-"))
+        .map((entry) => path.join(os.tmpdir(), entry))
+        .filter((root) => {
+            try {
+                return JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).name === packageName;
+            } catch {
+                return false;
+            }
+        });
+}
+
 async function del(url: string): Promise<{status: number; body: unknown}> {
     const response = await fetch(url, {method: "DELETE"});
     return {status: response.status, body: await response.json()};
@@ -642,13 +656,18 @@ describe("StudioServer", () => {
         await server.stop();
         const projectRoot = path.join(studioRoot, "real-outcome-library-package");
         const sampledProjectRoot = path.join(studioRoot, "real-sampled-outcome-library-package");
+        // A unique package identity distinguishes this test's snapshots from stale temporary
+        // directories left by an interrupted earlier Jest process; the assertions below therefore
+        // prove this HTTP lifecycle itself leaves none behind.
+        const packageName = `real-http-slot-${crypto.randomUUID()}`;
         const blueprintPath = path.join(studioRoot, "real-outcome-library.blueprint.json");
         fs.writeFileSync(blueprintPath, JSON.stringify({
-            manifest: {id: "real-http-slot", name: "Real HTTP Slot", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
+            manifest: {id: packageName, name: "Real HTTP Slot", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
             paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
         }));
         expect(await new BuildCommand("1.0.0").run([blueprintPath, "--target", "tsPackage", "--out", projectRoot])).toBe(0);
         expect(await new BuildCommand("1.0.0").run([blueprintPath, "--target", "tsPackage", "--out", sampledProjectRoot])).toBe(0);
+        expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
 
         const replaceServer = (nextServer: StudioServer): void => {
             server = nextServer;
@@ -671,11 +690,13 @@ describe("StudioServer", () => {
         expect(direct).toMatchObject({status: 202, body: {status: "created"}});
         const exactJob = await waitForOutcomeLibraryJob(realBaseUrl, (direct.body as {job: {id: string}}).job.id);
         expect(exactJob).toMatchObject({status: "completed", result: {status: "ok", mode: {libraryId: "http-exact"}, generator: {strategy: "exact"}}});
+        expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
 
         // The sampled policy is a fresh real package, rather than an overwrite
         // of the exact bundle. This preserves both producers' full provenance
         // and also exercises restart with durable server-owned lifecycle state.
         await server.stop();
+        expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
         replaceServer(new StudioServer({
             pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
             homeService: new StudioHomeService("1.0.0", undefined, loadPokieGame),
@@ -698,6 +719,7 @@ describe("StudioServer", () => {
         expect(jobRoute.status).toBe(202);
         const sampledJob = await waitForOutcomeLibraryJob(realBaseUrl, (jobRoute.body as {job: {id: string}}).job.id);
         expect(sampledJob).toMatchObject({status: "completed", result: {status: "ok", mode: {libraryId: "http-sampled"}, generator: {strategy: "bounded-coverage", seed: "http-parity-seed"}}});
+        expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
         expect(await get(`${realBaseUrl}/api/project/outcome-libraries/registry`)).toMatchObject({status: 200, body: {status: "ok", buildStatus: "compatible", modes: expect.arrayContaining([expect.objectContaining({buildStatus: "compatible"})])}});
 
         // A preflight's destination is immutable. The public job route may
@@ -709,6 +731,8 @@ describe("StudioServer", () => {
         });
         expect(drift).toMatchObject({status: 409, body: {status: "conflict", error: expect.stringMatching(/destination|preflight/i)}});
         expect(fs.existsSync(path.join(sampledProjectRoot, "changed-destination"))).toBe(false);
+        await server.stop();
+        expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
     });
 
     it("keeps real Outcome Library HTTP lifecycle cancellation, restart, source drift, and diagnostics cleanup-safe", async () => {
