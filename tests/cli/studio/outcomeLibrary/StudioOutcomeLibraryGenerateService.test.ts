@@ -182,7 +182,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(fs.existsSync(path.join(projectRoot, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR, "manifest.json"))).toBe(true);
         });
 
-        it("rebinds an unchanged managed Blueprint file while retaining the HTTP-validated runtime through cancellation retry execution", async () => {
+        it("rebinds an unchanged managed Blueprint file across HTTP validation and cancellation retry execution", async () => {
             const blueprintPath = path.join(projectRoot, "blueprint.json");
             fs.writeFileSync(blueprintPath, JSON.stringify({
                 manifest: {id: "studio-validated-retry", name: "Studio Validated Retry", version: "1.0.0"},
@@ -199,7 +199,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
                 POKIE_VERSION,
                 () => {
                     loadCalls += 1;
-                    if (loadCalls > 5) return Promise.reject(new Error("an unchanged cancellation retry should retain its HTTP-validated runtime while rebinding the Blueprint file"));
+                    if (loadCalls > 5) return Promise.reject(new Error("an unchanged cancellation retry should use only its bounded runtime lifecycle while rebinding the Blueprint file"));
                     return Promise.resolve(buildFixtureGame());
                 },
                 undefined,

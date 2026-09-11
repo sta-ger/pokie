@@ -359,28 +359,26 @@ export class StudioOutcomeLibraryGenerateService {
             }
             try {
                 const game = await this.loadBoundManagedBlueprint(snapshot);
-                const preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(
-                    game,
-                    request,
-                    request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR,
-                    projectRoot,
-                ));
-                if (
-                    game.getManifest().id !== binding.gameId ||
-                    game.getManifest().version !== binding.gameVersion ||
-                    game.getConfigHash?.() !== binding.configHash ||
-                    preparedRequest.preflight.destination?.path !== binding.destination ||
-                    preparedRequest.preflight.requiresSampledOptIn !== binding.requiresBounded
-                ) {
-                    return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+                try {
+                    const preparedRequest = prepareOutcomeLibraryGeneration(this.createDomainRequest(
+                        game,
+                        request,
+                        request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR,
+                        projectRoot,
+                    ));
+                    if (
+                        game.getManifest().id !== binding.gameId ||
+                        game.getManifest().version !== binding.gameVersion ||
+                        game.getConfigHash?.() !== binding.configHash ||
+                        preparedRequest.preflight.destination?.path !== binding.destination ||
+                        preparedRequest.preflight.requiresSampledOptIn !== binding.requiresBounded
+                    ) {
+                        return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
+                    }
+                    return undefined;
+                } finally {
+                    await releasePokieGame(game).catch(() => undefined);
                 }
-                // Runtime preparation can be slow or transiently unavailable
-                // immediately after a cancelled job. Keep this exact runtime
-                // for the queued job, but never treat it as source authority:
-                // generate() and publication each re-check the saved file's
-                // canonical identity, bytes, and configuration binding.
-                this.preflightSnapshots.set(request.preflightToken!, {...snapshot, validatedGame: game});
-                return undefined;
             } catch {
                 return "The source, configuration, destination, or generation settings changed after preflight. Refresh the displayed preflight before generating.";
             }
@@ -575,8 +573,11 @@ export class StudioOutcomeLibraryGenerateService {
                 // cancellation cleanup even when the immutable source is sound.
                 currentSource: async () => {
                     if (tokenBoundBlueprintPlan !== undefined && snapshot !== undefined) {
-                        if (snapshot.validatedGame === undefined) await this.loadBoundManagedBlueprint(snapshot);
-                        else this.rebindManagedBlueprintRuntime(snapshot);
+                        // `game` is the already-owned execution runtime.  Do
+                        // not load a second validation-only snapshot here: it
+                        // would have no consumer to release it. The immutable
+                        // binding check is the same one a fresh load performs.
+                        this.assertManagedBlueprintBinding(snapshot, game);
                         return tokenBoundBlueprintPlan.source;
                     }
                     return (await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, requestedGeneration)).source;
@@ -950,8 +951,13 @@ export class StudioOutcomeLibraryGenerateService {
             throw new Error("The prepared managed Blueprint source is no longer available. Refresh the displayed preflight before generating.");
         }
         const game = await this.loadGame(canonicalLocation);
-        this.assertManagedBlueprintBinding(snapshot, game);
-        return game;
+        try {
+            this.assertManagedBlueprintBinding(snapshot, game);
+            return game;
+        } catch (error) {
+            await releasePokieGame(game).catch(() => undefined);
+            throw error;
+        }
     }
 
     private rebindManagedBlueprintRuntime(snapshot: StudioOutcomeLibraryPreflightSnapshot): PokieGame {
