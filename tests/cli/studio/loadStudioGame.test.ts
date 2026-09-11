@@ -45,7 +45,7 @@ describe("createStudioEntryModuleLoader", () => {
             expect(before.getManifest().name).toBe("Before rebuild");
             expect(after.getManifest().name).toBe("After rebuild");
             expect((before as unknown as {runtimePath: string}).runtimePath).toEqual(expect.any(String));
-            await expect((before.createSession() as {loadResource(): Promise<string>}).loadResource()).resolves.toBe("lazy-relative-resource");
+            await expect((before.createSession() as unknown as {loadResource(): Promise<string>}).loadResource()).resolves.toBe("lazy-relative-resource");
             await releasePokieGame(before);
             await releasePokieGame(after);
             expect(fs.existsSync(path.join(packageRoot, ".pokie-runtime-cache"))).toBe(false);

@@ -22,7 +22,11 @@ type FakeGameStats = {createSessionCalls: number; playCalls: number};
 
 function createFakeSession(
     stats: FakeGameStats = {createSessionCalls: 0, playCalls: 0},
-): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} {
+): GameSessionHandling & {
+    getSymbolsCombination(): {toMatrix(): string[][]};
+    toSessionState(): {round: number};
+    fromSessionState(state: {round?: unknown}): void;
+} {
     let credits = 1000;
     const bet = 5;
     let round = 0;
