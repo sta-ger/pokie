@@ -33,7 +33,7 @@
         "lint": "eslint . --ext .ts,.tsx",
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && npm run typecheck-studio-client",
         "pretest": "npm run lint",
-    "test": "mkdir -p \"$PWD/node_modules/.cache/pokie-tmp\" && TMPDIR=\"$PWD/node_modules/.cache/pokie-tmp\" NODE_OPTIONS=--experimental-vm-modules jest --selectProjects pokie pokie-examples studio-client-components --maxWorkers=2",
+        "test": "mkdir -p \"$PWD/node_modules/.cache/pokie-tmp\" && TMPDIR=\"$PWD/node_modules/.cache/pokie-tmp\" NODE_OPTIONS=--experimental-vm-modules jest --selectProjects pokie pokie-examples studio-client-components --runInBand",
         "test:integration": "jest --selectProjects pokie-integration --maxWorkers=2",
         "test:targeted": "mkdir -p \"$PWD/node_modules/.cache/pokie-tmp\" && TMPDIR=\"$PWD/node_modules/.cache/pokie-tmp\" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath",
         "evidence:pc14-interoperability": "node scripts/generate-pc14-interoperability-evidence.mjs",
