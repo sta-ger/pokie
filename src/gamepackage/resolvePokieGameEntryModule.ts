@@ -112,7 +112,12 @@ function createDependencyOverlay(snapshotRoot: string, startPath: string): void 
     // Link only the package's declared runtime dependencies, never every entry in an ancestor
     // workspace node_modules.  The linked package keeps its physical nested dependency tree, so
     // Node resolves its transitive dependencies normally without a recursive copy or overlay scan.
-    for (const dependencyName of declaredRuntimeDependencies(startPath)) {
+    // `pokie` is the host runtime contract for a generated package.  Older
+    // package fixtures and packages built before dependency metadata was
+    // standardized may omit it from package.json, yet were loadable from a
+    // normal workspace ancestor. Keep that single compatibility dependency;
+    // every other overlay entry remains manifest-declared.
+    for (const dependencyName of new Set(["pokie", ...declaredRuntimeDependencies(startPath)])) {
         const source = dependencyRoots.map((dependencyRoot) => path.join(dependencyRoot, dependencyName)).find((candidate) => fs.existsSync(candidate));
         if (source === undefined) continue;
         const destination = path.join(overlay, dependencyName);

@@ -305,42 +305,46 @@ export class ArtifactBuilderRegistry {
                 };
             }
             const prepared = await this.blueprintStakeWorkflow.prepare(source, {outcomeLibraryGeneration: plannedGeneration});
-            const generation = prepared.generation.sampled;
-            const configurationProvenance: ArtifactConfigurationProvenance = {
-                configurationHash: prepared.configHash,
-                pokieVersion: prepared.compatibility.pokieVersion,
-                gameId: prepared.compatibility.gameId,
-                gameVersion: prepared.compatibility.gameVersion,
-                manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
-                generationSemantics: generation === undefined ? "exact" : "boundedSample",
-                ...(generation === undefined ? {} : {sampleCount: generation.sampleSize.toString(), sampleSeed: generation.seed}),
-                ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize.toString()}),
-                ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
-            };
-            plannedSource = {...source, configurationProvenance};
-            // Both public consumers of a managed Outcome Library inspect the
-            // same registered candidate before planning.  This makes an
-            // Outcome preview/build and its Stake prerequisite agree on the
-            // selected reuse/materialization step.
-            const inspection = await this.inspectManagedOutcome(source.rootPath, prepared.compatibility);
-            if (inspection.project !== undefined) {
-                managedOutcome = {identity: resolveArtifactIdentity(inspection.project), verified: true};
-            } else if (inspection.staleReason !== undefined) {
-                managedOutcome = {
-                    identity: {kind: "outcomeLibrary", capabilities: []},
-                    verified: false,
-                    staleReason: inspection.staleReason,
+            try {
+                const generation = prepared.generation.sampled;
+                const configurationProvenance: ArtifactConfigurationProvenance = {
+                    configurationHash: prepared.configHash,
+                    pokieVersion: prepared.compatibility.pokieVersion,
+                    gameId: prepared.compatibility.gameId,
+                    gameVersion: prepared.compatibility.gameVersion,
+                    manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
+                    generationSemantics: generation === undefined ? "exact" : "boundedSample",
+                    ...(generation === undefined ? {} : {sampleCount: generation.sampleSize.toString(), sampleSeed: generation.seed}),
+                    ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize.toString()}),
+                    ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
                 };
+                plannedSource = {...source, configurationProvenance};
+                // Both public consumers of a managed Outcome Library inspect the
+                // same registered candidate before planning.  This makes an
+                // Outcome preview/build and its Stake prerequisite agree on the
+                // selected reuse/materialization step.
+                const inspection = await this.inspectManagedOutcome(source.rootPath, prepared.compatibility);
+                if (inspection.project !== undefined) {
+                    managedOutcome = {identity: resolveArtifactIdentity(inspection.project), verified: true};
+                } else if (inspection.staleReason !== undefined) {
+                    managedOutcome = {
+                        identity: {kind: "outcomeLibrary", capabilities: []},
+                        verified: false,
+                        staleReason: inspection.staleReason,
+                    };
+                }
+                planningOptions = {
+                    ...options,
+                    managedOutcome,
+                    pokieVersion: prepared.compatibility.pokieVersion,
+                    generationSemantics: generation === undefined ? "exact" : "boundedSample",
+                    ...(generation === undefined ? {} : {sampleCount: generation.sampleSize, sampleSeed: generation.seed}),
+                    ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize}),
+                    ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
+                };
+            } finally {
+                await releasePokieGame(prepared.game);
             }
-            planningOptions = {
-                ...options,
-                managedOutcome,
-                pokieVersion: prepared.compatibility.pokieVersion,
-                generationSemantics: generation === undefined ? "exact" : "boundedSample",
-                ...(generation === undefined ? {} : {sampleCount: generation.sampleSize, sampleSeed: generation.seed}),
-                ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize}),
-                ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
-            };
         }
         return this.applyDestinationPolicy(plannedSource, target, planningOptions, this.planner.plan(plannedSource, target, planningOptions));
     }
@@ -687,21 +691,25 @@ export class ArtifactBuilderRegistry {
         let source: ArtifactIdentity = {...resolveArtifactIdentity(imported), recognitionProvenance: importStep.output.recognitionProvenance};
         if (plan.target.kind === "outcomeLibrary" || plan.target.kind === "stakeAdapter") {
             const prepared = await this.blueprintStakeWorkflow.prepare(imported, {outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
-            const sampled = prepared.generation.sampled;
-            source = {
-                ...source,
-                configurationProvenance: {
-                    configurationHash: prepared.configHash,
-                    pokieVersion: prepared.compatibility.pokieVersion,
-                    gameId: prepared.compatibility.gameId,
-                    gameVersion: prepared.compatibility.gameVersion,
-                    manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
-                    generationSemantics: sampled === undefined ? "exact" : "boundedSample",
-                    ...(sampled === undefined ? {} : {sampleCount: sampled.sampleSize.toString(), sampleSeed: sampled.seed}),
-                    ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize.toString()}),
-                    ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
-                },
-            };
+            try {
+                const sampled = prepared.generation.sampled;
+                source = {
+                    ...source,
+                    configurationProvenance: {
+                        configurationHash: prepared.configHash,
+                        pokieVersion: prepared.compatibility.pokieVersion,
+                        gameId: prepared.compatibility.gameId,
+                        gameVersion: prepared.compatibility.gameVersion,
+                        manifestIdentity: `${prepared.compatibility.gameId}@${prepared.compatibility.gameVersion}`,
+                        generationSemantics: sampled === undefined ? "exact" : "boundedSample",
+                        ...(sampled === undefined ? {} : {sampleCount: sampled.sampleSize.toString(), sampleSeed: sampled.seed}),
+                        ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize.toString()}),
+                        ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
+                    },
+                };
+            } finally {
+                await releasePokieGame(prepared.game);
+            }
         }
         return {...plan, source, steps: plan.steps.filter((step) => step !== importStep)};
     }

@@ -7,7 +7,7 @@ import {renderBuiltGameModule} from "../generated/renderBuiltGameModule.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
-import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
+import {loadPokieGame, releasePokieGame} from "../gamepackage/loadPokieGame.js";
 import {VideoSlotSessionSerializer} from "../net/videoslot/VideoSlotSessionSerializer.js";
 import {CustomLinesDefinitions} from "../session/videoslot/linesdefinitions/CustomLinesDefinitions.js";
 import {ReelsSymbolsSequencesGenerator} from "../session/videoslot/combinations/ReelsSymbolsSequencesGenerator.js";
@@ -135,17 +135,24 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     ): Promise<{readonly project: PokieProject; readonly reused: boolean}> {
         assertArtifactBuildNotCancelled(options);
         const prepared = await this.prepare(source, options);
-        const {compatibility} = prepared;
-        if (reuseCompatible) {
-            const compatible = await this.managedOutcomeProjects.findCompatible(source.rootPath, compatibility);
-            if (compatible !== undefined) {
-                reportArtifactBuildProgress(options, {status: "completed"});
-                return {project: compatible, reused: true};
+        let transferred = false;
+        try {
+            const {compatibility} = prepared;
+            if (reuseCompatible) {
+                const compatible = await this.managedOutcomeProjects.findCompatible(source.rootPath, compatibility);
+                if (compatible !== undefined) {
+                    reportArtifactBuildProgress(options, {status: "completed"});
+                    return {project: compatible, reused: true};
+                }
             }
+            const bundleDir = typeof destinationPath === "string" ? destinationPath : destinationPath(compatibility);
+            transferred = true;
+            return await this.generatePrepared(source, prepared, bundleDir, options);
+        } finally {
+            // generatePrepared() takes terminal ownership only after the
+            // transfer below. Reuse and lookup-failure paths remain here.
+            if (!transferred) await releasePokieGame(prepared.game);
         }
-
-        const bundleDir = typeof destinationPath === "string" ? destinationPath : destinationPath(compatibility);
-        return this.generatePrepared(source, prepared, bundleDir, options);
     }
 
     /**
@@ -161,91 +168,99 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         options?: ArtifactBuildOptions,
         allowPlannedSourceSidecar = false,
     ): Promise<{readonly project: PokieProject; readonly reused: false}> {
-        assertArtifactBuildNotCancelled(options);
         const {game, configHash, generation, compatibility} = prepared;
-        // Preparation owns the loaded configuration assertion, selected
-        // strategy, publication identity and destination safety.  The managed
-        // planner only translates this resolved request to its generic view.
-        const preparedRequest = prepareOutcomeLibraryGeneration({
-            libraryId: game.getManifest().id,
-            game,
-            pokieVersion: this.pokieVersion,
-            configHash,
-            generation: generation.generation,
-            ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
-            ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
-            ...(generation.sampled === undefined ? {} : {sample: generation.sampled}),
-            outputDestination: bundleDir,
-            outputDestinationSafety: {
-                sourcePath: source.rootPath,
-                kind: "directory",
-                requireAvailable: true,
-                // Only ArtifactBuilderRegistry may authorize the package's
-                // canonical managed Outcome sidecar.  That exception is
-                // immutable request data, not a writer-local bypass.
-                ...(allowPlannedSourceSidecar ? {allowWithinSource: true} : {}),
-            },
-        });
-        const boundDestination = preparedRequest.preflight.destination?.path;
-        if (boundDestination === undefined) throw new Error("Managed Outcome Library generation requires a bound output destination.");
-        // The shared destination policy explicitly permits a pre-existing
-        // empty directory.  It is user-owned, even though this invocation may
-        // later atomically publish files into it.  Remember that ownership so
-        // rollback never turns a harmless cancelled/failed build into a
-        // destructive removal of the user's chosen destination.
-        // A destination which appears while generation is running belongs to
-        // somebody else until this invocation has passed its final safety
-        // check and entered the writer.  Rollback must not erase it.
-        const destinationWasEmpty = fs.existsSync(boundDestination) && fs.readdirSync(boundDestination).length === 0;
-        const publication: {started: boolean; ownership?: PublishedDirectoryOwnership} = {started: false};
-        const preflight = outcomeGenerationPreflight(preparedRequest.preflight);
-        reportArtifactBuildProgress(options, {status: "preflight", preflight});
-        assertArtifactBuildNotCancelled(options);
         try {
-            await this.generateBundle(
-                source.rootPath,
-                game,
-                configHash,
-                boundDestination,
-                destinationWasEmpty,
-                preparedRequest.outputDestinationSafety,
-                options,
-                preflight,
-                generation,
-                publication,
-            );
             assertArtifactBuildNotCancelled(options);
-            // The prepared request owns the canonical publication identity.
-            // Do not retain the caller's unnormalised spelling for registry
-            // registration: that would make rollback and later reuse refer to
-            // a different destination than the one the writer published.
-            const project = await this.managedOutcomeProjects.registerAndOpen(source.rootPath, boundDestination, compatibility);
-            reportArtifactBuildProgress(options, {
-                status: "completed",
-                completed: preflight.estimatedItemCount,
-                total: preflight.estimatedItemCount,
-                preflight,
+            // Preparation owns the loaded configuration assertion, selected
+            // strategy, publication identity and destination safety.  The managed
+            // planner only translates this resolved request to its generic view.
+            const preparedRequest = prepareOutcomeLibraryGeneration({
+                libraryId: game.getManifest().id,
+                game,
+                pokieVersion: this.pokieVersion,
+                configHash,
+                generation: generation.generation,
+                ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize}),
+                ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
+                ...(generation.sampled === undefined ? {} : {sample: generation.sampled}),
+                outputDestination: bundleDir,
+                outputDestinationSafety: {
+                    sourcePath: source.rootPath,
+                    kind: "directory",
+                    requireAvailable: true,
+                    // Only ArtifactBuilderRegistry may authorize the package's
+                    // canonical managed Outcome sidecar.  That exception is
+                    // immutable request data, not a writer-local bypass.
+                    ...(allowPlannedSourceSidecar ? {allowWithinSource: true} : {}),
+                },
             });
-            return {project, reused: false};
-        } catch (error) {
+            const boundDestination = preparedRequest.preflight.destination?.path;
+            if (boundDestination === undefined) throw new Error("Managed Outcome Library generation requires a bound output destination.");
+            // The shared destination policy explicitly permits a pre-existing
+            // empty directory.  It is user-owned, even though this invocation may
+            // later atomically publish files into it.  Remember that ownership so
+            // rollback never turns a harmless cancelled/failed build into a
+            // destructive removal of the user's chosen destination.
+            // A destination which appears while generation is running belongs to
+            // somebody else until this invocation has passed its final safety
+            // check and entered the writer.  Rollback must not erase it.
+            const destinationWasEmpty = fs.existsSync(boundDestination) && fs.readdirSync(boundDestination).length === 0;
+            const publication: {started: boolean; ownership?: PublishedDirectoryOwnership} = {started: false};
+            const preflight = outcomeGenerationPreflight(preparedRequest.preflight);
+            reportArtifactBuildProgress(options, {status: "preflight", preflight});
+            assertArtifactBuildNotCancelled(options);
+            try {
+                await this.generateBundle(
+                    source.rootPath,
+                    game,
+                    configHash,
+                    boundDestination,
+                    destinationWasEmpty,
+                    preparedRequest.outputDestinationSafety,
+                    options,
+                    preflight,
+                    generation,
+                    publication,
+                );
+                assertArtifactBuildNotCancelled(options);
+                // The prepared request owns the canonical publication identity.
+                // Do not retain the caller's unnormalised spelling for registry
+                // registration: that would make rollback and later reuse refer to
+                // a different destination than the one the writer published.
+                const project = await this.managedOutcomeProjects.registerAndOpen(source.rootPath, boundDestination, compatibility);
+                reportArtifactBuildProgress(options, {
+                    status: "completed",
+                    completed: preflight.estimatedItemCount,
+                    total: preflight.estimatedItemCount,
+                    preflight,
+                });
+                return {project, reused: false};
+            } catch (error) {
             // A generated bundle is not a managed Project until registerAndOpen commits the registry record.
             // Do not leave a complete-looking orphan behind when registry I/O or cancellation fails.
-            if (publication.ownership !== undefined && removePublishedDirectoryIfOwned(publication.ownership) && destinationWasEmpty) {
+                if (publication.ownership !== undefined && removePublishedDirectoryIfOwned(publication.ownership) && destinationWasEmpty) {
                 // An explicitly supplied empty directory remains caller-owned
                 // after a failed registration. If a late claimant won the
                 // pathname, removePublishedDirectoryIfOwned returned false
                 // and this mkdir is deliberately skipped.
-                try {
-                    fs.mkdirSync(boundDestination);
-                } catch (restoreError) {
-                    if ((restoreError as NodeJS.ErrnoException).code !== "EEXIST") throw restoreError;
+                    try {
+                        fs.mkdirSync(boundDestination);
+                    } catch (restoreError) {
+                        if ((restoreError as NodeJS.ErrnoException).code !== "EEXIST") throw restoreError;
+                    }
                 }
+                if (options?.signal?.aborted) {
+                    reportArtifactBuildProgress(options, {status: "cancelled", preflight});
+                    if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
+                } else reportArtifactBuildProgress(options, {status: "failed", preflight});
+                throw error;
             }
-            if (options?.signal?.aborted) {
-                reportArtifactBuildProgress(options, {status: "cancelled", preflight});
-                if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
-            } else reportArtifactBuildProgress(options, {status: "failed", preflight});
-            throw error;
+        } finally {
+            // prepare() transfers a loaded package snapshot to its consumer.
+            // Generation is terminal ownership on this path, including
+            // preflight rejection, cancellation and publication failure.
+            // Hand-materialized Blueprint games have no registered lease.
+            await releasePokieGame(game);
         }
     }
 
@@ -260,43 +275,52 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         readonly compatibility: OutcomeProjectCompatibility;
     }> {
         const game = source.type === "blueprint" ? this.loadMaterializedGame(this.validateAndMaterialize(source.rootPath)) : await this.loadGame(source.rootPath);
-        const configHash = game.getConfigHash?.();
-        if (configHash === undefined) {
-            throw new Error(`Project "${source.rootPath}" did not materialize a configuration hash; cannot safely register its outcome library.`);
-        }
-        const generation = resolveManagedOutcomeGeneration(game, configHash, options?.outcomeLibraryGeneration);
-        return {
-            game,
-            configHash,
-            generation,
-            compatibility: {
-                gameId: game.getManifest().id,
-                gameVersion: game.getManifest().version,
+        try {
+            const configHash = game.getConfigHash?.();
+            if (configHash === undefined) {
+                throw new Error(`Project "${source.rootPath}" did not materialize a configuration hash; cannot safely register its outcome library.`);
+            }
+            const generation = resolveManagedOutcomeGeneration(game, configHash, options?.outcomeLibraryGeneration);
+            return {
+                game,
                 configHash,
-                pokieVersion: this.pokieVersion,
-                generation: generation.sampled === undefined
-                    ? "exact"
-                    : `sample:${generation.sampled.sampleSize}:${generation.sampled.seed}`,
-                ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize.toString()}),
-                ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
-            },
-        };
+                generation,
+                compatibility: {
+                    gameId: game.getManifest().id,
+                    gameVersion: game.getManifest().version,
+                    configHash,
+                    pokieVersion: this.pokieVersion,
+                    generation: generation.sampled === undefined
+                        ? "exact"
+                        : `sample:${generation.sampled.sampleSize}:${generation.sampled.seed}`,
+                    ...(generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: generation.maxExactOutcomeSpaceSize.toString()}),
+                    ...(generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: generation.compatibilityPolicyVersion}),
+                },
+            };
+        } catch (error) {
+            await releasePokieGame(game);
+            throw error;
+        }
     }
 
     /** The same no-write generation estimate used before materialisation. */
     public async inspectGenerationPreflight(source: PokieProject, options?: ArtifactBuildOptions): Promise<ArtifactBuildPreflight> {
         const prepared = await this.prepare(source, options);
-        const request = prepareOutcomeLibraryGeneration({
-            libraryId: prepared.game.getManifest().id,
-            game: prepared.game,
-            pokieVersion: this.pokieVersion,
-            configHash: prepared.configHash,
-            generation: prepared.generation.generation,
-            ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize}),
-            ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
-            ...(prepared.generation.sampled === undefined ? {} : {sample: prepared.generation.sampled}),
-        });
-        return outcomeGenerationPreflight(request.preflight);
+        try {
+            const request = prepareOutcomeLibraryGeneration({
+                libraryId: prepared.game.getManifest().id,
+                game: prepared.game,
+                pokieVersion: this.pokieVersion,
+                configHash: prepared.configHash,
+                generation: prepared.generation.generation,
+                ...(prepared.generation.maxExactOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: prepared.generation.maxExactOutcomeSpaceSize}),
+                ...(prepared.generation.compatibilityPolicyVersion === undefined ? {} : {compatibilityPolicyVersion: prepared.generation.compatibilityPolicyVersion}),
+                ...(prepared.generation.sampled === undefined ? {} : {sample: prepared.generation.sampled}),
+            });
+            return outcomeGenerationPreflight(request.preflight);
+        } finally {
+            await releasePokieGame(prepared.game);
+        }
     }
 
     private async generateBundle(

@@ -12,7 +12,74 @@ import {
     type PokieProject,
 } from "../../src/index.js";
 
+function runtimeSnapshotsForPackage(packageName: string): string[] {
+    return fs.readdirSync(os.tmpdir())
+        .filter((entry) => entry.startsWith("pokie-runtime-"))
+        .map((entry) => path.join(os.tmpdir(), entry))
+        .filter((root) => {
+            try {
+                return JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf-8")).name === packageName;
+            } catch {
+                return false;
+            }
+        });
+}
+
 describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
+    it("releases real package snapshots after repeated preflight and compatible-reuse operations", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-workflow-runtime-lease-"));
+        const packageRoot = path.join(workDir, "game");
+        const packageName = "workflow-runtime-lease-fixture";
+        fs.cpSync(path.join(__dirname, "..", "cli", "fixtures", "playable-game-with-config-hash"), packageRoot, {recursive: true});
+        fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({
+            name: packageName,
+            version: "1.0.0",
+            pokie: {entry: "./index.js"},
+        }));
+        fs.writeFileSync(path.join(packageRoot, "index.js"), `
+            const {SymbolsSequence, VideoSlotConfig, VideoSlotSession} = require("pokie");
+            function config() {
+                const value = new VideoSlotConfig();
+                value.setReelsNumber(1);
+                value.setReelsSymbolsNumber(1);
+                value.setAvailableSymbols(["A"]);
+                value.setAvailableBets([1]);
+                value.setSymbolsSequences([new SymbolsSequence().fromArray(["A"])]);
+                return value;
+            }
+            module.exports = {
+                getManifest: () => ({id: "workflow-runtime-lease", name: "Workflow Runtime Lease", version: "1.0.0"}),
+                getConfigHash: () => "sha256:workflow-runtime-lease",
+                createSession: () => new VideoSlotSession(config()),
+                createExactEnumerationSession: (generator) => new VideoSlotSession(config(), generator),
+            };
+        `);
+        const project: PokieProject = {
+            type: "tsPackage",
+            rootPath: packageRoot,
+            capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage,
+            provenance: "test fixture",
+        };
+        const compatibleProject: PokieProject = {...project, rootPath: path.join(workDir, "existing-outcome"), type: "outcomeLibrary", capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary};
+        const managedOutcomes = {
+            findCompatible: () => Promise.resolve(compatibleProject),
+            allocateRoot: () => path.join(workDir, "not-used"),
+            registerAndOpen: () => Promise.reject(new Error("must not generate a compatible outcome library")),
+            release: () => Promise.resolve(),
+        };
+        const workflow = new BlueprintStakeOutcomeLibraryWorkflow("1.3.0", loadGameBlueprint, undefined, managedOutcomes);
+
+        try {
+            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+            await workflow.inspectGenerationPreflight(project);
+            await workflow.inspectGenerationPreflight(project);
+            await expect(workflow.resolveOrGenerate(project, path.join(workDir, "ignored"))).resolves.toMatchObject({reused: true});
+            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("uses the registry-owned managed Outcome record as the Blueprint-to-Stake prerequisite", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-public-blueprint-stake-workflow-test-"));
         const blueprintPath = path.join(workDir, "game.blueprint.json");

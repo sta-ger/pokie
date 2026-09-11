@@ -45,6 +45,15 @@ function createFakeSession(
         },
         getWinAmount: () => winAmount,
         getSymbolsCombination: () => ({toMatrix: () => [[`round-${round}`]]}),
+        // The production session contract persists opaque feature state when
+        // it exposes it. Keep this fixture faithful so consecutive commands
+        // exercise reconstruction rather than an accidental live-cache-only
+        // round counter.
+        toSessionState: () => ({round}),
+        fromSessionState: (state: {round?: unknown}) => {
+            if (typeof state.round === "number") round = state.round;
+            return undefined;
+        },
     };
 }
 
@@ -455,6 +464,85 @@ describe("SpinCommandHandler", () => {
         expect(reconstructedPlayCalls).toBe(2);
         expect(staleLivePlayCalls).toBe(0);
         expect(roundsRemaining).toBe(1);
+    });
+
+    it("uses reconstructed state for the complete legacy/durable command matrix and never mutates rejected commands", async () => {
+        const betVariants: readonly (number | undefined)[] = [undefined, 5, 10];
+        const modeVariants: readonly (string | undefined)[] = [undefined, "base", "ante", "invalid"];
+        const persistenceVariants: readonly {readonly name: string; readonly state: PokieSessionState}[] = [
+            {name: "legacy", state: {bet: 5, win: 0}},
+            {name: "durable", state: {bet: 5, win: 0, context: {seed: "durable-context"}, featureState: {round: 0}}},
+        ];
+        const walletVariants: readonly {readonly name: string; readonly balance: number}[] = [
+            {name: "unchanged", balance: 100},
+            {name: "changed", balance: 90},
+        ];
+
+        for (const persistence of persistenceVariants) {
+            for (const closed of [false, true]) {
+                for (const requestedBet of betVariants) {
+                    for (const requestedMode of modeVariants) {
+                        for (const walletVariant of walletVariants) {
+                            const sessionRepository = new InMemorySessionRepository();
+                            const wallet = new RecordingTransactionalWallet();
+                            const reconstructed = {plays: 0};
+                            const stale = {plays: 0};
+                            const createSession = (counter: {plays: number}, canPlay: boolean): GameSessionHandling & BetModeSelecting & {getSymbolsCombination(): {toMatrix(): string[][]}} => {
+                                let credits = 0;
+                                let bet = 5;
+                                let mode = "base";
+                                return {
+                                    getCreditsAmount: () => credits,
+                                    setCreditsAmount: (value: number) => {
+                                        credits = value;
+                                    },
+                                    getBet: () => bet,
+                                    setBet: (value: number) => {
+                                        bet = value;
+                                    },
+                                    getAvailableBets: () => [5, 10],
+                                    canPlayNextGame: () => canPlay && credits >= bet,
+                                    play: () => {
+                                        counter.plays++;
+                                        credits -= bet;
+                                    },
+                                    getWinAmount: () => 0,
+                                    getSymbolsCombination: () => ({toMatrix: () => [[`reconstructed-${counter.plays}`]]}),
+                                    getBetModeId: () => mode,
+                                    getAvailableBetModeIds: () => ["base", "ante"],
+                                    setBetMode: (value: string) => {
+                                        mode = value;
+                                    },
+                                };
+                            };
+                            const game: PokieGame = {
+                                getManifest: () => manifest,
+                                createSession: () => createSession(reconstructed, !closed),
+                            };
+                            const sessionId = `${persistence.name}-${closed}-${requestedBet ?? "omitted"}-${requestedMode ?? "omitted"}-${walletVariant.name}`;
+                            const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+                            await sessionRepository.save(sessionId, persistence.state);
+                            await wallet.setBalance(sessionId, walletVariant.balance);
+                            handler.primeSession(sessionId, createSession(stale, true));
+
+                            const result = await handler.handle(sessionId, undefined, undefined, requestedBet, requestedMode);
+                            const rejected = closed || requestedMode === "invalid";
+                            expect(result.status).toBe(rejected ? "blocked" : "played");
+                            expect(stale.plays).toBe(0);
+                            if (rejected) {
+                                expect(reconstructed.plays).toBe(0);
+                                expect(wallet.debitCalls).toEqual([]);
+                                await expect(wallet.getBalance(sessionId)).resolves.toBe(walletVariant.balance);
+                                await expect(sessionRepository.load(sessionId)).resolves.toEqual(persistence.state);
+                            } else {
+                                expect(reconstructed.plays).toBe(1);
+                                await expect(wallet.getBalance(sessionId)).resolves.toBe(walletVariant.balance - (requestedBet ?? 5));
+                            }
+                        }
+                    }
+                }
+            }
+        }
     });
 
     it("replays a stored result for a repeated requestId instead of spinning again", async () => {
