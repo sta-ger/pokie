@@ -8,6 +8,7 @@ import {
     OutcomeLibraryBundleWriter,
     PokieGame,
     PokieGameManifest,
+    loadPokieGame,
     STUDIO_OPERATION,
     StakeEngineExportModeInput,
     StakeEngineExporter,
@@ -19,6 +20,7 @@ import {
     WinEvaluationResult,
 } from "pokie";
 import ExcelJS from "exceljs";
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -32,6 +34,20 @@ import {
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+function runtimeSnapshotsForPackage(packageName: string): string[] {
+    return fs
+        .readdirSync(os.tmpdir())
+        .filter((entry) => entry.startsWith("pokie-runtime-"))
+        .map((entry) => path.join(os.tmpdir(), entry))
+        .filter((root) => {
+            try {
+                return JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).name === packageName;
+            } catch {
+                return false;
+            }
+        });
+}
 
 function winEvaluationResultWithWin(): WinEvaluationResult<string> {
     const config = new VideoSlotConfig();
@@ -449,6 +465,37 @@ describe("StudioPlayService", () => {
         await expect(pending).resolves.toEqual({status: "failed", error: "Runtime preparation was cancelled before a runnable game was available."});
         expect(release).toHaveBeenCalledTimes(1);
         await expect(service.spin("old-session")).resolves.toEqual({status: "not-found"});
+    });
+
+    it("releases a real CJS runtime snapshot when abort wins immediately after loading", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-play-abort-"));
+        const packageRoot = path.join(workDir, "game");
+        const packageName = `studio-play-abort-${crypto.randomUUID()}`;
+        fs.cpSync(path.join(__dirname, "..", "..", "fixtures", "playable-game"), packageRoot, {
+            recursive: true,
+            filter: (source) => path.basename(source) !== ".pokie-runtime-cache",
+        });
+        fs.writeFileSync(
+            path.join(packageRoot, "package.json"),
+            JSON.stringify({name: packageName, version: "1.0.0", pokie: {entry: "./index.js"}}),
+        );
+        const controller = new AbortController();
+        const service = new StudioPlayService(async (root) => {
+            const game = await loadPokieGame(root);
+            controller.abort();
+            return game;
+        });
+
+        try {
+            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+            await expect(service.newSession(packageRoot, undefined, undefined, {signal: controller.signal})).resolves.toEqual({
+                status: "failed",
+                error: "Runtime preparation was cancelled before a runnable game was available.",
+            });
+            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("crosses the shared runtime-package-materialization boundary exactly once per newSession(), loading only the resolved runtime path", async () => {
