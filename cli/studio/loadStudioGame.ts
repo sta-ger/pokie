@@ -86,17 +86,17 @@ function loadCommonJsEntryWithStudioRuntime(entryPath: string, studioRequire: No
     // callback.  Use Node's ordinary loader and intercept only the one dependency Studio owns.
     // Evaluation of a CJS entry is synchronous, so this narrowly scoped hook cannot leak into a
     // later lazy import/resource call; those retain normal Node resolution from the loaded module.
-    const nodeModule = Module as unknown as { _resolveFilename: (request: string, parent: unknown, isMain: boolean, options?: unknown) => string };
-    const originalResolveFilename = nodeModule._resolveFilename;
+    const nodeModule = Module as object;
+    const originalResolveFilename = Reflect.get(nodeModule, "_resolveFilename") as (request: string, parent: unknown, isMain: boolean, options?: unknown) => string;
     const studioPokiePath = studioRequire.resolve("pokie");
     // Keep Node's real CJS module wrapper, cache, dynamic-import callback and require.resolve().
     // Only resolution of the missing runtime is substituted; every other package and relative
     // dependency follows the package's ordinary Node resolution graph.
-    nodeModule._resolveFilename = (request, parent, isMain, options) =>
-        request === "pokie" ? studioPokiePath : originalResolveFilename.call(nodeModule, request, parent, isMain, options);
+    Reflect.set(nodeModule, "_resolveFilename", (request: string, parent: unknown, isMain: boolean, options?: unknown) =>
+        request === "pokie" ? studioPokiePath : Reflect.apply(originalResolveFilename, nodeModule, [request, parent, isMain, options]));
     try {
         return projectRequire(entryPath) as Record<string, unknown>;
     } finally {
-        nodeModule._resolveFilename = originalResolveFilename;
+        Reflect.set(nodeModule, "_resolveFilename", originalResolveFilename);
     }
 }
