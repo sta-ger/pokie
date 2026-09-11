@@ -80,6 +80,31 @@ describe("loadPokieGame (real long-lived CJS runtime)", () => {
         }
     });
 
+    it("snapshots the canonical package root across a nested CommonJS module scope", () => {
+        const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-nested-cjs-root-"));
+        const packageRoot = path.join(workspaceRoot, "game");
+        const scriptPath = path.join(workspaceRoot, "load.cjs");
+        try {
+            fs.mkdirSync(path.join(packageRoot, "dist", "cjs"), {recursive: true});
+            fs.mkdirSync(path.join(packageRoot, "assets"), {recursive: true});
+            fs.mkdirSync(path.join(packageRoot, "node_modules", "local-dependency"), {recursive: true});
+            fs.mkdirSync(path.join(workspaceRoot, "node_modules", "ancestor-dependency"), {recursive: true});
+            fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "nested-cjs-root", version: "1.0.0", dependencies: {"local-dependency": "1.0.0", "ancestor-dependency": "1.0.0"}, pokie: {entry: "./dist/cjs/index.js"}}));
+            fs.writeFileSync(path.join(packageRoot, "dist", "cjs", "package.json"), JSON.stringify({type: "commonjs"}));
+            fs.writeFileSync(path.join(packageRoot, "assets", "model.json"), JSON.stringify({name: "root asset"}));
+            fs.writeFileSync(path.join(packageRoot, "node_modules", "local-dependency", "index.js"), "module.exports = 'local';\n");
+            fs.writeFileSync(path.join(workspaceRoot, "node_modules", "ancestor-dependency", "index.js"), "module.exports = 'ancestor';\n");
+            fs.writeFileSync(path.join(packageRoot, "dist", "cjs", "lazy.js"), "module.exports = 'lazy';\n");
+            fs.writeFileSync(path.join(packageRoot, "dist", "cjs", "index.js"), "const fs = require('fs'); const path = require('path'); const local = require('local-dependency'); const ancestor = require('ancestor-dependency'); module.exports = {getManifest() { return {id: 'nested-cjs-root', name: local + '-' + ancestor + '-' + JSON.parse(fs.readFileSync(path.join(__dirname, '../../assets/model.json'), 'utf8')).name, version: '1.0.0'}; }, createSession() { return {loadLazy: () => require('./lazy.js')}; }};\n");
+            fs.writeFileSync(scriptPath, "const {loadPokieGame, releasePokieGame} = require(process.argv[2]); (async () => { const game = await loadPokieGame(process.argv[3]); process.stdout.write(JSON.stringify([game.getManifest().name, game.createSession().loadLazy()])); await releasePokieGame(game); })().catch((error) => { console.error(error); process.exitCode = 1; });\n");
+
+            const output = execFileSync(process.execPath, [scriptPath, COMPILED_CJS_ENTRY, packageRoot], {encoding: "utf-8"});
+            expect(JSON.parse(output)).toEqual(["local-ancestor-root asset", "lazy"]);
+        } finally {
+            fs.rmSync(workspaceRoot, {recursive: true, force: true});
+        }
+    });
+
     it("binds an ancestor-less package to the embedding runtime installed at the process working directory", () => {
         const hostRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-host-fallback-"));
         const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-host-fallback-game-"));

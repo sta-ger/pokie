@@ -45,12 +45,12 @@ async function importPokieGameEntryModule(entryPath: string): Promise<Record<str
     }
 }
 
-function createRuntimeSnapshot(entryPath: string): {root: string; entryPath: string; release: () => Promise<void>} {
-    let packageRoot = path.dirname(entryPath);
-    while (path.dirname(packageRoot) !== packageRoot) {
-        if (fs.existsSync(path.join(packageRoot, "package.json"))) break;
-        packageRoot = path.dirname(packageRoot);
-    }
+function createRuntimeSnapshot(packageRoot: string, entryPath: string): {root: string; entryPath: string; release: () => Promise<void>} {
+    // `entryPath` may be inside a nested module-type scope (for example
+    // dist/cjs/package.json). That file controls how Node interprets modules,
+    // not what belongs to the game package. The resolver has already identified
+    // the canonical package root from its `pokie.entry`; snapshot that complete
+    // package so root assets and declared dependencies remain available.
     const relativeEntry = path.relative(packageRoot, entryPath);
     if (relativeEntry.startsWith(`..${path.sep}`) || path.isAbsolute(relativeEntry)) {
         throw new Error(`Could not locate package root for entry "${entryPath}".`);
@@ -235,7 +235,7 @@ export async function resolvePokieGameEntryModule(
     // immutable version.  Crucially, the snapshot is *not* removed after import: a game may read
     // model.json or lazily import/require a sibling while a session is still live.  Its owner gets
     // the release lease returned below.
-    const snapshot = createRuntimeSnapshot(entryPath);
+    const snapshot = createRuntimeSnapshot(packageRoot, entryPath);
     let entryModule: Record<string, unknown>;
     try {
         // A plain absolute path, not a file:// URL: TypeScript downlevels `import()` to
