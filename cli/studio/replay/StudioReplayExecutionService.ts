@@ -9,6 +9,7 @@ import {
     isWasmComponentFile,
     GameSessionHandling,
     loadPokieGame,
+    releasePokieGame,
     OUTCOME_SOURCE_REPLAY_OPERATION,
     OutcomeLibraryBundleOutcomeSource,
     OutcomeLibraryBundleReader,
@@ -272,117 +273,121 @@ export class StudioReplayExecutionService {
             return;
         }
 
-        if (record.abortController.signal.aborted) {
-            this.cancelRecord(record);
-            return;
-        }
-
-        record.status = "running";
-        const manifest = game.getManifest();
-        record.game = {id: manifest.id, name: manifest.name, version: manifest.version};
-        record.configHash = game.getConfigHash?.();
-
-        const context: PokieGameContext | undefined = record.seed === undefined ? undefined : {seed: record.seed};
-        // Minted here, at the exact moment the brand-new session is created -- never reused from
-        // `record.id` (the job id, minted in start() before this session exists at all). Two runs of
-        // the same seed/round each get their own sessionId, since each is a genuinely new session, not a
-        // lookup of a prior one -- this is what lets the UI show the real session identity instead of
-        // mislabeling the job id as one.
-        const sessionId = this.createId();
-        let session: GameSessionHandling;
-        let playerCredits: number;
         try {
-            session = game.createSession(context);
-            playerCredits = session.getCreditsAmount();
-            // A replay reconstructs a specific round, not risk of ruin — same reasoning as
-            // ReplayRecorder itself: a bankroll large enough that reaching `round` is never cut short
-            // by running out of credits mid-replay.
-            session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
-        } catch (error) {
-            this.fail(record, error);
-            return;
-        }
+            if (record.abortController.signal.aborted) {
+                this.cancelRecord(record);
+                return;
+            }
 
-        const serializer = resolveGameSessionSerializer(game);
-        // Best-effort: a throwing custom game/serializer must never fail the whole replay over a state
-        // snapshot — see captureStateSafely()'s own doc comment. Captured once, right after the session
-        // exists and before any round is played, so it's both this replay's "state before round 1" and
-        // the previousState every later captureRoundPokieSessionState call carries initialPayload/
-        // initialDebugPayload forward from (see that function's own doc comment for why).
-        const initialState = this.captureStateSafely(() => captureInitialPokieSessionState(context, session, serializer));
+            record.status = "running";
+            const manifest = game.getManifest();
+            record.game = {id: manifest.id, name: manifest.name, version: manifest.version};
+            record.configHash = game.getConfigHash?.();
 
-        let totalBet = 0;
-        let totalWin = 0;
-        let roundsRemaining = record.round;
-        let stateBeforeFinal: PokieSessionState | undefined;
-        let stateAfterFinal: PokieSessionState | undefined;
+            const context: PokieGameContext | undefined = record.seed === undefined ? undefined : {seed: record.seed};
+            // Minted here, at the exact moment the brand-new session is created -- never reused from
+            // `record.id` (the job id, minted in start() before this session exists at all). Two runs of
+            // the same seed/round each get their own sessionId, since each is a genuinely new session, not a
+            // lookup of a prior one -- this is what lets the UI show the real session identity instead of
+            // mislabeling the job id as one.
+            const sessionId = this.createId();
+            let session: GameSessionHandling;
+            let playerCredits: number;
+            try {
+                session = game.createSession(context);
+                playerCredits = session.getCreditsAmount();
+                // A replay reconstructs a specific round, not risk of ruin — same reasoning as
+                // ReplayRecorder itself: a bankroll large enough that reaching `round` is never cut short
+                // by running out of credits mid-replay.
+                session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+            } catch (error) {
+                this.fail(record, error);
+                return;
+            }
 
-        try {
-            while (roundsRemaining > 0) {
-                if (record.abortController.signal.aborted) {
-                    this.cancelRecord(record);
-                    return;
-                }
+            const serializer = resolveGameSessionSerializer(game);
+            // Best-effort: a throwing custom game/serializer must never fail the whole replay over a state
+            // snapshot — see captureStateSafely()'s own doc comment. Captured once, right after the session
+            // exists and before any round is played, so it's both this replay's "state before round 1" and
+            // the previousState every later captureRoundPokieSessionState call carries initialPayload/
+            // initialDebugPayload forward from (see that function's own doc comment for why).
+            const initialState = this.captureStateSafely(() => captureInitialPokieSessionState(context, session, serializer));
 
-                const chunkRounds = Math.min(this.chunkSize, roundsRemaining);
-                for (let played = 0; played < chunkRounds; played++) {
-                    const actualRound = record.completedRounds + played;
-                    if (!session.canPlayNextGame()) {
-                        this.fail(record, new Error(`Replay target round ${record.round} is unreachable: session stopped after ${actualRound} round(s).`));
+            let totalBet = 0;
+            let totalWin = 0;
+            let roundsRemaining = record.round;
+            let stateBeforeFinal: PokieSessionState | undefined;
+            let stateAfterFinal: PokieSessionState | undefined;
+
+            try {
+                while (roundsRemaining > 0) {
+                    if (record.abortController.signal.aborted) {
+                        this.cancelRecord(record);
                         return;
                     }
-                    // True exactly once across the whole replay, on the very last play() call overall,
-                    // regardless of chunking -- snapshotting every round would be wasted work for a
-                    // `round` that can be up to 100000 (see validateReplayRequest), when only the target
-                    // round's own before/after state is ever shown.
-                    const isFinalPlay = roundsRemaining - played === 1;
-                    if (isFinalPlay) {
-                        stateBeforeFinal = this.captureBoundaryState(record.round === 1, context, session, initialState, serializer);
+
+                    const chunkRounds = Math.min(this.chunkSize, roundsRemaining);
+                    for (let played = 0; played < chunkRounds; played++) {
+                        const actualRound = record.completedRounds + played;
+                        if (!session.canPlayNextGame()) {
+                            this.fail(record, new Error(`Replay target round ${record.round} is unreachable: session stopped after ${actualRound} round(s).`));
+                            return;
+                        }
+                        // True exactly once across the whole replay, on the very last play() call overall,
+                        // regardless of chunking -- snapshotting every round would be wasted work for a
+                        // `round` that can be up to 100000 (see validateReplayRequest), when only the target
+                        // round's own before/after state is ever shown.
+                        const isFinalPlay = roundsRemaining - played === 1;
+                        if (isFinalPlay) {
+                            stateBeforeFinal = this.captureBoundaryState(record.round === 1, context, session, initialState, serializer);
+                        }
+
+                        const stake = determineStakeAmount(session, session.getBet());
+                        totalBet += stake;
+                        session.play();
+                        totalWin += session.getWinAmount();
+                        playerCredits = playerCredits - stake + session.getWinAmount();
+
+                        if (isFinalPlay) {
+                            stateAfterFinal = this.captureBoundaryState(false, context, session, initialState, serializer);
+                        }
                     }
 
-                    const stake = determineStakeAmount(session, session.getBet());
-                    totalBet += stake;
-                    session.play();
-                    totalWin += session.getWinAmount();
-                    playerCredits = playerCredits - stake + session.getWinAmount();
-
-                    if (isFinalPlay) {
-                        stateAfterFinal = this.captureBoundaryState(false, context, session, initialState, serializer);
+                    record.completedRounds += chunkRounds;
+                    record.durationMs = this.now() - record.startedAt;
+                    roundsRemaining -= chunkRounds;
+                    if (roundsRemaining > 0) {
+                        await this.yieldToEventLoop();
                     }
                 }
-
-                record.completedRounds += chunkRounds;
-                record.durationMs = this.now() - record.startedAt;
-                roundsRemaining -= chunkRounds;
-                if (roundsRemaining > 0) {
-                    await this.yieldToEventLoop();
-                }
+            } catch (error) {
+                this.fail(record, error);
+                return;
             }
-        } catch (error) {
-            this.fail(record, error);
-            return;
+
+            const descriptor: ReplayDescriptor = {
+                sessionId,
+                game: record.game,
+                seed: record.seed ?? null,
+                round: record.round,
+                totalBet,
+                totalWin,
+                credits: playerCredits,
+                screen: captureScreen(session),
+                timestamp: record.startedAt,
+                durationMs: record.durationMs,
+                artifact: this.buildArtifact(session, manifest, record, this.mergeDebugPayloads(stateAfterFinal)),
+                ...(stateBeforeFinal !== undefined ? {stateBefore: this.toPublicSessionState(stateBeforeFinal)} : {}),
+                ...(stateAfterFinal !== undefined ? {stateAfter: this.toPublicSessionState(stateAfterFinal)} : {}),
+            };
+
+            record.status = "completed";
+            record.descriptor = descriptor;
+            this.markTerminal(record);
+            this.onCompleted(record);
+        } finally {
+            await releasePokieGame(game).catch(() => undefined);
         }
-
-        const descriptor: ReplayDescriptor = {
-            sessionId,
-            game: record.game,
-            seed: record.seed ?? null,
-            round: record.round,
-            totalBet,
-            totalWin,
-            credits: playerCredits,
-            screen: captureScreen(session),
-            timestamp: record.startedAt,
-            durationMs: record.durationMs,
-            artifact: this.buildArtifact(session, manifest, record, this.mergeDebugPayloads(stateAfterFinal)),
-            ...(stateBeforeFinal !== undefined ? {stateBefore: this.toPublicSessionState(stateBeforeFinal)} : {}),
-            ...(stateAfterFinal !== undefined ? {stateAfter: this.toPublicSessionState(stateAfterFinal)} : {}),
-        };
-
-        record.status = "completed";
-        record.descriptor = descriptor;
-        this.markTerminal(record);
-        this.onCompleted(record);
     }
 
     // The "outcomeLibrary"/"stakeAdapter" counterpart to run() above -- reached only when start() was

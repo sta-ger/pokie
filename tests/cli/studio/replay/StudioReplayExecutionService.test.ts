@@ -232,6 +232,19 @@ function flushMacrotask(): Promise<void> {
     });
 }
 
+function runtimeSnapshotsForPackage(packageName: string): string[] {
+    return fs.readdirSync(os.tmpdir())
+        .filter((entry) => entry.startsWith("pokie-runtime-"))
+        .map((entry) => path.join(os.tmpdir(), entry))
+        .filter((root) => {
+            try {
+                return JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf-8")).name === packageName;
+            } catch {
+                return false;
+            }
+        });
+}
+
 async function waitForTerminal(service: StudioReplayExecutionService, projectRoot: string, id: string): Promise<StudioReplayJobView> {
     for (let i = 0; i < 2000; i++) {
         const job = service.getStatus(projectRoot, id);
@@ -1280,6 +1293,31 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
         expect(second.descriptor?.totalBet).toBe(first.descriptor?.totalBet);
         expect(second.descriptor?.totalWin).toBe(first.descriptor?.totalWin);
         expect(second.descriptor?.screen).toEqual(first.descriptor?.screen);
+    });
+
+    it("releases each real runtime snapshot after repeated replay jobs", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-replay-runtime-lease-"));
+        const packageRoot = path.join(workDir, "game");
+        const packageName = "studio-replay-runtime-lease-fixture";
+        fs.cpSync(fixtureRoot, packageRoot, {recursive: true, filter: (source) => path.basename(source) !== ".pokie-runtime-cache"});
+        fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({
+            name: packageName,
+            version: "1.0.0",
+            pokie: {entry: "./index.js"},
+        }));
+        const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), loadPokieGame);
+
+        try {
+            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+            for (const seed of ["first", "second", "third"]) {
+                const started = service.start(packageRoot, {round: 2, seed});
+                if (started.status !== "created") throw new Error("expected replay job to be created");
+                await expect(waitForTerminal(service, packageRoot, started.job.id)).resolves.toMatchObject({status: "completed"});
+                expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+            }
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("produces exactly the same descriptor ReplayRecorder itself would, chunked or not", async () => {
