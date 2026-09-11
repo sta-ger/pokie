@@ -1,6 +1,6 @@
 import {loadPokieGame, PokieGamePackageValidator, resolvePokieGameEntryModule, type PokieGameEntryModuleLoading} from "pokie";
 import fs from "fs";
-import Module, {createRequire} from "module";
+import {createRequire} from "module";
 import path from "path";
 
 type DynamicModuleImporting = (entryPath: string) => Promise<Record<string, unknown>>;
@@ -22,13 +22,6 @@ export function createStudioEntryModuleLoader(
 ): PokieGameEntryModuleLoading {
     const studioRequire = createRequire(path.join(pokiePackageRoot, "package.json"));
     return async (entryPath) => {
-        // A CJS game is deliberately evaluated with Studio's runtime injection even if a parent
-        // test/workspace happens to expose a transient `node_modules/pokie`. That keeps the
-        // no-local-dependency Studio contract deterministic and avoids an accidental dependency
-        // lookup choosing a different runtime than the one Studio itself is serving.
-        if (dynamicImport === importEntryModule && isCommonJsEntry(entryPath)) {
-            return loadCommonJsEntryWithStudioRuntime(entryPath, studioRequire);
-        }
         try {
             return await dynamicImport(entryPath);
         } catch (error) {
@@ -38,26 +31,6 @@ export function createStudioEntryModuleLoader(
             return loadCommonJsEntryWithStudioRuntime(entryPath, studioRequire);
         }
     };
-}
-
-function isCommonJsEntry(entryPath: string): boolean {
-    const extension = path.extname(entryPath).toLowerCase();
-    if (extension === ".cjs") return true;
-    if (extension === ".mjs") return false;
-
-    let packageRoot = path.dirname(entryPath);
-    while (path.dirname(packageRoot) !== packageRoot) {
-        const packageJson = path.join(packageRoot, "package.json");
-        if (fs.existsSync(packageJson)) {
-            try {
-                return JSON.parse(fs.readFileSync(packageJson, "utf-8")).type !== "module";
-            } catch {
-                return true;
-            }
-        }
-        packageRoot = path.dirname(packageRoot);
-    }
-    return true;
 }
 
 export function createStudioGameLoader(pokiePackageRoot: string): typeof loadPokieGame {
@@ -80,23 +53,17 @@ function isMissingPokieRuntime(error: unknown): boolean {
 }
 
 function loadCommonJsEntryWithStudioRuntime(entryPath: string, studioRequire: NodeJS.Require): Record<string, unknown> {
-    const projectRequire = createRequire(entryPath);
-    // Do not evaluate user CJS in a hand-written vm wrapper.  Besides being subtly different from
-    // Node's module wrapper, that loses require.resolve and leaves dynamic import() without Node's
-    // callback.  Use Node's ordinary loader and intercept only the one dependency Studio owns.
-    // Evaluation of a CJS entry is synchronous, so this narrowly scoped hook cannot leak into a
-    // later lazy import/resource call; those retain normal Node resolution from the loaded module.
-    const nodeModule = Module as object;
-    const originalResolveFilename = Reflect.get(nodeModule, "_resolveFilename") as (request: string, parent: unknown, isMain: boolean, options?: unknown) => string;
-    const studioPokiePath = studioRequire.resolve("pokie");
-    // Keep Node's real CJS module wrapper, cache, dynamic-import callback and require.resolve().
-    // Only resolution of the missing runtime is substituted; every other package and relative
-    // dependency follows the package's ordinary Node resolution graph.
-    Reflect.set(nodeModule, "_resolveFilename", (request: string, parent: unknown, isMain: boolean, options?: unknown) =>
-        request === "pokie" ? studioPokiePath : Reflect.apply(originalResolveFilename, nodeModule, [request, parent, isMain, options]));
-    try {
-        return projectRequire(entryPath) as Record<string, unknown>;
-    } finally {
-        Reflect.set(nodeModule, "_resolveFilename", originalResolveFilename);
+    let packageRoot = path.dirname(entryPath);
+    while (!fs.existsSync(path.join(packageRoot, "package.json")) && path.dirname(packageRoot) !== packageRoot) {
+        packageRoot = path.dirname(packageRoot);
     }
+    const dependencies = path.join(packageRoot, "node_modules");
+    const injectedRuntime = path.join(dependencies, "pokie");
+    if (!fs.existsSync(injectedRuntime)) {
+        fs.mkdirSync(dependencies, {recursive: true});
+        // The Studio runtime itself is a normal package directory. Linking it into the disposable
+        // snapshot lets Node supply its own CJS wrapper, require.resolve and import callback.
+        fs.symlinkSync(path.dirname(studioRequire.resolve("pokie")), injectedRuntime, process.platform === "win32" ? "junction" : "dir");
+    }
+    return createRequire(entryPath)(entryPath) as Record<string, unknown>;
 }
