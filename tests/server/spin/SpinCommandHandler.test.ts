@@ -427,7 +427,7 @@ describe("SpinCommandHandler", () => {
         await expect(sessionRepository.load("session-1")).resolves.toMatchObject({bet: 5, win: 0});
     });
 
-    it("never executes a stale cached legacy session after guarding a reconstruction", async () => {
+    it("keeps a finite live session continuous while scratch validation remains side-effect free", async () => {
         let credits = 100;
         let roundsRemaining = 1;
         let staleLivePlayCalls = 0;
@@ -450,8 +450,8 @@ describe("SpinCommandHandler", () => {
         };
         const game: PokieGame = {
             getManifest: () => manifest,
-            // The stale cached object deliberately differs from a reconstruction.  The command
-            // must guard and execute the latter, not approve one then replay the former's round.
+            // The reconstruction is deliberately incapable of carrying the finite live state.
+            // It must validate only; executing it would reset the one-round stream on every command.
             createSession: () => ({...live, canPlayNextGame: () => true, play: () => {
                 reconstructedPlayCalls++;
             }}),
@@ -464,10 +464,10 @@ describe("SpinCommandHandler", () => {
         handler.primeSession("legacy", live);
 
         expect((await handler.handle("legacy")).status).toBe("played");
-        expect((await handler.handle("legacy", undefined, undefined, 5)).status).toBe("played");
-        expect(reconstructedPlayCalls).toBe(2);
-        expect(staleLivePlayCalls).toBe(0);
-        expect(roundsRemaining).toBe(1);
+        expect((await handler.handle("legacy", undefined, undefined, 5)).status).toBe("blocked");
+        expect(reconstructedPlayCalls).toBe(0);
+        expect(staleLivePlayCalls).toBe(1);
+        expect(roundsRemaining).toBe(0);
     });
 
     it("uses reconstructed state for the complete legacy/durable command matrix and never mutates rejected commands", async () => {
@@ -532,14 +532,15 @@ describe("SpinCommandHandler", () => {
                             const result = await handler.handle(sessionId, undefined, undefined, requestedBet, requestedMode);
                             const rejected = closed || requestedMode === "invalid";
                             expect(result.status).toBe(rejected ? "blocked" : "played");
-                            expect(stale.plays).toBe(0);
                             if (rejected) {
+                                expect(stale.plays).toBe(0);
                                 expect(reconstructed.plays).toBe(0);
                                 expect(wallet.debitCalls).toEqual([]);
                                 await expect(wallet.getBalance(sessionId)).resolves.toBe(walletVariant.balance);
                                 await expect(sessionRepository.load(sessionId)).resolves.toEqual(persistence.state);
                             } else {
-                                expect(reconstructed.plays).toBe(1);
+                                expect(reconstructed.plays).toBe(0);
+                                expect(stale.plays).toBe(1);
                                 await expect(wallet.getBalance(sessionId)).resolves.toBe(walletVariant.balance - (requestedBet ?? 5));
                             }
                         }

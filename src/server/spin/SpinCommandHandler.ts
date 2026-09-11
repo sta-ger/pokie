@@ -387,12 +387,12 @@ export class SpinCommandHandler implements SpinCommandHandling {
         const balanceBeforePlay = await this.wallet.getBalance(sessionId);
         validationSession.setCreditsAmount(balanceBeforePlay);
 
-        // The reconstructed session is the authoritative command state.  It is deliberately the
-        // same object that is guarded and then played below.  A cached legacy session may contain
-        // state the old partial persistence format cannot represent, but using it after approving
-        // a reconstruction made one command validate one round and execute another (notably after
-        // an explicit bet/mode or a wallet change).  A cache is therefore only a presentation
-        // reference, never an alternate execution authority.
+        // The scratch reconstruction owns validation only.  Once it has accepted the command, an
+        // already-live session is the executable authority: it can carry finite-round progress,
+        // feature state, and RNG state that an older/partial persistence record cannot represent.
+        // Executing the reconstruction unconditionally reset that state on every command.  Nothing
+        // below mutates the live instance until the scratch path (including the wallet-backed guard)
+        // has accepted the command, so rejected commands remain side-effect free.
         if (!validationSession.canPlayNextGame()) {
             return {
                 status: "blocked",
@@ -401,7 +401,28 @@ export class SpinCommandHandler implements SpinCommandHandling {
             };
         }
 
-        const session = validationSession;
+        const session = this.liveSessions.get(sessionId) ?? validationSession;
+        // A live session may have exhausted a finite feature/round stream while an old partial
+        // snapshot still looks playable. Check it before applying the validated command settings;
+        // this is the only additional guard needed to avoid reviving a completed live session.
+        const liveCreditsBeforeCommand = session !== validationSession ? session.getCreditsAmount() : undefined;
+        session.setCreditsAmount(balanceBeforePlay);
+        if (session !== validationSession && !session.canPlayNextGame()) {
+            // Revert the one temporary balance synchronization used for this guard. The rejected
+            // command must leave even a live-only session exactly as it was.
+            session.setCreditsAmount(liveCreditsBeforeCommand!);
+            return {
+                status: "blocked",
+                sessionId,
+                reason: `Session "${sessionId}" cannot play the next round (the live session is complete).`,
+            };
+        }
+        if (bet !== undefined) {
+            session.setBet(bet);
+        }
+        if (mode !== undefined && supportsBetModeSelecting(session)) {
+            session.setBetMode(mode);
+        }
         this.liveSessions.set(sessionId, session);
 
         return this.playAndSettle(sessionId, session, state, version, balanceBeforePlay, requestId);
