@@ -444,19 +444,25 @@ export class StudioOutcomeLibraryGenerateService {
         const snapshot = request.preflightToken === undefined ? undefined : this.preflightSnapshots.get(request.preflightToken);
         if (request.preflightToken !== undefined && snapshot === undefined) return {status: "conflict", error: "The displayed generation preflight has expired. Refresh it before generating.", plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         let game: PokieGame;
+        let ownsGameLease = false;
         let domainRequest: OutcomeLibraryGenerationRequest;
         let preparedRequest;
         try {
             if (snapshot?.plan.source.kind === "blueprint") {
-                game = snapshot.validatedGame === undefined
-                    ? await this.loadBoundManagedBlueprint(snapshot)
-                    : this.rebindManagedBlueprintRuntime(snapshot);
+                if (snapshot.validatedGame === undefined) {
+                    game = await this.loadBoundManagedBlueprint(snapshot);
+                    ownsGameLease = true;
+                } else {
+                    game = this.rebindManagedBlueprintRuntime(snapshot);
+                }
             } else {
                 game = await this.loadGame(this.runtimeSourcePath(projectRoot));
+                ownsGameLease = true;
             }
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
+        try {
         try {
             domainRequest = this.createDomainRequest(game, request, outDirRelative, projectRoot);
             domainRequest = {
@@ -742,6 +748,9 @@ export class StudioOutcomeLibraryGenerateService {
                     : {status: "generation-error", code: error.getCode(), error: error.message, plan};
             }
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan};
+        }
+        } finally {
+            if (ownsGameLease) await releasePokieGame(game).catch(() => undefined);
         }
     }
 

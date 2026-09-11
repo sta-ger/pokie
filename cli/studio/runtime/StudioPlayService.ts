@@ -229,7 +229,14 @@ export class StudioPlayService {
             try {
                 assertCurrent();
                 game = await this.loadGame(resolution.runtimePath);
-                assertCurrent();
+                try {
+                    assertCurrent();
+                } catch (error) {
+                    // loadGame has already transferred an isolated runtime lease to this call,
+                    // but cancellation won before it could be installed as the active session.
+                    await releasePokieGame(game).catch(() => undefined);
+                    throw error;
+                }
             } finally {
                 await resolution.release();
             }
