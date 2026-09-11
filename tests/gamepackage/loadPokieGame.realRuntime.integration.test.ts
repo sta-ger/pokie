@@ -105,6 +105,36 @@ describe("loadPokieGame (real long-lived CJS runtime)", () => {
         }
     });
 
+    it("snapshots the canonical package root across a nested ESM module scope", () => {
+        const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-nested-esm-root-"));
+        const packageRoot = path.join(workspaceRoot, "game");
+        const scriptPath = path.join(workspaceRoot, "load.cjs");
+        try {
+            fs.mkdirSync(path.join(packageRoot, "dist", "esm"), {recursive: true});
+            fs.mkdirSync(path.join(packageRoot, "assets"), {recursive: true});
+            fs.mkdirSync(path.join(packageRoot, "node_modules", "local-dependency"), {recursive: true});
+            fs.mkdirSync(path.join(workspaceRoot, "node_modules", "ancestor-dependency"), {recursive: true});
+            fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "nested-esm-root", version: "1.0.0", type: "module", dependencies: {"local-dependency": "1.0.0", "ancestor-dependency": "1.0.0"}, pokie: {entry: "./dist/esm/index.js"}}));
+            fs.writeFileSync(path.join(packageRoot, "dist", "esm", "package.json"), JSON.stringify({type: "module"}));
+            fs.writeFileSync(path.join(packageRoot, "assets", "model.json"), JSON.stringify({name: "root asset"}));
+            fs.writeFileSync(path.join(packageRoot, "node_modules", "local-dependency", "package.json"), JSON.stringify({type: "module"}));
+            fs.writeFileSync(path.join(packageRoot, "node_modules", "local-dependency", "index.js"), "export default 'local';\n");
+            fs.writeFileSync(path.join(workspaceRoot, "node_modules", "ancestor-dependency", "package.json"), JSON.stringify({type: "module"}));
+            fs.writeFileSync(path.join(workspaceRoot, "node_modules", "ancestor-dependency", "index.js"), "export default 'ancestor';\n");
+            fs.writeFileSync(path.join(packageRoot, "dist", "esm", "lazy.js"), "export default 'lazy';\n");
+            fs.writeFileSync(
+                path.join(packageRoot, "dist", "esm", "index.js"),
+                "import fs from 'fs'; import path from 'path'; import {fileURLToPath} from 'url'; import local from 'local-dependency'; import ancestor from 'ancestor-dependency'; const here = path.dirname(fileURLToPath(import.meta.url)); export default {getManifest() { return {id: 'nested-esm-root', name: local + '-' + ancestor + '-' + JSON.parse(fs.readFileSync(path.join(here, '../../assets/model.json'), 'utf8')).name, version: '1.0.0'}; }, createSession() { return {loadLazy: async () => (await import('./lazy.js')).default}; }};\n",
+            );
+            fs.writeFileSync(scriptPath, "const {loadPokieGame, releasePokieGame} = require(process.argv[2]); (async () => { const game = await loadPokieGame(process.argv[3]); process.stdout.write(JSON.stringify([game.getManifest().name, await game.createSession().loadLazy()])); await releasePokieGame(game); })().catch((error) => { console.error(error); process.exitCode = 1; });\n");
+
+            const output = execFileSync(process.execPath, [scriptPath, COMPILED_CJS_ENTRY, packageRoot], {encoding: "utf-8"});
+            expect(JSON.parse(output)).toEqual(["local-ancestor-root asset", "lazy"]);
+        } finally {
+            fs.rmSync(workspaceRoot, {recursive: true, force: true});
+        }
+    });
+
     it("binds an ancestor-less package to the embedding runtime installed at the process working directory", () => {
         const hostRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-host-fallback-"));
         const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-host-fallback-game-"));

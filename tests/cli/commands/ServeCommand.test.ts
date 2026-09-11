@@ -21,6 +21,7 @@ import {
 import ExcelJS from "exceljs";
 import crypto from "crypto";
 import fs from "fs";
+import http from "http";
 import os from "os";
 import path from "path";
 import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
@@ -149,6 +150,87 @@ describe("ServeCommand", () => {
             expect(fakeProcess.exitCalls).toEqual([0]);
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
         } finally {
+            logSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("drains an accepted real POST body before releasing the package snapshot on SIGTERM", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-serve-drain-runtime-"));
+        const packageRoot = path.join(workDir, "game");
+        const packageName = `serve-drain-runtime-${crypto.randomUUID()}`;
+        fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game"), packageRoot, {
+            recursive: true,
+            filter: (source) => path.basename(source) !== ".pokie-runtime-cache",
+        });
+        fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: packageName, version: "1.0.0", pokie: {entry: "./index.js"}}));
+        const fakeProcess = new FakeProcess();
+        let address: PokieDevServerAddress | undefined;
+        let realServer: PokieDevServer | undefined;
+        const command = new ServeCommand(
+            loadPokieGame,
+            (game, options) => {
+                realServer = new PokieDevServer(game, options);
+                return {
+                    start: async () => {
+                        address = await realServer!.start();
+                        return address;
+                    },
+                    stop: () => realServer!.stop(),
+                };
+            },
+            passthroughRuntimePackageResolver,
+            new ProjectTargetResolver(),
+            undefined,
+            fakeProcess as unknown as NodeJS.Process,
+        );
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await command.run([packageRoot, "--port", "0"]);
+            if (address === undefined) throw new Error("Expected the real dev server to start.");
+            const body = JSON.stringify({seed: "drain-before-release"});
+            const accepted = new Promise<void>((resolve) => {
+                // `request` fires immediately after Node accepts headers, before
+                // readSeedContext can finish the deliberately incomplete body.
+                (realServer as unknown as {server: http.Server}).server.once("request", () => resolve());
+            });
+            let resolveResponse: (value: {status: number; body: unknown}) => void;
+            let rejectResponse: (reason: unknown) => void;
+            const response = new Promise<{status: number; body: unknown}>((resolve, reject) => {
+                resolveResponse = resolve;
+                rejectResponse = reject;
+            });
+            const request = http.request({
+                host: "127.0.0.1",
+                port: address.port,
+                method: "POST",
+                path: "/sessions",
+                agent: false,
+                headers: {"Content-Type": "application/json", "Content-Length": Buffer.byteLength(body), Connection: "close"},
+            }, (res) => {
+                const chunks: Buffer[] = [];
+                res.on("data", (chunk: Buffer) => chunks.push(chunk));
+                res.on("end", () => resolveResponse!({status: res.statusCode ?? 0, body: JSON.parse(Buffer.concat(chunks).toString("utf8"))}));
+            });
+            request.once("error", (error) => rejectResponse!(error));
+            request.write(body.slice(0, 1));
+            await accepted;
+            fakeProcess.trigger("SIGTERM");
+            // The listener is now closed to new work but this request was
+            // accepted already. It must finish against the live snapshot
+            // before ServeCommand releases that snapshot.
+            request.end(body.slice(1));
+
+            await expect(response).resolves.toMatchObject({status: 201, body: {sessionId: expect.any(String)}});
+            for (let tick = 0; tick < 50 && fakeProcess.exitCalls.length === 0; tick++) {
+                await new Promise<void>((resolve) => setTimeout(resolve, 10));
+            }
+            expect(fakeProcess.exitCalls).toEqual([0]);
+            expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+        } finally {
+            // If an assertion above interrupted the normal signal path, make
+            // the concrete listener safe to remove before deleting its input.
+            if (realServer !== undefined) await realServer.stop().catch(() => undefined);
             logSpy.mockRestore();
             fs.rmSync(workDir, {recursive: true, force: true});
         }

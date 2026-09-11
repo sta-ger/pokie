@@ -35,7 +35,7 @@ import {
 import ExcelJS from "exceljs";
 import crypto from "crypto";
 import fs from "fs";
-import type {IncomingMessage} from "http";
+import http, {type IncomingMessage} from "http";
 import os from "os";
 import path from "path";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
@@ -971,6 +971,40 @@ describe("StudioServer", () => {
         expect(response.status).toBe(403);
         await expect(response.json()).resolves.toEqual({error: "Studio API requests must come from the same Studio origin."});
         expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("accepts the real bracketed IPv6 loopback origin, while rejecting a mutually forged hostile Host and Origin", async () => {
+        const ipv6Server = new StudioServer({
+            pokieVersion: "1.0.0",
+            host: "::1",
+            port: 0,
+            studioRoot,
+            homeService: new StudioHomeService("1.0.0", undefined, loadGame),
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadGame)),
+            loadGame,
+        });
+        try {
+            const address = await ipv6Server.start();
+            const authority = `[::1]:${address.port}`;
+            const request = (host: string, origin: string): Promise<{status: number; body: unknown}> =>
+                new Promise((resolve, reject) => {
+                    const req = http.request({host: "::1", port: address.port, path: "/api/health", headers: {Host: host, Origin: origin}}, (res) => {
+                        const chunks: Buffer[] = [];
+                        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+                        res.on("end", () => resolve({status: res.statusCode ?? 0, body: JSON.parse(Buffer.concat(chunks).toString("utf8"))}));
+                    });
+                    req.once("error", reject);
+                    req.end();
+                });
+
+            await expect(request(authority, `http://${authority}`)).resolves.toEqual({status: 200, body: {status: "ok"}});
+            await expect(request("attacker.invalid", "http://attacker.invalid")).resolves.toEqual({
+                status: 403,
+                body: {error: "Remote Studio API writes require an explicitly trusted Studio origin."},
+            });
+        } finally {
+            await ipv6Server.stop();
+        }
     });
 
     it("returns explicit HTTP errors for invalid JSON content type, syntax, and an oversized body", async () => {
