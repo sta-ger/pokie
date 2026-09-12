@@ -326,8 +326,8 @@ describe("StudioOutcomeLibraryGenerateService", () => {
 
             expect(estimate).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
             expect(generated).toMatchObject({status: "ok", plan: plannedOutcomeLibrary});
-            expect(planning.prepare).toHaveBeenNthCalledWith(1, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact", allowManagedOutcomeWithinSource: true});
-            expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact", allowManagedOutcomeWithinSource: true});
+            expect(planning.prepare).toHaveBeenNthCalledWith(1, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact", allowManagedOutcomeWithinSource: true, allowVerifiedOutcomeBundleUpdate: false});
+            expect(planning.prepare).toHaveBeenNthCalledWith(2, projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact", allowManagedOutcomeWithinSource: true, allowVerifiedOutcomeBundleUpdate: false});
         });
 
         it("publishes a managed Blueprint retry when cancellation recovery's destination probe cannot re-recognize the source", async () => {
@@ -644,7 +644,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
 
             await svc.generate(projectRoot, {bounded: {sampleSize: BigInt(2), seed: "fixture-seed"}});
 
-            expect(planning.prepare).toHaveBeenCalledWith(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact", allowManagedOutcomeWithinSource: true});
+            expect(planning.prepare).toHaveBeenCalledWith(projectRoot, "outcomeLibrary", path.join(projectRoot, "outcomelibrary"), {generationSemantics: "exact", allowManagedOutcomeWithinSource: true, allowVerifiedOutcomeBundleUpdate: false});
         });
 
         it("reports the exact strategy for a small fixture game", async () => {

@@ -2615,11 +2615,24 @@ const server = new PokieDevServer(game, {
 
 A live `GameSessionHandling` object is still needed to actually run `play()` — this is kept in a process-local
 cache owned by `SpinCommandHandler` (see below), separate from `SessionRepository`. `PokieDevServer` primes it
-with the freshly constructed session on every `POST /sessions`. On a cache miss (e.g. right after a restart), it
-reconstructs one via `game.createSession(state.context)` plus `state.bet`, then restores `state.featureState`
-onto it via `fromSessionState()` if the game implements `BuildableFromSessionState`, before spinning. Anything not
-covered by bet/win/screen/featureState — RNG stream position, for instance — still starts fresh in that case,
-same caveat as `--seed` reproducibility elsewhere in this CLI.
+only **after** the freshly created session record commits, and binds that object to the committed version. A cache
+entry is never run against a later version written by another handler: a `durably-restorable` record is rebuilt via
+`game.createSession(state.context)` plus its complete `toSessionState()`/`fromSessionState()` payload; a `live-only`
+record is blocked explicitly rather than silently restarting its RNG, finite-round progress, or feature stream.
+
+`executionState` is stamped on every new capture. Games which implement both state-conversion methods are
+`durably-restorable`; games without that round trip are `live-only` and can continue only while their version-bound
+live object remains in this process. Records written before this marker retain the historical best-effort
+reconstruction behavior for compatibility, so migrations should save a new session before relying on restart
+continuation.
+
+The spin command is applied to the same executable object that will play. Before `play()`, the handler temporarily
+projects wallet credits, optional `bet`, and optional `mode` onto that object, evaluates `canPlayNextGame()`, and
+rolls all three setters back if the command is rejected or a later setter fails. Session implementations exposed to
+this API must make these ordinary setters reversible; if rollback itself fails, the handler evicts the object and
+reports the command as blocked rather than persisting or reusing uncertain state. This makes a zero-stake free
+continuation valid at zero balance while still preventing a rejected bet/mode request from poisoning the next
+omitted-bet spin.
 
 ### Optimistic locking (session versioning)
 

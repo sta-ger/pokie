@@ -486,13 +486,101 @@ describe("SpinCommandHandler", () => {
         const handler = new SpinCommandHandler(game, sessionRepository, wallet);
         await sessionRepository.save("legacy", {bet: 5, win: 0});
         await wallet.setBalance("legacy", 100);
-        handler.primeSession("legacy", live);
+        handler.primeSession("legacy", live, (await sessionRepository.loadVersioned("legacy"))?.version);
 
         expect((await handler.handle("legacy")).status).toBe("played");
         expect((await handler.handle("legacy", undefined, undefined, 5)).status).toBe("blocked");
         expect(reconstructedPlayCalls).toBe(0);
         expect(staleLivePlayCalls).toBe(1);
         expect(roundsRemaining).toBe(0);
+    });
+
+    it("checks an affordable changed bet against the actual live balance, not the persisted prior bet", async () => {
+        let credits = 11;
+        let bet = 10;
+        let plays = 0;
+        const live: GameSessionHandling = {
+            getCreditsAmount: () => credits,
+            setCreditsAmount: (value) => {
+                credits = value;
+            },
+            getBet: () => bet,
+            setBet: (value) => {
+                bet = value;
+            },
+            getAvailableBets: () => [1, 10],
+            canPlayNextGame: () => credits >= bet,
+            play: () => {
+                plays++;
+                credits -= bet;
+            },
+            getWinAmount: () => 0,
+        };
+        const repository = new InMemorySessionRepository();
+        const wallet = new InMemoryWallet();
+        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => createFakeSessionWithSelectableBet()}, repository, wallet);
+        await repository.save("changed-bet", {bet: 10, win: 0, executionState: "live-only"});
+        await wallet.setBalance("changed-bet", 11);
+        handler.primeSession("changed-bet", live, (await repository.loadVersioned("changed-bet"))?.version);
+
+        expect((await handler.handle("changed-bet")).status).toBe("played");
+        expect((await handler.handle("changed-bet", undefined, undefined, 1)).status).toBe("played");
+        expect(plays).toBe(2);
+        await expect(wallet.getBalance("changed-bet")).resolves.toBe(0);
+    });
+
+    it("permits a zero-stake live-only continuation at zero wallet balance when its executable state can play", async () => {
+        const live = createFakeFreeGamesSession(0);
+        const repository = new InMemorySessionRepository();
+        const wallet = new RecordingTransactionalWallet();
+        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => createFakeFreeGamesSession()}, repository, wallet);
+        await repository.save("free-zero", {bet: 5, win: 0, executionState: "live-only"});
+        await wallet.setBalance("free-zero", 0);
+        handler.primeSession("free-zero", live, (await repository.loadVersioned("free-zero"))?.version);
+
+        await expect(handler.handle("free-zero")).resolves.toMatchObject({status: "played", credits: 0});
+        expect(wallet.debitCalls).toHaveLength(1);
+        expect(wallet.debitCalls[0].amount).toBe(0);
+    });
+
+    it("rolls back a rejected live-only bet/mode command before an omitted-bet follow-up", async () => {
+        let credits = 10;
+        let bet = 1;
+        let mode = "base";
+        const live: GameSessionHandling & BetModeSelecting = {
+            getCreditsAmount: () => credits,
+            setCreditsAmount: (value) => {
+                credits = value;
+            },
+            getBet: () => bet,
+            setBet: (value) => {
+                bet = value;
+            },
+            getAvailableBets: () => [1, 2],
+            canPlayNextGame: () => credits >= bet,
+            play: () => {
+                credits -= bet;
+            },
+            getWinAmount: () => 0,
+            getBetModeId: () => mode,
+            getAvailableBetModeIds: () => ["base", "buy"],
+            setBetMode: (value) => {
+                if (value === "buy") throw new ForcingBetModeSelectionRejectedError(value);
+                mode = value;
+            },
+        };
+        const repository = new InMemorySessionRepository();
+        const wallet = new RecordingTransactionalWallet();
+        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => createFakeSessionWithSelectableBetMode()}, repository, wallet);
+        await repository.save("rollback", {bet: 1, win: 0, executionState: "live-only"});
+        await wallet.setBalance("rollback", 10);
+        handler.primeSession("rollback", live, (await repository.loadVersioned("rollback"))?.version);
+
+        await expect(handler.handle("rollback", undefined, undefined, 2, "buy")).resolves.toMatchObject({status: "blocked"});
+        expect({bet: live.getBet(), mode: live.getBetModeId(), credits: live.getCreditsAmount()}).toEqual({bet: 1, mode: "base", credits: 10});
+        await expect(repository.load("rollback")).resolves.toMatchObject({bet: 1});
+        await expect(handler.handle("rollback")).resolves.toMatchObject({status: "played", credits: 9});
+        expect(wallet.debitCalls.map((call) => call.amount)).toEqual([1]);
     });
 
     it("uses reconstructed state for the complete legacy/durable command matrix and never mutates rejected commands", async () => {
@@ -552,7 +640,8 @@ describe("SpinCommandHandler", () => {
                             const handler = new SpinCommandHandler(game, sessionRepository, wallet);
                             await sessionRepository.save(sessionId, persistence.state);
                             await wallet.setBalance(sessionId, walletVariant.balance);
-                            handler.primeSession(sessionId, createSession(stale, true));
+                            // This matrix is the reconstruction contract; live-cache continuity and
+                            // committed-version binding are exercised independently below.
 
                             const result = await handler.handle(sessionId, undefined, undefined, requestedBet, requestedMode);
                             const rejected = closed || requestedMode === "invalid";
@@ -564,8 +653,8 @@ describe("SpinCommandHandler", () => {
                                 await expect(wallet.getBalance(sessionId)).resolves.toBe(walletVariant.balance);
                                 await expect(sessionRepository.load(sessionId)).resolves.toEqual(persistence.state);
                             } else {
-                                expect(reconstructed.plays).toBe(0);
-                                expect(stale.plays).toBe(1);
+                                expect(reconstructed.plays).toBe(1);
+                                expect(stale.plays).toBe(0);
                                 await expect(wallet.getBalance(sessionId)).resolves.toBe(walletVariant.balance - (requestedBet ?? 5));
                             }
                         }
@@ -1133,7 +1222,7 @@ describe("SpinCommandHandler", () => {
             const handler = new SpinCommandHandler(createFakeGameWithSelectableBetMode(), sessionRepository, wallet);
             await createSpinnableSessionOn(sessionRepository, wallet, "session-1", 1000);
             const live = createFakeSessionWithSelectableBetMode();
-            handler.primeSession("session-1", live);
+            handler.primeSession("session-1", live, (await sessionRepository.loadVersioned("session-1"))?.version);
 
             // The bet is valid and would mutate a session; the following invalid mode makes the
             // whole command blocked. This is the former cache-poisoning sequence.

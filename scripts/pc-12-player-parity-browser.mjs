@@ -458,14 +458,15 @@ export async function runPlayerParityBrowser() {
             return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
         })()`);
         const click = async (label, selector, replayDomClick = false) => {
+            const resolvedSelector = selector ?? "button,a,[role=button]";
             try {
-                await waitFor(async () => (await pointFor(label, selector)) !== undefined, `visible control ${label}`, 15000);
+                await waitFor(async () => (await pointFor(label, resolvedSelector)) !== undefined, `visible control ${label}`, 15000);
             } catch (error) {
                 const pageText = await evaluate("document.body.textContent?.trim() ?? ''");
                 const pageHtml = await evaluate("document.documentElement.outerHTML.slice(0, 2000)");
                 throw new Error(`${error.message}; page text: ${pageText}; page HTML: ${pageHtml}; browser events: ${JSON.stringify(cdp.events)}`);
             }
-            const point = await pointFor(label, selector);
+            const point = await pointFor(label, resolvedSelector);
             if (point === undefined) throw new Error(`Visible control ${JSON.stringify(label)} was unavailable.`);
             await cdp.send("Input.dispatchMouseEvent", {type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1});
             await cdp.send("Input.dispatchMouseEvent", {type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1});
@@ -475,7 +476,7 @@ export async function runPlayerParityBrowser() {
             // callback payload, matching the hover workaround below.
             if (replayDomClick) {
                 await evaluate(`(() => {
-                    const node = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) =>
+                    const node = [...document.querySelectorAll(${JSON.stringify(resolvedSelector)})].find((item) =>
                         (item.textContent?.trim() === ${JSON.stringify(label)} || item.getAttribute("aria-label") === ${JSON.stringify(label)}) &&
                         !item.disabled && item.getClientRects().length > 0,
                     );
@@ -529,9 +530,39 @@ export async function runPlayerParityBrowser() {
             // blank pixels, so bring the same canonical root into the viewport before each crop.
             await evaluate(`document.querySelector(${JSON.stringify(canonicalPlayerSelector)})?.scrollIntoView({block: "start", inline: "nearest"})`);
             await wait(50);
+            // A host's fixed or sticky navigation can visually cover a player after scrollIntoView.
+            // It is not part of the canonical-player crop, so temporarily hide only overlapping host
+            // overlays. Visibility preserves their layout and is restored before the next interaction.
+            await evaluate(`(() => {
+                const player = document.querySelector(${JSON.stringify(canonicalPlayerSelector)});
+                if (!player) return;
+                const playerRect = player.getBoundingClientRect();
+                const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+                const candidates = [...document.body.querySelectorAll("*")].filter((node) => {
+                    if (!(node instanceof HTMLElement) || node === player || node.contains(player) || player.contains(node)) return false;
+                    const position = getComputedStyle(node).position;
+                    return (position === "fixed" || position === "sticky") && overlaps(node.getBoundingClientRect(), playerRect);
+                });
+                const overlays = candidates.filter((node) => !candidates.some((ancestor) => ancestor !== node && ancestor.contains(node)));
+                window.__pc12RestoreCaptureOverlays = () => overlays.forEach((node) => {
+                    const previous = node.dataset.pc12CaptureVisibility;
+                    if (previous === undefined) node.style.removeProperty("visibility");
+                    else node.style.setProperty("visibility", previous);
+                    delete node.dataset.pc12CaptureVisibility;
+                });
+                overlays.forEach((node) => {
+                    node.dataset.pc12CaptureVisibility = node.style.getPropertyValue("visibility");
+                    node.style.setProperty("visibility", "hidden");
+                });
+            })()`);
             const player = await evaluate(`(() => { const node = document.querySelector(${JSON.stringify(canonicalPlayerSelector)}); if (!node) return; const rect = node.getBoundingClientRect(); return {x: rect.x + window.scrollX, y: rect.y + window.scrollY, width: rect.width, height: rect.height, scale: window.devicePixelRatio}; })()`);
             assert.ok(player, "canonical player region must be visible before capture");
-            const image = await cdp.send("Page.captureScreenshot", {format: "png", clip: player, captureBeyondViewport: true});
+            let image;
+            try {
+                image = await cdp.send("Page.captureScreenshot", {format: "png", clip: player, captureBeyondViewport: true});
+            } finally {
+                await evaluate("window.__pc12RestoreCaptureOverlays?.()");
+            }
             const bytes = Buffer.from(image.data, "base64");
             await writeFile(resolve(evidence, `${name}.png`), bytes);
             const viewport = await evaluate("({width: window.innerWidth, height: window.innerHeight})");
@@ -765,7 +796,12 @@ export async function runPlayerParityBrowser() {
         await startSeededStudioSession();
         await click("Find any win");
         await waitFor(async () => (await evaluate(playerSnapshotExpression()))?.wins.length > 0, "Studio winning round");
-        await click("Reset Play session");
+        // The Reset button lives below the primary player after the scenario
+        // action; Chromium can retain the old document's pointer target after
+        // the preceding CDP interaction. Keep the physical click above, then
+        // replay the native control only as the established post-navigation
+        // target correction used for shared-player choices.
+        await click("Reset Play session", undefined, true);
         await waitFor(async () => (await evaluate(playerSnapshotExpression()))?.wins.length === 0, "Studio deterministic replacement session");
         await findStudioFreeGames("Studio feature state");
         await assertPlayerInteraction("Studio");

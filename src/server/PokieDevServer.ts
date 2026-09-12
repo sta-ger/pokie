@@ -311,7 +311,6 @@ export class PokieDevServer implements PokieDevServerHandling {
 
         const session = this.game.createSession(context);
         const sessionId = crypto.randomUUID();
-        this.spinCommandHandler.primeSession(sessionId, session);
 
         if (this.usesDefaultWallet) {
             // No wallet was configured: seed the default InMemoryWallet from this session's own
@@ -326,6 +325,12 @@ export class PokieDevServer implements PokieDevServerHandling {
 
         const state = captureInitialPokieSessionState(context, session, this.sessionSerializer, this.captureDebugSessionData);
         await this.sessionRepository.save(sessionId, state);
+        // Bind the newly-created object to the record that actually committed.  A later handler
+        // instance may only reuse a cache carrying this exact version.
+        const committedVersion = isVersionedSessionRepository(this.sessionRepository)
+            ? (await this.sessionRepository.loadVersioned(sessionId))?.version
+            : undefined;
+        this.spinCommandHandler.primeSession(sessionId, session, committedVersion);
 
         const credits = await this.wallet.getBalance(sessionId);
         const response = this.buildSessionResponse(sessionId, state, credits, undefined, state.initialPayload);
@@ -333,10 +338,7 @@ export class PokieDevServer implements PokieDevServerHandling {
             // The save above always went through the plain save() (a fresh sessionId has no prior
             // version to be conditional on), so the version it landed at is read back separately here
             // — only under ?debug=1, never on the hot path.
-            const version = isVersionedSessionRepository(this.sessionRepository)
-                ? (await this.sessionRepository.loadVersioned(sessionId))?.version
-                : undefined;
-            response.internal = this.buildInternalSessionData(state, undefined, undefined, version);
+            response.internal = this.buildInternalSessionData(state, undefined, undefined, committedVersion);
         }
         this.sendJson(res, 201, response);
     }

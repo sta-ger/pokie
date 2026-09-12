@@ -2,10 +2,13 @@ import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
 import type {SpinCommandResult} from "./SpinCommandResult.js";
 
 export interface SpinCommandHandling {
-    // Registers an already-constructed live session for sessionId, so the very next handle() call
-    // for it reuses this exact object instead of reconstructing one from SessionRepository state.
-    // Called by PokieDevServer.handleCreateSession right after game.createSession().
-    primeSession(sessionId: string, session: GameSessionHandling): void;
+    // Registers an already-constructed live session for sessionId.  When the repository is versioned,
+    // `committedVersion` is the version of the record that this object represents.  A handler never
+    // executes an object against a different committed record: durable records are reconstructed and
+    // live-only records are blocked instead of silently rewinding their RNG/feature state.  Callers
+    // creating a new durable session must therefore save it first and pass the version read from that
+    // save.  The optional parameter preserves source compatibility for unversioned repositories only.
+    primeSession(sessionId: string, session: GameSessionHandling, committedVersion?: number): void;
 
     // `requestId` is optional: omit it to always run a fresh spin (the original pokie serve
     // behavior). Pass it to make a retried call with the same (sessionId, requestId) return the

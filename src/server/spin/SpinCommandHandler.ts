@@ -144,7 +144,10 @@ export class SpinCommandHandler implements SpinCommandHandling {
     private readonly sessionSerializer: GameSessionSerializing | undefined;
     private readonly capturePolicy: SessionCapturePolicy;
     private readonly pokieVersion: string;
-    private readonly liveSessions = new Map<string, GameSessionHandling>();
+    // A process-local executable object is valid only for the repository version it executed from.
+    // Keeping that binding beside the object is what makes two handlers sharing one versioned store
+    // converge instead of alternately replaying stale RNG/feature progress.
+    private readonly liveSessions = new Map<string, {readonly session: GameSessionHandling; readonly committedVersion: number | undefined}>();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
     // Overload 1 (current, preferred): singleInstanceDeployment (see the class doc comment's own
@@ -222,8 +225,8 @@ export class SpinCommandHandler implements SpinCommandHandling {
         this.pokieVersion = pokieVersion;
     }
 
-    public primeSession(sessionId: string, session: GameSessionHandling): void {
-        this.liveSessions.set(sessionId, session);
+    public primeSession(sessionId: string, session: GameSessionHandling, committedVersion?: number): void {
+        this.liveSessions.set(sessionId, {session, committedVersion});
     }
 
     // Observes the process-local session that the most recent successful command for this id actually
@@ -232,7 +235,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
     // Studio Play uses it only to inspect transient details of the already-settled round, which a
     // continuation snapshot cannot necessarily recreate (such as the last evaluated screen).
     public getLiveSession(sessionId: string): GameSessionHandling | undefined {
-        return this.liveSessions.get(sessionId);
+        return this.liveSessions.get(sessionId)?.session;
     }
 
     // Reconciles one (sessionId, requestId)'s own SpinOperationRecord, the same way an interrupted
@@ -346,100 +349,25 @@ export class SpinCommandHandler implements SpinCommandHandling {
         // stream.  Do not turn that uncertainty into a paid spin.  Records
         // written before this marker existed remain on the documented legacy
         // best-effort path for compatibility; all new captures are marked.
-        if (state.executionState === "live-only" && !this.liveSessions.has(sessionId)) {
+        const resolvedSession = this.resolveExecutableSession(sessionId, state, version);
+        if (resolvedSession.status === "blocked") {
             return {
                 status: "blocked",
                 sessionId,
-                reason: `Session "${sessionId}" cannot continue after restart because its game does not persist complete executable session state.`,
+                reason: resolvedSession.reason,
             };
         }
-
-        // Validate a command against a throw-away reconstruction first.  A
-        // live cached session is deliberately not a validation scratchpad:
-        // selecting a valid bet and then rejecting an invalid mode (or finding
-        // insufficient credits) used to leave that cached session changed even
-        // though the command returned "blocked" and no state was persisted.
-        const validationSession = this.createSessionFromState(state);
-
-        if (bet !== undefined && !validationSession.getAvailableBets().includes(bet)) {
-            return {
-                status: "blocked",
-                sessionId,
-                reason: `Session "${sessionId}" does not support bet ${bet} (available bets: ${validationSession.getAvailableBets().join(", ")}).`,
-            };
-        }
-        if (bet !== undefined) {
-            validationSession.setBet(bet);
-        }
-
-        if (mode !== undefined) {
-            if (!supportsBetModeSelecting(validationSession)) {
-                return {
-                    status: "blocked",
-                    sessionId,
-                    reason: `Session "${sessionId}" does not support bet mode selection.`,
-                };
-            }
-            if (!validationSession.getAvailableBetModeIds().includes(mode)) {
-                return {
-                    status: "blocked",
-                    sessionId,
-                    reason: `Session "${sessionId}" does not support bet mode "${mode}" (available modes: ${validationSession.getAvailableBetModeIds().join(", ")}).`,
-                };
-            }
-            try {
-                validationSession.setBetMode(mode);
-            } catch (error) {
-                return {
-                    status: "blocked",
-                    sessionId,
-                    reason: error instanceof Error ? error.message : String(error),
-                };
-            }
-        }
-
         const balanceBeforePlay = await this.wallet.getBalance(sessionId);
-        validationSession.setCreditsAmount(balanceBeforePlay);
-
-        // The scratch reconstruction owns validation only.  Once it has accepted the command, an
-        // already-live session is the executable authority: it can carry finite-round progress,
-        // feature state, and RNG state that an older/partial persistence record cannot represent.
-        // Executing the reconstruction unconditionally reset that state on every command.  Nothing
-        // below mutates the live instance until the scratch path (including the wallet-backed guard)
-        // has accepted the command, so rejected commands remain side-effect free.
-        if (!validationSession.canPlayNextGame()) {
+        const command = this.applyCommand(resolvedSession.session, balanceBeforePlay, bet, mode);
+        if (command.status === "blocked") {
             return {
                 status: "blocked",
                 sessionId,
-                reason: `Session "${sessionId}" cannot play the next round (canPlayNextGame() returned false).`,
+                reason: command.reason,
             };
         }
 
-        const session = this.liveSessions.get(sessionId) ?? validationSession;
-        // A live session may have exhausted a finite feature/round stream while an old partial
-        // snapshot still looks playable. Check it before applying the validated command settings;
-        // this is the only additional guard needed to avoid reviving a completed live session.
-        const liveCreditsBeforeCommand = session !== validationSession ? session.getCreditsAmount() : undefined;
-        session.setCreditsAmount(balanceBeforePlay);
-        if (session !== validationSession && !session.canPlayNextGame()) {
-            // Revert the one temporary balance synchronization used for this guard. The rejected
-            // command must leave even a live-only session exactly as it was.
-            session.setCreditsAmount(liveCreditsBeforeCommand!);
-            return {
-                status: "blocked",
-                sessionId,
-                reason: `Session "${sessionId}" cannot play the next round (the live session is complete).`,
-            };
-        }
-        if (bet !== undefined) {
-            session.setBet(bet);
-        }
-        if (mode !== undefined && supportsBetModeSelecting(session)) {
-            session.setBetMode(mode);
-        }
-        this.liveSessions.set(sessionId, session);
-
-        return this.playAndSettle(sessionId, session, state, version, balanceBeforePlay, requestId);
+        return this.playAndSettle(sessionId, resolvedSession.session, state, version, balanceBeforePlay, requestId);
     }
 
     // Reads both the state and, when sessionRepository supports it, the version it was read at — a
@@ -626,6 +554,10 @@ export class SpinCommandHandler implements SpinCommandHandling {
                 capturedResult: {previousState: state, newState, win, credits: newBalance, newVersion},
             });
 
+            // The cache advances only after every durable/checkpointed commit has succeeded.  A
+            // second handler's later version is therefore never mistaken for this executable state.
+            this.liveSessions.set(sessionId, {session, committedVersion: newVersion});
+
             return result;
         } catch (error) {
             let compensationFullySucceeded = true;
@@ -699,13 +631,77 @@ export class SpinCommandHandler implements SpinCommandHandling {
         return allSucceeded;
     }
 
-    private resolveSession(sessionId: string, state: PokieSessionState): GameSessionHandling {
-        let session = this.liveSessions.get(sessionId);
-        if (!session) {
-            session = this.createSessionFromState(state);
-            this.liveSessions.set(sessionId, session);
+    private resolveExecutableSession(
+        sessionId: string,
+        state: PokieSessionState,
+        committedVersion: number | undefined,
+    ): {readonly status: "ready"; readonly session: GameSessionHandling} | {readonly status: "blocked"; readonly reason: string} {
+        const cached = this.liveSessions.get(sessionId);
+        if (cached !== undefined && (committedVersion === undefined || cached.committedVersion === committedVersion)) {
+            return {status: "ready", session: cached.session};
         }
-        return session;
+        // A stale cache is not executable evidence.  A durable state can replace it exactly; a
+        // live-only state cannot, so evict and report that boundary rather than restarting it.
+        this.liveSessions.delete(sessionId);
+        if (state.executionState === "live-only") {
+            return {
+                status: "blocked",
+                reason: `Session "${sessionId}" cannot continue because its live executable state does not match the committed version and its game does not persist complete executable session state.`,
+            };
+        }
+        return {status: "ready", session: this.createSessionFromState(state)};
+    }
+
+    private applyCommand(
+        session: GameSessionHandling,
+        balance: number,
+        bet: number | undefined,
+        mode: string | undefined,
+    ): {readonly status: "ready"} | {readonly status: "blocked"; readonly reason: string} {
+        const availableBets = session.getAvailableBets();
+        if (bet !== undefined && !availableBets.includes(bet)) {
+            return {status: "blocked", reason: `Session does not support bet ${bet} (available bets: ${availableBets.join(", ")}).`};
+        }
+        if (mode !== undefined) {
+            if (!supportsBetModeSelecting(session)) return {status: "blocked", reason: "Session does not support bet mode selection."};
+            const availableModes = session.getAvailableBetModeIds();
+            if (!availableModes.includes(mode)) return {status: "blocked", reason: `Session does not support bet mode "${mode}" (available modes: ${availableModes.join(", ")}).`};
+        }
+
+        // Command setters are applied to the same object that will play, then rolled back as one
+        // unit on a rejected guard or setter failure.  A scratch session cannot prove affordability
+        // for a finite/live-only feature or preserve its RNG; this reversible projection can.
+        const previousCredits = session.getCreditsAmount();
+        const previousBet = session.getBet();
+        const previousMode = supportsBetModeSelecting(session) ? session.getBetModeId() : undefined;
+        let mutated = false;
+        const rollback = (): boolean => {
+            try {
+                if (previousMode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(previousMode);
+                session.setBet(previousBet);
+                session.setCreditsAmount(previousCredits);
+                return true;
+            } catch {
+                return false;
+            }
+        };
+        try {
+            session.setCreditsAmount(balance);
+            mutated = true;
+            if (bet !== undefined) session.setBet(bet);
+            if (mode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(mode);
+            if (session.canPlayNextGame()) return {status: "ready"};
+            const restored = rollback();
+            return {status: "blocked", reason: restored
+                ? "Session cannot play the next round (canPlayNextGame() returned false)."
+                : "Session rejected the command and does not support reversible command-state restoration."};
+        } catch (error) {
+            const restored = mutated ? rollback() : true;
+            if (!restored) {
+                return {status: "blocked", reason: "Session rejected the command and does not support reversible command-state restoration."};
+            }
+            return {status: "blocked", reason: error instanceof Error ? error.message : String(error)};
+        }
     }
 
     private createSessionFromState(state: PokieSessionState): GameSessionHandling {

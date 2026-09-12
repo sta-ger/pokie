@@ -404,6 +404,12 @@ export type ArtifactConversionPlanningOptions = {
      * domain request and enforce containment/availability at publication.
      */
     readonly allowManagedOutcomeWithinSource?: boolean;
+    /**
+     * Studio-only continuation of a bundle it has already reopened and
+     * verified. This does not permit a generic overwrite: registry policy
+     * still requires a regular, self-contained Outcome Library directory.
+     */
+    readonly allowVerifiedOutcomeBundleUpdate?: boolean;
 };
 
 /**

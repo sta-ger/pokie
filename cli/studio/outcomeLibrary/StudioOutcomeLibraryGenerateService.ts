@@ -100,6 +100,10 @@ type ManagedBlueprintSourceBinding = {
 type StudioOutcomeLibraryPreflightSnapshot = {
     readonly binding: StudioOutcomeLibraryPreflightBinding;
     readonly plan: ArtifactConversionPlan;
+    // Permission to replace a non-empty destination is bound at preflight.
+    // A token-bound Blueprint generation must not adopt files created while
+    // it is running.
+    readonly allowsExistingBundleUpdate: boolean;
     readonly managedBlueprint?: ManagedBlueprintSourceBinding;
     readonly validatedGame?: PokieGame;
 };
@@ -234,9 +238,14 @@ export class StudioOutcomeLibraryGenerateService {
             // A preflight is not just an outcome-space calculation: it prepares the
             // same destination and resolved strategy that execution will consume.
             const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
+            const existingBundle = await this.existingBundleUpdate(boundDestination, request.mode ?? "base");
+            if (existingBundle.error !== undefined) {
+                return {status: "conflict", error: existingBundle.error, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+            }
             const plan = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, {
                 ...requestedGeneration,
                 allowManagedOutcomeWithinSource: true,
+                allowVerifiedOutcomeBundleUpdate: existingBundle.allowed,
             });
             if (plan.status === "conflict") {
                 return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
@@ -262,6 +271,7 @@ export class StudioOutcomeLibraryGenerateService {
                     requiresBounded: preparedRequest.preflight.requiresSampledOptIn,
                 },
                 plan,
+                allowsExistingBundleUpdate: existingBundle.allowed,
                 ...(managedBlueprint === undefined ? {} : {managedBlueprint}),
             });
             return {
@@ -503,9 +513,19 @@ export class StudioOutcomeLibraryGenerateService {
             // unrecognized-source failure without weakening package byte-drift
             // detection at the execution boundary.
             const tokenBoundBlueprintPlan = snapshot?.plan.source.kind === "blueprint" ? snapshot.plan : undefined;
+            // The token's publication authority is established at preflight.
+            // Do not inspect a directory introduced afterwards: it is
+            // caller-owned until a fresh preflight proves otherwise.
+            const existingBundle = tokenBoundBlueprintPlan === undefined
+                ? await this.existingBundleUpdate(boundDestination, modeName)
+                : {allowed: snapshot?.allowsExistingBundleUpdate === true};
+            if (existingBundle.error !== undefined) {
+                return {status: "conflict", error: existingBundle.error, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
+            }
             const plan = tokenBoundBlueprintPlan ?? await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, {
                 ...requestedGeneration,
                 allowManagedOutcomeWithinSource: true,
+                allowVerifiedOutcomeBundleUpdate: existingBundle.allowed,
             });
             if (plan.status === "conflict") {
                 return {status: "conflict", error: plan.diagnostic?.message ?? "Outcome library generation has a destination conflict.", plan};
@@ -555,6 +575,11 @@ export class StudioOutcomeLibraryGenerateService {
             // does not depend on transient source recognition while a late
             // caller-owned destination remains protected.
             if (tokenBoundBlueprintPlan !== undefined) {
+                if (snapshot?.allowsExistingBundleUpdate === true) {
+                    const currentBundle = await this.existingBundleUpdate(boundDestination, modeName);
+                    if (currentBundle.error !== undefined) throw new Error(currentBundle.error);
+                    if (currentBundle.allowed) return;
+                }
                 assertPreparedArtifactDestinationAvailable(
                     tokenBoundBlueprintPlan.source.canonicalLocation,
                     boundDestination,
@@ -565,9 +590,12 @@ export class StudioOutcomeLibraryGenerateService {
             if (!destinationExistedWhenRead && fs.existsSync(boundDestination)) {
                 throw new Error(`The Outcome Library destination "${boundDestination}" was claimed after generation began.`);
             }
+            const currentBundle = await this.existingBundleUpdate(boundDestination, modeName);
+            if (currentBundle.error !== undefined) throw new Error(currentBundle.error);
             const current = await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, {
                 ...requestedGeneration,
                 allowManagedOutcomeWithinSource: true,
+                allowVerifiedOutcomeBundleUpdate: currentBundle.allowed,
             });
             if (current.status === "planned") {
                 return;
@@ -589,9 +617,12 @@ export class StudioOutcomeLibraryGenerateService {
                         this.assertManagedBlueprintBinding(snapshot, game);
                         return tokenBoundBlueprintPlan.source;
                     }
+                    const currentBundle = await this.existingBundleUpdate(boundDestination, modeName);
+                    if (currentBundle.error !== undefined) throw new Error(currentBundle.error);
                     return (await this.planning.prepare(projectRoot, "outcomeLibrary", boundDestination, {
                         ...requestedGeneration,
                         allowManagedOutcomeWithinSource: true,
+                        allowVerifiedOutcomeBundleUpdate: currentBundle.allowed,
                     })).source;
                 },
                 read: async (): Promise<PreparedGenerationRead> => {
@@ -1043,6 +1074,27 @@ export class StudioOutcomeLibraryGenerateService {
             });
         }
         return {status: "ok", modes};
+    }
+
+    // The only overwrite-like Studio operation is an atomic replacement of a bundle which was
+    // reopened successfully. Empty/missing directories retain ordinary planner availability;
+    // non-bundle data, root symlinks and malformed mode indexes never gain publication authority.
+    private async existingBundleUpdate(resolvedOutDir: string, excludeModeName: string): Promise<{readonly allowed: boolean; readonly error?: string}> {
+        if (!this.directoryExists(resolvedOutDir)) return {allowed: false};
+        try {
+            if (!this.isDirectory(resolvedOutDir) || fs.lstatSync(resolvedOutDir).isSymbolicLink()) {
+                return {allowed: false, error: `"${resolvedOutDir}" is not a regular managed Outcome Library directory.`};
+            }
+            if (fs.readdirSync(resolvedOutDir).length === 0) return {allowed: false};
+        } catch (error) {
+            return {allowed: false, error: `Could not inspect the Outcome Library destination "${resolvedOutDir}": ${error instanceof Error ? error.message : String(error)}`};
+        }
+        try {
+            const existing = await this.readOtherModes(resolvedOutDir, excludeModeName);
+            return existing.status === "ok" ? {allowed: true} : {allowed: false, error: existing.message};
+        } catch (error) {
+            return {allowed: false, error: `"${resolvedOutDir}" has an unreadable Outcome Library mode index, so it cannot be safely regenerated: ${error instanceof Error ? error.message : String(error)}`};
+        }
     }
 
     // registry()'s own discovery set: DEFAULT_BUNDLE_DIR (always checked, generated into or not) plus

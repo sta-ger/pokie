@@ -1003,7 +1003,13 @@ export class ArtifactBuilderRegistry {
         // descendant blocked (including aliases), while retaining normal
         // occupied-destination checks for this one canonical managed output.
         const destination = this.checkDestination(target, options.destinationPath, this.destinationSafetySource(plan, source, options));
-        if (destination.available) return plan;
+        // A Studio mode update atomically replaces the complete directory, but only after its
+        // service has reopened every retained mode.  Admit that one precise case here so the
+        // planner does not mistake a verified managed bundle for arbitrary non-empty output.
+        if (destination.available || (
+            this.destinationSafetySource(plan, source, options) === undefined &&
+            this.isVerifiedOutcomeBundleUpdate(target, options)
+        )) return plan;
         return {
             ...plan,
             status: "conflict",
@@ -1014,6 +1020,30 @@ export class ArtifactBuilderRegistry {
                 recovery: "Choose an empty destination that is not the source or one of its descendants.",
             },
         };
+    }
+
+    private isVerifiedOutcomeBundleUpdate(target: ArtifactTargetType, options: ArtifactConversionPlanningOptions): boolean {
+        if (!options.allowVerifiedOutcomeBundleUpdate || target !== "outcomeLibrary" || options.destinationPath === undefined) return false;
+        try {
+            const root = path.resolve(options.destinationPath);
+            const rootStat = fs.lstatSync(root);
+            if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || this.containsSymbolicLink(root)) return false;
+            const manifestPath = path.join(root, "manifest.json");
+            if (!fs.lstatSync(manifestPath).isFile()) return false;
+            const manifest: unknown = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+            return typeof manifest === "object" && manifest !== null && Array.isArray((manifest as {modes?: unknown}).modes);
+        } catch {
+            return false;
+        }
+    }
+
+    private containsSymbolicLink(directory: string): boolean {
+        for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
+            const entryPath = path.join(directory, entry.name);
+            if (entry.isSymbolicLink()) return true;
+            if (entry.isDirectory() && this.containsSymbolicLink(entryPath)) return true;
+        }
+        return false;
     }
 
     /**

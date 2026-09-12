@@ -2,6 +2,7 @@ import {loadPokieGame} from "../../../src/gamepackage/loadPokieGame.js";
 import {captureInitialPokieSessionState} from "../../../src/server/session/captureInitialPokieSessionState.js";
 import {FileSessionRepository} from "../../../src/server/session/FileSessionRepository.js";
 import {SpinCommandHandler} from "../../../src/server/spin/SpinCommandHandler.js";
+import type {SpinCommandResult} from "../../../src/server/spin/SpinCommandResult.js";
 import {InMemoryWallet} from "../../../src/server/wallet/InMemoryWallet.js";
 import fs from "fs";
 import os from "os";
@@ -32,7 +33,7 @@ describe("SpinCommandHandler persistence (real generated game + file repository)
         await repository.save(sessionId, captureInitialPokieSessionState(context, session));
         await wallet.setBalance(sessionId, 1_000);
         const handler = new SpinCommandHandler(game, repository, wallet);
-        handler.primeSession(sessionId, session);
+        handler.primeSession(sessionId, session, (await repository.loadVersioned(sessionId))?.version);
         return handler;
     }
 
@@ -88,5 +89,39 @@ describe("SpinCommandHandler persistence (real generated game + file repository)
         await expect(new FileSessionRepository(restoredDirectory).load("free-restored")).resolves.toEqual(
             await continuousRepository.load("free-continuous"),
         );
+    });
+
+    it("reconstructs durable executable state when two handlers alternate committed versions", async () => {
+        const game = await loadPokieGame(freeGamesFixtureRoot);
+        const continuousRepository = new FileSessionRepository(path.join(directory, "alternating-continuous"));
+        const continuousWallet = new InMemoryWallet();
+        const continuous = await initialize(game, continuousRepository, continuousWallet, "continuous");
+        const alternatingRepository = new FileSessionRepository(path.join(directory, "alternating"));
+        const alternatingWallet = new InMemoryWallet();
+        const handlerA = await initialize(game, alternatingRepository, alternatingWallet, "alternating");
+        const handlerB = new SpinCommandHandler(game, alternatingRepository, alternatingWallet);
+
+        const spinAtCommittedVersion = async (handler: SpinCommandHandler, repository: FileSessionRepository, sessionId: string) => {
+            const record = await repository.loadVersioned(sessionId);
+            if (record === undefined) throw new Error("Expected durable session record.");
+            return handler.handle(sessionId, undefined, record.version);
+        };
+
+        // Enter the fixture's deterministic ten-round free feature with handler A holding a
+        // live cache. B then has to rebuild at A's version, and A has to discard its stale cache
+        // at B's next version rather than replaying an old freeGamesNum/RNG state.
+        for (let round = 0; round < 8; round++) {
+            await spinAtCommittedVersion(continuous, continuousRepository, "continuous");
+            await spinAtCommittedVersion(handlerA, alternatingRepository, "alternating");
+        }
+        const alternatingResults: SpinCommandResult[] = [];
+        const continuousResults: SpinCommandResult[] = [];
+        for (const handler of [handlerB, handlerA, handlerB, handlerA, handlerB]) {
+            continuousResults.push(await spinAtCommittedVersion(continuous, continuousRepository, "continuous"));
+            alternatingResults.push(await spinAtCommittedVersion(handler, alternatingRepository, "alternating"));
+        }
+
+        expect(alternatingResults.map((result) => ({...result, sessionId: "continuous"}))).toEqual(continuousResults);
+        expect(alternatingResults.map((result) => result.status === "played" ? (result.state.featureState as {freeGamesNum?: unknown})?.freeGamesNum : undefined)).toEqual([1, 2, 3, 4, 5]);
     });
 });

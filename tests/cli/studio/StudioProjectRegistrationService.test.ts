@@ -387,6 +387,10 @@ describe("StudioProjectRegistrationService", () => {
             const entries: StudioProjectRegistryEntry[] = [];
             let replaceStarted = false;
             let releaseReplace: (() => void) | undefined;
+            let signalReplaceStarted: (() => void) | undefined;
+            const replaceStartedPromise = new Promise<void>((resolve) => {
+                signalReplaceStarted = resolve;
+            });
             const registry: StudioProjectRegistry = {
                 list: () => Promise.resolve([...entries]),
                 upsert: (entry) => {
@@ -395,6 +399,7 @@ describe("StudioProjectRegistrationService", () => {
                 },
                 replace: async (entry, replacedLocations, options = {}) => {
                     replaceStarted = true;
+                    signalReplaceStarted?.();
                     await new Promise<void>((resolve) => {
                         releaseReplace = () => {
                             resolve();
@@ -416,14 +421,7 @@ describe("StudioProjectRegistrationService", () => {
             let current = true;
 
             const recording = service.recordOpened("/projects/sample-slot", "Sample Slot", {isCurrent: () => current});
-            for (let attempt = 0; attempt < 20; attempt++) {
-                if (replaceStarted) {
-                    break;
-                }
-                await new Promise<void>((resolve) => {
-                    setImmediate(resolve);
-                });
-            }
+            await replaceStartedPromise;
             expect(replaceStarted).toBe(true);
             current = false;
             releaseReplace?.();

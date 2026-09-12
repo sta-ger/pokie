@@ -158,6 +158,34 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
             modes: [expect.objectContaining({modeName: "base", buildStatus: "compatible", hash: generatedResult.mode.hash})],
         });
 
+        // This crosses the real Studio planner (not an injected plan): a managed custom
+        // directory may be updated only as a verified bundle, retaining its other modes.
+        const antePreview = await studio.estimate(packageRoot, {...studioRequest, mode: "ante", libraryId: "parity-lib-ante"});
+        if (antePreview.status !== "ok") throw new Error(`Expected update preflight, got ${JSON.stringify(antePreview)}`);
+        await expect(studio.generate(packageRoot, {...studioRequest, mode: "ante", libraryId: "parity-lib-ante", preflightToken: antePreview.preflightToken})).resolves.toMatchObject({status: "ok"});
+        const baseRegenerationPreview = await studio.estimate(packageRoot, studioRequest);
+        if (baseRegenerationPreview.status !== "ok") throw new Error(`Expected regeneration preflight, got ${JSON.stringify(baseRegenerationPreview)}`);
+        await expect(studio.generate(packageRoot, {...studioRequest, preflightToken: baseRegenerationPreview.preflightToken})).resolves.toMatchObject({status: "ok"});
+        await expect(new OutcomeLibraryBundleReader().readManifest(path.join(packageRoot, "studio-library"))).resolves.toMatchObject({
+            modes: expect.arrayContaining([expect.objectContaining({modeName: "base"}), expect.objectContaining({modeName: "ante"})]),
+        });
+
+        // The conventional default path is the same managed-bundle contract, not a separate
+        // first-write-only shortcut.
+        const defaultRequest = {...studioRequest, outDir: undefined};
+        for (const request of [
+            defaultRequest,
+            {...defaultRequest, mode: "ante", libraryId: "parity-default-ante"},
+            defaultRequest,
+        ]) {
+            const preview = await studio.estimate(packageRoot, request);
+            if (preview.status !== "ok") throw new Error(`Expected default bundle update preflight, got ${JSON.stringify(preview)}`);
+            await expect(studio.generate(packageRoot, {...request, preflightToken: preview.preflightToken})).resolves.toMatchObject({status: "ok"});
+        }
+        await expect(new OutcomeLibraryBundleReader().readManifest(path.join(packageRoot, "outcomelibrary"))).resolves.toMatchObject({
+            modes: expect.arrayContaining([expect.objectContaining({modeName: "base"}), expect.objectContaining({modeName: "ante"})]),
+        });
+
         // Exercise compatibility against actual rebuilt packages, never by
         // altering the generated bundle's declaration of its provenance.
         const staleBlueprint = path.join(root, "sampled-stale.blueprint.json");
@@ -169,7 +197,7 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         expect(await new BuildCommand("1.3.0").run([staleBlueprint, "--target", "tsPackage", "--out", stalePackage])).toBe(0);
         fs.cpSync(path.join(packageRoot, "studio-library"), path.join(stalePackage, "studio-library"), {recursive: true});
         fs.cpSync(path.join(packageRoot, ".pokie"), path.join(stalePackage, ".pokie"), {recursive: true});
-        expect(await studio.registry(stalePackage)).toMatchObject({status: "ok", buildStatus: "stale", modes: [expect.objectContaining({buildStatus: "stale"})]});
+        expect(await studio.registry(stalePackage)).toMatchObject({status: "ok", buildStatus: "stale", modes: expect.arrayContaining([expect.objectContaining({buildStatus: "stale"})])});
 
         const wrongBlueprint = path.join(root, "sampled-wrong.blueprint.json");
         const wrongPackage = path.join(root, "sampled-wrong-package");
@@ -180,7 +208,7 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         expect(await new BuildCommand("1.3.0").run([wrongBlueprint, "--target", "tsPackage", "--out", wrongPackage])).toBe(0);
         fs.cpSync(path.join(packageRoot, "studio-library"), path.join(wrongPackage, "studio-library"), {recursive: true});
         fs.cpSync(path.join(packageRoot, ".pokie"), path.join(wrongPackage, ".pokie"), {recursive: true});
-        expect(await studio.registry(wrongPackage)).toMatchObject({status: "ok", buildStatus: "wrong", modes: [expect.objectContaining({buildStatus: "wrong"})]});
+        expect(await studio.registry(wrongPackage)).toMatchObject({status: "ok", buildStatus: "wrong", modes: expect.arrayContaining([expect.objectContaining({buildStatus: "wrong"})])});
     });
 
     it("binds an exact real-package preflight and publishes the same canonical library as CLI", async () => {

@@ -1649,12 +1649,17 @@ describe("PokieDevServer (integration, FileSessionRepository across a simulated 
 // for the lower-level version of this same scenario.
 function createRacingSessionRepository(real: InMemorySessionRepository): VersionedSessionRepository {
     let raced = false;
+    let versionedLoads = 0;
     return {
         load: (sessionId) => real.load(sessionId),
         save: (sessionId, state) => real.save(sessionId, state),
         loadVersioned: async (sessionId) => {
             const versioned = await real.loadVersioned(sessionId);
-            if (versioned !== undefined && !raced) {
+            // PokieDevServer now reads the committed version immediately after creating a session to
+            // bind its live cache honestly. The race this helper models belongs to the subsequent
+            // spin's load→save window, not that creation-time read.
+            versionedLoads++;
+            if (versioned !== undefined && versionedLoads > 1 && !raced) {
                 raced = true;
                 await real.saveVersioned(sessionId, versioned.state, versioned.version);
             }

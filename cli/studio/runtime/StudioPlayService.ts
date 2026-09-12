@@ -267,10 +267,10 @@ export class StudioPlayService {
         let state: PokieSessionState;
         try {
             session = game.createSession(context);
-            spinHandler.primeSession(sessionId, session);
             await wallet.setBalance(sessionId, session.getCreditsAmount());
             state = captureInitialPokieSessionState(context, session, resolveGameSessionSerializer(game), true);
             await sessionRepository.save(sessionId, state);
+            spinHandler.primeSession(sessionId, session, (await sessionRepository.loadVersioned(sessionId))?.version);
             assertCurrent();
         } catch (error) {
             await releasePokieGame(game).catch(() => undefined);
