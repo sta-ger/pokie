@@ -7,8 +7,10 @@ import {
     OutcomeLibraryBundleModeIndex,
     OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleWriteCancelledError,
+    OutcomeLibraryBundleDestinationClaimedError,
     OutcomeLibraryBundleWriter,
     WeightedOutcomeInput,
+    capturePublishDirectoryOwnership,
 } from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleTestFixtures.js";
 
@@ -96,6 +98,48 @@ describe("OutcomeLibraryBundleWriter", () => {
             expect(parsedLine.weight).toBe(entry.weight);
             expect(entry.recordHash).toBe(`sha256:${crypto.createHash("sha256").update(lineBuffer).digest("hex")}`);
         }
+    });
+
+    it("rejects a delayed retained-mode publication when another real writer added a sibling mode after its read revision", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        const initialBase = buildOutcomeLibraryBundleModeInput("base", "base-lib");
+        await writer.writeToDirectory([initialBase], outDir);
+        const ownershipAtRead = capturePublishDirectoryOwnership(outDir);
+
+        let releaseDelayedStream: (() => void) | undefined;
+        const delayed = new Promise<void>((resolve) => {
+            releaseDelayedStream = resolve;
+        });
+        let firstOutcomeObserved: (() => void) | undefined;
+        const firstOutcome = new Promise<void>((resolve) => {
+            firstOutcomeObserved = resolve;
+        });
+        async function *delayedOutcomes(items: Iterable<WeightedOutcomeInput>): AsyncGenerator<WeightedOutcomeInput> {
+            let position = 0;
+            for (const item of items) {
+                yield item;
+                position++;
+                if (position === 1) {
+                    firstOutcomeObserved?.();
+                    await delayed;
+                }
+            }
+        }
+        const regeneratedBase = buildOutcomeLibraryBundleModeInput("base", "base-lib-regenerated");
+        const staleWriter = writer.writeToDirectory(
+            [{...regeneratedBase, outcomes: delayedOutcomes(regeneratedBase.outcomes as WeightedOutcomeInput[])}],
+            outDir,
+            {expectedDestinationOwnership: ownershipAtRead},
+        );
+        await firstOutcome;
+
+        const ante = buildOutcomeLibraryBundleModeInput("ante", "ante-lib");
+        await writer.writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib"), ante], outDir);
+        releaseDelayedStream?.();
+
+        await expect(staleWriter).rejects.toBeInstanceOf(OutcomeLibraryBundleDestinationClaimedError);
+        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf8")) as OutcomeLibraryBundleManifest;
+        expect(manifest.modes.map((mode) => mode.modeName)).toEqual(["base", "ante"]);
     });
 
     it("publishes portable supplemental files alongside the canonical bundle files", async () => {

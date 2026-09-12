@@ -101,7 +101,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
         }
         assertSafeToReplaceOutcomeLibraryBundleDirectory(outDir, options?.allowExistingEmptyDestination);
-        const destinationOwnership = capturePublishDirectoryOwnership(outDir);
+        const destinationOwnership = options?.expectedDestinationOwnership ?? capturePublishDirectoryOwnership(outDir);
         // A mode's `outcomes` may be a huge lazy generator. Prove the real `mv` primitive against
         // this destination filesystem before consuming even its first item, not after generation has
         // filled a staging directory and publication is the only work left.

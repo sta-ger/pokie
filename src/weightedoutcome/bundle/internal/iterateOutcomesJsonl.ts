@@ -7,7 +7,7 @@ import readline from "readline";
 // (see StakeEngineImportBundle's own file-read-result types). "byteOffset" matches exactly what
 // OutcomeLibraryBundleIndexEntry.byteOffset records for the same line, so a caller can cross-check the two.
 export type RawOutcomeLine =
-    | {readonly status: "ok"; readonly position: number; readonly byteOffset: number; readonly value: unknown}
+    | {readonly status: "ok"; readonly position: number; readonly byteOffset: number; readonly value: unknown; readonly raw: string}
     | {readonly status: "invalid-json"; readonly position: number; readonly byteOffset: number; readonly error: string};
 
 // Streams "filePath" line by line via Node's readline over a read stream — the one place in this codebase that
@@ -29,7 +29,7 @@ export async function *iterateOutcomesJsonl(filePath: string): AsyncGenerator<Ra
             if (line.length > 0) {
                 const lineByteOffset = byteOffset;
                 try {
-                    yield {status: "ok", position, byteOffset: lineByteOffset, value: JSON.parse(line)};
+                    yield {status: "ok", position, byteOffset: lineByteOffset, value: JSON.parse(line), raw: line};
                 } catch (error) {
                     yield {status: "invalid-json", position, byteOffset: lineByteOffset, error: error instanceof Error ? error.message : String(error)};
                 }

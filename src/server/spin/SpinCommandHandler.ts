@@ -360,6 +360,15 @@ export class SpinCommandHandler implements SpinCommandHandling {
         const balanceBeforePlay = await this.wallet.getBalance(sessionId);
         const command = this.applyCommand(resolvedSession.session, balanceBeforePlay, bet, mode);
         if (command.status === "blocked") {
+            // A rejected command is normally reversible and deliberately leaves the live instance
+            // usable (an omitted-command retry must observe the old bet/mode).  A setter may however
+            // have mutated before throwing, and a second setter may make restoration impossible.  In
+            // that case this process-local object is no longer evidence for the persisted state.  Do
+            // not let a later request execute it; resolveExecutableSession() will either reconstruct a
+            // complete durable state or explicitly block a live-only session.
+            if (!command.restored) {
+                this.liveSessions.delete(sessionId);
+            }
             return {
                 status: "blocked",
                 sessionId,
@@ -367,7 +376,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
             };
         }
 
-        return this.playAndSettle(sessionId, resolvedSession.session, state, version, balanceBeforePlay, requestId);
+        return this.playAndSettle(sessionId, resolvedSession.session, state, version, balanceBeforePlay, requestId, command.rollback);
     }
 
     // Reads both the state and, when sessionRepository supports it, the version it was read at — a
@@ -436,6 +445,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
         expectedVersion: number | undefined,
         balanceBeforePlay: number,
         requestId: string | undefined,
+        rollbackCommand: () => boolean,
     ): Promise<SpinCommandResult> {
         const roundId = requestId ?? crypto.randomUUID();
         const attemptId = crypto.randomUUID();
@@ -468,15 +478,20 @@ export class SpinCommandHandler implements SpinCommandHandling {
             });
         };
 
-        await checkpoint({checkpoint: "started", updatedAt: startedAt});
-
         const appliedTransactionIds: string[] = [];
         let sessionStateSaved = false;
+        let playStarted = false;
         try {
+            // Command preparation has already changed the executable object.  The first checkpoint is
+            // still pre-play: if it rejects, restoring that preparation is safe and must happen before
+            // this request leaves the handler.  Keeping it in this try boundary is essential because a
+            // failing operation log is otherwise able to leak a requested bet/mode into a later spin.
+            await checkpoint({checkpoint: "started", updatedAt: startedAt});
             await this.wallet.debit(sessionId, debitTransactionId, stakeAmount);
             appliedTransactionIds.push(debitTransactionId);
             await checkpoint({checkpoint: "debited", updatedAt: new Date().toISOString()});
 
+            playStarted = true;
             session.play();
             const win = session.getWinAmount();
             const delta = session.getCreditsAmount() - balanceBeforePlay;
@@ -561,11 +576,19 @@ export class SpinCommandHandler implements SpinCommandHandling {
             return result;
         } catch (error) {
             let compensationFullySucceeded = true;
+            // Before play(), the only mutable state this handler owns is the reversible command
+            // projection (credits/bet/mode).  Restore it rather than evicting a sound live-only session
+            // merely because a checkpoint or debit failed.  Once play() begins, setters would no longer
+            // be a safe inverse of the game's state transition, so the old settlement compensation and
+            // cache eviction path remains authoritative.
+            const commandRestored = playStarted ? false : rollbackCommand();
             if (sessionStateSaved) {
                 compensationFullySucceeded = (await this.restoreSessionState(sessionId, state)) && compensationFullySucceeded;
             }
             compensationFullySucceeded = (await this.reverseApplied(sessionId, appliedTransactionIds)) && compensationFullySucceeded;
-            this.liveSessions.delete(sessionId);
+            if (playStarted || !commandRestored) {
+                this.liveSessions.delete(sessionId);
+            }
 
             // Only ever mark this attempt "compensated" when every compensating write actually
             // succeeded — see the class doc comment. If any of them failed, the record is left at
@@ -657,15 +680,17 @@ export class SpinCommandHandler implements SpinCommandHandling {
         balance: number,
         bet: number | undefined,
         mode: string | undefined,
-    ): {readonly status: "ready"} | {readonly status: "blocked"; readonly reason: string} {
+    ):
+        | {readonly status: "ready"; readonly rollback: () => boolean}
+        | {readonly status: "blocked"; readonly reason: string; readonly restored: boolean} {
         const availableBets = session.getAvailableBets();
         if (bet !== undefined && !availableBets.includes(bet)) {
-            return {status: "blocked", reason: `Session does not support bet ${bet} (available bets: ${availableBets.join(", ")}).`};
+            return {status: "blocked", reason: `Session does not support bet ${bet} (available bets: ${availableBets.join(", ")}).`, restored: true};
         }
         if (mode !== undefined) {
-            if (!supportsBetModeSelecting(session)) return {status: "blocked", reason: "Session does not support bet mode selection."};
+            if (!supportsBetModeSelecting(session)) return {status: "blocked", reason: "Session does not support bet mode selection.", restored: true};
             const availableModes = session.getAvailableBetModeIds();
-            if (!availableModes.includes(mode)) return {status: "blocked", reason: `Session does not support bet mode "${mode}" (available modes: ${availableModes.join(", ")}).`};
+            if (!availableModes.includes(mode)) return {status: "blocked", reason: `Session does not support bet mode "${mode}" (available modes: ${availableModes.join(", ")}).`, restored: true};
         }
 
         // Command setters are applied to the same object that will play, then rolled back as one
@@ -674,7 +699,6 @@ export class SpinCommandHandler implements SpinCommandHandling {
         const previousCredits = session.getCreditsAmount();
         const previousBet = session.getBet();
         const previousMode = supportsBetModeSelecting(session) ? session.getBetModeId() : undefined;
-        let mutated = false;
         const rollback = (): boolean => {
             try {
                 if (previousMode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(previousMode);
@@ -686,21 +710,25 @@ export class SpinCommandHandler implements SpinCommandHandling {
             }
         };
         try {
+            // Setters are allowed to mutate and then throw.  Always restore the snapshot on failure so a
+            // partial setCreditsAmount() cannot bypass restoration merely because it never returned.
             session.setCreditsAmount(balance);
-            mutated = true;
             if (bet !== undefined) session.setBet(bet);
             if (mode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(mode);
-            if (session.canPlayNextGame()) return {status: "ready"};
+            if (session.canPlayNextGame()) return {status: "ready", rollback};
             const restored = rollback();
             return {status: "blocked", reason: restored
                 ? "Session cannot play the next round (canPlayNextGame() returned false)."
-                : "Session rejected the command and does not support reversible command-state restoration."};
+                : "Session rejected the command and does not support reversible command-state restoration.", restored};
         } catch (error) {
-            const restored = mutated ? rollback() : true;
+            // We intentionally attempt the snapshot restore even if the first setter threw: it may have
+            // applied part of its mutation before reporting failure.  If restoration itself fails, the
+            // caller evicts this object rather than leaving it executable in the live cache.
+            const restored = rollback();
             if (!restored) {
-                return {status: "blocked", reason: "Session rejected the command and does not support reversible command-state restoration."};
+                return {status: "blocked", reason: "Session rejected the command and does not support reversible command-state restoration.", restored: false};
             }
-            return {status: "blocked", reason: error instanceof Error ? error.message : String(error)};
+            return {status: "blocked", reason: error instanceof Error ? error.message : String(error), restored: true};
         }
     }
 

@@ -1,4 +1,4 @@
-import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleReader, loadPokieGame} from "pokie";
+import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, OutcomeLibraryBundleWriting, generateWeightedOutcomeLibrary, loadPokieGame, releasePokieGame} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -280,5 +280,149 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         fs.cpSync(path.join(packageRoot, "studio-exact"), path.join(wrongPackage, "studio-exact"), {recursive: true});
         fs.cpSync(path.join(packageRoot, ".pokie"), path.join(wrongPackage, ".pokie"), {recursive: true});
         expect(await studio.registry(wrongPackage)).toMatchObject({status: "ok", buildStatus: "wrong", modes: [expect.objectContaining({buildStatus: "wrong"})]});
+    });
+
+    it("selects a declared executable ante mode consistently in domain generation, Studio exact/sampled bundles, and the CLI", async () => {
+        const blueprint = path.join(root, "runtime-mode-slot.blueprint.json");
+        const packageRoot = path.join(root, "runtime-mode-package");
+        fs.writeFileSync(blueprint, JSON.stringify({
+            manifest: {id: "runtime-mode-slot", name: "Runtime Mode Slot", version: "1.0.0"},
+            reels: 2, rows: 1, symbols: ["A", "B"], paytable: {A: {2: 5}},
+            reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
+            betModes: [
+                {id: "base", runtimeType: "base", isDefault: true},
+                {id: "ante", runtimeType: "ante", costMultiplier: 2},
+            ],
+        }));
+        expect(await new BuildCommand("1.3.0").run([blueprint, "--target", "tsPackage", "--out", packageRoot])).toBe(0);
+
+        const game = await loadPokieGame(packageRoot);
+        try {
+            const control = await generateWeightedOutcomeLibrary({
+                libraryId: "domain-ante", game, pokieVersion: "1.3.0", mode: "ante", selectBetMode: true, generation: "exact",
+            });
+            expect(control.library.outcomes).toEqual(expect.arrayContaining([
+                expect.objectContaining({artifact: expect.objectContaining({betMode: "ante", stake: 2, payoutMultiplier: 2.5})}),
+            ]));
+            expect(control.library.outcomes.every((outcome) => outcome.artifact.betMode === "ante" && outcome.artifact.stake === 2)).toBe(true);
+        } finally {
+            await releasePokieGame(game);
+        }
+
+        const studio = new StudioOutcomeLibraryGenerateService("1.3.0", loadPokieGame);
+        const exactRequest = {libraryId: "studio-ante-exact", mode: "ante", generation: "exact" as const, outDir: "ante-exact"};
+        const exactPreview = await studio.estimate(packageRoot, exactRequest);
+        if (exactPreview.status !== "ok") throw new Error(`Expected executable-mode exact preflight, got ${JSON.stringify(exactPreview)}`);
+        await expect(studio.generate(packageRoot, {...exactRequest, preflightToken: exactPreview.preflightToken})).resolves.toMatchObject({status: "ok"});
+        const exact = await new OutcomeLibraryBundleReader().readLibrary(path.join(packageRoot, "ante-exact"), "ante");
+        expect(exact.outcomes).toEqual(expect.arrayContaining([
+            expect.objectContaining({artifact: expect.objectContaining({betMode: "ante", stake: 2, payoutMultiplier: 2.5})}),
+        ]));
+
+        const sampledRequest = {libraryId: "studio-ante-sampled", mode: "ante", generation: "sampled" as const, sample: {sampleSize: BigInt(19), seed: "runtime-ante"}, outDir: "ante-sampled"};
+        const sampledPreview = await studio.estimate(packageRoot, sampledRequest);
+        if (sampledPreview.status !== "ok") throw new Error(`Expected executable-mode sampled preflight, got ${JSON.stringify(sampledPreview)}`);
+        await expect(studio.generate(packageRoot, {...sampledRequest, preflightToken: sampledPreview.preflightToken})).resolves.toMatchObject({status: "ok"});
+        const sampled = await new OutcomeLibraryBundleReader().readLibrary(path.join(packageRoot, "ante-sampled"), "ante");
+        expect(sampled.outcomes.every((outcome) => outcome.artifact.betMode === "ante" && outcome.artifact.stake === 2)).toBe(true);
+
+        const cliOutput = path.join(root, "cli-ante.json");
+        expect(await new OutcomeLibraryCommand("1.3.0").run([
+            "generate", packageRoot, "--mode", "ante", "--exact", "--out", cliOutput, "--format", "json",
+        ])).toBe(0);
+        const cli = JSON.parse(fs.readFileSync(cliOutput, "utf8")) as {outcomes: Array<{artifact: {betMode: string; stake: number; payoutMultiplier: number}}>};
+        expect(cli.outcomes).toEqual(expect.arrayContaining([
+            expect.objectContaining({artifact: expect.objectContaining({betMode: "ante", stake: 2, payoutMultiplier: 2.5})}),
+        ]));
+
+        await expect(studio.estimate(packageRoot, {...exactRequest, mode: "not-a-runtime-mode", outDir: "unsupported-mode"})).resolves.toMatchObject({
+            status: "unsupported", error: expect.stringContaining("does not declare executable bet mode"),
+        });
+        expect(await new OutcomeLibraryCommand("1.3.0").run([
+            "generate", packageRoot, "--mode", "not-a-runtime-mode", "--exact", "--out", path.join(root, "unsupported-mode.json"),
+        ])).toBe(1);
+    });
+
+    it("rejects a corrupted retained mode instead of silently rebuilding it while adding another mode", async () => {
+        const blueprint = path.join(root, "retained-integrity-slot.blueprint.json");
+        const packageRoot = path.join(root, "retained-integrity-package");
+        fs.writeFileSync(blueprint, JSON.stringify({
+            manifest: {id: "retained-integrity-slot", name: "Retained Integrity Slot", version: "1.0.0"},
+            reels: 2, rows: 1, symbols: ["A", "B"], paytable: {A: {2: 5}},
+            reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
+        }));
+        expect(await new BuildCommand("1.3.0").run([blueprint, "--target", "tsPackage", "--out", packageRoot])).toBe(0);
+        const studio = new StudioOutcomeLibraryGenerateService("1.3.0", loadPokieGame);
+        const base = {libraryId: "retained-base", mode: "base", generation: "exact" as const, outDir: "retained-bundle"};
+        const basePreview = await studio.estimate(packageRoot, base);
+        if (basePreview.status !== "ok") throw new Error(`Expected base preflight, got ${JSON.stringify(basePreview)}`);
+        await expect(studio.generate(packageRoot, {...base, preflightToken: basePreview.preflightToken})).resolves.toMatchObject({status: "ok"});
+
+        const bundleDir = path.join(packageRoot, "retained-bundle");
+        const outcomesPath = path.join(bundleDir, "outcomes_base.jsonl");
+        const originalOutcomes = fs.readFileSync(outcomesPath, "utf8");
+        const corruptedOutcomes = originalOutcomes.replace(/"weight":2(?=[}\n])/, '"weight":9');
+        expect(corruptedOutcomes).not.toBe(originalOutcomes);
+        fs.writeFileSync(outcomesPath, corruptedOutcomes);
+        const destinationBeforeAnte = fs.readdirSync(bundleDir).sort().map((file) => [file, fs.readFileSync(path.join(bundleDir, file), "utf8")] as const);
+
+        const ante = {libraryId: "retained-ante", mode: "ante", generation: "exact" as const, outDir: "retained-bundle"};
+        const antePreview = await studio.estimate(packageRoot, ante);
+        if (antePreview.status !== "ok") throw new Error(`Expected preflight to defer retained-stream validation, got ${JSON.stringify(antePreview)}`);
+        const result = await studio.generate(packageRoot, {...ante, preflightToken: antePreview.preflightToken});
+        expect(result).toMatchObject({status: "load-error", error: expect.stringContaining("original index entry")});
+        expect(fs.readdirSync(bundleDir).sort().map((file) => [file, fs.readFileSync(path.join(bundleDir, file), "utf8")] as const)).toEqual(destinationBeforeAnte);
+    });
+
+    it("returns a Studio conflict boundary instead of dropping a sibling mode published after retained-mode read", async () => {
+        const blueprint = path.join(root, "concurrent-retained-slot.blueprint.json");
+        const packageRoot = path.join(root, "concurrent-retained-package");
+        fs.writeFileSync(blueprint, JSON.stringify({
+            manifest: {id: "concurrent-retained-slot", name: "Concurrent Retained Slot", version: "1.0.0"},
+            reels: 2, rows: 1, symbols: ["A", "B"], paytable: {A: {2: 5}},
+            reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
+        }));
+        expect(await new BuildCommand("1.3.0").run([blueprint, "--target", "tsPackage", "--out", packageRoot])).toBe(0);
+        const normalStudio = new StudioOutcomeLibraryGenerateService("1.3.0", loadPokieGame);
+        const base = {libraryId: "concurrent-base", mode: "base", generation: "exact" as const, outDir: "concurrent-bundle"};
+        const initialPreview = await normalStudio.estimate(packageRoot, base);
+        if (initialPreview.status !== "ok") throw new Error(`Expected initial base preflight, got ${JSON.stringify(initialPreview)}`);
+        await expect(normalStudio.generate(packageRoot, {...base, preflightToken: initialPreview.preflightToken})).resolves.toMatchObject({status: "ok"});
+
+        let releaseFirstWriter: (() => void) | undefined;
+        const firstWriterReleased = new Promise<void>((resolve) => {
+            releaseFirstWriter = resolve;
+        });
+        let firstWriterEntered: (() => void) | undefined;
+        const firstWriterReady = new Promise<void>((resolve) => {
+            firstWriterEntered = resolve;
+        });
+        let gateFirstWriter = true;
+        const nativeWriter = new OutcomeLibraryBundleWriter<string>("1.3.0");
+        const gatedWriter: OutcomeLibraryBundleWriting<string> = {
+            writeToDirectory: async (modes, outDir, options) => {
+                if (gateFirstWriter) {
+                    gateFirstWriter = false;
+                    firstWriterEntered?.();
+                    await firstWriterReleased;
+                }
+                return nativeWriter.writeToDirectory(modes, outDir, options);
+            },
+        };
+        const delayedStudio = new StudioOutcomeLibraryGenerateService("1.3.0", loadPokieGame, undefined, undefined, gatedWriter);
+        const regenerationPreview = await delayedStudio.estimate(packageRoot, base);
+        if (regenerationPreview.status !== "ok") throw new Error(`Expected base regeneration preflight, got ${JSON.stringify(regenerationPreview)}`);
+        const staleRegeneration = delayedStudio.generate(packageRoot, {...base, preflightToken: regenerationPreview.preflightToken});
+        await firstWriterReady;
+
+        const ante = {libraryId: "concurrent-ante", mode: "ante", generation: "exact" as const, outDir: "concurrent-bundle"};
+        const antePreview = await normalStudio.estimate(packageRoot, ante);
+        if (antePreview.status !== "ok") throw new Error(`Expected ante preflight, got ${JSON.stringify(antePreview)}`);
+        await expect(normalStudio.generate(packageRoot, {...ante, preflightToken: antePreview.preflightToken})).resolves.toMatchObject({status: "ok"});
+        releaseFirstWriter?.();
+
+        await expect(staleRegeneration).resolves.toMatchObject({status: "load-error", error: expect.stringContaining("claimed")});
+        const manifest = await new OutcomeLibraryBundleReader().readManifest(path.join(packageRoot, "concurrent-bundle"));
+        expect(manifest.modes.map((mode) => mode.modeName)).toEqual(["base", "ante"]);
     });
 });

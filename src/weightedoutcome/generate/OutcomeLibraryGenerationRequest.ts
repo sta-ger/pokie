@@ -38,6 +38,35 @@ export type OutcomeLibraryGenerationSample = {readonly sampleSize: bigint; reado
 export type OutcomeLibraryGenerationMode = "default" | "exact" | "sampled" | "bounded";
 
 /**
+ * Resolves whether a library mode name is an executable runtime selection or
+ * only a compatibility/storage label.  A declared `BetMode` becomes
+ * executable only when the package opted its *entire* array into
+ * `runtimeType`; legacy declarative arrays deliberately remain metadata-only.
+ *
+ * Keeping this decision at the domain adapter boundary prevents Studio, CLI
+ * and managed artifact generation from independently guessing what a mode
+ * string means.  An unknown mode in an explicit runtime contract is rejected
+ * before enumeration.  An unknown legacy label remains supported as the old
+ * metadata-only library partition, never falsely advertised as a selected
+ * ante/buy runtime.
+ */
+export function resolveOutcomeLibraryRuntimeModeSelection(game: PokieGame, mode: string | undefined): boolean {
+    if (mode === undefined) return false;
+    const declaredModes = game.getBetModes?.();
+    if (declaredModes === undefined || declaredModes.length === 0) return false;
+    const hasAnyRuntimeMode = declaredModes.some((entry) => entry.runtimeType !== undefined);
+    const hasCompleteRuntimeContract = hasAnyRuntimeMode && declaredModes.every((entry) => entry.runtimeType !== undefined);
+    if (!hasCompleteRuntimeContract) return false;
+    if (!declaredModes.some((entry) => entry.id === mode)) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-unsupported",
+            `"${game.getManifest().id}" does not declare executable bet mode "${mode}". Use a declared runtime mode or omit runtime selection.`,
+        );
+    }
+    return true;
+}
+
+/**
  * An adapter-owned capability for the bounded disk state of one exact run.
  *
  * Checkpoints carry only `id`.  In particular, they never carry a staging

@@ -34,6 +34,7 @@ import {
     loadPokieGame,
     releasePokieGame,
     prepareOutcomeLibraryGenerationFromEstimate,
+    resolveOutcomeLibraryRuntimeModeSelection,
     resolveOutcomeLibraryGenerationDestination,
     describeUnsupportedProjectOperation,
     removePublishedDirectoryIfOwned,
@@ -891,6 +892,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             // preparation derives the loaded hash and rejects a mismatch.
             ...(options.configHash === undefined ? {} : {configHash: options.configHash}),
             ...(options.mode === undefined ? {} : {mode: options.mode}),
+            ...(resolveOutcomeLibraryRuntimeModeSelection(game, options.mode) ? {selectBetMode: true} : {}),
             ...(options.stake === undefined ? {} : {stake: options.stake}),
             ...(options.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: options.maxOutcomeSpaceSize}),
             ...(sample === undefined ? {} : {sample}),

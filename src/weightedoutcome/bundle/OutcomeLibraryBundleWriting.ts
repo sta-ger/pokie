@@ -1,5 +1,6 @@
 import type {OutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleModeInput.js";
 import type {OutcomeLibraryBundleWriteResult} from "./OutcomeLibraryBundleWriteResult.js";
+import type {PublishDirectoryAtomicallyOwnership} from "../../stakeengine/internal/publishDirectoryAtomically.js";
 
 // Lifecycle hooks intentionally live with the writer rather than in project/, because direct bundle users
 // need the same ability to observe and stop a long streaming publish as ArtifactBuilder users do.
@@ -37,6 +38,8 @@ export type OutcomeLibraryBundleWriteOptions = {
     // This remains a compatibility hook for adapters' source-aware policy;
     // it is not itself relied upon as the ownership mechanism.
     readonly assertDestinationAvailable?: () => Promise<void> | void;
+    /** Revision captured before retained modes were read; checked at atomic commit. */
+    readonly expectedDestinationOwnership?: PublishDirectoryAtomicallyOwnership;
     readonly onProgress?: (progress: OutcomeLibraryBundleWriteProgress) => void;
     readonly onLifecycleStage?: (stage: OutcomeLibraryBundleWriteLifecycleStage) => void;
     readonly supplementalFiles?: readonly OutcomeLibraryBundleSupplementalFile[];

@@ -8,7 +8,10 @@ import {SessionRepository} from "../../../src/server/session/SessionRepository.j
 import {VersionedSessionRepository} from "../../../src/server/session/VersionedSessionRepository.js";
 import {SpinCommandHandler} from "../../../src/server/spin/SpinCommandHandler.js";
 import {SpinCommandResult} from "../../../src/server/spin/SpinCommandResult.js";
+import {SpinOperationLog} from "../../../src/server/spin/SpinOperationLog.js";
 import {InMemoryWallet} from "../../../src/server/wallet/InMemoryWallet.js";
+import {GameSession} from "../../../src/session/GameSession.js";
+import {GameSessionConfig} from "../../../src/session/GameSessionConfig.js";
 import {TransactionalWalletPort} from "../../../src/server/wallet/TransactionalWalletPort.js";
 import {GameSessionHandling} from "../../../src/session/GameSessionHandling.js";
 import {StakeAmountDetermining} from "../../../src/session/StakeAmountDetermining.js";
@@ -581,6 +584,127 @@ describe("SpinCommandHandler", () => {
         await expect(repository.load("rollback")).resolves.toMatchObject({bet: 1});
         await expect(handler.handle("rollback")).resolves.toMatchObject({status: "played", credits: 9});
         expect(wallet.debitCalls.map((call) => call.amount)).toEqual([1]);
+    });
+
+    it("restores a prepared standard GameSession when the first operation-log checkpoint fails, so an omitted-bet retry uses the old bet", async () => {
+        const config = new GameSessionConfig();
+        config.setAvailableBets([1, 2]);
+        config.setBet(1);
+        config.setCreditsAmount(10);
+        const live = new GameSession(config);
+        const repository = new InMemorySessionRepository();
+        const wallet = new RecordingTransactionalWallet();
+        const operationLog: SpinOperationLog = {
+            record: (record) => record.checkpoint === "started"
+                ? Promise.reject(new Error("operation log unavailable"))
+                : Promise.resolve(),
+            load: () => Promise.resolve(undefined),
+            delete: () => Promise.resolve(),
+            listIncomplete: () => Promise.resolve([]),
+        };
+        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => new GameSession(config)}, repository, wallet, undefined, operationLog);
+        await repository.save("checkpoint-rollback", {bet: 1, win: 0, executionState: "live-only"});
+        await wallet.setBalance("checkpoint-rollback", 10);
+        handler.primeSession("checkpoint-rollback", live, (await repository.loadVersioned("checkpoint-rollback"))?.version);
+
+        await expect(handler.handle("checkpoint-rollback", "checkpoint-fails", undefined, 2)).rejects.toThrow("operation log unavailable");
+        expect({bet: live.getBet(), credits: live.getCreditsAmount()}).toEqual({bet: 1, credits: 10});
+        await expect(repository.load("checkpoint-rollback")).resolves.toMatchObject({bet: 1});
+        await expect(wallet.getBalance("checkpoint-rollback")).resolves.toBe(10);
+        expect(wallet.debitCalls).toEqual([]);
+
+        await expect(handler.handle("checkpoint-rollback")).resolves.toMatchObject({status: "played", credits: 9});
+        expect(wallet.debitCalls.map((call) => call.amount)).toEqual([1]);
+    });
+
+    it("restores a partial first command setter failure before an omitted-bet follow-up", async () => {
+        let credits = 10;
+        let bet = 1;
+        let plays = 0;
+        let failFirstCreditsSetter = true;
+        const live: GameSessionHandling = {
+            getCreditsAmount: () => credits,
+            setCreditsAmount: (value) => {
+                if (failFirstCreditsSetter) {
+                    failFirstCreditsSetter = false;
+                    credits = value + 3; // mutation happened before the setter reported failure
+                    throw new Error("partial credits setter failure");
+                }
+                credits = value;
+            },
+            getBet: () => bet,
+            setBet: (value) => {
+                bet = value;
+            },
+            getAvailableBets: () => [1, 2],
+            canPlayNextGame: () => credits >= bet,
+            play: () => {
+                plays++;
+                credits -= bet;
+            },
+            getWinAmount: () => 0,
+        };
+        const repository = new InMemorySessionRepository();
+        const wallet = new RecordingTransactionalWallet();
+        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => createFakeSessionWithSelectableBet()}, repository, wallet);
+        await repository.save("partial-setter", {bet: 1, win: 0, executionState: "live-only"});
+        await wallet.setBalance("partial-setter", 10);
+        handler.primeSession("partial-setter", live, (await repository.loadVersioned("partial-setter"))?.version);
+
+        await expect(handler.handle("partial-setter", undefined, undefined, 2)).resolves.toMatchObject({status: "blocked", reason: "partial credits setter failure"});
+        expect({credits, bet, plays}).toEqual({credits: 10, bet: 1, plays: 0});
+        await expect(repository.load("partial-setter")).resolves.toMatchObject({bet: 1});
+        await expect(wallet.getBalance("partial-setter")).resolves.toBe(10);
+
+        await expect(handler.handle("partial-setter")).resolves.toMatchObject({status: "played", credits: 9});
+        expect({bet, plays}).toEqual({bet: 1, plays: 1});
+    });
+
+    it("evicts an unrecoverable pre-play command instance so its corrupted bet cannot execute later", async () => {
+        let credits = 10;
+        let bet = 1;
+        let mode = "base";
+        let plays = 0;
+        const live: GameSessionHandling & BetModeSelecting = {
+            getCreditsAmount: () => credits,
+            setCreditsAmount: (value) => {
+                credits = value;
+            },
+            getBet: () => bet,
+            setBet: (value) => {
+                bet = value;
+            },
+            getAvailableBets: () => [1, 2],
+            canPlayNextGame: () => credits >= bet,
+            play: () => {
+                plays++;
+                credits -= bet;
+            },
+            getWinAmount: () => 0,
+            getBetModeId: () => mode,
+            getAvailableBetModeIds: () => ["base", "buy"],
+            setBetMode: (value) => {
+                // The requested mode rejects, then restoring the prior mode rejects too.
+                // `bet` has already become 2, so retaining this object would leak it.
+                if (value === "buy" || value === "base") throw new Error("mode setter unavailable");
+                mode = value;
+            },
+        };
+        const repository = new InMemorySessionRepository();
+        const wallet = new RecordingTransactionalWallet();
+        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => createFakeSessionWithSelectableBetMode()}, repository, wallet);
+        await repository.save("unrecoverable-setter", {bet: 1, win: 0, executionState: "live-only"});
+        await wallet.setBalance("unrecoverable-setter", 10);
+        handler.primeSession("unrecoverable-setter", live, (await repository.loadVersioned("unrecoverable-setter"))?.version);
+
+        await expect(handler.handle("unrecoverable-setter", undefined, undefined, 2, "buy")).resolves.toMatchObject({status: "blocked", reason: expect.stringContaining("reversible")});
+        expect({bet, mode, plays}).toEqual({bet: 2, mode: "base", plays: 0});
+        expect(handler.getLiveSession("unrecoverable-setter")).toBeUndefined();
+        await expect(repository.load("unrecoverable-setter")).resolves.toMatchObject({bet: 1});
+        await expect(wallet.getBalance("unrecoverable-setter")).resolves.toBe(10);
+
+        await expect(handler.handle("unrecoverable-setter")).resolves.toMatchObject({status: "blocked", reason: expect.stringContaining("cannot continue")});
+        expect(plays).toBe(0);
     });
 
     it("uses reconstructed state for the complete legacy/durable command matrix and never mutates rejected commands", async () => {

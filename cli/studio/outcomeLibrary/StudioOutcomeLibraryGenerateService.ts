@@ -19,6 +19,7 @@ import {
     ArtifactConversionPlanner,
     ArtifactConversionPlan,
     assertPreparedArtifactDestinationAvailable,
+    capturePublishDirectoryOwnership,
     DEFAULT_BOUNDED_OUTCOME_LIBRARY_SAMPLE_SIZE,
     DEFAULT_BOUNDED_OUTCOME_LIBRARY_SEED,
     DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE,
@@ -31,6 +32,7 @@ import {
     generateStreamingWeightedOutcomeLibrary,
     generateWeightedOutcomeLibrary,
     prepareOutcomeLibraryGeneration,
+    resolveOutcomeLibraryRuntimeModeSelection,
 } from "pokie";
 import fs from "fs";
 import path from "path";
@@ -566,6 +568,11 @@ export class StudioOutcomeLibraryGenerateService {
         // bundle. A destination absent when this read began, however, remains
         // caller-owned if it appears before the writer's final swap.
         let destinationExistedWhenRead = false;
+        // Bind retained-mode reading to the exact directory revision that may
+        // later be atomically replaced.  Capturing this before read() prevents
+        // a concurrent sibling-mode writer from authorising an old `[base]`
+        // input over its newer `[base, ante]` publication.
+        let destinationOwnershipAtRead: ReturnType<typeof capturePublishDirectoryOwnership> | undefined;
         const assertDestinationAvailable = async () => {
             // The token retains the managed Blueprint source identity, but
             // publication must still re-check its physical output:
@@ -626,6 +633,7 @@ export class StudioOutcomeLibraryGenerateService {
                     })).source;
                 },
                 read: async (): Promise<PreparedGenerationRead> => {
+                    destinationOwnershipAtRead = capturePublishDirectoryOwnership(boundDestination);
                     destinationExistedWhenRead = this.directoryExists(boundDestination);
                     const reuse = plan.steps.find((step) => step.kind === "reuseManagedOutcomeLibrary");
                     if (reuse !== undefined) {
@@ -712,6 +720,7 @@ export class StudioOutcomeLibraryGenerateService {
                         // retain that exact async policy for the writer's final
                         // atomic replacement after streaming staging.
                         assertDestinationAvailable,
+                        ...(destinationOwnershipAtRead === undefined ? {} : {expectedDestinationOwnership: destinationOwnershipAtRead}),
                     });
                 },
                 register: (writeResult) => {
@@ -1201,6 +1210,11 @@ export class StudioOutcomeLibraryGenerateService {
             pokieVersion: this.pokieVersion,
             ...(request.configHash === undefined ? {} : {configHash: request.configHash}),
             ...(request.mode === undefined ? {} : {mode: request.mode}),
+            // `mode` alone is a historical storage label.  Only an explicit
+            // package runtime contract turns it into session.setBetMode(); the
+            // shared resolver rejects an unknown executable id before work and
+            // preserves metadata-only compatibility labels unchanged.
+            ...(resolveOutcomeLibraryRuntimeModeSelection(game, request.mode) ? {selectBetMode: true} : {}),
             ...(request.stake === undefined ? {} : {stake: request.stake}),
             generation: resolveGeneration(request),
             ...(request.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: request.maxOutcomeSpaceSize}),

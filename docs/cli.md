@@ -2712,10 +2712,16 @@ reconstruct the session, gate on `canPlayNextGame()`, run `play()`, settle the w
 
 ```ts
 export interface SpinCommandHandling {
-    primeSession(sessionId: string, session: GameSessionHandling): void;
-    handle(sessionId: string, requestId?: string): Promise<SpinCommandResult>;
+    primeSession(sessionId: string, session: GameSessionHandling, committedVersion?: number): void;
+    handle(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number, mode?: string): Promise<SpinCommandResult>;
 }
 ```
+
+For a `VersionedSessionRepository`, `committedVersion` is required in practice: save the newly-created
+session first, then pass the version of that committed record. The TypeScript parameter remains optional
+only for unversioned-repository source compatibility; a two-argument caller does not establish a safe
+version binding and its primed live object will not be used against a versioned record. This is an explicit
+migration boundary, preventing stale live RNG/feature state from executing after another writer commits.
 
 #### Transactional wallet settlement
 

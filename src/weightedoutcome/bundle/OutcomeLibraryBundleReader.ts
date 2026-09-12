@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import type {WeightedOutcomeRandomSource} from "../../pregenerated/WeightedOutcomeRandomSource.js";
@@ -42,6 +43,10 @@ export class OutcomeLibraryBundleReader<T extends string | number = string> impl
     public async *iterateModeOutcomes(bundleDir: string, modeName: string): AsyncIterable<WeightedOutcome<T>> {
         const index = await this.readModeIndex(bundleDir, modeName);
         const outcomesPath = path.join(bundleDir, index.outcomesFile);
+        const libraryHash = crypto.createHash("sha256");
+        libraryHash.update(`{"libraryId":${JSON.stringify(index.libraryId)},"outcomes":[`);
+        let entryPosition = 0;
+        let totalWeight = 0;
         for await (const line of iterateOutcomesJsonl(outcomesPath)) {
             if (line.status !== "ok") {
                 throw new OutcomeLibraryBundleInvariantError(
@@ -53,7 +58,34 @@ export class OutcomeLibraryBundleReader<T extends string | number = string> impl
                     `mode "${modeName}": outcomes line ${line.position} is not {id, weight, artifact}. Validate the bundle first (OutcomeLibraryBundleValidator) before reading it this way.`,
                 );
             }
-            yield line.value as unknown as WeightedOutcome<T>;
+            const outcome = line.value as unknown as WeightedOutcome<T>;
+            const entry = index.entries[entryPosition];
+            const raw = Buffer.from(line.raw, "utf-8");
+            const recordHash = `sha256:${crypto.createHash("sha256").update(raw).digest("hex")}`;
+            if (
+                entry === undefined ||
+                entry.id !== outcome.id ||
+                entry.weight !== outcome.weight ||
+                entry.byteOffset !== line.byteOffset ||
+                entry.byteLength !== raw.byteLength ||
+                entry.recordHash !== recordHash
+            ) {
+                throw new OutcomeLibraryBundleInvariantError(
+                    `mode "${modeName}": outcome "${outcome.id}" no longer matches its original index entry. Refusing to reuse a corrupted retained mode.`,
+                );
+            }
+            if (entryPosition > 0) libraryHash.update(",");
+            libraryHash.update(raw);
+            entryPosition++;
+            totalWeight += outcome.weight;
+            yield outcome;
+        }
+        libraryHash.update(`],"schemaVersion":${JSON.stringify(index.librarySchemaVersion)}}`);
+        const computedLibraryHash = `sha256:${libraryHash.digest("hex")}`;
+        if (entryPosition !== index.outcomeCount || totalWeight !== index.totalWeight || computedLibraryHash !== index.libraryHash) {
+            throw new OutcomeLibraryBundleInvariantError(
+                `mode "${modeName}": retained outcomes do not match the original index count, weight, or library hash. Refusing to reuse a corrupted mode.`,
+            );
         }
     }
 

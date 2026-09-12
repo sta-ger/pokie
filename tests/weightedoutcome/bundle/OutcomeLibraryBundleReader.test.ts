@@ -49,6 +49,21 @@ describe("OutcomeLibraryBundleReader", () => {
         expect(seen).toEqual(library.outcomes.map((outcome) => outcome.id));
     });
 
+    it("refuses a retained stream whose JSONL record was changed without updating its original index/hash", async () => {
+        const outcomesPath = path.join(outDir, "outcomes_base.jsonl");
+        // Same-width mutation: byte offsets still look plausible, so merely
+        // rebuilding a new bundle would silently bless changed math unless the
+        // reader checks the index record hash and library hash as it streams.
+        fs.writeFileSync(outcomesPath, fs.readFileSync(outcomesPath, "utf8").replace('"weight":500', '"weight":900'));
+        const reader = new OutcomeLibraryBundleReader();
+
+        await expect(async () => {
+            for await (const outcome of reader.iterateModeOutcomes(outDir, "base")) {
+                expect(outcome).toBeDefined();
+            }
+        }).rejects.toThrow(/original index entry/);
+    });
+
     it("readOutcomeById returns the exact outcome for every real id, and undefined for an unknown one", async () => {
         const reader = new OutcomeLibraryBundleReader();
 
