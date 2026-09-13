@@ -1,0 +1,32 @@
+{
+  "status": "passed",
+  "scope": "One real spawned POKIE CLI process; bounded deterministic Outcome Library build from the checked-in 5x3 sample-slot Blueprint. This is not an exact-enumeration or 17-million-combination measurement.",
+  "command": [
+    "node",
+    "dist/cli/pokie.js",
+    "build",
+    "examples/blueprints/sample-slot.blueprint.json",
+    "--target",
+    "outcomeLibrary",
+    "--sample",
+    "20000",
+    "--seed",
+    "final-acceptance-measurement"
+  ],
+  "operation": {
+    "target": "outcomeLibrary",
+    "strategy": "bounded-coverage",
+    "sampledRawCount": 20000,
+    "totalOutcomeSpaceSize": 184528125,
+    "artifactBytes": 20175800,
+    "exitCode": 0,
+    "elapsedMs": 24369.667731
+  },
+  "resources": {
+    "peakRssBytes": 233472000,
+    "rssMeasurement": "/proc/<pid>/status VmRSS sampled every 10 ms for the spawned CLI child",
+    "peakHeapUsedBytes": 75865680,
+    "peakHeapTotalBytes": 111968256,
+    "heapMeasurement": "process.memoryUsage() sampled every 10 ms inside the spawned Node CLI process; sampled, not a GC-safe absolute heap peak"
+  }
+}

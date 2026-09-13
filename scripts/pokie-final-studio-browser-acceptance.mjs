@@ -129,6 +129,22 @@ async function typeIntoAria(label, value) {
     note(`TYPE ${label}=${JSON.stringify(value)}`);
 }
 
+function inputForLabelExpression(label) {
+    return `(() => {
+        const element = [...document.querySelectorAll("label")].find((item) => item.textContent?.trim() === ${JSON.stringify(label)});
+        return element?.htmlFor ? document.getElementById(element.htmlFor) : undefined;
+    })()`;
+}
+
+async function typeIntoLabel(label, value) {
+    await clickExpression(inputForLabelExpression(label), label);
+    await cdp.send("Input.dispatchKeyEvent", {type: "keyDown", key: "a", code: "KeyA", windowsVirtualKeyCode: 65, modifiers: 2});
+    await cdp.send("Input.dispatchKeyEvent", {type: "keyUp", key: "a", code: "KeyA", windowsVirtualKeyCode: 65, modifiers: 2});
+    await cdp.send("Input.insertText", {text: value});
+    await press("Tab", "Tab", 9);
+    note(`TYPE ${label}=${JSON.stringify(value)}`);
+}
+
 async function capture(name) {
     const image = await cdp.send("Page.captureScreenshot", {format: "png", captureBeyondViewport: false});
     await writeFile(resolve(evidence, `${name}.png`), Buffer.from(image.data, "base64"));
@@ -154,7 +170,7 @@ async function navigate(url) {
 
 async function main() {
     await mkdir(evidence, {recursive: true});
-    await Promise.all(["par-overview.png", "par-game-model.png", "blueprint-play.png", "reel-artwork-picker.png", "TRANSCRIPT.txt", "results.json"].map((name) => rm(resolve(evidence, name), {force: true})));
+    await Promise.all(["par-overview.png", "par-game-model.png", "blueprint-play.png", "reel-artwork-picker.png", "reel-strip-modeler-preview.png", "TRANSCRIPT.txt", "results.json"].map((name) => rm(resolve(evidence, name), {force: true})));
     work = await mkdtemp(resolve(tmpdir(), "pokie-final-studio-browser-"));
     profile = await mkdtemp(resolve(tmpdir(), "pokie-final-studio-chrome-"));
     const parPath = resolve(work, "starter.par.xlsx");
@@ -219,6 +235,51 @@ async function main() {
     await capture("reel-artwork-picker");
     note("PASS assigned PNG artwork was visibly loaded in Game Model; searchable canonical Symbol picker accepted ArrowDown+Enter and inserted the selected literal reel symbol.");
 
+    // Exercise the actual per-reel modeler independently of its older literal
+    // sibling.  This is its full Select -> Configure -> Preview -> stop-window
+    // path, including the same keyboard picker and the rendered window, not a
+    // document.images shortcut or a second renderer.
+    await clickExpression(`[...document.querySelectorAll("label")].find((item) => item.textContent?.trim() === "Per-reel (Reel Strip Modeler)" && item.getClientRects().length > 0)`, "Per-reel (Reel Strip Modeler)");
+    await waitFor(async () => (await renderedText()).includes("Reel Strip Modeler") && await evaluate(`Boolean(document.querySelector('[aria-label="Select reel 1"]'))`), "Reel Strip Modeler");
+    await clickExpression(`document.querySelector('[aria-label="Select reel 1"]')`, "Select reel 1");
+    await waitFor(async () => await evaluate(`Boolean(document.querySelector('[aria-label="Symbol picker for reel 1"]'))`), "per-reel Configure");
+    const perReelCountBefore = await evaluate(`document.querySelectorAll('[aria-label^="Reel 1 symbol "]').length`);
+    await typeIntoAria("Symbol picker for reel 1", "A");
+    await waitFor(async () => await evaluate(`Boolean([...document.querySelectorAll('[role="option"]')].find((item) => item.textContent?.trim() === "A" && item.getClientRects().length > 0))`), "per-reel picker search result");
+    await press("ArrowDown", "ArrowDown", 40);
+    await press("Enter", "Enter", 13);
+    await clickExpression(`document.querySelector('[aria-label="Add symbol to reel 1"]')`, "Add symbol to reel 1");
+    await waitFor(async () => (await evaluate(`document.querySelectorAll('[aria-label^="Reel 1 symbol "]').length`)) === perReelCountBefore + 1, "per-reel keyboard symbol insertion");
+    await clickExpression(`document.querySelector('[aria-label="Check & preview"]')`, "per-reel Preview");
+    await waitFor(async () => (await renderedText()).includes("Literal strip"), "per-reel preview result");
+    await clickExpression(`document.querySelector('[aria-label="Continue to Preview stop windows"]')`, "Open stop-window preview");
+    await waitFor(async () => (await renderedText()).includes("Stop window preview"), "stop-window preview");
+    await typeIntoLabel("Visible rows", "3");
+    const stopZero = await evaluate(`(() => {
+        const section = [...document.querySelectorAll("fieldset")].find((item) => item.querySelector("legend")?.textContent?.trim() === "Stop window preview");
+        return section ? [...section.querySelectorAll("td")].map((item) => item.textContent?.trim()) : undefined;
+    })()`);
+    await typeIntoLabel("Stop position", "1");
+    await waitFor(async () => await evaluate(`(() => {
+        const section = [...document.querySelectorAll("fieldset")].find((item) => item.querySelector("legend")?.textContent?.trim() === "Stop window preview");
+        return section ? [...section.querySelectorAll("td")].map((item) => item.textContent?.trim()).join(",") !== ${JSON.stringify(stopZero?.join(","))} : false;
+    })()`), "changed stop position");
+    const stopWindow = await evaluate(`(() => {
+        const section = [...document.querySelectorAll("fieldset")].find((item) => item.querySelector("legend")?.textContent?.trim() === "Stop window preview");
+        if (!section) return undefined;
+        const cells = [...section.querySelectorAll("td")];
+        return {
+            cells: cells.map((item) => item.textContent?.trim()),
+            assignedArtwork: Boolean([...section.querySelectorAll("img")].find((image) => image.alt === "A" && image.naturalWidth > 0 && image.naturalHeight > 0)),
+            textFallback: cells.some((item) => item.textContent?.trim() === "B" && !item.querySelector("img")),
+        };
+    })()`);
+    assert.equal(stopWindow?.cells.length, 3, `Expected three visible stop-window rows: ${JSON.stringify(stopWindow)}`);
+    assert.equal(stopWindow?.assignedArtwork, true, `Assigned A artwork was not rendered in the stop window: ${JSON.stringify(stopWindow)}`);
+    assert.equal(stopWindow?.textFallback, true, `Unassigned B did not retain text fallback in the stop window: ${JSON.stringify(stopWindow)}`);
+    await capture("reel-strip-modeler-preview");
+    note(`PASS per-reel modeler selected/configured Reel 1, inserted A with keyboard picker, previewed a changed stop window and rendered artwork plus fallback: before=${JSON.stringify(stopZero)}, after=${JSON.stringify(stopWindow)}.`);
+
     await navigate(`${blueprintStudio}/#/project/play`);
     await waitFor(async () => (await renderedText()).includes("New Play session"), "Play start state");
     await clickText("New Play session");
@@ -235,7 +296,7 @@ async function main() {
     assert.ok(playLayout.spin.bottom <= playLayout.height && playLayout.player.bottom <= playLayout.height && playLayout.result.bottom <= playLayout.height, `Play primary loop did not fit its viewport: ${JSON.stringify(playLayout)}`);
     await capture("blueprint-play");
     note(`PASS Play primary loop fits one 1280x800 viewport: ${JSON.stringify(playLayout)}.`);
-    await writeFile(resolve(evidence, "results.json"), `${JSON.stringify({status: "passed", browser: {viewport: {width: 1280, height: 800}, chromium: chromiumBinary}, scenarios: ["PAR Overview validation", "PAR read-only Game Model", "assigned symbol artwork", "searchable keyboard symbol picker", "Play primary loop"]}, null, 2)}\n`);
+    await writeFile(resolve(evidence, "results.json"), `${JSON.stringify({status: "passed", browser: {viewport: {width: 1280, height: 800}, chromium: chromiumBinary}, scenarios: ["PAR Overview validation", "PAR read-only Game Model", "assigned symbol artwork", "searchable keyboard symbol picker", "Per-reel modeler stop-window artwork and fallback", "Play primary loop"]}, null, 2)}\n`);
 }
 
 main().catch((error) => {
