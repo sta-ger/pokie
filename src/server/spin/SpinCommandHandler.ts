@@ -452,36 +452,38 @@ export class SpinCommandHandler implements SpinCommandHandling {
         const debitTransactionId = `${roundId}:${attemptId}:debit`;
         const creditTransactionId = `${roundId}:${attemptId}:credit`;
 
-        const stakeAmount = determineStakeAmount(session, session.getBet());
-        // Capture the selected mode before play(): a forcing one-shot mode resets itself during its
-        // successful play, but this completed round must retain the mode that determined its stake.
-        const betMode = supportsBetModeSelecting(session) ? session.getBetModeId() : undefined;
-        const startedAt = new Date().toISOString();
-
-        // Every checkpoint() call below is a no-op unless requestId is defined — SpinOperationLog is
-        // scoped to requestId-bearing attempts only, the same scope idempotency itself already has (see
-        // the class doc comment). Declared once here so every call site below stays a one-liner.
-        const checkpoint = (record: Omit<SpinOperationRecord, "sessionId" | "requestId" | "attemptId" | "debitTransactionId" | "creditTransactionId" | "stakeAmount" | "expectedVersion" | "startedAt">): Promise<void> => {
-            if (requestId === undefined) {
-                return Promise.resolve();
-            }
-            return this.operationLog.record({
-                sessionId,
-                requestId,
-                attemptId,
-                debitTransactionId,
-                creditTransactionId,
-                stakeAmount,
-                expectedVersion,
-                startedAt,
-                ...record,
-            });
-        };
-
         const appliedTransactionIds: string[] = [];
         let sessionStateSaved = false;
         let playStarted = false;
+        let checkpoint: ((record: Omit<SpinOperationRecord, "sessionId" | "requestId" | "attemptId" | "debitTransactionId" | "creditTransactionId" | "stakeAmount" | "expectedVersion" | "startedAt">) => Promise<void>) | undefined;
         try {
+            // applyCommand() has already made the reversible command projection.  Everything from the
+            // first stake/mode read through play() is consequently one pre-play failure boundary: a
+            // getter is executable user/game code too and can throw after a requested bet/mode changed
+            // the live instance.  Do not leave that instance selected merely because no wallet write or
+            // operation-log checkpoint was reached yet.
+            const stakeAmount = determineStakeAmount(session, session.getBet());
+            // Capture the selected mode before play(): a forcing one-shot mode resets itself during its
+            // successful play, but this completed round must retain the mode that determined its stake.
+            const betMode = supportsBetModeSelecting(session) ? session.getBetModeId() : undefined;
+            const startedAt = new Date().toISOString();
+
+            // Every checkpoint() call below is a no-op unless requestId is defined — SpinOperationLog is
+            // scoped to requestId-bearing attempts only, the same scope idempotency itself already has.
+            checkpoint = (record) => {
+                if (requestId === undefined) return Promise.resolve();
+                return this.operationLog.record({
+                    sessionId,
+                    requestId,
+                    attemptId,
+                    debitTransactionId,
+                    creditTransactionId,
+                    stakeAmount,
+                    expectedVersion,
+                    startedAt,
+                    ...record,
+                });
+            };
             // Command preparation has already changed the executable object.  The first checkpoint is
             // still pre-play: if it rejects, restoring that preparation is safe and must happen before
             // this request leaves the handler.  Keeping it in this try boundary is essential because a
@@ -597,16 +599,24 @@ export class SpinCommandHandler implements SpinCommandHandling {
             // explicit reconcileAll() sweep) rather than a checkpoint lying about a compensation that
             // didn't fully happen.
             if (compensationFullySucceeded) {
-                if (appliedTransactionIds.length === 0 && !sessionStateSaved) {
-                    // Nothing was ever applied in the first place (e.g. the debit itself threw) — there
-                    // was nothing to compensate, so "compensated" would overstate what happened here;
-                    // just clear the record, the same as the "started"-only case in
-                    // SpinReconciliationService.
-                    if (requestId !== undefined) {
-                        await this.operationLog.delete(sessionId, requestId);
+                try {
+                    if (appliedTransactionIds.length === 0 && !sessionStateSaved) {
+                        // Nothing was ever applied in the first place (e.g. the debit itself threw) — there
+                        // was nothing to compensate, so "compensated" would overstate what happened here;
+                        // just clear the record, the same as the "started"-only case in
+                        // SpinReconciliationService.
+                        if (requestId !== undefined) {
+                            await this.operationLog.delete(sessionId, requestId);
+                        }
+                    } else {
+                        await checkpoint?.({checkpoint: "compensated", updatedAt: new Date().toISOString()});
                     }
-                } else {
-                    await checkpoint({checkpoint: "compensated", updatedAt: new Date().toISOString()});
+                } catch {
+                    // Cleanup is deliberately best-effort.  The command's original failure is the response
+                    // contract; masking it with a second log failure would make callers believe stake/mode
+                    // preparation succeeded or failed for the wrong reason.  Leave the honest last durable
+                    // checkpoint for reconciliation instead of publishing a false compensation success.
+                    compensationFullySucceeded = false;
                 }
             }
 

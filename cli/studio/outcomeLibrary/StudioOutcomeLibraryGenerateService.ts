@@ -5,6 +5,7 @@ import {
     OutcomeLibraryBundleManifest,
     OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleValidator,
     OutcomeLibraryBundleReading,
     OutcomeLibraryBundleWriter,
     OutcomeLibraryBundleWriting,
@@ -32,7 +33,7 @@ import {
     generateStreamingWeightedOutcomeLibrary,
     generateWeightedOutcomeLibrary,
     prepareOutcomeLibraryGeneration,
-    resolveOutcomeLibraryRuntimeModeSelection,
+    resolveOutcomeLibraryRuntimeModeIdentity,
 } from "pokie";
 import fs from "fs";
 import path from "path";
@@ -147,6 +148,9 @@ export class StudioOutcomeLibraryGenerateService {
     private readonly writeTextFile: (filePath: string, contents: string) => void;
     private readonly ensureDirectory: (dirPath: string) => void;
     private readonly planning: StudioArtifactConversionPlanning;
+    // Kept as a narrow port for existing in-process embeddings/tests; the
+    // production default is the bundle format's canonical validator.
+    private readonly validateExistingBundle: (bundleDir: string, deep: boolean) => Promise<readonly {readonly severity: string; readonly code: string; readonly message: string}[]>;
     private readonly planner = new ArtifactConversionPlanner();
     private readonly preflightSnapshots = new Map<string, StudioOutcomeLibraryPreflightSnapshot>();
     private nextPreflightToken = 1;
@@ -171,6 +175,8 @@ export class StudioOutcomeLibraryGenerateService {
         writeTextFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
         ensureDirectory: (dirPath: string) => void = (dirPath) => fs.mkdirSync(dirPath, {recursive: true}),
         planning: StudioArtifactConversionPlanning = new StudioArtifactConversionPlanningService(pokieVersion),
+        validateExistingBundle: (bundleDir: string, deep: boolean) => Promise<readonly {readonly severity: string; readonly code: string; readonly message: string}[]> =
+        (bundleDir, deep) => new OutcomeLibraryBundleValidator<string>().validate(bundleDir, {deep}),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadGame = loadGame;
@@ -185,6 +191,7 @@ export class StudioOutcomeLibraryGenerateService {
         this.writeTextFile = writeTextFile;
         this.ensureDirectory = ensureDirectory;
         this.planning = planning;
+        this.validateExistingBundle = validateExistingBundle;
     }
 
     /** Shared no-runtime boundary used before every retained generation phase. */
@@ -240,7 +247,7 @@ export class StudioOutcomeLibraryGenerateService {
             // A preflight is not just an outcome-space calculation: it prepares the
             // same destination and resolved strategy that execution will consume.
             const requestedGeneration = requestedGenerationFor(preparedRequest.preflight);
-            const existingBundle = await this.existingBundleUpdate(boundDestination, request.mode ?? "base");
+            const existingBundle = await this.existingBundleUpdate(boundDestination, preparedRequest.mode ?? "base");
             if (existingBundle.error !== undefined) {
                 return {status: "conflict", error: existingBundle.error, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
             }
@@ -445,7 +452,9 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "load-error", error: wasmDiagnostic, plan: createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")};
         }
         const outDirRelative = request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR;
-        const modeName = request.mode ?? "base";
+        // Set after domain preparation below: a runtime package with an
+        // omitted mode has a declared default which may be `ante`, not base.
+        let modeName = "base";
         // The requested bundle directory is part of the prepared decision, not a
         // writer-local default.  In particular this keeps an occupied or aliased
         // destination from being silently treated as a mode-update after a preview
@@ -484,6 +493,7 @@ export class StudioOutcomeLibraryGenerateService {
                     ...(onPostEnumerationProgress === undefined ? {} : {onPostEnumerationProgress}),
                 };
                 preparedRequest = prepareOutcomeLibraryGeneration(domainRequest);
+                modeName = preparedRequest.mode ?? "base";
             } catch (error) {
                 const unresolvedPlan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary");
                 if (error instanceof WeightedOutcomeLibraryGenerationError && error.getCode() === "weighted-outcome-library-generation-configuration-conflict") {
@@ -1053,11 +1063,17 @@ export class StudioOutcomeLibraryGenerateService {
     // modes it's given (see OutcomeLibraryBundleWriter's own doc comment), never merges. A directory that
     // doesn't exist yet simply has no other modes to preserve; a directory that exists but doesn't parse as
     // a valid bundle is left alone rather than silently clobbered.
-    private async readOtherModes(resolvedOutDir: string, excludeModeName: string): Promise<OtherModesResult> {
+    private async readOtherModes(resolvedOutDir: string, excludeModeName: string, deep = true): Promise<OtherModesResult> {
         if (!this.directoryExists(resolvedOutDir)) {
             return {status: "ok", modes: []};
         }
 
+        // First establish that this is a bundle at all.  A directory can appear
+        // after a token preview because another caller owns the destination;
+        // report that as the established destination conflict rather than
+        // laundering a missing manifest through the retained-bundle validator.
+        // Once a manifest is present, however, every validator failure is a
+        // fail-closed retained-bundle failure.
         let manifest;
         try {
             manifest = await this.bundleReader.readManifest(resolvedOutDir);
@@ -1065,6 +1081,22 @@ export class StudioOutcomeLibraryGenerateService {
             return {
                 status: "error",
                 message: `"${resolvedOutDir}" already exists but is not a valid outcome library bundle, so it cannot be safely regenerated into: ${error instanceof Error ? error.message : String(error)}`,
+            };
+        }
+
+        // Retained modes are source input, not a repair/import path. Reuse the
+        // canonical manifest/index rules before planner authorization; the
+        // actual retained read requests `deep`, validating the complete
+        // original bundle before re-streaming any record. That catches a
+        // self-consistent replacement index+JSONL pair whose manifest still
+        // claims different provenance or math. Both paths stream files, so no
+        // large library is materialized in memory.
+        const issues = await this.validateExistingBundle(resolvedOutDir, deep);
+        const errors = issues.filter((issue) => issue.severity === "error");
+        if (errors.length > 0) {
+            return {
+                status: "error",
+                message: `"${resolvedOutDir}" contains an invalid retained Outcome Library mode and cannot be regenerated: ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")}`,
             };
         }
 
@@ -1099,7 +1131,11 @@ export class StudioOutcomeLibraryGenerateService {
             return {allowed: false, error: `Could not inspect the Outcome Library destination "${resolvedOutDir}": ${error instanceof Error ? error.message : String(error)}`};
         }
         try {
-            const existing = await this.readOtherModes(resolvedOutDir, excludeModeName);
+            // Preflight needs canonical schema/manifest/index authorization,
+            // but not a second full JSONL walk. The generation read below
+            // performs the deep stream immediately before retained records are
+            // handed to the writer and is bound to that same ownership token.
+            const existing = await this.readOtherModes(resolvedOutDir, excludeModeName, false);
             return existing.status === "ok" ? {allowed: true} : {allowed: false, error: existing.message};
         } catch (error) {
             return {allowed: false, error: `"${resolvedOutDir}" has an unreadable Outcome Library mode index, so it cannot be safely regenerated: ${error instanceof Error ? error.message : String(error)}`};
@@ -1189,6 +1225,7 @@ export class StudioOutcomeLibraryGenerateService {
         projectRoot: string,
     ): OutcomeLibraryGenerationRequest {
         const manifest = game.getManifest();
+        const modeIdentity = resolveOutcomeLibraryRuntimeModeIdentity(game, request.mode);
         const sample = resolveSample(request);
         // Transport requests deliberately cannot carry lifecycle capabilities.
         // Narrow before consulting the JobService-only recovery identity.
@@ -1205,16 +1242,16 @@ export class StudioOutcomeLibraryGenerateService {
             recoveryAuthorityId,
         );
         return {
-            libraryId: request.libraryId ?? `${manifest.id}${request.mode !== undefined ? `-${request.mode}` : ""}`,
+            libraryId: request.libraryId ?? `${manifest.id}${modeIdentity.mode !== undefined ? `-${modeIdentity.mode}` : ""}`,
             game,
             pokieVersion: this.pokieVersion,
             ...(request.configHash === undefined ? {} : {configHash: request.configHash}),
-            ...(request.mode === undefined ? {} : {mode: request.mode}),
+            ...(modeIdentity.mode === undefined ? {} : {mode: modeIdentity.mode}),
             // `mode` alone is a historical storage label.  Only an explicit
             // package runtime contract turns it into session.setBetMode(); the
             // shared resolver rejects an unknown executable id before work and
             // preserves metadata-only compatibility labels unchanged.
-            ...(resolveOutcomeLibraryRuntimeModeSelection(game, request.mode) ? {selectBetMode: true} : {}),
+            ...(modeIdentity.selectBetMode ? {selectBetMode: true} : {}),
             ...(request.stake === undefined ? {} : {stake: request.stake}),
             generation: resolveGeneration(request),
             ...(request.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: request.maxOutcomeSpaceSize}),

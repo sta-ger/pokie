@@ -617,6 +617,95 @@ describe("SpinCommandHandler", () => {
         expect(wallet.debitCalls.map((call) => call.amount)).toEqual([1]);
     });
 
+    it("restores a prepared real GameSession when its optional stake getter throws before checkpoint/debit", async () => {
+        const config = new GameSessionConfig();
+        config.setAvailableBets([1, 2]);
+        config.setBet(1);
+        config.setCreditsAmount(10);
+        const live = new GameSession(config) as GameSession & StakeAmountDetermining;
+        let failStakeRead = true;
+        live.getStakeAmount = () => {
+            if (failStakeRead) {
+                failStakeRead = false;
+                throw new Error("stake read unavailable");
+            }
+            return live.getBet();
+        };
+        const repository = new InMemorySessionRepository();
+        const wallet = new RecordingTransactionalWallet();
+        const deleteAttempted = jest.fn(() => Promise.reject(new Error("operation-log cleanup unavailable")));
+        const operationLog: SpinOperationLog = {
+            load: () => Promise.resolve(undefined),
+            record: () => Promise.resolve(),
+            delete: deleteAttempted,
+            listIncomplete: () => Promise.resolve([]),
+        };
+        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => new GameSession(config)}, repository, wallet, undefined, operationLog);
+        await repository.save("stake-read-failure", {bet: 1, win: 0, executionState: "live-only"});
+        await wallet.setBalance("stake-read-failure", 10);
+        handler.primeSession("stake-read-failure", live, (await repository.loadVersioned("stake-read-failure"))?.version);
+
+        await expect(handler.handle("stake-read-failure", "stake-read-request", undefined, 2)).rejects.toThrow("stake read unavailable");
+        expect(deleteAttempted).toHaveBeenCalledWith("stake-read-failure", "stake-read-request");
+        expect({bet: live.getBet(), credits: live.getCreditsAmount()}).toEqual({bet: 1, credits: 10});
+        await expect(repository.load("stake-read-failure")).resolves.toMatchObject({bet: 1});
+        await expect(wallet.getBalance("stake-read-failure")).resolves.toBe(10);
+
+        await expect(handler.handle("stake-read-failure")).resolves.toMatchObject({status: "played", credits: 9});
+        expect(live.getBet()).toBe(1);
+        expect(wallet.debitCalls.map((call) => call.amount)).toEqual([1]);
+    });
+
+    it("restores a selected bet/mode when the pre-play mode read throws, retaining the primary error", async () => {
+        let credits = 10;
+        let bet = 1;
+        let mode = "base";
+        let plays = 0;
+        let failModeRead = true;
+        const live: GameSessionHandling & BetModeSelecting = {
+            getCreditsAmount: () => credits,
+            setCreditsAmount: (value) => {
+                credits = value;
+            },
+            getBet: () => bet,
+            setBet: (value) => {
+                bet = value;
+            },
+            getAvailableBets: () => [1, 2],
+            canPlayNextGame: () => credits >= bet,
+            play: () => {
+                plays++;
+                credits -= bet;
+            },
+            getWinAmount: () => 0,
+            getBetModeId: () => {
+                if (failModeRead) {
+                    failModeRead = false;
+                    throw new Error("mode read unavailable");
+                }
+                return mode;
+            },
+            getAvailableBetModeIds: () => ["base", "ante"],
+            setBetMode: (value) => {
+                mode = value;
+            },
+        };
+        const repository = new InMemorySessionRepository();
+        const wallet = new RecordingTransactionalWallet();
+        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => createFakeSessionWithSelectableBetMode()}, repository, wallet);
+        await repository.save("mode-read-failure", {bet: 1, win: 0, executionState: "live-only"});
+        await wallet.setBalance("mode-read-failure", 10);
+        handler.primeSession("mode-read-failure", live, (await repository.loadVersioned("mode-read-failure"))?.version);
+
+        await expect(handler.handle("mode-read-failure", undefined, undefined, 2, "ante")).rejects.toThrow("mode read unavailable");
+        expect({credits, bet, mode, plays}).toEqual({credits: 10, bet: 1, mode: "base", plays: 0});
+        await expect(repository.load("mode-read-failure")).resolves.toMatchObject({bet: 1});
+        await expect(wallet.getBalance("mode-read-failure")).resolves.toBe(10);
+
+        await expect(handler.handle("mode-read-failure")).resolves.toMatchObject({status: "played", credits: 9});
+        expect({bet, mode, plays}).toEqual({bet: 1, mode: "base", plays: 1});
+    });
+
     it("restores a partial first command setter failure before an omitted-bet follow-up", async () => {
         let credits = 10;
         let bet = 1;

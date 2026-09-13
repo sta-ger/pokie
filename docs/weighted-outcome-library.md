@@ -332,7 +332,11 @@ Outcome Library bundle; it can then be used with `pokie validate`, `pokie sim`, 
   strategy, and `generate` fails closed with exit code `1` and the `WeightedOutcomeLibraryGenerationError`'s
   `weighted-outcome-library-generation-unsupported` code rather than guessing at one.
 - `--mode <betModeId>` — the `betMode` threaded onto every generated outcome's artifact; also folds into the
-  default `--library-id` (`<manifest.id>-<mode>` instead of just `<manifest.id>`) when `--library-id` isn't given.
+  default `--library-id` (`<manifest.id>-<mode>` when `--library-id` isn't given). For an explicit runtime
+  bet-mode contract, omitting `--mode` resolves its declared `Is Default` mode first: that resolved mode is
+  selected on the enumeration session and is used consistently for the artifact, library id, and bundle mode
+  name. It is not an implicit `base` label. Legacy metadata-only `BetModes` remain labels only; omitting the
+  flag preserves their historical unlabeled/base-compatible library identity.
 - `--stake <number>` — the stake threaded onto every generated artifact; must be a positive number (see "library
   homogeneity" above — a library can only ever describe one stake).
 - `--config-hash <hash>` — the `provenance.configHash` threaded onto every generated artifact.

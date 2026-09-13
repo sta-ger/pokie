@@ -50,20 +50,50 @@ export type OutcomeLibraryGenerationMode = "default" | "exact" | "sampled" | "bo
  * metadata-only library partition, never falsely advertised as a selected
  * ante/buy runtime.
  */
-export function resolveOutcomeLibraryRuntimeModeSelection(game: PokieGame, mode: string | undefined): boolean {
-    if (mode === undefined) return false;
+export type OutcomeLibraryRuntimeModeIdentity = {
+    /** The canonical library/runtime mode name, when the package has one. */
+    readonly mode?: string;
+    /** Whether the exact-enumeration session must enact `mode` before play. */
+    readonly selectBetMode: boolean;
+};
+
+/**
+ * Resolves the one mode identity shared by runtime selection, round artifacts,
+ * library identity and bundle mode naming.  An explicit runtime package has a
+ * declared default, so omission means that default -- never a caller-local
+ * invented "base" label.  Legacy declarative mode arrays remain storage-label
+ * compatibility data and deliberately do not select an executable session mode.
+ */
+export function resolveOutcomeLibraryRuntimeModeIdentity(game: PokieGame, mode: string | undefined): OutcomeLibraryRuntimeModeIdentity {
     const declaredModes = game.getBetModes?.();
-    if (declaredModes === undefined || declaredModes.length === 0) return false;
+    if (declaredModes === undefined || declaredModes.length === 0) return {mode, selectBetMode: false};
     const hasAnyRuntimeMode = declaredModes.some((entry) => entry.runtimeType !== undefined);
     const hasCompleteRuntimeContract = hasAnyRuntimeMode && declaredModes.every((entry) => entry.runtimeType !== undefined);
-    if (!hasCompleteRuntimeContract) return false;
-    if (!declaredModes.some((entry) => entry.id === mode)) {
+    if (!hasCompleteRuntimeContract) return {mode, selectBetMode: false};
+    const resolvedMode = mode ?? declaredModes.find((entry) => entry.isDefault === true)?.id;
+    if (resolvedMode === undefined) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-unsupported",
-            `"${game.getManifest().id}" does not declare executable bet mode "${mode}". Use a declared runtime mode or omit runtime selection.`,
+            `"${game.getManifest().id}" declares executable bet modes without one declared default. Rebuild the package with exactly one runtime default.`,
         );
     }
-    return true;
+    if (!declaredModes.some((entry) => entry.id === resolvedMode)) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-unsupported",
+            `"${game.getManifest().id}" does not declare executable bet mode "${resolvedMode}". Use a declared runtime mode or omit runtime selection.`,
+        );
+    }
+    return {mode: resolvedMode, selectBetMode: true};
+}
+
+/**
+ * Historical boolean adapter: an omitted label did not mean a requested
+ * selection. New request adapters need resolveOutcomeLibraryRuntimeModeIdentity
+ * so they can preserve the runtime package's actual default identity.
+ */
+export function resolveOutcomeLibraryRuntimeModeSelection(game: PokieGame, mode: string | undefined): boolean {
+    if (mode === undefined) return false;
+    return resolveOutcomeLibraryRuntimeModeIdentity(game, mode).selectBetMode;
 }
 
 /**
@@ -488,7 +518,13 @@ export function resolveOutcomeLibraryGenerationIdentity(request: OutcomeLibraryG
             "The supplied configuration identity does not match the loaded game. Rebuild the package or omit the caller assertion.",
         );
     }
-    return {...request, ...(loadedConfigHash === undefined ? {} : {configHash: loadedConfigHash})};
+    const modeIdentity = resolveOutcomeLibraryRuntimeModeIdentity(request.game, request.mode);
+    return {
+        ...request,
+        ...(loadedConfigHash === undefined ? {} : {configHash: loadedConfigHash}),
+        ...(modeIdentity.mode === undefined ? {} : {mode: modeIdentity.mode}),
+        ...(modeIdentity.selectBetMode ? {selectBetMode: true} : {}),
+    };
 }
 
 /** Resolves a request once, so estimate and execution select exactly the same strategy and work. */

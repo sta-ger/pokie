@@ -34,7 +34,7 @@ import {
     loadPokieGame,
     releasePokieGame,
     prepareOutcomeLibraryGenerationFromEstimate,
-    resolveOutcomeLibraryRuntimeModeSelection,
+    resolveOutcomeLibraryRuntimeModeIdentity,
     resolveOutcomeLibraryGenerationDestination,
     describeUnsupportedProjectOperation,
     removePublishedDirectoryIfOwned,
@@ -883,16 +883,21 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         if (options.exact) generation = "exact";
         else if (sampling.sampled !== undefined) generation = "sampled";
         else if (sampling.bounded !== undefined) generation = "bounded";
+        const modeIdentity = resolveOutcomeLibraryRuntimeModeIdentity(game, options.mode);
         return {
-            libraryId: options.libraryId ?? `${game.getManifest().id}${options.mode !== undefined ? `-${options.mode}` : ""}`,
+            // Use the same resolved identity as the runtime and artifact.  In
+            // particular, an omitted mode on a runtime package means its
+            // declared default, not an unlabelled library which happens to
+            // have played that default internally.
+            libraryId: options.libraryId ?? `${game.getManifest().id}${modeIdentity.mode !== undefined ? `-${modeIdentity.mode}` : ""}`,
             game,
             pokieVersion: this.pokieVersion,
             generation,
             // This remains a compatibility assertion only. The shared domain
             // preparation derives the loaded hash and rejects a mismatch.
             ...(options.configHash === undefined ? {} : {configHash: options.configHash}),
-            ...(options.mode === undefined ? {} : {mode: options.mode}),
-            ...(resolveOutcomeLibraryRuntimeModeSelection(game, options.mode) ? {selectBetMode: true} : {}),
+            ...(modeIdentity.mode === undefined ? {} : {mode: modeIdentity.mode}),
+            ...(modeIdentity.selectBetMode ? {selectBetMode: true} : {}),
             ...(options.stake === undefined ? {} : {stake: options.stake}),
             ...(options.maxOutcomeSpaceSize === undefined ? {} : {maxExactOutcomeSpaceSize: options.maxOutcomeSpaceSize}),
             ...(sample === undefined ? {} : {sample}),

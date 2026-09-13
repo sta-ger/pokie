@@ -343,6 +343,58 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         ])).toBe(1);
     });
 
+    it("uses the declared runtime default as one identity across domain, CLI, and Studio exact/sampled generation", async () => {
+        const writeRuntimePackage = async (name: string, defaultMode: "base" | "ante"): Promise<string> => {
+            const blueprint = path.join(root, `${name}.blueprint.json`);
+            const packageRoot = path.join(root, name);
+            fs.writeFileSync(blueprint, JSON.stringify({
+                manifest: {id: name, name, version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"], paytable: {A: {2: 5}},
+                reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
+                betModes: [
+                    {id: "base", runtimeType: "base", isDefault: defaultMode === "base"},
+                    {id: "ante", runtimeType: "ante", costMultiplier: 2, isDefault: defaultMode === "ante"},
+                ],
+            }));
+            expect(await new BuildCommand("1.3.0").run([blueprint, "--target", "tsPackage", "--out", packageRoot])).toBe(0);
+            return packageRoot;
+        };
+
+        for (const [defaultMode, stake] of [["base", 1], ["ante", 2]] as const) {
+            const packageRoot = await writeRuntimePackage(`runtime-default-${defaultMode}`, defaultMode);
+            const expectedLibraryId = `runtime-default-${defaultMode}-${defaultMode}`;
+            const game = await loadPokieGame(packageRoot);
+            try {
+                const domain = await generateWeightedOutcomeLibrary({libraryId: expectedLibraryId, game, pokieVersion: "1.3.0", generation: "exact"});
+                expect(domain.library.outcomes.every((outcome) => outcome.artifact.betMode === defaultMode && outcome.artifact.stake === stake)).toBe(true);
+            } finally {
+                await releasePokieGame(game);
+            }
+
+            const cliOutput = path.join(root, `${defaultMode}-default-cli.json`);
+            expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", cliOutput, "--format", "json"])).toBe(0);
+            const cli = JSON.parse(fs.readFileSync(cliOutput, "utf8")) as {libraryId: string; outcomes: Array<{artifact: {betMode: string; stake: number}}>};
+            expect(cli.libraryId).toBe(expectedLibraryId);
+            expect(cli.outcomes.every((outcome) => outcome.artifact.betMode === defaultMode && outcome.artifact.stake === stake)).toBe(true);
+
+            const studio = new StudioOutcomeLibraryGenerateService("1.3.0", loadPokieGame);
+            const exactRequest = {generation: "exact" as const, outDir: `${defaultMode}-default-exact`};
+            const exactPreview = await studio.estimate(packageRoot, exactRequest);
+            if (exactPreview.status !== "ok") throw new Error(`Expected ${defaultMode} default exact preflight, got ${JSON.stringify(exactPreview)}`);
+            await expect(studio.generate(packageRoot, {...exactRequest, preflightToken: exactPreview.preflightToken})).resolves.toMatchObject({status: "ok", mode: {modeName: defaultMode, libraryId: expectedLibraryId}});
+            const exact = await new OutcomeLibraryBundleReader().readLibrary(path.join(packageRoot, exactRequest.outDir), defaultMode);
+            expect(exact.libraryId).toBe(expectedLibraryId);
+            expect(exact.outcomes.every((outcome) => outcome.artifact.betMode === defaultMode && outcome.artifact.stake === stake)).toBe(true);
+
+            const sampledRequest = {generation: "sampled" as const, sample: {sampleSize: BigInt(19), seed: `${defaultMode}-default`}, outDir: `${defaultMode}-default-sampled`};
+            const sampledPreview = await studio.estimate(packageRoot, sampledRequest);
+            if (sampledPreview.status !== "ok") throw new Error(`Expected ${defaultMode} default sampled preflight, got ${JSON.stringify(sampledPreview)}`);
+            await expect(studio.generate(packageRoot, {...sampledRequest, preflightToken: sampledPreview.preflightToken})).resolves.toMatchObject({status: "ok", mode: {modeName: defaultMode, libraryId: expectedLibraryId}});
+            const sampled = await new OutcomeLibraryBundleReader().readLibrary(path.join(packageRoot, sampledRequest.outDir), defaultMode);
+            expect(sampled.libraryId).toBe(expectedLibraryId);
+            expect(sampled.outcomes.every((outcome) => outcome.artifact.betMode === defaultMode && outcome.artifact.stake === stake)).toBe(true);
+        }
+    });
+
     it("rejects a corrupted retained mode instead of silently rebuilding it while adding another mode", async () => {
         const blueprint = path.join(root, "retained-integrity-slot.blueprint.json");
         const packageRoot = path.join(root, "retained-integrity-package");
@@ -368,10 +420,66 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
 
         const ante = {libraryId: "retained-ante", mode: "ante", generation: "exact" as const, outDir: "retained-bundle"};
         const antePreview = await studio.estimate(packageRoot, ante);
-        if (antePreview.status !== "ok") throw new Error(`Expected preflight to defer retained-stream validation, got ${JSON.stringify(antePreview)}`);
+        // Preflight performs the bounded manifest/index authorization; the
+        // full JSONL verification is deliberately streamed at the retained
+        // read boundary, immediately before publication.
+        if (antePreview.status !== "ok") throw new Error(`Expected retained-stream preflight, got ${JSON.stringify(antePreview)}`);
         const result = await studio.generate(packageRoot, {...ante, preflightToken: antePreview.preflightToken});
-        expect(result).toMatchObject({status: "load-error", error: expect.stringContaining("original index entry")});
+        expect(result).toMatchObject({status: "load-error", error: expect.stringContaining("invalid retained Outcome Library mode")});
         expect(fs.readdirSync(bundleDir).sort().map((file) => [file, fs.readFileSync(path.join(bundleDir, file), "utf8")] as const)).toEqual(destinationBeforeAnte);
+    });
+
+    it("rejects a replacement retained index/outcomes revision whose manifest remains from another generation", async () => {
+        const blueprint = path.join(root, "retained-revision-slot.blueprint.json");
+        const packageRoot = path.join(root, "retained-revision-package");
+        fs.writeFileSync(blueprint, JSON.stringify({
+            manifest: {id: "retained-revision-slot", name: "Retained Revision Slot", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
+            paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
+        }));
+        expect(await new BuildCommand("1.3.0").run([blueprint, "--target", "tsPackage", "--out", packageRoot])).toBe(0);
+        const studio = new StudioOutcomeLibraryGenerateService("1.3.0", loadPokieGame);
+        const sourceA = {libraryId: "retained-revision-base", mode: "base", generation: "sampled" as const, sample: {sampleSize: BigInt(20), seed: "source-A"}, outDir: "bundle-a"};
+        const sourceB = {...sourceA, sample: {sampleSize: BigInt(20), seed: "replacement-B"}, outDir: "bundle-b"};
+        for (const request of [sourceA, sourceB]) {
+            const preview = await studio.estimate(packageRoot, request);
+            if (preview.status !== "ok") throw new Error(`Expected retained revision preflight, got ${JSON.stringify(preview)}`);
+            await expect(studio.generate(packageRoot, {...request, preflightToken: preview.preflightToken})).resolves.toMatchObject({status: "ok"});
+        }
+        const destination = path.join(packageRoot, sourceA.outDir);
+        const replacement = path.join(packageRoot, sourceB.outDir);
+        fs.copyFileSync(path.join(replacement, "index_base.json"), path.join(destination, "index_base.json"));
+        fs.copyFileSync(path.join(replacement, "outcomes_base.jsonl"), path.join(destination, "outcomes_base.jsonl"));
+        const before = fs.readdirSync(destination).sort().map((file) => [file, fs.readFileSync(path.join(destination, file), "utf8")] as const);
+
+        await expect(studio.estimate(packageRoot, {...sourceA, mode: "ante", libraryId: "retained-revision-ante"})).resolves.toMatchObject({
+            status: "conflict", error: expect.stringContaining("hash-mismatch-with-manifest"),
+        });
+        expect(fs.readdirSync(destination).sort().map((file) => [file, fs.readFileSync(path.join(destination, file), "utf8")] as const)).toEqual(before);
+    });
+
+    it("fails closed on an unsupported retained index schema without rewriting the destination", async () => {
+        const blueprint = path.join(root, "retained-schema-slot.blueprint.json");
+        const packageRoot = path.join(root, "retained-schema-package");
+        fs.writeFileSync(blueprint, JSON.stringify({
+            manifest: {id: "retained-schema-slot", name: "Retained Schema Slot", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
+            paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]], availableBets: [1],
+        }));
+        expect(await new BuildCommand("1.3.0").run([blueprint, "--target", "tsPackage", "--out", packageRoot])).toBe(0);
+        const studio = new StudioOutcomeLibraryGenerateService("1.3.0", loadPokieGame);
+        const base = {libraryId: "retained-schema-base", mode: "base", generation: "exact" as const, outDir: "retained-schema-bundle"};
+        const basePreview = await studio.estimate(packageRoot, base);
+        if (basePreview.status !== "ok") throw new Error(`Expected schema base preflight, got ${JSON.stringify(basePreview)}`);
+        await expect(studio.generate(packageRoot, {...base, preflightToken: basePreview.preflightToken})).resolves.toMatchObject({status: "ok"});
+        const destination = path.join(packageRoot, base.outDir);
+        const indexPath = path.join(destination, "index_base.json");
+        const index = JSON.parse(fs.readFileSync(indexPath, "utf8")) as {schemaVersion: number};
+        fs.writeFileSync(indexPath, JSON.stringify({...index, schemaVersion: 999}));
+        const before = fs.readdirSync(destination).sort().map((file) => [file, fs.readFileSync(path.join(destination, file), "utf8")] as const);
+
+        await expect(studio.estimate(packageRoot, {...base, mode: "ante", libraryId: "retained-schema-ante"})).resolves.toMatchObject({
+            status: "conflict", error: expect.stringContaining("schema-version-unsupported"),
+        });
+        expect(fs.readdirSync(destination).sort().map((file) => [file, fs.readFileSync(path.join(destination, file), "utf8")] as const)).toEqual(before);
     });
 
     it("returns a Studio conflict boundary instead of dropping a sibling mode published after retained-mode read", async () => {
