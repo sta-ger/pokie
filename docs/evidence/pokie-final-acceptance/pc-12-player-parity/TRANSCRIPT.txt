@@ -1,0 +1,38 @@
+[2026-09-13T14:44:38.948Z] EXACT CANDIDATE export=file:///tmp/pokie-pc12-sjklqn/pokie-examples/node_modules/pokie/dist/cli/client/player/index.js; archive=/tmp/pokie-pc12-sjklqn/pokie-1.3.0.tgz
+[2026-09-13T14:44:39.612Z] examples stdout: VITE v4.5.14  ready in 544 ms
+[2026-09-13T14:44:39.614Z] examples stdout: ➜  Local:   http://127.0.0.1:51792/
+[2026-09-13T14:44:42.256Z] Studio stdout: POKIE Studio listening on http://127.0.0.1:32192
+[2026-09-13T14:44:44.240Z] VIEWPORT requested=1280x800 actual=1280x800
+[2026-09-13T14:44:44.240Z] fixture id=pc-12-free-games-fixture; project=/home/stager/Work/sta-ger/pokie/tests/cli/fixtures/playable-game-with-free-games; examples fixture=http://127.0.0.1:51792/fixture-slot.html; seed=fixture-round; round=find-free-games
+[2026-09-13T14:44:44.672Z] CLICK Win
+[2026-09-13T14:44:45.043Z] CLICK Scenarios
+[2026-09-13T14:44:45.070Z] CLICK Scenarios
+[2026-09-13T14:44:45.107Z] CLICK Scenarios
+[2026-09-13T14:44:45.147Z] CLICK Free games
+[2026-09-13T14:44:46.380Z] HOVER Line: 14, win: 5
+[2026-09-13T14:44:46.484Z] CLICK Select bet 10
+[2026-09-13T14:44:46.806Z] CLICK Scenarios
+[2026-09-13T14:44:46.868Z] CLICK Free games
+[2026-09-13T14:44:48.962Z] CLICK New Play session
+[2026-09-13T14:44:49.228Z] CLICK Find any win
+[2026-09-13T14:44:49.478Z] CLICK Reset Play session
+[2026-09-13T14:44:49.696Z] CLICK Find free games
+[2026-09-13T14:44:49.955Z] HOVER Line: 14, win: 5
+[2026-09-13T14:44:50.026Z] CLICK Select bet 10
+[2026-09-13T14:44:50.080Z] CLICK Inspect round artifact
+[2026-09-13T14:44:50.348Z] CLICK Spin
+[2026-09-13T14:44:50.446Z] CLICK Spin
+[2026-09-13T14:44:50.775Z] CLICK Find free games
+[2026-09-13T14:44:50.980Z] CLICK Reset Play session
+[2026-09-13T14:44:51.256Z] CLICK Reset Play session
+[2026-09-13T14:44:52.591Z] CLICK New Play session
+[2026-09-13T14:44:53.903Z] CLICK New Play session
+[2026-09-13T14:44:54.129Z] CLICK Find free games
+[2026-09-13T14:44:54.723Z] COMPARE desktop screenshot changed=0.0045 mean=0.31
+[2026-09-13T14:44:54.846Z] VIEWPORT requested=390x844 actual=390x844
+[2026-09-13T14:44:55.141Z] CLICK Scenarios
+[2026-09-13T14:44:55.166Z] CLICK Free games
+[2026-09-13T14:44:56.729Z] CLICK New Play session
+[2026-09-13T14:44:56.940Z] CLICK Find free games
+[2026-09-13T14:44:57.380Z] COMPARE narrow screenshot changed=0.0010 mean=0.07
+[2026-09-13T14:44:57.432Z] PASS canonical player DOM, semantics, computed styles, layout, screenshots and viewport overflow matched at both viewports.

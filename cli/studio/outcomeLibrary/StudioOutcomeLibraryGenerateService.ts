@@ -1074,6 +1074,21 @@ export class StudioOutcomeLibraryGenerateService {
         // laundering a missing manifest through the retained-bundle validator.
         // Once a manifest is present, however, every validator failure is a
         // fail-closed retained-bundle failure.
+        // Do this synchronous, physical check before handing the directory to
+        // either reader.  `readManifest()` is a port (and therefore may be
+        // supplied by an embedding), whereas destination ownership must not
+        // vary with a reader implementation.  In particular a directory
+        // claimed after a bound preflight is caller-owned data, not a corrupt
+        // retained library merely because the canonical validator later sees
+        // a missing manifest.
+        const manifestPath = path.join(resolvedOutDir, "manifest.json");
+        if (!fs.existsSync(manifestPath) || !fs.statSync(manifestPath).isFile()) {
+            return {
+                status: "error",
+                message: `The Outcome Library destination "${resolvedOutDir}" already exists but is not a valid outcome library bundle, so it cannot be safely regenerated into.`,
+            };
+        }
+
         let manifest;
         try {
             manifest = await this.bundleReader.readManifest(resolvedOutDir);

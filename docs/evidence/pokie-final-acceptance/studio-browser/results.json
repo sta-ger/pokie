@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "browser": {
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "chromium": "/snap/bin/chromium"
+  },
+  "scenarios": [
+    "PAR Overview validation",
+    "PAR read-only Game Model",
+    "assigned symbol artwork",
+    "searchable keyboard symbol picker",
+    "Play primary loop"
+  ]
+}

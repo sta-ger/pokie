@@ -1,0 +1,15 @@
+[2026-09-13T14:52:53.128Z] CAPTURE par-overview.png
+[2026-09-13T14:52:53.177Z] CLICK Game Model
+[2026-09-13T14:52:53.562Z] CAPTURE par-game-model.png
+[2026-09-13T14:52:53.562Z] PASS PAR XLSX was opened through built Studio; Overview validation and its read-only Game Model were rendered.
+[2026-09-13T14:52:59.286Z] CLICK Edit
+[2026-09-13T14:52:59.600Z] CLICK Symbol picker for reel 1
+[2026-09-13T14:52:59.803Z] TYPE Symbol picker for reel 1="A"
+[2026-09-13T14:52:59.814Z] PICKER after search {"value":"A","expanded":"true","outer":"<input class=\"m_8fb7ebe7 mantine-Input-input mantine-Select-input\" data-variant=\"default\" placeholder=\"Choose canonical symbol\" aria-label=\"Symbol picker for reel 1\" role=\"combobox\" aria-haspopup=\"listbox\" aria-expanded=\"true\" autocomplete=\"off\" id=\"mantine-cmt9nlnld\" value=\"A\" aria-controls=\"mantine-1jc2oevh9\" data-expanded=\"true\" data-mantine-stop-propagation=\"true\">","options":["A"],"active":"Symbol picker for reel 1"}
+[2026-09-13T14:53:00.160Z] CLICK Add symbol
+[2026-09-13T14:53:00.449Z] CAPTURE reel-artwork-picker.png
+[2026-09-13T14:53:00.449Z] PASS assigned PNG artwork was visibly loaded in Game Model; searchable canonical Symbol picker accepted ArrowDown+Enter and inserted the selected literal reel symbol.
+[2026-09-13T14:53:00.790Z] CLICK New Play session
+[2026-09-13T14:53:01.022Z] CLICK Spin
+[2026-09-13T14:53:01.317Z] CAPTURE blueprint-play.png
+[2026-09-13T14:53:01.317Z] PASS Play primary loop fits one 1280x800 viewport: {"height":800,"spin":{"top":251.375,"bottom":287.375},"player":{"top":335.671875,"bottom":644.859375},"result":{"top":299.375,"bottom":685.65625}}.
