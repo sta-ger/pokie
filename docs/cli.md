@@ -25,7 +25,7 @@ WASM is a normal POKIE artifact target. Build a portable, self-describing compon
 npx pokie build slot.blueprint.json --target wasm --out game.wasm
 npx pokie game.wasm              # inspect its bound metadata and next actions
 npx pokie validate game.wasm
-npx pokie sim game.wasm --rounds 100 --seed demo
+npx pokie run game.wasm --seed demo
 ```
 
 `npx pokie game.wasm` deliberately routes to ordinary inspection instead of requiring a local project, compiler, package install, or adapter path. It prints the same validate/sim/replay actions available from the normal artifact navigation. A missing, stale, swapped, malformed, or incompatible manifest is rejected before the component can be treated as runnable.

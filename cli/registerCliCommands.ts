@@ -16,6 +16,7 @@ import {InspectCommand} from "./commands/InspectCommand.js";
 import {InternalStudioCommand} from "./commands/InternalStudioCommand.js";
 import {ParCommand} from "./commands/ParCommand.js";
 import {ReelCommand} from "./commands/ReelCommand.js";
+import {RunWasmCommand} from "./commands/RunWasmCommand.js";
 import {ReplayCommand} from "./commands/ReplayCommand.js";
 import {ReportCommand} from "./commands/ReportCommand.js";
 import {ServeCommand} from "./commands/ServeCommand.js";
@@ -71,6 +72,7 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
         new InspectCommand(),
         new ParCommand(version),
         new ReelCommand(),
+        new RunWasmCommand(),
         new ReplayCommand(
             undefined,
             undefined,

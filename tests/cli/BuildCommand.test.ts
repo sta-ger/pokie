@@ -123,8 +123,9 @@ describe("BuildCommand", () => {
     it("lists the supported GameBlueprint and PAR workflows in its project help", () => {
         const help = new BuildCommand("1.3.0").getCommanderCommand().helpInformation().replace(/\s+/g, " ");
 
-        expect(help).toContain("GameBlueprint -> tsPackage, outcomeLibrary, stakeAdapter, or PAR workbook");
-        expect(help).toContain("PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or PAR workbook");
+        expect(help).toContain("GameBlueprint -> tsPackage, outcomeLibrary, stakeAdapter, PAR workbook, or wasm");
+        expect(help).toContain("PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, PAR workbook, or wasm");
+        expect(help).toContain("--target <artifact>");
     });
 
     it("rejects a real compatible WASM source before allocating a builder or destination", async () => {

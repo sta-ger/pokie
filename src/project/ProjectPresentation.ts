@@ -73,6 +73,7 @@ const PROJECT_PRESENTATIONS: Readonly<Record<ProjectType, ProjectPresentation>> 
             {label: "Validate the component", command: "pokie validate <path>"},
             {label: "Simulate deterministic rounds", command: "pokie sim <path> --rounds 10000 --seed demo"},
             {label: "Replay a round", command: "pokie replay <path> --round 1 --seed demo"},
+            {label: "Start one deterministic round", command: "pokie run <path> --seed demo"},
         ],
         prerequisites: ["Legacy sidecar-only components remain inspectable but must be rebuilt as canonical POKIE WASM artifacts before they can run."],
     },
