@@ -121,7 +121,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     let tarballPath: string | undefined;
     let installDir: string | undefined;
     let pokieBinPath: string;
-    const smokeResults = {cli: false, studioApi: false, studioAssets: false, libraryWorker: false, processesDrained: false};
+    const smokeResults = {cli: false, studioApi: false, studioAssets: false, libraryWorker: false, wasm: false, processesDrained: false};
     const completedSmokeTests = new Set<string>();
     const spawnedSmokeChildren = new Set<ChildProcessWithoutNullStreams>();
     const spawnSmokeChild = (args: string[], cwd: string): ChildProcessWithoutNullStreams => {
@@ -147,7 +147,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // A release receipt is a result, never a finally-block assertion.  In
         // particular, an earlier failed suite must not be able to leave a
         // seemingly successful installed/cleanup receipt behind.
-        if (!smokeResults.cli || !smokeResults.studioApi || !smokeResults.studioAssets || !smokeResults.libraryWorker) return;
+        if (!smokeResults.cli || !smokeResults.studioApi || !smokeResults.studioAssets || !smokeResults.libraryWorker || !smokeResults.wasm) return;
         const archive = fs.readFileSync(tarballPath!);
         const archiveSha256 = createHash("sha256").update(archive).digest("hex");
         expect(archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
@@ -227,7 +227,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // expected count explicit so adding an unwrapped test cannot silently
         // make a release receipt describe only a subset of this suite.
         const suitePassed = completedSmokeTests.size === 22;
-        if (suitePassed && smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker) {
+        if (suitePassed && smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker && smokeResults.wasm) {
             stageReleaseSmokeArchive();
         }
         if (installDir !== undefined) {
@@ -395,6 +395,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 console.log("INSTALLED_WASM_WORKER_PROTOCOL_OK");
             `);
             expect(execFileSync("node", [workerScript], {cwd: workflowDir, encoding: "utf-8"})).toContain("INSTALLED_WASM_WORKER_PROTOCOL_OK");
+            smokeResults.wasm = true;
         } finally {
             fs.rmSync(workflowDir, {recursive: true, force: true});
         }
