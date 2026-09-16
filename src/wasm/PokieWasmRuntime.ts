@@ -1,8 +1,31 @@
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
+import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/SeededRandomNumberGenerator.js";
 import {readIntegrityBoundCanonicalPokieWasmArtifact, type PokieWasmGameModel} from "./PokieWasmCanonicalModule.js";
-import type {PokieWasmHost, PokieWasmRound, PokieWasmRuntime, PokieWasmRuntimeSession, PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
+import type {PokieWasmHost, PokieWasmHostState, PokieWasmRound, PokieWasmRuntime, PokieWasmRuntimeSession, PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
 
 const MAX_HOST_RANDOM_DRAWS_PER_PLAY = 1024;
+
+/** A browser-safe serializable host stream for deterministic sessions and replay. */
+export class SeededPokieWasmHost implements PokieWasmHost {
+    private readonly random: SeededRandomNumberGenerator;
+
+    public constructor(seed: string | number) {
+        this.random = new SeededRandomNumberGenerator(seed);
+    }
+
+    public nextRandom(): number {
+        return this.random.getRandomInt(0, 0x100000000) / 0x100000000;
+    }
+
+    public serializeState(): PokieWasmHostState {
+        return this.random.toSessionState();
+    }
+
+    public restoreState(state: PokieWasmHostState): void {
+        if (typeof state !== "number" || !Number.isSafeInteger(state)) throw new Error("Invalid seeded POKIE WASM host continuation.");
+        this.random.fromSessionState(state);
+    }
+}
 
 /** Returns only portable metadata; no filesystem or package loading occurs here. */
 export function inspectPokieWasm(manifest: PokieWasmComponentManifest): PokieWasmComponentManifest {
@@ -43,7 +66,14 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
                 const stops = unpackStops(packedStops, canonical.model);
                 const screen = buildScreen(stops, canonical.model);
                 const winMultiplier = evaluateWinMultiplier(screen, canonical.model);
-                const next = {schemaVersion: "pokie.state.v1" as const, seed: state.seed, draws: [...state.draws, ...currentDraws], sequence: state.sequence + 1};
+                const rngState = host.serializeState?.();
+                const next = {
+                    schemaVersion: "pokie.state.v1" as const,
+                    seed: state.seed,
+                    draws: [...state.draws, ...currentDraws],
+                    sequence: state.sequence + 1,
+                    ...(rngState === undefined ? {} : {rngState: cloneHostState(rngState)}),
+                };
                 state = next;
                 return {sequence: next.sequence, draw: currentDraws[0], stops, screen, winMultiplier, stake, payout: winMultiplier * stake, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>} satisfies PokieWasmRound;
             }),
@@ -53,19 +83,23 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
             },
         };
     };
-    return {
+    const runtime: PokieWasmRuntime = {
         manifest: inspectPokieWasm(manifest),
         createSession: (seed) => session({schemaVersion: "pokie.state.v1", seed, draws: [], sequence: 0}),
         restoreSession: (state) => {
             if (state.schemaVersion !== "pokie.state.v1" || typeof state.seed !== "string" || !Array.isArray(state.draws) ||
                 !state.draws.every((draw) => typeof draw === "number" && Number.isFinite(draw) && draw >= 0 && draw < 1) ||
-                !Number.isSafeInteger(state.sequence) || state.sequence < 0 || state.draws.length !== state.sequence) {
+                !Number.isSafeInteger(state.sequence) || state.sequence < 0 || !isHostState(state.rngState)) {
                 throw new Error("Unsupported or malformed POKIE WASM session state.");
+            }
+            if (state.rngState !== undefined) {
+                if (host.restoreState === undefined) throw new Error("This POKIE WASM host cannot restore the serialized RNG continuation.");
+                host.restoreState(state.rngState);
             }
             return session(JSON.parse(JSON.stringify(state)) as PokieWasmSessionState);
         },
         replay: async (state, commands) => {
-            const restored = session(JSON.parse(JSON.stringify(state)) as PokieWasmSessionState);
+            const restored = runtime.restoreSession(state);
             const results: PokieWasmRound[] = [];
             for (const command of commands) results.push(await restored.play(command));
             restored.dispose();
@@ -75,6 +109,18 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
             disposed = true;
         },
     };
+    return runtime;
+}
+
+function cloneHostState(state: PokieWasmHostState): PokieWasmHostState {
+    return JSON.parse(JSON.stringify(state)) as PokieWasmHostState;
+}
+
+function isHostState(value: unknown): value is PokieWasmHostState | undefined {
+    if (value === undefined || value === null || typeof value === "string" || typeof value === "boolean") return true;
+    if (typeof value === "number") return Number.isFinite(value);
+    if (Array.isArray(value)) return value.every(isHostState);
+    return typeof value === "object" && Object.values(value).every(isHostState);
 }
 
 function unpackStops(packedStops: number, model: PokieWasmGameModel): readonly number[] {

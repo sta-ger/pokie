@@ -1,16 +1,15 @@
-import {instantiatePokieWasm} from "../../src/wasm/browser.js";
+import {instantiatePokieWasm, SeededPokieWasmHost} from "../../src/wasm/browser.js";
 import {createCanonicalWasmFixture} from "../fixtures/wasm/createCanonicalWasmFixture.js";
 
 describe("browser-safe WASM runtime API", () => {
     it("uses the browser entry point without Node adapters and preserves JSON-safe state", async () => {
         const fixture = createCanonicalWasmFixture({id: "browser-api"});
-        const draws = [0.125, 0.875];
-        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => draws.shift()!});
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("browser-seed"));
         const session = runtime.createSession("browser-seed");
-        expect(await session.play()).toMatchObject({draw: 0.125, sequence: 1});
+        expect(await session.play()).toMatchObject({sequence: 1});
         const state = JSON.parse(JSON.stringify(session.serialize()));
-        expect(await runtime.replay(state, [{}])).toMatchObject([{draw: 0.875, sequence: 2}]);
-        expect(state).toEqual({schemaVersion: "pokie.state.v1", seed: "browser-seed", draws: [0.125], sequence: 1});
+        expect(await runtime.replay(state, [{}])).toMatchObject([{sequence: 2}]);
+        expect(state).toMatchObject({schemaVersion: "pokie.state.v1", seed: "browser-seed", sequence: 1, draws: expect.any(Array), rngState: expect.any(Number)});
         runtime.dispose();
     });
 });

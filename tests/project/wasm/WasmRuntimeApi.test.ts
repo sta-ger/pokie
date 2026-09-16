@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import {instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
+import {SeededPokieWasmHost, instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
 import type {PokieWasmComponentManifest} from "../../../src/project/wasm/PokieWasmComponentManifest.js";
 
 const abiBytes = new Uint8Array([
@@ -67,6 +67,19 @@ describe("Pokie WASM runtime API", () => {
         expect(resumed.serialize()).toEqual({schemaVersion: "pokie.state.v1", seed: "seed", draws: [0.125, 0.875], sequence: 2});
         runtime.dispose();
         await expect(session.play()).rejects.toThrow(/disposed/);
+    });
+
+    it("restores a fresh serializable host without requiring callers to offset its stream", async () => {
+        const first = await instantiatePokieWasm(bytes, manifest, new SeededPokieWasmHost("fresh-continuation"));
+        const session = first.createSession("fresh-continuation");
+        await session.play();
+        const state = session.serialize();
+        const expected = await session.play();
+        const fresh = await instantiatePokieWasm(bytes, manifest, new SeededPokieWasmHost("fresh-continuation"));
+        const restored = fresh.restoreSession(state);
+        await expect(restored.play()).resolves.toEqual(expected);
+        first.dispose();
+        fresh.dispose();
     });
 
     it("hashes exactly the supplied byte view instead of its larger backing buffer", async () => {

@@ -23,6 +23,18 @@ Every file prints its own `[bench] ...` line to stdout with the numbers it measu
 | `simulationReportGeneration.bench.ts` | `SimulationReportBuilder.build()` plus `HtmlSimulationReportRenderer`/`MarkdownSimulationReportRenderer` `.render()` timing for a 100,000-round report. |
 | `wasmRuntime.bench.ts` | Raw module and integrity-sidecar bytes, cold instantiate, 100 deterministic host-RNG spins, serialization payload, replay, and worker-protocol round-trip timing for the canonical portable fixture. |
 
+For the focused portable baseline, run the fixture in Chromium first and then the benchmark lane:
+
+```sh
+node tests/scripts/wasmRuntimeBrowser.test.mjs
+npm run bench -- wasmRuntime.bench.ts
+```
+
+The emitted `[bench] wasmRuntime:` line is intentionally informational. It records the fixed fixture
+ID and seed, warmup and measured rounds, Node/Chromium versions, raw module and manifest sizes, plus
+cold instantiate, warm play, serialization, replay, and worker timing fields. Correctness assertions
+remain part of the benchmark, so a line is never emitted for a failed operation.
+
 ## Why these never assert a hard wall-clock/memory threshold
 
 Every test above only asserts that the operation completed and produced finite, non-negative

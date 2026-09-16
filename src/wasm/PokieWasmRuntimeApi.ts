@@ -1,9 +1,23 @@
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
 
 /** Browser-safe, JSON-only public contract for a canonical POKIE component. */
-export type PokieWasmSessionState = {readonly schemaVersion: "pokie.state.v1"; readonly seed: string; readonly draws: readonly number[]; readonly sequence: number};
+export type PokieWasmSessionState = {
+    readonly schemaVersion: "pokie.state.v1";
+    readonly seed: string;
+    /** Every host draw consumed, including rejection-sampling retries. */
+    readonly draws: readonly number[];
+    readonly sequence: number;
+    /** JSON-safe host RNG continuation, when the host supports restoration. */
+    readonly rngState?: PokieWasmHostState;
+};
 export const POKIE_WASM_RUNTIME_API_VERSION = "1.0.0";
-export type PokieWasmHost = {readonly nextRandom: () => number};
+export type PokieWasmHostState = string | number | boolean | null | readonly PokieWasmHostState[] | {readonly [key: string]: PokieWasmHostState};
+export type PokieWasmHost = {
+    readonly nextRandom: () => number;
+    /** Optional JSON-safe continuation required to restore this stream in a fresh runtime. */
+    readonly serializeState?: () => PokieWasmHostState;
+    readonly restoreState?: (state: PokieWasmHostState) => void;
+};
 export type PokieWasmRound = {
     readonly sequence: number;
     readonly draw: number;
