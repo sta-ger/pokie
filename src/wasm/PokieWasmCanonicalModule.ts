@@ -307,7 +307,6 @@ export async function readIntegrityBoundCanonicalPokieWasmArtifact(bytes: Buffer
     }
     const artifact = manifest.artifact;
     if (artifact === undefined) throw new Error("This is a legacy sidecar-only WASM component and is inspection-only; build a canonical POKIE WASM artifact to run it.");
-    assertSupportedCanonicalWasmRuntimeContract(manifest);
     if (manifest.minPokieVersion !== undefined && !satisfiesMinimumSemverLite(POKIE_WASM_RUNTIME_VERSION, manifest.minPokieVersion)) {
         throw new Error(`POKIE WASM runtime ${POKIE_WASM_RUNTIME_VERSION} cannot run this artifact because it requires POKIE ${manifest.minPokieVersion} or newer.`);
     }
@@ -327,5 +326,10 @@ export async function readIntegrityBoundCanonicalPokieWasmArtifact(bytes: Buffer
         throw new Error("POKIE WASM embedded game configuration hash does not match its manifest.");
     }
     assertCanonicalWasmDescriptorMatchesManifest(canonical.descriptor, manifest);
+    // The immutable module declaration is the authoritative source for a
+    // runnable artifact.  Bind the sidecar to it before rejecting a runtime
+    // contract: otherwise an edited sidecar can obscure the useful integrity
+    // diagnostic with a host-protocol or serialization error.
+    assertSupportedCanonicalWasmRuntimeContract(manifest);
     return canonical;
 }
