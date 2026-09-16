@@ -3,6 +3,8 @@ import {assertCanonicalWasmDescriptorMatchesManifest} from "../project/WasmProje
 import {readCanonicalPokieWasmModule, type PokieWasmGameModel} from "./PokieWasmCanonicalModule.js";
 import type {PokieWasmHost, PokieWasmRound, PokieWasmRuntime, PokieWasmRuntimeSession, PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
 
+const MAX_HOST_RANDOM_DRAWS_PER_PLAY = 1024;
+
 /** Returns only portable metadata; no filesystem or package loading occurs here. */
 export function inspectPokieWasm(manifest: PokieWasmComponentManifest): PokieWasmComponentManifest {
     return JSON.parse(JSON.stringify(manifest)) as PokieWasmComponentManifest;
@@ -14,14 +16,19 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
     if (manifest.artifact.adapter !== POKIE_WASM_ADAPTER) throw new Error(`Unsupported POKIE WASM adapter "${manifest.artifact.adapter}".`);
     const canonical = readCanonicalPokieWasmModule(bytes);
     assertCanonicalWasmDescriptorMatchesManifest(canonical.descriptor, manifest);
-    let currentDraw: number | undefined;
+    let currentDraws: number[] = [];
     const instance = await WebAssembly.instantiate(canonical.module, {
         pokie: {
             "next_random": () => {
+                if (currentDraws.length >= MAX_HOST_RANDOM_DRAWS_PER_PLAY) throw new Error("POKIE WASM play requested too many host random draws while selecting reel stops.");
                 const draw = host.nextRandom();
                 if (!Number.isFinite(draw) || draw < 0 || draw >= 1) throw new Error("POKIE WASM host RNG must return a finite value in [0, 1).");
-                currentDraw = draw;
-                return Math.floor(draw * 0x7fffffff);
+                currentDraws.push(draw);
+                // The portable ABI transports every value in the complete
+                // unsigned 31-bit domain (0..2^31-1). WebAssembly coerces
+                // the high half into signed i32 bits; the module compares
+                // those bits with i32.ge_u before rejection sampling.
+                return Math.floor(draw * 0x80000000);
             },
         },
     });
@@ -31,16 +38,16 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
     const session = (state: PokieWasmSessionState): PokieWasmRuntimeSession => ({
         play: (command: Record<string, unknown> = {}) => Promise.resolve().then(() => {
             if (disposed) throw new Error("The WASM runtime has been disposed.");
-            currentDraw = undefined;
+            currentDraws = [];
+            const stake = resolveStake(command, canonical.model);
             const packedStops = play();
-            if (typeof packedStops !== "number" || currentDraw === undefined) throw new Error("POKIE WASM play export must return packed reel stops after requesting host RNG draws.");
+            if (typeof packedStops !== "number" || currentDraws.length === 0) throw new Error("POKIE WASM play export must return packed reel stops after requesting host RNG draws.");
             const stops = unpackStops(packedStops, canonical.model);
             const screen = buildScreen(stops, canonical.model);
             const winMultiplier = evaluateWinMultiplier(screen, canonical.model);
-            const stake = typeof command.bet === "number" && Number.isFinite(command.bet) && command.bet > 0 ? command.bet : 1;
-            const next = {schemaVersion: "pokie.state.v1" as const, seed: state.seed, draws: [...state.draws, currentDraw], sequence: state.sequence + 1};
+            const next = {schemaVersion: "pokie.state.v1" as const, seed: state.seed, draws: [...state.draws, ...currentDraws], sequence: state.sequence + 1};
             state = next;
-            return {sequence: next.sequence, draw: currentDraw, stops, screen, winMultiplier, payout: winMultiplier * stake, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>} satisfies PokieWasmRound;
+            return {sequence: next.sequence, draw: currentDraws[0], stops, screen, winMultiplier, payout: winMultiplier * stake, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>} satisfies PokieWasmRound;
         }),
         serialize: () => JSON.parse(JSON.stringify(state)) as PokieWasmSessionState,
         dispose: () => undefined,
@@ -79,11 +86,29 @@ function buildScreen(stops: readonly number[], model: PokieWasmGameModel): reado
 }
 
 function evaluateWinMultiplier(screen: readonly (readonly string[])[], model: PokieWasmGameModel): number {
-    return model.paylines.reduce((total, line) => {
+    const lineWins = model.paylines.reduce((total, line) => {
         const symbols = line.map((row, reel) => screen[reel][row]);
-        const first = symbols[0];
-        let count = 1;
-        while (count < symbols.length && symbols[count] === first) count++;
-        return total + (model.paytable[first]?.[String(count)] ?? 0);
+        for (let count = symbols.length; count >= 2; count--) {
+            const matching = symbols.slice(0, count);
+            const regularSymbols = [...new Set(matching.filter((symbol) => !model.wilds?.includes(symbol)))];
+            if (regularSymbols.length !== 1 || !matching.every((symbol) => symbol === regularSymbols[0] || model.wilds?.includes(symbol))) continue;
+            if (model.scatters?.includes(regularSymbols[0])) continue;
+            return total + (model.paytable[regularSymbols[0]]?.[String(count)] ?? 0);
+        }
+        return total;
     }, 0);
+    const scatterWins = (model.scatters ?? []).reduce((total, scatter) => {
+        const count = screen.reduce((matches, reel) => matches + reel.filter((symbol) => symbol === scatter).length, 0);
+        return total + (model.paytable[scatter]?.[String(count)] ?? 0);
+    }, 0);
+    return lineWins + scatterWins;
+}
+
+function resolveStake(command: Record<string, unknown>, model: PokieWasmGameModel): number {
+    const stake = command.bet === undefined ? model.availableBets?.[0] ?? 1 : command.bet;
+    if (typeof stake !== "number" || !Number.isFinite(stake) || stake <= 0) throw new Error("POKIE WASM play command bet must be a finite positive number.");
+    if (model.availableBets !== undefined && !model.availableBets.includes(stake)) {
+        throw new Error(`POKIE WASM play command bet ${stake} is unavailable; choose one of: ${model.availableBets.join(", ")}.`);
+    }
+    return stake;
 }

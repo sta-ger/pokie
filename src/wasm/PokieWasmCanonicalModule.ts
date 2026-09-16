@@ -33,6 +33,9 @@ export type PokieWasmGameModel = {
     readonly paylines: readonly (readonly number[])[];
     readonly paytable: Readonly<Record<string, Readonly<Record<string, number>>>>;
     readonly stopWidths: readonly number[];
+    readonly wilds?: readonly string[];
+    readonly scatters?: readonly string[];
+    readonly availableBets?: readonly number[];
 };
 
 export type CanonicalPokieWasmModule = {
@@ -57,7 +60,10 @@ function isGameModel(value: unknown): value is PokieWasmGameModel {
     if (!model.stopWidths.every((width, index) => isPositiveSafeInteger(width) && width <= 30 && model.reelStrips![index].length <= (1 << width))) return false;
     if (!model.paylines.every((line) => Array.isArray(line) && line.length === model.reels && line.every((row) => Number.isSafeInteger(row) && row >= 0 && row < model.rows!))) return false;
     if (typeof model.paytable !== "object" || model.paytable === null) return false;
-    return Object.values(model.paytable).every((wins) => typeof wins === "object" && wins !== null && Object.values(wins).every((multiplier) => typeof multiplier === "number" && Number.isFinite(multiplier)));
+    if (!Object.values(model.paytable).every((wins) => typeof wins === "object" && wins !== null && Object.values(wins).every((multiplier) => typeof multiplier === "number" && Number.isFinite(multiplier)))) return false;
+    if (model.wilds !== undefined && (!Array.isArray(model.wilds) || !model.wilds.every((symbol) => typeof symbol === "string" && symbol.length > 0))) return false;
+    if (model.scatters !== undefined && (!Array.isArray(model.scatters) || !model.scatters.every((symbol) => typeof symbol === "string" && symbol.length > 0))) return false;
+    return model.availableBets === undefined || (Array.isArray(model.availableBets) && model.availableBets.length > 0 && model.availableBets.every((bet) => typeof bet === "number" && Number.isFinite(bet) && bet > 0));
 }
 
 function isCanonicalDescriptor(value: unknown): value is CanonicalPokieWasmComponentDescriptor {

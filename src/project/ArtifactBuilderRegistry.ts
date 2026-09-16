@@ -11,6 +11,7 @@ import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinat
 import {OutcomeLibraryArtifactBuilder} from "./OutcomeLibraryArtifactBuilder.js";
 import {ParWorkbookArtifactBuilder} from "./ParWorkbookArtifactBuilder.js";
 import {BlueprintArtifactBuilder} from "./BlueprintArtifactBuilder.js";
+import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
 import type {PokieProject} from "./PokieProject.js";
 import {
     BUILD_OPERATION,
@@ -26,7 +27,7 @@ import type {ProjectType} from "./ProjectType.js";
 import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import {StakeAdapterArtifactBuilder} from "./StakeAdapterArtifactBuilder.js";
 import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
-import {WasmArtifactBuilder} from "./WasmArtifactBuilder.js";
+import {WasmArtifactBuilder, resolveCanonicalWasmGameModel} from "./WasmArtifactBuilder.js";
 import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
 import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibraryWorkflow.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
@@ -411,6 +412,12 @@ export class ArtifactBuilderRegistry {
             const blueprintBuilder = this.builders.get("blueprint");
             if (blueprintBuilder === undefined) throw new Error(this.unavailableTargetMessage("blueprint"));
             await blueprintBuilder.validate?.(source);
+            if (target === "wasm") {
+                const imported = await new ParSheetImporter().importFromFile(source.rootPath);
+                const errors = imported.issues.filter((issue) => issue.severity === "error");
+                if (errors.length > 0) throw new Error(`Could not import PAR workbook "${source.rootPath}": ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")}`);
+                resolveCanonicalWasmGameModel(imported.blueprint);
+            }
             return;
         }
 

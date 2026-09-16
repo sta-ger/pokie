@@ -6,6 +6,7 @@ import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry
 import {BlueprintArtifactBuilder} from "../../src/project/BlueprintArtifactBuilder.js";
 import {computeArtifactInputBindingHash, type ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
 import {ManagedOutcomeProjectService} from "../../src/project/ManagedOutcomeProjectService.js";
+import {ParSheetExporter} from "../../src/parsheet/ParSheetExporter.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
@@ -213,6 +214,60 @@ describe("ArtifactBuilderRegistry", () => {
                 expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(true);
                 expect(fs.existsSync(`${destination}.pokie/par-import/conversion-evidence.json`)).toBe(true);
                 expect(fs.existsSync(path.join(destination, ".pokie", "par-import"))).toBe(false);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it("validates the PAR-imported canonical WASM model during dry-run without publishing any companion", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-wasm-dry-run-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const destination = path.join(directory, "game.wasm");
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            try {
+                fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+                const plan = await registry.preparePlan(source, "wasm", {destinationPath: destination});
+                await expect(registry.validate("wasm", source, plan)).resolves.toBeUndefined();
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie`)).toBe(false);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it("rejects unsupported PAR mechanics during WASM dry-run before publication", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-wasm-invalid-dry-run-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const destination = path.join(directory, "game.wasm");
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            const unsupportedBlueprint = {
+                manifest: {id: "par-free-games", name: "PAR Free Games", version: "1.0.0"},
+                reels: 3,
+                rows: 1,
+                symbols: ["A", "B", "S"],
+                scatters: ["S"],
+                reelStrips: [["A", "B", "S"], ["B", "S", "A"], ["S", "A", "B"]],
+                paytable: {A: {3: 2}, B: {3: 1}, S: {3: 1}},
+                mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 5}}},
+            };
+            try {
+                const issues = await new ParSheetExporter("1.3.0").exportToFile(unsupportedBlueprint, workbookPath);
+                expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+                const plan = await registry.preparePlan(source, "wasm", {destinationPath: destination});
+                await expect(registry.validate("wasm", source, plan)).rejects.toThrow(/mechanics\.freeGames.*Next:/);
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
             } finally {
                 fs.rmSync(directory, {recursive: true, force: true});
             }
