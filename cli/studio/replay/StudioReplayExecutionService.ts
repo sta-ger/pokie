@@ -698,13 +698,14 @@ export class StudioReplayExecutionService {
         this.markTerminal(record);
     }
 
-    // A queued job has not acquired a game/runtime session yet.  Make its cancellation observable
-    // synchronously instead of waiting for a deferred module load to notice the abort signal.  Running
-    // jobs still transition at their next cooperative cancellation point, preserving their cleanup path.
+    // A queued canonical component has not acquired a game/runtime session yet, so it can become
+    // terminal immediately instead of waiting for module loading to notice the abort signal. Other
+    // project kinds may own temporary materialization stages while queued; their run path remains
+    // responsible for cleanup before publishing the terminal cancellation.
     private cancelActiveRecord(record: StudioReplayJobRecord): void {
         if (record.status !== "queued" && record.status !== "running") return;
         record.abortController.abort();
-        if (record.status === "queued") this.cancelRecord(record);
+        if (record.status === "queued" && isWasmComponentFile(record.projectRoot)) this.cancelRecord(record);
     }
 
     // Common tail for every path that lands a record in a terminal status: stamps durationMs/

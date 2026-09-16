@@ -618,13 +618,13 @@ export class StudioSimulationService {
         this.markTerminal(record);
     }
 
-    // A queued job has no runtime/session resource to release.  Persist its terminal cancellation
-    // immediately so a caller never has to wait for deferred setup to observe an abort signal.  A
-    // running job continues through its cooperative cleanup path and records cancellation there.
+    // A queued canonical component has no runtime/session resource to release, so it can become
+    // terminal immediately. Other project kinds may own temporary materialization stages while
+    // queued; their run path continues to publish cancellation after it has cleaned those stages.
     private cancelActiveRecord(record: StudioSimulationJobRecord): void {
         if (record.status !== "queued" && record.status !== "running") return;
         record.abortController.abort();
-        if (record.status === "queued") this.cancelRecord(record);
+        if (record.status === "queued" && isWasmComponentFile(record.projectRoot)) this.cancelRecord(record);
     }
 
     // Common tail for every path that lands a record in a terminal status: stamps durationMs/
