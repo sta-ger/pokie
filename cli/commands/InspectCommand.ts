@@ -8,6 +8,8 @@ import {
     ProjectTargetResolver,
     ProjectTargetUnsupportedError,
     readWasmComponentManifest,
+    WASM_RUNTIME_PLAY_CAPABILITY,
+    WASM_RUNTIME_REPLAY_CAPABILITY,
     WASM_PRODUCT_CONTRACT,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -109,6 +111,9 @@ export class InspectCommand implements CliCommandHandling {
 
         const wasmManifest = project.type === "wasm" ? await this.printWasmManifest(project) : undefined;
 
+        // Legacy components never have executable guidance. Canonical guidance itself is already
+        // narrowed in describeProjectPresentation() from the resolved per-operation capabilities;
+        // preserve that result rather than treating every artifact block as generically runnable.
         const nextActions = project.type === "wasm" && wasmManifest?.artifact === undefined ? [] : presentation.nextActions;
         if (nextActions.length > 0) {
             console.log("\nAvailable next actions:");
@@ -142,7 +147,11 @@ export class InspectCommand implements CliCommandHandling {
         if (manifest.artifact === undefined) {
             console.log("  runtime          legacy sidecar-only component (inspection-only)");
         } else {
-            console.log(`  runtime          canonical runnable ABI ${manifest.artifact.abiVersion}`);
+            const declaredOperations = [
+                ...(project.capabilities.includes(WASM_RUNTIME_PLAY_CAPABILITY) ? ["play"] : []),
+                ...(project.capabilities.includes(WASM_RUNTIME_REPLAY_CAPABILITY) ? ["replay"] : []),
+            ];
+            console.log(`  runtime          canonical ABI ${manifest.artifact.abiVersion}; declared operations: ${declaredOperations.length === 0 ? "metadata only" : declaredOperations.join(", ")}`);
             console.log("  compatibility    compatible with this POKIE WASM runtime");
             console.log(`  integrity        ${manifest.artifact.sha256} (${manifest.artifact.bytes} bytes)`);
             console.log(`  adapter          ${manifest.artifact.adapter}`);

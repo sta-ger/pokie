@@ -358,7 +358,6 @@ export class StudioPlayService {
                         // Do not transpose it: a single-row, multi-reel game would otherwise
                         // grow one sparse row per reel.
                         screen: round.screen.map((reel) => [...reel]),
-                        availableSymbols: [...new Set(round.screen.flat())],
                         scenarioCapabilities: WASM_SCENARIO_CAPABILITIES,
                         debug: {
                             ...(stateBefore === undefined ? {} : {stateBefore}),
@@ -439,9 +438,11 @@ export class StudioPlayService {
     // same path a manual Spin click drives) until one actually wins, up to MAX_FIND_SCENARIO_SPINS
     // attempts. Never computes or predicts a win itself: for a "runtime" session, whether to keep
     // searching is decided by handing the engine's own PlayUntilAnyWinStrategy the same live
-    // GameSessionHandling spin() just played (see the class doc comment); for an "outcomeSource" session
-    // (no live GameSessionHandling to hand it -- see newOutcomeSourceSession()'s own doc comment), the
-    // equivalent real, already-drawn totalWin on that round's own artifact is read instead. Either way,
+    // GameSessionHandling spin() just played (see the class doc comment); for a portable WASM session,
+    // the settled ABI payout is the authoritative result, even when the component deliberately omits
+    // artifact.inspect. An "outcomeSource" session (no live GameSessionHandling to hand it -- see
+    // newOutcomeSourceSession()'s own doc comment) reads the equivalent totalWin from its own artifact.
+    // Either way,
     // every round along the way -- including the final matching one -- is a genuine settled spin, not a
     // simulated/discarded trial: a search that runs out of attempts still leaves the session sitting on
     // whatever real round it last actually played.
@@ -694,10 +695,14 @@ export class StudioPlayService {
                 return round;
             }
 
-            const matched =
-                active.kind === "runtime"
-                    ? matchesLiveSession(active.session)
-                    : round.session.debug?.artifact !== undefined && matchesArtifact(round.session.debug.artifact);
+            let matched: boolean;
+            if (active.kind === "runtime") {
+                matched = matchesLiveSession(active.session);
+            } else if (active.kind === "wasm") {
+                matched = (round.session.win ?? 0) > 0;
+            } else {
+                matched = round.session.debug?.artifact !== undefined && matchesArtifact(round.session.debug.artifact);
+            }
             if (matched) {
                 return round;
             }

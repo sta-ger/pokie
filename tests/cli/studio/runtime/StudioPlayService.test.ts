@@ -37,8 +37,11 @@ import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestF
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
-function wasmProject(rootPath = "/fake/canonical.wasm") {
-    return {rootPath, type: "wasm" as const, capabilities: [WASM_MANIFEST_READ_CAPABILITY, "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.runtime.replay", "wasm.runtime.execute", "wasm.artifact.inspect"], provenance: "canonical POKIE WASM component"};
+function wasmProject(
+    rootPath = "/fake/canonical.wasm",
+    capabilities = [WASM_MANIFEST_READ_CAPABILITY, "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.runtime.replay", "wasm.runtime.execute", "wasm.artifact.inspect"],
+) {
+    return {rootPath, type: "wasm" as const, capabilities, provenance: "canonical POKIE WASM component"};
 }
 
 function fakeWasmRuntime(play: PokieWasmRuntimeSession["play"] = () => Promise.resolve({
@@ -459,6 +462,41 @@ describe("StudioPlayService", () => {
             },
         });
         if (result.status === "ok") expect(result.session.debug?.artifactUnavailableReason).toBeUndefined();
+    });
+
+    it("finds a canonical WASM payout without artifact inspection and never infers a symbol catalog from its screen", async () => {
+        const active = fakeWasmRuntime();
+        const revalidation = fakeWasmRuntime();
+        (active.runtime as unknown as {manifest: {capabilities: string[]}}).manifest.capabilities = ["runtime.play", "runtime.serialize"];
+        (revalidation.runtime as unknown as {manifest: {capabilities: string[]}}).manifest.capabilities = ["runtime.play", "runtime.serialize"];
+        let loads = 0;
+        const service = new StudioPlayService(
+            undefined,
+            undefined,
+            "1.3.0",
+            {resolve: () => Promise.resolve(wasmProject("/fake/canonical.wasm", [WASM_MANIFEST_READ_CAPABILITY, "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize"]))},
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.resolve(++loads === 1 ? active.runtime : revalidation.runtime),
+        );
+
+        const created = await service.newSession("/fake/canonical.wasm", "payout-without-inspection");
+        if (created.status !== "ok") throw new Error("expected canonical WASM session");
+        const result = await service.findAnyWin(created.session.sessionId);
+
+        expect(result).toMatchObject({
+            status: "ok",
+            session: {
+                win: 1,
+                screen: [["A"]],
+                debug: {artifactUnavailableReason: expect.stringContaining("does not declare artifact.inspect")},
+            },
+        });
+        if (result.status === "ok") {
+            expect(result.session.debug?.artifact).toBeUndefined();
+            expect(result.session.availableSymbols).toBeUndefined();
+        }
     });
 
     it("disposes the captured WASM session when integrity revalidation fails", async () => {
