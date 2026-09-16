@@ -7,6 +7,7 @@ import {
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
     BUILD_PRODUCT_MATRIX_TARGETS,
     PROJECT_TYPE_CAPABILITIES,
+    type ArtifactTargetType,
     type PokieProject,
 } from "../../src/index.js";
 import {installPc14FixedRunnerClock, mergeArtifactInteroperabilityRuns, pc05PublicOwnerOperations} from "../support/ArtifactInteroperabilityRun.js";
@@ -80,8 +81,8 @@ type InteroperabilityResult = {
     readonly planner_cells?: readonly {
         readonly source_path: string;
         readonly source_identity: string;
-        readonly source_type: string;
-        readonly target: string;
+        readonly source_type: PokieProject["type"];
+        readonly target: ArtifactTargetType;
         readonly status: string;
         readonly diagnostic?: {readonly code: string; readonly recovery: string};
     }[];
