@@ -2,14 +2,18 @@ import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponen
 
 /** Version implemented by every direct portable POKIE WASM runtime entry point. */
 export const POKIE_WASM_RUNTIME_VERSION = "1.3.0";
+/** The same initial session ledger used by an ordinary POKIE game session. */
+export const POKIE_WASM_DEFAULT_CREDITS = 1000;
 
 /** Browser-safe, JSON-only public contract for a canonical POKIE component. */
 export type PokieWasmSessionState = {
     readonly schemaVersion: "pokie.state.v1";
     readonly seed: string;
-    /** Every host draw consumed, including rejection-sampling retries. */
+    /** Every seeded host draw consumed to select canonical reel stops. */
     readonly draws: readonly number[];
     readonly sequence: number;
+    /** Remaining session ledger after the last completed round. */
+    readonly credits: number;
     /** JSON-safe host RNG continuation, when the host supports restoration. */
     readonly rngState?: PokieWasmHostState;
 };
@@ -30,6 +34,10 @@ export type PokieWasmRound = {
     /** The resolved command stake used to calculate payout. */
     readonly stake: number;
     readonly payout: number;
+    /** Ledger before settling this round's stake and payout. */
+    readonly creditsBefore: number;
+    /** Ledger after settling this round's stake and payout. */
+    readonly credits: number;
     readonly command: Record<string, unknown>;
 };
 export type PokieWasmRuntimeSession = {
@@ -39,7 +47,7 @@ export type PokieWasmRuntimeSession = {
 };
 export type PokieWasmRuntime = {
     readonly manifest: PokieWasmComponentManifest;
-    createSession(seed: string): PokieWasmRuntimeSession;
+    createSession(seed: string, options?: {readonly credits?: number}): PokieWasmRuntimeSession;
     restoreSession(state: PokieWasmSessionState): PokieWasmRuntimeSession;
     replay(state: PokieWasmSessionState, commands: readonly Record<string, unknown>[]): Promise<readonly PokieWasmRound[]>;
     dispose(): void;

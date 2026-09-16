@@ -69,15 +69,15 @@ describe("WASM runtime parity golden", () => {
         replayRuntime.dispose();
     });
 
-    it("preserves a runtime-produced multi-draw rejection-sampling state", async () => {
+    it("maps each production host draw directly to its non-power-of-two reel stop", async () => {
         const fixture = createCanonicalWasmFixture({id: "golden-rejection", stripLengths: [3]});
         const maximumHostWord = 0x7fffffff;
         const draws = [1 - 0.25 / maximumHostWord, 1 / maximumHostWord, 0];
         const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => draws.shift()!});
         const session = runtime.createSession("rejection");
-        await expect(session.play()).resolves.toMatchObject({stops: [1]});
+        await expect(session.play()).resolves.toMatchObject({stops: [2]});
         const state = session.serialize();
-        expect(state).toMatchObject({sequence: 1, draws: [expect.any(Number), expect.any(Number)]});
+        expect(state).toMatchObject({sequence: 1, draws: [expect.any(Number)]});
         expect(() => runtime.restoreSession(state)).not.toThrow();
         runtime.dispose();
     });
@@ -126,8 +126,8 @@ describe("WASM runtime parity golden", () => {
     it("rejects malformed portable state and reports canonical runtime traps", async () => {
         const fixture = createCanonicalWasmFixture({id: "golden-invalid"});
         const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("invalid"));
-        expect(() => runtime.restoreSession({schemaVersion: "pokie.state.v1", seed: "x", draws: [1], sequence: 1})).toThrow(/malformed/);
-        expect(() => runtime.restoreSession({schemaVersion: "pokie.state.v1", seed: "x", draws: [], sequence: -1})).toThrow(/malformed/);
+        expect(() => runtime.restoreSession({schemaVersion: "pokie.state.v1", seed: "x", draws: [1], sequence: 1, credits: 1000})).toThrow(/malformed/);
+        expect(() => runtime.restoreSession({schemaVersion: "pokie.state.v1", seed: "x", draws: [], sequence: -1, credits: 1000})).toThrow(/malformed/);
         runtime.dispose();
 
         const trappingFixture = createCanonicalWasmFixture({id: "golden-trap", trapping: true});
@@ -148,20 +148,22 @@ const BASE_FIXTURE: FeatureFixture = {
     reelStrips: [["A", "B"], ["A", "B"]], wilds: [], scatters: [], paytable: {A: {2: 2}, B: {2: 1}},
 };
 
-type NodeReference = {readonly session: VideoSlotSession<string>; readonly random: AbiCompatibleSeededRandom; readonly generator: SymbolsCombinationsGenerator<string>};
+type NodeReference = {readonly session: VideoSlotSession<string>; readonly random: ProductionSeededRandomCapture; readonly generator: SymbolsCombinationsGenerator<string>};
 
-class AbiCompatibleSeededRandom implements RandomNumberGenerating {
+/** Observes the real seeded RNG without changing its range-selection semantics. */
+class ProductionSeededRandomCapture implements RandomNumberGenerating {
     public readonly draws: number[] = [];
     private readonly random: SeededRandomNumberGenerator;
+    private readonly capture: SeededRandomNumberGenerator;
 
     public constructor(seed: string) {
         this.random = new SeededRandomNumberGenerator(seed);
+        this.capture = new SeededRandomNumberGenerator(seed);
     }
 
     public getRandomInt(minimum: number, maximum: number): number {
-        const draw = this.random.getRandomInt(0, 0x100000000) / 0x100000000;
-        this.draws.push(draw);
-        return minimum + Math.floor(draw * 0x80000000) % (maximum - minimum);
+        this.draws.push(this.capture.getRandomInt(0, 0x100000000) / 0x100000000);
+        return this.random.getRandomInt(minimum, maximum);
     }
 
     public toSessionState(): number {
@@ -170,6 +172,7 @@ class AbiCompatibleSeededRandom implements RandomNumberGenerating {
 
     public fromSessionState(state: number): this {
         this.random.fromSessionState(state);
+        this.capture.fromSessionState(state);
         return this;
     }
 
@@ -193,7 +196,7 @@ function createNodeReference(seed: string, state?: PokieWasmSessionState, fixtur
         for (const [count, payout] of Object.entries(payouts)) paytable.setPayoutForSymbol(symbol, Number(count), payout);
     }
     config.setPaytable(paytable);
-    const random = new AbiCompatibleSeededRandom(seed);
+    const random = new ProductionSeededRandomCapture(seed);
     const generator = new SymbolsCombinationsGenerator(config, random);
     const session = new VideoSlotSession(config, generator, new VideoSlotWinCalculator(config), new GameSession(config));
     // VideoSlotSession prepares an initial screen in its constructor. A canonical
@@ -204,15 +207,15 @@ function createNodeReference(seed: string, state?: PokieWasmSessionState, fixtur
     if (state !== undefined) {
         session.fromSessionState({rngState: state.rngState});
         random.draws.push(...state.draws);
+        session.setCreditsAmount(state.credits);
     }
-    session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
     return {session, random, generator};
 }
 
 function runNodeReference(seed: string, commands: readonly Record<string, unknown>[], fixture: FeatureFixture = BASE_FIXTURE) {
     const reference = createNodeReference(seed, undefined, fixture);
     const rounds = commands.map((command, index) => playNodeReference(reference, command, index + 1));
-    const state: PokieWasmSessionState = {schemaVersion: "pokie.state.v1", seed, draws: [...reference.random.draws], sequence: rounds.length, rngState: reference.session.toSessionState().rngState as number};
+    const state: PokieWasmSessionState = {schemaVersion: "pokie.state.v1", seed, draws: [...reference.random.draws], sequence: rounds.length, credits: reference.session.getCreditsAmount(), rngState: reference.session.toSessionState().rngState as number};
     return {rounds, state};
 }
 
@@ -222,12 +225,13 @@ function resumeNodeReference(seed: string, state: PokieWasmSessionState, command
 
 function playNodeReference(reference: NodeReference, command: Record<string, unknown>, sequence: number) {
     const before = reference.random.draws.length;
+    const creditsBefore = reference.session.getCreditsAmount();
     reference.session.setBet(command.bet as number);
     reference.session.play();
     const roundDraws = reference.random.draws.slice(before);
     const screen = reference.session.getSymbolsCombination().toMatrix();
     const payout = reference.session.getWinAmount();
-    return canonicalRound({sequence, draw: roundDraws[0], stops: reference.generator.getLastStopPositions(), screen, winMultiplier: payout, stake: reference.session.getBet(), payout, command});
+    return canonicalRound({sequence, draw: roundDraws[0], stops: reference.generator.getLastStopPositions(), screen, winMultiplier: payout, stake: reference.session.getBet(), payout, creditsBefore, credits: reference.session.getCreditsAmount(), command});
 }
 
 function recordNodeReplay(seed: string, round: number, fixture: FeatureFixture = BASE_FIXTURE) {
@@ -239,6 +243,6 @@ function recordNodeReplay(seed: string, round: number, fixture: FeatureFixture =
     return {round: replay.round, totalBet: replay.totalBet, totalWin: replay.totalWin, screen: replay.screen};
 }
 
-function canonicalRound(round: Pick<PokieWasmRound, "sequence" | "draw" | "stops" | "screen" | "winMultiplier" | "stake" | "payout" | "command">) {
-    return {sequence: round.sequence, draw: round.draw, stops: round.stops, screen: round.screen, winMultiplier: round.winMultiplier, stake: round.stake, payout: round.payout, command: round.command};
+function canonicalRound(round: Pick<PokieWasmRound, "sequence" | "draw" | "stops" | "screen" | "winMultiplier" | "stake" | "payout" | "creditsBefore" | "credits" | "command">) {
+    return {sequence: round.sequence, draw: round.draw, stops: round.stops, screen: round.screen, winMultiplier: round.winMultiplier, stake: round.stake, payout: round.payout, creditsBefore: round.creditsBefore, credits: round.credits, command: round.command};
 }

@@ -27,7 +27,7 @@ import {
     resolveOutcomeLibraryModeName,
     RoundArtifact,
     SeededWeightedOutcomeRandomSource,
-    SeededRandomNumberGenerator,
+    SeededPokieWasmHost,
     VideoSlotSessionHandling,
     WeightedOutcomeRandomSource,
 } from "pokie";
@@ -403,13 +403,10 @@ export class StudioReplayExecutionService {
             this.fail(record, new Error("A canonical WASM replay requires a deterministic seed."));
             return;
         }
-        const random = new SeededRandomNumberGenerator(record.seed);
         let runtime;
         let disposeSession: (() => void) | undefined;
         try {
-            runtime = await this.loadWasmRuntime(record.projectRoot, {
-                nextRandom: () => random.getRandomInt(0, 1_000_000_000) / 1_000_000_000,
-            });
+            runtime = await this.loadWasmRuntime(record.projectRoot, new SeededPokieWasmHost(record.seed));
             if (record.abortController.signal.aborted) {
                 this.cancelRecord(record);
                 return;
@@ -445,6 +442,7 @@ export class StudioReplayExecutionService {
                 round: record.round,
                 totalBet,
                 totalWin,
+                credits: finalRound?.credits ?? session.serialize().credits,
                 // PokieWasmRound.screen is reel-major, the same DTO shape ReplayDescriptor
                 // receives from ordinary sessions. Preserve each reel instead of transposing it.
                 screen: finalRound === undefined ? null : finalRound.screen.map((reel) => [...reel]),

@@ -297,7 +297,7 @@ describe("StudioReplayExecutionService", () => {
             manifest: {component: {id: "wasm", version: "1.0.0"}, artifact: {configurationHash: "config"}},
             createSession: () => ({
                 play: () => Promise.resolve({stake: 1, payout: 1, screen: [["A"]]}),
-                serialize: () => ({schemaVersion: "pokie.state.v1", seed: "cleanup", draws: [], sequence: 1}),
+                serialize: () => ({schemaVersion: "pokie.state.v1", seed: "cleanup", draws: [], sequence: 1, credits: 1000}),
                 dispose: disposeSession,
             }),
             dispose: disposeRuntime,

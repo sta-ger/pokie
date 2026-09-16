@@ -12,10 +12,13 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
     ProjectTargetResolver,
+    SeededPokieWasmHost,
+    SimulationAccumulator,
     SimulationReport,
     SimulationReportSet,
     SIM_OPERATION,
     WeightedOutcomeRandomSource,
+    loadPokieWasmFileRuntime,
 } from "pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
@@ -1072,6 +1075,48 @@ describe("SimCommand runtime package materialization boundary", () => {
             await command.run([wasmPath, "--rounds", "4", "--seed", "canonical-seed", "--out", reportPath, "--format", "json"]);
             const report = JSON.parse(fs.readFileSync(reportPath, "utf8")) as SimulationReport;
             expect(report).toMatchObject({game: {id: "canonical-sim"}, rounds: 4, seed: "canonical-seed", workers: 1});
+            const runtime = await loadPokieWasmFileRuntime(wasmPath, new SeededPokieWasmHost("canonical-seed"));
+            const session = runtime.createSession("canonical-seed", {credits: Number.MAX_SAFE_INTEGER});
+            const expected = new SimulationAccumulator();
+            try {
+                for (let index = 0; index < 4; index++) {
+                    const round = await session.play();
+                    expected.addRound(round.stake, round.payout);
+                }
+                const statistics = expected.getStatistics();
+                expect({
+                    rounds: report.rounds,
+                    hitCount: report.hitFrequency * report.rounds,
+                    totalBet: report.totalBet,
+                    totalPayout: report.totalWin,
+                    rtp: report.rtp,
+                    averageBet: report.averageBet,
+                    averagePayout: report.averagePayout,
+                    volatility: report.volatility,
+                    maxWin: report.maxWin,
+                    maxWinFrequency: report.maxWinFrequency,
+                    payoutHistogram: report.payoutHistogram,
+                    averagePayoutConfidenceInterval95: report.averagePayoutConfidenceInterval95,
+                    rtpConfidenceInterval95: report.rtpConfidenceInterval95,
+                }).toEqual({
+                    rounds: statistics.rounds,
+                    hitCount: statistics.hitCount,
+                    totalBet: statistics.totalBet,
+                    totalPayout: statistics.totalPayout,
+                    rtp: statistics.rtp,
+                    averageBet: statistics.averageBet,
+                    averagePayout: statistics.averagePayout,
+                    volatility: statistics.volatility,
+                    maxWin: statistics.maxWin,
+                    maxWinFrequency: statistics.maxWinFrequency,
+                    payoutHistogram: statistics.payoutHistogram,
+                    averagePayoutConfidenceInterval95: statistics.averagePayoutConfidenceInterval95,
+                    rtpConfidenceInterval95: statistics.rtpConfidenceInterval95,
+                });
+            } finally {
+                session.dispose();
+                runtime.dispose();
+            }
             expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
             expect(loadGame).not.toHaveBeenCalled();
         } finally {

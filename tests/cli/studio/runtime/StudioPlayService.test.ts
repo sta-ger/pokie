@@ -49,11 +49,13 @@ function fakeWasmRuntime(play: PokieWasmRuntimeSession["play"] = () => Promise.r
     winMultiplier: 1,
     stake: 1,
     payout: 1,
+    creditsBefore: 1000,
+    credits: 1000,
     command: {},
 })): {runtime: PokieWasmRuntime; session: PokieWasmRuntimeSession; dispose: jest.Mock; disposeSession: jest.Mock} {
     const dispose = jest.fn();
     const disposeSession = jest.fn();
-    const session: PokieWasmRuntimeSession = {play, serialize: () => ({schemaVersion: "pokie.state.v1", seed: "test", draws: [], sequence: 0}), dispose: disposeSession};
+    const session: PokieWasmRuntimeSession = {play, serialize: () => ({schemaVersion: "pokie.state.v1", seed: "test", draws: [], sequence: 0, credits: 1000}), dispose: disposeSession};
     const runtime = {
         manifest: {component: {id: "wasm-slot", version: "1.0.0"}, artifact: {sha256: "integrity"}},
         createSession: () => session,
@@ -528,7 +530,7 @@ describe("StudioPlayService", () => {
 
         const current = await service.newSession("/fake/canonical.wasm", "replacement");
         if (current.status !== "ok") throw new Error("expected replacement WASM session");
-        played.resolve({sequence: 1, draw: 0, stops: [0], screen: [["A"]], winMultiplier: 1, stake: 1, payout: 1, command: {}});
+        played.resolve({sequence: 1, draw: 0, stops: [0], screen: [["A"]], winMultiplier: 1, stake: 1, payout: 1, creditsBefore: 1000, credits: 1000, command: {}});
 
         await expect(spinning).resolves.toEqual({status: "not-found"});
         expect(recorder.list()).toEqual([]);

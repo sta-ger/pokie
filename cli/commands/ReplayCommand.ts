@@ -178,6 +178,7 @@ export class ReplayCommand implements CliCommandHandling {
                 round: options.round,
                 totalBet,
                 totalWin,
+                credits: finalRound?.credits ?? session.serialize().credits,
                 screen: finalRound === undefined ? null : finalRound.screen.map((reel) => [...reel]),
                 timestamp: startedAt,
                 durationMs: Date.now() - startedAt,

@@ -1,7 +1,7 @@
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
 import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/SeededRandomNumberGenerator.js";
 import {readIntegrityBoundCanonicalPokieWasmArtifact, type PokieWasmGameModel} from "./PokieWasmCanonicalModule.js";
-import type {PokieWasmHost, PokieWasmHostState, PokieWasmRound, PokieWasmRuntime, PokieWasmRuntimeSession, PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
+import {POKIE_WASM_DEFAULT_CREDITS, type PokieWasmHost, type PokieWasmHostState, type PokieWasmRound, type PokieWasmRuntime, type PokieWasmRuntimeSession, type PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
 
 const MAX_HOST_RANDOM_DRAWS_PER_PLAY = 1024;
 
@@ -42,12 +42,15 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
                 if (currentDraws.length >= MAX_HOST_RANDOM_DRAWS_PER_PLAY) throw new Error("POKIE WASM play requested too many host random draws while selecting reel stops.");
                 const draw = host.nextRandom();
                 if (!Number.isFinite(draw) || draw < 0 || draw >= 1) throw new Error("POKIE WASM host RNG must return a finite value in [0, 1).");
+                const reel = currentDraws.length;
+                const strip = canonical.model.reelStrips[reel];
+                if (strip === undefined) throw new Error("POKIE WASM play requested more reel stops than its canonical model declares.");
                 currentDraws.push(draw);
-                // The portable ABI transports every value in the complete
-                // unsigned 31-bit domain (0..2^31-1). WebAssembly coerces
-                // the high half into signed i32 bits; the module compares
-                // those bits with i32.ge_u before rejection sampling.
-                return Math.floor(draw * 0x80000000);
+                // Match SymbolsCombinationsGenerator exactly: the seeded
+                // production host selects each reel with floor(draw * length).
+                // Supplying that already-valid stop to the ABI also avoids
+                // changing the stream by module-local rejection retries.
+                return Math.floor(draw * strip.length);
             },
         },
     });
@@ -61,21 +64,25 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
                 if (disposed || sessionDisposed) throw new Error("The WASM runtime session has been disposed.");
                 currentDraws = [];
                 const stake = resolveStake(command, canonical.model);
+                const creditsBefore = state.credits;
+                if (creditsBefore < stake) throw new Error(`POKIE WASM session has insufficient credits for stake ${stake}.`);
                 const packedStops = play();
                 if (typeof packedStops !== "number" || currentDraws.length === 0) throw new Error("POKIE WASM play export must return packed reel stops after requesting host RNG draws.");
                 const stops = unpackStops(packedStops, canonical.model);
                 const screen = buildScreen(stops, canonical.model);
                 const winMultiplier = evaluateWinMultiplier(screen, canonical.model);
+                const payout = winMultiplier * stake;
                 const rngState = host.serializeState?.();
                 const next = {
                     schemaVersion: "pokie.state.v1" as const,
                     seed: state.seed,
                     draws: [...state.draws, ...currentDraws],
                     sequence: state.sequence + 1,
+                    credits: creditsBefore - stake + payout,
                     ...(rngState === undefined ? {} : {rngState: cloneHostState(rngState)}),
                 };
                 state = next;
-                return {sequence: next.sequence, draw: currentDraws[0], stops, screen, winMultiplier, stake, payout: winMultiplier * stake, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>} satisfies PokieWasmRound;
+                return {sequence: next.sequence, draw: currentDraws[0], stops, screen, winMultiplier, stake, payout, creditsBefore, credits: next.credits, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>} satisfies PokieWasmRound;
             }),
             serialize: () => JSON.parse(JSON.stringify(state)) as PokieWasmSessionState,
             dispose: () => {
@@ -85,11 +92,15 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
     };
     const runtime: PokieWasmRuntime = {
         manifest: inspectPokieWasm(manifest),
-        createSession: (seed) => session({schemaVersion: "pokie.state.v1", seed, draws: [], sequence: 0}),
+        createSession: (seed, options = {}) => {
+            const credits = options.credits ?? POKIE_WASM_DEFAULT_CREDITS;
+            if (!Number.isFinite(credits) || credits < 0) throw new Error("POKIE WASM session credits must be a finite non-negative number.");
+            return session({schemaVersion: "pokie.state.v1", seed, draws: [], sequence: 0, credits});
+        },
         restoreSession: (state) => {
             if (state.schemaVersion !== "pokie.state.v1" || typeof state.seed !== "string" || !Array.isArray(state.draws) ||
                 !state.draws.every((draw) => typeof draw === "number" && Number.isFinite(draw) && draw >= 0 && draw < 1) ||
-                !Number.isSafeInteger(state.sequence) || state.sequence < 0 || !isHostState(state.rngState)) {
+                !Number.isSafeInteger(state.sequence) || state.sequence < 0 || !Number.isFinite(state.credits) || state.credits < 0 || !isHostState(state.rngState)) {
                 throw new Error("Unsupported or malformed POKIE WASM session state.");
             }
             if (state.rngState !== undefined) {

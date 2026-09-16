@@ -61,10 +61,10 @@ describe("Pokie WASM runtime API", () => {
         const draws = [0.125, 0.875];
         const runtime = await instantiatePokieWasm(bytes, manifest, {nextRandom: () => draws.shift()!});
         const session = runtime.createSession("seed");
-        expect(await session.play({bet: 1})).toMatchObject({sequence: 1, draw: 0.125, command: {bet: 1}});
+        expect(await session.play({bet: 1})).toMatchObject({sequence: 1, draw: 0.125, creditsBefore: 1000, credits: 999, command: {bet: 1}});
         const resumed = runtime.restoreSession(session.serialize());
         expect(await resumed.play()).toMatchObject({sequence: 2, draw: 0.875});
-        expect(resumed.serialize()).toEqual({schemaVersion: "pokie.state.v1", seed: "seed", draws: [0.125, 0.875], sequence: 2});
+        expect(resumed.serialize()).toEqual({schemaVersion: "pokie.state.v1", seed: "seed", draws: [0.125, 0.875], sequence: 2, credits: 998});
         runtime.dispose();
         await expect(session.play()).rejects.toThrow(/disposed/);
     });
@@ -106,7 +106,7 @@ describe("Pokie WASM runtime API", () => {
 
     it("fails deterministically for malformed state and invalid host draws", async () => {
         const runtime = await instantiatePokieWasm(bytes, manifest, {nextRandom: () => 1});
-        expect(() => runtime.restoreSession({schemaVersion: "other" as never, seed: "x", draws: [], sequence: 0})).toThrow(/Unsupported or malformed/);
+        expect(() => runtime.restoreSession({schemaVersion: "other" as never, seed: "x", draws: [], sequence: 0, credits: 1000})).toThrow(/Unsupported or malformed/);
         await expect(runtime.createSession("x").play()).rejects.toThrow(/RNG/);
     });
 

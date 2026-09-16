@@ -32,7 +32,7 @@ import {
     RoundArtifact,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
-    SeededRandomNumberGenerator,
+    SeededPokieWasmHost,
     SpinCommandHandler,
     TransactionalWalletAdapter,
     releasePokieGame,
@@ -344,6 +344,7 @@ export class StudioPlayService {
                     session: {
                         sessionId,
                         game: active.manifest,
+                        credits: round.credits,
                         bet: round.stake,
                         win: round.payout,
                         // Portable rounds already expose the shared reel-major screen contract.
@@ -602,12 +603,9 @@ export class StudioPlayService {
 
     private async newWasmSession(project: PokieProject, seed: string | number | undefined, assertCurrent: () => void): Promise<StudioPlaySessionResult> {
         const sessionSeed = String(seed ?? crypto.randomUUID());
-        const random = new SeededRandomNumberGenerator(sessionSeed);
         let runtime: PokieWasmRuntime | undefined;
         try {
-            runtime = await this.loadWasmRuntime(project.rootPath, {
-                nextRandom: () => random.getRandomInt(0, 1_000_000_000) / 1_000_000_000,
-            });
+            runtime = await this.loadWasmRuntime(project.rootPath, new SeededPokieWasmHost(sessionSeed));
             assertCurrent();
         } catch (error) {
             runtime?.dispose();
@@ -634,6 +632,7 @@ export class StudioPlayService {
                 session: {
                     sessionId,
                     game: active.manifest,
+                    credits: active.session.serialize().credits,
                     scenarioCapabilities: WASM_SCENARIO_CAPABILITIES,
                     debug: {stateAfter: active.session.serialize()},
                 },

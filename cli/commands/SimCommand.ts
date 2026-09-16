@@ -25,7 +25,7 @@ import {
     SimulationReportSet,
     SIM_OPERATION,
     SeededPokieWasmHost,
-    SimulationStatistics,
+    SimulationAccumulator,
     loadPokieWasmFileRuntime,
     WeightedOutcomeRandomSource,
 } from "pokie";
@@ -377,21 +377,13 @@ export class SimCommand implements CliCommandHandling {
         const runtime = await loadPokieWasmFileRuntime(project.rootPath, new SeededPokieWasmHost(seed));
         let session;
         try {
-            session = runtime.createSession(seed);
-            const payouts: number[] = [];
-            let totalBet = 0;
-            let totalPayout = 0;
-            let hitCount = 0;
-            let maxWin = 0;
+            session = runtime.createSession(seed, {credits: Number.MAX_SAFE_INTEGER});
+            const accumulator = new SimulationAccumulator();
             for (let index = 0; index < options.rounds; index++) {
                 const round = await session.play();
-                totalBet += round.stake;
-                totalPayout += round.payout;
-                payouts.push(round.payout);
-                if (round.payout > 0) hitCount++;
-                if (round.payout > maxWin) maxWin = round.payout;
+                accumulator.addRound(round.stake, round.payout);
             }
-            const statistics = buildPortableWasmStatistics(payouts, totalBet, totalPayout, hitCount, maxWin);
+            const statistics = accumulator.getStatistics();
             const report = this.reportBuilder.build({
                 manifest: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
                 requestedRounds: options.rounds,
@@ -718,41 +710,4 @@ export class SimCommand implements CliCommandHandling {
             report.warnings.forEach((warning) => console.log(`  - ${warning}`));
         }
     }
-}
-
-function buildPortableWasmStatistics(
-    payouts: readonly number[],
-    totalBet: number,
-    totalPayout: number,
-    hitCount: number,
-    maxWin: number,
-): SimulationStatistics {
-    const rounds = payouts.length;
-    const averagePayout = rounds === 0 ? 0 : totalPayout / rounds;
-    const variance = rounds === 0 ? 0 : payouts.reduce((sum, payout) => sum + (payout - averagePayout) ** 2, 0) / rounds;
-    const payoutStandardDeviation = Math.sqrt(variance);
-    const margin = rounds === 0 ? 0 : 1.96 * payoutStandardDeviation / Math.sqrt(rounds);
-    const rtp = totalBet === 0 ? 0 : totalPayout / totalBet;
-    const histogram: Record<string, number> = {};
-    for (const payout of payouts) histogram[String(payout)] = (histogram[String(payout)] ?? 0) + 1;
-    return {
-        rounds,
-        hitCount,
-        totalBet,
-        totalPayout,
-        averageBet: rounds === 0 ? 0 : totalBet / rounds,
-        averagePayout,
-        averagePayoutConfidenceInterval95: {low: averagePayout - margin, high: averagePayout + margin},
-        rtp,
-        rtpConfidenceInterval95: {
-            low: totalBet === 0 ? 0 : (totalPayout - margin * rounds) / totalBet,
-            high: totalBet === 0 ? 0 : (totalPayout + margin * rounds) / totalBet,
-        },
-        volatility: payoutStandardDeviation,
-        payoutStandardDeviation,
-        returnStandardDeviation: payoutStandardDeviation,
-        maxWin,
-        maxWinFrequency: rounds === 0 ? 0 : payouts.filter((payout) => payout === maxWin).length / rounds,
-        payoutHistogram: histogram,
-    };
 }

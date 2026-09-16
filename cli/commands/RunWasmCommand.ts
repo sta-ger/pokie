@@ -1,5 +1,5 @@
 import {Command} from "commander";
-import {loadPokieWasmFileRuntime, SeededRandomNumberGenerator} from "pokie";
+import {loadPokieWasmFileRuntime, SeededPokieWasmHost} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
@@ -38,8 +38,7 @@ export class RunWasmCommand implements CliCommandHandling {
             .option("--seed <string>", "deterministic host RNG seed", "pokie-wasm-cli")
             .action(async (artifactPath: string, options: {seed: string}) => {
                 if (!artifactPath) throw new Error(USAGE);
-                const rng = new SeededRandomNumberGenerator(options.seed);
-                const runtime = await loadPokieWasmFileRuntime(artifactPath, {nextRandom: () => rng.getRandomInt(0, 1_000_000_000) / 1_000_000_000});
+                const runtime = await loadPokieWasmFileRuntime(artifactPath, new SeededPokieWasmHost(options.seed));
                 try {
                     const session = runtime.createSession(options.seed);
                     try {

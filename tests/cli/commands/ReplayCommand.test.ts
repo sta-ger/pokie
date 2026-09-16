@@ -265,7 +265,7 @@ describe("ReplayCommand runtime package materialization boundary", () => {
         try {
             await command.run([wasmPath, "--round", "2", "--seed", "canonical-seed", "--out", descriptorPath]);
             const descriptor = JSON.parse(fs.readFileSync(descriptorPath, "utf8")) as ReplayDescriptor;
-            expect(descriptor).toMatchObject({game: {id: "canonical-replay"}, round: 2, seed: "canonical-seed"});
+            expect(descriptor).toMatchObject({game: {id: "canonical-replay"}, round: 2, seed: "canonical-seed", credits: expect.any(Number)});
             expect(descriptor.screen).toHaveLength(3);
             expect(descriptor.screen?.every((reel) => reel.length === 1 && reel.every((symbol) => symbol !== undefined && symbol !== null))).toBe(true);
             expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();

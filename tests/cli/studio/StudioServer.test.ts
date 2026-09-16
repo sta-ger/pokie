@@ -4110,7 +4110,7 @@ describe("StudioServer", () => {
                     manifest: {component: {id: "trap-wasm", version: "1.0.0"}, artifact: {sha256: "trap-integrity"}},
                     createSession: () => ({
                         play: () => Promise.reject(new Error("canonical WASM play trap")),
-                        serialize: () => ({schemaVersion: "pokie.state.v1", seed: "trap", draws: [], sequence: 0}),
+                        serialize: () => ({schemaVersion: "pokie.state.v1", seed: "trap", draws: [], sequence: 0, credits: 1000}),
                         dispose: disposeSession,
                     }),
                     restoreSession: () => undefined,

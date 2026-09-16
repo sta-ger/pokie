@@ -17,7 +17,7 @@ import {
     resolveOutcomeLibraryModeName,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
-    SeededRandomNumberGenerator,
+    SeededPokieWasmHost,
     SimulationAccumulator,
     SimulationCancelledError,
     SimulationReport,
@@ -408,14 +408,11 @@ export class StudioSimulationService {
         }
         record.status = "running";
         const seed = record.seed ?? crypto.randomUUID();
-        const random = new SeededRandomNumberGenerator(seed);
         let runtime;
         let disposeSession: (() => void) | undefined;
         try {
-            runtime = await this.loadWasmRuntime(record.projectRoot, {
-                nextRandom: () => random.getRandomInt(0, 1_000_000_000) / 1_000_000_000,
-            });
-            const session = runtime.createSession(seed);
+            runtime = await this.loadWasmRuntime(record.projectRoot, new SeededPokieWasmHost(seed));
+            const session = runtime.createSession(seed, {credits: Number.MAX_SAFE_INTEGER});
             disposeSession = () => session.dispose();
             const accumulator = new SimulationAccumulator();
             let remaining = record.rounds;
