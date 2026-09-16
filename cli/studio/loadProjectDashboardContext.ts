@@ -145,7 +145,7 @@ export async function loadProjectDashboardContext(
                             version: manifestRead.manifest.component.version,
                         },
                         type: "wasm",
-                        capabilities: ["runtime.execute", ...artifact.capabilities],
+                        capabilities: artifact.capabilities,
                         origin: identity?.origin,
                     };
                 }

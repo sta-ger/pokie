@@ -154,6 +154,7 @@ export const BLUEPRINT_BUILD_CAPABILITY: StudioProjectCapability = "blueprint.bu
 // loadProjectDashboardContext.ts's own doc comment) -- ProjectDashboardPage therefore treats either this
 // or BLUEPRINT_BUILD_CAPABILITY as sufficient for those tabs, rather than requiring this one specifically.
 export const RUNTIME_EXECUTE_CAPABILITY: StudioProjectCapability = "runtime.execute";
+export const WASM_RUNTIME_EXECUTE_CAPABILITY: StudioProjectCapability = "wasm.runtime.execute";
 
 // The capability a project that already holds a readable, pre-generated outcome-library bundle carries --
 // only a project resolved as "outcomeLibrary" grants it (see PROJECT_TYPE_CAPABILITIES). Unlike
@@ -209,6 +210,7 @@ export function describeProjectType(type: StudioProjectType, wasmPresentation?: 
 const CAPABILITY_LABEL: Record<string, string> = {
     "blueprint.build": "Edit and build this game",
     "runtime.execute": "Play, test, and export this game",
+    "wasm.runtime.execute": "Play, simulate, and replay this portable artifact",
     "outcomeLibrary.read": "Use saved game outcomes",
     "stakeAdapter.exchange": "Share this game export",
     "parWorkbook.exchange": "Share this PAR spreadsheet",

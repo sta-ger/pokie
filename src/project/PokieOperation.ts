@@ -10,6 +10,7 @@ import {
     STAKE_ADAPTER_EXPORT_CAPABILITY,
     WASM_EXPORT_CAPABILITY,
     WASM_MANIFEST_READ_CAPABILITY,
+    WASM_RUNTIME_EXECUTE_CAPABILITY,
     type ProjectCapability,
 } from "./ProjectCapability.js";
 
@@ -47,9 +48,8 @@ export const PAR_IMPORT_OPERATION: PokieOperation = "par.import";
 export const PAR_EXPORT_OPERATION: PokieOperation = "par.export";
 export const WASM_EXPORT_OPERATION: PokieOperation = "wasm.export";
 // Reads back a resolved "wasm" project's own PokieWasmComponentManifest (see readWasmComponentManifest) —
-// requires WASM_MANIFEST_READ_CAPABILITY, never RUNTIME_EXECUTE_CAPABILITY: POKIE has no WASM execution
-// backend, so this is metadata-only, the same "resolve read-only" boundary WasmProjectTargetAdapter itself
-// enforces at resolution time.
+// requires WASM_MANIFEST_READ_CAPABILITY. Both legacy and canonical components expose metadata; canonical
+// execution is separately gated by WASM_RUNTIME_EXECUTE_CAPABILITY.
 export const WASM_INSPECT_OPERATION: PokieOperation = "wasm.inspect";
 // Statically assesses a "tsPackage" project's own source for Node built-in API usage/declared dependencies
 // that would block a hypothetical WASM build (see assessWasmPackagingPreflight) — requires
@@ -101,18 +101,18 @@ export const FAIRNESS_VERIFY_OPERATION: PokieOperation = "fairness.verify";
 // describeUnsupportedProjectOperation reads from to decide whether a resolved PokieProject can perform a
 // given operation. An operation absent from this map is simply not checked (treated as always supported) —
 // this module has nothing to say about an operation it doesn't recognize, rather than guessing.
-export const OPERATION_REQUIRED_CAPABILITY: Readonly<Record<PokieOperation, ProjectCapability>> = {
+export const OPERATION_REQUIRED_CAPABILITY: Readonly<Record<PokieOperation, ProjectCapability | readonly ProjectCapability[]>> = {
     [BUILD_OPERATION]: BLUEPRINT_BUILD_CAPABILITY,
     [EDIT_OPERATION]: BLUEPRINT_BUILD_CAPABILITY,
-    [SIM_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
-    [REPLAY_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
-    [PLAY_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
-    [VALIDATE_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
-    [INSPECT_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
+    [SIM_OPERATION]: [RUNTIME_EXECUTE_CAPABILITY, WASM_RUNTIME_EXECUTE_CAPABILITY],
+    [REPLAY_OPERATION]: [RUNTIME_EXECUTE_CAPABILITY, WASM_RUNTIME_EXECUTE_CAPABILITY],
+    [PLAY_OPERATION]: [RUNTIME_EXECUTE_CAPABILITY, WASM_RUNTIME_EXECUTE_CAPABILITY],
+    [VALIDATE_OPERATION]: [RUNTIME_EXECUTE_CAPABILITY, WASM_RUNTIME_EXECUTE_CAPABILITY],
+    [INSPECT_OPERATION]: [RUNTIME_EXECUTE_CAPABILITY, WASM_RUNTIME_EXECUTE_CAPABILITY],
     [SERVE_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
     [DEV_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
     [CLIENT_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
-    [STUDIO_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
+    [STUDIO_OPERATION]: [RUNTIME_EXECUTE_CAPABILITY, WASM_RUNTIME_EXECUTE_CAPABILITY],
     [OUTCOME_LIBRARY_GENERATE_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
     [OUTCOME_LIBRARY_BUILD_OPERATION]: OUTCOME_LIBRARY_GENERATE_CAPABILITY,
     [OUTCOME_LIBRARY_VALIDATE_OPERATION]: OUTCOME_LIBRARY_READ_CAPABILITY,

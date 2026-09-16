@@ -19,9 +19,9 @@ export function wasmComponentManifestSidecarPath(wasmFilePath: string): string {
 }
 
 // Recognizes a ".wasm" file carrying a sidecar PokieWasmComponentManifest -- the read-only half of the WASM
-// compatibility boundary this module defines (see docs/wasm-compatibility-boundary.md). POKIE has no WASM
-// execution backend, so this adapter never reads or interprets the ".wasm" bytes themselves, only the sidecar
-// manifest describing them. Three distinct outcomes:
+// compatibility boundary this module defines (see docs/wasm-compatibility-boundary.md). Canonical components
+// are integrity-checked against their module bytes; legacy sidecar-only components remain metadata-only.
+// Three distinct outcomes:
 //   - no sidecar file at all -> undefined (not recognized; ProjectTargetResolver's own WASM_FILE_EXTENSION
 //     fallback still reports its generic "no versioned WASM export contract" diagnostic, exactly as before
 //     this adapter existed -- an ordinary ".wasm" file is unaffected by this adapter's addition).
@@ -32,8 +32,8 @@ export function wasmComponentManifestSidecarPath(wasmFilePath: string): string {
 //     ProjectTargetUnsupportedError naming exactly what's incompatible -- a clear incompatibility diagnostic,
 //     not a generic "unrecognized" report.
 //   - sidecar present, well-shaped, and compatible -> recognized. ProjectTargetResolver then stamps only
-//     PROJECT_TYPE_CAPABILITIES.wasm (WASM_MANIFEST_READ_CAPABILITY alone -- never runtime.execute) onto the
-//     resolved project: "resolve read-only."
+//     shared WASM capability model onto the resolved project: canonical artifacts are portable-runtime
+//     executable while legacy sidecar-only artifacts stay inspection-only.
 export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
     public readonly type = "wasm";
     public readonly targetKind = "file";

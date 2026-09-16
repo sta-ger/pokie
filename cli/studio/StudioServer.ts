@@ -1900,14 +1900,8 @@ export class StudioServer implements StudioServerHandling {
             const project = await new ProjectTargetResolver().resolve(projectRoot);
             if (project?.type === "wasm") {
                 const manifest = await readWasmComponentManifest(project);
-                if (manifest.supported && manifest.manifest.artifact !== undefined) {
-                    if ([PLAY_OPERATION, SIM_OPERATION, REPLAY_OPERATION, VALIDATE_OPERATION].includes(operation)) return false;
-                    const diagnostic = describeUnsupportedProjectOperation(project, operation);
-                    this.playService.reset();
-                    this.sendJson(res, 409, {error: diagnostic?.message ?? `This canonical POKIE WASM artifact does not support ${operation}.`});
-                    return true;
-                }
                 const diagnostic = describeUnsupportedProjectOperation(project, operation);
+                if (manifest.supported && manifest.manifest.artifact !== undefined && diagnostic === undefined) return false;
                 this.playService.reset();
                 this.sendJson(res, 409, {error: diagnostic?.message ?? describeUnavailableWasmComponent()});
                 return true;

@@ -16,7 +16,7 @@ export type WasmComponentManifestReadResult =
 // Reads back a resolved "wasm" project's own PokieWasmComponentManifest -- the read-only access
 // WASM_MANIFEST_READ_CAPABILITY actually grants (see ProjectCapabilities.ts): metadata only, never the
 // ".wasm" bytes themselves, and never anything resembling loading/instantiating/executing the component --
-// POKIE has no WASM execution backend (see docs/wasm-compatibility-boundary.md). Re-reads and re-validates
+// Canonical POKIE WASM components execute through the portable runtime while this reader re-reads and re-validates
 // the sidecar from disk rather than trusting `project.provenance` (a human-readable string, not structured
 // data) -- PokieProject itself never carries type-specific structured data beyond
 // type/rootPath/capabilities/provenance, the same discipline sampleOutcomeSourceProject/

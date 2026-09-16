@@ -9,6 +9,7 @@ import {
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     STAKE_ADAPTER_EXPORT_CAPABILITY,
     WASM_MANIFEST_READ_CAPABILITY,
+    WASM_RUNTIME_EXECUTE_CAPABILITY,
     type ProjectCapability,
 } from "./ProjectCapability.js";
 import type {ProjectType} from "./ProjectType.js";
@@ -19,14 +20,18 @@ import type {ProjectType} from "./ProjectType.js";
 // a second time.
 export type ProjectCapabilities = readonly ProjectCapability[];
 
+export function wasmProjectCapabilities(artifact: {readonly artifact?: unknown}): ProjectCapabilities {
+    return artifact.artifact === undefined
+        ? [WASM_MANIFEST_READ_CAPABILITY]
+        : [WASM_MANIFEST_READ_CAPABILITY, WASM_RUNTIME_EXECUTE_CAPABILITY];
+}
+
 // The one place that decides which ProjectCapability each ProjectType grants — every other file in this
 // module (ProjectTargetResolver stamping a resolved PokieProject, describeUnsupportedProjectOperation when it
 // looks for an alternative type) reads this map rather than re-deciding "does this type support that
-// capability" independently. "wasm" maps to WASM_MANIFEST_READ_CAPABILITY alone — a resolved "wasm" project
-// (only ever produced by WasmProjectTargetAdapter recognizing a contract-compatible sidecar manifest, see that
-// adapter's own doc comment) can be inspected, never built/exported (WASM_EXPORT_CAPABILITY, still granted to
-// nothing today) or loaded/executed (RUNTIME_EXECUTE_CAPABILITY) — see ProjectType.ts's own doc comment on
-// that entry.
+// capability" independently. Resolver refines WASM through wasmProjectCapabilities after integrity validation:
+// canonical artifacts grant the narrow portable runtime capability while legacy sidecar-only files remain
+// manifest-inspection only.
 //
 // "outcomeLibrary" and "stakeAdapter" are the two ProjectType values that carry more than one capability today
 // — both already have their own canonical outcome-source reader (OutcomeLibraryBundleReading /

@@ -122,10 +122,11 @@ function sameConfigurationProvenance(
 
 function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
     const operation = TARGET_OPERATION[target];
-    const requiredSourceCapability = OPERATION_REQUIRED_CAPABILITY[operation];
-    if (requiredSourceCapability === undefined) {
+    const requirement = OPERATION_REQUIRED_CAPABILITY[operation];
+    if (requirement === undefined) {
         throw new Error(`ArtifactBuilderRegistry has no OPERATION_REQUIRED_CAPABILITY entry for "${operation}".`);
     }
+    const requiredSourceCapability = Array.isArray(requirement) ? requirement[0] : requirement;
 
     const sourceCells = BUILD_PRODUCT_MATRIX_SOURCE_TYPES.map((source) => getBuildProductMatrixCell(source, target));
     const supportedSources = sourceCells.filter((cell) => cell.state === "supported").map((cell) => cell.source);

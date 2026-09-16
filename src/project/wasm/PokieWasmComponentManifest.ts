@@ -11,11 +11,10 @@ export const POKIE_WASM_ADAPTER = "pokie/wasm";
 
 // What a WASM component built against POKIE needs to declare about itself for POKIE to ever recognize it as a
 // "wasm" ProjectType and resolve it -- read-only -- through WasmProjectTargetAdapter. This is the metadata
-// half of the WASM compatibility boundary this module defines; POKIE has no WASM execution backend (no host
+// half of the WASM compatibility boundary this module defines; canonical artifacts have a portable host
 // runtime that actually instantiates a component and drives session/play/state through it -- see
-// docs/wasm-compatibility-boundary.md), so nothing here is wired to any loader. It exists so a future
-// execution backend, and any third party building a component ahead of one, have one single versioned shape
-// to target instead of each guessing at POKIE's own expectations independently.
+// docs/wasm-compatibility-boundary.md. This type remains the single versioned declaration shape for POKIE
+// and third-party component builders.
 //
 // Read alongside PokieWasmComponentManifestValidator (shape) and assessWasmComponentCompatibility
 // (schemaVersion match against POKIE_WASM_CONTRACT_VERSION) -- this type is deliberately just the data shape;

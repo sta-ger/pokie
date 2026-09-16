@@ -153,9 +153,10 @@ function evaluateWinMultiplier(screen: readonly (readonly string[])[], model: Po
         for (let count = symbols.length; count >= 2; count--) {
             const matching = symbols.slice(0, count);
             const regularSymbols = [...new Set(matching.filter((symbol) => !model.wilds?.includes(symbol)))];
-            if (regularSymbols.length !== 1 || !matching.every((symbol) => symbol === regularSymbols[0] || model.wilds?.includes(symbol))) continue;
-            if (model.scatters?.includes(regularSymbols[0])) continue;
-            return total + (model.paytable[regularSymbols[0]]?.[String(count)] ?? 0);
+            const symbol = regularSymbols[0] ?? matching.find((candidate) => model.wilds?.includes(candidate));
+            if (symbol === undefined || regularSymbols.length > 1 || !matching.every((candidate) => candidate === symbol || model.wilds?.includes(candidate))) continue;
+            if (model.scatters?.includes(symbol)) continue;
+            return total + (model.paytable[symbol]?.[String(count)] ?? 0);
         }
         return total;
     }, 0);

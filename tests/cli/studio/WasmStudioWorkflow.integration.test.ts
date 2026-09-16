@@ -50,17 +50,17 @@ describe("canonical WASM Studio workflow", () => {
         const registration = new StudioProjectRegistrationService();
         await expect(registration.registerExternal(artifactPath)).resolves.toMatchObject({
             status: "ok",
-            entry: {type: "wasm", capabilities: expect.arrayContaining(["runtime.execute", "wasm.manifest.read"])},
+            entry: {type: "wasm", capabilities: expect.arrayContaining(["wasm.runtime.execute", "wasm.manifest.read"])},
         });
         await expect(registration.recordOpened(artifactPath)).resolves.toMatchObject({
             status: "ok",
-            entry: {type: "wasm", capabilities: expect.arrayContaining(["runtime.execute", "wasm.manifest.read"])},
+            entry: {type: "wasm", capabilities: expect.arrayContaining(["wasm.runtime.execute", "wasm.manifest.read"])},
         });
         await expect(loadProjectDashboardContext(artifactPath)).resolves.toMatchObject({
             status: "loaded",
             type: "wasm",
             game: {id: "studio-wasm", version: "1.0.0"},
-            capabilities: expect.arrayContaining(["runtime.execute", "wasm.manifest.read"]),
+            capabilities: expect.arrayContaining(["wasm.runtime.execute", "wasm.manifest.read"]),
         });
 
         const play = new StudioPlayService();
