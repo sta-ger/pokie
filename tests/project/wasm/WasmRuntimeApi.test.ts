@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import {SeededPokieWasmHost, instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
 import type {PokieWasmComponentManifest} from "../../../src/project/wasm/PokieWasmComponentManifest.js";
+import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 const abiBytes = new Uint8Array([
     0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
@@ -102,6 +103,29 @@ describe("Pokie WASM runtime API", () => {
     it("enforces minPokieVersion at the direct portable runtime boundary", async () => {
         await expect(instantiatePokieWasm(bytes, {...manifest, minPokieVersion: "999.0.0"}, {nextRandom: () => 0.5}))
             .rejects.toThrow(/requires POKIE 999\.0\.0 or newer/);
+    });
+
+    it.each([
+        ["serialization", {...manifest, serialization: {...manifest.serialization, state: "other.state.v1"}}, /unsupported serialization identifiers/i],
+        ["RNG protocol", {...manifest, host: {...manifest.host, rng: "other.rng.v1"}}, /unsupported RNG protocol/i],
+        ["host service", {...manifest, host: {...manifest.host, services: ["pokie.clock.v1"]}}, /unsupported required host service/i],
+    ])("rejects an unsupported canonical %s before execution", async (_name, unsupportedManifest, error) => {
+        await expect(instantiatePokieWasm(bytes, unsupportedManifest, {nextRandom: () => 0.5})).rejects.toThrow(error);
+    });
+
+    it("gates serialization and replay on their individual declarations", async () => {
+        const fixture = createCanonicalWasmFixture({capabilities: ["runtime.play"]});
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => 0.5});
+        const session = runtime.createSession("play-only");
+        await expect(session.play()).resolves.toMatchObject({sequence: 1});
+        expect(() => session.serialize()).toThrow(/does not declare runtime\.serialize/i);
+        await expect(runtime.replay({schemaVersion: "pokie.state.v1", seed: "play-only", draws: [], sequence: 0, credits: 1000}, [])).rejects.toThrow(/does not declare runtime\.replay/i);
+        runtime.dispose();
+    });
+
+    it("rejects a canonical artifact which omits runtime.play", async () => {
+        const fixture = createCanonicalWasmFixture({capabilities: ["runtime.serialize"]});
+        await expect(instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => 0.5})).rejects.toThrow(/does not declare runtime\.play/i);
     });
 
     it("fails deterministically for malformed state and invalid host draws", async () => {

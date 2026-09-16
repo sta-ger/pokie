@@ -70,7 +70,7 @@ const RUNTIME_OR_ARTIFACT_OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new S
 
 function isOpenable(entry: StudioProjectRegistryView): boolean {
     return entry.type === "wasm"
-        ? entry.capabilities.includes("wasm.runtime.execute") || (entry.wasmPresentation !== undefined && entry.capabilities.includes(entry.wasmPresentation.manifestCapability))
+        ? entry.capabilities.includes("wasm.canonical") || (entry.wasmPresentation !== undefined && entry.capabilities.includes(entry.wasmPresentation.manifestCapability))
         : RUNTIME_OR_ARTIFACT_OPENABLE_TYPES.has(entry.type);
 }
 

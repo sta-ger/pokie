@@ -38,7 +38,7 @@ import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestF
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
 function wasmProject(rootPath = "/fake/canonical.wasm") {
-    return {rootPath, type: "wasm" as const, capabilities: [WASM_MANIFEST_READ_CAPABILITY], provenance: "canonical POKIE WASM component"};
+    return {rootPath, type: "wasm" as const, capabilities: [WASM_MANIFEST_READ_CAPABILITY, "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.runtime.replay", "wasm.runtime.execute", "wasm.artifact.inspect"], provenance: "canonical POKIE WASM component"};
 }
 
 function fakeWasmRuntime(play: PokieWasmRuntimeSession["play"] = () => Promise.resolve({
@@ -57,7 +57,7 @@ function fakeWasmRuntime(play: PokieWasmRuntimeSession["play"] = () => Promise.r
     const disposeSession = jest.fn();
     const session: PokieWasmRuntimeSession = {play, serialize: () => ({schemaVersion: "pokie.state.v1", seed: "test", draws: [], sequence: 0, credits: 1000}), dispose: disposeSession};
     const runtime = {
-        manifest: {component: {id: "wasm-slot", version: "1.0.0"}, artifact: {sha256: "integrity"}},
+        manifest: {component: {id: "wasm-slot", version: "1.0.0"}, capabilities: ["runtime.play", "runtime.serialize", "runtime.replay", "artifact.inspect"], artifact: {sha256: "integrity"}},
         createSession: () => session,
         restoreSession: () => session,
         replay: () => Promise.resolve([]),
@@ -423,6 +423,42 @@ describe("StudioPlayService", () => {
         expect(trapped.disposeSession).toHaveBeenCalledTimes(1);
         expect(trapped.dispose).toHaveBeenCalledTimes(1);
         await expect(service.spin(created.session.sessionId)).resolves.toEqual({status: "not-found"});
+    });
+
+    it("finds a settled canonical WASM payout and projects it through the ordinary RoundArtifact contract", async () => {
+        const active = fakeWasmRuntime();
+        const revalidation = fakeWasmRuntime();
+        let loads = 0;
+        const service = new StudioPlayService(
+            undefined,
+            undefined,
+            "1.3.0",
+            {resolve: () => Promise.resolve(wasmProject())},
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.resolve(++loads === 1 ? active.runtime : revalidation.runtime),
+        );
+
+        const created = await service.newSession("/fake/canonical.wasm", "winning-seed");
+        if (created.status !== "ok") throw new Error("expected canonical WASM session");
+        const result = await service.findAnyWin(created.session.sessionId);
+        expect(result).toMatchObject({
+            status: "ok",
+            session: {
+                win: 1,
+                debug: {
+                    artifact: {
+                        stake: 1,
+                        totalWin: 1,
+                        screen: [["A"]],
+                        wins: [],
+                        steps: [expect.objectContaining({totalWin: 1, wins: []})],
+                    },
+                },
+            },
+        });
+        if (result.status === "ok") expect(result.session.debug?.artifactUnavailableReason).toBeUndefined();
     });
 
     it("disposes the captured WASM session when integrity revalidation fails", async () => {

@@ -159,7 +159,7 @@ export class ProjectTargetResolver implements ProjectResolving {
     private async capabilitiesFor(type: PokieProject["type"], rootPath: string) {
         if (type !== "wasm") return PROJECT_TYPE_CAPABILITIES[type];
         const raw = await fs.promises.readFile(wasmComponentManifestSidecarPath(rootPath), "utf-8");
-        return wasmProjectCapabilities(JSON.parse(raw) as {artifact?: unknown});
+        return wasmProjectCapabilities(JSON.parse(raw) as Parameters<typeof wasmProjectCapabilities>[0]);
     }
 
     private async recognizeAll(

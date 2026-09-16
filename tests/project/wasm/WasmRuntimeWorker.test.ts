@@ -33,4 +33,13 @@ describe("PokieWasmWorkerProtocol", () => {
         expect(await protocol.handle({id: "trap", type: "play"})).toMatchObject({ok: false, error: expect.stringMatching(/unreachable|trap/i)});
         expect(await protocol.handle({id: "after-trap", type: "serialize"})).toMatchObject({ok: false, error: expect.stringMatching(/Instantiate/)});
     });
+
+    it("rejects malformed and unknown messages without releasing an active session", async () => {
+        const fixture = createCanonicalWasmFixture({id: "worker-protocol"});
+        const protocol = new PokieWasmWorkerProtocol();
+        await expect(protocol.handle({id: "start", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, draws: [0.25, 0.75]})).resolves.toMatchObject({ok: true});
+        expect(await protocol.handle({id: "unknown", type: "unknown"})).toMatchObject({ok: false, error: expect.stringMatching(/Unsupported.*request type/i)});
+        expect(await protocol.handle({id: "bad-play", type: "play", command: []})).toMatchObject({ok: false, error: expect.stringMatching(/Malformed/i)});
+        expect(await protocol.handle({id: "still-active", type: "play"})).toMatchObject({ok: true, result: {draw: 0.25}});
+    });
 });

@@ -9,6 +9,15 @@ export const POKIE_WASM_PLAY_EXPORT = "play";
 export const POKIE_WASM_GAME_MODEL_SECTION = "pokie.game.v1";
 export const POKIE_WASM_COMPONENT_DESCRIPTOR_SECTION = "pokie.component.v1";
 
+export const POKIE_WASM_SESSION_SERIALIZATION = "pokie.session.v1";
+export const POKIE_WASM_PLAY_SERIALIZATION = "pokie.play.v1";
+export const POKIE_WASM_STATE_SERIALIZATION = "pokie.state.v1";
+export const POKIE_WASM_RNG_PROTOCOL = "pokie.rng.v1";
+export const POKIE_WASM_RUNTIME_PLAY_DECLARATION = "runtime.play";
+export const POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION = "runtime.serialize";
+export const POKIE_WASM_RUNTIME_REPLAY_DECLARATION = "runtime.replay";
+export const POKIE_WASM_ARTIFACT_INSPECT_DECLARATION = "artifact.inspect";
+
 /**
  * The byte-embedded half of a runnable component's contract.  The sidecar
  * retains the byte hash and byte count because either value would make a
@@ -50,6 +59,36 @@ export type CanonicalPokieWasmModule = {
     readonly descriptor: CanonicalPokieWasmComponentDescriptor;
     readonly descriptorBytes: Uint8Array<ArrayBuffer>;
 };
+
+/**
+ * Checks the host and wire contract which this portable runtime actually
+ * implements.  Manifest shape compatibility is deliberately not enough: an
+ * artifact that asks for a different serializer, RNG protocol, or service
+ * would otherwise be accepted and run with invented host behaviour.
+ */
+export function describeUnsupportedCanonicalWasmRuntimeContract(manifest: Pick<PokieWasmComponentManifest, "serialization" | "host">): string | undefined {
+    if (manifest.serialization.session !== POKIE_WASM_SESSION_SERIALIZATION ||
+        manifest.serialization.play !== POKIE_WASM_PLAY_SERIALIZATION ||
+        manifest.serialization.state !== POKIE_WASM_STATE_SERIALIZATION) {
+        return `unsupported serialization identifiers; canonical POKIE WASM requires session=${POKIE_WASM_SESSION_SERIALIZATION}, play=${POKIE_WASM_PLAY_SERIALIZATION}, and state=${POKIE_WASM_STATE_SERIALIZATION}`;
+    }
+    if (manifest.host.rng !== POKIE_WASM_RNG_PROTOCOL) {
+        return `unsupported RNG protocol ${JSON.stringify(manifest.host.rng)}; canonical POKIE WASM requires ${POKIE_WASM_RNG_PROTOCOL}`;
+    }
+    if (manifest.host.services.length > 0) {
+        return `unsupported required host service${manifest.host.services.length === 1 ? "" : "s"} ${manifest.host.services.map((service) => JSON.stringify(service)).join(", ")}; this portable runtime provides no services beyond ${POKIE_WASM_RNG_PROTOCOL}`;
+    }
+    return undefined;
+}
+
+export function assertSupportedCanonicalWasmRuntimeContract(manifest: Pick<PokieWasmComponentManifest, "serialization" | "host">): void {
+    const reason = describeUnsupportedCanonicalWasmRuntimeContract(manifest);
+    if (reason !== undefined) throw new Error(`POKIE WASM artifact cannot execute: ${reason}.`);
+}
+
+export function hasCanonicalWasmOperationDeclaration(manifest: Pick<PokieWasmComponentManifest, "capabilities">, declaration: string): boolean {
+    return manifest.capabilities.includes(declaration);
+}
 
 /**
  * Narrows a BufferSource to precisely the caller-supplied view.  In
@@ -268,6 +307,7 @@ export async function readIntegrityBoundCanonicalPokieWasmArtifact(bytes: Buffer
     }
     const artifact = manifest.artifact;
     if (artifact === undefined) throw new Error("This is a legacy sidecar-only WASM component and is inspection-only; build a canonical POKIE WASM artifact to run it.");
+    assertSupportedCanonicalWasmRuntimeContract(manifest);
     if (manifest.minPokieVersion !== undefined && !satisfiesMinimumSemverLite(POKIE_WASM_RUNTIME_VERSION, manifest.minPokieVersion)) {
         throw new Error(`POKIE WASM runtime ${POKIE_WASM_RUNTIME_VERSION} cannot run this artifact because it requires POKIE ${manifest.minPokieVersion} or newer.`);
     }

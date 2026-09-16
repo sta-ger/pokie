@@ -1,6 +1,13 @@
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
 import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/SeededRandomNumberGenerator.js";
-import {readIntegrityBoundCanonicalPokieWasmArtifact, type PokieWasmGameModel} from "./PokieWasmCanonicalModule.js";
+import {
+    POKIE_WASM_RUNTIME_PLAY_DECLARATION,
+    POKIE_WASM_RUNTIME_REPLAY_DECLARATION,
+    POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION,
+    hasCanonicalWasmOperationDeclaration,
+    readIntegrityBoundCanonicalPokieWasmArtifact,
+    type PokieWasmGameModel,
+} from "./PokieWasmCanonicalModule.js";
 import {POKIE_WASM_DEFAULT_CREDITS, type PokieWasmHost, type PokieWasmHostState, type PokieWasmRound, type PokieWasmRuntime, type PokieWasmRuntimeSession, type PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
 
 const MAX_HOST_RANDOM_DRAWS_PER_PLAY = 1024;
@@ -35,6 +42,9 @@ export function inspectPokieWasm(manifest: PokieWasmComponentManifest): PokieWas
 /** Instantiates the canonical portable ABI and derives complete deterministic rounds from it. */
 export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieWasmComponentManifest, host: PokieWasmHost): Promise<PokieWasmRuntime> {
     const canonical = await readIntegrityBoundCanonicalPokieWasmArtifact(bytes, manifest);
+    if (!hasCanonicalWasmOperationDeclaration(manifest, POKIE_WASM_RUNTIME_PLAY_DECLARATION)) {
+        throw new Error(`POKIE WASM artifact cannot execute: it does not declare ${POKIE_WASM_RUNTIME_PLAY_DECLARATION}.`);
+    }
     let currentDraws: number[] = [];
     const instance = await WebAssembly.instantiate(canonical.module, {
         pokie: {
@@ -84,7 +94,12 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
                 state = next;
                 return {sequence: next.sequence, draw: currentDraws[0], stops, screen, winMultiplier, stake, payout, creditsBefore, credits: next.credits, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>} satisfies PokieWasmRound;
             }),
-            serialize: () => JSON.parse(JSON.stringify(state)) as PokieWasmSessionState,
+            serialize: () => {
+                if (!hasCanonicalWasmOperationDeclaration(manifest, POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION)) {
+                    throw new Error(`POKIE WASM artifact does not declare ${POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION}; session serialization is unavailable.`);
+                }
+                return JSON.parse(JSON.stringify(state)) as PokieWasmSessionState;
+            },
             dispose: () => {
                 sessionDisposed = true;
             },
@@ -98,6 +113,9 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
             return session({schemaVersion: "pokie.state.v1", seed, draws: [], sequence: 0, credits});
         },
         restoreSession: (state) => {
+            if (!hasCanonicalWasmOperationDeclaration(manifest, POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION)) {
+                throw new Error(`POKIE WASM artifact does not declare ${POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION}; session restoration is unavailable.`);
+            }
             if (state.schemaVersion !== "pokie.state.v1" || typeof state.seed !== "string" || !Array.isArray(state.draws) ||
                 !state.draws.every((draw) => typeof draw === "number" && Number.isFinite(draw) && draw >= 0 && draw < 1) ||
                 !Number.isSafeInteger(state.sequence) || state.sequence < 0 || !Number.isFinite(state.credits) || state.credits < 0 || !isHostState(state.rngState)) {
@@ -110,6 +128,9 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
             return session(JSON.parse(JSON.stringify(state)) as PokieWasmSessionState);
         },
         replay: async (state, commands) => {
+            if (!hasCanonicalWasmOperationDeclaration(manifest, POKIE_WASM_RUNTIME_REPLAY_DECLARATION)) {
+                throw new Error(`POKIE WASM artifact does not declare ${POKIE_WASM_RUNTIME_REPLAY_DECLARATION}; replay is unavailable.`);
+            }
             const restored = runtime.restoreSession(state);
             const results: PokieWasmRound[] = [];
             for (const command of commands) results.push(await restored.play(command));

@@ -26,7 +26,7 @@ Every file prints its own `[bench] ...` line to stdout with the numbers it measu
 For the focused portable baseline, use this one-command flow:
 
 ```sh
-POKIE_UPDATE_WASM_RUNTIME_BASELINE=1 npm run bench -- wasmRuntime.bench.ts
+POKIE_UPDATE_WASM_RUNTIME_BASELINE=1 npm run bench -- benchmarks/wasmRuntime.bench.ts
 ```
 
 The benchmark passes its one explicit fixture ID/seed/warmup-round/measured-round configuration to the real

@@ -13,7 +13,7 @@ const benchmarkConfiguration = {
     warmupRounds: 10,
     measuredRounds: 100,
 } as const;
-const BASELINE_COMMAND = "POKIE_UPDATE_WASM_RUNTIME_BASELINE=1 npm run bench -- wasmRuntime.bench.ts";
+const BASELINE_COMMAND = "POKIE_UPDATE_WASM_RUNTIME_BASELINE=1 npm run bench -- benchmarks/wasmRuntime.bench.ts";
 const BASELINE_PATH = path.join(process.cwd(), "benchmarks", "baselines", "wasmRuntime.json");
 
 type BrowserBenchmark = {

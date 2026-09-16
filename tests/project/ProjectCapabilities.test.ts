@@ -11,7 +11,7 @@ import {
     WASM_EXPORT_CAPABILITY,
     WASM_MANIFEST_READ_CAPABILITY,
 } from "../../src/project/ProjectCapability.js";
-import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
+import {PROJECT_TYPE_CAPABILITIES, wasmProjectCapabilities} from "../../src/project/ProjectCapabilities.js";
 
 describe("PROJECT_TYPE_CAPABILITIES", () => {
     it("grants Blueprint its package build and registry-owned Outcome/Stake/WASM prerequisite capabilities", () => {
@@ -42,5 +42,16 @@ describe("PROJECT_TYPE_CAPABILITIES", () => {
         expect(PROJECT_TYPE_CAPABILITIES.wasm).toEqual([WASM_MANIFEST_READ_CAPABILITY]);
         expect(PROJECT_TYPE_CAPABILITIES.wasm).not.toContain(WASM_EXPORT_CAPABILITY);
         expect(PROJECT_TYPE_CAPABILITIES.wasm).not.toContain(RUNTIME_EXECUTE_CAPABILITY);
+    });
+
+    it("derives canonical WASM operations from supported host contracts and per-operation declarations", () => {
+        const manifest = {
+            artifact: {format: "pokie.wasm.v1" as const},
+            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+            host: {rng: "pokie.rng.v1", services: []},
+            capabilities: ["runtime.play", "runtime.serialize", "artifact.inspect"],
+        };
+        expect(wasmProjectCapabilities(manifest as never)).toEqual(["wasm.manifest.read", "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.artifact.inspect"]);
+        expect(wasmProjectCapabilities({...manifest, host: {rng: "other.rng.v1", services: []}} as never)).toEqual(["wasm.manifest.read"]);
     });
 });

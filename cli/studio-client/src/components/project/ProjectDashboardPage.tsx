@@ -26,7 +26,8 @@ import {
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     describeProjectType,
     RUNTIME_EXECUTE_CAPABILITY,
-    WASM_RUNTIME_EXECUTE_CAPABILITY,
+    WASM_RUNTIME_PLAY_CAPABILITY,
+    WASM_RUNTIME_REPLAY_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     type ProjectHeaderView,
     type ProjectValidationView,
@@ -82,13 +83,15 @@ const RUNTIME_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
 ];
 
-const PLAYABLE_CAPABILITIES: StudioProjectCapability[] = [...RUNTIME_CAPABLE_CAPABILITIES, WASM_RUNTIME_EXECUTE_CAPABILITY];
+const PLAYABLE_CAPABILITIES: StudioProjectCapability[] = [...RUNTIME_CAPABLE_CAPABILITIES, WASM_RUNTIME_PLAY_CAPABILITY];
+const REPLAYABLE_CAPABILITIES: StudioProjectCapability[] = [...RUNTIME_CAPABLE_CAPABILITIES, WASM_RUNTIME_REPLAY_CAPABILITY];
 
 // Play/Simulation/Replay each reach a resolved "outcomeLibrary" project through its own real OutcomeSource
 // adapters (StudioPlayService/StudioSimulationService/StudioReplayExecutionService), never loadPokieGame --
 // see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment. Added to (never replacing) RUNTIME_CAPABLE_CAPABILITIES
 // so a runtime-executable project keeps reaching these sections exactly as before.
 const OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [...PLAYABLE_CAPABILITIES, OUTCOME_SOURCE_SAMPLE_CAPABILITY];
+const OUTCOME_SOURCE_REPLAY_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [...REPLAYABLE_CAPABILITIES, OUTCOME_SOURCE_SAMPLE_CAPABILITY];
 
 // What Build/Export needs to be reachable at all -- either runtime-executable (able to generate/build/export
 // its own outputs) or already *is* a canonical outcome-source project ExportDeployTargets.ts's own capability-
@@ -159,7 +162,7 @@ const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "gameModel", label: "Game Model"},
     {value: "play", label: "Play", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
     {value: "simulation", label: "Simulation", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
-    {value: "replay", label: "Replay", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
+    {value: "replay", label: "Replay", requiredCapabilities: OUTCOME_SOURCE_REPLAY_CAPABLE_CAPABILITIES},
     {value: "exportDeploy", label: "Build/Export", requiredCapabilities: BUILD_EXPORT_CAPABLE_CAPABILITIES},
     {value: "certification", label: "Certification", requiredCapabilities: CERTIFICATION_CAPABLE_CAPABILITIES},
     {value: "provablyFair", label: "Provably Fair", requiredCapabilities: PROVABLY_FAIR_CAPABLE_CAPABILITIES},

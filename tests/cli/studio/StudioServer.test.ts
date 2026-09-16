@@ -4079,7 +4079,7 @@ describe("StudioServer", () => {
                 const spun = await post(`${baseUrl}/api/project/play/sessions/${encodeURIComponent(sessionId)}/spin`, {});
                 expect(spun).toMatchObject({status: 200, body: {status: "ok", session: {game: {id: "http-wasm"}}}});
                 const scenario = await post(`${baseUrl}/api/project/play/sessions/${encodeURIComponent(sessionId)}/find-any-win`);
-                expect(scenario).toMatchObject({status: 200, body: {status: "error", error: expect.stringContaining("Spin remains available")}});
+                expect(scenario).toMatchObject({status: 200, body: {status: "ok", session: {debug: {artifact: {totalWin: expect.any(Number), steps: [expect.objectContaining({wins: []})]}}}}});
 
                 const simulation = await post(`${baseUrl}/api/project/simulations`, {rounds: 2, seed: "http-seed"});
                 expect(simulation).toMatchObject({status: 202, body: {status: "queued"}});
@@ -4129,7 +4129,7 @@ describe("StudioServer", () => {
                 const disposeSession = jest.fn();
                 const disposeRuntime = jest.fn();
                 const trappedRuntime = {
-                    manifest: {component: {id: "trap-wasm", version: "1.0.0"}, artifact: {sha256: "trap-integrity"}},
+                    manifest: {component: {id: "trap-wasm", version: "1.0.0"}, capabilities: ["runtime.play", "runtime.serialize", "runtime.replay", "artifact.inspect"], artifact: {sha256: "trap-integrity"}},
                     createSession: () => ({
                         play: () => Promise.reject(new Error("canonical WASM play trap")),
                         serialize: () => ({schemaVersion: "pokie.state.v1", seed: "trap", draws: [], sequence: 0, credits: 1000}),

@@ -8,6 +8,7 @@ import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js"
 import type {ProjectTargetTypeAdapter} from "../../src/project/ProjectTargetTypeAdapter.js";
 import {ProjectTargetUnsupportedError} from "../../src/project/ProjectTargetUnsupportedError.js";
 import {POKIE_WASM_CONTRACT_VERSION} from "../../src/project/wasm/PokieWasmComponentManifest.js";
+import {createCanonicalWasmFixture} from "../fixtures/wasm/createCanonicalWasmFixture.js";
 
 const SAMPLE_BLUEPRINT = {
     manifest: {id: "sample", name: "Sample", version: "1.0.0"},
@@ -264,6 +265,18 @@ describe("ProjectTargetResolver", () => {
             rootPath: wasmFile,
             capabilities: ["wasm.manifest.read"],
             provenance: expect.stringContaining("sample-component"),
+        });
+    });
+
+    it("derives canonical WASM capabilities from the supported contract and each declared operation", async () => {
+        const wasmFile = path.join(workDir, "declared-operations.wasm");
+        const fixture = createCanonicalWasmFixture({capabilities: ["runtime.play", "runtime.serialize", "artifact.inspect"]});
+        fs.writeFileSync(wasmFile, fixture.bytes);
+        fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+
+        await expect(resolver.resolve(wasmFile)).resolves.toMatchObject({
+            type: "wasm",
+            capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.artifact.inspect"],
         });
     });
 

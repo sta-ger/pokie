@@ -162,7 +162,7 @@ describe("ProjectsPanel: Import Project", () => {
                     location: "/games/canonical.wasm",
                     name: "Canonical component",
                     type: "wasm",
-                    capabilities: ["wasm.manifest.read", "wasm.runtime.execute"],
+                    capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.execute"],
                     origin: "external",
                     lastOpenedAt: "2026-01-01T00:00:00.000Z",
                     status: "ok",

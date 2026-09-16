@@ -49,7 +49,7 @@ function wasmProject(rootPath: string): PokieProject {
 }
 
 function runnableWasmProject(rootPath: string): PokieProject {
-    return {type: "wasm", rootPath: path.resolve(rootPath), capabilities: ["wasm.manifest.read", "wasm.runtime.execute"], provenance: "canonical POKIE WASM artifact"};
+    return {type: "wasm", rootPath: path.resolve(rootPath), capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.execute"], provenance: "canonical POKIE WASM artifact"};
 }
 
 describe("StudioProjectRegistrationService", () => {
@@ -221,7 +221,7 @@ describe("StudioProjectRegistrationService", () => {
             expect(canonical).toMatchObject({
                 status: "recognized",
                 type: "wasm",
-                capabilities: ["wasm.manifest.read", "wasm.runtime.execute"],
+                capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.execute"],
             });
             expect(canonical.wasmPresentation).toBeUndefined();
             expect(legacy.wasmPresentation).toBeDefined();
@@ -297,7 +297,7 @@ describe("StudioProjectRegistrationService", () => {
                 location: "/canonical.wasm",
                 name: "Canonical",
                 type: "wasm",
-                capabilities: ["wasm.manifest.read", "wasm.runtime.execute"],
+                capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.execute"],
                 origin: "external",
                 lastOpenedAt: new Date().toISOString(),
             });
@@ -306,7 +306,7 @@ describe("StudioProjectRegistrationService", () => {
             const [entry] = await service.list();
 
             if (entry?.type !== "wasm") throw new Error("expected canonical WASM registry entry");
-            expect(entry).toMatchObject({type: "wasm", capabilities: ["wasm.manifest.read", "wasm.runtime.execute"], status: "ok"});
+            expect(entry).toMatchObject({type: "wasm", capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.execute"], status: "ok"});
             expect(entry.wasmPresentation).toBeUndefined();
         });
 

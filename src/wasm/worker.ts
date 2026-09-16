@@ -16,20 +16,35 @@ export class PokieWasmWorkerProtocol {
     private runtime: PokieWasmRuntime | undefined;
     private session: ReturnType<PokieWasmRuntime["createSession"]> | undefined;
 
-    public async handle(request: PokieWasmWorkerRequest): Promise<PokieWasmWorkerResponse> {
+    public async handle(request: PokieWasmWorkerRequest | unknown): Promise<PokieWasmWorkerResponse> {
+        const id = workerRequestId(request);
+        let validatedRequest: PokieWasmWorkerRequest | undefined;
         try {
+            assertValidWorkerRequest(request);
+            validatedRequest = request;
             if (request.type === "instantiate") {
                 const draws = [...request.draws];
-                this.release();
                 const portableBytes = new Uint8Array(request.bytes.byteLength);
                 portableBytes.set(request.bytes);
-                this.runtime = await instantiatePokieWasm(portableBytes, request.manifest, {nextRandom: () => {
+                const runtime = await instantiatePokieWasm(portableBytes, request.manifest, {nextRandom: () => {
                     const draw = draws.shift();
                     if (draw === undefined) throw new Error("The WASM worker received no host-provided random draw.");
                     return draw;
                 }});
-                this.session = this.runtime.createSession("worker");
-                return {id: request.id, ok: true, result: this.runtime.manifest};
+                let session: ReturnType<PokieWasmRuntime["createSession"]>;
+                try {
+                    session = runtime.createSession("worker");
+                } catch (error) {
+                    runtime.dispose();
+                    throw error;
+                }
+                // Only a fully instantiated replacement may release an active
+                // session. Malformed/unsupported instantiate requests leave it
+                // usable for the caller's next valid command.
+                this.release();
+                this.runtime = runtime;
+                this.session = session;
+                return {id: request.id, ok: true, result: runtime.manifest};
             }
             if (this.runtime === undefined || this.session === undefined) throw new Error("Instantiate a POKIE WASM runtime before sending this worker command.");
             if (request.type === "play") return {id: request.id, ok: true, result: await this.session.play(request.command)};
@@ -40,11 +55,17 @@ export class PokieWasmWorkerProtocol {
                 return {id: request.id, ok: true, result: this.session.serialize()};
             }
             if (request.type === "serialize") return {id: request.id, ok: true, result: this.session.serialize()};
-            this.release();
-            return {id: request.id, ok: true};
+            if (request.type === "cancel" || request.type === "dispose") {
+                this.release();
+                return {id: request.id, ok: true};
+            }
+            throw new Error(`Unsupported POKIE WASM worker request type ${JSON.stringify(request.type)}.`);
         } catch (error) {
-            if (request.type === "play") this.release();
-            return {id: request.id, ok: false, error: error instanceof Error ? error.message : String(error)};
+            // A runtime trap during play poisons the instance. Protocol
+            // validation and restore failures do not: callers can correct the
+            // message and continue the active session.
+            if (validatedRequest?.type === "play") this.release();
+            return {id, ok: false, error: error instanceof Error ? error.message : String(error)};
         }
     }
 
@@ -53,5 +74,39 @@ export class PokieWasmWorkerProtocol {
         this.runtime?.dispose();
         this.session = undefined;
         this.runtime = undefined;
+    }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function workerRequestId(value: unknown): string {
+    return isRecord(value) && typeof value.id === "string" ? value.id : "protocol";
+}
+
+function assertValidWorkerRequest(value: unknown): asserts value is PokieWasmWorkerRequest {
+    if (!isRecord(value) || typeof value.id !== "string" || value.id.trim().length === 0 || typeof value.type !== "string") {
+        throw new Error("Malformed POKIE WASM worker request: expected a non-empty string id and request type.");
+    }
+    switch (value.type) {
+        case "instantiate":
+            if (!(value.bytes instanceof Uint8Array) || !isRecord(value.manifest) || !Array.isArray(value.draws) ||
+                !value.draws.every((draw) => typeof draw === "number" && Number.isFinite(draw) && draw >= 0 && draw < 1)) {
+                throw new Error("Malformed POKIE WASM instantiate request: bytes, manifest, and finite [0, 1) draws are required.");
+            }
+            return;
+        case "play":
+            if (value.command !== undefined && !isRecord(value.command)) throw new Error("Malformed POKIE WASM play request: command must be an object when supplied.");
+            return;
+        case "restore":
+            if (!isRecord(value.state)) throw new Error("Malformed POKIE WASM restore request: state must be an object.");
+            return;
+        case "serialize":
+        case "cancel":
+        case "dispose":
+            return;
+        default:
+            throw new Error(`Unsupported POKIE WASM worker request type ${JSON.stringify(value.type)}.`);
     }
 }

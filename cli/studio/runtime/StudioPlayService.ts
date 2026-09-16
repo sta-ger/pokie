@@ -10,6 +10,7 @@ import {
     isTransactionalWalletPort,
     loadPokieGame,
     OUTCOME_SOURCE_SAMPLE_OPERATION,
+    PLAY_OPERATION,
     GameWithFreeGamesSessionHandling,
     OutcomeLibraryBundleOutcomeSource,
     OutcomeLibraryBundleReader,
@@ -42,6 +43,7 @@ import {
     type VideoSlotWithFreeGamesSessionHandling,
     type PokieWasmRuntime,
     type PokieWasmRuntimeSession,
+    type PokieWasmRound,
 } from "pokie";
 import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import crypto from "crypto";
@@ -108,7 +110,6 @@ type ActiveWasmSession = {
 type ActiveSession = ActiveRuntimeSession | ActiveOutcomeSourceSession | ActiveWasmSession;
 
 const WASM_SCENARIO_CAPABILITIES = {
-    findAnyWin: "This canonical WASM runtime does not declare the per-win details required for Find any win. Spin remains available.",
     findSymbolWin: "This canonical WASM runtime does not declare per-symbol win details, so Find symbol win isn't available. Spin remains available.",
     findFreeGames: "This canonical WASM runtime does not declare free-games events, so Find free games isn't available. Spin remains available.",
 } as const;
@@ -338,8 +339,13 @@ export class StudioPlayService {
             result = await this.spinOutcomeSource(sessionId, active);
         } else if (active.kind === "wasm") {
             try {
+                const stateBefore = this.canSerializeWasm(active) ? active.session.serialize() : undefined;
                 const round = await active.session.play(bet === undefined ? {} : {bet});
                 if (!this.isActiveSession(active, sessionId)) return {status: "not-found"};
+                const stateAfter = this.canSerializeWasm(active) ? active.session.serialize() : undefined;
+                const artifact = this.canInspectWasmRound(active)
+                    ? this.projectWasmRoundArtifact(active, sessionId, round)
+                    : undefined;
                 result = {
                     status: "ok",
                     session: {
@@ -355,8 +361,11 @@ export class StudioPlayService {
                         availableSymbols: [...new Set(round.screen.flat())],
                         scenarioCapabilities: WASM_SCENARIO_CAPABILITIES,
                         debug: {
-                            stateAfter: active.session.serialize(),
-                            artifactUnavailableReason: "The portable WASM runtime does not declare a POKIE Round Artifact projection.",
+                            ...(stateBefore === undefined ? {} : {stateBefore}),
+                            ...(stateAfter === undefined ? {} : {stateAfter}),
+                            ...(artifact === undefined
+                                ? {artifactUnavailableReason: "This canonical WASM runtime does not declare artifact.inspect, so Studio cannot expose a Round Artifact projection."}
+                                : {artifact}),
                         },
                     },
                 };
@@ -439,9 +448,6 @@ export class StudioPlayService {
     public findAnyWin(sessionId: string): Promise<StudioPlaySpinResult> {
         const active = this.activeSessionFor(sessionId);
         if (active === undefined) return Promise.resolve({status: "not-found"});
-        if (active.kind === "wasm") {
-            return Promise.resolve({status: "error", error: WASM_SCENARIO_CAPABILITIES.findAnyWin});
-        }
         return this.spinUntilMatch(
             sessionId,
             "find-any-win",
@@ -603,6 +609,8 @@ export class StudioPlayService {
     }
 
     private async newWasmSession(project: PokieProject, seed: string | number | undefined, assertCurrent: () => void): Promise<StudioPlaySessionResult> {
+        const diagnostic = describeUnsupportedProjectOperation(project, PLAY_OPERATION);
+        if (diagnostic !== undefined) return {status: "failed", error: diagnostic.message};
         const sessionSeed = String(seed ?? crypto.randomUUID());
         let runtime: PokieWasmRuntime | undefined;
         try {
@@ -628,14 +636,15 @@ export class StudioPlayService {
             };
             this.active = active;
             this.currentSessionId = sessionId;
+            const state = this.canSerializeWasm(active) ? active.session.serialize() : undefined;
             return {
                 status: "ok",
                 session: {
                     sessionId,
                     game: active.manifest,
-                    credits: active.session.serialize().credits,
+                    credits: state?.credits ?? 1000,
                     scenarioCapabilities: WASM_SCENARIO_CAPABILITIES,
-                    debug: {stateAfter: active.session.serialize()},
+                    debug: state === undefined ? {} : {stateAfter: state},
                 },
             };
         } catch (error) {
@@ -887,6 +896,54 @@ export class StudioPlayService {
             return {artifactUnavailableReason: state.roundArtifactUnavailableReason};
         }
         return {};
+    }
+
+    private canSerializeWasm(active: ActiveWasmSession): boolean {
+        return active.runtime.manifest.capabilities.includes("runtime.serialize");
+    }
+
+    private canInspectWasmRound(active: ActiveWasmSession): boolean {
+        return active.runtime.manifest.capabilities.includes("artifact.inspect");
+    }
+
+    // A canonical round faithfully exposes the data the portable ABI actually
+    // settles. It deliberately does not invent individual line/scatter wins,
+    // feature events, or authored bet modes: those details are not part of
+    // the current portable round contract. The ordinary inspector still gets
+    // a real RoundArtifact-shaped outcome, state snapshots where declared,
+    // and an explicit boundary in debug data.
+    private projectWasmRoundArtifact(active: ActiveWasmSession, sessionId: string, round: PokieWasmRound): RoundArtifactJson {
+        const artifact: RoundArtifact = {
+            schemaVersion: 1,
+            roundId: `wasm:${active.integrity}:${sessionId}:${round.sequence}`,
+            provenance: {
+                game: active.manifest,
+                pokieVersion: this.pokieVersion,
+                ...(active.runtime.manifest.artifact?.configurationHash === undefined ? {} : {configHash: active.runtime.manifest.artifact.configurationHash}),
+            },
+            betMode: "wasm",
+            stake: round.stake,
+            totalWin: round.payout,
+            payoutMultiplier: round.stake === 0 ? 0 : round.payout / round.stake,
+            screen: round.screen.map((reel) => [...reel]),
+            steps: [{
+                index: 0,
+                screen: round.screen.map((reel) => [...reel]),
+                totalWin: round.payout,
+                wins: [],
+                debug: {
+                    reelStops: [...round.stops],
+                    detailBoundary: "The portable runtime settles total payout but does not expose per-win or feature-event details.",
+                },
+            }],
+            wins: [],
+            debug: {
+                reelStops: [...round.stops],
+                declaredCapabilities: [...active.runtime.manifest.capabilities],
+                detailBoundary: "The portable runtime settles total payout but does not expose per-win or feature-event details.",
+            },
+        };
+        return new PokieJsonRoundArtifactProjector().project(artifact);
     }
 
     // Builds the outcome-source counterpart to buildSessionView() above -- `artifact` is undefined exactly

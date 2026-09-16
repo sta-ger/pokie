@@ -12,7 +12,7 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
             "/api/project/context": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "loaded", projectRoot: "/games/game.wasm", game, type: "wasm", capabilities: ["wasm.runtime.execute", "wasm.manifest.read"]},
+                body: {status: "loaded", projectRoot: "/games/game.wasm", game, type: "wasm", capabilities: ["wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.runtime.replay", "wasm.runtime.execute", "wasm.manifest.read", "wasm.artifact.inspect"]},
             }),
             "/api/project/inspect": () => ({
                 ok: true,

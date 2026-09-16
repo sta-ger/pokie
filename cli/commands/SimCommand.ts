@@ -356,6 +356,8 @@ export class SimCommand implements CliCommandHandling {
      * this command only aggregates the same user-visible statistics as the package path.
      */
     private async executeAgainstWasmArtifact(project: PokieProject, options: SimOptions): Promise<void> {
+        const operationDiagnostic = describeUnavailableArtifactOperation(project, SIM_OPERATION);
+        if (operationDiagnostic !== undefined) throw new UnsupportedProjectOperationError(operationDiagnostic);
         const manifestRead = await readWasmComponentManifest(project);
         if (!manifestRead.supported || manifestRead.canonical === undefined) {
             const diagnostic = describeUnavailableArtifactOperation(project, SIM_OPERATION);

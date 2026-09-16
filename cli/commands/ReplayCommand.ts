@@ -146,6 +146,8 @@ export class ReplayCommand implements CliCommandHandling {
 
     /** Runs a canonical component through its portable session facade, never a package loader. */
     private async runWasmReplay(project: PokieProject, options: ReplayOptions): Promise<void> {
+        const operationDiagnostic = describeUnavailableArtifactOperation(project, REPLAY_OPERATION);
+        if (operationDiagnostic !== undefined) throw new UnsupportedProjectOperationError(operationDiagnostic);
         const manifestRead = await readWasmComponentManifest(project);
         if (!manifestRead.supported || manifestRead.canonical === undefined) {
             const diagnostic = describeUnavailableArtifactOperation(project, REPLAY_OPERATION);

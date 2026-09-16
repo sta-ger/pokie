@@ -14,6 +14,20 @@ export const RUNTIME_EXECUTE_CAPABILITY: ProjectCapability = "runtime.execute";
 // validate, and inspect. Legacy sidecar-only components never receive this capability.
 export const WASM_RUNTIME_EXECUTE_CAPABILITY: ProjectCapability = "wasm.runtime.execute";
 
+// Identity only: this says the artifact bytes and sidecar passed the canonical
+// integrity/host contract. It grants no operation by itself; consumers use
+// the per-operation capabilities below before exposing an action.
+export const WASM_CANONICAL_ARTIFACT_CAPABILITY: ProjectCapability = "wasm.canonical";
+
+// The portable component declares these independently.  Keep them separate
+// from the aggregate capability so a third-party canonical artifact cannot
+// accidentally acquire replay or state persistence merely by carrying an
+// integrity-bound artifact block.
+export const WASM_RUNTIME_PLAY_CAPABILITY: ProjectCapability = "wasm.runtime.play";
+export const WASM_RUNTIME_SERIALIZE_CAPABILITY: ProjectCapability = "wasm.runtime.serialize";
+export const WASM_RUNTIME_REPLAY_CAPABILITY: ProjectCapability = "wasm.runtime.replay";
+export const WASM_ARTIFACT_INSPECT_CAPABILITY: ProjectCapability = "wasm.artifact.inspect";
+
 // A project that can be built into a generated tsPackage — what "build" requires. Only a "blueprint" project
 // grants it today.
 export const BLUEPRINT_BUILD_CAPABILITY: ProjectCapability = "blueprint.build";

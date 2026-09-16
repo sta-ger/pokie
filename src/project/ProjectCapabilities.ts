@@ -9,11 +9,24 @@ import {
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     STAKE_ADAPTER_EXPORT_CAPABILITY,
     WASM_MANIFEST_READ_CAPABILITY,
+    WASM_ARTIFACT_INSPECT_CAPABILITY,
+    WASM_CANONICAL_ARTIFACT_CAPABILITY,
     WASM_EXPORT_CAPABILITY,
     WASM_RUNTIME_EXECUTE_CAPABILITY,
+    WASM_RUNTIME_PLAY_CAPABILITY,
+    WASM_RUNTIME_REPLAY_CAPABILITY,
+    WASM_RUNTIME_SERIALIZE_CAPABILITY,
     type ProjectCapability,
 } from "./ProjectCapability.js";
 import type {ProjectType} from "./ProjectType.js";
+import {
+    POKIE_WASM_ARTIFACT_INSPECT_DECLARATION,
+    POKIE_WASM_RUNTIME_PLAY_DECLARATION,
+    POKIE_WASM_RUNTIME_REPLAY_DECLARATION,
+    POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION,
+    describeUnsupportedCanonicalWasmRuntimeContract,
+} from "../wasm/PokieWasmCanonicalModule.js";
+import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
 
 // The fixed set of ProjectCapability ids a resolved PokieProject carries — resolved once, by
 // PROJECT_TYPE_CAPABILITIES below, and stamped onto the PokieProject instance itself (see PokieProject.ts) so
@@ -21,10 +34,21 @@ import type {ProjectType} from "./ProjectType.js";
 // a second time.
 export type ProjectCapabilities = readonly ProjectCapability[];
 
-export function wasmProjectCapabilities(artifact: {readonly artifact?: unknown}): ProjectCapabilities {
-    return artifact.artifact === undefined
-        ? [WASM_MANIFEST_READ_CAPABILITY]
-        : [WASM_MANIFEST_READ_CAPABILITY, WASM_RUNTIME_EXECUTE_CAPABILITY];
+export function wasmProjectCapabilities(manifest: Pick<PokieWasmComponentManifest, "artifact" | "serialization" | "host" | "capabilities">): ProjectCapabilities {
+    if (manifest.artifact === undefined || describeUnsupportedCanonicalWasmRuntimeContract(manifest) !== undefined) {
+        return [WASM_MANIFEST_READ_CAPABILITY];
+    }
+    const capabilities: ProjectCapability[] = [WASM_MANIFEST_READ_CAPABILITY, WASM_CANONICAL_ARTIFACT_CAPABILITY];
+    const declaresPlay = manifest.capabilities.includes(POKIE_WASM_RUNTIME_PLAY_DECLARATION);
+    const declaresSerialize = manifest.capabilities.includes(POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION);
+    const declaresReplay = manifest.capabilities.includes(POKIE_WASM_RUNTIME_REPLAY_DECLARATION);
+    if (declaresPlay) capabilities.push(WASM_RUNTIME_PLAY_CAPABILITY);
+    if (declaresSerialize) capabilities.push(WASM_RUNTIME_SERIALIZE_CAPABILITY);
+    if (declaresPlay && declaresSerialize && declaresReplay) {
+        capabilities.push(WASM_RUNTIME_REPLAY_CAPABILITY, WASM_RUNTIME_EXECUTE_CAPABILITY);
+    }
+    if (manifest.capabilities.includes(POKIE_WASM_ARTIFACT_INSPECT_DECLARATION)) capabilities.push(WASM_ARTIFACT_INSPECT_CAPABILITY);
+    return capabilities;
 }
 
 // The one place that decides which ProjectCapability each ProjectType grants — every other file in this
