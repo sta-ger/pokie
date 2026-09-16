@@ -138,15 +138,25 @@ export type GamePackageInspectionReport = {
     valid: boolean;
     error?: string;
     packageJson?: {name?: string; version?: string; description?: string};
-    // A WASM inspection is deliberately the sidecar manifest's declared data,
-    // never a view of the component binary. Keep this full DTO here so the
-    // independently-built client cannot reconstruct or omit contract fields.
+    // A WASM inspection reports the declared component contract. Canonical
+    // artifacts additionally bind that declaration to their module bytes;
+    // legacy sidecar-only components remain metadata-only. Keep the full DTO
+    // here so the independently-built client cannot omit contract fields.
     wasmManifest?: {
         component: {id: string; version: string};
         schemaVersion: string;
         serialization: {session: string; play: string; state: string};
         host: {rng: string; services: string[]};
         capabilities: string[];
+        minPokieVersion?: string;
+        artifact?: {
+            format: "pokie.wasm.v1";
+            sha256: string;
+            bytes: number;
+            abiVersion: string;
+            adapter: "pokie/wasm";
+            configurationHash: string;
+        };
     };
 };
 

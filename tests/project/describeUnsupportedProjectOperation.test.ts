@@ -60,24 +60,17 @@ describe("describeUnsupportedProjectOperation", () => {
         expect(diagnostic?.alternatives).toEqual(["tsPackage"]);
     });
 
-    it("reports no alternatives for an operation no project type currently supports", () => {
-        const diagnostic = describeUnsupportedProjectOperation(projectOf("blueprint"), WASM_EXPORT_OPERATION);
-
-        expect(diagnostic).toEqual({
-            detectedType: "blueprint",
-            operation: WASM_EXPORT_OPERATION,
-            missingCapability: "wasm.export",
-            alternatives: [],
-            recovery: expect.stringContaining('Run "pokie inspect <path>"'),
-            message: expect.stringContaining("POKIE cannot build a WASM component for any project yet."),
-        });
+    it("supports wasm.export for authored Blueprint and PAR workbook sources", () => {
+        expect(describeUnsupportedProjectOperation(projectOf("blueprint"), WASM_EXPORT_OPERATION)).toBeUndefined();
+        expect(describeUnsupportedProjectOperation(projectOf("parWorkbook"), WASM_EXPORT_OPERATION)).toBeUndefined();
     });
 
-    it("reports wasm.export as unsupported even for a wasm-typed project", () => {
+    it("keeps a built WASM artifact as an output rather than a conversion source", () => {
         const diagnostic = describeUnsupportedProjectOperation(projectOf("wasm"), WASM_EXPORT_OPERATION);
 
         expect(diagnostic?.missingCapability).toBe("wasm.export");
-        expect(diagnostic?.alternatives).toEqual([]);
+        expect(diagnostic?.alternatives).toEqual(["blueprint", "parWorkbook"]);
+        expect(diagnostic?.message).toContain("Canonical POKIE WASM artifacts bind metadata to module bytes");
     });
 
     it("supports inspect/analyze for both outcomeLibrary and stakeAdapter projects, never via runtime.execute", () => {

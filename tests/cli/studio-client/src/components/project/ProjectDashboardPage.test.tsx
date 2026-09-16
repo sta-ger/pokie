@@ -73,6 +73,7 @@ describe("ProjectDashboardPage", () => {
         expect(screen.getByText("pokie.session.v1")).toBeInTheDocument();
         expect(screen.getByText("clock.v1")).toBeInTheDocument();
         expect(screen.getByText("round.play")).toBeInTheDocument();
+        expect(screen.queryByText("Artifact SHA-256")).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Play"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Build/Export"})).not.toBeInTheDocument();
     });

@@ -14,7 +14,30 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
                 status: 200,
                 body: {status: "loaded", projectRoot: "/games/game.wasm", game, type: "wasm", capabilities: ["wasm.runtime.execute", "wasm.manifest.read"]},
             }),
-            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/game.wasm", valid: true, wasmManifest: {component: game}}}),
+            "/api/project/inspect": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    packageRoot: "/games/game.wasm",
+                    valid: true,
+                    wasmManifest: {
+                        component: game,
+                        schemaVersion: "1.0.0",
+                        serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                        host: {rng: "pokie.rng.v1", services: ["clock.v1"]},
+                        capabilities: ["round.play", "round.replay"],
+                        minPokieVersion: "1.2.3",
+                        artifact: {
+                            format: "pokie.wasm.v1",
+                            abiVersion: "1.0.0",
+                            adapter: "pokie/wasm",
+                            bytes: 4096,
+                            sha256: "sha256:component-bytes",
+                            configurationHash: "sha256:configuration",
+                        },
+                    },
+                },
+            }),
             "/api/project/validate": () => ({ok: true, status: 200, body: {packageRoot: "/games/game.wasm", valid: true, game, errors: [], warnings: [], suggestions: []}}),
             "/api/project/reports": () => ({ok: true, status: 200, body: []}),
             "/api/project/replays": () => ({ok: true, status: 200, body: []}),
@@ -30,6 +53,18 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
         expect(screen.queryByRole("button", {name: "Build / Export"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Certification"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Provably Fair"})).not.toBeInTheDocument();
+        expect(await screen.findByRole("table", {name: "Declared WASM component manifest"})).toBeInTheDocument();
+        expect(screen.getAllByText("wasm-slot").length).toBeGreaterThan(1);
+        expect(screen.getByText("pokie.session.v1")).toBeInTheDocument();
+        expect(screen.getByText("clock.v1")).toBeInTheDocument();
+        expect(screen.getByText("round.play, round.replay")).toBeInTheDocument();
+        expect(screen.getByText("1.2.3")).toBeInTheDocument();
+        expect(screen.getAllByText("1.0.0").length).toBeGreaterThan(1);
+        expect(screen.getByText("Artifact ABI")).toBeInTheDocument();
+        expect(screen.getByText("pokie/wasm")).toBeInTheDocument();
+        expect(screen.getByText("4096")).toBeInTheDocument();
+        expect(screen.getByText("sha256:component-bytes")).toBeInTheDocument();
+        expect(screen.getByText("sha256:configuration")).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Play"}));
         expect(await screen.findByText(/Play prepares this game/)).toBeInTheDocument();

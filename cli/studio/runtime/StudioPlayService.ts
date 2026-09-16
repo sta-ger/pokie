@@ -240,7 +240,8 @@ export class StudioPlayService {
         }
         // Blueprint and PAR projects have a planned runtime conversion, so they must reach the shared
         // resolver below instead of being rejected merely because the source artifact itself cannot play.
-        // WASM is the remaining resolved project type whose Play boundary is genuinely unavailable.
+        // Canonical WASM projects were handled above by their portable runtime;
+        // legacy components fail there with their migration diagnostic.
         let game: PokieGame;
         try {
             const resolution = await this.resolveRuntimePackageRoot(projectRoot, {signal: options.signal});

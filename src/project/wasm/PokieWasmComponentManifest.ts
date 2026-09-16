@@ -34,15 +34,14 @@ export type PokieWasmComponentManifest = {
         readonly version: string;
     };
 
-    // Lowest POKIE release this component declares itself compatible with -- purely declared metadata today
-    // (see PokieWasmComponentManifestValidator, which only checks its shape): no execution backend exists yet
-    // to actually enforce it against a running POKIE version, so a caller that needs that enforcement is
-    // reading a field this contract reserves for it, not a check this module already performs.
+    // Lowest POKIE release this component declares itself compatible with. The
+    // manifest validator checks its shape, while the resolver and portable
+    // runtime enforce it before instantiating a canonical artifact.
     readonly minPokieVersion?: string;
 
     // Format ids identifying which wire shape this component's own host boundary expects for a session's
     // config, one played round's request/result, and its own persisted state -- e.g. "pokie.session.v1" --
-    // meant to be checked against the format ids a future execution backend actually knows how to marshal,
+    // checked against the format ids the portable runtime knows how to marshal,
     // never assumed compatible just because a component exists. POKIE places no constraint on these ids' own
     // shape (same "open vocabulary" convention as ProjectCapability/ExternalDeploymentCapability) beyond
     // requiring all three to be present -- a component that doesn't need one of the three still has to say so

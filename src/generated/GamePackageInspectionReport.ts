@@ -7,9 +7,9 @@ export type GamePackageInspectionReport = {
     valid: boolean;
     error?: string;
     packageJson?: {name?: string; version?: string; description?: string};
-    // Present only for an inspection-only resolved WASM component.  This keeps
-    // Studio's inspect route truthful without treating a component as a
-    // package or asking any package reader to open its binary.
+    // Present for a resolved WASM component. Canonical artifacts include their
+    // integrity-bound declaration; legacy sidecar-only components expose only
+    // metadata without treating a component as a package.
     wasmManifest?: {
         component: {id: string; version: string};
         schemaVersion: string;

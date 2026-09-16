@@ -499,7 +499,7 @@ export function resolveArtifactIdentity(project: PokieProject): ArtifactIdentity
 /**
  * The sole product conversion graph. It intentionally describes real data flow instead of inferring a
  * conversion from source/target names: Outcome and Stake never regain a game model, PAR is a snapshot,
- * and WASM is inspection metadata only.
+ * and WASM is a runnable output built only from authored Blueprint or PAR sources.
  */
 export class ArtifactConversionPlanner {
     public listTargets(): readonly ArtifactTargetType[] {

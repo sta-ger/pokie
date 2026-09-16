@@ -55,9 +55,9 @@ export const WASM_INSPECT_OPERATION: PokieOperation = "wasm.inspect";
 // that would block a hypothetical WASM build (see assessWasmPackagingPreflight) — requires
 // RUNTIME_EXECUTE_CAPABILITY, the same capability sim/replay/serve require, since only a "tsPackage" project
 // is a real, already-loadable source directory this preflight can scan; every other ProjectType has no
-// comparable source tree. Deliberately not gated on WASM_EXPORT_CAPABILITY (which nothing grants): this
-// preflight exists to assess a package *before* any WASM build capability could ever be granted to it, not to
-// gate on a capability that would make the preflight itself unreachable.
+// comparable source tree. Deliberately not gated on WASM_EXPORT_CAPABILITY: this preflight assesses a
+// package rather than an authored Blueprint/PAR source, so that source-only build capability would make the
+// package preflight unreachable.
 export const WASM_PACKAGING_PREFLIGHT_OPERATION: PokieOperation = "wasm.packagingPreflight";
 // The outcome-source-driven counterparts to INSPECT/SIM/SERVE/REPLAY_OPERATION above — deliberately separate
 // operation ids, not a reuse of those, since they're satisfied a different way (a canonical outcome-source

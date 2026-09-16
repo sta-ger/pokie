@@ -23,8 +23,8 @@ export function wasmComponentManifestSidecarPath(wasmFilePath: string): string {
 // are integrity-checked against their module bytes; legacy sidecar-only components remain metadata-only.
 // Three distinct outcomes:
 //   - no sidecar file at all -> undefined (not recognized; ProjectTargetResolver's own WASM_FILE_EXTENSION
-//     fallback still reports its generic "no versioned WASM export contract" diagnostic, exactly as before
-//     this adapter existed -- an ordinary ".wasm" file is unaffected by this adapter's addition).
+//     fallback reports the missing POKIE component contract diagnostic, so an ordinary ".wasm" file is
+//     never treated as a runnable POKIE artifact).
 //   - sidecar present but its JSON is unreadable, or PokieWasmComponentManifestValidator rejects its shape ->
 //     throws ProjectTargetMalformedError (the manifest signaled intent to be this type and failed a deeper
 //     read, the same convention TsPackageProjectTargetAdapter/OutcomeLibraryProjectTargetAdapter use).
