@@ -171,7 +171,7 @@ describe("ProjectTargetResolver", () => {
         expect(project).toEqual({
             type: "blueprint",
             rootPath: blueprintFile,
-            capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export"],
+            capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export", "wasm.export"],
             provenance: expect.stringContaining("manifest"),
         });
     });
@@ -185,7 +185,7 @@ describe("ProjectTargetResolver", () => {
         expect(project).toEqual({
             type: "parWorkbook",
             rootPath: workbookFile,
-            capabilities: ["parWorkbook.exchange"],
+            capabilities: ["parWorkbook.exchange", "wasm.export"],
             provenance: expect.stringContaining("Manifest"),
         });
         expect(project?.configurationProvenance).toMatchObject({
