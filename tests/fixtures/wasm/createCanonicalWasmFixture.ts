@@ -10,6 +10,8 @@ type CanonicalWasmFixtureOptions = {
     readonly wilds?: readonly string[];
     readonly scatters?: readonly string[];
     readonly paytable?: Readonly<Record<string, Readonly<Record<string, number>>>>;
+    readonly serialization?: {readonly session: string; readonly play: string; readonly state: string};
+    readonly host?: {readonly rng: string; readonly services: readonly string[]};
 };
 
 const abiPrefix = [
@@ -59,6 +61,8 @@ function sha256(bytes: Uint8Array): string {
 export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions = {}): {readonly bytes: Uint8Array<ArrayBuffer>; readonly manifest: PokieWasmComponentManifest} {
     const id = options.id ?? "portable-fixture";
     const capabilities = options.capabilities ?? ["runtime.play", "runtime.serialize", "runtime.replay"];
+    const serialization = options.serialization ?? {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"};
+    const host = options.host ?? {rng: "pokie.rng.v1", services: []};
     const reelStrips = options.reelStrips ?? (options.stripLengths ?? [2, 2]).map((length) => Array.from({length}, (_value, index) => index % 2 === 0 ? "A" : "B"));
     const stripLengths = reelStrips.map((strip) => strip.length);
     const stopWidths = stripLengths.map((length) => Math.max(1, Math.ceil(Math.log2(length))));
@@ -71,7 +75,7 @@ export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions 
     const configurationHash = sha256(model);
     const descriptor = new TextEncoder().encode(JSON.stringify({
         schemaVersion: "1.0.0", component: {id, version: "1.0.0"},
-        serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"}, host: {rng: "pokie.rng.v1", services: []}, capabilities,
+        serialization, host, capabilities,
         artifact: {format: "pokie.wasm.v1", abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash},
     }));
     const instructions = options.trapping ? [0x00] : createReelSelectionInstructions(stopWidths, stripLengths);
@@ -86,7 +90,7 @@ export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions 
         bytes,
         manifest: {
             schemaVersion: "1.0.0", component: {id, version: "1.0.0"},
-            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"}, host: {rng: "pokie.rng.v1", services: []}, capabilities,
+            serialization, host, capabilities,
             artifact: {format: "pokie.wasm.v1", sha256: sha256(bytes), bytes: bytes.byteLength, abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash},
         },
     };

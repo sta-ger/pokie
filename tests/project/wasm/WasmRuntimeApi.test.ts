@@ -106,11 +106,12 @@ describe("Pokie WASM runtime API", () => {
     });
 
     it.each([
-        ["serialization", {...manifest, serialization: {...manifest.serialization, state: "other.state.v1"}}, /unsupported serialization identifiers/i],
-        ["RNG protocol", {...manifest, host: {...manifest.host, rng: "other.rng.v1"}}, /unsupported RNG protocol/i],
-        ["host service", {...manifest, host: {...manifest.host, services: ["pokie.clock.v1"]}}, /unsupported required host service/i],
-    ])("rejects an unsupported canonical %s before execution", async (_name, unsupportedManifest, error) => {
-        await expect(instantiatePokieWasm(bytes, unsupportedManifest, {nextRandom: () => 0.5})).rejects.toThrow(error);
+        ["serialization", {serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "other.state.v1"}}, /unsupported serialization identifiers/i],
+        ["RNG protocol", {host: {rng: "other.rng.v1", services: []}}, /unsupported RNG protocol/i],
+        ["host service", {host: {rng: "pokie.rng.v1", services: ["pokie.clock.v1"]}}, /unsupported required host service/i],
+    ])("rejects an unsupported canonical %s before execution", async (_name, options, error) => {
+        const fixture = createCanonicalWasmFixture(options);
+        await expect(instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => 0.5})).rejects.toThrow(error);
     });
 
     it("gates serialization and replay on their individual declarations", async () => {

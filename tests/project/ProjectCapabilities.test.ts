@@ -52,6 +52,8 @@ describe("PROJECT_TYPE_CAPABILITIES", () => {
             capabilities: ["runtime.play", "runtime.serialize", "artifact.inspect"],
         };
         expect(wasmProjectCapabilities(manifest as never)).toEqual(["wasm.manifest.read", "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.artifact.inspect"]);
+        expect(wasmProjectCapabilities({...manifest, serialization: {...manifest.serialization, state: "other.state.v1"}} as never)).toEqual(["wasm.manifest.read"]);
         expect(wasmProjectCapabilities({...manifest, host: {rng: "other.rng.v1", services: []}} as never)).toEqual(["wasm.manifest.read"]);
+        expect(wasmProjectCapabilities({...manifest, host: {rng: "pokie.rng.v1", services: ["pokie.clock.v1"]}} as never)).toEqual(["wasm.manifest.read"]);
     });
 });

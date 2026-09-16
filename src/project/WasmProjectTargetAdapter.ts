@@ -7,7 +7,7 @@ import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
 import {ProjectTargetUnsupportedError} from "./ProjectTargetUnsupportedError.js";
 import {describeWasmSidecarFailure} from "./WasmProductContract.js";
-import {readIntegrityBoundCanonicalPokieWasmArtifact} from "../wasm/PokieWasmCanonicalModule.js";
+import {describeUnsupportedCanonicalWasmRuntimeContract, readIntegrityBoundCanonicalPokieWasmArtifact} from "../wasm/PokieWasmCanonicalModule.js";
 import {POKIE_WASM_RUNTIME_VERSION} from "../wasm/PokieWasmRuntimeApi.js";
 
 // The sidecar file a ".wasm" file must be paired with for this adapter to ever recognize it -- e.g.
@@ -106,6 +106,13 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
                 await readIntegrityBoundCanonicalPokieWasmArtifact(new Uint8Array(bytes), typedManifest);
             } catch (error) {
                 const reason = error instanceof Error ? error.message : String(error);
+                const runtimeContractReason = describeUnsupportedCanonicalWasmRuntimeContract(typedManifest);
+                if (runtimeContractReason !== undefined && reason === `POKIE WASM artifact cannot execute: ${runtimeContractReason}.`) {
+                    throw new ProjectTargetUnsupportedError(
+                        `POKIE cannot run "${resolvedPath}": ${runtimeContractReason}. Rebuild the artifact for the supported portable runtime contract.`,
+                        {targetType: "wasm"},
+                    );
+                }
                 const stage = reason.includes("descriptor") ? "WASM artifact descriptor" : "WASM artifact integrity";
                 throw new ProjectTargetMalformedError(`POKIE rejected "${resolvedPath}": its canonical WASM module or game configuration does not match its manifest: ${reason}. Rebuild the artifact; do not copy a sidecar or glue file between modules.`, {targetType: "wasm", stage});
             }

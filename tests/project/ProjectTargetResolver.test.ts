@@ -280,6 +280,20 @@ describe("ProjectTargetResolver", () => {
         });
     });
 
+    it.each([
+        ["serialization", {serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "other.state.v1"}}, /unsupported serialization identifiers/i],
+        ["RNG protocol", {host: {rng: "other.rng.v1", services: []}}, /unsupported RNG protocol/i],
+        ["host service", {host: {rng: "pokie.rng.v1", services: ["pokie.clock.v1"]}}, /unsupported required host service/i],
+    ])("rejects a canonical WASM artifact with an unsupported %s contract", async (_name, options, error) => {
+        const wasmFile = path.join(workDir, `unsupported-${_name}.wasm`);
+        const fixture = createCanonicalWasmFixture(options);
+        fs.writeFileSync(wasmFile, fixture.bytes);
+        fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+
+        await expect(resolver.resolve(wasmFile)).rejects.toThrow(ProjectTargetUnsupportedError);
+        await expect(resolver.resolve(wasmFile)).rejects.toThrow(error);
+    });
+
     it("throws ProjectTargetMalformedError for a .wasm file whose manifest sidecar isn't valid JSON", async () => {
         const wasmFile = path.join(workDir, "broken.wasm");
         fs.writeFileSync(wasmFile, WASM_BINARY);
