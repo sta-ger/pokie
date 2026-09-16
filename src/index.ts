@@ -305,6 +305,7 @@ export * from "./project/wasm/assessWasmComponentCompatibility.js";
 export * from "./project/wasm/assessWasmPackagingPreflight.js";
 export * from "./wasm/PokieWasmRuntime.js";
 export * from "./wasm/PokieWasmRuntimeApi.js";
+export * from "./wasm/node/PokieWasmFileRuntimeAdapter.js";
 export * from "./reels/CompositeReelStripConstraintValidator.js";
 export * from "./reels/LargestRemainderReelStripSymbolWeightsConverter.js";
 export * from "./reels/ReelStrip.js";
