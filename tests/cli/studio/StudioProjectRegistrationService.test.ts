@@ -216,13 +216,15 @@ describe("StudioProjectRegistrationService", () => {
             const canonical = await service.previewImport("/existing/canonical.wasm");
             const legacy = await service.previewImport("/existing/legacy.wasm");
 
+            if (canonical.status !== "recognized" || canonical.type !== "wasm") throw new Error("expected canonical WASM import preview");
+            if (legacy.status !== "recognized" || legacy.type !== "wasm") throw new Error("expected legacy WASM import preview");
             expect(canonical).toMatchObject({
                 status: "recognized",
                 type: "wasm",
                 capabilities: ["wasm.manifest.read", "wasm.runtime.execute"],
             });
-            expect(canonical.status === "recognized" && canonical.wasmPresentation).toBeUndefined();
-            expect(legacy.status === "recognized" && legacy.wasmPresentation).toBeDefined();
+            expect(canonical.wasmPresentation).toBeUndefined();
+            expect(legacy.wasmPresentation).toBeDefined();
         });
 
         it("reports \"unrecognized\" rather than throwing when the path isn't any known POKIE project type", async () => {
@@ -303,6 +305,7 @@ describe("StudioProjectRegistrationService", () => {
 
             const [entry] = await service.list();
 
+            if (entry?.type !== "wasm") throw new Error("expected canonical WASM registry entry");
             expect(entry).toMatchObject({type: "wasm", capabilities: ["wasm.manifest.read", "wasm.runtime.execute"], status: "ok"});
             expect(entry.wasmPresentation).toBeUndefined();
         });
