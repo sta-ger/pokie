@@ -92,7 +92,8 @@ async function createSource(workDir: string, source: ProjectType): Promise<strin
 
 function extensionFor(target: ArtifactTargetType): string {
     if (target === "parWorkbook") return ".xlsx";
-    return target === "blueprint" ? ".json" : "";
+    if (target === "blueprint") return ".json";
+    return target === "wasm" ? ".wasm" : "";
 }
 
 describe("PC-17 public CLI and Studio HTTP parity", () => {

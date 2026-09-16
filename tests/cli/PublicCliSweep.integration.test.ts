@@ -5,6 +5,12 @@ import {registerCliCommands} from "../../cli/registerCliCommands.js";
 
 const ROOT = path.join(__dirname, "..", "..");
 const PUBLIC_COMMANDS = [
+    "build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate",
+];
+// P7-01's completed inventory is immutable campaign evidence from before the
+// canonical WASM `run` command existed. Keep asserting that historical record
+// verbatim while separately asserting the current public command tree above.
+const INITIAL_INVENTORY_COMMANDS = [
     "build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "replay", "report", "sample", "serve", "sim", "validate",
 ];
 const NESTED_VERBS = [
@@ -29,7 +35,7 @@ describe("PC-15 public CLI sweep contract", () => {
             .join("\n");
 
         expect(publicNames).toEqual(PUBLIC_COMMANDS);
-        expect(inventory.initialInventory).toEqual({rootCommands: PUBLIC_COMMANDS, nestedVerbs: NESTED_VERBS});
+        expect(inventory.initialInventory).toEqual({rootCommands: INITIAL_INVENTORY_COMMANDS, nestedVerbs: NESTED_VERBS});
         expect(maintainedDocumentation).not.toMatch(/\bpokie (?:studio|__studio|outcomelibrary|outcomesource|stakeengine|name)\b/);
     });
 
