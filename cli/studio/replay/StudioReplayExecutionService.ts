@@ -85,6 +85,7 @@ export class StudioReplayExecutionService {
     // Reads a resolved "outcomeLibrary"/"stakeAdapter" project's own bundle manifest -- see start()'s
     // own `outcomeSourceProject` parameter for why this service never resolves a project's type itself.
     private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
+    private readonly loadWasmRuntime: typeof loadPokieWasmFileRuntime;
 
     constructor(
         repository: StudioReplayRepository = new InMemoryStudioReplayRepository(),
@@ -100,6 +101,7 @@ export class StudioReplayExecutionService {
         onCompleted: (record: StudioReplayJobRecord) => void = () => undefined,
         outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
         loadRuntimeGame: StudioGameLoading = (projectRoot) => loadGame(projectRoot),
+        loadWasmRuntime: typeof loadPokieWasmFileRuntime = loadPokieWasmFileRuntime,
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -111,6 +113,7 @@ export class StudioReplayExecutionService {
         this.pokieVersion = pokieVersion;
         this.onCompleted = onCompleted;
         this.outcomeLibraryReader = outcomeLibraryReader;
+        this.loadWasmRuntime = loadWasmRuntime;
     }
 
     // Returns immediately with a "queued" job — the actual replay runs in the background (see run()),
@@ -404,7 +407,7 @@ export class StudioReplayExecutionService {
         let runtime;
         let disposeSession: (() => void) | undefined;
         try {
-            runtime = await loadPokieWasmFileRuntime(record.projectRoot, {
+            runtime = await this.loadWasmRuntime(record.projectRoot, {
                 nextRandom: () => random.getRandomInt(0, 1_000_000_000) / 1_000_000_000,
             });
             if (record.abortController.signal.aborted) {

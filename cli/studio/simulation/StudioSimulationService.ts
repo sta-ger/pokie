@@ -86,6 +86,7 @@ export class StudioSimulationService {
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
     private readonly onCompleted: (record: StudioSimulationJobRecord) => void;
     private readonly pokieVersion: string | undefined;
+    private readonly loadWasmRuntime: typeof loadPokieWasmFileRuntime;
 
     constructor(
         repository: StudioSimulationRepository = new InMemoryStudioSimulationRepository(),
@@ -108,6 +109,7 @@ export class StudioSimulationService {
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
         onCompleted: (record: StudioSimulationJobRecord) => void = () => undefined,
         pokieVersion: string | undefined = undefined,
+        loadWasmRuntime: typeof loadPokieWasmFileRuntime = loadPokieWasmFileRuntime,
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -122,6 +124,7 @@ export class StudioSimulationService {
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
         this.onCompleted = onCompleted;
         this.pokieVersion = pokieVersion;
+        this.loadWasmRuntime = loadWasmRuntime;
     }
 
     // Returns immediately with a "queued" job — the actual simulation runs in the background (see
@@ -409,7 +412,7 @@ export class StudioSimulationService {
         let runtime;
         let disposeSession: (() => void) | undefined;
         try {
-            runtime = await loadPokieWasmFileRuntime(record.projectRoot, {
+            runtime = await this.loadWasmRuntime(record.projectRoot, {
                 nextRandom: () => random.getRandomInt(0, 1_000_000_000) / 1_000_000_000,
             });
             const session = runtime.createSession(seed);

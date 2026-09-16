@@ -920,6 +920,9 @@ export type StudioRuntimeSessionView = {
     // The game's own real symbol list (VideoSlotConfigDescribing.getAvailableSymbols()), present whenever
     // the underlying session reports one -- Play's own "Find symbol win" chooser is the one consumer today.
     availableSymbols?: string[];
+    // A capability reason comes from the executable Studio host.  A present key disables that shared
+    // scenario only; Spin remains an ordinary runtime operation.
+    scenarioCapabilities?: Partial<Record<"findAnyWin" | "findSymbolWin" | "findFreeGames", string>>;
     sessionVersion?: number;
     studioRequestId?: string;
     studioRound?: number;

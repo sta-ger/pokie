@@ -52,6 +52,7 @@ import type {StudioRuntimeSessionView} from "./StudioRuntimeSessionView.js";
 
 export type StudioPlaySessionResult = {status: "ok"; session: StudioRuntimeSessionView} | {status: "failed"; error: string};
 export type StudioPlaySessionOptions = {readonly signal?: AbortSignal};
+export type StudioWasmRuntimeLoading = typeof loadPokieWasmFileRuntime;
 
 // The two shapes an active Play session can take, discriminated by "kind" -- a "runtime" session (a real
 // loaded PokieGame, spun through SpinCommandHandler) or an "outcomeSource" session (a resolved
@@ -105,6 +106,12 @@ type ActiveWasmSession = {
 };
 
 type ActiveSession = ActiveRuntimeSession | ActiveOutcomeSourceSession | ActiveWasmSession;
+
+const WASM_SCENARIO_CAPABILITIES = {
+    findAnyWin: "This canonical WASM runtime does not declare the per-win details required for Find any win. Spin remains available.",
+    findSymbolWin: "This canonical WASM runtime does not declare per-symbol win details, so Find symbol win isn't available. Spin remains available.",
+    findFreeGames: "This canonical WASM runtime does not declare free-games events, so Find free games isn't available. Spin remains available.",
+} as const;
 
 export type StudioPlaySpinResult =
     | {status: "ok"; session: StudioRuntimeSessionView}
@@ -177,6 +184,7 @@ export class StudioPlayService {
     // constructs one instance and shares it (and its own outcome-source sample route) so a round played
     // here is visible from anywhere else that reads this same recorder.
     private readonly roundRecorder: StudioRoundRecorder;
+    private readonly loadWasmRuntime: StudioWasmRuntimeLoading;
 
     private active: ActiveSession | undefined;
     private currentSessionId: string | undefined;
@@ -190,6 +198,7 @@ export class StudioPlayService {
         outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
         maxFindScenarioSpins = StudioPlayService.DEFAULT_MAX_FIND_SCENARIO_SPINS,
         roundRecorder: StudioRoundRecorder = new StudioRoundRecorder(),
+        loadWasmRuntime: StudioWasmRuntimeLoading = loadPokieWasmFileRuntime,
     ) {
         this.loadGame = loadGame;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
@@ -198,6 +207,7 @@ export class StudioPlayService {
         this.outcomeLibraryReader = outcomeLibraryReader;
         this.maxFindScenarioSpins = maxFindScenarioSpins;
         this.roundRecorder = roundRecorder;
+        this.loadWasmRuntime = loadWasmRuntime;
     }
 
     // Materializes/loads `projectRoot` fresh on every call -- never caches a previously loaded game
@@ -330,6 +340,7 @@ export class StudioPlayService {
                         win: round.payout,
                         screen: round.screen.map((_, row) => round.screen.map((reel) => reel[row])),
                         availableSymbols: [...new Set(round.screen.flat())],
+                        scenarioCapabilities: WASM_SCENARIO_CAPABILITIES,
                         debug: {
                             stateAfter: active.session.serialize(),
                             artifactUnavailableReason: "The portable WASM runtime does not declare a POKIE Round Artifact projection.",
@@ -337,6 +348,11 @@ export class StudioPlayService {
                     },
                 };
             } catch (error) {
+                // A component trap leaves neither its portable instance nor its session safe to reuse.
+                // Do not let a concurrent replacement release a newer session, though.
+                if (this.active === active && this.currentSessionId === sessionId) {
+                    await this.releaseActiveRuntime();
+                }
                 result = {status: "error", error: error instanceof Error ? error.message : String(error)};
             }
         } else {
@@ -404,8 +420,10 @@ export class StudioPlayService {
     // simulated/discarded trial: a search that runs out of attempts still leaves the session sitting on
     // whatever real round it last actually played.
     public findAnyWin(sessionId: string): Promise<StudioPlaySpinResult> {
-        if (this.active?.kind === "wasm") {
-            return Promise.resolve({status: "error", error: "This canonical WASM runtime does not declare the per-win details required for Find any win. Spin remains available."});
+        const active = this.activeSessionFor(sessionId);
+        if (active === undefined) return Promise.resolve({status: "not-found"});
+        if (active.kind === "wasm") {
+            return Promise.resolve({status: "error", error: WASM_SCENARIO_CAPABILITIES.findAnyWin});
         }
         return this.spinUntilMatch(
             sessionId,
@@ -426,8 +444,10 @@ export class StudioPlayService {
     // equivalent check reads whether the round's own already-computed artifact carries a win for that
     // exact symbolId, straight off RoundArtifactWin.symbolId -- never a second win-evaluation pass.
     public findSymbolWin(sessionId: string, symbolId: string): Promise<StudioPlaySpinResult> {
-        if (this.active?.kind === "wasm") {
-            return Promise.resolve({status: "error", error: "This canonical WASM runtime does not declare per-symbol win details, so Find symbol win isn't available. Spin remains available."});
+        const active = this.activeSessionFor(sessionId);
+        if (active === undefined) return Promise.resolve({status: "not-found"});
+        if (active.kind === "wasm") {
+            return Promise.resolve({status: "error", error: WASM_SCENARIO_CAPABILITIES.findSymbolWin});
         }
         // PlayUntilSymbolWinStrategy reads isSymbolScatter()/getWinningLines()/getWinningScatters()
         // unconditionally (see its own doc comment) -- calling it against a "runtime" session whose game
@@ -459,8 +479,10 @@ export class StudioPlayService {
     // "freeGamesTriggered" event buildRoundArtifactFromSession derives from the exact same
     // getWonFreeGamesNumber() this strategy itself reads, never a second free-games determination.
     public findFreeGames(sessionId: string): Promise<StudioPlaySpinResult> {
-        if (this.active?.kind === "wasm") {
-            return Promise.resolve({status: "error", error: "This canonical WASM runtime does not declare free-games events, so Find free games isn't available. Spin remains available."});
+        const active = this.activeSessionFor(sessionId);
+        if (active === undefined) return Promise.resolve({status: "not-found"});
+        if (active.kind === "wasm") {
+            return Promise.resolve({status: "error", error: WASM_SCENARIO_CAPABILITIES.findFreeGames});
         }
         // Same feature-detection-before-ever-spinning reasoning as findSymbolWin() above -- a game whose
         // session doesn't report free-games state at all (an ordinary VideoSlotSessionHandling, no free
@@ -499,7 +521,7 @@ export class StudioPlayService {
                 await this.releaseActiveRuntime();
                 return "This POKIE WASM component cannot play a game round until a new canonical WASM session is started.";
             }
-            const current = await loadPokieWasmFileRuntime(active.projectRoot, {nextRandom: () => 0});
+            const current = await this.loadWasmRuntime(active.projectRoot, {nextRandom: () => 0});
             try {
                 const integrity = current.manifest.artifact?.sha256;
                 if (integrity !== active.integrity) throw new Error("The active WASM artifact changed after this session was opened. Start a new session to run the replacement.");
@@ -530,13 +552,14 @@ export class StudioPlayService {
     private async newWasmSession(project: PokieProject, seed: string | number | undefined, assertCurrent: () => void): Promise<StudioPlaySessionResult> {
         const sessionSeed = String(seed ?? crypto.randomUUID());
         const random = new SeededRandomNumberGenerator(sessionSeed);
-        let runtime: PokieWasmRuntime;
+        let runtime: PokieWasmRuntime | undefined;
         try {
-            runtime = await loadPokieWasmFileRuntime(project.rootPath, {
+            runtime = await this.loadWasmRuntime(project.rootPath, {
                 nextRandom: () => random.getRandomInt(0, 1_000_000_000) / 1_000_000_000,
             });
             assertCurrent();
         } catch (error) {
+            runtime?.dispose();
             return this.fail(error, project.rootPath);
         }
         try {
@@ -555,11 +578,23 @@ export class StudioPlayService {
             };
             this.active = active;
             this.currentSessionId = sessionId;
-            return {status: "ok", session: {sessionId, game: active.manifest, debug: {stateAfter: active.session.serialize()}}};
+            return {
+                status: "ok",
+                session: {
+                    sessionId,
+                    game: active.manifest,
+                    scenarioCapabilities: WASM_SCENARIO_CAPABILITIES,
+                    debug: {stateAfter: active.session.serialize()},
+                },
+            };
         } catch (error) {
             runtime.dispose();
             return this.fail(error, project.rootPath);
         }
+    }
+
+    private activeSessionFor(sessionId: string): ActiveSession | undefined {
+        return this.active !== undefined && this.currentSessionId === sessionId ? this.active : undefined;
     }
 
     private supportsSymbolWinSearch(session: GameSessionHandling): boolean {

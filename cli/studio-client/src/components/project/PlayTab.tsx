@@ -79,6 +79,10 @@ export function PlayTab({
     const availableBetModes = deriveAvailableBetModeIds(activeSession?.availableBetModeIds);
     const currentBet = typeof activeSession?.bet === "number" ? activeSession.bet : undefined;
     const currentBetMode = deriveBetModeId(activeSession?.betModeId);
+    const scenarioCapabilities = activeSession?.scenarioCapabilities;
+    const findAnyWinReason = scenarioCapabilities?.findAnyWin;
+    const findSymbolWinReason = scenarioCapabilities?.findSymbolWin;
+    const findFreeGamesReason = scenarioCapabilities?.findFreeGames;
 
     useEffect(() => {
         if (currentBet !== undefined) {
@@ -229,21 +233,27 @@ export function PlayTab({
                     Scenario searches use real settled spins and leave their final round in this Play session.
                 </Text>
                 <QuickActions>
-                    <Button variant="default" loading={loading} onClick={onFindAnyWin}>
+                    <Button variant="default" loading={loading} disabled={findAnyWinReason !== undefined} title={findAnyWinReason} onClick={onFindAnyWin}>
                         Find any win
                     </Button>
                     <Button
                         variant="default"
                         loading={loading}
-                        disabled={!selectedSymbol}
+                        disabled={findSymbolWinReason !== undefined || !selectedSymbol}
+                        title={findSymbolWinReason}
                         onClick={() => selectedSymbol !== null && onFindSymbolWin(selectedSymbol)}
                     >
                         Find symbol win
                     </Button>
-                    <Button variant="default" loading={loading} onClick={onFindFreeGames}>
+                    <Button variant="default" loading={loading} disabled={findFreeGamesReason !== undefined} title={findFreeGamesReason} onClick={onFindFreeGames}>
                         Find free games
                     </Button>
                 </QuickActions>
+                {(findAnyWinReason !== undefined || findSymbolWinReason !== undefined || findFreeGamesReason !== undefined) && (
+                    <Text size="sm" c="dimmed" mt="sm">
+                        {[findAnyWinReason, findSymbolWinReason, findFreeGamesReason].filter((reason): reason is string => reason !== undefined).join(" ")}
+                    </Text>
+                )}
                 <Select
                     aria-label="Symbol"
                     label="Symbol"

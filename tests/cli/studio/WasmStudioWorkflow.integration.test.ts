@@ -68,6 +68,8 @@ describe("canonical WASM Studio workflow", () => {
         expect(opened.status).toBe("ok");
         if (opened.status !== "ok") throw new Error(opened.error);
         await expect(play.spin(opened.session.sessionId)).resolves.toMatchObject({status: "ok", session: {game: {id: "studio-wasm"}}});
+        const secondPlayRound = await play.spin(opened.session.sessionId);
+        if (secondPlayRound.status !== "ok") throw new Error("expected second portable play round");
 
         const simulation = new StudioSimulationService(undefined, undefined, undefined, 1);
         const simulationStart = simulation.start(artifactPath, {rounds: 3, seed: "studio-seed"});
@@ -80,7 +82,11 @@ describe("canonical WASM Studio workflow", () => {
         expect(replayStart.status).toBe("created");
         if (replayStart.status !== "created") throw new Error("expected Studio replay job");
         await expect(waitForTerminal(() => replay.getStatus(artifactPath, replayStart.job.id))).resolves.toMatchObject({status: "completed"});
-        expect(replay.getDownload(artifactPath, replayStart.job.id)).toMatchObject({status: "ok", descriptor: {seed: "studio-seed", round: 2}});
+        const replayDownload = replay.getDownload(artifactPath, replayStart.job.id);
+        expect(replayDownload).toMatchObject({status: "ok", descriptor: {seed: "studio-seed", round: 2}});
+        if (replayDownload.status !== "ok") throw new Error("expected replay descriptor");
+        expect(replayDownload.descriptor.screen).toEqual(secondPlayRound.session.screen);
+        expect(replayDownload.descriptor.stateAfter).toEqual(secondPlayRound.session.debug?.stateAfter);
     });
 
     it("cancels queued canonical WASM simulation and replay jobs without retaining a runnable operation", async () => {
@@ -109,5 +115,21 @@ describe("canonical WASM Studio workflow", () => {
 
         await expect(play.spin(opened.session.sessionId)).resolves.toMatchObject({status: "error", error: expect.stringMatching(/cannot play a game round|does not match/i)});
         await expect(play.spin(opened.session.sessionId)).resolves.toEqual({status: "not-found"});
+    });
+
+    it("revalidates replacement bytes when simulation and replay acquire their own portable runtimes", async () => {
+        fs.writeFileSync(artifactPath, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+
+        const simulation = new StudioSimulationService(undefined, undefined, undefined, 1);
+        const simulationStart = simulation.start(artifactPath, {rounds: 1, seed: "stale"});
+        expect(simulationStart.status).toBe("created");
+        if (simulationStart.status !== "created") throw new Error("expected Studio simulation job");
+        await expect(waitForTerminal(() => simulation.getStatus(simulationStart.job.id))).resolves.toMatchObject({status: "failed", error: expect.stringMatching(/integrity|canonical|descriptor|module/i)});
+
+        const replay = new StudioReplayExecutionService(undefined, undefined, 1);
+        const replayStart = replay.start(artifactPath, {round: 1, seed: "stale"});
+        expect(replayStart.status).toBe("created");
+        if (replayStart.status !== "created") throw new Error("expected Studio replay job");
+        await expect(waitForTerminal(() => replay.getStatus(artifactPath, replayStart.job.id))).resolves.toMatchObject({status: "failed", error: expect.stringMatching(/integrity|canonical|descriptor|module/i)});
     });
 });

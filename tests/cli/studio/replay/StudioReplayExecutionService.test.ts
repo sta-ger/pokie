@@ -284,6 +284,50 @@ function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendin
 }
 
 describe("StudioReplayExecutionService", () => {
+
+    it("cancels a canonical WASM replay after session acquisition and disposes its portable resources", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-replay-cleanup-"));
+        const wasmPath = path.join(workDir, "game.wasm");
+        fs.writeFileSync(wasmPath, "");
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({artifact: {}}));
+        const gate = createControlledYield();
+        const disposeRuntime = jest.fn();
+        const disposeSession = jest.fn();
+        const runtime = {
+            manifest: {component: {id: "wasm", version: "1.0.0"}, artifact: {configurationHash: "config"}},
+            createSession: () => ({
+                play: () => Promise.resolve({stake: 1, payout: 1, screen: [["A"]]}),
+                serialize: () => ({schemaVersion: "pokie.state.v1", seed: "cleanup", draws: [], sequence: 1}),
+                dispose: disposeSession,
+            }),
+            dispose: disposeRuntime,
+        };
+        const service = new StudioReplayExecutionService(
+            undefined,
+            undefined,
+            1,
+            undefined,
+            gate.yieldToEventLoop,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.resolve(runtime as never),
+        );
+        try {
+            const started = service.start(wasmPath, {round: 2, seed: "cleanup"});
+            if (started.status !== "created") throw new Error("expected WASM replay job");
+            await waitFor(() => gate.pendingCount() === 1, "WASM replay did not acquire its session before yielding.");
+            service.cancel(wasmPath, started.job.id);
+            gate.release();
+            await expect(waitForTerminal(service, wasmPath, started.job.id)).resolves.toMatchObject({status: "cancelled"});
+            expect(disposeSession).toHaveBeenCalledTimes(1);
+            expect(disposeRuntime).toHaveBeenCalledTimes(1);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
     it("rejects every real WASM sidecar state before creating a queued replay job", () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-replay-wasm-"));
         const wasmPath = path.join(workDir, "component.wasm");
