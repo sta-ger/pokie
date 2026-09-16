@@ -1,6 +1,7 @@
 // Browser-safe game-runtime API.  Keep Node-bound package loading, filesystem, and CLI APIs on the
 // root entrypoint; applications that execute game mechanics in a browser import this explicit surface.
 export * from "./fixtures/Pc12FreeGamesFixture.js";
+export * from "./wasm/browser.js";
 export * from "./net/videoslot/VideoSlotNetworkData.js";
 export * from "./net/videoslot/VideoSlotSessionSerializer.js";
 export * from "./net/videoslot/VideoSlotWithFreeGamesNetworkData.js";

@@ -7,10 +7,10 @@ import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompat
 // an input to a runtime, converter, builder, or Studio export flow.
 export const WASM_PRODUCT_CONTRACT = {
     kind: "POKIE WASM component",
-    studioLabel: "WASM component (inspection-only)",
+    studioLabel: "POKIE WASM component",
     capabilities: [WASM_MANIFEST_READ_CAPABILITY] as readonly ProjectCapability[],
-    inspectionPurpose: "A compatible WebAssembly component whose declared manifest identity, serialization identifiers, host bindings, and capabilities POKIE can inspect.",
-    inspectionBoundary: "POKIE reads the compatible sidecar manifest only; it never loads or executes the WASM binary.",
+    inspectionPurpose: "A compatible WebAssembly component whose declared manifest identity, serialization identifiers, host bindings, capabilities, and integrity POKIE can inspect.",
+    inspectionBoundary: "Canonical POKIE WASM artifacts bind metadata to module bytes and run through the portable host; legacy sidecar-only components remain inspection-only and POKIE never loads or executes them.",
     manifestActionLabel: "Inspect declared manifest",
     originalSourceRecovery: "Use the original Blueprint or POKIE game package where runnable or convertible source is required.",
 } as const;

@@ -21,6 +21,10 @@
         "./browser": {
             "types": "./dist/esm/browser.d.ts",
             "default": "./dist/esm/browser.js"
+        },
+        "./wasm": {
+            "types": "./dist/esm/wasm/browser.d.ts",
+            "default": "./dist/esm/wasm/browser.js"
         }
     },
     "main": "./dist/cjs/index.js",

@@ -67,4 +67,18 @@ export type PokieWasmComponentManifest = {
     // package: never closed to a union, since a component author can declare their own additional capability
     // ids a generic POKIE check simply never looks at.
     readonly capabilities: readonly string[];
+
+    /**
+     * Present only on canonical runnable artifacts.  Older compatible
+     * sidecar-only components are deliberately still readable, but cannot be
+     * mistaken for a byte-bound executable artifact.
+     */
+    readonly artifact?: {
+        readonly format: "pokie.wasm.v1";
+        readonly sha256: string;
+        readonly bytes: number;
+        readonly abiVersion: string;
+        readonly adapter: string;
+        readonly configurationHash: string;
+    };
 };

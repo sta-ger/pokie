@@ -68,15 +68,13 @@ const PROJECT_PRESENTATIONS: Readonly<Record<ProjectType, ProjectPresentation>> 
     },
     wasm: {
         kind: WASM_PRODUCT_CONTRACT.kind,
-        purpose: WASM_PRODUCT_CONTRACT.inspectionPurpose,
-        // `pokie inspect` is the operation currently rendering this presentation.
-        // A WASM component has no further CLI action after its manifest has been
-        // read, so do not send users back through a self-referential command.
-        nextActions: [],
-        prerequisites: [
-            `${WASM_PRODUCT_CONTRACT.inspectionBoundary} It cannot build, run, simulate, or validate WASM game logic; it also cannot replay or serve it.`,
-            WASM_PRODUCT_CONTRACT.originalSourceRecovery,
+        purpose: "A portable, self-describing POKIE game artifact. Canonical components are integrity checked before POKIE runs them.",
+        nextActions: [
+            {label: "Validate the component", command: "pokie validate <path>"},
+            {label: "Simulate deterministic rounds", command: "pokie sim <path> --rounds 10000 --seed demo"},
+            {label: "Replay a round", command: "pokie replay <path> --round 1 --seed demo"},
         ],
+        prerequisites: ["Legacy sidecar-only components remain inspectable but must be rebuilt as canonical POKIE WASM artifacts before they can run."],
     },
     parWorkbook: {
         kind: "PAR workbook",

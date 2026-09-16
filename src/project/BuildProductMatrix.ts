@@ -32,6 +32,7 @@ export const BUILD_PRODUCT_MATRIX_TARGETS: readonly ArtifactTargetType[] = [
     "outcomeLibrary",
     "stakeAdapter",
     "parWorkbook",
+    "wasm",
 ];
 
 // Every build target is advertised because each has a complete source-to-artifact matrix. WASM remains a
@@ -56,6 +57,7 @@ const TARGET_PREREQUISITES: Readonly<Record<ArtifactTargetType, {missingPrerequi
     outcomeLibrary: {missingPrerequisite: "a Game Blueprint, POKIE game package, or Outcome Library", nextAction: "Open one of those sources, then run `pokie build <path> --target outcomeLibrary`."},
     stakeAdapter: {missingPrerequisite: "a Game Blueprint, POKIE game package, Outcome Library, or Stake Engine export", nextAction: "Open one of those sources, then run `pokie build <path> --target stakeAdapter`."},
     parWorkbook: {missingPrerequisite: "a Game Blueprint or PAR workbook", nextAction: "Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target parWorkbook`."},
+    wasm: {missingPrerequisite: "a Game Blueprint or PAR workbook source", nextAction: "Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target wasm`."},
 };
 
 function buildCell(source: ProjectType, target: ArtifactTargetType): BuildProductMatrixCell {

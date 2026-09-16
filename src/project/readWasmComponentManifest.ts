@@ -1,4 +1,5 @@
 import fs from "fs";
+import crypto from "crypto";
 import {WASM_INSPECT_OPERATION} from "./PokieOperation.js";
 import type {PokieProject} from "./PokieProject.js";
 import type {UnsupportedProjectOperationDiagnostic} from "./UnsupportedProjectOperationDiagnostic.js";
@@ -57,5 +58,14 @@ export async function readWasmComponentManifest(project: PokieProject): Promise<
         ));
     }
 
-    return {supported: true, manifest: manifest as PokieWasmComponentManifest};
+    const typedManifest = manifest as PokieWasmComponentManifest;
+    if (typedManifest.artifact !== undefined) {
+        const bytes = await fs.promises.readFile(project.rootPath);
+        if (!WebAssembly.validate(new Uint8Array(bytes)) || bytes.byteLength !== typedManifest.artifact.bytes ||
+            `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}` !== typedManifest.artifact.sha256) {
+            throw new Error(`POKIE rejected "${project.rootPath}": the canonical WASM module no longer matches its integrity-bound manifest.`);
+        }
+    }
+
+    return {supported: true, manifest: typedManifest};
 }

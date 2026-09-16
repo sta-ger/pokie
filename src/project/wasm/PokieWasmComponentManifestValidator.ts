@@ -64,6 +64,7 @@ export class PokieWasmComponentManifestValidator {
 
         this.validateSerialization(manifest.serialization as Loose<PokieWasmComponentManifest["serialization"]> | undefined, issues);
         this.validateHost(manifest.host as Loose<PokieWasmComponentManifest["host"]> | undefined, issues);
+        this.validateArtifact(manifest.artifact as Loose<NonNullable<PokieWasmComponentManifest["artifact"]>> | undefined, issues);
 
         if (!isNonEmptyStringArray(manifest.capabilities)) {
             issues.push({
@@ -151,6 +152,25 @@ export class PokieWasmComponentManifestValidator {
                 severity: "error",
                 message: '"host.services" must be an array of non-empty strings.',
                 path: "host.services",
+            });
+        }
+    }
+
+    private validateArtifact(artifact: Loose<NonNullable<PokieWasmComponentManifest["artifact"]>> | undefined, issues: ValidationIssue[]): void {
+        // Undefined intentionally denotes the documented legacy inspection
+        // compatibility case.  Once an artifact block is supplied it must be
+        // complete, so a partial integrity claim is never trusted.
+        if (artifact === undefined) return;
+        if (typeof artifact !== "object" || artifact === null || artifact.format !== "pokie.wasm.v1" ||
+            !isNonEmptyString(artifact.sha256) || !(/^sha256:[a-f0-9]{64}$/).test(artifact.sha256) ||
+            typeof artifact.bytes !== "number" || !Number.isSafeInteger(artifact.bytes) || artifact.bytes < 8 ||
+            !isNonEmptyString(artifact.abiVersion) || !isNonEmptyString(artifact.adapter) ||
+            !isNonEmptyString(artifact.configurationHash) || !(/^sha256:[a-f0-9]{64}$/).test(artifact.configurationHash)) {
+            issues.push({
+                code: "wasm-component-manifest-artifact-invalid",
+                severity: "error",
+                message: '"artifact" must bind a canonical module with format, sha256, bytes, ABI, adapter, and configuration hash.',
+                path: "artifact",
             });
         }
     }

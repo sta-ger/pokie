@@ -19,12 +19,14 @@ import {
     PAR_EXPORT_OPERATION,
     PAR_IMPORT_OPERATION,
     STAKE_ENGINE_EXPORT_OPERATION,
+    WASM_EXPORT_OPERATION,
     type PokieOperation,
 } from "./PokieOperation.js";
 import type {ProjectType} from "./ProjectType.js";
 import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import {StakeAdapterArtifactBuilder} from "./StakeAdapterArtifactBuilder.js";
 import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
+import {WasmArtifactBuilder} from "./WasmArtifactBuilder.js";
 import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibraryWorkflow.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
@@ -68,6 +70,7 @@ const TARGET_OPERATION: Readonly<Record<ArtifactTargetType, PokieOperation>> = {
     outcomeLibrary: OUTCOME_LIBRARY_BUILD_OPERATION,
     stakeAdapter: STAKE_ENGINE_EXPORT_OPERATION,
     parWorkbook: PAR_EXPORT_OPERATION,
+    wasm: WASM_EXPORT_OPERATION,
 };
 
 // Explicit, per-target statement of what building that target does NOT promise -- see
@@ -92,6 +95,9 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
     parWorkbook: [
         "Exports a Game Blueprint as a deterministic PAR workbook snapshot, or republishes an existing " +
             "PAR workbook; it does not recover a Blueprint from unrelated package or outcome artifacts.",
+    ],
+    wasm: [
+        "Builds a portable, integrity-bound POKIE WASM component from a Game Blueprint (or a PAR workbook through its model-preserving Blueprint import). It never compiles an arbitrary Node package into WASM.",
     ],
 };
 
@@ -141,6 +147,7 @@ function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetT
         ["outcomeLibrary", new OutcomeLibraryArtifactBuilder(pokieVersion)],
         ["stakeAdapter", new StakeAdapterArtifactBuilder(pokieVersion)],
         ["parWorkbook", new ParWorkbookArtifactBuilder(pokieVersion)],
+        ["wasm", new WasmArtifactBuilder(pokieVersion)],
     ]);
 }
 

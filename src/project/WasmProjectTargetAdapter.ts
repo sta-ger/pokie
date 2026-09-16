@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
 import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
 import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
@@ -77,7 +78,24 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
             );
         }
 
-        const {component} = manifest as PokieWasmComponentManifest;
+        const typedManifest = manifest as PokieWasmComponentManifest;
+        // Canonical artifacts bind their sidecar to the exact bytes that will
+        // be instantiated.  Legacy sidecar-only artifacts remain recognized
+        // for inspection, but never gain runnable capabilities accidentally.
+        if (typedManifest.artifact !== undefined) {
+            let bytes: Buffer;
+            try {
+                bytes = await fs.promises.readFile(resolvedPath);
+            } catch (error) {
+                throw new ProjectTargetMalformedError(`POKIE could not read WASM module "${resolvedPath}": ${error instanceof Error ? error.message : String(error)}`, {targetType: "wasm", stage: "WASM module"});
+            }
+            if (!WebAssembly.validate(new Uint8Array(bytes)) || bytes.byteLength !== typedManifest.artifact.bytes ||
+                `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}` !== typedManifest.artifact.sha256) {
+                throw new ProjectTargetMalformedError(`POKIE rejected "${resolvedPath}": its integrity-bound WASM module does not match its manifest. Rebuild the artifact; do not copy a sidecar or glue file between modules.`, {targetType: "wasm", stage: "WASM artifact integrity"});
+            }
+        }
+
+        const {component} = typedManifest;
         return `compatible PokieWasmComponentManifest ("${path.basename(sidecarPath)}", component "${component.id}" v${component.version})`;
     }
 }

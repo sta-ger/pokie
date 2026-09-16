@@ -7,4 +7,7 @@ import type {ProjectType} from "./ProjectType.js";
 // Blueprint is a first-class destination for a model-preserving source (a PAR
 // workbook import).  It is deliberately still not inferred from outcome or
 // package artifacts: those formats do not retain the authored game model.
-export type ArtifactTargetType = Exclude<ProjectType, "wasm">;
+// WASM is a normal build product.  Keeping the target vocabulary aligned with
+// the resolver means a produced `game.wasm` can immediately be opened by the
+// same project/artifact entry points as every other build result.
+export type ArtifactTargetType = ProjectType;

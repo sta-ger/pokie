@@ -17,6 +17,19 @@ from an interactive terminal to design an editable Blueprint Project, or add `--
 non-interactive blueprint. Run `npx pokie <command> --help` before a workflow for its required arguments and
 options.
 
+## WASM quick start
+
+WASM is a normal POKIE artifact target. Build a portable, self-describing component from a Blueprint (or a PAR workbook through its model-preserving import):
+
+```sh
+npx pokie build slot.blueprint.json --target wasm --out game.wasm
+npx pokie game.wasm              # inspect its bound metadata and next actions
+npx pokie validate game.wasm
+npx pokie sim game.wasm --rounds 100 --seed demo
+```
+
+`npx pokie game.wasm` deliberately routes to ordinary inspection instead of requiring a local project, compiler, package install, or adapter path. It prints the same validate/sim/replay actions available from the normal artifact navigation. A missing, stale, swapped, malformed, or incompatible manifest is rejected before the component can be treated as runnable.
+
 ## `pokie --help` / `pokie -h`
 
 Prints the general usage line, the full list of commands with their descriptions, and the next workflow choices,

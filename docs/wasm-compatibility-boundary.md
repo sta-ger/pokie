@@ -2,13 +2,12 @@
 
 # WASM Compatibility Boundary
 
-POKIE has **no WASM execution backend** — no host runtime that loads a `.wasm` file, instantiates a component,
-and drives session/play/state through it — and **no package-to-WASM compiler** — no command turns a
-`tsPackage` game into a `.wasm` build. This module does not add either of those. What it does add is the
-compatibility *boundary* between POKIE and a hypothetical WASM component: a versioned metadata contract, a
-resolver that recognizes and validates a component against that contract (read-only, never executing anything),
-and an advisory preflight that names portability concerns in a package. WASM is inspection-only, not a build or
-export target.
+POKIE WASM is a first-class, portable artifact target. `pokie build <Blueprint> --target wasm` emits a valid
+`game.wasm` and an integrity-bound `game.wasm.pokie-wasm.json` manifest. The portable `pokie/wasm` runtime
+instantiates only standard WebAssembly and receives randomness from its host; Node file loading, Studio state,
+and process concerns stay outside that runtime. POKIE intentionally does **not** promise that an arbitrary
+handwritten Node package can be compiled to WASM: Blueprint is the canonical source, and PAR reaches WASM via
+the existing model-preserving Blueprint import.
 
 The production-readable source for this boundary is `WASM_PRODUCT_CONTRACT` in
 `src/project/WasmProductContract.ts`. Resolver capabilities, CLI inspection and
@@ -16,8 +15,9 @@ unsupported-operation diagnostics, conversion planning, and Studio's refreshed
 WASM availability all derive from that contract; this page explains it but does
 not define a second product route.
 
-**Scope:** contract + validation + read-only resolution + advisory preflight. Not in scope: an execution
-backend, a compiler, or any claim that a specific package can be compiled to WASM today.
+**Scope:** canonical Blueprint/PAR artifact production, integrity-checked resolution, portable runtime API,
+and explicit package portability advisory. A legacy compatible sidecar remains readable for migration but is
+not runnable until rebuilt as a canonical artifact.
 
 ## The contract — `PokieWasmComponentManifest`
 

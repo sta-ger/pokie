@@ -14,7 +14,7 @@ import {
     StakeEngineImporting,
     ValidationIssue,
     describeWasmRecovery,
-    describeWasmUnsupportedOperation,
+    readWasmComponentManifest,
 } from "pokie";
 import fs from "fs";
 import path from "path";
@@ -157,7 +157,7 @@ export class ValidateCommand implements CliCommandHandling {
             throw error;
         }
         if (project?.type === "wasm") {
-            return this.wasmValidationFailure(packageRoot, describeWasmUnsupportedOperation("validate WASM game logic"));
+            return this.validateWasm(project);
         }
         if (project?.type === "outcomeLibrary") {
             return this.validateOutcomeLibrary(packageRoot, deep);
@@ -184,6 +184,19 @@ export class ValidateCommand implements CliCommandHandling {
             message,
             describeWasmRecovery(),
         );
+    }
+
+    private async validateWasm(project: import("pokie").PokieProject): Promise<ValidateReport> {
+        try {
+            const result = await readWasmComponentManifest(project);
+            if (!result.supported) return this.wasmValidationFailure(project.rootPath, result.diagnostic.message);
+            if (result.manifest.artifact === undefined) {
+                return this.wasmValidationFailure(project.rootPath, "This legacy sidecar-only WASM component cannot validate WASM game logic because it is inspectable but not runnable. Rebuild it with `pokie build <blueprint> --target wasm`.");
+            }
+            return {schemaVersion: 1, project: {path: project.rootPath, kind: "wasm"}, deep: false, valid: true, errors: [], warnings: [], suggestions: []};
+        } catch (error) {
+            return this.wasmValidationFailure(project.rootPath, error instanceof Error ? error.message : String(error));
+        }
     }
 
     private isBlueprintFile(projectPath: string): boolean {

@@ -12,6 +12,7 @@ import {
     OUTCOME_LIBRARY_GENERATE_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     STAKE_ADAPTER_EXPORT_CAPABILITY,
+    WASM_EXPORT_CAPABILITY,
 } from "../../src/project/ProjectCapability.js";
 import type {PokieProject} from "../../src/project/PokieProject.js";
 
@@ -19,7 +20,7 @@ describe("ArtifactBuilderRegistry", () => {
     const registry = new ArtifactBuilderRegistry();
 
     it("lists only matrix-advertised build targets", () => {
-        expect(new Set(registry.listTargets())).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
+        expect(new Set(registry.listTargets())).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
     });
 
     it("reports the true required source capability and supported sources for a package build", () => {
@@ -71,11 +72,11 @@ describe("ArtifactBuilderRegistry", () => {
         expect(stakeAdapterNotes).toMatch(/never re-derives or recovers the game model/);
     });
 
-    it("does not expose WASM as an ArtifactBuilderRegistry target", () => {
+    it("exposes WASM as a canonical Blueprint/PAR target", () => {
         const tsPackageNotes = registry.describe("tsPackage").unsupportedNotes.join(" ");
 
         expect(tsPackageNotes).toMatch(/never compiles or targets WASM/);
-        expect(() => registry.describe("wasm" as never)).toThrow(/Build target "wasm" is unavailable.*Next: choose a target shown by `pokie build --help`/);
+        expect(registry.describe("wasm")).toMatchObject({requiredSourceCapability: WASM_EXPORT_CAPABILITY, supportedSources: ["blueprint", "parWorkbook"]});
     });
 
     it("throws for a target it has no descriptor for", () => {

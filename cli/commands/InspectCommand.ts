@@ -107,13 +107,12 @@ export class InspectCommand implements CliCommandHandling {
         console.log(`  kind             ${presentation.kind}`);
         console.log(`  purpose          ${presentation.purpose}`);
 
-        if (project.type === "wasm") {
-            await this.printWasmManifest(project);
-        }
+        const wasmManifest = project.type === "wasm" ? await this.printWasmManifest(project) : undefined;
 
-        if (presentation.nextActions.length > 0) {
+        const nextActions = project.type === "wasm" && wasmManifest?.artifact === undefined ? [] : presentation.nextActions;
+        if (nextActions.length > 0) {
             console.log("\nAvailable next actions:");
-            for (const action of presentation.nextActions) {
+            for (const action of nextActions) {
                 console.log(`  ${action.label}:\n    ${action.command.replace("<path>", `"${project.rootPath}"`)}`);
             }
         }
@@ -126,7 +125,7 @@ export class InspectCommand implements CliCommandHandling {
         }
     }
 
-    private async printWasmManifest(project: PokieProject): Promise<void> {
+    private async printWasmManifest(project: PokieProject): Promise<import("pokie").PokieWasmComponentManifest> {
         const manifestRead = await readWasmComponentManifest(project);
         if (!manifestRead.supported) {
             throw new Error(manifestRead.diagnostic.message);
@@ -140,6 +139,14 @@ export class InspectCommand implements CliCommandHandling {
         console.log(`  serialization    session=${manifest.serialization.session}, play=${manifest.serialization.play}, state=${manifest.serialization.state}`);
         console.log(`  host bindings    rng=${manifest.host.rng}, services=${manifest.host.services.length === 0 ? "none" : manifest.host.services.join(", ")}`);
         console.log(`  capabilities     ${manifest.capabilities.length === 0 ? "none" : manifest.capabilities.join(", ")}`);
+        if (manifest.artifact === undefined) {
+            console.log("  runtime          legacy sidecar-only component (inspection-only)");
+        } else {
+            console.log(`  runtime          canonical runnable ABI ${manifest.artifact.abiVersion}`);
+            console.log(`  integrity        ${manifest.artifact.sha256} (${manifest.artifact.bytes} bytes)`);
+            console.log(`  adapter          ${manifest.artifact.adapter}`);
+        }
+        return manifest;
     }
 
     private describeInspectionFailure(projectPath: string, error: unknown): string {

@@ -25,8 +25,8 @@ import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
-// The complete product matrix: every ArtifactTargetType is selectable because it has a builder and supported
-// source workflow. WASM is a resolved inspection type, not an artifact target.
+// The complete product matrix: every ArtifactTargetType is selectable through
+// one registry.  WASM is deliberately not a second build command.
 const TARGET_TYPES: readonly ArtifactTargetType[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
 
 const USAGE = "Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]";
@@ -36,11 +36,12 @@ const PROJECT_HINT =
     "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, outcomeLibrary, " +
     "stakeAdapter, or PAR workbook; PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or PAR workbook; " +
     "tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; " +
-    "parWorkbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or parWorkbook.";
+    "parWorkbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, or wasm; Blueprint -> wasm is the canonical portable-runtime source.";
 // parWorkbook is the one target whose artifact is a single file rather than a directory (see
 // assertArtifactDestinationAvailable's own "file"/"directory" split) -- its default destination needs a real
 // file extension, every other target's default is just a bare directory name.
 const PAR_WORKBOOK_DEFAULT_EXTENSION = ".xlsx";
+const WASM_DEFAULT_EXTENSION = ".wasm";
 
 type BuildOptions = {target?: ArtifactTargetType; out?: string; dryRun?: boolean; exact?: boolean; sample?: bigint; seed?: string};
 
@@ -216,6 +217,7 @@ export class BuildCommand implements CliCommandHandling {
     private resolveDestination(rootPath: string, target: ArtifactTargetType): string {
         let siblingName: string = target;
         if (target === "parWorkbook") siblingName = `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}`;
+        if (target === "wasm") siblingName = `game${WASM_DEFAULT_EXTENSION}`;
         if (target === "blueprint") siblingName = "blueprint.json";
         return path.join(path.dirname(rootPath), siblingName);
     }

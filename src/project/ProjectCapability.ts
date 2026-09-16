@@ -52,6 +52,9 @@ export const WASM_EXPORT_CAPABILITY: ProjectCapability = "wasm.export";
 // docs/wasm-compatibility-boundary.md).
 export const WASM_MANIFEST_READ_CAPABILITY: ProjectCapability = "wasm.manifest.read";
 
+/** A canonical WASM component has the same portable game facade as a package. */
+export const WASM_RUNTIME_EXECUTE_CAPABILITY: ProjectCapability = "wasm.runtime.execute";
+
 // A project whose own pre-computed outcomes can be inspected and exactly analyzed straight off disk, via its
 // own canonical outcome-source reader — never by loading or executing a PokieGame. What
 // "outcomeSource.inspect" and "outcomeSource.analyze" require. Granted to both "outcomeLibrary" (read via

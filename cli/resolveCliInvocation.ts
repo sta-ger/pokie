@@ -86,6 +86,13 @@ export function resolveCliInvocation(
         return {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: discovered === undefined ? rawArgs : [discovered, ...rawArgs]};
     }
 
+    // A canonical component is a self-describing runnable artifact, not a
+    // Studio-only project directory. Its zero-setup entry point starts with
+    // inspection, which advertises the ordinary validate/sim/replay actions.
+    if (pathExists(first) && first.toLowerCase().endsWith(".wasm") && knownCommandNames.includes("inspect")) {
+        return {commandName: "inspect", args: rawArgs};
+    }
+
     if (pathExists(first)) {
         return {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: rawArgs};
     }
