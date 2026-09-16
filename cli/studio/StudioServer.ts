@@ -35,10 +35,7 @@ import {
     FAIRNESS_VERIFY_OPERATION,
     OUTCOME_LIBRARY_GENERATE_OPERATION,
     OUTCOME_SOURCE_SAMPLE_OPERATION,
-    PLAY_OPERATION,
-    REPLAY_OPERATION,
     STAKE_ENGINE_EXPORT_OPERATION,
-    SIM_OPERATION,
     STUDIO_OPERATION,
     VALIDATE_OPERATION,
 } from "pokie";
@@ -2762,7 +2759,6 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        if (await this.rejectCurrentWasmOperation(res, SIM_OPERATION)) return;
         const body = await this.readJsonBody(req);
         let validated;
         try {
@@ -2881,7 +2877,6 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        if (await this.rejectCurrentWasmOperation(res, REPLAY_OPERATION)) return;
         const body = await this.readJsonBody(req);
         const outcomeSourceProject = this.projectDashboard?.status === "outcome-source" ? this.projectDashboard.project : undefined;
         const isNativeOutcomeLibrary = outcomeSourceProject?.type === "outcomeLibrary";
@@ -2959,8 +2954,6 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        if (await this.rejectCurrentWasmOperation(res, REPLAY_OPERATION)) return;
-
         const body = await this.readJsonBody(req);
         if (typeof body !== "object" || body === null) {
             this.sendJson(res, 400, {error: "Request body must be a JSON object."});
@@ -3120,8 +3113,6 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-
         const body = await this.readJsonBody(req);
         let validated;
         try {
@@ -3150,8 +3141,6 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-
         const body = await this.readJsonBody(req);
         let validated;
         try {
@@ -3178,8 +3167,6 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-
         const result = await this.playService.findAnyWin(sessionId);
         if (result.status === "ok") {
             this.sendJson(res, 200, {status: "ok", session: result.session});
@@ -3197,8 +3184,6 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-
         const body = await this.readJsonBody(req);
         let validated;
         try {
@@ -3225,8 +3210,6 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-
         const result = await this.playService.findFreeGames(sessionId);
         if (result.status === "ok") {
             this.sendJson(res, 200, {status: "ok", session: result.session});

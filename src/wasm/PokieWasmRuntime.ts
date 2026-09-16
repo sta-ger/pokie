@@ -43,7 +43,7 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
             const winMultiplier = evaluateWinMultiplier(screen, canonical.model);
             const next = {schemaVersion: "pokie.state.v1" as const, seed: state.seed, draws: [...state.draws, ...currentDraws], sequence: state.sequence + 1};
             state = next;
-            return {sequence: next.sequence, draw: currentDraws[0], stops, screen, winMultiplier, payout: winMultiplier * stake, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>} satisfies PokieWasmRound;
+            return {sequence: next.sequence, draw: currentDraws[0], stops, screen, winMultiplier, stake, payout: winMultiplier * stake, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>} satisfies PokieWasmRound;
         }),
         serialize: () => JSON.parse(JSON.stringify(state)) as PokieWasmSessionState,
         dispose: () => undefined,

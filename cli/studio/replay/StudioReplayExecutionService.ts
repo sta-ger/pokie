@@ -6,7 +6,9 @@ import {
     determineStakeAmount,
     describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
+    hasDeclaredCanonicalWasmArtifact,
     isWasmComponentFile,
+    loadPokieWasmFileRuntime,
     GameSessionHandling,
     loadPokieGame,
     releasePokieGame,
@@ -25,6 +27,7 @@ import {
     resolveOutcomeLibraryModeName,
     RoundArtifact,
     SeededWeightedOutcomeRandomSource,
+    SeededRandomNumberGenerator,
     VideoSlotSessionHandling,
     WeightedOutcomeRandomSource,
 } from "pokie";
@@ -124,11 +127,7 @@ export class StudioReplayExecutionService {
         // Keep the no-job WASM boundary inside the shared lifecycle as well as
         // StudioServer. A direct caller must not be able to queue work that
         // can only fail after attempting runtime preparation.
-        if (outcomeSourceProject?.type === "wasm") {
-            const diagnostic = describeUnavailableArtifactOperation(outcomeSourceProject, OUTCOME_SOURCE_REPLAY_OPERATION);
-            return {status: "unsupported", message: diagnostic?.message ?? describeWasmLifecycleBoundary(outcomeSourceProject.rootPath, "replay a game round")};
-        }
-        if (isWasmComponentFile(projectRoot)) {
+        if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmArtifact(projectRoot)) {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "replay a game round")};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
@@ -264,6 +263,11 @@ export class StudioReplayExecutionService {
             return;
         }
 
+        if (isWasmComponentFile(record.projectRoot)) {
+            await this.runWasmReplay(record);
+            return;
+        }
+
         let game: PokieGame;
         try {
             game = await this.loadRuntimeGame(record.projectRoot, {signal: record.abortController.signal});
@@ -388,6 +392,76 @@ export class StudioReplayExecutionService {
         } finally {
             await releasePokieGame(game).catch(() => undefined);
         }
+    }
+
+    /** Replays portable WASM with the same seeded host stream used by Studio Play. */
+    private async runWasmReplay(record: StudioReplayJobRecord): Promise<void> {
+        if (record.seed === undefined) {
+            this.fail(record, new Error("A canonical WASM replay requires a deterministic seed."));
+            return;
+        }
+        const random = new SeededRandomNumberGenerator(record.seed);
+        let runtime;
+        let disposeSession: (() => void) | undefined;
+        try {
+            runtime = await loadPokieWasmFileRuntime(record.projectRoot, {
+                nextRandom: () => random.getRandomInt(0, 1_000_000_000) / 1_000_000_000,
+            });
+            if (record.abortController.signal.aborted) {
+                this.cancelRecord(record);
+                return;
+            }
+            record.status = "running";
+            record.game = {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
+            record.configHash = runtime.manifest.artifact?.configurationHash;
+            const session = runtime.createSession(record.seed);
+            disposeSession = () => session.dispose();
+            let totalBet = 0;
+            let totalWin = 0;
+            let finalRound;
+            let stateBefore: Record<string, unknown> | undefined;
+            for (let index = 0; index < record.round; index++) {
+                if (record.abortController.signal.aborted) {
+                    this.cancelRecord(record);
+                    return;
+                }
+                if (index === record.round - 1) stateBefore = session.serialize() as unknown as Record<string, unknown>;
+                finalRound = await session.play();
+                totalBet += finalRound.stake;
+                totalWin += finalRound.payout;
+                const completedRounds = index + 1;
+                this.updateReplayProgress(record, completedRounds);
+                if (completedRounds < record.round && completedRounds % this.chunkSize === 0) await this.yieldToEventLoop();
+            }
+            const stateAfter = session.serialize() as unknown as Record<string, unknown>;
+            record.status = "completed";
+            record.descriptor = {
+                sessionId: this.createId(),
+                game: record.game,
+                seed: record.seed,
+                round: record.round,
+                totalBet,
+                totalWin,
+                screen: finalRound === undefined ? null : finalRound.screen.map((_, row) => finalRound!.screen.map((reel) => reel[row])),
+                timestamp: record.startedAt,
+                durationMs: record.durationMs,
+                ...(stateBefore === undefined ? {} : {stateBefore}),
+                stateAfter,
+            };
+            this.markTerminal(record);
+            this.onCompleted(record);
+        } catch (error) {
+            if (record.abortController.signal.aborted) this.cancelRecord(record);
+            else this.fail(record, error);
+        } finally {
+            disposeSession?.();
+            runtime?.dispose();
+        }
+    }
+
+    private updateReplayProgress(record: StudioReplayJobRecord, completedRounds: number): void {
+        record.completedRounds = completedRounds;
+        record.durationMs = this.now() - record.startedAt;
     }
 
     // The "outcomeLibrary"/"stakeAdapter" counterpart to run() above -- reached only when start() was

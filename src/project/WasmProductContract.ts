@@ -31,6 +31,16 @@ export function isWasmComponentFile(targetPath: string): boolean {
     }
 }
 
+/** Cheap Studio queue guard; execution still revalidates exact module bytes. */
+export function hasDeclaredCanonicalWasmArtifact(targetPath: string): boolean {
+    try {
+        const manifest = JSON.parse(fs.readFileSync(`${targetPath}.pokie-wasm.json`, "utf-8")) as {artifact?: unknown};
+        return typeof manifest.artifact === "object" && manifest.artifact !== null;
+    } catch {
+        return false;
+    }
+}
+
 // Every public entry point which encounters a WASM component before it can be
 // resolved uses this wording.  Keeping the cause here is important: a missing
 // sidecar is repaired differently from a malformed declaration or an older

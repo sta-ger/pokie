@@ -198,9 +198,12 @@ export const PROJECT_TYPE_LABEL: Record<Exclude<StudioProjectType, "wasm">, stri
 };
 
 export function describeProjectType(type: Exclude<StudioProjectType, "wasm">): string;
-export function describeProjectType(type: "wasm", wasmPresentation: StudioWasmPresentation): string;
+export function describeProjectType(type: "wasm", wasmPresentation?: StudioWasmPresentation): string;
 export function describeProjectType(type: StudioProjectType, wasmPresentation?: StudioWasmPresentation): string {
-    return type === "wasm" ? wasmPresentation!.label : PROJECT_TYPE_LABEL[type];
+    // A legacy component carries its inspection presentation; an integrity-bound canonical component
+    // is a normal loaded game and intentionally does not.  Give both truthful labels without forcing
+    // the shared loaded dashboard back into the legacy artifact DTO.
+    return type === "wasm" ? wasmPresentation?.label ?? "Playable WASM game" : PROJECT_TYPE_LABEL[type];
 }
 
 const CAPABILITY_LABEL: Record<string, string> = {

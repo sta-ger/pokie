@@ -1,4 +1,4 @@
-import {isWasmComponentFile, loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, releasePokieGame, wasmProductContractView, type ProjectType} from "pokie";
+import {isWasmComponentFile, loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, readWasmComponentManifest, releasePokieGame, type ProjectType} from "pokie";
 import path from "path";
 import {BlueprintMaterializationError} from "../materialize/BlueprintMaterializationError.js";
 import {RuntimePreparationError} from "../materialize/RuntimePreparationError.js";
@@ -129,12 +129,39 @@ export async function loadProjectDashboardContext(
         const identity = await describeLocation(projectRoot).catch(() => undefined);
         assertDashboardLoadCurrent(options);
         if (artifact.type === "wasm") {
+            if (isWasmComponentFile(artifact.rootPath)) {
+                // A canonical component is an ordinary portable game runtime, not
+                // a Studio-only artifact dashboard. Read it again here so opening
+                // a registered/recent component cannot reuse stale metadata.
+                const manifestRead = await readWasmComponentManifest(artifact);
+                assertDashboardLoadCurrent(options);
+                if (manifestRead.supported && manifestRead.manifest.artifact !== undefined) {
+                    return {
+                        status: "loaded",
+                        projectRoot: resolvedRoot,
+                        game: {
+                            id: manifestRead.manifest.component.id,
+                            name: manifestRead.manifest.component.id,
+                            version: manifestRead.manifest.component.version,
+                        },
+                        type: "wasm",
+                        capabilities: ["runtime.execute", ...artifact.capabilities],
+                        origin: identity?.origin,
+                    };
+                }
+            }
             return {
                 status: "artifact",
                 projectRoot: resolvedRoot,
                 project: artifact,
                 origin: identity?.origin,
-                wasmPresentation: wasmProductContractView(),
+                wasmPresentation: {
+                    label: "POKIE WASM component",
+                    manifestCapability: "wasm.manifest.read",
+                    manifestCapabilityLabel: "Inspect declared WASM component metadata",
+                    inspectActionLabel: "Inspect declared manifest",
+                    inspectionSummary: "This legacy WASM component is inspection-only; rebuild it as a canonical POKIE WASM artifact to use shared Studio workflows.",
+                },
             };
         }
         return {

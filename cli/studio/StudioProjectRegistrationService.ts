@@ -1,4 +1,4 @@
-import {describeUnavailableWasmComponent, ProjectTargetResolver, type PokieProject, type ProjectResolving, type ProjectType, wasmProductContractView} from "pokie";
+import {describeUnavailableWasmComponent, isWasmComponentFile, ProjectTargetResolver, readWasmComponentManifest, type PokieProject, type ProjectResolving, type ProjectType, wasmProductContractView} from "pokie";
 import fs from "fs";
 import path from "path";
 import {PokiePathResolver} from "../paths/PokiePathResolver.js";
@@ -338,7 +338,19 @@ export class StudioProjectRegistrationService {
         if (project === undefined) {
             return undefined;
         }
-        return {location: await this.canonicalize(project.rootPath), project};
+        return {location: await this.canonicalize(project.rootPath), project: await this.withCanonicalWasmCapabilities(project)};
+    }
+
+    // The resolver deliberately grants every WASM file only its safe manifest-read capability.  Once
+    // registration has re-read an integrity-bound canonical artifact, though, the ordinary Studio
+    // project DTO must advertise the same portable runtime capability its dashboard and services use.
+    // Legacy sidecar-only files remain inspection-only without a parallel registry shape.
+    private async withCanonicalWasmCapabilities(project: PokieProject): Promise<PokieProject> {
+        if (project.type !== "wasm") return project;
+        if (!isWasmComponentFile(project.rootPath)) return project;
+        const manifest = await readWasmComponentManifest(project);
+        if (!manifest.supported || manifest.manifest.artifact === undefined) return project;
+        return {...project, capabilities: ["runtime.execute", ...project.capabilities]};
     }
 
     private async entriesAt(canonicalLocation: string): Promise<StudioProjectRegistryEntry[]> {

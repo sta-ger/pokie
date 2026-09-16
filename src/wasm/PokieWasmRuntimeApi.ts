@@ -10,6 +10,8 @@ export type PokieWasmRound = {
     readonly stops: readonly number[];
     readonly screen: readonly (readonly string[])[];
     readonly winMultiplier: number;
+    /** The resolved command stake used to calculate payout. */
+    readonly stake: number;
     readonly payout: number;
     readonly command: Record<string, unknown>;
 };

@@ -1,7 +1,9 @@
 import {
     describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
+    hasDeclaredCanonicalWasmArtifact,
     isWasmComponentFile,
+    loadPokieWasmFileRuntime,
     loadPokieGame,
     OUTCOME_SOURCE_SIMULATE_OPERATION,
     OutcomeLibraryBundleOutcomeSource,
@@ -15,6 +17,7 @@ import {
     resolveOutcomeLibraryModeName,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
+    SeededRandomNumberGenerator,
     SimulationAccumulator,
     SimulationCancelledError,
     SimulationReport,
@@ -138,11 +141,7 @@ export class StudioSimulationService {
         // guard. A resolved component, or an actual unresolved WASM file, has
         // no runnable branch. A package directory named `game.wasm` remains a
         // normal project and must not be rejected from its pathname alone.
-        if (outcomeSourceProject?.type === "wasm") {
-            const diagnostic = describeUnavailableArtifactOperation(outcomeSourceProject, OUTCOME_SOURCE_SIMULATE_OPERATION);
-            return {status: "unsupported", message: diagnostic?.message ?? describeWasmLifecycleBoundary(outcomeSourceProject.rootPath, "simulate game rounds")};
-        }
-        if (isWasmComponentFile(projectRoot)) {
+        if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmArtifact(projectRoot)) {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "simulate game rounds")};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
@@ -315,6 +314,11 @@ export class StudioSimulationService {
             return;
         }
 
+        if (isWasmComponentFile(record.projectRoot)) {
+            await this.runWasmSimulation(record);
+            return;
+        }
+
         if (record.abortController.signal.aborted) {
             this.cancelRecord(record);
             return;
@@ -390,6 +394,77 @@ export class StudioSimulationService {
             this.fail(record, error);
         } finally {
             await runtime.release().catch(() => undefined);
+        }
+    }
+
+    /** Runs canonical WASM in-process: portable components have no Node worker loader. */
+    private async runWasmSimulation(record: StudioSimulationJobRecord): Promise<void> {
+        if (record.abortController.signal.aborted) {
+            this.cancelRecord(record);
+            return;
+        }
+        record.status = "running";
+        const seed = record.seed ?? crypto.randomUUID();
+        const random = new SeededRandomNumberGenerator(seed);
+        let runtime;
+        let disposeSession: (() => void) | undefined;
+        try {
+            runtime = await loadPokieWasmFileRuntime(record.projectRoot, {
+                nextRandom: () => random.getRandomInt(0, 1_000_000_000) / 1_000_000_000,
+            });
+            const session = runtime.createSession(seed);
+            disposeSession = () => session.dispose();
+            const accumulator = new SimulationAccumulator();
+            let remaining = record.rounds;
+            while (remaining > 0) {
+                if (record.abortController.signal.aborted) {
+                    this.cancelRecord(record);
+                    return;
+                }
+                const chunk = Math.min(this.chunkSize, remaining);
+                for (let index = 0; index < chunk; index++) {
+                    if (record.abortController.signal.aborted) {
+                        this.cancelRecord(record);
+                        return;
+                    }
+                    const round = await session.play();
+                    accumulator.addRound(round.stake, round.payout);
+                }
+                record.roundsCompleted += chunk;
+                record.durationMs = this.now() - record.startedAt;
+                remaining -= chunk;
+                if (remaining > 0) await this.yieldToEventLoop();
+            }
+            const statistics = accumulator.getStatistics();
+            const report = this.reportBuilder.build({
+                manifest: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
+                requestedRounds: record.rounds,
+                ...(record.seed === undefined ? {} : {seed: record.seed}),
+                statistics,
+                durationMs: record.durationMs,
+                packageRoot: record.projectRoot,
+                configHash: runtime.manifest.artifact?.configurationHash,
+                workers: 1,
+                pokieVersion: this.pokieVersion,
+            });
+            record.status = "completed";
+            record.report = report;
+            record.statistics = {
+                volatility: statistics.volatility,
+                payoutStandardDeviation: statistics.payoutStandardDeviation,
+                returnStandardDeviation: statistics.returnStandardDeviation,
+                averagePayoutConfidenceInterval95: statistics.averagePayoutConfidenceInterval95,
+                rtpConfidenceInterval95: statistics.rtpConfidenceInterval95,
+                payoutHistogram: statistics.payoutHistogram,
+            };
+            this.markTerminal(record);
+            this.onCompleted(record);
+        } catch (error) {
+            if (record.abortController.signal.aborted) this.cancelRecord(record);
+            else this.fail(record, error);
+        } finally {
+            disposeSession?.();
+            runtime?.dispose();
         }
     }
 
