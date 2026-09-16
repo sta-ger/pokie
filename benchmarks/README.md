@@ -21,7 +21,7 @@ Every file prints its own `[bench] ...` line to stdout with the numbers it measu
 | `stakeEngineAnalysisAndDiff.bench.ts` | `StakeEngineStandaloneAnalyzer.analyze()` and `StakeEngineStandaloneAnalysisDiffer.diff()` timing over a 20,000-outcome synthetic mode. |
 | `randomGameBlueprintGeneration.bench.ts` | `RandomGameBlueprintGenerator.generate()` average time across 500 seeds. |
 | `simulationReportGeneration.bench.ts` | `SimulationReportBuilder.build()` plus `HtmlSimulationReportRenderer`/`MarkdownSimulationReportRenderer` `.render()` timing for a 100,000-round report. |
-| `wasmRuntime.bench.ts` | Raw module bytes, cold instantiate, 100 deterministic host-RNG spins, serialization, and replay timing for the canonical portable fixture. |
+| `wasmRuntime.bench.ts` | Raw module and integrity-sidecar bytes, cold instantiate, 100 deterministic host-RNG spins, serialization payload, replay, and worker-protocol round-trip timing for the canonical portable fixture. |
 
 ## Why these never assert a hard wall-clock/memory threshold
 

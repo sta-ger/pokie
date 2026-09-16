@@ -1,57 +1,45 @@
 import {SeededRandomNumberGenerator} from "../../../src/session/videoslot/combinations/SeededRandomNumberGenerator.js";
 import {instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
-import type {PokieWasmComponentManifest} from "../../../src/project/wasm/PokieWasmComponentManifest.js";
-
-const abiBytes = new Uint8Array([
-    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
-    0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7f,
-    0x02, 0x15, 0x01, 0x05, 0x70, 0x6f, 0x6b, 0x69, 0x65, 0x0b, 0x6e, 0x65, 0x78, 0x74, 0x5f, 0x72, 0x61, 0x6e, 0x64, 0x6f, 0x6d, 0x00, 0x00,
-    0x03, 0x02, 0x01, 0x00, 0x07, 0x08, 0x01, 0x04, 0x70, 0x6c, 0x61, 0x79, 0x00, 0x01,
-    0x0a, 0x06, 0x01, 0x04, 0x00, 0x10, 0x00, 0x0b,
-]);
-const gameModel = new TextEncoder().encode(JSON.stringify({
-    schemaVersion: "pokie.game.v1", reels: 1, rows: 1, reelStrips: [["A", "B"]], paylines: [[0]], paytable: {A: {1: 2}, B: {1: 1}}, stopWidths: [1],
-}));
-const descriptor = new TextEncoder().encode(JSON.stringify({
-    schemaVersion: "1.0.0", component: {id: "golden", version: "1.0.0"},
-    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"}, host: {rng: "pokie.rng.v1", services: []}, capabilities: ["runtime.play", "runtime.serialize", "runtime.replay"],
-    artifact: {format: "pokie.wasm.v1", abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash: `sha256:${"0".repeat(64)}`},
-}));
-const descriptorName = new TextEncoder().encode("pokie.component.v1");
-const bytes = new Uint8Array([
-    ...abiBytes, 0x00, ...encodeUnsigned(gameModel.length + 14), 0x0d, 0x70, 0x6f, 0x6b, 0x69, 0x65, 0x2e, 0x67, 0x61, 0x6d, 0x65, 0x2e, 0x76, 0x31, ...gameModel,
-    0x00, ...encodeUnsigned(descriptor.length + descriptorName.length + 1), descriptorName.length, ...descriptorName, ...descriptor,
-]);
-
-function encodeUnsigned(value: number): number[] {
-    const bytes: number[] = [];
-    do {
-        let byte = value & 0x7f;
-        value >>>= 7;
-        if (value !== 0) byte |= 0x80;
-        bytes.push(byte);
-    } while (value !== 0);
-    return bytes;
-}
-const manifest: PokieWasmComponentManifest = {
-    schemaVersion: "1.0.0", component: {id: "golden", version: "1.0.0"},
-    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"}, host: {rng: "pokie.rng.v1", services: []}, capabilities: ["runtime.play", "runtime.serialize", "runtime.replay"],
-    artifact: {format: "pokie.wasm.v1", sha256: "sha256:0000000000000000000000000000000000000000000000000000000000000000", bytes: 8, abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
-};
+import type {PokieWasmRound} from "../../../src/wasm/PokieWasmRuntimeApi.js";
+import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 describe("WASM runtime parity golden", () => {
-    it("preserves host-owned deterministic draws and serialized continuation", async () => {
+    it("preserves seeded host draws, rounds, serialized continuation, and replay", async () => {
+        const fixture = createCanonicalWasmFixture({id: "golden"});
         const nodeRng = new SeededRandomNumberGenerator("wasm-parity-golden");
-        const expected = Array.from({length: 6}, () => nodeRng.getRandomInt(0, 1_000_000) / 1_000_000);
-        const supplied = [...expected];
-        const runtime = await instantiatePokieWasm(bytes, manifest, {nextRandom: () => supplied.shift()!});
-        const session = runtime.createSession("wasm-parity-golden");
-        const first = await Promise.all([{bet: 1}, {bet: 2}, {bet: 3}].map((command) => session.play(command)));
-        const state = JSON.parse(JSON.stringify(session.serialize()));
-        const resumed = runtime.restoreSession(state);
-        const second = await Promise.all([{bet: 4}, {bet: 5}, {bet: 6}].map((command) => resumed.play(command)));
-        expect([...first, ...second].map((round) => round.draw)).toEqual(expected);
-        expect(resumed.serialize()).toEqual({schemaVersion: "pokie.state.v1", seed: "wasm-parity-golden", draws: expected, sequence: 6});
+        const nodeDraws = Array.from({length: 6}, () => nodeRng.getRandomInt(0, 1_000_000) / 1_000_000);
+        const supplied = [...nodeDraws];
+        const firstRuntime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => supplied.shift()!});
+        const firstSession = firstRuntime.createSession("wasm-parity-golden");
+        const commands = [{bet: 1}, {bet: 2}, {bet: 3}];
+        const firstRounds: PokieWasmRound[] = [];
+        for (const command of commands) firstRounds.push(await firstSession.play(command));
+        const serialized = JSON.parse(JSON.stringify(firstSession.serialize()));
+        expect(firstRounds.map((round) => round.draw)).toEqual(nodeDraws.slice(0, 3));
+        expect(serialized).toEqual({schemaVersion: "pokie.state.v1", seed: "wasm-parity-golden", draws: nodeDraws.slice(0, 3), sequence: 3});
+
+        const resumedSession = firstRuntime.restoreSession(serialized);
+        const resumedRounds: PokieWasmRound[] = [];
+        for (const command of commands) resumedRounds.push(await resumedSession.play(command));
+        let replayRoundsCount = 0;
+        const replayRuntime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => nodeDraws[3 + replayRoundsCount++]!});
+        const replayRounds = await replayRuntime.replay(serialized, commands);
+        expect(replayRounds).toEqual(resumedRounds);
+        expect(resumedSession.serialize()).toEqual({schemaVersion: "pokie.state.v1", seed: "wasm-parity-golden", draws: nodeDraws, sequence: 6});
+        firstRuntime.dispose();
+        replayRuntime.dispose();
+    });
+
+    it("rejects malformed portable state and reports canonical runtime traps", async () => {
+        const fixture = createCanonicalWasmFixture({id: "golden-invalid"});
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => 0.25});
+        expect(() => runtime.restoreSession({schemaVersion: "pokie.state.v1", seed: "x", draws: [1], sequence: 1})).toThrow(/malformed/);
+        expect(() => runtime.restoreSession({schemaVersion: "pokie.state.v1", seed: "x", draws: [], sequence: -1})).toThrow(/malformed/);
         runtime.dispose();
+
+        const trappingFixture = createCanonicalWasmFixture({id: "golden-trap", trapping: true});
+        const trappingRuntime = await instantiatePokieWasm(trappingFixture.bytes, trappingFixture.manifest, {nextRandom: () => 0.25});
+        await expect(trappingRuntime.createSession("trap").play()).rejects.toThrow(/unreachable|trap/i);
+        trappingRuntime.dispose();
     });
 });

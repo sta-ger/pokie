@@ -7,6 +7,7 @@ export type PokieWasmWorkerRequest =
     | {readonly id: string; readonly type: "play"; readonly command?: Record<string, unknown>}
     | {readonly id: string; readonly type: "restore"; readonly state: PokieWasmSessionState}
     | {readonly id: string; readonly type: "serialize"}
+    | {readonly id: string; readonly type: "cancel"}
     | {readonly id: string; readonly type: "dispose"};
 export type PokieWasmWorkerResponse = {readonly id: string; readonly ok: true; readonly result?: unknown} | {readonly id: string; readonly ok: false; readonly error: string};
 
@@ -19,7 +20,7 @@ export class PokieWasmWorkerProtocol {
         try {
             if (request.type === "instantiate") {
                 const draws = [...request.draws];
-                this.runtime?.dispose();
+                this.release();
                 const portableBytes = new Uint8Array(request.bytes.byteLength);
                 portableBytes.set(request.bytes);
                 this.runtime = await instantiatePokieWasm(portableBytes, request.manifest, {nextRandom: () => {
@@ -33,17 +34,24 @@ export class PokieWasmWorkerProtocol {
             if (this.runtime === undefined || this.session === undefined) throw new Error("Instantiate a POKIE WASM runtime before sending this worker command.");
             if (request.type === "play") return {id: request.id, ok: true, result: await this.session.play(request.command)};
             if (request.type === "restore") {
-                this.session = this.runtime.restoreSession(request.state);
+                const restored = this.runtime.restoreSession(request.state);
+                this.session.dispose();
+                this.session = restored;
                 return {id: request.id, ok: true, result: this.session.serialize()};
             }
             if (request.type === "serialize") return {id: request.id, ok: true, result: this.session.serialize()};
-            this.session.dispose();
-            this.runtime.dispose();
-            this.runtime = undefined;
-            this.session = undefined;
+            this.release();
             return {id: request.id, ok: true};
         } catch (error) {
+            if (request.type === "play") this.release();
             return {id: request.id, ok: false, error: error instanceof Error ? error.message : String(error)};
         }
+    }
+
+    private release(): void {
+        this.session?.dispose();
+        this.runtime?.dispose();
+        this.session = undefined;
+        this.runtime = undefined;
     }
 }

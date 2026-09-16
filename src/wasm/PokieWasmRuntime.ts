@@ -31,28 +31,37 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
     const play = instance.exports.play;
     if (typeof play !== "function") throw new Error("POKIE WASM artifact is missing its canonical play export.");
     let disposed = false;
-    const session = (state: PokieWasmSessionState): PokieWasmRuntimeSession => ({
-        play: (command: Record<string, unknown> = {}) => Promise.resolve().then(() => {
-            if (disposed) throw new Error("The WASM runtime has been disposed.");
-            currentDraws = [];
-            const stake = resolveStake(command, canonical.model);
-            const packedStops = play();
-            if (typeof packedStops !== "number" || currentDraws.length === 0) throw new Error("POKIE WASM play export must return packed reel stops after requesting host RNG draws.");
-            const stops = unpackStops(packedStops, canonical.model);
-            const screen = buildScreen(stops, canonical.model);
-            const winMultiplier = evaluateWinMultiplier(screen, canonical.model);
-            const next = {schemaVersion: "pokie.state.v1" as const, seed: state.seed, draws: [...state.draws, ...currentDraws], sequence: state.sequence + 1};
-            state = next;
-            return {sequence: next.sequence, draw: currentDraws[0], stops, screen, winMultiplier, stake, payout: winMultiplier * stake, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>} satisfies PokieWasmRound;
-        }),
-        serialize: () => JSON.parse(JSON.stringify(state)) as PokieWasmSessionState,
-        dispose: () => undefined,
-    });
+    const session = (state: PokieWasmSessionState): PokieWasmRuntimeSession => {
+        let sessionDisposed = false;
+        return {
+            play: (command: Record<string, unknown> = {}) => Promise.resolve().then(() => {
+                if (disposed || sessionDisposed) throw new Error("The WASM runtime session has been disposed.");
+                currentDraws = [];
+                const stake = resolveStake(command, canonical.model);
+                const packedStops = play();
+                if (typeof packedStops !== "number" || currentDraws.length === 0) throw new Error("POKIE WASM play export must return packed reel stops after requesting host RNG draws.");
+                const stops = unpackStops(packedStops, canonical.model);
+                const screen = buildScreen(stops, canonical.model);
+                const winMultiplier = evaluateWinMultiplier(screen, canonical.model);
+                const next = {schemaVersion: "pokie.state.v1" as const, seed: state.seed, draws: [...state.draws, ...currentDraws], sequence: state.sequence + 1};
+                state = next;
+                return {sequence: next.sequence, draw: currentDraws[0], stops, screen, winMultiplier, stake, payout: winMultiplier * stake, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>} satisfies PokieWasmRound;
+            }),
+            serialize: () => JSON.parse(JSON.stringify(state)) as PokieWasmSessionState,
+            dispose: () => {
+                sessionDisposed = true;
+            },
+        };
+    };
     return {
         manifest: inspectPokieWasm(manifest),
         createSession: (seed) => session({schemaVersion: "pokie.state.v1", seed, draws: [], sequence: 0}),
         restoreSession: (state) => {
-            if (state.schemaVersion !== "pokie.state.v1" || !Array.isArray(state.draws) || !Number.isSafeInteger(state.sequence)) throw new Error("Unsupported or malformed POKIE WASM session state.");
+            if (state.schemaVersion !== "pokie.state.v1" || typeof state.seed !== "string" || !Array.isArray(state.draws) ||
+                !state.draws.every((draw) => typeof draw === "number" && Number.isFinite(draw) && draw >= 0 && draw < 1) ||
+                !Number.isSafeInteger(state.sequence) || state.sequence < 0 || state.draws.length !== state.sequence) {
+                throw new Error("Unsupported or malformed POKIE WASM session state.");
+            }
             return session(JSON.parse(JSON.stringify(state)) as PokieWasmSessionState);
         },
         replay: async (state, commands) => {

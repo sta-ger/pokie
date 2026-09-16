@@ -1,18 +1,15 @@
 import {instantiatePokieWasm} from "../src/wasm/PokieWasmRuntime.js";
-import type {PokieWasmComponentManifest} from "../src/project/wasm/PokieWasmComponentManifest.js";
+import {PokieWasmWorkerProtocol} from "../src/wasm/worker.js";
+import {createCanonicalWasmFixture} from "../tests/fixtures/wasm/createCanonicalWasmFixture.js";
 import {formatBenchmarkLine, measureBenchmarkAsync} from "./support/measureBenchmark.js";
 
-const bytes = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
-const manifest: PokieWasmComponentManifest = {
-    schemaVersion: "1.0.0", component: {id: "benchmark", version: "1.0.0"},
-    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"}, host: {rng: "pokie.rng.v1", services: []}, capabilities: ["runtime.play"],
-    artifact: {format: "pokie.wasm.v1", sha256: "sha256:0000000000000000000000000000000000000000000000000000000000000000", bytes: 8, abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
-};
+const fixture = createCanonicalWasmFixture({id: "benchmark"});
 
 describe("benchmark: portable WASM runtime", () => {
     test("records cold instantiate, warm spins, serialization, and replay baselines", async () => {
         let draw = 0;
-        const cold = await measureBenchmarkAsync(() => instantiatePokieWasm(bytes, manifest, {nextRandom: () => (++draw % 100) / 100}));
+        const nextRandom = () => (++draw % 100) / 100;
+        const cold = await measureBenchmarkAsync(() => instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom}));
         const runtime = cold.result;
         const session = runtime.createSession("benchmark-seed");
         const warm = await measureBenchmarkAsync(async () => {
@@ -20,9 +17,26 @@ describe("benchmark: portable WASM runtime", () => {
             return session.serialize();
         });
         const replay = await measureBenchmarkAsync(() => runtime.replay(warm.result, [{bet: 1}]));
-        console.log(formatBenchmarkLine("wasmRuntime", {rawBytes: bytes.byteLength, coldInstantiateMs: cold.durationMs, warmSpinsMs: warm.durationMs, replayMs: replay.durationMs, rounds: 100}));
+        const worker = await measureBenchmarkAsync(async () => {
+            const protocol = new PokieWasmWorkerProtocol();
+            const instantiated = await protocol.handle({id: "instantiate", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, draws: [0.25]});
+            const round = await protocol.handle({id: "play", type: "play"});
+            await protocol.handle({id: "dispose", type: "dispose"});
+            return {instantiated, round};
+        });
+        console.log(formatBenchmarkLine("wasmRuntime", {
+            rawModuleBytes: fixture.bytes.byteLength,
+            packagedManifestBytes: new TextEncoder().encode(JSON.stringify(fixture.manifest)).byteLength,
+            coldInstantiateMs: cold.durationMs,
+            warmSpinsMs: warm.durationMs,
+            serializationBytes: JSON.stringify(warm.result).length,
+            replayMs: replay.durationMs,
+            workerRoundTripMs: worker.durationMs,
+            rounds: 100,
+        }));
         expect(warm.result.sequence).toBe(100);
         expect(replay.result).toHaveLength(1);
+        expect(worker.result).toMatchObject({instantiated: {ok: true}, round: {ok: true}});
         runtime.dispose();
     });
 });
