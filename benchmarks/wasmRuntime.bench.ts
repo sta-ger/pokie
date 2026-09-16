@@ -1,7 +1,7 @@
 import {spawn} from "child_process";
 import {writeFile} from "fs/promises";
 import path from "path";
-import {instantiatePokieWasm} from "../src/wasm/PokieWasmRuntime.js";
+import {instantiatePokieWasm, SeededPokieWasmHost} from "../src/wasm/PokieWasmRuntime.js";
 import {PORTABLE_RUNTIME_GOLDEN} from "../tests/fixtures/wasm/portableRuntimeGolden.js";
 import {createCanonicalWasmFixture} from "../tests/fixtures/wasm/createCanonicalWasmFixture.js";
 import {formatBenchmarkLine, measureBenchmarkAsync} from "./support/measureBenchmark.js";
@@ -58,9 +58,11 @@ type WasmRuntimeBenchmarkResult = {
 
 describe("benchmark: portable WASM runtime", () => {
     test("records Node and genuine Chromium/Worker baselines with correctness assertions", async () => {
-        let draw = 0;
-        const nextRandom = () => (++draw % 100) / 100;
-        const cold = await measureBenchmarkAsync(() => instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom}));
+        const cold = await measureBenchmarkAsync(() => instantiatePokieWasm(
+            fixture.bytes,
+            fixture.manifest,
+            new SeededPokieWasmHost(benchmarkConfiguration.fixtureSeed),
+        ));
         const runtime = cold.result;
         const session = runtime.createSession(benchmarkConfiguration.fixtureSeed);
         for (let index = 0; index < benchmarkConfiguration.warmupRounds; index++) await session.play({bet: 1});
@@ -75,7 +77,9 @@ describe("benchmark: portable WASM runtime", () => {
         const browser = await measureBenchmarkAsync(runRealBrowserWorkerBenchmark);
 
         expect(warm.result.sequence).toBe(benchmarkConfiguration.warmupRounds + benchmarkConfiguration.measuredRounds);
+        expect(warm.result.draws).toEqual(seededDraws(benchmarkConfiguration.fixtureSeed, warm.result.draws.length));
         expect(replay.result).toHaveLength(1);
+        expect(replay.result[0]?.draw).toBe(seededDraws(benchmarkConfiguration.fixtureSeed, warm.result.draws.length + 1).at(-1));
         expect(browser.result.status).toBe("PASS");
         expect(browser.result.fixtureId).toBe(benchmarkConfiguration.fixtureId);
         expect(browser.result.fixtureSeed).toBe(benchmarkConfiguration.fixtureSeed);
@@ -114,6 +118,11 @@ describe("benchmark: portable WASM runtime", () => {
 
 function expectTimings(values: readonly number[]): void {
     values.forEach((value) => expect(Number.isFinite(value) && value >= 0).toBe(true));
+}
+
+function seededDraws(seed: string, count: number): readonly number[] {
+    const host = new SeededPokieWasmHost(seed);
+    return Array.from({length: count}, () => host.nextRandom());
 }
 
 function runRealBrowserWorkerBenchmark(): Promise<BrowserBenchmark> {

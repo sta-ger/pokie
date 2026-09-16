@@ -30,9 +30,11 @@ POKIE_UPDATE_WASM_RUNTIME_BASELINE=1 npm run bench -- wasmRuntime.bench.ts
 ```
 
 The benchmark passes its one explicit fixture ID/seed/warmup-round/measured-round configuration to the real
-Chromium harness, which asserts and reports it before running distinct warmup and measured loops. It runs that
-harness exactly once, then replaces the informational baseline with the correctness-checked result it just
-measured; do not run the browser script separately when refreshing this baseline.
+Chromium harness. Node and Chromium both create their portable `SeededPokieWasmHost` from that fixture seed,
+and the Worker receives its host-draw vector from the same seeded stream; each measured path asserts the draws
+it consumed before reporting. The harness then runs distinct warmup and measured loops exactly once and replaces
+the informational baseline with the correctness-checked result it just measured; do not run the browser script
+separately when refreshing this baseline.
 
 The emitted `[bench] wasmRuntime:` line and `benchmarks/baselines/wasmRuntime.json` share one flat result
 record: fixture ID and seed; warmup and measured rounds; Node and Chromium versions; raw module, manifest,

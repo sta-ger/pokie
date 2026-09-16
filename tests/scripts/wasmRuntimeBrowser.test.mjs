@@ -11,17 +11,26 @@ const workerModule = `import {PokieWasmWorkerProtocol} from "/dist/esm/wasm/work
 const protocol = new PokieWasmWorkerProtocol();
 self.onmessage = async ({data}) => self.postMessage(await protocol.handle(data));`;
 const page = `<!doctype html><script type="module">
-    import {instantiatePokieWasm} from "/dist/esm/wasm/browser.js";
+    import {instantiatePokieWasm, SeededPokieWasmHost} from "/dist/esm/wasm/browser.js";
     const fixture = ${JSON.stringify(canonicalFixture)};
     const benchmarkConfiguration = ${JSON.stringify(benchmarkConfiguration)};
     const decode = (value) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+    const seededDraws = (seed, count) => {
+        const host = new SeededPokieWasmHost(seed);
+        return Array.from({length: count}, () => host.nextRandom());
+    };
     window.pokieWasmBrowserResult = (async () => {
         if (fixture.manifest.component.id !== benchmarkConfiguration.fixtureId) throw new Error("browser benchmark received a different fixture than its configuration");
         const bytes = decode(fixture.bytes);
         const coldStartedAt = performance.now();
-        const runtime = await instantiatePokieWasm(bytes, fixture.manifest, {nextRandom: () => 0.25});
+        const runtime = await instantiatePokieWasm(bytes, fixture.manifest, new SeededPokieWasmHost(benchmarkConfiguration.fixtureSeed));
         const coldInstantiateMs = performance.now() - coldStartedAt;
-        const round = await runtime.createSession(benchmarkConfiguration.fixtureSeed).play({bet: 1});
+        const correctnessSession = runtime.createSession(benchmarkConfiguration.fixtureSeed);
+        const round = await correctnessSession.play({bet: 1});
+        const correctnessState = correctnessSession.serialize();
+        const expectedCorrectnessDraws = seededDraws(benchmarkConfiguration.fixtureSeed, correctnessState.draws.length);
+        if (JSON.stringify(correctnessState.draws) !== JSON.stringify(expectedCorrectnessDraws) || round.draw !== expectedCorrectnessDraws[0]) throw new Error("browser benchmark did not consume the configured seeded host stream");
+        correctnessSession.dispose();
         const warmSession = runtime.createSession(benchmarkConfiguration.fixtureSeed);
         for (let index = 0; index < benchmarkConfiguration.warmupRounds; index++) await warmSession.play({bet: 1});
         const warmStartedAt = performance.now();
@@ -30,36 +39,45 @@ const page = `<!doctype html><script type="module">
         const serialized = warmSession.serialize();
         const serializationBytes = JSON.stringify(serialized).length;
         if (serialized.sequence !== benchmarkConfiguration.warmupRounds + benchmarkConfiguration.measuredRounds) throw new Error("browser benchmark warmup and measured loops did not complete");
+        const expectedWarmDraws = seededDraws(benchmarkConfiguration.fixtureSeed, correctnessState.draws.length + serialized.draws.length).slice(correctnessState.draws.length);
+        if (JSON.stringify(serialized.draws) !== JSON.stringify(expectedWarmDraws)) throw new Error("browser benchmark warmup and measured operations did not consume the configured seeded host stream");
         warmSession.dispose();
-        if (round.draw !== 0.25) throw new Error("shipped browser API did not run the canonical fixture");
         const worker = new Worker("/worker.mjs", {type: "module"});
-        const replies = [];
-        const receive = () => new Promise((resolve, reject) => { worker.onmessage = ({data}) => resolve(data); worker.onerror = reject; });
-        const workerStartedAt = performance.now();
-        let response = receive();
-        worker.postMessage({id: "before", type: "play"});
-        replies.push(await response);
-        const transferred = decode(fixture.bytes);
-        response = receive();
-        worker.postMessage({id: "instantiate", type: "instantiate", bytes: transferred, manifest: fixture.manifest, draws: [0.25, 0.75]}, [transferred.buffer]);
-        replies.push(await response);
-        if (transferred.byteLength !== 0) throw new Error("worker transfer did not detach the main-thread bytes");
-        response = receive();
-        worker.postMessage({id: "play", type: "play"});
-        replies.push(await response);
-        response = receive();
-        worker.postMessage({id: "cancel", type: "cancel"});
-        replies.push(await response);
-        response = receive();
-        worker.postMessage({id: "after", type: "serialize"});
-        replies.push(await response);
-        const workerRoundTripMs = performance.now() - workerStartedAt;
-        worker.terminate();
-        runtime.dispose();
-        if (!replies[0].ok && replies[1].ok && replies[2].ok && replies[3].ok && !replies[4].ok) {
-            return {...benchmarkConfiguration, status: "PASS", coldInstantiateMs, warmPlayMs, workerRoundTripMs, serializationBytes};
+        try {
+            const replies = [];
+            const receive = () => new Promise((resolve, reject) => { worker.onmessage = ({data}) => resolve(data); worker.onerror = reject; });
+            const workerStartedAt = performance.now();
+            let response = receive();
+            worker.postMessage({id: "before", type: "play"});
+            replies.push(await response);
+            const transferred = decode(fixture.bytes);
+            const workerDraws = seededDraws(benchmarkConfiguration.fixtureSeed, 2);
+            response = receive();
+            worker.postMessage({id: "instantiate", type: "instantiate", bytes: transferred, manifest: fixture.manifest, draws: workerDraws}, [transferred.buffer]);
+            replies.push(await response);
+            if (transferred.byteLength !== 0) throw new Error("worker transfer did not detach the main-thread bytes");
+            response = receive();
+            worker.postMessage({id: "play", type: "play"});
+            replies.push(await response);
+            response = receive();
+            worker.postMessage({id: "state", type: "serialize"});
+            replies.push(await response);
+            if (!replies[3].ok || JSON.stringify(replies[3].result?.draws) !== JSON.stringify(workerDraws)) throw new Error("worker benchmark did not consume draws derived from the configured seed");
+            response = receive();
+            worker.postMessage({id: "cancel", type: "cancel"});
+            replies.push(await response);
+            response = receive();
+            worker.postMessage({id: "after", type: "serialize"});
+            replies.push(await response);
+            const workerRoundTripMs = performance.now() - workerStartedAt;
+            if (!replies[0].ok && replies[1].ok && replies[2].ok && replies[3].ok && replies[4].ok && !replies[5].ok) {
+                return {...benchmarkConfiguration, status: "PASS", coldInstantiateMs, warmPlayMs, workerRoundTripMs, serializationBytes};
+            }
+            throw new Error("worker protocol errors, cancellation, or cleanup failed");
+        } finally {
+            worker.terminate();
+            runtime.dispose();
         }
-        throw new Error("worker protocol errors, cancellation, or cleanup failed");
     })();
 </script>`;
 
@@ -136,7 +154,9 @@ try {
         })}`);
     }
 } finally {
+    const browserClosed = new Promise((resolve) => browser.once("close", resolve));
     browser.kill();
+    await browserClosed;
     await new Promise((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
 }
 console.log("PASS real Chromium shipped browser API and worker protocol fixture");
