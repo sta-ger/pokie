@@ -27,6 +27,7 @@ import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import {StakeAdapterArtifactBuilder} from "./StakeAdapterArtifactBuilder.js";
 import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
 import {WasmArtifactBuilder} from "./WasmArtifactBuilder.js";
+import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
 import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibraryWorkflow.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
@@ -561,7 +562,12 @@ export class ArtifactBuilderRegistry {
             // copy and its evidence under the final artifact instead of
             // leaking a private temp path into provenance.
             const evidenceSource = `${intermediatePath}.conversion-evidence.json`;
-            const durableDirectory = path.join(result.outputPath, ".pokie", "par-import");
+            // A WASM artifact is a file.  Its conversion evidence therefore
+            // lives in an adjacent operation-owned companion, never under the
+            // module path as though that file were a directory.
+            const durableDirectory = target === "wasm"
+                ? `${result.outputPath}.pokie/par-import`
+                : path.join(result.outputPath, ".pokie", "par-import");
             const durableBlueprint = path.join(durableDirectory, "imported.blueprint.json");
             const durableEvidence = path.join(durableDirectory, "conversion-evidence.json");
             try {
@@ -599,7 +605,7 @@ export class ArtifactBuilderRegistry {
             await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
             if (entry.rootPath !== result.outputPath) await fs.promises.rm(entry.rootPath, {recursive: true, force: true}).catch(() => undefined);
         }
-        await this.removeParOperationOutput(result.outputPath, preserveDestinationDirectory);
+        await this.removeParOperationOutput(result.outputPath, plan.target.kind as ArtifactTargetType, preserveDestinationDirectory);
     }
 
     /**
@@ -676,7 +682,15 @@ export class ArtifactBuilderRegistry {
         }
     }
 
-    private async removeParOperationOutput(outputPath: string, preserveDestinationDirectory: boolean): Promise<void> {
+    private async removeParOperationOutput(outputPath: string, target: ArtifactTargetType, preserveDestinationDirectory: boolean): Promise<void> {
+        if (target === "wasm") {
+            await Promise.all([
+                fs.promises.rm(outputPath, {force: true}),
+                fs.promises.rm(wasmComponentManifestSidecarPath(outputPath), {force: true}),
+                fs.promises.rm(`${outputPath}.pokie`, {recursive: true, force: true}),
+            ]).catch(() => undefined);
+            return;
+        }
         if (!preserveDestinationDirectory) {
             await fs.promises.rm(outputPath, {recursive: true, force: true}).catch(() => undefined);
             return;

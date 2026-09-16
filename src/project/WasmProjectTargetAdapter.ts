@@ -17,6 +17,16 @@ export function wasmComponentManifestSidecarPath(wasmFilePath: string): string {
     return `${wasmFilePath}.pokie-wasm.json`;
 }
 
+function hasBoundWasmConfiguration(bytes: Buffer, configurationHash: string): boolean {
+    try {
+        const sections = WebAssembly.Module.customSections(new WebAssembly.Module(new Uint8Array(bytes)), "pokie.game.v1");
+        return sections.length === 1 &&
+            `sha256:${crypto.createHash("sha256").update(Buffer.from(sections[0])).digest("hex")}` === configurationHash;
+    } catch {
+        return false;
+    }
+}
+
 // Recognizes a ".wasm" file carrying a sidecar PokieWasmComponentManifest -- the read-only half of the WASM
 // compatibility boundary this module defines (see docs/wasm-compatibility-boundary.md). POKIE has no WASM
 // execution backend, so this adapter never reads or interprets the ".wasm" bytes themselves, only the sidecar
@@ -102,8 +112,9 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
                 throw new ProjectTargetMalformedError(`POKIE could not read WASM module "${resolvedPath}": ${error instanceof Error ? error.message : String(error)}`, {targetType: "wasm", stage: "WASM module"});
             }
             if (!WebAssembly.validate(new Uint8Array(bytes)) || bytes.byteLength !== typedManifest.artifact.bytes ||
-                `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}` !== typedManifest.artifact.sha256) {
-                throw new ProjectTargetMalformedError(`POKIE rejected "${resolvedPath}": its integrity-bound WASM module does not match its manifest. Rebuild the artifact; do not copy a sidecar or glue file between modules.`, {targetType: "wasm", stage: "WASM artifact integrity"});
+                `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}` !== typedManifest.artifact.sha256 ||
+                !hasBoundWasmConfiguration(bytes, typedManifest.artifact.configurationHash)) {
+                throw new ProjectTargetMalformedError(`POKIE rejected "${resolvedPath}": its integrity-bound WASM module or game configuration does not match its manifest. Rebuild the artifact; do not copy a sidecar or glue file between modules.`, {targetType: "wasm", stage: "WASM artifact integrity"});
             }
         }
 

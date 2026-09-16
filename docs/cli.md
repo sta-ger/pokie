@@ -28,7 +28,7 @@ npx pokie validate game.wasm
 npx pokie run game.wasm --seed demo
 ```
 
-`npx pokie game.wasm` deliberately routes to ordinary inspection instead of requiring a local project, compiler, package install, or adapter path. It prints the same validate/sim/replay actions available from the normal artifact navigation. A missing, stale, swapped, malformed, or incompatible manifest is rejected before the component can be treated as runnable.
+`npx pokie game.wasm` deliberately routes to ordinary inspection instead of requiring a local project, compiler, package install, or adapter path. It prints the executable validate/run actions available from the normal artifact navigation. A missing, stale, swapped, malformed, or incompatible manifest is rejected before the component can be treated as runnable.
 
 ## `pokie --help` / `pokie -h`
 

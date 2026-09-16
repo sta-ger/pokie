@@ -194,6 +194,59 @@ describe("ArtifactBuilderRegistry", () => {
             }
         });
 
+        it("builds PAR-to-WASM through the imported Blueprint and stores evidence beside the module", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-wasm-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const destination = path.join(directory, "nested", "game.wasm");
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            try {
+                fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+                const result = await registry.build("wasm", source, destination);
+
+                expect(result).toMatchObject({outputPath: destination, importedBlueprintPath: `${destination}.pokie/par-import/imported.blueprint.json`});
+                expect(fs.existsSync(destination)).toBe(true);
+                expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(true);
+                expect(fs.existsSync(`${destination}.pokie/par-import/conversion-evidence.json`)).toBe(true);
+                expect(fs.existsSync(path.join(destination, ".pokie", "par-import"))).toBe(false);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it("removes only PAR-to-WASM files owned by a cancelled publication", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-wasm-cancel-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const destination = path.join(directory, "game.wasm");
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            const controller = new AbortController();
+            try {
+                fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+                await expect(registry.build("wasm", source, destination, {
+                    signal: controller.signal,
+                    onProgress: (progress) => {
+                        if (progress.status === "completed") controller.abort();
+                    },
+                })).rejects.toThrow(/cancelled/i);
+
+                expect(fs.existsSync(workbookPath)).toBe(true);
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie`)).toBe(false);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
         it.each(["outcomeLibrary", "stakeAdapter"] as const)("removes the managed and Studio registrations when PAR-to-%s promotion is cancelled", async (target) => {
             const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-promotion-"));
             const workbookPath = path.join(directory, "source.xlsx");

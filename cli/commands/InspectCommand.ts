@@ -143,6 +143,7 @@ export class InspectCommand implements CliCommandHandling {
             console.log("  runtime          legacy sidecar-only component (inspection-only)");
         } else {
             console.log(`  runtime          canonical runnable ABI ${manifest.artifact.abiVersion}`);
+            console.log("  compatibility    compatible with this POKIE WASM runtime");
             console.log(`  integrity        ${manifest.artifact.sha256} (${manifest.artifact.bytes} bytes)`);
             console.log(`  adapter          ${manifest.artifact.adapter}`);
         }

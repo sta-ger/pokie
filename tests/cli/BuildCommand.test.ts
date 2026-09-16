@@ -462,6 +462,21 @@ describe("BuildCommand", () => {
             expect(builder.calledWith).toEqual({source: project, destinationPath: "blueprints/tsPackage"});
         });
 
+        it("uses game.wasm as the canonical default destination for a WASM build", async () => {
+            const builder = stubBuilder("wasm", {outputPath: "/fake/game.wasm"});
+            const project = blueprintProject("blueprints/config.json");
+            const command = new BuildCommand(
+                "1.3.0",
+                () => rawBlueprint,
+                createStubValidator([]),
+                stubProjectResolver(project),
+                registryWithBuilders(builder),
+            );
+
+            await expect(command.run(["blueprints/config.json", "--target", "wasm"])).resolves.toBe(0);
+            expect(builder.calledWith).toEqual({source: project, destinationPath: "blueprints/game.wasm"});
+        });
+
         it("prints the full build -> inspect -> validate -> sim -> report -> replay -> dev workflow as next steps", async () => {
             const builder = stubBuilder("tsPackage", {outputPath: "/fake/sample-slot"});
             const command = new BuildCommand(

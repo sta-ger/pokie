@@ -1,6 +1,6 @@
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import {isValidSemverLite} from "./internal/compareSemverLite.js";
-import type {PokieWasmComponentManifest} from "./PokieWasmComponentManifest.js";
+import {POKIE_WASM_ADAPTER, type PokieWasmComponentManifest} from "./PokieWasmComponentManifest.js";
 
 // An PokieWasmComponentManifest's own static type guarantees nothing about a value that actually arrives at
 // runtime -- always deserialized from a sidecar JSON file (see WasmProjectTargetAdapter) -- so every field is
@@ -164,12 +164,12 @@ export class PokieWasmComponentManifestValidator {
         if (typeof artifact !== "object" || artifact === null || artifact.format !== "pokie.wasm.v1" ||
             !isNonEmptyString(artifact.sha256) || !(/^sha256:[a-f0-9]{64}$/).test(artifact.sha256) ||
             typeof artifact.bytes !== "number" || !Number.isSafeInteger(artifact.bytes) || artifact.bytes < 8 ||
-            !isNonEmptyString(artifact.abiVersion) || !isNonEmptyString(artifact.adapter) ||
+            !isNonEmptyString(artifact.abiVersion) || artifact.adapter !== POKIE_WASM_ADAPTER ||
             !isNonEmptyString(artifact.configurationHash) || !(/^sha256:[a-f0-9]{64}$/).test(artifact.configurationHash)) {
             issues.push({
                 code: "wasm-component-manifest-artifact-invalid",
                 severity: "error",
-                message: '"artifact" must bind a canonical module with format, sha256, bytes, ABI, adapter, and configuration hash.',
+                message: `"artifact" must bind a canonical module with format, sha256, bytes, ABI, adapter "${POKIE_WASM_ADAPTER}", and configuration hash.`,
                 path: "artifact",
             });
         }

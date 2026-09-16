@@ -13,6 +13,16 @@ export type WasmComponentManifestReadResult =
     | {readonly supported: true; readonly manifest: PokieWasmComponentManifest}
     | {readonly supported: false; readonly diagnostic: UnsupportedProjectOperationDiagnostic};
 
+function hasBoundWasmConfiguration(bytes: Buffer, configurationHash: string): boolean {
+    try {
+        const sections = WebAssembly.Module.customSections(new WebAssembly.Module(new Uint8Array(bytes)), "pokie.game.v1");
+        return sections.length === 1 &&
+            `sha256:${crypto.createHash("sha256").update(Buffer.from(sections[0])).digest("hex")}` === configurationHash;
+    } catch {
+        return false;
+    }
+}
+
 // Reads back a resolved "wasm" project's own PokieWasmComponentManifest -- the read-only access
 // WASM_MANIFEST_READ_CAPABILITY actually grants (see ProjectCapabilities.ts): metadata only, never the
 // ".wasm" bytes themselves, and never anything resembling loading/instantiating/executing the component --
@@ -62,8 +72,9 @@ export async function readWasmComponentManifest(project: PokieProject): Promise<
     if (typedManifest.artifact !== undefined) {
         const bytes = await fs.promises.readFile(project.rootPath);
         if (!WebAssembly.validate(new Uint8Array(bytes)) || bytes.byteLength !== typedManifest.artifact.bytes ||
-            `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}` !== typedManifest.artifact.sha256) {
-            throw new Error(`POKIE rejected "${project.rootPath}": the canonical WASM module no longer matches its integrity-bound manifest.`);
+            `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}` !== typedManifest.artifact.sha256 ||
+            !hasBoundWasmConfiguration(bytes, typedManifest.artifact.configurationHash)) {
+            throw new Error(`POKIE rejected "${project.rootPath}": the canonical WASM module or game configuration no longer matches its integrity-bound manifest.`);
         }
     }
 

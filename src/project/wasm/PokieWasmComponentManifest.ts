@@ -6,6 +6,8 @@
 export const POKIE_WASM_CONTRACT_VERSION = "1.0.0";
 /** Stable portable runtime ABI understood by this POKIE release. */
 export const POKIE_WASM_ABI_VERSION = "1.0.0";
+/** Adapter understood by this release's portable WebAssembly runtime. */
+export const POKIE_WASM_ADAPTER = "pokie/wasm";
 
 // What a WASM component built against POKIE needs to declare about itself for POKIE to ever recognize it as a
 // "wasm" ProjectType and resolve it -- read-only -- through WasmProjectTargetAdapter. This is the metadata
@@ -80,7 +82,7 @@ export type PokieWasmComponentManifest = {
         readonly sha256: string;
         readonly bytes: number;
         readonly abiVersion: string;
-        readonly adapter: string;
+        readonly adapter: typeof POKIE_WASM_ADAPTER;
         readonly configurationHash: string;
     };
 };
