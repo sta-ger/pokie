@@ -141,8 +141,8 @@ function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescrip
     };
 }
 
-// Every public target has a real, atomic builder. WASM is intentionally not an ArtifactTargetType: it is an
-// inspection-only resolved project kind until POKIE ships a complete WASM producer and consumer workflow.
+// Every public target has a real, atomic builder. WASM is a canonical product with explicit Blueprint/PAR
+// source edges; legacy resolved components remain inspection-only.
 function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetType, ArtifactBuilder> {
     return new Map<ArtifactTargetType, ArtifactBuilder>([
         ["blueprint", new BlueprintArtifactBuilder()],

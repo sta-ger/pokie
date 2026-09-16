@@ -504,7 +504,7 @@ describe("StudioProjectRegistrationService", () => {
                     location: blueprintPath,
                     type: "blueprint",
                     origin: "external",
-                    capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export"],
+                    capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export", "wasm.export"],
                 }),
             });
         });

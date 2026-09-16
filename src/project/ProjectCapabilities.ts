@@ -9,6 +9,7 @@ import {
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     STAKE_ADAPTER_EXPORT_CAPABILITY,
     WASM_MANIFEST_READ_CAPABILITY,
+    WASM_EXPORT_CAPABILITY,
     WASM_RUNTIME_EXECUTE_CAPABILITY,
     type ProjectCapability,
 } from "./ProjectCapability.js";
@@ -45,7 +46,7 @@ export const PROJECT_TYPE_CAPABILITIES: Readonly<Record<ProjectType, ProjectCapa
     // resolves a compatible registered Outcome Library or materializes/generates/registers one first.
     // The capability means that registry-owned workflow is reachable; it does not permit a caller to
     // bypass the registry and export a Blueprint directly with StakeEngineExporter.
-    blueprint: [BLUEPRINT_BUILD_CAPABILITY, OUTCOME_LIBRARY_GENERATE_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY],
+    blueprint: [BLUEPRINT_BUILD_CAPABILITY, OUTCOME_LIBRARY_GENERATE_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY, WASM_EXPORT_CAPABILITY],
     // A loadable package is the code-first source for exact Outcome generation.  The registry materializes
     // its runtime before generation, so a package whose game has no exact-enumeration runtime fails closed
     // there instead of being mistaken for an already-readable Outcome bundle.
@@ -60,5 +61,5 @@ export const PROJECT_TYPE_CAPABILITIES: Readonly<Record<ProjectType, ProjectCapa
     // host. Legacy sidecar-only components retain manifest inspection but are
     // rejected by that host at operation time.
     wasm: [WASM_MANIFEST_READ_CAPABILITY],
-    parWorkbook: [PAR_WORKBOOK_EXCHANGE_CAPABILITY],
+    parWorkbook: [PAR_WORKBOOK_EXCHANGE_CAPABILITY, WASM_EXPORT_CAPABILITY],
 };

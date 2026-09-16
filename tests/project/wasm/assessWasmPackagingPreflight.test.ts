@@ -216,15 +216,15 @@ describe("assessWasmPackagingPreflight", () => {
         }
     });
 
-    it("makes the inspection-only WASM product boundary explicit", () => {
+    it("makes the source-only package compilation boundary explicit", () => {
         fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game"}));
 
         const result = assessWasmPackagingPreflight(projectOf("tsPackage", workDir));
 
         expect(result.supported).toBe(true);
         if (result.supported) {
-            expect(result.report.notes.join(" ")).toMatch(/does not provide a WASM build or export route/i);
-            expect(result.report.notes.join(" ")).toMatch(/pokie inspect/i);
+            expect(result.report.notes.join(" ")).toMatch(/does not compile arbitrary packages to WASM/i);
+            expect(result.report.notes.join(" ")).toMatch(/Blueprint or PAR workbook/i);
         }
     });
 

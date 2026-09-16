@@ -3,8 +3,8 @@ import {WASM_MANIFEST_READ_CAPABILITY, type ProjectCapability} from "./ProjectCa
 import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
 
 // The one production-readable statement of POKIE's WASM product boundary. A
-// compatible sidecar makes a component inspectable; it never makes its binary
-// an input to a runtime, converter, builder, or Studio export flow.
+// legacy sidecar makes a component inspectable; an integrity-bound canonical artifact additionally runs through
+// the portable host. Neither artifact form is source input to package-only export or server flows.
 export const WASM_PRODUCT_CONTRACT = {
     kind: "POKIE WASM component",
     studioLabel: "POKIE WASM component",
@@ -159,7 +159,7 @@ export function describeWasmGameModelBoundary(): string {
 }
 
 export function describeWasmPackagingPreflightNote(): string {
-    return `This direct-library advisory scan does not provide a WASM build or export route. ${WASM_PRODUCT_CONTRACT.inspectionBoundary} Next: inspect a compatible component with \`pokie inspect <path>\` instead.`;
+    return `This direct-library advisory scan does not compile arbitrary packages to WASM. POKIE builds canonical components from Blueprint or PAR workbook sources through \`pokie build <path> --target wasm\`. ${WASM_PRODUCT_CONTRACT.inspectionBoundary}`;
 }
 
 export function describeWasmUnsupportedOperation(operation: string): string {
@@ -168,8 +168,8 @@ export function describeWasmUnsupportedOperation(operation: string): string {
 }
 
 export function describeWasmConversionBoundary(): string {
-    return `A ${WASM_PRODUCT_CONTRACT.kind} is inspection-only (metadata-only) and cannot be converted into a POKIE artifact. ` +
-        `${WASM_PRODUCT_CONTRACT.inspectionBoundary} Next: inspect the compatible manifest or ${WASM_PRODUCT_CONTRACT.originalSourceRecovery}`;
+    return `A ${WASM_PRODUCT_CONTRACT.kind} is a finished artifact, not a source for another POKIE conversion. ` +
+        `${WASM_PRODUCT_CONTRACT.inspectionBoundary} Next: use its original Blueprint or PAR workbook to build another target.`;
 }
 
 export function describeWasmRecovery(): string {
@@ -177,6 +177,6 @@ export function describeWasmRecovery(): string {
 }
 
 export function describeWasmRuntimeBoundary(): string {
-    return `A ${WASM_PRODUCT_CONTRACT.kind} cannot yield a runnable POKIE game. ${WASM_PRODUCT_CONTRACT.inspectionBoundary} ` +
+    return `A legacy ${WASM_PRODUCT_CONTRACT.kind} cannot yield a runnable POKIE game; an integrity-bound canonical artifact runs through the portable host. ${WASM_PRODUCT_CONTRACT.inspectionBoundary} ` +
         `Next: inspect the compatible manifest or ${WASM_PRODUCT_CONTRACT.originalSourceRecovery}`;
 }

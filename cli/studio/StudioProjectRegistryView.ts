@@ -19,4 +19,4 @@ type StudioProjectRegistryViewBase = Omit<StudioProjectRegistryEntry, "type"> & 
 
 export type StudioProjectRegistryView =
     | (StudioProjectRegistryViewBase & {readonly type: Exclude<StudioProjectRegistryEntry["type"], "wasm">})
-    | (StudioProjectRegistryViewBase & {readonly type: "wasm"; readonly wasmPresentation: WasmProductContractView});
+    | (StudioProjectRegistryViewBase & {readonly type: "wasm"; readonly wasmPresentation?: WasmProductContractView});

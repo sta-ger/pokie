@@ -41,10 +41,9 @@ export const STAKE_ADAPTER_EXPORT_CAPABILITY: ProjectCapability = "stakeAdapter.
 // a "parWorkbook" project grants it today.
 export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: ProjectCapability = "parWorkbook.exchange";
 
-// What "wasm.export" would require. Declared here so a future step can grant it to a project type without
-// inventing a new capability id at the same time — no ProjectType grants it yet (see ProjectType.ts's own
-// "wasm" doc comment), so describeUnsupportedProjectOperation reports every "wasm.export" attempt as
-// unsupported with no alternatives, today.
+// Produces a canonical WASM component from an authored source through ArtifactBuilderRegistry. Blueprint and
+// PAR workbook projects grant it; existing WASM artifacts deliberately do not, because they are products rather
+// than source inputs for another conversion.
 export const WASM_EXPORT_CAPABILITY: ProjectCapability = "wasm.export";
 
 // A project whose own WASM component manifest (see project/wasm/PokieWasmComponentManifest.ts) can be read
