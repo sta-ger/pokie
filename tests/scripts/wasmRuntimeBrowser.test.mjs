@@ -1,4 +1,4 @@
-import {spawnSync} from "child_process";
+import {spawn} from "child_process";
 
 const wasmBytes = [
     0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
@@ -17,7 +17,7 @@ const workerSource = `onmessage = async ({data}) => {
     if (data.type === "cancel") { postMessage({type: "cancelled"}); close(); }
 };`;
 const html = `<!doctype html><body><script>
-    (async () => {
+    window.pokieWasmBrowserResult = (async () => {
         const bytes = new Uint8Array(${JSON.stringify(wasmBytes)});
         const main = await WebAssembly.instantiate(bytes, {pokie: {next_random: () => Math.floor(0.25 * 0x80000000)}});
         if (main.instance.exports.play() !== 536870912) throw new Error("main-thread WASM result mismatch");
@@ -35,14 +35,50 @@ const html = `<!doctype html><body><script>
         await done;
         worker.terminate();
         if (messages.length !== 2 || messages[0].packed !== 1610612736 || messages[1].type !== "cancelled") throw new Error("worker protocol or cleanup mismatch");
-        document.body.dataset.result = "PASS";
-    })().catch((error) => { document.body.dataset.result = "FAIL"; document.body.textContent = String(error); });
+        return "PASS";
+    })();
 </script></body>`;
 
 const chromium = process.env.CHROMIUM_PATH ?? "/snap/bin/chromium";
 const page = `data:text/html;base64,${Buffer.from(html).toString("base64")}`;
-const result = spawnSync(chromium, ["--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--virtual-time-budget=5000", "--dump-dom", page], {encoding: "utf8"});
-if (result.status !== 0 || !/<body data-result="PASS">/.test(result.stdout)) {
-    throw new Error(`Chromium browser fixture failed (status ${result.status}): ${result.stdout}\n${result.stderr}`);
+const browser = spawn(chromium, ["--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--remote-debugging-pipe"], {
+    stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"],
+});
+let nextRequestId = 0;
+let responseBuffer = "";
+const pending = new Map();
+browser.stdio[4].on("data", (chunk) => {
+    responseBuffer += chunk;
+    let separator;
+    while ((separator = responseBuffer.indexOf("\0")) >= 0) {
+        const response = JSON.parse(responseBuffer.slice(0, separator));
+        responseBuffer = responseBuffer.slice(separator + 1);
+        const resolve = pending.get(response.id);
+        if (resolve !== undefined) {
+            pending.delete(response.id);
+            resolve(response);
+        }
+    }
+});
+function call(method, params = {}, sessionId) {
+    return new Promise((resolve, reject) => {
+        const id = ++nextRequestId;
+        pending.set(id, (response) => response.error === undefined ? resolve(response.result) : reject(new Error(response.error.message)));
+        browser.stdio[3].write(`${JSON.stringify({id, method, params, ...(sessionId === undefined ? {} : {sessionId})})}\0`);
+    });
+}
+try {
+    const target = await call("Target.createTarget", {url: "about:blank"});
+    const attached = await call("Target.attachToTarget", {targetId: target.targetId, flatten: true});
+    await call("Page.enable", {}, attached.sessionId);
+    await call("Page.navigate", {url: page}, attached.sessionId);
+    const result = await call("Runtime.evaluate", {
+        expression: "(async () => { while (!window.pokieWasmBrowserResult) await new Promise(requestAnimationFrame); return await window.pokieWasmBrowserResult; })()",
+        awaitPromise: true,
+        returnByValue: true,
+    }, attached.sessionId);
+    if (result.result.value !== "PASS") throw new Error(`Chromium browser fixture returned ${JSON.stringify(result)}`);
+} finally {
+    browser.kill();
 }
 console.log("PASS real Chromium WASM main-thread and Worker cancellation fixture");
