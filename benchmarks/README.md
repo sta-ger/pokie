@@ -21,19 +21,27 @@ Every file prints its own `[bench] ...` line to stdout with the numbers it measu
 | `stakeEngineAnalysisAndDiff.bench.ts` | `StakeEngineStandaloneAnalyzer.analyze()` and `StakeEngineStandaloneAnalysisDiffer.diff()` timing over a 20,000-outcome synthetic mode. |
 | `randomGameBlueprintGeneration.bench.ts` | `RandomGameBlueprintGenerator.generate()` average time across 500 seeds. |
 | `simulationReportGeneration.bench.ts` | `SimulationReportBuilder.build()` plus `HtmlSimulationReportRenderer`/`MarkdownSimulationReportRenderer` `.render()` timing for a 100,000-round report. |
-| `wasmRuntime.bench.ts` | Raw module and integrity-sidecar bytes, cold instantiate, 100 deterministic host-RNG spins, serialization payload, replay, and worker-protocol round-trip timing for the canonical portable fixture. |
+| `wasmRuntime.bench.ts` | Raw module, manifest, and complete portable packaged-artifact bytes; Node cold instantiate/warm spin/serialization/replay; and genuine Chromium main-thread plus module-Worker protocol timings for the canonical portable fixture. |
 
 For the focused portable baseline, run the fixture in Chromium first and then the benchmark lane:
 
 ```sh
-node tests/scripts/wasmRuntimeBrowser.test.mjs
+node tests/scripts/wasmRuntimeBrowser.test.mjs --benchmark
 npm run bench -- wasmRuntime.bench.ts
 ```
 
 The emitted `[bench] wasmRuntime:` line is intentionally informational. It records the fixed fixture
-ID and seed, warmup and measured rounds, Node/Chromium versions, raw module and manifest sizes, plus
-cold instantiate, warm play, serialization, replay, and worker timing fields. Correctness assertions
-remain part of the benchmark, so a line is never emitted for a failed operation.
+ID and seed, warmup and measured rounds, detected Node/Chromium versions, raw module and manifest sizes,
+the complete packaged-artifact size, plus Node cold instantiate/warm play/serialization/replay and real
+Chromium main-thread/Worker timings. The Worker timing comes from a module Worker that imports the shipped
+`worker.ts` protocol; it is not an in-process protocol method call. Correctness assertions remain part of
+the benchmark, so a line is never emitted for a failed operation.
+
+`benchmarks/baselines/wasmRuntime.json` is the checked-in informational baseline. Its schema captures the
+exact command, fixture/seed/round counts, detected runtime versions, raw/manifest/runtime-closure/complete
+artifact sizes, Chromium timings, and correctness status. Regenerate it by running the two commands above,
+copying the `POKIE_WASM_BROWSER_BENCHMARK=` JSON and the benchmark line into the matching fields, and
+retaining the host note. Values are compared by humans field-for-field, not used as timing thresholds.
 
 ## Why these never assert a hard wall-clock/memory threshold
 

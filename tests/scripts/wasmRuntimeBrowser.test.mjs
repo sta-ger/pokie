@@ -2,12 +2,9 @@ import {createServer} from "http";
 import {readFile} from "fs/promises";
 import path from "path";
 import {spawn} from "child_process";
+import {PORTABLE_RUNTIME_BROWSER_FIXTURE as canonicalFixture} from "../fixtures/wasm/portableRuntimeGolden.browser.mjs";
 
 const root = process.cwd();
-const canonicalFixture = {
-    bytes: "AGFzbQEAAAABBQFgAAF/AhUBBXBva2llC25leHRfcmFuZG9tAAADAgEABwgBBHBsYXkAAQoGAQQAEAALAKIBDXBva2llLmdhbWUudjF7InNjaGVtYVZlcnNpb24iOiJwb2tpZS5nYW1lLnYxIiwicmVlbHMiOjEsInJvd3MiOjEsInJlZWxTdHJpcHMiOltbIkEiLCJCIl1dLCJwYXlsaW5lcyI6W1swXV0sInBheXRhYmxlIjp7IkEiOnsiMSI6Mn0sIkIiOnsiMSI6MX19LCJzdG9wV2lkdGhzIjpbMV19ANQDEnBva2llLmNvbXBvbmVudC52MXsic2NoZW1hVmVyc2lvbiI6IjEuMC4wIiwiY29tcG9uZW50Ijp7ImlkIjoiYnJvd3Nlci1jYW5vbmljYWwiLCJ2ZXJzaW9uIjoiMS4wLjAifSwic2VyaWFsaXphdGlvbiI6eyJzZXNzaW9uIjoicG9raWUuc2Vzc2lvbi52MSIsInBsYXkiOiJwb2tpZS5wbGF5LnYxIiwic3RhdGUiOiJwb2tpZS5zdGF0ZS52MSJ9LCJob3N0Ijp7InJuZyI6InBva2llLnJuZy52MSIsInNlcnZpY2VzIjpbXX0sImNhcGFiaWxpdGllcyI6WyJydW50aW1lLnBsYXkiLCJydW50aW1lLnNlcmlhbGl6ZSJdLCJhcnRpZmFjdCI6eyJmb3JtYXQiOiJwb2tpZS53YXNtLnYxIiwiYWJpVmVyc2lvbiI6IjEuMC4wIiwiYWRhcHRlciI6InBva2llL3dhc20iLCJjb25maWd1cmF0aW9uSGFzaCI6InNoYTI1NjphMWFlMzFiNzI3NTEzMmRjZDQ3YTBiNTY3MzI3NzYyMjZmOGM4ZGQ5YTQ3ZmEwYTk5ZDQwOWU4YTczMzk2YWFiIn19",
-    manifest: {schemaVersion: "1.0.0", component: {id: "browser-canonical", version: "1.0.0"}, serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"}, host: {rng: "pokie.rng.v1", services: []}, capabilities: ["runtime.play", "runtime.serialize"], artifact: {format: "pokie.wasm.v1", sha256: "sha256:885caa9631b93de104c4cf57a03803ecfc6ccf5bdf54097c56ff21ab6380d158", bytes: 696, abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash: "sha256:a1ae31b7275132dcd47a0b56732776226f8c8dd9a47fa0a99d409e8a73396aab"}},
-};
 
 const workerModule = `import {PokieWasmWorkerProtocol} from "/dist/esm/wasm/worker.js";
 const protocol = new PokieWasmWorkerProtocol();
@@ -18,19 +15,28 @@ const page = `<!doctype html><script type="module">
     const decode = (value) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
     window.pokieWasmBrowserResult = (async () => {
         const bytes = decode(fixture.bytes);
+        const coldStartedAt = performance.now();
         const runtime = await instantiatePokieWasm(bytes, fixture.manifest, {nextRandom: () => 0.25});
+        const coldInstantiateMs = performance.now() - coldStartedAt;
         const round = await runtime.createSession("browser").play();
-        runtime.dispose();
+        const warmSession = runtime.createSession("browser-warm");
+        const warmStartedAt = performance.now();
+        for (let index = 0; index < 10; index++) await warmSession.play();
+        const warmPlayMs = performance.now() - warmStartedAt;
+        warmSession.dispose();
+        const serialized = runtime.createSession("browser-serialize").serialize();
+        const serializationBytes = JSON.stringify(serialized).length;
         if (round.draw !== 0.25) throw new Error("shipped browser API did not run the canonical fixture");
         const worker = new Worker("/worker.mjs", {type: "module"});
         const replies = [];
         const receive = () => new Promise((resolve, reject) => { worker.onmessage = ({data}) => resolve(data); worker.onerror = reject; });
+        const workerStartedAt = performance.now();
         let response = receive();
         worker.postMessage({id: "before", type: "play"});
         replies.push(await response);
         const transferred = decode(fixture.bytes);
         response = receive();
-        worker.postMessage({id: "instantiate", type: "instantiate", bytes: transferred, manifest: fixture.manifest, draws: [0.25]}, [transferred.buffer]);
+        worker.postMessage({id: "instantiate", type: "instantiate", bytes: transferred, manifest: fixture.manifest, draws: [0.25, 0.75]}, [transferred.buffer]);
         replies.push(await response);
         if (transferred.byteLength !== 0) throw new Error("worker transfer did not detach the main-thread bytes");
         response = receive();
@@ -42,8 +48,12 @@ const page = `<!doctype html><script type="module">
         response = receive();
         worker.postMessage({id: "after", type: "serialize"});
         replies.push(await response);
+        const workerRoundTripMs = performance.now() - workerStartedAt;
         worker.terminate();
-        if (!replies[0].ok && replies[1].ok && replies[2].ok && replies[3].ok && !replies[4].ok) return "PASS";
+        runtime.dispose();
+        if (!replies[0].ok && replies[1].ok && replies[2].ok && replies[3].ok && !replies[4].ok) {
+            return {status: "PASS", coldInstantiateMs, warmPlayMs, workerRoundTripMs, serializationBytes};
+        }
         throw new Error("worker protocol errors, cancellation, or cleanup failed");
     })();
 </script>`;
@@ -72,6 +82,11 @@ await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const address = server.address();
 if (address === null || typeof address === "string") throw new Error("Browser fixture server did not bind a TCP port.");
 const chromium = process.env.CHROMIUM_PATH ?? "/snap/bin/chromium";
+const includeMeasurements = process.argv.includes("--benchmark");
+const portableRuntimeBytes = await collectPortableRuntimeBytes([
+    path.join(root, "dist", "esm", "wasm", "browser.js"),
+    path.join(root, "dist", "esm", "wasm", "worker.js"),
+]);
 const browser = spawn(chromium, ["--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--remote-debugging-pipe"], {stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"]});
 let requestId = 0;
 let buffer = "";
@@ -97,14 +112,43 @@ function call(method, params = {}, sessionId) {
     });
 }
 try {
+    const browserVersion = await call("Browser.getVersion");
     const target = await call("Target.createTarget", {url: "about:blank"});
     const attached = await call("Target.attachToTarget", {targetId: target.targetId, flatten: true});
     await call("Page.enable", {}, attached.sessionId);
     await call("Page.navigate", {url: `http://127.0.0.1:${address.port}/fixture.html`}, attached.sessionId);
     const result = await call("Runtime.evaluate", {expression: "(async () => { while (!window.pokieWasmBrowserResult) await new Promise(requestAnimationFrame); return await window.pokieWasmBrowserResult; })()", awaitPromise: true, returnByValue: true}, attached.sessionId);
-    if (result.result.value !== "PASS") throw new Error(`Chromium browser fixture returned ${JSON.stringify(result)}`);
+    if (result.result.value?.status !== "PASS") throw new Error(`Chromium browser fixture returned ${JSON.stringify(result)}`);
+    if (includeMeasurements) {
+        console.log(`POKIE_WASM_BROWSER_BENCHMARK=${JSON.stringify({
+            chromium: browserVersion.product,
+            rawModuleBytes: Buffer.from(canonicalFixture.bytes, "base64").byteLength,
+            manifestBytes: Buffer.byteLength(JSON.stringify(canonicalFixture.manifest)),
+            portableRuntimeBytes,
+            completePackagedArtifactBytes: Buffer.from(canonicalFixture.bytes, "base64").byteLength + Buffer.byteLength(JSON.stringify(canonicalFixture.manifest)) + portableRuntimeBytes,
+            ...result.result.value,
+        })}`);
+    }
 } finally {
     browser.kill();
     await new Promise((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
 }
 console.log("PASS real Chromium shipped browser API and worker protocol fixture");
+
+async function collectPortableRuntimeBytes(entries) {
+    const visited = new Set();
+    const collect = async (file) => {
+        const resolved = path.resolve(file);
+        if (visited.has(resolved)) return 0;
+        visited.add(resolved);
+        const source = await readFile(resolved, "utf8");
+        let total = Buffer.byteLength(source);
+        const imports = source.matchAll(/(?:from|import)\s*["'](\.[^"']+)["']/g);
+        for (const match of imports) {
+            const imported = path.resolve(path.dirname(resolved), match[1]);
+            total += await collect(imported);
+        }
+        return total;
+    };
+    return (await Promise.all(entries.map(collect))).reduce((total, bytes) => total + bytes, 0);
+}

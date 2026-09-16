@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "pokie.wasm-runtime-benchmark.v1",
+  "command": "node tests/scripts/wasmRuntimeBrowser.test.mjs --benchmark && npm run bench -- wasmRuntime.bench.ts",
+  "fixture": "portable-runtime-golden",
+  "seed": "wasm-benchmark-seed",
+  "warmupRounds": 10,
+  "rounds": 100,
+  "node": "v24.18.0",
+  "chromium": "Chrome/153.0.8010.36",
+  "sizes": {
+    "rawModuleBytes": 790,
+    "manifestBytes": 567,
+    "portableRuntimeBytes": 41656,
+    "completePackagedArtifactBytes": 43013
+  },
+  "chromiumTimingsMs": {
+    "coldInstantiateMs": 5.8,
+    "warmPlayMs": 0.4,
+    "workerRoundTripMs": 50.6
+  },
+  "correctness": "PASS",
+  "note": "Informational local baseline recorded on the disposable P8-01 fixture host; compare field-for-field, never as a hard timing gate."
+}
