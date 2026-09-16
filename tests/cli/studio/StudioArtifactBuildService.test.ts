@@ -78,12 +78,13 @@ describe("StudioArtifactBuildService", () => {
 
             const targets = await service.listTargets(blueprintPath);
 
-            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
+            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
             const byTarget = new Map(targets.map((entry) => [entry.target, entry]));
             expect(byTarget.get("tsPackage")?.supported).toBe(true);
             expect(byTarget.get("outcomeLibrary")?.supported).toBe(true);
             expect(byTarget.get("stakeAdapter")?.supported).toBe(true);
             expect(byTarget.get("parWorkbook")?.supported).toBe(true);
+            expect(byTarget.get("wasm")?.supported).toBe(true);
         });
 
         it("recognizes a managed Blueprint directory for Outcome Library and Stake goals", async () => {
@@ -270,6 +271,22 @@ describe("StudioArtifactBuildService", () => {
             expect(result).toMatchObject({status: "ok", target: "parWorkbook", sourceType: "blueprint", destination: path.join(workDir, "parWorkbook.xlsx")});
             expect(fs.existsSync(path.join(workDir, "parWorkbook.xlsx"))).toBe(false);
         });
+
+        it("previews Blueprint -> WASM with the canonical module file and integrity manifest", async () => {
+            const blueprintPath = writeBlueprintFile();
+
+            const result = await service.preview(blueprintPath, "wasm");
+
+            expect(result).toMatchObject({
+                status: "ok",
+                target: "wasm",
+                sourceType: "blueprint",
+                destination: path.join(workDir, "game.wasm"),
+                destinationKind: "file",
+                plannedOutputs: ["Portable game.wasm module", "Integrity-bound POKIE WASM manifest sidecar"],
+            });
+            expect(fs.existsSync(path.join(workDir, "game.wasm"))).toBe(false);
+        });
     });
 
     describe("build", () => {
@@ -298,6 +315,29 @@ describe("StudioArtifactBuildService", () => {
                 throw new Error("expected ok");
             }
             expect(result.outputPath).toBe(explicitOut);
+        });
+
+        it("builds a Blueprint into the canonical WASM module and integrity-bound manifest through the ordinary lifecycle", async () => {
+            const blueprintPath = writeBlueprintFile(buildBlueprint({
+                reels: 2,
+                rows: 1,
+                paytable: {A: {2: 5}, B: {2: 2}},
+                reelStrips: [["A", "B"], ["A", "B"]],
+                availableBets: [1],
+            }));
+
+            const result = await service.build(blueprintPath, "wasm");
+
+            expect(result).toMatchObject({
+                status: "ok",
+                target: "wasm",
+                outputPath: path.join(workDir, "game.wasm"),
+                outputKind: "file",
+                sourceType: "blueprint",
+            });
+            if (result.status !== "ok") throw new Error("expected WASM build to complete");
+            expect(fs.existsSync(result.outputPath)).toBe(true);
+            expect(fs.existsSync(`${result.outputPath}.pokie-wasm.json`)).toBe(true);
         });
 
         it("builds PAR Blueprints into an explicit nested destination whose parent is absent", async () => {

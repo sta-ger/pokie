@@ -28,8 +28,8 @@ function readDeclaredDependencies(rootPath: string): readonly string[] {
 // its package.json's own declared runtime dependencies verbatim — never a verdict on whether any specific
 // dependency is itself WASM/browser-portable, since POKIE has no way to know that about a third-party package
 // without actually trying to bundle it. `report.notes` explicitly records that arbitrary packages are not a WASM
-// preflight can never be read as "no blockers found, therefore compilation works": no POKIE command builds WASM
-// from any source today, regardless of what this scan finds. Never throws (a missing/unreadable package.json is reported as no declared
+// preflight can never be read as "no blockers found, therefore compilation works": the canonical Blueprint/PAR
+// builder deliberately does not compile arbitrary packages. Never throws (a missing/unreadable package.json is reported as no declared
 // dependencies, not an error — the scan itself still runs).
 export function assessWasmPackagingPreflight(project: PokieProject): WasmPackagingPreflightResult {
     const diagnostic = describeUnsupportedProjectOperation(project, WASM_PACKAGING_PREFLIGHT_OPERATION);

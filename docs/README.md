@@ -78,7 +78,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `pokie init <directory>`, design an editable Blueprint with `pokie create <name>`, or discover each workflow
     through `pokie <command> --help`; `pokie --version` prints the installed public version. `pokie build <project>
     --target <artifact> --out <path>`, POKIE's universal build pipeline:
-    the matrix supports `GameBlueprint` -> `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `PAR workbook` -> `blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `tsPackage` ->
+    the matrix supports `GameBlueprint` -> `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`, `PAR workbook` -> `blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`, `tsPackage` ->
     `outcomeLibrary`/`stakeAdapter`, `outcomeLibrary` -> `outcomeLibrary`/`stakeAdapter`, and same-type republish
     for `stakeAdapter`/`parWorkbook`. A Blueprint -> PAR Workbook build/export freezes generated, weighted, or default
     reel sources as a deterministic literal workbook snapshot; the authored Blueprint remains unchanged. An
@@ -204,10 +204,13 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     versioned metadata contract a WASM component built against POKIE declares (session/play/state serialization
     format ids, host RNG/services bindings, capability discovery), `PokieWasmComponentManifestValidator`/
     `assessWasmComponentCompatibility` (shape and contract-version compatibility), `WasmProjectTargetAdapter`
-    (resolving a compatible `.wasm` + sidecar manifest as a read-only `"wasm"` `PokieProject`), and
+    (resolving a compatible `.wasm` + sidecar manifest as a canonical runnable or legacy inspection-only
+    `"wasm"` `PokieProject`), and
     `assessWasmPackagingPreflight` (an advisory scan naming a `tsPackage` project's own Node built-in API usage
-    and declared dependencies before anyone even considers a WASM build). POKIE has no WASM execution backend
-    and no package-to-WASM compiler — this module defines the compatibility boundary only.
+    and declared dependencies before anyone considers arbitrary package compilation). Canonical Blueprint/PAR
+    builds produce integrity-bound WASM artifacts that the portable runtime can inspect, validate, play,
+    simulate, and replay; legacy sidecar-only components remain inspection-only. POKIE has no arbitrary
+    package-to-WASM compiler or generic WASM server backend.
 
 ## Core concepts at a glance
 

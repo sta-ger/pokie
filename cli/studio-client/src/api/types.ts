@@ -262,9 +262,9 @@ export type StudioProjectOrigin = "managed" | "external";
 
 export type StudioProjectStatus = "ok" | "missing" | "unavailable";
 
-// The Studio server transports this view from WASM_PRODUCT_CONTRACT.  Keeping
-// it a required part of every WASM DTO prevents a client label/action fallback
-// from quietly redefining the inspection-only product boundary.
+// The Studio server transports this view from WASM_PRODUCT_CONTRACT only for
+// legacy sidecar-only components. Canonical runnable WASM uses the ordinary
+// project DTO and Open action instead of an inspection presentation.
 export type StudioWasmPresentation = {
     label: string;
     manifestCapability: StudioProjectCapability;
@@ -294,7 +294,7 @@ type StudioProjectRegistryViewBase = {
 
 export type StudioProjectRegistryView =
     | (StudioProjectRegistryViewBase & {type: Exclude<StudioProjectType, "wasm">})
-    | (StudioProjectRegistryViewBase & {type: "wasm"; wasmPresentation: StudioWasmPresentation});
+    | (StudioProjectRegistryViewBase & {type: "wasm"; wasmPresentation?: StudioWasmPresentation});
 
 // POST /api/home/projects/registry/preview's own DTO — see
 // cli/studio/StudioProjectImportPreviewResult.ts's own doc comment. Never the result of anything being
@@ -308,7 +308,7 @@ type StudioRecognizedProjectImportPreview = {
 
 export type StudioProjectImportPreviewResult =
     | (StudioRecognizedProjectImportPreview & {type: Exclude<StudioProjectType, "wasm">})
-    | (StudioRecognizedProjectImportPreview & {type: "wasm"; wasmPresentation: StudioWasmPresentation})
+    | (StudioRecognizedProjectImportPreview & {type: "wasm"; wasmPresentation?: StudioWasmPresentation})
     | {status: "unrecognized"; path: string};
 
 // POST /api/home/projects/registry/register's own DTO — see
@@ -1355,7 +1355,7 @@ export type StudioStakeEngineExportView =
 // (and "pokie build <project> --target <target>") builds toward. Studio-client never imports the pokie
 // package directly (see ExportDeployTargets.ts's own top-level doc comment), so this is a plain literal
 // mirror, same convention as StudioProjectType above.
-export type StudioArtifactTargetType = "blueprint" | "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "parWorkbook";
+export type StudioArtifactTargetType = "blueprint" | "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "parWorkbook" | "wasm";
 
 // JSON-safe mirror of the server planner.  Studio deliberately consumes this payload instead of maintaining
 // another source/target table in the browser.

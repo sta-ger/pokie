@@ -14,5 +14,7 @@ type StudioRecognizedProjectImportPreview = {
 
 export type StudioProjectImportPreviewResult =
     | (StudioRecognizedProjectImportPreview & {readonly type: Exclude<ProjectType, "wasm">})
-    | (StudioRecognizedProjectImportPreview & {readonly type: "wasm"; readonly wasmPresentation: WasmProductContractView})
+    // Canonical components are runnable and use the ordinary Open flow. The
+    // presentation is retained only for legacy manifest-only compatibility.
+    | (StudioRecognizedProjectImportPreview & {readonly type: "wasm"; readonly wasmPresentation?: WasmProductContractView})
     | {readonly status: "unrecognized"; readonly path: string};

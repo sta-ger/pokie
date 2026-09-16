@@ -388,12 +388,14 @@ validate`/`pokie build --dry-run`.
 ## `pokie build <project>`
 
 POKIE's universal build pipeline: resolves `<project>` to a POKIE project and builds `--target <artifact>` from
-it, writing the result to `--out <path>` (default: a `<target>`-named sibling of `<project>`, e.g. building
-`tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults to `./blueprints/tsPackage`).
+it, writing the result to `--out <path>` (default: a `<target>`-named sibling of `<project>`, except canonical
+WASM defaults to `game.wasm`; e.g. building `tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults
+to `./blueprints/tsPackage`).
 
-The build command supports targets: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, and `parWorkbook`.
-It can resolve a compatible `wasm` component only to reject conversion before publication: WASM is an
-inspection-only input, not a source workflow or a build target.
+The build command supports targets: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`,
+and `wasm`. Blueprint is the canonical portable-WASM source; PAR workbooks use the same model-preserving
+Blueprint import before publication. A resolved WASM artifact is not a source for another conversion, and an
+arbitrary Node package is never compiled to WASM.
 
 ## `pokie generate <packageRoot>`
 
@@ -431,7 +433,7 @@ Options:
 - `<project>` — a path the CLI resolves to a POKIE project: a `GameBlueprint` JSON file (a `blueprint` project), or an
   already-built `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook` artifact directory/file. Missing or
   unrecognized throws, naming the project types the CLI understands.
-- `--target <artifact>` — **required**; one of `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`.
+- `--target <artifact>` — **required**; one of `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, `wasm`.
   Never an output directory (that's `--out`, below) — omitting it, or passing an unrecognized value, throws listing
   the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building a
   unsupported source/target pair, for instance, throws naming which source types that target actually
@@ -442,17 +444,16 @@ Options:
 - `--sample <n> --seed <string>` — only for `--target outcomeLibrary`; explicitly chooses `n` deterministic
   bounded-coverage draws and records that choice in the library manifest.
 - `--out <path>` — where the built artifact is written; optional, defaulting to a `<target>`-named sibling of
-  `<project>` (a `.xlsx` file for `parWorkbook`, a `.json` file for `blueprint`, a bare directory for every other target). An explicit `--out`
+  `<project>` (`game.wasm` for `wasm`, a `.xlsx` file for `parWorkbook`, a `.json` file for `blueprint`, a bare directory for every other target). An explicit `--out`
   always overrides the default and never changes what `--target` means. Must not already exist, or must be an
-  empty directory (a file target like `parWorkbook` must simply not exist yet) — see [Conflict
+  empty directory (a file target like `wasm` or `parWorkbook` must simply not exist yet) — see [Conflict
   handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
 
-The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 14 supported cells are
-`blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
+The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 16 supported cells are
+`blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
 `outcomeLibrary` → `outcomeLibrary`/`stakeAdapter`, `stakeAdapter` → `stakeAdapter`, and `parWorkbook` →
-`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM remains
-inspection-only. PAR-derived targets first import a durable Blueprint intermediate; dry-run prints that stage and
+`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`. Every other advertised cell reports its exact missing prerequisite and a next command. Canonical WASM is built only from Blueprint/PAR; legacy sidecar-only WASM remains inspection-only. PAR-derived targets first import a durable Blueprint intermediate; dry-run prints that stage and
 any generated/reused Outcome intermediate without writing it.
 
 A `blueprint` → `tsPackage` conversion is the classic "generate a game package from a `GameBlueprint`" path,

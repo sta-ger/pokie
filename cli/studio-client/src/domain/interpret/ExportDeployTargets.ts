@@ -49,8 +49,7 @@ export type ExportDeployTargetCard = {
 // tsPackage/outcomeLibrary/stakeAdapter/parWorkbook vocabulary and semantics
 // ArtifactBuilderRegistry.describe() itself already reports (see ArtifactBuilderRegistry.ts's own
 // UNSUPPORTED_NOTES), restated here only as a label/one-line purpose for this card -- never a second,
-// independently-decided description of what building a target does or doesn't do. WASM is intentionally
-// absent: it is an inspection-only project kind until a matrix-supported builder exists.
+// independently-decided description of what building a target does or doesn't do.
 const ARTIFACT_TARGET_CARD_INFO: Readonly<
     Record<StudioArtifactTargetType, {label: string; purpose: string; destination: string; technicalDestination: string; unavailableReason: string}>
 > = {
@@ -90,6 +89,13 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
         destination: "Choose where to save the PAR workbook, or use the default destination.",
         technicalDestination: "A new .xlsx file (default: \"parWorkbook.xlsx\" next to this project).",
         unavailableReason: "This project cannot export or republish a PAR workbook. Open a Game Blueprint or PAR sheet workbook project to continue.",
+    },
+    wasm: {
+        label: "Portable WASM game",
+        purpose: "Build a portable POKIE WASM game from this project.",
+        destination: "Choose where to save the WASM game, or use the default destination.",
+        technicalDestination: "A game.wasm module with an integrity-bound POKIE manifest sidecar.",
+        unavailableReason: "This project cannot build a portable WASM game. Open a Game Blueprint or PAR sheet workbook project to continue.",
     },
 };
 

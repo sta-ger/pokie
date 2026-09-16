@@ -28,7 +28,7 @@ where that file lives) shaped as `PokieWasmComponentManifest`:
 type PokieWasmComponentManifest = {
     schemaVersion: string;                 // which version of *this* contract the manifest targets
     component: {id: string; version: string};
-    minPokieVersion?: string;              // declared metadata only -- not enforced by anything today
+    minPokieVersion?: string;              // lowest POKIE release accepted by the resolver and portable runtime
     serialization: {
         session: string;                   // format id for a session's own config
         play: string;                      // format id for one played round's request/result
@@ -44,11 +44,10 @@ type PokieWasmComponentManifest = {
 
 - **Metadata** — `component.id`/`component.version` identify the component build itself, independent of
   `schemaVersion` (POKIE's own contract version) and `minPokieVersion` (the lowest package release the component
-  claims compatibility with — declared, not yet enforced by any check in this package).
+  claims compatibility with — enforced during canonical resolution and before portable runtime instantiation).
 - **Session/play/state serialization** — three format ids naming the wire shape the component's own host
   boundary expects for a session's config, one played round, and persisted state. POKIE places no constraint on
-  the ids themselves; a future execution backend would compare them against the format ids it actually knows how
-  to marshal.
+  the ids themselves beyond the canonical runtime ABI it validates before execution.
 - **Host RNG/services** — `host.rng` names the format/protocol id for the host-provided random source the
   component must draw through (a component never brings or seeds its own RNG — POKIE's fairness/provably-fair
   model requires every draw to be traceable to a host-issued source; see [Provably Fair](provably-fair.md)).
@@ -81,13 +80,16 @@ outcomes:
 | Sidecar present, well-shaped, but `assessWasmComponentCompatibility` rejects its `schemaVersion` | `resolve()` throws `ProjectTargetUnsupportedError` naming exactly which contract version was declared vs. required — a clear incompatibility diagnostic. |
 | Sidecar present, well-shaped, and compatible | Resolves as a `"wasm"` `PokieProject`. |
 
-A resolved `"wasm"` project carries exactly one capability, `WASM_MANIFEST_READ_CAPABILITY`
-(`"wasm.manifest.read"`) — never `RUNTIME_EXECUTE_CAPABILITY` (POKIE cannot load/run it) and never
-`WASM_EXPORT_CAPABILITY` (no `ProjectType` grants that; `ArtifactBuilderRegistry` deliberately has no `"wasm"`
-target). This is the "resolve read-only" boundary:
-`readWasmComponentManifest(project)` reads the manifest's own fields back for inspection — component id/version,
-serialization format ids, host bindings, declared capabilities — and nothing else. It never touches the `.wasm`
-bytes, and there is no operation that loads, instantiates, simulates, replays, or serves a `"wasm"` project.
+Every compatible WASM project carries `WASM_MANIFEST_READ_CAPABILITY` (`"wasm.manifest.read"`). A canonical
+integrity-bound artifact additionally carries `WASM_RUNTIME_EXECUTE_CAPABILITY` (`"wasm.runtime.execute"`) and
+can be inspected, validated, instantiated, played, simulated, and replayed through the portable runtime. A
+legacy sidecar-only component deliberately retains only manifest inspection so Studio and the CLI can explain the
+migration boundary without falsely advertising execution. Neither kind grants `WASM_EXPORT_CAPABILITY`: WASM is
+an output of the explicit Blueprint/PAR matrix edges, never a source for another artifact conversion.
+
+`readWasmComponentManifest(project)` reads component id/version, serialization format ids, host bindings, and
+declared capabilities. Canonical resolution also verifies the module/manifest integrity binding before runtime
+operations; a swapped, stale, malformed, or incompatible sidecar is rejected before instantiation.
 
 ## Package-to-WASM preflight — `assessWasmPackagingPreflight`
 
@@ -96,19 +98,17 @@ runs an advisory-only scan over that package's own source: it statically finds e
 Node.js built-in module (`fs`, `path`, `child_process`, `net`, ...) — none of which exist inside a
 WASM/component-model sandbox — and lists the package's own declared `package.json` runtime dependencies
 verbatim, for a human to review (POKIE has no way to know whether any third-party dependency is itself portable
-without actually trying to bundle it).
+without actually trying to bundle it). The scan is advisory only; it is not a route into the canonical builder.
 
 The scan is a plain regex over import/require specifiers, not a real parser — good enough to *name* a blocker,
 never a guarantee that an empty result means a package is actually portable. `report.notes` explicitly says that
-WASM has no POKIE build/export target, so the report can never be read as "no blockers found, therefore compilation
-works": **no POKIE command compiles a package to WASM, regardless of what this scan finds.**
+the canonical Blueprint/PAR builder is intentionally different from package compilation, so the report can never
+be read as "no blockers found, therefore compilation works": **no POKIE command compiles an arbitrary package to
+WASM, regardless of what this scan finds.**
 
 ## What's explicitly deferred
 
-- A WASM execution backend: loading, instantiating, and driving session/play/state through a `.wasm` component.
 - A package-to-WASM compiler: turning an arbitrary `tsPackage` into a `.wasm` build.
-- Enforcing `minPokieVersion` against the running package release — declared metadata today, not yet checked by
-  anything.
 
-None of the above is implied by a `"wasm"` project resolving successfully, or by `assessWasmPackagingPreflight`
-reporting zero blocking API usages.
+No package compilation is implied by a `"wasm"` project resolving successfully, or by
+`assessWasmPackagingPreflight` reporting zero blocking API usages.

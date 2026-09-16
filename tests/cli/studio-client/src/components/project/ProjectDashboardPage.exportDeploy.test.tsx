@@ -20,7 +20,7 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
         body: [{id: "local-json-example", version: "1.0.0", requirements: {}, capabilities: ["multiMode"]}],
     }),
     // This fixture exercises unavailable-card rendering. Dedicated cases below cover each matrix-supported
-    // Blueprint conversion, while hidden/unadvertised WASM remains omitted entirely.
+    // Blueprint conversion, including the canonical WASM file workflow.
     "/api/project/artifacts/targets": () => ({
         ok: true,
         status: 200,
@@ -407,6 +407,97 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(buildArtifactSection).getByLabelText("Output file (optional)")).toBeInTheDocument();
         expect(await within(buildArtifactSection).findByText("Resolved absolute path: /games/parWorkbook.xlsx")).toBeInTheDocument();
         expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled();
+    });
+
+    it("builds a canonical WASM file through the shared card, native Save picker, and ordinary project follow-ups", async () => {
+        const user = userEvent.setup();
+        let nativePickerRequest: unknown;
+        let buildRequest: unknown;
+        let registeredLocation: string | undefined;
+        let openedProjectRoot: string | undefined;
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/artifacts/targets": () => ({
+                ok: true,
+                status: 200,
+                body: [{target: "wasm", supported: true, state: "supported", unsupportedNotes: []}],
+            }),
+            "/api/project/artifacts/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    target: "wasm",
+                    destination: "/games/game.wasm",
+                    destinationKind: "file",
+                    plannedOutputs: ["Portable game.wasm module", "Integrity-bound POKIE WASM manifest sidecar"],
+                    sourceType: "blueprint",
+                },
+            }),
+            "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
+        };
+        const fetchImpl: FetchLike = (url, init) => {
+            const [requestPath] = url.split("?");
+            if (requestPath === "/api/home/fs/native-browse/availability") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "available"})});
+            }
+            if (requestPath === "/api/home/fs/native-browse") {
+                nativePickerRequest = JSON.parse(String(init?.body));
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "selected", path: "/games/chosen-game.wasm"})});
+            }
+            if (requestPath === "/api/project/artifacts/build" && init?.method === "POST") {
+                buildRequest = JSON.parse(String(init.body));
+                return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({status: "created", job: {id: "wasm-build", target: "wasm", status: "queued", cancellationRequested: false}})});
+            }
+            if (requestPath === "/api/project/artifacts/build/wasm-build") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({
+                        id: "wasm-build",
+                        target: "wasm",
+                        status: "completed",
+                        cancellationRequested: false,
+                        result: {status: "ok", target: "wasm", outputPath: "/games/chosen-game.wasm", outputKind: "file", sourceType: "blueprint"},
+                    }),
+                });
+            }
+            if (requestPath === "/api/home/projects/registry/register") {
+                registeredLocation = (JSON.parse(String(init?.body)) as {location: string}).location;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok"})});
+            }
+            if (requestPath === "/api/home/projects/open") {
+                openedProjectRoot = (JSON.parse(String(init?.body)) as {projectRoot: string}).projectRoot;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", context: {mode: "project", projectRoot: openedProjectRoot}})});
+            }
+            return fetchImplFrom(routes)(url, init);
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+        expect(await within(buildArtifactSection).findByText("Portable WASM game")).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByLabelText("Output file (optional)")).toBeInTheDocument();
+        expect(await within(buildArtifactSection).findByText("Resolved absolute path: /games/game.wasm")).toBeInTheDocument();
+
+        await user.click(within(buildArtifactSection).getByRole("button", {name: "Browse…"}));
+        expect(await within(buildArtifactSection).findByDisplayValue("/games/chosen-game.wasm")).toBeInTheDocument();
+        expect(nativePickerRequest).toEqual({
+            kind: "file",
+            mode: "save",
+            fileFilters: [{name: "POKIE WASM games", extensions: ["wasm"]}],
+        });
+
+        await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
+        expect(buildRequest).toEqual({target: "wasm", outDir: "/games/chosen-game.wasm"});
+        expect(await within(buildArtifactSection).findByText(/Built to \/games\/chosen-game\.wasm/)).toBeInTheDocument();
+
+        await user.click(within(buildArtifactSection).getByRole("button", {name: "Add to Projects"}));
+        expect(registeredLocation).toBe("/games/chosen-game.wasm");
+        await user.click(within(buildArtifactSection).getByRole("button", {name: "Open as Project"}));
+        await waitFor(() => expect(openedProjectRoot).toBe("/games/chosen-game.wasm"));
     });
 
     it("leaves target availability to the server while still offering the reachable outcome-library generator", async () => {

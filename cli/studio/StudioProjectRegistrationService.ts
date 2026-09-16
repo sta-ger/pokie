@@ -223,7 +223,11 @@ export class StudioProjectRegistrationService {
             suggestedName: defaultProjectName(resolved.location, resolved.project.type),
         };
         return resolved.project.type === "wasm"
-            ? {...preview, type: "wasm", wasmPresentation: wasmProductContractView()}
+            ? {
+                ...preview,
+                type: "wasm",
+                ...(!resolved.project.capabilities.includes(WASM_RUNTIME_EXECUTE_CAPABILITY) ? {wasmPresentation: wasmProductContractView()} : {}),
+            }
             : {...preview, type: resolved.project.type as Exclude<ProjectType, "wasm">};
     }
 
