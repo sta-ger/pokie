@@ -1,23 +1,25 @@
 {
-  "schemaVersion": "pokie.wasm-runtime-benchmark.v1",
-  "command": "node tests/scripts/wasmRuntimeBrowser.test.mjs --benchmark && npm run bench -- wasmRuntime.bench.ts",
-  "fixture": "portable-runtime-golden",
-  "seed": "wasm-benchmark-seed",
+  "schemaVersion": "pokie.wasm-runtime-benchmark.v2",
+  "command": "POKIE_UPDATE_WASM_RUNTIME_BASELINE=1 npm run bench -- wasmRuntime.bench.ts",
+  "fixtureId": "portable-runtime-golden",
+  "fixtureSeed": "wasm-benchmark-seed",
   "warmupRounds": 10,
-  "rounds": 100,
-  "node": "v24.18.0",
-  "chromium": "Chrome/153.0.8010.36",
-  "sizes": {
-    "rawModuleBytes": 790,
-    "manifestBytes": 567,
-    "portableRuntimeBytes": 41656,
-    "completePackagedArtifactBytes": 43013
-  },
-  "chromiumTimingsMs": {
-    "coldInstantiateMs": 5.8,
-    "warmPlayMs": 0.4,
-    "workerRoundTripMs": 50.6
-  },
+  "measuredRounds": 100,
+  "nodeVersion": "v24.18.0",
+  "chromiumVersion": "Chrome/153.0.8010.36",
+  "rawModuleBytes": 790,
+  "manifestBytes": 567,
+  "portableRuntimeBytes": 41656,
+  "completePackagedArtifactBytes": 43013,
+  "nodeColdInstantiateMs": 4.753262,
+  "nodeWarmPlayMs": 1.262036,
+  "nodeSerializationBytes": 1162,
+  "nodeReplayMs": 0.472617,
+  "chromiumColdInstantiateMs": 3.899999976158142,
+  "chromiumWarmPlayMs": 1.100000023841858,
+  "chromiumWorkerRoundTripMs": 50.39999997615814,
+  "chromiumSerializationBytes": 1188,
+  "totalHarnessDurationMs": 922.411647,
   "correctness": "PASS",
-  "note": "Informational local baseline recorded on the disposable P8-01 fixture host; compare field-for-field, never as a hard timing gate."
+  "note": "Informational local baseline; compare field-for-field, never as a hard timing gate."
 }

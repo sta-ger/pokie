@@ -1,16 +1,27 @@
 import {spawn} from "child_process";
+import {writeFile} from "fs/promises";
+import path from "path";
 import {instantiatePokieWasm} from "../src/wasm/PokieWasmRuntime.js";
 import {PORTABLE_RUNTIME_GOLDEN} from "../tests/fixtures/wasm/portableRuntimeGolden.js";
 import {createCanonicalWasmFixture} from "../tests/fixtures/wasm/createCanonicalWasmFixture.js";
 import {formatBenchmarkLine, measureBenchmarkAsync} from "./support/measureBenchmark.js";
 
 const fixture = createCanonicalWasmFixture({id: PORTABLE_RUNTIME_GOLDEN.id});
-const FIXTURE_SEED = "wasm-benchmark-seed";
-const WARMUP_ROUNDS = 10;
-const MEASURED_ROUNDS = 100;
+const benchmarkConfiguration = {
+    fixtureId: fixture.manifest.component.id,
+    fixtureSeed: "wasm-benchmark-seed",
+    warmupRounds: 10,
+    measuredRounds: 100,
+} as const;
+const BASELINE_COMMAND = "POKIE_UPDATE_WASM_RUNTIME_BASELINE=1 npm run bench -- wasmRuntime.bench.ts";
+const BASELINE_PATH = path.join(process.cwd(), "benchmarks", "baselines", "wasmRuntime.json");
 
 type BrowserBenchmark = {
     readonly chromium: string;
+    readonly fixtureId: string;
+    readonly fixtureSeed: string;
+    readonly warmupRounds: number;
+    readonly measuredRounds: number;
     readonly rawModuleBytes: number;
     readonly manifestBytes: number;
     readonly portableRuntimeBytes: number;
@@ -22,16 +33,39 @@ type BrowserBenchmark = {
     readonly serializationBytes: number;
 };
 
+type WasmRuntimeBenchmarkResult = {
+    readonly fixtureId: string;
+    readonly fixtureSeed: string;
+    readonly warmupRounds: number;
+    readonly measuredRounds: number;
+    readonly nodeVersion: string;
+    readonly chromiumVersion: string;
+    readonly rawModuleBytes: number;
+    readonly manifestBytes: number;
+    readonly portableRuntimeBytes: number;
+    readonly completePackagedArtifactBytes: number;
+    readonly nodeColdInstantiateMs: number;
+    readonly nodeWarmPlayMs: number;
+    readonly nodeSerializationBytes: number;
+    readonly nodeReplayMs: number;
+    readonly chromiumColdInstantiateMs: number;
+    readonly chromiumWarmPlayMs: number;
+    readonly chromiumSerializationBytes: number;
+    readonly chromiumWorkerRoundTripMs: number;
+    readonly totalHarnessDurationMs: number;
+    readonly correctness: "PASS";
+};
+
 describe("benchmark: portable WASM runtime", () => {
     test("records Node and genuine Chromium/Worker baselines with correctness assertions", async () => {
         let draw = 0;
         const nextRandom = () => (++draw % 100) / 100;
         const cold = await measureBenchmarkAsync(() => instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom}));
         const runtime = cold.result;
-        const session = runtime.createSession(FIXTURE_SEED);
-        for (let index = 0; index < WARMUP_ROUNDS; index++) await session.play({bet: 1});
+        const session = runtime.createSession(benchmarkConfiguration.fixtureSeed);
+        for (let index = 0; index < benchmarkConfiguration.warmupRounds; index++) await session.play({bet: 1});
         const warm = await measureBenchmarkAsync(async () => {
-            for (let index = 0; index < MEASURED_ROUNDS; index++) await session.play({bet: 1});
+            for (let index = 0; index < benchmarkConfiguration.measuredRounds; index++) await session.play({bet: 1});
             return session.serialize();
         });
         const replay = await measureBenchmarkAsync(() => runtime.replay(warm.result, [{bet: 1}]));
@@ -40,19 +74,20 @@ describe("benchmark: portable WASM runtime", () => {
         // Do not substitute an in-process protocol.handle() timing here.
         const browser = await measureBenchmarkAsync(runRealBrowserWorkerBenchmark);
 
-        expect(warm.result.sequence).toBe(WARMUP_ROUNDS + MEASURED_ROUNDS);
+        expect(warm.result.sequence).toBe(benchmarkConfiguration.warmupRounds + benchmarkConfiguration.measuredRounds);
         expect(replay.result).toHaveLength(1);
         expect(browser.result.status).toBe("PASS");
+        expect(browser.result.fixtureId).toBe(benchmarkConfiguration.fixtureId);
+        expect(browser.result.fixtureSeed).toBe(benchmarkConfiguration.fixtureSeed);
+        expect(browser.result.warmupRounds).toBe(benchmarkConfiguration.warmupRounds);
+        expect(browser.result.measuredRounds).toBe(benchmarkConfiguration.measuredRounds);
         expect(browser.result.completePackagedArtifactBytes).toBeGreaterThan(fixture.bytes.byteLength);
         expectTimings([cold.durationMs, warm.durationMs, replay.durationMs, browser.durationMs, browser.result.coldInstantiateMs, browser.result.warmPlayMs, browser.result.workerRoundTripMs]);
 
-        console.log(formatBenchmarkLine("wasmRuntime", {
-            fixture: fixture.manifest.component.id,
-            seed: FIXTURE_SEED,
-            warmupRounds: WARMUP_ROUNDS,
-            rounds: MEASURED_ROUNDS,
-            node: process.version,
-            chromium: browser.result.chromium,
+        const result: WasmRuntimeBenchmarkResult = {
+            ...benchmarkConfiguration,
+            nodeVersion: process.version,
+            chromiumVersion: browser.result.chromium,
             rawModuleBytes: fixture.bytes.byteLength,
             manifestBytes: new TextEncoder().encode(JSON.stringify(fixture.manifest)).byteLength,
             portableRuntimeBytes: browser.result.portableRuntimeBytes,
@@ -65,9 +100,14 @@ describe("benchmark: portable WASM runtime", () => {
             chromiumWarmPlayMs: browser.result.warmPlayMs,
             chromiumWorkerRoundTripMs: browser.result.workerRoundTripMs,
             chromiumSerializationBytes: browser.result.serializationBytes,
-            chromiumHarnessMs: browser.durationMs,
+            totalHarnessDurationMs: browser.durationMs,
             correctness: browser.result.status,
-        }));
+        };
+        expectTimings(Object.entries(result)
+            .filter(([key]) => key.endsWith("Ms"))
+            .map(([, value]) => value as number));
+        console.log(formatBenchmarkLine("wasmRuntime", result));
+        if (process.env.POKIE_UPDATE_WASM_RUNTIME_BASELINE === "1") await writeInformationalBaseline(result);
         runtime.dispose();
     });
 });
@@ -78,7 +118,11 @@ function expectTimings(values: readonly number[]): void {
 
 function runRealBrowserWorkerBenchmark(): Promise<BrowserBenchmark> {
     return new Promise((resolve, reject) => {
-        const child = spawn(process.execPath, ["tests/scripts/wasmRuntimeBrowser.test.mjs", "--benchmark"], {cwd: process.cwd()});
+        const child = spawn(process.execPath, [
+            "tests/scripts/wasmRuntimeBrowser.test.mjs",
+            "--benchmark",
+            `--benchmark-configuration=${JSON.stringify(benchmarkConfiguration)}`,
+        ], {cwd: process.cwd()});
         let output = "";
         let errorOutput = "";
         child.stdout.on("data", (chunk: Buffer) => {
@@ -105,4 +149,13 @@ function runRealBrowserWorkerBenchmark(): Promise<BrowserBenchmark> {
             }
         });
     });
+}
+
+async function writeInformationalBaseline(result: WasmRuntimeBenchmarkResult): Promise<void> {
+    await writeFile(BASELINE_PATH, `${JSON.stringify({
+        schemaVersion: "pokie.wasm-runtime-benchmark.v2",
+        command: BASELINE_COMMAND,
+        ...result,
+        note: "Informational local baseline; compare field-for-field, never as a hard timing gate.",
+    }, undefined, 2)}\n`);
 }

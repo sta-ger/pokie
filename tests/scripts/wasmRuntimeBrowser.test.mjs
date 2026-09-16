@@ -5,6 +5,7 @@ import {spawn} from "child_process";
 import {PORTABLE_RUNTIME_BROWSER_FIXTURE as canonicalFixture} from "../fixtures/wasm/portableRuntimeGolden.browser.mjs";
 
 const root = process.cwd();
+const benchmarkConfiguration = readBenchmarkConfiguration(process.argv);
 
 const workerModule = `import {PokieWasmWorkerProtocol} from "/dist/esm/wasm/worker.js";
 const protocol = new PokieWasmWorkerProtocol();
@@ -12,20 +13,24 @@ self.onmessage = async ({data}) => self.postMessage(await protocol.handle(data))
 const page = `<!doctype html><script type="module">
     import {instantiatePokieWasm} from "/dist/esm/wasm/browser.js";
     const fixture = ${JSON.stringify(canonicalFixture)};
+    const benchmarkConfiguration = ${JSON.stringify(benchmarkConfiguration)};
     const decode = (value) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
     window.pokieWasmBrowserResult = (async () => {
+        if (fixture.manifest.component.id !== benchmarkConfiguration.fixtureId) throw new Error("browser benchmark received a different fixture than its configuration");
         const bytes = decode(fixture.bytes);
         const coldStartedAt = performance.now();
         const runtime = await instantiatePokieWasm(bytes, fixture.manifest, {nextRandom: () => 0.25});
         const coldInstantiateMs = performance.now() - coldStartedAt;
-        const round = await runtime.createSession("browser").play();
-        const warmSession = runtime.createSession("browser-warm");
+        const round = await runtime.createSession(benchmarkConfiguration.fixtureSeed).play({bet: 1});
+        const warmSession = runtime.createSession(benchmarkConfiguration.fixtureSeed);
+        for (let index = 0; index < benchmarkConfiguration.warmupRounds; index++) await warmSession.play({bet: 1});
         const warmStartedAt = performance.now();
-        for (let index = 0; index < 10; index++) await warmSession.play();
+        for (let index = 0; index < benchmarkConfiguration.measuredRounds; index++) await warmSession.play({bet: 1});
         const warmPlayMs = performance.now() - warmStartedAt;
-        warmSession.dispose();
-        const serialized = runtime.createSession("browser-serialize").serialize();
+        const serialized = warmSession.serialize();
         const serializationBytes = JSON.stringify(serialized).length;
+        if (serialized.sequence !== benchmarkConfiguration.warmupRounds + benchmarkConfiguration.measuredRounds) throw new Error("browser benchmark warmup and measured loops did not complete");
+        warmSession.dispose();
         if (round.draw !== 0.25) throw new Error("shipped browser API did not run the canonical fixture");
         const worker = new Worker("/worker.mjs", {type: "module"});
         const replies = [];
@@ -52,7 +57,7 @@ const page = `<!doctype html><script type="module">
         worker.terminate();
         runtime.dispose();
         if (!replies[0].ok && replies[1].ok && replies[2].ok && replies[3].ok && !replies[4].ok) {
-            return {status: "PASS", coldInstantiateMs, warmPlayMs, workerRoundTripMs, serializationBytes};
+            return {...benchmarkConfiguration, status: "PASS", coldInstantiateMs, warmPlayMs, workerRoundTripMs, serializationBytes};
         }
         throw new Error("worker protocol errors, cancellation, or cleanup failed");
     })();
@@ -122,6 +127,7 @@ try {
     if (includeMeasurements) {
         console.log(`POKIE_WASM_BROWSER_BENCHMARK=${JSON.stringify({
             chromium: browserVersion.product,
+            ...benchmarkConfiguration,
             rawModuleBytes: Buffer.from(canonicalFixture.bytes, "base64").byteLength,
             manifestBytes: Buffer.byteLength(JSON.stringify(canonicalFixture.manifest)),
             portableRuntimeBytes,
@@ -134,6 +140,23 @@ try {
     await new Promise((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
 }
 console.log("PASS real Chromium shipped browser API and worker protocol fixture");
+
+function readBenchmarkConfiguration(argumentsList) {
+    const encoded = argumentsList.find((argument) => argument.startsWith("--benchmark-configuration="));
+    if (encoded === undefined) {
+        return {
+            fixtureId: canonicalFixture.manifest.component.id,
+            fixtureSeed: "wasm-benchmark-seed",
+            warmupRounds: 10,
+            measuredRounds: 100,
+        };
+    }
+    const configuration = JSON.parse(encoded.slice("--benchmark-configuration=".length));
+    if (configuration.fixtureId !== canonicalFixture.manifest.component.id || typeof configuration.fixtureSeed !== "string" || configuration.fixtureSeed.length === 0 || !Number.isInteger(configuration.warmupRounds) || configuration.warmupRounds < 0 || !Number.isInteger(configuration.measuredRounds) || configuration.measuredRounds <= 0) {
+        throw new Error("invalid WASM browser benchmark configuration");
+    }
+    return configuration;
+}
 
 async function collectPortableRuntimeBytes(entries) {
     const visited = new Set();
