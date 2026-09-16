@@ -1,26 +1,17 @@
 import fs from "fs";
-import crypto from "crypto";
 import {WASM_INSPECT_OPERATION} from "./PokieOperation.js";
 import type {PokieProject} from "./PokieProject.js";
 import type {UnsupportedProjectOperationDiagnostic} from "./UnsupportedProjectOperationDiagnostic.js";
 import {describeUnsupportedProjectOperation} from "./describeUnsupportedProjectOperation.js";
 import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
 import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
-import {assertCanonicalWasmDescriptorMatchesManifest, wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
+import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
 import {describeWasmSidecarFailure} from "./WasmProductContract.js";
-import {readCanonicalPokieWasmModule} from "../wasm/PokieWasmCanonicalModule.js";
+import {readIntegrityBoundCanonicalPokieWasmArtifact} from "../wasm/PokieWasmCanonicalModule.js";
 
 export type WasmComponentManifestReadResult =
     | {readonly supported: true; readonly manifest: PokieWasmComponentManifest}
     | {readonly supported: false; readonly diagnostic: UnsupportedProjectOperationDiagnostic};
-
-function hasBoundWasmConfiguration(bytes: Buffer, configurationHash: string): boolean {
-    try {
-        return `sha256:${crypto.createHash("sha256").update(readCanonicalPokieWasmModule(new Uint8Array(bytes)).modelBytes).digest("hex")}` === configurationHash;
-    } catch {
-        return false;
-    }
-}
 
 // Reads back a resolved "wasm" project's own PokieWasmComponentManifest -- the read-only access
 // WASM_MANIFEST_READ_CAPABILITY actually grants (see ProjectCapabilities.ts): metadata only, never the
@@ -70,18 +61,11 @@ export async function readWasmComponentManifest(project: PokieProject): Promise<
     const typedManifest = manifest as PokieWasmComponentManifest;
     if (typedManifest.artifact !== undefined) {
         const bytes = await fs.promises.readFile(project.rootPath);
-        let canonical;
         try {
-            canonical = readCanonicalPokieWasmModule(new Uint8Array(bytes));
-        } catch {
-            canonical = undefined;
+            await readIntegrityBoundCanonicalPokieWasmArtifact(new Uint8Array(bytes), typedManifest);
+        } catch (error) {
+            throw new Error(`POKIE rejected "${project.rootPath}": ${error instanceof Error ? error.message : String(error)}`);
         }
-        if (!WebAssembly.validate(new Uint8Array(bytes)) || canonical === undefined || bytes.byteLength !== typedManifest.artifact.bytes ||
-            `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}` !== typedManifest.artifact.sha256 ||
-            !hasBoundWasmConfiguration(bytes, typedManifest.artifact.configurationHash)) {
-            throw new Error(`POKIE rejected "${project.rootPath}": the canonical WASM module or game configuration no longer matches its integrity-bound manifest.`);
-        }
-        assertCanonicalWasmDescriptorMatchesManifest(canonical.descriptor, typedManifest);
     }
 
     return {supported: true, manifest: typedManifest};

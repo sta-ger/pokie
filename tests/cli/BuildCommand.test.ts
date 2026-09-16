@@ -556,6 +556,28 @@ describe("BuildCommand", () => {
             expect(printed).toContain("destination      blueprints/tsPackage");
         });
 
+        it("runs the public WASM dry-run through canonical validation and leaves its default publication paths untouched", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-wasm-dry-run-"));
+            const sourcePath = path.join(directory, "fixture.blueprint.json");
+            const outputPath = path.join(directory, "game.wasm");
+            fs.writeFileSync(sourcePath, JSON.stringify({
+                manifest: {id: "wasm-dry-run", name: "WASM Dry Run", version: "1.0.0"},
+                reels: 3, rows: 1, symbols: ["A", "B"],
+                reelStrips: [["A", "B"], ["B", "A"], ["A", "B"]],
+                paytable: {A: {3: 2}, B: {3: 1}},
+            }));
+            try {
+                const exitCode = await new BuildCommand("1.3.0").run([sourcePath, "--target", "wasm", "--dry-run"]);
+
+                expect(exitCode).toBe(0);
+                expect(logSpy.mock.calls.map(([message]) => message).join("\n")).toContain(`to "${outputPath}"`);
+                expect(fs.readdirSync(directory).sort()).toEqual(["fixture.blueprint.json"]);
+                expect(fs.existsSync(`${outputPath}.pokie-wasm.json`)).toBe(false);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
         it("--dry-run reports default paylines/bets when the blueprint omits them", async () => {
             const minimalBlueprint: GameBlueprint = {
                 manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},

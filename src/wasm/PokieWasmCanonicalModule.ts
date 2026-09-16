@@ -1,3 +1,6 @@
+import {assessWasmComponentCompatibility} from "../project/wasm/assessWasmComponentCompatibility.js";
+import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, type PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
+
 export const POKIE_WASM_IMPORT_MODULE = "pokie";
 export const POKIE_WASM_RANDOM_IMPORT = "next_random";
 export const POKIE_WASM_PLAY_EXPORT = "play";
@@ -41,10 +44,44 @@ export type PokieWasmGameModel = {
 export type CanonicalPokieWasmModule = {
     readonly module: WebAssembly.Module;
     readonly model: PokieWasmGameModel;
-    readonly modelBytes: Uint8Array;
+    readonly modelBytes: Uint8Array<ArrayBuffer>;
     readonly descriptor: CanonicalPokieWasmComponentDescriptor;
-    readonly descriptorBytes: Uint8Array;
+    readonly descriptorBytes: Uint8Array<ArrayBuffer>;
 };
+
+/**
+ * Narrows a BufferSource to precisely the caller-supplied view.  In
+ * particular, a Uint8Array may be a window onto a larger backing buffer;
+ * integrity checks must never include the bytes outside that window.
+ */
+export function canonicalWasmByteView(bytes: BufferSource): Uint8Array<ArrayBuffer> {
+    return bytes instanceof ArrayBuffer
+        ? new Uint8Array(bytes)
+        : new Uint8Array(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength);
+}
+
+/** Computes a browser-safe SHA-256 over exactly the supplied byte view. */
+export async function sha256CanonicalWasmBytes(bytes: BufferSource): Promise<string> {
+    const view = canonicalWasmByteView(bytes);
+    // Copy the view so SubtleCrypto never observes unrelated bytes from an
+    // oversized Buffer/typed-array backing store.
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", new Uint8Array(view));
+    return `sha256:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** Ensures that all embedded declarations exactly bind to the sidecar. */
+export function assertCanonicalWasmDescriptorMatchesManifest(descriptor: CanonicalPokieWasmComponentDescriptor, manifest: PokieWasmComponentManifest): void {
+    const artifact = manifest.artifact;
+    if (artifact === undefined || descriptor.schemaVersion !== manifest.schemaVersion || descriptor.component.id !== manifest.component.id ||
+        descriptor.component.version !== manifest.component.version || descriptor.minPokieVersion !== manifest.minPokieVersion ||
+        descriptor.serialization.session !== manifest.serialization.session || descriptor.serialization.play !== manifest.serialization.play ||
+        descriptor.serialization.state !== manifest.serialization.state || descriptor.host.rng !== manifest.host.rng ||
+        JSON.stringify(descriptor.host.services) !== JSON.stringify(manifest.host.services) || JSON.stringify(descriptor.capabilities) !== JSON.stringify(manifest.capabilities) ||
+        descriptor.artifact.format !== artifact.format || descriptor.artifact.abiVersion !== artifact.abiVersion ||
+        descriptor.artifact.adapter !== artifact.adapter || descriptor.artifact.configurationHash !== artifact.configurationHash) {
+        throw new Error("the canonical component descriptor embedded in the WASM module does not agree with its manifest");
+    }
+}
 
 function isPositiveSafeInteger(value: unknown): value is number {
     return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
@@ -178,9 +215,7 @@ function hasSignature(signature: FunctionSignature, parameters: readonly number[
 
 /** Validates the executable ABI shared by resolution, readback, and runtime instantiation. */
 export function readCanonicalPokieWasmModule(bytes: BufferSource): CanonicalPokieWasmModule {
-    const binary = bytes instanceof ArrayBuffer
-        ? new Uint8Array(bytes)
-        : new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const binary = canonicalWasmByteView(bytes);
     if (!WebAssembly.validate(binary)) throw new Error("The WASM module is malformed or is not a WebAssembly binary.");
     const module = new WebAssembly.Module(binary);
     const imports = WebAssembly.Module.imports(module);
@@ -218,4 +253,34 @@ export function readCanonicalPokieWasmModule(bytes: BufferSource): CanonicalPoki
     }
     if (!isCanonicalDescriptor(descriptor)) throw new Error("POKIE WASM artifact has an unsupported component descriptor section.");
     return {module, model, modelBytes, descriptor, descriptorBytes};
+}
+
+/**
+ * Reads and validates the portable executable boundary used by file
+ * resolution, manifest readback, and direct browser-safe instantiation.
+ */
+export async function readIntegrityBoundCanonicalPokieWasmArtifact(bytes: BufferSource, manifest: PokieWasmComponentManifest): Promise<CanonicalPokieWasmModule> {
+    const compatibility = assessWasmComponentCompatibility(manifest);
+    if (!compatibility.compatible) {
+        throw new Error(`POKIE WASM manifest is incompatible: ${compatibility.issues.map((issue) => issue.message).join(" ")}`);
+    }
+    const artifact = manifest.artifact;
+    if (artifact === undefined) throw new Error("This is a legacy sidecar-only WASM component and is inspection-only; build a canonical POKIE WASM artifact to run it.");
+    if (artifact.format !== "pokie.wasm.v1" || artifact.adapter !== POKIE_WASM_ADAPTER) throw new Error(`Unsupported POKIE WASM adapter "${artifact.adapter}".`);
+    if (artifact.abiVersion !== POKIE_WASM_ABI_VERSION) {
+        throw new Error(`Unsupported POKIE WASM ABI "${artifact.abiVersion}"; this runtime requires POKIE WASM ABI "${POKIE_WASM_ABI_VERSION}".`);
+    }
+    const view = canonicalWasmByteView(bytes);
+    if (view.byteLength !== artifact.bytes) {
+        throw new Error(`POKIE WASM artifact byte count ${view.byteLength} does not match manifest artifact.bytes ${artifact.bytes}.`);
+    }
+    if (await sha256CanonicalWasmBytes(view) !== artifact.sha256) {
+        throw new Error("POKIE WASM artifact SHA-256 does not match its manifest.");
+    }
+    const canonical = readCanonicalPokieWasmModule(view);
+    if (await sha256CanonicalWasmBytes(canonical.modelBytes) !== artifact.configurationHash) {
+        throw new Error("POKIE WASM embedded game configuration hash does not match its manifest.");
+    }
+    assertCanonicalWasmDescriptorMatchesManifest(canonical.descriptor, manifest);
+    return canonical;
 }

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import {instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
 import type {PokieWasmComponentManifest} from "../../../src/project/wasm/PokieWasmComponentManifest.js";
 
@@ -16,7 +17,7 @@ const descriptor = new TextEncoder().encode(JSON.stringify({
     schemaVersion: "1.0.0", component: {id: "fixture", version: "1.0.0"},
     serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
     host: {rng: "pokie.rng.v1", services: []}, capabilities: ["runtime.play", "runtime.serialize"],
-    artifact: {format: "pokie.wasm.v1", abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash: `sha256:${"0".repeat(64)}`},
+    artifact: {format: "pokie.wasm.v1", abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash: `sha256:${crypto.createHash("sha256").update(model).digest("hex")}`},
 }));
 const descriptorName = new TextEncoder().encode("pokie.component.v1");
 const bytes = new Uint8Array([
@@ -35,14 +36,25 @@ function encodeUnsigned(value: number): number[] {
     } while (value !== 0);
     return bytes;
 }
-const manifest: PokieWasmComponentManifest = {
-    schemaVersion: "1.0.0",
-    component: {id: "fixture", version: "1.0.0"},
-    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
-    host: {rng: "pokie.rng.v1", services: []},
-    capabilities: ["runtime.play", "runtime.serialize"],
-    artifact: {format: "pokie.wasm.v1", sha256: "sha256:0000000000000000000000000000000000000000000000000000000000000000", bytes: 8, abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
-};
+function manifestFor(moduleBytes: Uint8Array): PokieWasmComponentManifest {
+    return {
+        schemaVersion: "1.0.0",
+        component: {id: "fixture", version: "1.0.0"},
+        serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+        host: {rng: "pokie.rng.v1", services: []},
+        capabilities: ["runtime.play", "runtime.serialize"],
+        artifact: {
+            format: "pokie.wasm.v1",
+            sha256: `sha256:${crypto.createHash("sha256").update(moduleBytes).digest("hex")}`,
+            bytes: moduleBytes.byteLength,
+            abiVersion: "1.0.0",
+            adapter: "pokie/wasm",
+            configurationHash: `sha256:${crypto.createHash("sha256").update(model).digest("hex")}`,
+        },
+    };
+}
+
+const manifest = manifestFor(bytes);
 
 describe("Pokie WASM runtime API", () => {
     it("uses only host RNG and resumes the JSON-safe serialized continuation", async () => {
@@ -57,6 +69,23 @@ describe("Pokie WASM runtime API", () => {
         await expect(session.play()).rejects.toThrow(/disposed/);
     });
 
+    it("hashes exactly the supplied byte view instead of its larger backing buffer", async () => {
+        const padded = new Uint8Array(bytes.byteLength + 6);
+        padded.set(bytes, 3);
+        const runtime = await instantiatePokieWasm(padded.subarray(3, 3 + bytes.byteLength), manifest, {nextRandom: () => 0.125});
+        await expect(runtime.createSession("byte-view").play()).resolves.toMatchObject({draw: 0.125});
+    });
+
+    it.each([
+        ["byte count", {...manifest, artifact: {...manifest.artifact!, bytes: manifest.artifact!.bytes + 1}}, /byte count/],
+        ["module SHA-256", {...manifest, artifact: {...manifest.artifact!, sha256: `sha256:${"0".repeat(64)}`}}, /SHA-256/],
+        ["configuration hash", {...manifest, artifact: {...manifest.artifact!, configurationHash: `sha256:${"0".repeat(64)}`}}, /configuration hash/],
+        ["ABI declaration", {...manifest, artifact: {...manifest.artifact!, abiVersion: "2.0.0"}}, /ABI/],
+        ["embedded descriptor", {...manifest, component: {id: "other", version: manifest.component.version}}, /descriptor/],
+    ])("rejects a direct runtime %s mismatch before instantiation", async (_name, mismatchedManifest, error) => {
+        await expect(instantiatePokieWasm(bytes, mismatchedManifest, {nextRandom: () => 0.5})).rejects.toThrow(error);
+    });
+
     it("fails deterministically for malformed state and invalid host draws", async () => {
         const runtime = await instantiatePokieWasm(bytes, manifest, {nextRandom: () => 1});
         expect(() => runtime.restoreSession({schemaVersion: "other" as never, seed: "x", draws: [], sequence: 0})).toThrow(/Unsupported or malformed/);
@@ -68,7 +97,7 @@ describe("Pokie WASM runtime API", () => {
         // The fixture's sole function type is () -> i32. Changing it to i64
         // leaves the binary valid but must not turn it into a POKIE ABI match.
         wrongSignature[14] = 0x7e;
-        await expect(instantiatePokieWasm(wrongSignature, manifest, {nextRandom: () => 0.5})).rejects.toThrow(/next_random signature/i);
+        await expect(instantiatePokieWasm(wrongSignature, manifestFor(wrongSignature), {nextRandom: () => 0.5})).rejects.toThrow(/next_random signature/i);
     });
 
     it("independently rejects a valid module whose play signature differs from the canonical ABI", async () => {
@@ -85,6 +114,6 @@ describe("Pokie WASM runtime API", () => {
             0x00, ...encodeUnsigned(descriptor.length + descriptorName.length + 1), descriptorName.length, ...descriptorName, ...descriptor,
         ]);
         expect(WebAssembly.validate(wrongPlaySignature)).toBe(true);
-        await expect(instantiatePokieWasm(wrongPlaySignature, manifest, {nextRandom: () => 0.5})).rejects.toThrow(/play signature/i);
+        await expect(instantiatePokieWasm(wrongPlaySignature, manifestFor(wrongPlaySignature), {nextRandom: () => 0.5})).rejects.toThrow(/play signature/i);
     });
 });

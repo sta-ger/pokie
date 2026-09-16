@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import crypto from "crypto";
 import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
 import {satisfiesMinimumSemverLite} from "./wasm/internal/compareSemverLite.js";
 import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
@@ -8,7 +7,7 @@ import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
 import {ProjectTargetUnsupportedError} from "./ProjectTargetUnsupportedError.js";
 import {describeWasmSidecarFailure} from "./WasmProductContract.js";
-import {readCanonicalPokieWasmModule, type CanonicalPokieWasmComponentDescriptor} from "../wasm/PokieWasmCanonicalModule.js";
+import {readIntegrityBoundCanonicalPokieWasmArtifact} from "../wasm/PokieWasmCanonicalModule.js";
 
 // The sidecar file a ".wasm" file must be paired with for this adapter to ever recognize it -- e.g.
 // "game.wasm" needs a "game.wasm.pokie-wasm.json" next to it declaring a PokieWasmComponentManifest. Exported
@@ -16,27 +15,6 @@ import {readCanonicalPokieWasmModule, type CanonicalPokieWasmComponentDescriptor
 // without duplicating this naming rule a second time.
 export function wasmComponentManifestSidecarPath(wasmFilePath: string): string {
     return `${wasmFilePath}.pokie-wasm.json`;
-}
-
-function hasBoundWasmConfiguration(bytes: Buffer, configurationHash: string): boolean {
-    try {
-        return `sha256:${crypto.createHash("sha256").update(readCanonicalPokieWasmModule(new Uint8Array(bytes)).modelBytes).digest("hex")}` === configurationHash;
-    } catch {
-        return false;
-    }
-}
-
-export function assertCanonicalWasmDescriptorMatchesManifest(descriptor: CanonicalPokieWasmComponentDescriptor, manifest: PokieWasmComponentManifest): void {
-    const artifact = manifest.artifact;
-    if (artifact === undefined || descriptor.schemaVersion !== manifest.schemaVersion || descriptor.component.id !== manifest.component.id ||
-        descriptor.component.version !== manifest.component.version || descriptor.minPokieVersion !== manifest.minPokieVersion ||
-        descriptor.serialization.session !== manifest.serialization.session || descriptor.serialization.play !== manifest.serialization.play ||
-        descriptor.serialization.state !== manifest.serialization.state || descriptor.host.rng !== manifest.host.rng ||
-        JSON.stringify(descriptor.host.services) !== JSON.stringify(manifest.host.services) || JSON.stringify(descriptor.capabilities) !== JSON.stringify(manifest.capabilities) ||
-        descriptor.artifact.format !== artifact.format || descriptor.artifact.abiVersion !== artifact.abiVersion ||
-        descriptor.artifact.adapter !== artifact.adapter || descriptor.artifact.configurationHash !== artifact.configurationHash) {
-        throw new Error("the canonical component descriptor embedded in the WASM module does not agree with its manifest");
-    }
 }
 
 // Recognizes a ".wasm" file carrying a sidecar PokieWasmComponentManifest -- the read-only half of the WASM
@@ -123,21 +101,12 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
             } catch (error) {
                 throw new ProjectTargetMalformedError(`POKIE could not read WASM module "${resolvedPath}": ${error instanceof Error ? error.message : String(error)}`, {targetType: "wasm", stage: "WASM module"});
             }
-            let canonical;
             try {
-                canonical = readCanonicalPokieWasmModule(new Uint8Array(bytes));
-            } catch {
-                canonical = undefined;
-            }
-            if (!WebAssembly.validate(new Uint8Array(bytes)) || canonical === undefined || bytes.byteLength !== typedManifest.artifact.bytes ||
-                `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}` !== typedManifest.artifact.sha256 ||
-                !hasBoundWasmConfiguration(bytes, typedManifest.artifact.configurationHash)) {
-                throw new ProjectTargetMalformedError(`POKIE rejected "${resolvedPath}": its integrity-bound WASM module or game configuration does not match its manifest. Rebuild the artifact; do not copy a sidecar or glue file between modules.`, {targetType: "wasm", stage: "WASM artifact integrity"});
-            }
-            try {
-                assertCanonicalWasmDescriptorMatchesManifest(canonical.descriptor, typedManifest);
+                await readIntegrityBoundCanonicalPokieWasmArtifact(new Uint8Array(bytes), typedManifest);
             } catch (error) {
-                throw new ProjectTargetMalformedError(`POKIE rejected "${resolvedPath}": ${error instanceof Error ? error.message : String(error)}. Rebuild the artifact; do not edit a runnable component sidecar.`, {targetType: "wasm", stage: "WASM artifact descriptor"});
+                const reason = error instanceof Error ? error.message : String(error);
+                const stage = reason.includes("descriptor") ? "WASM artifact descriptor" : "WASM artifact integrity";
+                throw new ProjectTargetMalformedError(`POKIE rejected "${resolvedPath}": its canonical WASM module or game configuration does not match its manifest: ${reason}. Rebuild the artifact; do not copy a sidecar or glue file between modules.`, {targetType: "wasm", stage});
             }
         }
 

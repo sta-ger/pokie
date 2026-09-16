@@ -21,6 +21,7 @@ const blueprint = {
 type MutableManifestDeclaration = {
     schemaVersion: string;
     component: {id: string; version: string};
+    minPokieVersion?: string;
     serialization: {play: string};
     host: {rng: string};
     capabilities: string[];
@@ -195,7 +196,6 @@ describe("WasmArtifactBuilder", () => {
         const manifest = JSON.parse(fs.readFileSync(`${outputPath}.pokie-wasm.json`, "utf8"));
         manifest.component.id = "metadata-edited";
         manifest.host.rng = "pokie.other-rng.v1";
-        manifest.artifact.abiVersion = "1.0.1";
         fs.writeFileSync(`${outputPath}.pokie-wasm.json`, JSON.stringify(manifest));
 
         await expect(new ProjectTargetResolver().resolve(outputPath)).rejects.toThrow(/embedded in the WASM module does not agree with its manifest/i);
@@ -210,6 +210,9 @@ describe("WasmArtifactBuilder", () => {
         }],
         ["component version", (manifest: MutableManifestDeclaration) => {
             manifest.component.version = "1.0.1";
+        }],
+        ["minimum POKIE version", (manifest: MutableManifestDeclaration) => {
+            manifest.minPokieVersion = "1.0.0";
         }],
         ["serialization", (manifest: MutableManifestDeclaration) => {
             manifest.serialization.play = "pokie.play.v2";
@@ -256,6 +259,25 @@ describe("WasmArtifactBuilder", () => {
         await expect(builder.build({type: "blueprint", rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, outputPath, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
         expect(fs.existsSync(outputPath)).toBe(false);
         expect(fs.existsSync(`${outputPath}.pokie-wasm.json`)).toBe(false);
+    });
+
+    it("rejects a realpath-equivalent symlink destination without changing the source or its companion", async () => {
+        const sourcePath = path.join(workDir, "fixture.blueprint.json");
+        const sourceAlias = path.join(workDir, "fixture-alias.blueprint.json");
+        const sourceCompanion = `${sourcePath}.pokie-wasm.json`;
+        const sourceContents = JSON.stringify(blueprint);
+        fs.writeFileSync(sourcePath, sourceContents);
+        fs.writeFileSync(sourceCompanion, "pre-existing source companion");
+        fs.symlinkSync(sourcePath, sourceAlias);
+
+        await expect(new WasmArtifactBuilder("1.3.0").build(
+            {type: "blueprint", rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"},
+            sourceAlias,
+        )).rejects.toThrow(/source itself/);
+
+        expect(fs.readFileSync(sourcePath, "utf8")).toBe(sourceContents);
+        expect(fs.readFileSync(sourceCompanion, "utf8")).toBe("pre-existing source companion");
+        expect(fs.lstatSync(sourceAlias).isSymbolicLink()).toBe(true);
     });
 
     it("rolls back mid-publication cancellation and injected staging or rename failures without touching the source", async () => {

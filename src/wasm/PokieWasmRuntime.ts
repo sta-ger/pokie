@@ -1,6 +1,5 @@
-import {POKIE_WASM_ADAPTER, type PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
-import {assertCanonicalWasmDescriptorMatchesManifest} from "../project/WasmProjectTargetAdapter.js";
-import {readCanonicalPokieWasmModule, type PokieWasmGameModel} from "./PokieWasmCanonicalModule.js";
+import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
+import {readIntegrityBoundCanonicalPokieWasmArtifact, type PokieWasmGameModel} from "./PokieWasmCanonicalModule.js";
 import type {PokieWasmHost, PokieWasmRound, PokieWasmRuntime, PokieWasmRuntimeSession, PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
 
 const MAX_HOST_RANDOM_DRAWS_PER_PLAY = 1024;
@@ -12,10 +11,7 @@ export function inspectPokieWasm(manifest: PokieWasmComponentManifest): PokieWas
 
 /** Instantiates the canonical portable ABI and derives complete deterministic rounds from it. */
 export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieWasmComponentManifest, host: PokieWasmHost): Promise<PokieWasmRuntime> {
-    if (manifest.artifact === undefined) throw new Error("This is a legacy sidecar-only WASM component and is inspection-only; build a canonical POKIE WASM artifact to run it.");
-    if (manifest.artifact.adapter !== POKIE_WASM_ADAPTER) throw new Error(`Unsupported POKIE WASM adapter "${manifest.artifact.adapter}".`);
-    const canonical = readCanonicalPokieWasmModule(bytes);
-    assertCanonicalWasmDescriptorMatchesManifest(canonical.descriptor, manifest);
+    const canonical = await readIntegrityBoundCanonicalPokieWasmArtifact(bytes, manifest);
     let currentDraws: number[] = [];
     const instance = await WebAssembly.instantiate(canonical.module, {
         pokie: {
