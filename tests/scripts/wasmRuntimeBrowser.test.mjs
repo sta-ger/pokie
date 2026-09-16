@@ -15,6 +15,22 @@ const page = `<!doctype html><script type="module">
     const fixture = ${JSON.stringify(canonicalFixture)};
     const benchmarkConfiguration = ${JSON.stringify(benchmarkConfiguration)};
     const decode = (value) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+    const assertFieldForField = (actual, expected, location = "result") => {
+        if (Object.is(actual, expected)) return;
+        if (Array.isArray(actual) || Array.isArray(expected)) {
+            if (!Array.isArray(actual) || !Array.isArray(expected) || actual.length !== expected.length) throw new Error(location + " does not match the reviewed golden array shape");
+            actual.forEach((entry, index) => assertFieldForField(entry, expected[index], location + "[" + index + "]"));
+            return;
+        }
+        if (actual !== null && expected !== null && typeof actual === "object" && typeof expected === "object") {
+            const actualKeys = Object.keys(actual).sort();
+            const expectedKeys = Object.keys(expected).sort();
+            if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) throw new Error(location + " does not match the reviewed golden fields");
+            actualKeys.forEach((key) => assertFieldForField(actual[key], expected[key], location + "." + key));
+            return;
+        }
+        throw new Error(location + " does not match the reviewed golden value");
+    };
     const seededDraws = (seed, count) => {
         const host = new SeededPokieWasmHost(seed);
         return Array.from({length: count}, () => host.nextRandom());
@@ -22,6 +38,28 @@ const page = `<!doctype html><script type="module">
     window.pokieWasmBrowserResult = (async () => {
         if (fixture.manifest.component.id !== benchmarkConfiguration.fixtureId) throw new Error("browser benchmark received a different fixture than its configuration");
         const bytes = decode(fixture.bytes);
+        const golden = fixture.golden;
+        const mainRuntime = await instantiatePokieWasm(bytes, fixture.manifest, new SeededPokieWasmHost(golden.seed));
+        const mainSession = mainRuntime.createSession(golden.seed);
+        const mainRounds = [];
+        for (const command of golden.commands) mainRounds.push(await mainSession.play(command));
+        const mainState = mainSession.serialize();
+        const continuationRuntime = await instantiatePokieWasm(decode(fixture.bytes), fixture.manifest, new SeededPokieWasmHost(golden.seed));
+        const continuation = await continuationRuntime.restoreSession(mainState).play(golden.continuationCommand);
+        const replayRuntime = await instantiatePokieWasm(decode(fixture.bytes), fixture.manifest, new SeededPokieWasmHost(golden.seed));
+        const replayRounds = await replayRuntime.replay(mainState, [golden.continuationCommand]);
+        const replay = {
+            round: replayRounds[0].sequence,
+            totalBet: [...mainRounds, ...replayRounds].reduce((total, round) => total + round.stake, 0),
+            totalWin: [...mainRounds, ...replayRounds].reduce((total, round) => total + round.payout, 0),
+            screen: replayRounds[0].screen,
+        };
+        assertFieldForField({draws: mainState.draws, rounds: mainRounds, state: mainState, continuation, replay}, golden.expected, "browser main-thread golden");
+        assertFieldForField(replayRounds, [golden.expected.continuation], "browser replay rounds");
+        mainSession.dispose();
+        mainRuntime.dispose();
+        continuationRuntime.dispose();
+        replayRuntime.dispose();
         const coldStartedAt = performance.now();
         const runtime = await instantiatePokieWasm(bytes, fixture.manifest, new SeededPokieWasmHost(benchmarkConfiguration.fixtureSeed));
         const coldInstantiateMs = performance.now() - coldStartedAt;
@@ -51,18 +89,29 @@ const page = `<!doctype html><script type="module">
             worker.postMessage({id: "before", type: "play"});
             replies.push(await response);
             const transferred = decode(fixture.bytes);
-            const workerDraws = seededDraws(benchmarkConfiguration.fixtureSeed, 2);
+            const workerDraws = [...golden.expected.draws];
             response = receive();
-            worker.postMessage({id: "instantiate", type: "instantiate", bytes: transferred, manifest: fixture.manifest, draws: workerDraws}, [transferred.buffer]);
+            worker.postMessage({id: "instantiate", type: "instantiate", bytes: transferred, manifest: fixture.manifest, draws: workerDraws, seed: golden.seed}, [transferred.buffer]);
             replies.push(await response);
             if (transferred.byteLength !== 0) throw new Error("worker transfer did not detach the main-thread bytes");
             response = receive();
-            worker.postMessage({id: "play", type: "play"});
+            worker.postMessage({id: "unknown", type: "unknown"});
             replies.push(await response);
+            const workerRounds = [];
+            for (const [index, command] of golden.commands.entries()) {
+                response = receive();
+                worker.postMessage({id: "play-" + (index + 1), type: "play", command});
+                const reply = await response;
+                replies.push(reply);
+                if (!reply.ok) throw new Error("worker golden play failed: " + reply.error);
+                workerRounds.push(reply.result);
+            }
             response = receive();
             worker.postMessage({id: "state", type: "serialize"});
             replies.push(await response);
-            if (!replies[3].ok || JSON.stringify(replies[3].result?.draws) !== JSON.stringify(workerDraws)) throw new Error("worker benchmark did not consume draws derived from the configured seed");
+            const workerState = replies.at(-1).result;
+            assertFieldForField(workerRounds, mainRounds, "worker rounds compared with browser main thread");
+            assertFieldForField(workerState, mainState, "worker serialized state compared with browser main thread");
             response = receive();
             worker.postMessage({id: "cancel", type: "cancel"});
             replies.push(await response);
@@ -70,12 +119,13 @@ const page = `<!doctype html><script type="module">
             worker.postMessage({id: "after", type: "serialize"});
             replies.push(await response);
             const workerRoundTripMs = performance.now() - workerStartedAt;
-            if (!replies[0].ok && replies[1].ok && replies[2].ok && replies[3].ok && replies[4].ok && !replies[5].ok) {
+            if (!replies[0].ok && replies[1].ok && !replies[2].ok && replies.slice(3, 6).every((reply) => reply.ok) && replies[6].ok && replies[7].ok && !replies[8].ok) {
                 return {...benchmarkConfiguration, status: "PASS", coldInstantiateMs, warmPlayMs, workerRoundTripMs, serializationBytes};
             }
             throw new Error("worker protocol errors, cancellation, or cleanup failed");
         } finally {
-            worker.terminate();
+            const terminationResult = worker.terminate();
+            if (terminationResult !== undefined) throw new Error("browser Worker termination did not complete synchronously");
             runtime.dispose();
         }
     })();

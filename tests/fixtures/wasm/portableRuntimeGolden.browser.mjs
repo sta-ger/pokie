@@ -17,4 +17,24 @@ export const PORTABLE_RUNTIME_BROWSER_FIXTURE = {
             configurationHash: "sha256:438148321f999b5d0e7ea163c3dbbdc76c54beeebbbfbb0c0ea281108b1951f4",
         },
     },
+    // This browser-safe copy is intentionally checked in rather than derived
+    // from the runtime under test. Keep it identical to PORTABLE_RUNTIME_GOLDEN
+    // so genuine Chromium verifies the reviewed cross-host contract.
+    golden: {
+        seed: "wasm-parity-golden",
+        commands: [{bet: 1}, {bet: 1}, {bet: 1}],
+        continuationCommand: {bet: 1},
+        replayRound: 4,
+        expected: {
+            draws: [0.5967806649859995, 0.5375500756781548, 0.07866769284009933, 0.3642472343053669, 0.5574665090534836, 0.0013346921186894178],
+            rounds: [
+                {sequence: 1, draw: 0.5967806649859995, stops: [1, 1], screen: [["B"], ["B"]], winMultiplier: 1, stake: 1, payout: 1, creditsBefore: 1000, credits: 1000, command: {bet: 1}},
+                {sequence: 2, draw: 0.07866769284009933, stops: [0, 0], screen: [["A"], ["A"]], winMultiplier: 2, stake: 1, payout: 2, creditsBefore: 1000, credits: 1001, command: {bet: 1}},
+                {sequence: 3, draw: 0.5574665090534836, stops: [1, 0], screen: [["B"], ["A"]], winMultiplier: 0, stake: 1, payout: 0, creditsBefore: 1001, credits: 1000, command: {bet: 1}},
+            ],
+            state: {schemaVersion: "pokie.state.v1", seed: "wasm-parity-golden", draws: [0.5967806649859995, 0.5375500756781548, 0.07866769284009933, 0.3642472343053669, 0.5574665090534836, 0.0013346921186894178], sequence: 3, credits: 1000, rngState: 1365295755},
+            continuation: {sequence: 4, draw: 0.14641731861047447, stops: [0, 1], screen: [["A"], ["B"]], winMultiplier: 0, stake: 1, payout: 0, creditsBefore: 1000, credits: 999, command: {bet: 1}},
+            replay: {round: 4, totalBet: 4, totalWin: 3, screen: [["A"], ["B"]]},
+        },
+    },
 };

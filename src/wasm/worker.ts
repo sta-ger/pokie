@@ -1,9 +1,9 @@
-import {instantiatePokieWasm} from "./PokieWasmRuntime.js";
+import {instantiatePokieWasm, SeededPokieWasmHost} from "./PokieWasmRuntime.js";
 import type {PokieWasmRuntime, PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
 
 export type PokieWasmWorkerRequest =
-    | {readonly id: string; readonly type: "instantiate"; readonly bytes: Uint8Array; readonly manifest: PokieWasmComponentManifest; readonly draws: readonly number[]}
+    | {readonly id: string; readonly type: "instantiate"; readonly bytes: Uint8Array; readonly manifest: PokieWasmComponentManifest; readonly draws: readonly number[]; readonly seed?: string}
     | {readonly id: string; readonly type: "play"; readonly command?: Record<string, unknown>}
     | {readonly id: string; readonly type: "restore"; readonly state: PokieWasmSessionState}
     | {readonly id: string; readonly type: "serialize"}
@@ -26,14 +26,22 @@ export class PokieWasmWorkerProtocol {
                 const draws = [...request.draws];
                 const portableBytes = new Uint8Array(request.bytes.byteLength);
                 portableBytes.set(request.bytes);
+                const seededHost = request.seed === undefined ? undefined : new SeededPokieWasmHost(request.seed);
                 const runtime = await instantiatePokieWasm(portableBytes, request.manifest, {nextRandom: () => {
                     const draw = draws.shift();
                     if (draw === undefined) throw new Error("The WASM worker received no host-provided random draw.");
+                    if (seededHost !== undefined && seededHost.nextRandom() !== draw) {
+                        throw new Error("The WASM worker received draws that do not match its explicit seeded host stream.");
+                    }
                     return draw;
-                }});
+                },
+                ...(seededHost === undefined ? {} : {
+                    serializeState: () => seededHost.serializeState(),
+                    restoreState: (state) => seededHost.restoreState(state),
+                })});
                 let session: ReturnType<PokieWasmRuntime["createSession"]>;
                 try {
-                    session = runtime.createSession("worker");
+                    session = runtime.createSession(request.seed ?? "worker");
                 } catch (error) {
                     runtime.dispose();
                     throw error;
@@ -92,8 +100,9 @@ function assertValidWorkerRequest(value: unknown): asserts value is PokieWasmWor
     switch (value.type) {
         case "instantiate":
             if (!(value.bytes instanceof Uint8Array) || !isRecord(value.manifest) || !Array.isArray(value.draws) ||
+                (value.seed !== undefined && (typeof value.seed !== "string" || value.seed.length === 0)) ||
                 !value.draws.every((draw) => typeof draw === "number" && Number.isFinite(draw) && draw >= 0 && draw < 1)) {
-                throw new Error("Malformed POKIE WASM instantiate request: bytes, manifest, and finite [0, 1) draws are required.");
+                throw new Error("Malformed POKIE WASM instantiate request: bytes, manifest, finite [0, 1) draws, and an optional non-empty seed are required.");
             }
             return;
         case "play":

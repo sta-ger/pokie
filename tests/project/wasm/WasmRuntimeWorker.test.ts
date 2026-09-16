@@ -1,4 +1,5 @@
 import {PokieWasmWorkerProtocol} from "../../../src/wasm/worker.js";
+import {instantiatePokieWasm, SeededPokieWasmHost} from "../../../src/wasm/PokieWasmRuntime.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 describe("PokieWasmWorkerProtocol", () => {
@@ -14,6 +15,25 @@ describe("PokieWasmWorkerProtocol", () => {
         expect(await protocol.handle({id: "restore", type: "restore", state: state.result as never})).toMatchObject({ok: true});
         expect(await protocol.handle({id: "two", type: "play"})).toMatchObject({ok: true, result: {sequence: 2, draw: 0.5}});
         expect(await protocol.handle({id: "dispose", type: "dispose"})).toEqual({id: "dispose", ok: true});
+    });
+
+    it("preserves the explicit seeded host continuation used by the main-thread runtime", async () => {
+        const fixture = createCanonicalWasmFixture({id: "worker-seeded-parity"});
+        const seed = "worker-seeded-parity";
+        const workerDrawHost = new SeededPokieWasmHost(seed);
+        const draws = [workerDrawHost.nextRandom(), workerDrawHost.nextRandom()];
+        const protocol = new PokieWasmWorkerProtocol();
+        await expect(protocol.handle({id: "start", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, draws, seed})).resolves.toMatchObject({ok: true});
+        const workerRound = await protocol.handle({id: "play", type: "play", command: {bet: 1}});
+        const workerState = await protocol.handle({id: "state", type: "serialize"});
+
+        const mainRuntime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost(seed));
+        const mainSession = mainRuntime.createSession(seed);
+        const mainRound = await mainSession.play({bet: 1});
+        expect(workerRound).toEqual({id: "play", ok: true, result: mainRound});
+        expect(workerState).toEqual({id: "state", ok: true, result: mainSession.serialize()});
+        mainSession.dispose();
+        mainRuntime.dispose();
     });
 
     it("cancels acquired resources and rejects malformed protocol state", async () => {
