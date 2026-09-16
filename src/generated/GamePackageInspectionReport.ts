@@ -16,5 +16,14 @@ export type GamePackageInspectionReport = {
         serialization: {session: string; play: string; state: string};
         host: {rng: string; services: string[]};
         capabilities: string[];
+        minPokieVersion?: string;
+        artifact?: {
+            format: "pokie.wasm.v1";
+            sha256: string;
+            bytes: number;
+            abiVersion: string;
+            adapter: "pokie/wasm";
+            configurationHash: string;
+        };
     };
 };

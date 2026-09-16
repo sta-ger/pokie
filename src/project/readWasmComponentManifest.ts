@@ -7,10 +7,10 @@ import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompat
 import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
 import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
 import {describeWasmSidecarFailure} from "./WasmProductContract.js";
-import {readIntegrityBoundCanonicalPokieWasmArtifact} from "../wasm/PokieWasmCanonicalModule.js";
+import {readIntegrityBoundCanonicalPokieWasmArtifact, type CanonicalPokieWasmModule} from "../wasm/PokieWasmCanonicalModule.js";
 
 export type WasmComponentManifestReadResult =
-    | {readonly supported: true; readonly manifest: PokieWasmComponentManifest}
+    | {readonly supported: true; readonly manifest: PokieWasmComponentManifest; readonly canonical?: CanonicalPokieWasmModule}
     | {readonly supported: false; readonly diagnostic: UnsupportedProjectOperationDiagnostic};
 
 // Reads back a resolved "wasm" project's own PokieWasmComponentManifest -- the read-only access
@@ -59,14 +59,15 @@ export async function readWasmComponentManifest(project: PokieProject): Promise<
     }
 
     const typedManifest = manifest as PokieWasmComponentManifest;
+    let canonical: CanonicalPokieWasmModule | undefined;
     if (typedManifest.artifact !== undefined) {
         const bytes = await fs.promises.readFile(project.rootPath);
         try {
-            await readIntegrityBoundCanonicalPokieWasmArtifact(new Uint8Array(bytes), typedManifest);
+            canonical = await readIntegrityBoundCanonicalPokieWasmArtifact(new Uint8Array(bytes), typedManifest);
         } catch (error) {
             throw new Error(`POKIE rejected "${project.rootPath}": ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
-    return {supported: true, manifest: typedManifest};
+    return {supported: true, manifest: typedManifest, ...(canonical === undefined ? {} : {canonical})};
 }

@@ -79,6 +79,21 @@ export async function buildProjectGameModel(
         if (!manifestRead.supported) {
             return buildGameModelProjection(undefined, {reason: manifestRead.diagnostic.message});
         }
+        if (manifestRead.canonical !== undefined) {
+            const model = manifestRead.canonical.model;
+            return buildGameModelProjection({
+                manifest: {id: manifestRead.manifest.component.id, name: manifestRead.manifest.component.id, version: manifestRead.manifest.component.version},
+                reels: model.reels,
+                rows: model.rows,
+                symbols: [...new Set(model.reelStrips.flat())],
+                reelStrips: model.reelStrips.map((strip) => [...strip]),
+                paylines: model.paylines.map((line) => [...line]),
+                paytable: model.paytable,
+                ...(model.wilds === undefined ? {} : {wilds: [...model.wilds]}),
+                ...(model.scatters === undefined ? {} : {scatters: [...model.scatters]}),
+                ...(model.availableBets === undefined ? {} : {availableBets: [...model.availableBets]}),
+            } as GameBlueprint);
+        }
         return buildGameModelProjection(undefined, {
             manifest: {id: manifestRead.manifest.component.id, version: manifestRead.manifest.component.version},
             reason: describeWasmGameModelBoundary(),

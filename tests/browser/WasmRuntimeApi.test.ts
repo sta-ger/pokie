@@ -12,4 +12,13 @@ describe("browser-safe WASM runtime API", () => {
         expect(state).toMatchObject({schemaVersion: "pokie.state.v1", seed: "browser-seed", sequence: 1, draws: expect.any(Array), rngState: expect.any(Number)});
         runtime.dispose();
     });
+
+    it("rejects a component requiring a newer POKIE runtime before browser instantiation", async () => {
+        const fixture = createCanonicalWasmFixture({id: "browser-version"});
+        await expect(instantiatePokieWasm(
+            fixture.bytes,
+            {...fixture.manifest, minPokieVersion: "999.0.0"},
+            new SeededPokieWasmHost("browser-version"),
+        )).rejects.toThrow(/requires POKIE 999\.0\.0 or newer/);
+    });
 });

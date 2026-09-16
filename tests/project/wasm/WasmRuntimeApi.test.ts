@@ -99,6 +99,11 @@ describe("Pokie WASM runtime API", () => {
         await expect(instantiatePokieWasm(bytes, mismatchedManifest, {nextRandom: () => 0.5})).rejects.toThrow(error);
     });
 
+    it("enforces minPokieVersion at the direct portable runtime boundary", async () => {
+        await expect(instantiatePokieWasm(bytes, {...manifest, minPokieVersion: "999.0.0"}, {nextRandom: () => 0.5}))
+            .rejects.toThrow(/requires POKIE 999\.0\.0 or newer/);
+    });
+
     it("fails deterministically for malformed state and invalid host draws", async () => {
         const runtime = await instantiatePokieWasm(bytes, manifest, {nextRandom: () => 1});
         expect(() => runtime.restoreSession({schemaVersion: "other" as never, seed: "x", draws: [], sequence: 0})).toThrow(/Unsupported or malformed/);

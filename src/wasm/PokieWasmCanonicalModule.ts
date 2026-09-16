@@ -1,5 +1,7 @@
 import {assessWasmComponentCompatibility} from "../project/wasm/assessWasmComponentCompatibility.js";
+import {satisfiesMinimumSemverLite} from "../project/wasm/internal/compareSemverLite.js";
 import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, type PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
+import {POKIE_WASM_RUNTIME_VERSION} from "./PokieWasmRuntimeApi.js";
 
 export const POKIE_WASM_IMPORT_MODULE = "pokie";
 export const POKIE_WASM_RANDOM_IMPORT = "next_random";
@@ -266,6 +268,9 @@ export async function readIntegrityBoundCanonicalPokieWasmArtifact(bytes: Buffer
     }
     const artifact = manifest.artifact;
     if (artifact === undefined) throw new Error("This is a legacy sidecar-only WASM component and is inspection-only; build a canonical POKIE WASM artifact to run it.");
+    if (manifest.minPokieVersion !== undefined && !satisfiesMinimumSemverLite(POKIE_WASM_RUNTIME_VERSION, manifest.minPokieVersion)) {
+        throw new Error(`POKIE WASM runtime ${POKIE_WASM_RUNTIME_VERSION} cannot run this artifact because it requires POKIE ${manifest.minPokieVersion} or newer.`);
+    }
     if (artifact.format !== "pokie.wasm.v1" || artifact.adapter !== POKIE_WASM_ADAPTER) throw new Error(`Unsupported POKIE WASM adapter "${artifact.adapter}".`);
     if (artifact.abiVersion !== POKIE_WASM_ABI_VERSION) {
         throw new Error(`Unsupported POKIE WASM ABI "${artifact.abiVersion}"; this runtime requires POKIE WASM ABI "${POKIE_WASM_ABI_VERSION}".`);

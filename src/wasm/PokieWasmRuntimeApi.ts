@@ -1,5 +1,8 @@
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
 
+/** Version implemented by every direct portable POKIE WASM runtime entry point. */
+export const POKIE_WASM_RUNTIME_VERSION = "1.3.0";
+
 /** Browser-safe, JSON-only public contract for a canonical POKIE component. */
 export type PokieWasmSessionState = {
     readonly schemaVersion: "pokie.state.v1";

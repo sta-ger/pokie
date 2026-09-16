@@ -8,6 +8,7 @@ import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
 import {ProjectTargetUnsupportedError} from "./ProjectTargetUnsupportedError.js";
 import {describeWasmSidecarFailure} from "./WasmProductContract.js";
 import {readIntegrityBoundCanonicalPokieWasmArtifact} from "../wasm/PokieWasmCanonicalModule.js";
+import {POKIE_WASM_RUNTIME_VERSION} from "../wasm/PokieWasmRuntimeApi.js";
 
 // The sidecar file a ".wasm" file must be paired with for this adapter to ever recognize it -- e.g.
 // "game.wasm" needs a "game.wasm.pokie-wasm.json" next to it declaring a PokieWasmComponentManifest. Exported
@@ -38,7 +39,7 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
     public readonly targetKind = "file";
     private readonly pokieVersion: string;
 
-    public constructor(pokieVersion = "1.3.0") {
+    public constructor(pokieVersion = POKIE_WASM_RUNTIME_VERSION) {
         this.pokieVersion = pokieVersion;
     }
 
