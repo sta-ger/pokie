@@ -317,12 +317,19 @@ export class StudioPlayService {
     // outcomeSource) passes through, so StudioRoundRecorder never needs a second call site to stay
     // complete.
     public async spin(sessionId: string, operation?: StudioRoundOperation, bet?: number, mode?: string): Promise<StudioPlaySpinResult> {
-        if (this.active === undefined || sessionId !== this.currentSessionId) {
+        const active = this.activeSessionFor(sessionId);
+        if (active === undefined) {
             return {status: "not-found"};
         }
-        const currentWasmError = await this.invalidateCurrentWasmSession();
-        if (currentWasmError !== undefined) return {status: "error", error: currentWasmError};
-        const active = this.active;
+        if (active.kind === "wasm") {
+            const currentWasmError = await this.invalidateWasmSession(active, sessionId);
+            if (currentWasmError !== undefined) return {status: "error", error: currentWasmError};
+            if (!this.isActiveSession(active, sessionId)) return {status: "not-found"};
+        } else if (isWasmComponentFile(active.projectRoot)) {
+            const currentWasmError = await this.invalidateUnexpectedWasmSession(active, sessionId);
+            if (currentWasmError !== undefined) return {status: "error", error: currentWasmError};
+            if (!this.isActiveSession(active, sessionId)) return {status: "not-found"};
+        }
         const actualOperation = operation ?? "spin";
 
         let result: StudioPlaySpinResult;
@@ -331,6 +338,7 @@ export class StudioPlayService {
         } else if (active.kind === "wasm") {
             try {
                 const round = await active.session.play(bet === undefined ? {} : {bet});
+                if (!this.isActiveSession(active, sessionId)) return {status: "not-found"};
                 result = {
                     status: "ok",
                     session: {
@@ -349,11 +357,11 @@ export class StudioPlayService {
                 };
             } catch (error) {
                 // A component trap leaves neither its portable instance nor its session safe to reuse.
-                // Do not let a concurrent replacement release a newer session, though.
-                if (this.active === active && this.currentSessionId === sessionId) {
-                    await this.releaseActiveRuntime();
-                }
-                result = {status: "error", error: error instanceof Error ? error.message : String(error)};
+                // Do not let a concurrent replacement release a newer session, though; an old request
+                // that completed after replacement is simply no longer a session Studio can report on.
+                if (!this.isActiveSession(active, sessionId)) return {status: "not-found"};
+                this.disposeCapturedWasmSession(active, sessionId);
+                return {status: "error", error: error instanceof Error ? error.message : String(error)};
             }
         } else {
             // These are submitted together with a manual Spin, so the canonical SpinCommandHandler
@@ -397,6 +405,10 @@ export class StudioPlayService {
             }
         }
 
+        // A round cannot be returned or recorded after an asynchronous predecessor has installed a
+        // replacement. This is especially important for portable components: a Wasm session is mutable,
+        // so an obsolete response must never be presented as the newer session's own round.
+        if (!this.isActiveSession(active, sessionId)) return {status: "not-found"};
         if (result.status === "ok") {
             this.roundRecorder.record(result.session, {
                 source: active.kind === "outcomeSource" ? "play-outcome-source" : "play",
@@ -511,18 +523,14 @@ export class StudioPlayService {
     // to keep executing it after its current path has become a component.
     // Re-resolve only `.wasm` paths so ordinary package-session spins retain
     // their existing no-I/O hot path.
-    private async invalidateCurrentWasmSession(): Promise<string | undefined> {
-        const active = this.active;
-        if (active === undefined || !isWasmComponentFile(active.projectRoot)) return undefined;
+    private async invalidateWasmSession(active: ActiveWasmSession, sessionId: string): Promise<string | undefined> {
         try {
             const project = await this.resolveProject.resolve(active.projectRoot);
+            if (!this.isActiveSession(active, sessionId)) return undefined;
             if (project?.type !== "wasm") throw new Error("The active WASM artifact was replaced by a different project.");
-            if (active.kind !== "wasm") {
-                await this.releaseActiveRuntime();
-                return "This POKIE WASM component cannot play a game round until a new canonical WASM session is started.";
-            }
             const current = await this.loadWasmRuntime(active.projectRoot, {nextRandom: () => 0});
             try {
+                if (!this.isActiveSession(active, sessionId)) return undefined;
                 const integrity = current.manifest.artifact?.sha256;
                 if (integrity !== active.integrity) throw new Error("The active WASM artifact changed after this session was opened. Start a new session to run the replacement.");
             } finally {
@@ -530,8 +538,48 @@ export class StudioPlayService {
             }
             return undefined;
         } catch (error) {
-            await this.releaseActiveRuntime();
+            // Revalidation belongs to the session captured at the request boundary. If a newer session
+            // arrived while I/O was in flight, leave it untouched; spin() will report the old id missing.
+            if (!this.isActiveSession(active, sessionId)) return undefined;
+            this.disposeCapturedWasmSession(active, sessionId);
             return `This POKIE WASM component cannot play a game round: ${error instanceof Error ? error.message : String(error)}`;
+        }
+    }
+
+    private async invalidateUnexpectedWasmSession(active: Exclude<ActiveSession, ActiveWasmSession>, sessionId: string): Promise<string | undefined> {
+        try {
+            const project = await this.resolveProject.resolve(active.projectRoot);
+            if (!this.isActiveSession(active, sessionId)) return undefined;
+            if (project?.type !== "wasm") return undefined;
+            await this.releaseCapturedActiveSession(active, sessionId);
+            return "This POKIE WASM component cannot play a game round until a new canonical WASM session is started.";
+        } catch (error) {
+            if (!this.isActiveSession(active, sessionId)) return undefined;
+            await this.releaseCapturedActiveSession(active, sessionId);
+            return `This POKIE WASM component cannot play a game round: ${error instanceof Error ? error.message : String(error)}`;
+        }
+    }
+
+    private isActiveSession(active: ActiveSession, sessionId: string): boolean {
+        return this.active === active && this.currentSessionId === sessionId;
+    }
+
+    private disposeCapturedWasmSession(active: ActiveWasmSession, sessionId: string): void {
+        if (!this.isActiveSession(active, sessionId)) return;
+        this.sessionGeneration++;
+        this.active = undefined;
+        this.currentSessionId = undefined;
+        active.session.dispose();
+        active.runtime.dispose();
+    }
+
+    private async releaseCapturedActiveSession(active: Exclude<ActiveSession, ActiveWasmSession>, sessionId: string): Promise<void> {
+        if (!this.isActiveSession(active, sessionId)) return;
+        this.sessionGeneration++;
+        this.active = undefined;
+        this.currentSessionId = undefined;
+        if (active.kind === "runtime") {
+            await releasePokieGame(active.game).catch(() => undefined);
         }
     }
 

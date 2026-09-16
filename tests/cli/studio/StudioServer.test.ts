@@ -4077,6 +4077,74 @@ describe("StudioServer", () => {
             }
         });
 
+        it("returns a canonical WASM runtime trap through the public Play route and removes its session", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-canonical-wasm-trap-"));
+            try {
+                const blueprintPath = path.join(workDir, "source.blueprint.json");
+                const wasmFile = path.join(workDir, "game.wasm");
+                fs.writeFileSync(blueprintPath, JSON.stringify({
+                    manifest: {id: "trap-wasm", name: "Trap WASM", version: "1.0.0"},
+                    reels: 3,
+                    rows: 1,
+                    symbols: ["A", "B"],
+                    reelStrips: [["A", "B"], ["A", "B"], ["A", "B"]],
+                    paytable: {A: {3: 2}, B: {3: 1}},
+                }));
+                await new WasmArtifactBuilder("1.3.0").build(
+                    {type: "blueprint", rootPath: blueprintPath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"},
+                    wasmFile,
+                );
+                const disposeSession = jest.fn();
+                const disposeRuntime = jest.fn();
+                const trappedRuntime = {
+                    manifest: {component: {id: "trap-wasm", version: "1.0.0"}, artifact: {sha256: "trap-integrity"}},
+                    createSession: () => ({
+                        play: () => Promise.reject(new Error("canonical WASM play trap")),
+                        serialize: () => ({schemaVersion: "pokie.state.v1", seed: "trap", draws: [], sequence: 0}),
+                        dispose: disposeSession,
+                    }),
+                    restoreSession: () => undefined,
+                    replay: () => Promise.resolve([]),
+                    dispose: disposeRuntime,
+                };
+                const playService = new StudioPlayService(
+                    undefined,
+                    undefined,
+                    "1.3.0",
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    () => Promise.resolve(trappedRuntime as never),
+                );
+                const homeService = new StudioHomeService("1.3.0");
+                wasmServer = new StudioServer({
+                    pokieVersion: "1.3.0",
+                    host: "127.0.0.1",
+                    port: 0,
+                    studioRoot: wasmStudioRoot,
+                    homeService,
+                    blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
+                    initialContext: {mode: "project", projectRoot: wasmFile},
+                    playService,
+                });
+                const address = await wasmServer.start();
+                const baseUrl = `http://${address.host}:${address.port}`;
+
+                const created = await post(`${baseUrl}/api/project/play/session`, {seed: "trap"});
+                expect(created).toMatchObject({status: 201, body: {status: "ok"}});
+                const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+                await expect(post(`${baseUrl}/api/project/play/sessions/${encodeURIComponent(sessionId)}/spin`, {})).resolves.toMatchObject({
+                    status: 200,
+                    body: {status: "error", error: "canonical WASM play trap"},
+                });
+                expect(disposeSession).toHaveBeenCalledTimes(1);
+                await expect(post(`${baseUrl}/api/project/play/sessions/${encodeURIComponent(sessionId)}/spin`, {})).resolves.toMatchObject({status: 404});
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
         it("rejects compatible and stale components before allocating Build/Export, simulation, or replay work", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-direct-wasm-actions-work-"));
             try {
