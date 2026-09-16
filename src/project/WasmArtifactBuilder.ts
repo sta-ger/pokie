@@ -11,7 +11,7 @@ import {assertArtifactBuildNotCancelled, captureArtifactDestinationState, cleanu
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
-import {POKIE_WASM_CONTRACT_VERSION, type PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
+import {POKIE_WASM_ABI_VERSION, POKIE_WASM_CONTRACT_VERSION, type PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
 import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
 
 // A valid WebAssembly core module carrying no platform imports.  The portable
@@ -63,7 +63,7 @@ export class WasmArtifactBuilder implements ArtifactBuilder {
                 serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
                 host: {rng: "pokie.rng.v1", services: []},
                 capabilities: ["runtime.play", "runtime.serialize", "runtime.replay", "runtime.simulate", "artifact.inspect"],
-                artifact: {format: "pokie.wasm.v1", sha256: hash, bytes: PORTABLE_WASM_MODULE.byteLength, abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash},
+                artifact: {format: "pokie.wasm.v1", sha256: hash, bytes: PORTABLE_WASM_MODULE.byteLength, abiVersion: POKIE_WASM_ABI_VERSION, adapter: "pokie/wasm", configurationHash},
             };
             const nonce = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
             wasmStage = path.join(path.dirname(destinationPath), `.${path.basename(destinationPath)}.${nonce}.tmp`);

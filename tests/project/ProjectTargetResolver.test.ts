@@ -293,6 +293,14 @@ describe("ProjectTargetResolver", () => {
         await expect(resolver.resolve(wasmFile)).rejects.toThrow(/not compatible with this POKIE build/);
     });
 
+    it("rejects a compatible component that requires a newer POKIE release", async () => {
+        const wasmFile = path.join(workDir, "future.wasm");
+        fs.writeFileSync(wasmFile, WASM_BINARY);
+        fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({...SAMPLE_WASM_COMPONENT_MANIFEST, minPokieVersion: "99.0.0"}));
+
+        await expect(resolver.resolve(wasmFile)).rejects.toThrow(/requires POKIE 99\.0\.0 or newer/);
+    });
+
     it("returns undefined for a file with an unrecognized extension that isn't a WASM target", async () => {
         const unknownFile = path.join(workDir, "notes.txt");
         fs.writeFileSync(unknownFile, "just some text");

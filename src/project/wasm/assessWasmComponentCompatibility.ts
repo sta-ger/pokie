@@ -1,5 +1,5 @@
 import {majorVersionOf} from "./internal/compareSemverLite.js";
-import {POKIE_WASM_CONTRACT_VERSION, type PokieWasmComponentManifest} from "./PokieWasmComponentManifest.js";
+import {POKIE_WASM_ABI_VERSION, POKIE_WASM_CONTRACT_VERSION, type PokieWasmComponentManifest} from "./PokieWasmComponentManifest.js";
 import {PokieWasmComponentManifestValidator} from "./PokieWasmComponentManifestValidator.js";
 import type {WasmComponentCompatibilityDiagnostic} from "./WasmComponentCompatibilityDiagnostic.js";
 
@@ -27,6 +27,17 @@ export function assessWasmComponentCompatibility(manifest: unknown): WasmCompone
     const manifestMajor = majorVersionOf(typedManifest.schemaVersion);
     const contractMajor = majorVersionOf(POKIE_WASM_CONTRACT_VERSION);
     if (manifestMajor === contractMajor) {
+        if (typedManifest.artifact !== undefined && majorVersionOf(typedManifest.artifact.abiVersion) !== majorVersionOf(POKIE_WASM_ABI_VERSION)) {
+            return {
+                compatible: false,
+                issues: [{
+                    code: "wasm-component-abi-version-incompatible",
+                    severity: "error",
+                    message: `component "${typedManifest.component.id}" declares ABI "${typedManifest.artifact.abiVersion}", which is incompatible with POKIE WASM ABI "${POKIE_WASM_ABI_VERSION}" (major version must match).`,
+                    path: "artifact.abiVersion",
+                }],
+            };
+        }
         return {compatible: true, issues: []};
     }
 

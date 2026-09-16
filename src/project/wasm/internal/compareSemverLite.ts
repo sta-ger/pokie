@@ -17,3 +17,15 @@ export function majorVersionOf(version: string): number | undefined {
     const parsed = VERSION_PATTERN.exec(version.trim());
     return parsed === null ? undefined : Number(parsed[1]);
 }
+
+/** Returns whether `available` satisfies a minimum major.minor.patch release. */
+export function satisfiesMinimumSemverLite(available: string, minimum: string): boolean {
+    const left = VERSION_PATTERN.exec(available.trim());
+    const right = VERSION_PATTERN.exec(minimum.trim());
+    if (left === null || right === null) return false;
+    for (let index = 1; index <= 3; index++) {
+        const difference = Number(left[index]) - Number(right[index]);
+        if (difference !== 0) return difference > 0;
+    }
+    return true;
+}

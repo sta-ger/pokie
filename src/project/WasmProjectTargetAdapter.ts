@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
+import {satisfiesMinimumSemverLite} from "./wasm/internal/compareSemverLite.js";
 import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
 import {ProjectTargetMalformedError} from "./ProjectTargetMalformedError.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
@@ -35,6 +36,11 @@ export function wasmComponentManifestSidecarPath(wasmFilePath: string): string {
 export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
     public readonly type = "wasm";
     public readonly targetKind = "file";
+    private readonly pokieVersion: string;
+
+    public constructor(pokieVersion = "1.3.0") {
+        this.pokieVersion = pokieVersion;
+    }
 
     public async recognize(resolvedPath: string): Promise<string | undefined> {
         if (path.extname(resolvedPath).toLowerCase() !== ".wasm") {
@@ -79,6 +85,12 @@ export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
         }
 
         const typedManifest = manifest as PokieWasmComponentManifest;
+        if (typedManifest.minPokieVersion !== undefined && !satisfiesMinimumSemverLite(this.pokieVersion, typedManifest.minPokieVersion)) {
+            throw new ProjectTargetUnsupportedError(
+                `POKIE ${this.pokieVersion} cannot run "${resolvedPath}": it requires POKIE ${typedManifest.minPokieVersion} or newer. Update POKIE or rebuild the artifact for this runtime.`,
+                {targetType: "wasm"},
+            );
+        }
         // Canonical artifacts bind their sidecar to the exact bytes that will
         // be instantiated.  Legacy sidecar-only artifacts remain recognized
         // for inspection, but never gain runnable capabilities accidentally.

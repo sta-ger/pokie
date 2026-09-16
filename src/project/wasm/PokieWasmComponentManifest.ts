@@ -4,6 +4,8 @@
 // regardless of minor/patch, the same forward-tolerant "^" range convention semver itself uses; a differing
 // major is always incompatible. See that function's own doc comment for the exact rule.
 export const POKIE_WASM_CONTRACT_VERSION = "1.0.0";
+/** Stable portable runtime ABI understood by this POKIE release. */
+export const POKIE_WASM_ABI_VERSION = "1.0.0";
 
 // What a WASM component built against POKIE needs to declare about itself for POKIE to ever recognize it as a
 // "wasm" ProjectType and resolve it -- read-only -- through WasmProjectTargetAdapter. This is the metadata
