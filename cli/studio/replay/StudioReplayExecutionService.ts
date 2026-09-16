@@ -184,9 +184,7 @@ export class StudioReplayExecutionService {
         if (!record || record.projectRoot !== projectRoot) {
             return undefined;
         }
-        if (record.status === "queued" || record.status === "running") {
-            record.abortController.abort();
-        }
+        this.cancelActiveRecord(record);
         return toStudioReplayJobView(record);
     }
 
@@ -195,7 +193,7 @@ export class StudioReplayExecutionService {
     // is serving HTTP requests on anymore.
     public cancelAll(): void {
         for (const record of this.repository.listActive()) {
-            record.abortController.abort();
+            this.cancelActiveRecord(record);
         }
     }
 
@@ -205,7 +203,7 @@ export class StudioReplayExecutionService {
     // nothing is active for that project.
     public cancelActiveForProject(projectRoot: string): void {
         const record = this.repository.findActiveByProjectRoot(projectRoot);
-        record?.abortController.abort();
+        if (record) this.cancelActiveRecord(record);
     }
 
     // Process-wide (not scoped to one project) — feeds GET /api/studio/diagnostics, a plain count safe
@@ -698,6 +696,15 @@ export class StudioReplayExecutionService {
     private cancelRecord(record: StudioReplayJobRecord): void {
         record.status = "cancelled";
         this.markTerminal(record);
+    }
+
+    // A queued job has not acquired a game/runtime session yet.  Make its cancellation observable
+    // synchronously instead of waiting for a deferred module load to notice the abort signal.  Running
+    // jobs still transition at their next cooperative cancellation point, preserving their cleanup path.
+    private cancelActiveRecord(record: StudioReplayJobRecord): void {
+        if (record.status !== "queued" && record.status !== "running") return;
+        record.abortController.abort();
+        if (record.status === "queued") this.cancelRecord(record);
     }
 
     // Common tail for every path that lands a record in a terminal status: stamps durationMs/

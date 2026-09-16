@@ -211,9 +211,7 @@ export class StudioSimulationService {
         if (!record) {
             return undefined;
         }
-        if (record.status === "queued" || record.status === "running") {
-            record.abortController.abort();
-        }
+        this.cancelActiveRecord(record);
         return toStudioSimulationJobView(record);
     }
 
@@ -225,9 +223,7 @@ export class StudioSimulationService {
         if (!record || record.projectRoot !== projectRoot) {
             return undefined;
         }
-        if (record.status === "queued" || record.status === "running") {
-            record.abortController.abort();
-        }
+        this.cancelActiveRecord(record);
         return toStudioSimulationJobView(record);
     }
 
@@ -236,7 +232,7 @@ export class StudioSimulationService {
     // nobody is serving HTTP requests on anymore.
     public cancelAll(): void {
         for (const record of this.repository.listActive()) {
-            record.abortController.abort();
+            this.cancelActiveRecord(record);
         }
     }
 
@@ -249,7 +245,7 @@ export class StudioSimulationService {
     // for that project.
     public cancelActiveForProject(projectRoot: string): void {
         const record = this.repository.findActiveByProjectRoot(projectRoot);
-        record?.abortController.abort();
+        if (record) this.cancelActiveRecord(record);
     }
 
     // Process-wide (not scoped to one project) — feeds GET /api/studio/diagnostics, a plain count safe
@@ -620,6 +616,15 @@ export class StudioSimulationService {
     private cancelRecord(record: StudioSimulationJobRecord): void {
         record.status = "cancelled";
         this.markTerminal(record);
+    }
+
+    // A queued job has no runtime/session resource to release.  Persist its terminal cancellation
+    // immediately so a caller never has to wait for deferred setup to observe an abort signal.  A
+    // running job continues through its cooperative cleanup path and records cancellation there.
+    private cancelActiveRecord(record: StudioSimulationJobRecord): void {
+        if (record.status !== "queued" && record.status !== "running") return;
+        record.abortController.abort();
+        if (record.status === "queued") this.cancelRecord(record);
     }
 
     // Common tail for every path that lands a record in a terminal status: stamps durationMs/

@@ -99,7 +99,8 @@ describe("canonical WASM Studio workflow", () => {
         const simulationStart = simulation.start(artifactPath, {rounds: 1_000, seed: "cancelled-wasm"});
         expect(simulationStart.status).toBe("created");
         if (simulationStart.status !== "created") throw new Error("expected Studio simulation job");
-        simulation.cancel(simulationStart.job.id);
+        expect(simulation.cancel(simulationStart.job.id)).toMatchObject({status: "cancelled"});
+        expect(simulation.getActiveCount()).toBe(0);
         await expect(waitForTerminal(() => simulation.getStatus(simulationStart.job.id))).resolves.toMatchObject({status: "cancelled"});
         expect(simulation.getActiveCount()).toBe(0);
 
@@ -107,7 +108,8 @@ describe("canonical WASM Studio workflow", () => {
         const replayStart = replay.start(artifactPath, {round: 1_000, seed: "cancelled-wasm"});
         expect(replayStart.status).toBe("created");
         if (replayStart.status !== "created") throw new Error("expected Studio replay job");
-        replay.cancel(artifactPath, replayStart.job.id);
+        expect(replay.cancel(artifactPath, replayStart.job.id)).toMatchObject({status: "cancelled"});
+        expect(replay.getActiveCount()).toBe(0);
         await expect(waitForTerminal(() => replay.getStatus(artifactPath, replayStart.job.id))).resolves.toMatchObject({status: "cancelled"});
         expect(replay.getActiveCount()).toBe(0);
     });
