@@ -12,7 +12,16 @@ const abiBytes = new Uint8Array([
 const gameModel = new TextEncoder().encode(JSON.stringify({
     schemaVersion: "pokie.game.v1", reels: 1, rows: 1, reelStrips: [["A", "B"]], paylines: [[0]], paytable: {A: {1: 2}, B: {1: 1}}, stopWidths: [1],
 }));
-const bytes = new Uint8Array([...abiBytes, 0x00, ...encodeUnsigned(gameModel.length + 14), 0x0d, 0x70, 0x6f, 0x6b, 0x69, 0x65, 0x2e, 0x67, 0x61, 0x6d, 0x65, 0x2e, 0x76, 0x31, ...gameModel]);
+const descriptor = new TextEncoder().encode(JSON.stringify({
+    schemaVersion: "1.0.0", component: {id: "golden", version: "1.0.0"},
+    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"}, host: {rng: "pokie.rng.v1", services: []}, capabilities: ["runtime.play", "runtime.serialize", "runtime.replay"],
+    artifact: {format: "pokie.wasm.v1", abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash: `sha256:${"0".repeat(64)}`},
+}));
+const descriptorName = new TextEncoder().encode("pokie.component.v1");
+const bytes = new Uint8Array([
+    ...abiBytes, 0x00, ...encodeUnsigned(gameModel.length + 14), 0x0d, 0x70, 0x6f, 0x6b, 0x69, 0x65, 0x2e, 0x67, 0x61, 0x6d, 0x65, 0x2e, 0x76, 0x31, ...gameModel,
+    0x00, ...encodeUnsigned(descriptor.length + descriptorName.length + 1), descriptorName.length, ...descriptorName, ...descriptor,
+]);
 
 function encodeUnsigned(value: number): number[] {
     const bytes: number[] = [];

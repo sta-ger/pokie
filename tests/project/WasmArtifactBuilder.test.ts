@@ -104,6 +104,21 @@ describe("WasmArtifactBuilder", () => {
         await expect(new ProjectTargetResolver().resolve(secondOutput)).rejects.toThrow(/does not satisfy PokieWasmComponentManifest/);
     });
 
+    it("rejects a sidecar whose runnable declaration drifts from the byte-embedded descriptor", async () => {
+        const sourcePath = path.join(workDir, "fixture.blueprint.json");
+        const outputPath = path.join(workDir, "game.wasm");
+        fs.writeFileSync(sourcePath, JSON.stringify(blueprint));
+        await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, outputPath);
+
+        const manifest = JSON.parse(fs.readFileSync(`${outputPath}.pokie-wasm.json`, "utf8"));
+        manifest.component.id = "metadata-edited";
+        manifest.host.rng = "pokie.other-rng.v1";
+        manifest.artifact.abiVersion = "1.0.1";
+        fs.writeFileSync(`${outputPath}.pokie-wasm.json`, JSON.stringify(manifest));
+
+        await expect(new ProjectTargetResolver().resolve(outputPath)).rejects.toThrow(/embedded in the WASM module does not agree with its manifest/i);
+    });
+
     it("preserves occupied module or sidecar paths and writes nothing when pre-cancelled", async () => {
         const sourcePath = path.join(workDir, "fixture.blueprint.json");
         const outputPath = path.join(workDir, "game.wasm");

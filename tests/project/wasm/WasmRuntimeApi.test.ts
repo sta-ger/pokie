@@ -12,7 +12,18 @@ const abiBytes = new Uint8Array([
 const model = new TextEncoder().encode(JSON.stringify({
     schemaVersion: "pokie.game.v1", reels: 1, rows: 1, reelStrips: [["A", "B"]], paylines: [[0]], paytable: {A: {1: 2}, B: {1: 1}}, stopWidths: [1],
 }));
-const bytes = new Uint8Array([...abiBytes, 0x00, ...encodeUnsigned(model.length + 14), 0x0d, 0x70, 0x6f, 0x6b, 0x69, 0x65, 0x2e, 0x67, 0x61, 0x6d, 0x65, 0x2e, 0x76, 0x31, ...model]);
+const descriptor = new TextEncoder().encode(JSON.stringify({
+    schemaVersion: "1.0.0", component: {id: "fixture", version: "1.0.0"},
+    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+    host: {rng: "pokie.rng.v1", services: []}, capabilities: ["runtime.play", "runtime.serialize"],
+    artifact: {format: "pokie.wasm.v1", abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash: `sha256:${"0".repeat(64)}`},
+}));
+const descriptorName = new TextEncoder().encode("pokie.component.v1");
+const bytes = new Uint8Array([
+    ...abiBytes,
+    0x00, ...encodeUnsigned(model.length + 14), 0x0d, 0x70, 0x6f, 0x6b, 0x69, 0x65, 0x2e, 0x67, 0x61, 0x6d, 0x65, 0x2e, 0x76, 0x31, ...model,
+    0x00, ...encodeUnsigned(descriptor.length + descriptorName.length + 1), descriptorName.length, ...descriptorName, ...descriptor,
+]);
 
 function encodeUnsigned(value: number): number[] {
     const bytes: number[] = [];
@@ -50,5 +61,13 @@ describe("Pokie WASM runtime API", () => {
         const runtime = await instantiatePokieWasm(bytes, manifest, {nextRandom: () => 1});
         expect(() => runtime.restoreSession({schemaVersion: "other" as never, seed: "x", draws: [], sequence: 0})).toThrow(/Unsupported or malformed/);
         await expect(runtime.createSession("x").play()).rejects.toThrow(/RNG/);
+    });
+
+    it("rejects an otherwise valid module with a non-canonical ABI result signature before instantiation", async () => {
+        const wrongSignature = bytes.slice();
+        // The fixture's sole function type is () -> i32. Changing it to i64
+        // leaves the binary valid but must not turn it into a POKIE ABI match.
+        wrongSignature[14] = 0x7e;
+        await expect(instantiatePokieWasm(wrongSignature, manifest, {nextRandom: () => 0.5})).rejects.toThrow(/next_random signature/i);
     });
 });

@@ -420,6 +420,12 @@ export class ArtifactBuilderRegistry {
             if (errors.length > 0) {
                 throw new Error(`Blueprint "${source.rootPath}" has ${errors.length} error(s): ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")}`);
             }
+            if (target === "wasm") {
+                const wasmBuilder = this.builders.get("wasm");
+                if (wasmBuilder === undefined) throw new Error(this.unavailableTargetMessage("wasm"));
+                await wasmBuilder.validate?.(source);
+                return;
+            }
             const resolution = resolveReelStripGeneration(blueprint as GameBlueprint);
             if (!resolution.success) throw new Error(`Blueprint "${source.rootPath}" could not generate its reel strips.`);
             return;

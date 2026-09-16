@@ -13,7 +13,7 @@ import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinat
 import type {PokieProject} from "./PokieProject.js";
 import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, POKIE_WASM_CONTRACT_VERSION, type PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
 import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
-import {POKIE_WASM_GAME_MODEL_SECTION, POKIE_WASM_IMPORT_MODULE, POKIE_WASM_PLAY_EXPORT, POKIE_WASM_RANDOM_IMPORT, type PokieWasmGameModel} from "../wasm/PokieWasmCanonicalModule.js";
+import {POKIE_WASM_COMPONENT_DESCRIPTOR_SECTION, POKIE_WASM_GAME_MODEL_SECTION, POKIE_WASM_IMPORT_MODULE, POKIE_WASM_PLAY_EXPORT, POKIE_WASM_RANDOM_IMPORT, type CanonicalPokieWasmComponentDescriptor, type PokieWasmGameModel} from "../wasm/PokieWasmCanonicalModule.js";
 
 const WASM_HEADER = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
 const UTF8 = new TextEncoder();
@@ -55,7 +55,7 @@ function stableJson(value: unknown): string {
  * paylines, and paytable without smuggling a Node game loader into the
  * artifact.
  */
-function buildPortableWasmModule(model: string, stopWidths: readonly number[], stripLengths: readonly number[]): Buffer {
+function buildPortableWasmModule(model: string, descriptor: CanonicalPokieWasmComponentDescriptor, stopWidths: readonly number[], stripLengths: readonly number[]): Buffer {
     const type = section(1, [0x01, 0x60, 0x00, 0x01, 0x7f]);
     const imports = section(2, [0x01, ...stringBytes(POKIE_WASM_IMPORT_MODULE), ...stringBytes(POKIE_WASM_RANDOM_IMPORT), 0x00, 0x00]);
     const functions = section(3, [0x01, 0x00]);
@@ -73,15 +73,20 @@ function buildPortableWasmModule(model: string, stopWidths: readonly number[], s
     body.push(0x20, 0x00, 0x0b);
     const code = section(10, [0x01, ...unsignedLeb(body.length), ...body]);
     const gameModel = section(0, [...stringBytes(POKIE_WASM_GAME_MODEL_SECTION), ...UTF8.encode(model)]);
-    return Buffer.from([...WASM_HEADER, ...type, ...imports, ...functions, ...exports, ...code, ...gameModel]);
+    const componentDescriptor = section(0, [...stringBytes(POKIE_WASM_COMPONENT_DESCRIPTOR_SECTION), ...UTF8.encode(stableJson(descriptor))]);
+    return Buffer.from([...WASM_HEADER, ...type, ...imports, ...functions, ...exports, ...code, ...gameModel, ...componentDescriptor]);
 }
 
-function resolveCanonicalModel(blueprint: GameBlueprint): PokieWasmGameModel {
+/** The one Blueprint-to-portable-model boundary used by preview, validation, and publication. */
+export function resolveCanonicalWasmGameModel(blueprint: GameBlueprint): PokieWasmGameModel {
     const resolution = resolveReelStripGeneration(blueprint);
-    if (!resolution.success) throw new Error(`Blueprint "${blueprint.manifest.id}" could not generate its reel strips.`);
+    if (!resolution.success) {
+        const failedReels = resolution.reels.filter((reel) => !reel.success).map((reel) => `reel ${reel.reelIndex}: ${reel.diagnostics.flatMap((diagnostic) => diagnostic.violations.map((violation) => violation.message)).join("; ")}`).join(" | ");
+        throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize its generated reel strips for the canonical WASM model. ${failedReels || "Fix reelStripGeneration and rebuild."}`);
+    }
     const generated = new Map((resolution.reelStripGeneration?.reels ?? []).filter((reel) => reel.success && reel.strip !== undefined).map((reel) => [reel.reelIndex, reel.strip!]));
     const strips = blueprint.reelStrips ?? blueprint.reelStripGeneration?.map((spec, index) => spec.type === "literal" ? spec.strip : generated.get(index)!) ?? [];
-    if (strips.length !== blueprint.reels || strips.some((strip) => strip.length === 0)) throw new Error(`Blueprint "${blueprint.manifest.id}" has no executable reel strips.`);
+    if (strips.length !== blueprint.reels || strips.some((strip) => strip === undefined || strip.length === 0)) throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize one executable strip per reel for the canonical WASM model.`);
     const stopWidths = strips.map((strip) => Math.max(1, Math.ceil(Math.log2(strip.length))));
     if (stopWidths.reduce((total, width) => total + width, 0) > 30) throw new Error(`Blueprint "${blueprint.manifest.id}" requires more than 30 stop bits and cannot use POKIE WASM ABI 1.0.0.`);
     return {
@@ -92,6 +97,18 @@ function resolveCanonicalModel(blueprint: GameBlueprint): PokieWasmGameModel {
         paylines: blueprint.paylines ?? Array.from({length: blueprint.rows}, (_, row) => Array.from({length: blueprint.reels}, () => row)),
         paytable: blueprint.paytable,
         stopWidths,
+    };
+}
+
+function canonicalDescriptor(manifest: Omit<PokieWasmComponentManifest, "artifact"> & {readonly artifact: Omit<NonNullable<PokieWasmComponentManifest["artifact"]>, "sha256" | "bytes">}): CanonicalPokieWasmComponentDescriptor {
+    return {
+        schemaVersion: manifest.schemaVersion,
+        component: manifest.component,
+        ...(manifest.minPokieVersion === undefined ? {} : {minPokieVersion: manifest.minPokieVersion}),
+        serialization: manifest.serialization,
+        host: manifest.host,
+        capabilities: manifest.capabilities,
+        artifact: manifest.artifact,
     };
 }
 
@@ -111,7 +128,7 @@ export class WasmArtifactBuilder implements ArtifactBuilder {
             const blueprint = loadGameBlueprint(source.rootPath) as GameBlueprint;
             const errors = new GameBlueprintValidator().validate(blueprint).filter((issue) => issue.severity === "error");
             if (errors.length > 0) throw new Error(`Blueprint "${source.rootPath}" has ${errors.length} error(s): ${errors.map((issue) => issue.code).join(", ")}`);
-            if (!resolveReelStripGeneration(blueprint).success) throw new Error(`Blueprint "${source.rootPath}" could not generate its reel strips.`);
+            resolveCanonicalWasmGameModel(blueprint);
         });
     }
 
@@ -130,11 +147,20 @@ export class WasmArtifactBuilder implements ArtifactBuilder {
             await this.validate(source);
             await ensureArtifactDestinationParent(destinationPath);
             const blueprint = loadGameBlueprint(source.rootPath) as GameBlueprint;
-            const model = stableJson(resolveCanonicalModel(blueprint));
+            const model = stableJson(resolveCanonicalWasmGameModel(blueprint));
             const parsedModel = JSON.parse(model) as PokieWasmGameModel;
-            const moduleBytes = buildPortableWasmModule(model, parsedModel.stopWidths, parsedModel.reelStrips.map((strip) => strip.length));
-            const hash = `sha256:${crypto.createHash("sha256").update(moduleBytes).digest("hex")}`;
             const configurationHash = `sha256:${crypto.createHash("sha256").update(model).digest("hex")}`;
+            const descriptor = canonicalDescriptor({
+                schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                component: {id: blueprint.manifest.id, version: blueprint.manifest.version},
+                minPokieVersion: this.pokieVersion,
+                serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                host: {rng: "pokie.rng.v1", services: []},
+                capabilities: ["runtime.play", "runtime.serialize", "runtime.replay", "artifact.inspect"],
+                artifact: {format: "pokie.wasm.v1", abiVersion: POKIE_WASM_ABI_VERSION, adapter: POKIE_WASM_ADAPTER, configurationHash},
+            });
+            const moduleBytes = buildPortableWasmModule(model, descriptor, parsedModel.stopWidths, parsedModel.reelStrips.map((strip) => strip.length));
+            const hash = `sha256:${crypto.createHash("sha256").update(moduleBytes).digest("hex")}`;
             const manifest: PokieWasmComponentManifest = {
                 schemaVersion: POKIE_WASM_CONTRACT_VERSION,
                 component: {id: blueprint.manifest.id, version: blueprint.manifest.version},
