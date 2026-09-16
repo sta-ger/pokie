@@ -1,0 +1,42 @@
+{
+  "schema": "pokie.targeted-verification.v1",
+  "candidate_sha": "7888e6e5910e8568e2bd6e06c3022e9e87ad13ec",
+  "executed_at_utc": "2026-09-16T22:45:07Z",
+  "executor": "independent-host-shell",
+  "preflight": {
+    "git_head_before_run": "7888e6e5910e8568e2bd6e06c3022e9e87ad13ec",
+    "git_status_before_run": "clean"
+  },
+  "command": "npm run test:targeted -- tests/browser/BrowserRuntimeApi.test.ts tests/cli/cliCommandInventory.contract.test.ts tests/cli/commands/ValidateCommand.test.ts tests/cli/dispatch.test.ts tests/cli/materialize/RunnableArtifactMaterializer.test.ts tests/cli/packageOnlyCommandInputs.contract.test.ts tests/cli/publicCommandTree.test.ts tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.validationWorkflow.test.tsx tests/cli/studio/loadProjectDashboardContext.test.ts tests/gamepackage/loadPokieGame.realRuntime.integration.test.ts tests/net/Serialization.test.ts tests/parsheet/ParSheetExporter.test.ts tests/parsheet/ParSheetImporter.test.ts tests/project/readWasmComponentManifest.test.ts tests/replay/ReplayRecorder.test.ts tests/session/videoslot/combinations/SeededRandomNumberGenerator.test.ts",
+  "result": {
+    "exit_code": 0,
+    "test_suites": { "passed": 17, "total": 17 },
+    "tests": { "passed": 1270, "total": 1270 },
+    "snapshots": { "passed": 0, "total": 0 },
+    "duration_seconds": 25.138
+  },
+  "whole_file_suites": [
+    { "path": "tests/browser/BrowserRuntimeApi.test.ts", "sha256": "ee5771b0211757a2310de43763858f74acda3cbb6af2bba3c2d98ccac09176b4", "status": "passed" },
+    { "path": "tests/cli/cliCommandInventory.contract.test.ts", "sha256": "1c57dd9db6417d368a53294602e2902577cdcd33a9bdf5d84772a3f33d166d43", "status": "passed" },
+    { "path": "tests/cli/commands/ValidateCommand.test.ts", "sha256": "38b3557eb5635bee1d712f7b10b67432562692dc65a1b10e99824548e409d076", "status": "passed" },
+    { "path": "tests/cli/dispatch.test.ts", "sha256": "0813e65efb1ab10f97b54812d3ed77c9fc65307baf448d4552e189d97df68e1c", "status": "passed" },
+    { "path": "tests/cli/materialize/RunnableArtifactMaterializer.test.ts", "sha256": "7fa1f8001ab59f0c3da95c50c719d5139c13e5472f9ee6ad2e281cbdb662aa75", "status": "passed" },
+    { "path": "tests/cli/packageOnlyCommandInputs.contract.test.ts", "sha256": "b21564384336256a8cd4b074091355fe31a9edf234587902ded587bebf969299", "status": "passed" },
+    { "path": "tests/cli/publicCommandTree.test.ts", "sha256": "d99b05fdcb2e084d77fc47a5ff7ae3cce7b7fdc93ec6518500b20a8dc2309d29", "status": "passed" },
+    { "path": "tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx", "sha256": "165382d9ca232364ab2f624178f6cc22b6e3231b8832b90f591a63e3f7d9c7d5", "status": "passed" },
+    { "path": "tests/cli/studio-client/src/components/project/ProjectDashboardPage.validationWorkflow.test.tsx", "sha256": "f0e08514d6ec94139c38dda25f35de9bea8c97a5d2f8fa37b1d720e1235d08a6", "status": "passed" },
+    { "path": "tests/cli/studio/loadProjectDashboardContext.test.ts", "sha256": "32048b9bc3189d2855abce06e76459d8a821ac42565c24fb7f08f2847f0eece1", "status": "passed" },
+    { "path": "tests/gamepackage/loadPokieGame.realRuntime.integration.test.ts", "sha256": "965fd252b5f51ef6c7e907e68790aec208b0ed443bd51e657baad7a27095f182", "status": "passed" },
+    { "path": "tests/net/Serialization.test.ts", "sha256": "bcf6e4ae427c48dbef52bae71127bb3dcae43e1e6096add34e29a3efdf24710e", "status": "passed" },
+    { "path": "tests/parsheet/ParSheetExporter.test.ts", "sha256": "43726890ae0449d7f6f064667826341f745702b14971a3aa945e10e81b8c461d", "status": "passed" },
+    { "path": "tests/parsheet/ParSheetImporter.test.ts", "sha256": "4152c02a67743b1c04dbb1d239fae4b37d6c86a98169a575f062871fdfc165d5", "status": "passed" },
+    { "path": "tests/project/readWasmComponentManifest.test.ts", "sha256": "ac3148aed6ede77ee01c5a760ae28a4bc954f3977688c03bf1d8ab1ec714e47e", "status": "passed" },
+    { "path": "tests/replay/ReplayRecorder.test.ts", "sha256": "344729d16024348dea5a1ccba148adab8ab1c34d805c4194db2b1c377749ac38", "status": "passed" },
+    { "path": "tests/session/videoslot/combinations/SeededRandomNumberGenerator.test.ts", "sha256": "fd50bf2a2ac4847a57711d2b3427b9c01d6c11b4583886ef6f049cfd9437d59b", "status": "passed" }
+  ],
+  "scope": {
+    "official_full_or_release_gates_run": false,
+    "product_code_or_test_changes": false,
+    "historical_evidence_changes": false
+  }
+}
