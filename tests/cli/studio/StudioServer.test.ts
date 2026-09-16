@@ -4055,6 +4055,16 @@ describe("StudioServer", () => {
                 const address = await wasmServer.start();
                 const baseUrl = `http://${address.host}:${address.port}`;
 
+                const inspection = await get(`${baseUrl}/api/project/inspect`);
+                const validation = await get(`${baseUrl}/api/project/validate`);
+                const gameModel = await get(`${baseUrl}/api/project/gameModel`);
+                expect(inspection).toMatchObject({status: 200, body: {valid: true, wasmManifest: {component: {id: "http-wasm"}, artifact: expect.any(Object)}}});
+                expect(validation).toMatchObject({status: 200, body: {valid: true, game: {id: "http-wasm"}}});
+                expect(gameModel).toMatchObject({status: 200, body: {
+                    basics: {status: "available", data: {id: "http-wasm"}},
+                    symbols: {status: "available"}, reels: {status: "available"}, paytable: {status: "available"},
+                }});
+
                 const created = await post(`${baseUrl}/api/project/play/session`, {seed: "http-seed"});
                 expect(created).toMatchObject({status: 201, body: {status: "ok", session: {game: {id: "http-wasm"}}}});
                 const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;

@@ -445,7 +445,9 @@ export class StudioReplayExecutionService {
                 round: record.round,
                 totalBet,
                 totalWin,
-                screen: finalRound === undefined ? null : finalRound.screen.map((_, row) => finalRound!.screen.map((reel) => reel[row])),
+                // PokieWasmRound.screen is reel-major, the same DTO shape ReplayDescriptor
+                // receives from ordinary sessions. Preserve each reel instead of transposing it.
+                screen: finalRound === undefined ? null : finalRound.screen.map((reel) => [...reel]),
                 timestamp: record.startedAt,
                 durationMs: record.durationMs,
                 ...(stateBefore === undefined ? {} : {stateBefore}),

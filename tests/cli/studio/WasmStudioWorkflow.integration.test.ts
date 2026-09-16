@@ -12,7 +12,7 @@ import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjec
 const blueprint = {
     manifest: {id: "studio-wasm", name: "Studio WASM", version: "1.0.0"},
     reels: 3,
-    rows: 1,
+    rows: 2,
     symbols: ["A", "B"],
     reelStrips: [["A", "B"], ["B", "A"], ["A", "B"]],
     paytable: {A: {3: 2}, B: {3: 1}},
@@ -70,6 +70,10 @@ describe("canonical WASM Studio workflow", () => {
         await expect(play.spin(opened.session.sessionId)).resolves.toMatchObject({status: "ok", session: {game: {id: "studio-wasm"}}});
         const secondPlayRound = await play.spin(opened.session.sessionId);
         if (secondPlayRound.status !== "ok") throw new Error("expected second portable play round");
+        const playScreen = secondPlayRound.session.screen;
+        if (playScreen === undefined) throw new Error("expected a portable WASM screen");
+        expect(playScreen).toHaveLength(3);
+        expect(playScreen.every((reel) => reel.length === 2 && reel.every((symbol) => symbol !== undefined && symbol !== null))).toBe(true);
 
         const simulation = new StudioSimulationService(undefined, undefined, undefined, 1);
         const simulationStart = simulation.start(artifactPath, {rounds: 3, seed: "studio-seed"});
@@ -86,6 +90,7 @@ describe("canonical WASM Studio workflow", () => {
         expect(replayDownload).toMatchObject({status: "ok", descriptor: {seed: "studio-seed", round: 2}});
         if (replayDownload.status !== "ok") throw new Error("expected replay descriptor");
         expect(replayDownload.descriptor.screen).toEqual(secondPlayRound.session.screen);
+        expect(replayDownload.descriptor.screen?.every((reel) => reel.length === 2 && reel.every((symbol) => symbol !== undefined && symbol !== null))).toBe(true);
         expect(replayDownload.descriptor.stateAfter).toEqual(secondPlayRound.session.debug?.stateAfter);
     });
 

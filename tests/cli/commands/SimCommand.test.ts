@@ -24,6 +24,7 @@ import path from "path";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
     const calls: string[] = [];
@@ -1055,6 +1056,29 @@ describe("SimCommand (integration, real game with an explicit custom category)",
 // also what lets a resolved Blueprint reach a real materialized runtime instead of a raw blueprint file.
 describe("SimCommand runtime package materialization boundary", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+    it("simulates a byte-bound canonical WASM artifact without package materialization", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-canonical-wasm-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const reportPath = path.join(workDir, "report.json");
+        const fixture = createCanonicalWasmFixture({id: "canonical-sim"});
+        fs.writeFileSync(wasmPath, fixture.bytes);
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const resolveRuntimePackageRoot = jest.fn(() => Promise.resolve({runtimePath: "must-not-resolve", release: () => Promise.resolve()}));
+        const command = new SimCommand(loadGame, undefined, undefined, undefined, undefined, resolveRuntimePackageRoot);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await command.run([wasmPath, "--rounds", "4", "--seed", "canonical-seed", "--out", reportPath, "--format", "json"]);
+            const report = JSON.parse(fs.readFileSync(reportPath, "utf8")) as SimulationReport;
+            expect(report).toMatchObject({game: {id: "canonical-sim"}, rounds: 4, seed: "canonical-seed", workers: 1});
+            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            logSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
 
     it("keeps corrupt and incomplete PAR workbooks on the recognition/import diagnostic path without loading or writing a report", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-malformed-par-"));

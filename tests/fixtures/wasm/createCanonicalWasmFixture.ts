@@ -6,6 +6,10 @@ type CanonicalWasmFixtureOptions = {
     readonly capabilities?: readonly string[];
     readonly trapping?: boolean;
     readonly stripLengths?: readonly number[];
+    readonly reelStrips?: readonly (readonly string[])[];
+    readonly wilds?: readonly string[];
+    readonly scatters?: readonly string[];
+    readonly paytable?: Readonly<Record<string, Readonly<Record<string, number>>>>;
 };
 
 const abiPrefix = [
@@ -55,11 +59,14 @@ function sha256(bytes: Uint8Array): string {
 export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions = {}): {readonly bytes: Uint8Array<ArrayBuffer>; readonly manifest: PokieWasmComponentManifest} {
     const id = options.id ?? "portable-fixture";
     const capabilities = options.capabilities ?? ["runtime.play", "runtime.serialize", "runtime.replay"];
-    const stripLengths = options.stripLengths ?? [2, 2];
-    const reelStrips = stripLengths.map((length) => Array.from({length}, (_value, index) => index % 2 === 0 ? "A" : "B"));
+    const reelStrips = options.reelStrips ?? (options.stripLengths ?? [2, 2]).map((length) => Array.from({length}, (_value, index) => index % 2 === 0 ? "A" : "B"));
+    const stripLengths = reelStrips.map((strip) => strip.length);
     const stopWidths = stripLengths.map((length) => Math.max(1, Math.ceil(Math.log2(length))));
     const model = new TextEncoder().encode(JSON.stringify({
-        schemaVersion: "pokie.game.v1", reels: stripLengths.length, rows: 1, reelStrips, paylines: [[...stripLengths.map(() => 0)]], paytable: {A: {[String(stripLengths.length)]: 2}, B: {[String(stripLengths.length)]: 1}}, stopWidths,
+        schemaVersion: "pokie.game.v1", reels: stripLengths.length, rows: 1, reelStrips, paylines: [[...stripLengths.map(() => 0)]],
+        paytable: options.paytable ?? {A: {[String(stripLengths.length)]: 2}, B: {[String(stripLengths.length)]: 1}}, stopWidths,
+        ...(options.wilds === undefined ? {} : {wilds: options.wilds}),
+        ...(options.scatters === undefined ? {} : {scatters: options.scatters}),
     }));
     const configurationHash = sha256(model);
     const descriptor = new TextEncoder().encode(JSON.stringify({

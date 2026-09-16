@@ -346,7 +346,10 @@ export class StudioPlayService {
                         game: active.manifest,
                         bet: round.stake,
                         win: round.payout,
-                        screen: round.screen.map((_, row) => round.screen.map((reel) => reel[row])),
+                        // Portable rounds already expose the shared reel-major screen contract.
+                        // Do not transpose it: a single-row, multi-reel game would otherwise
+                        // grow one sparse row per reel.
+                        screen: round.screen.map((reel) => [...reel]),
                         availableSymbols: [...new Set(round.screen.flat())],
                         scenarioCapabilities: WASM_SCENARIO_CAPABILITIES,
                         debug: {

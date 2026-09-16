@@ -28,6 +28,8 @@ npx pokie validate game.wasm
 npx pokie run game.wasm --seed demo
 ```
 
+Canonical WASM artifacts also support deterministic `pokie sim game.wasm --rounds <number> --seed <seed>` and `pokie replay game.wasm --round <number> --seed <seed>` through the portable runtime; neither command materializes a game package. `pokie serve game.wasm` is intentionally unavailable because the portable component contract does not declare the local HTTP/server adapter required by the dev server. It validates the artifact binding and returns the normal capability diagnostic before loading a package or allocating a server.
+
 `npx pokie game.wasm` deliberately routes to ordinary inspection instead of requiring a local project, compiler, package install, or adapter path. It prints the executable validate/run actions available from the normal artifact navigation. A missing, stale, swapped, malformed, or incompatible manifest is rejected before the component can be treated as runnable.
 
 ## `pokie --help` / `pokie -h`

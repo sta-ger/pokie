@@ -7,11 +7,14 @@ import {
     PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
+    readWasmComponentManifest,
     replayOutcomeSourceProject,
     ReplayRecorder,
     ReplayRecording,
     releasePokieGame,
     REPLAY_OPERATION,
+    SeededPokieWasmHost,
+    loadPokieWasmFileRuntime,
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -112,8 +115,8 @@ export class ReplayCommand implements CliCommandHandling {
             return;
         }
         if (project?.type === "wasm") {
-            const diagnostic = describeUnavailableArtifactOperation(project, REPLAY_OPERATION);
-            if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
+            await this.runWasmReplay(project, options);
+            return;
         }
 
         const resolution = await this.resolveRuntimePackageRoot(options.packageRoot);
@@ -138,6 +141,56 @@ export class ReplayCommand implements CliCommandHandling {
         console.log(json);
         if (options.out) {
             console.log(`\nReplay written to "${options.out}".`);
+        }
+    }
+
+    /** Runs a canonical component through its portable session facade, never a package loader. */
+    private async runWasmReplay(project: PokieProject, options: ReplayOptions): Promise<void> {
+        const manifestRead = await readWasmComponentManifest(project);
+        if (!manifestRead.supported || manifestRead.canonical === undefined) {
+            const diagnostic = describeUnavailableArtifactOperation(project, REPLAY_OPERATION);
+            if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
+            throw new Error("This WASM component is inspection-only and cannot be replayed.");
+        }
+        if (options.mode !== undefined) {
+            throw new Error("Canonical WASM replay does not support --mode; replay its portable session directly.");
+        }
+        const seed = options.seed ?? "pokie-wasm-replay";
+        const startedAt = Date.now();
+        const runtime = await loadPokieWasmFileRuntime(project.rootPath, new SeededPokieWasmHost(seed));
+        let session;
+        try {
+            session = runtime.createSession(seed);
+            let totalBet = 0;
+            let totalWin = 0;
+            let finalRound;
+            let stateBefore: Record<string, unknown> | undefined;
+            for (let index = 0; index < options.round; index++) {
+                if (index === options.round - 1) stateBefore = session.serialize() as unknown as Record<string, unknown>;
+                finalRound = await session.play();
+                totalBet += finalRound.stake;
+                totalWin += finalRound.payout;
+            }
+            const descriptor = {
+                sessionId: `wasm-${seed}-${options.round}`,
+                game: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
+                seed,
+                round: options.round,
+                totalBet,
+                totalWin,
+                screen: finalRound === undefined ? null : finalRound.screen.map((reel) => [...reel]),
+                timestamp: startedAt,
+                durationMs: Date.now() - startedAt,
+                ...(stateBefore === undefined ? {} : {stateBefore}),
+                stateAfter: session.serialize() as unknown as Record<string, unknown>,
+            };
+            const json = JSON.stringify(descriptor, null, 4);
+            if (options.out) this.writeFile(options.out, json);
+            console.log(json);
+            if (options.out) console.log(`\nReplay written to "${options.out}".`);
+        } finally {
+            session?.dispose();
+            runtime.dispose();
         }
     }
 

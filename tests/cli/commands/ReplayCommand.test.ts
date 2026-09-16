@@ -19,6 +19,7 @@ import path from "path";
 import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
     const calls: string[] = [];
@@ -249,6 +250,31 @@ describe("ReplayCommand (integration, real loadPokieGame + fixture game package)
 // runtime path that boundary hands back -- never the caller's own raw packageRoot.
 describe("ReplayCommand runtime package materialization boundary", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+    it("replays a byte-bound canonical WASM artifact without package materialization", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-canonical-wasm-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const descriptorPath = path.join(workDir, "replay.json");
+        const fixture = createCanonicalWasmFixture({id: "canonical-replay", reelStrips: [["A", "B"], ["B", "A"], ["A", "B"]]});
+        fs.writeFileSync(wasmPath, fixture.bytes);
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const resolveRuntimePackageRoot = jest.fn(() => Promise.resolve({runtimePath: "must-not-resolve", release: () => Promise.resolve()}));
+        const command = new ReplayCommand(loadGame, undefined, undefined, resolveRuntimePackageRoot);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await command.run([wasmPath, "--round", "2", "--seed", "canonical-seed", "--out", descriptorPath]);
+            const descriptor = JSON.parse(fs.readFileSync(descriptorPath, "utf8")) as ReplayDescriptor;
+            expect(descriptor).toMatchObject({game: {id: "canonical-replay"}, round: 2, seed: "canonical-seed"});
+            expect(descriptor.screen).toHaveLength(3);
+            expect(descriptor.screen?.every((reel) => reel.length === 1 && reel.every((symbol) => symbol !== undefined && symbol !== null))).toBe(true);
+            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            logSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
 
     it("keeps corrupt and incomplete PAR workbooks on the recognition/import diagnostic path without loading or publishing a descriptor", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-malformed-par-"));

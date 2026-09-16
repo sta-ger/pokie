@@ -20,3 +20,29 @@ export const PORTABLE_RUNTIME_GOLDEN = {
         replay: {round: 4, totalBet: 4, totalWin: 1, screen: [["B"], ["A"]]},
     },
 } as const;
+
+/** A separate reviewed wild/scatter fixture; it must never reuse base-game draws or outputs. */
+export const PORTABLE_RUNTIME_FEATURE_GOLDEN = {
+    id: "portable-runtime-feature-golden",
+    seed: "wasm-feature-parity-golden",
+    commands: [{bet: 1}, {bet: 1}, {bet: 1}],
+    continuationCommand: {bet: 1},
+    replayRound: 4,
+    fixture: {
+        reelStrips: [["W", "S", "A"], ["A", "S", "W"]],
+        wilds: ["W"],
+        scatters: ["S"],
+        paytable: {A: {2: 2}, W: {2: 3}, S: {2: 4}},
+    },
+    expected: {
+        draws: [0.5218852667603642, 0.30686308699660003, 0.5139746307395399, 0.07492379867471755, 0.2316682490054518, 0.5898979792837054],
+        rounds: [
+            {sequence: 1, draw: 0.5218852667603642, stops: [1, 2], screen: [["S"], ["W"]], winMultiplier: 0, stake: 1, payout: 0, command: {bet: 1}},
+            {sequence: 2, draw: 0.5139746307395399, stops: [2, 0], screen: [["A"], ["A"]], winMultiplier: 2, stake: 1, payout: 2, command: {bet: 1}},
+            {sequence: 3, draw: 0.2316682490054518, stops: [0, 1], screen: [["W"], ["S"]], winMultiplier: 0, stake: 1, payout: 0, command: {bet: 1}},
+        ],
+        state: {schemaVersion: "pokie.state.v1", seed: "wasm-feature-parity-golden", draws: [0.5218852667603642, 0.30686308699660003, 0.5139746307395399, 0.07492379867471755, 0.2316682490054518, 0.5898979792837054], sequence: 3, rngState: 1485312856},
+        continuation: {sequence: 4, draw: 0.7555967909283936, stops: [0, 2], screen: [["W"], ["W"]], winMultiplier: 0, stake: 1, payout: 0, command: {bet: 1}},
+        replay: {round: 4, totalBet: 4, totalWin: 2, screen: [["W"], ["W"]]},
+    },
+} as const;

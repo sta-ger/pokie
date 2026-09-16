@@ -12,6 +12,7 @@ import {
     PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
+    readWasmComponentManifest,
     releasePokieGame,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
@@ -23,6 +24,9 @@ import {
     SimulationReportBuilding,
     SimulationReportSet,
     SIM_OPERATION,
+    SeededPokieWasmHost,
+    SimulationStatistics,
+    loadPokieWasmFileRuntime,
     WeightedOutcomeRandomSource,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -328,8 +332,8 @@ export class SimCommand implements CliCommandHandling {
             return;
         }
         if (project?.type === "wasm") {
-            const diagnostic = describeUnavailableArtifactOperation(project, SIM_OPERATION);
-            if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
+            await this.executeAgainstWasmArtifact(project, options);
+            return;
         }
 
         // Crossed exactly once per invocation -- every downstream step (the metadata load below,
@@ -343,6 +347,71 @@ export class SimCommand implements CliCommandHandling {
             await this.executeAgainstRuntimePackage({...options, packageRoot: resolution.runtimePath});
         } finally {
             await resolution.release();
+        }
+    }
+
+    /**
+     * Canonical components are simulated through the portable host, never through package
+     * materialization or the package-worker runner.  The component owns the round semantics;
+     * this command only aggregates the same user-visible statistics as the package path.
+     */
+    private async executeAgainstWasmArtifact(project: PokieProject, options: SimOptions): Promise<void> {
+        const manifestRead = await readWasmComponentManifest(project);
+        if (!manifestRead.supported || manifestRead.canonical === undefined) {
+            const diagnostic = describeUnavailableArtifactOperation(project, SIM_OPERATION);
+            if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
+            throw new Error("This WASM component is inspection-only and cannot be simulated.");
+        }
+        if (options.workers !== 1) {
+            throw new Error("Canonical WASM simulation currently supports --workers 1 because its portable host is executed in-process.");
+        }
+        if (options.mode !== undefined) {
+            throw new Error("Canonical WASM simulation does not support --mode; select a declared bet with the artifact's play command instead.");
+        }
+        if (options.convergence !== undefined) {
+            throw new Error("Canonical WASM simulation does not support adaptive convergence yet; omit --min-rounds, --rtp-tolerance, and --check-interval.");
+        }
+
+        const seed = options.seed ?? "pokie-wasm-simulation";
+        const startedAt = Date.now();
+        const runtime = await loadPokieWasmFileRuntime(project.rootPath, new SeededPokieWasmHost(seed));
+        let session;
+        try {
+            session = runtime.createSession(seed);
+            const payouts: number[] = [];
+            let totalBet = 0;
+            let totalPayout = 0;
+            let hitCount = 0;
+            let maxWin = 0;
+            for (let index = 0; index < options.rounds; index++) {
+                const round = await session.play();
+                totalBet += round.stake;
+                totalPayout += round.payout;
+                payouts.push(round.payout);
+                if (round.payout > 0) hitCount++;
+                if (round.payout > maxWin) maxWin = round.payout;
+            }
+            const statistics = buildPortableWasmStatistics(payouts, totalBet, totalPayout, hitCount, maxWin);
+            const report = this.reportBuilder.build({
+                manifest: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
+                requestedRounds: options.rounds,
+                seed,
+                statistics,
+                durationMs: Date.now() - startedAt,
+                packageRoot: project.rootPath,
+                configHash: runtime.manifest.artifact?.configurationHash,
+                pokieVersion: this.pokieVersion,
+                workers: 1,
+                workerSeedStrategy: "portable seeded host stream (single in-process WASM runtime)",
+                stopReason: "maxRounds",
+            });
+            if (options.out) this.writeReport(options.out, JSON.stringify(report, null, 4));
+            if (options.format === "json") console.log(JSON.stringify(report, null, 4));
+            else this.printSummary(report);
+            if (options.out) this.printReportDestination(options.out, options.format === "json");
+        } finally {
+            session?.dispose();
+            runtime.dispose();
         }
     }
 
@@ -649,4 +718,41 @@ export class SimCommand implements CliCommandHandling {
             report.warnings.forEach((warning) => console.log(`  - ${warning}`));
         }
     }
+}
+
+function buildPortableWasmStatistics(
+    payouts: readonly number[],
+    totalBet: number,
+    totalPayout: number,
+    hitCount: number,
+    maxWin: number,
+): SimulationStatistics {
+    const rounds = payouts.length;
+    const averagePayout = rounds === 0 ? 0 : totalPayout / rounds;
+    const variance = rounds === 0 ? 0 : payouts.reduce((sum, payout) => sum + (payout - averagePayout) ** 2, 0) / rounds;
+    const payoutStandardDeviation = Math.sqrt(variance);
+    const margin = rounds === 0 ? 0 : 1.96 * payoutStandardDeviation / Math.sqrt(rounds);
+    const rtp = totalBet === 0 ? 0 : totalPayout / totalBet;
+    const histogram: Record<string, number> = {};
+    for (const payout of payouts) histogram[String(payout)] = (histogram[String(payout)] ?? 0) + 1;
+    return {
+        rounds,
+        hitCount,
+        totalBet,
+        totalPayout,
+        averageBet: rounds === 0 ? 0 : totalBet / rounds,
+        averagePayout,
+        averagePayoutConfidenceInterval95: {low: averagePayout - margin, high: averagePayout + margin},
+        rtp,
+        rtpConfidenceInterval95: {
+            low: totalBet === 0 ? 0 : (totalPayout - margin * rounds) / totalBet,
+            high: totalBet === 0 ? 0 : (totalPayout + margin * rounds) / totalBet,
+        },
+        volatility: payoutStandardDeviation,
+        payoutStandardDeviation,
+        returnStandardDeviation: payoutStandardDeviation,
+        maxWin,
+        maxWinFrequency: rounds === 0 ? 0 : payouts.filter((payout) => payout === maxWin).length / rounds,
+        payoutHistogram: histogram,
+    };
 }
