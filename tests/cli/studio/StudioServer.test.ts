@@ -4042,6 +4042,10 @@ describe("StudioServer", () => {
                     {type: "blueprint", rootPath: blueprintPath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"},
                     wasmFile,
                 );
+                const listTargets = jest.fn(() => []);
+                const validateSourceBundle = jest.fn();
+                const configureFairness = jest.fn();
+                const estimateOutcomeLibrary = jest.fn();
                 const homeService = new StudioHomeService("1.3.0");
                 wasmServer = new StudioServer({
                     pokieVersion: "1.3.0",
@@ -4051,6 +4055,10 @@ describe("StudioServer", () => {
                     homeService,
                     blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
                     initialContext: {mode: "project", projectRoot: wasmFile},
+                    deploymentService: {listTargets} as unknown as StudioDeploymentService,
+                    certificationService: {validateSourceBundle} as unknown as StudioCertificationService,
+                    fairnessService: {configure: configureFairness} as unknown as StudioFairnessService,
+                    outcomeLibraryGenerateService: {estimate: estimateOutcomeLibrary} as unknown as StudioOutcomeLibraryGenerateService,
                 });
                 const address = await wasmServer.start();
                 const baseUrl = `http://${address.host}:${address.port}`;
@@ -4082,6 +4090,20 @@ describe("StudioServer", () => {
                 expect(replay).toMatchObject({status: 202, body: {status: "queued"}});
                 const replayId = (replay.body as {id: string}).id;
                 await expect(pollUntilTerminal(`${baseUrl}/api/project/replays/${replayId}`)).resolves.toMatchObject({status: 200, body: {status: "completed"}});
+
+                for (const response of await Promise.all([
+                    post(`${baseUrl}/api/project/artifacts/build`, {target: "tsPackage"}),
+                    get(`${baseUrl}/api/project/deployment/targets`),
+                    post(`${baseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"}),
+                    post(`${baseUrl}/api/project/fairness/configure`, {bundleDir: "bundle", modeName: "base", serverSeed: "s", clientSeed: "c", nonce: 0}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/estimate`, {}),
+                ])) {
+                    expect(response).toMatchObject({status: 409, body: {error: expect.stringContaining("POKIE WASM artifact")}});
+                }
+                expect(listTargets).not.toHaveBeenCalled();
+                expect(validateSourceBundle).not.toHaveBeenCalled();
+                expect(configureFairness).not.toHaveBeenCalled();
+                expect(estimateOutcomeLibrary).not.toHaveBeenCalled();
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }

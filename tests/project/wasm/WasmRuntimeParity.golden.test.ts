@@ -10,7 +10,7 @@ import {VideoSlotWinCalculator} from "../../../src/session/videoslot/wincalculat
 import {ReplayRecorder} from "../../../src/replay/ReplayRecorder.js";
 import {SeededPokieWasmHost, instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
 import type {PokieWasmRound, PokieWasmSessionState} from "../../../src/wasm/PokieWasmRuntimeApi.js";
-import {PORTABLE_RUNTIME_FEATURE_GOLDEN, PORTABLE_RUNTIME_GOLDEN} from "../../fixtures/wasm/portableRuntimeGolden.js";
+import {PORTABLE_RUNTIME_ALL_WILD_GOLDEN, PORTABLE_RUNTIME_FEATURE_GOLDEN, PORTABLE_RUNTIME_GOLDEN} from "../../fixtures/wasm/portableRuntimeGolden.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 describe("WASM runtime parity golden", () => {
@@ -120,6 +120,32 @@ describe("WASM runtime parity golden", () => {
         }).toEqual(golden.expected.replay);
         runtime.dispose();
         continuedRuntime.dispose();
+        replayRuntime.dispose();
+    });
+
+    it("keeps the production all-wild rejection through WASM state continuation and replay", async () => {
+        const golden = PORTABLE_RUNTIME_ALL_WILD_GOLDEN;
+        const node = runNodeReference(golden.seed, golden.commands, golden.fixture);
+        const fixture = createCanonicalWasmFixture({id: golden.id, ...golden.fixture});
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost(golden.seed));
+        const session = runtime.createSession(golden.seed);
+        const round = await session.play(golden.commands[0]);
+        const serialized = session.serialize();
+        const continuationRuntime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost(golden.seed));
+        const continuation = await continuationRuntime.restoreSession(serialized).play(golden.continuationCommand);
+        const replayRuntime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost(golden.seed));
+        const replay = await replayRuntime.replay(serialized, [golden.continuationCommand]);
+        const nodeContinuation = resumeNodeReference(golden.seed, node.state, golden.continuationCommand, golden.fixture);
+        const nodeReplay = recordNodeReplay(golden.seed, golden.replayRound, golden.fixture);
+
+        expect(round).toMatchObject({screen: golden.expected.screen, payout: golden.expected.payout, credits: golden.expected.credits});
+        expect(canonicalRound(round)).toEqual(node.rounds[0]);
+        expect(serialized).toEqual(node.state);
+        expect(canonicalRound(continuation)).toEqual(nodeContinuation);
+        expect(canonicalRound(replay[0])).toEqual(nodeContinuation);
+        expect({round: replay[0].sequence, totalBet: 2, totalWin: replay[0].payout, screen: replay[0].screen}).toEqual(nodeReplay);
+        runtime.dispose();
+        continuationRuntime.dispose();
         replayRuntime.dispose();
     });
 

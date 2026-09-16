@@ -46,3 +46,19 @@ export const PORTABLE_RUNTIME_FEATURE_GOLDEN = {
         replay: {round: 4, totalBet: 4, totalWin: 10, screen: [["A"], ["A"]]},
     },
 } as const;
+
+/** Production line evaluation rejects all-wild lines; retain this as an explicit portable parity case. */
+export const PORTABLE_RUNTIME_ALL_WILD_GOLDEN = {
+    id: "portable-runtime-all-wild-golden",
+    seed: "wasm-all-wild-golden",
+    commands: [{bet: 1}],
+    continuationCommand: {bet: 1},
+    replayRound: 2,
+    fixture: {
+        reelStrips: [["W"], ["W"]],
+        wilds: ["W"],
+        scatters: [],
+        paytable: {W: {2: 3}},
+    },
+    expected: {screen: [["W"], ["W"]], payout: 0, credits: 999},
+} as const;

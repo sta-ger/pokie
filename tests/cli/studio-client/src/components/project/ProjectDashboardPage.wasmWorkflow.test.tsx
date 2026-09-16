@@ -12,7 +12,7 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
             "/api/project/context": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "loaded", projectRoot: "/games/game.wasm", game, type: "wasm", capabilities: ["runtime.execute", "wasm.manifest.read"]},
+                body: {status: "loaded", projectRoot: "/games/game.wasm", game, type: "wasm", capabilities: ["wasm.runtime.execute", "wasm.manifest.read"]},
             }),
             "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/game.wasm", valid: true, wasmManifest: {component: game}}}),
             "/api/project/validate": () => ({ok: true, status: 200, body: {packageRoot: "/games/game.wasm", valid: true, game, errors: [], warnings: [], suggestions: []}}),
@@ -27,6 +27,9 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
         expect(screen.getByRole("button", {name: "Play"})).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Simulation"})).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Replay"})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Build / Export"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Certification"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Provably Fair"})).not.toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Play"}));
         expect(await screen.findByText(/Play prepares this game/)).toBeInTheDocument();
