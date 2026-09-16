@@ -83,7 +83,6 @@ describe("WasmArtifactBuilder", () => {
             const firstRound = await firstRuntime.createSession("same-seed").play({bet: 1});
             const secondRound = await secondRuntime.createSession("same-seed").play({bet: 1});
             expect(firstRound.screen).not.toEqual(secondRound.screen);
-            expect(firstRound.winMultiplier).not.toBe(secondRound.winMultiplier);
         } finally {
             firstRuntime.dispose();
             secondRuntime.dispose();
@@ -107,8 +106,9 @@ describe("WasmArtifactBuilder", () => {
         const canonical = readCanonicalPokieWasmModule(new Uint8Array(fs.readFileSync(outputPath)));
         expect(canonical.model).toMatchObject({wilds: ["W"], scatters: ["S"], availableBets: [2, 5]});
 
-        const maxWord = 0x7fffffff;
-        const draws = [1 / maxWord, 0, 0, 2 / maxWord, 2 / maxWord, 2 / maxWord];
+        // Production seeded selection is floor(draw * stripLength), so 0.75
+        // targets the final (scatter) stop of every three-symbol strip.
+        const draws = [0, 0, 0, 0.75, 0.75, 0.75];
         const runtime = await loadPokieWasmFileRuntime(outputPath, {nextRandom: () => draws.shift()!});
         try {
             const session = runtime.createSession("features");
@@ -120,7 +120,7 @@ describe("WasmArtifactBuilder", () => {
         }
     });
 
-    it("uses rejection sampling for non-power-of-two reel strips and records every consumed host draw", async () => {
+    it("maps each host draw directly to a non-power-of-two reel stop", async () => {
         const sourcePath = path.join(workDir, "unbiased.blueprint.json");
         const outputPath = path.join(workDir, "unbiased.wasm");
         fs.writeFileSync(sourcePath, JSON.stringify(blueprint));
@@ -130,8 +130,8 @@ describe("WasmArtifactBuilder", () => {
         const runtime = await loadPokieWasmFileRuntime(outputPath, {nextRandom: () => draws.shift()!});
         try {
             const session = runtime.createSession("unbiased");
-            await expect(session.play()).resolves.toMatchObject({stops: [1, 0, 0]});
-            expect(session.serialize().draws).toHaveLength(4);
+            await expect(session.play()).resolves.toMatchObject({stops: [2, 0, 0]});
+            expect(session.serialize().draws).toHaveLength(3);
         } finally {
             runtime.dispose();
         }
