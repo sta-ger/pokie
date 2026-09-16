@@ -4,6 +4,8 @@ import path from "path";
 import {RunWasmCommand} from "../../cli/commands/RunWasmCommand.js";
 import {InspectCommand} from "../../cli/commands/InspectCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
+import {dispatch} from "../../cli/dispatch.js";
+import {registerCliCommands} from "../../cli/registerCliCommands.js";
 import {WasmArtifactBuilder} from "../../src/project/WasmArtifactBuilder.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 
@@ -59,5 +61,22 @@ describe("canonical WASM CLI workflow", () => {
         const report = JSON.parse(output.join("\n"));
         expect(report).toMatchObject({valid: true, wasm: {abiVersion: "1.0.0", compatibility: "compatible", hostRequirements: {rng: "pokie.rng.v1"}}});
         expect(report.wasm.integrity).toMatch(/^sha256:[a-f0-9]{64}/);
+    });
+
+    it("routes an implicit artifact path through the public dispatcher to inspect guidance", async () => {
+        const output: string[] = [];
+        const log = jest.spyOn(console, "log").mockImplementation((line: string) => output.push(line));
+        try {
+            await expect(dispatch(registerCliCommands({
+                version: "1.3.0",
+                pokiePackageRoot: directory,
+                clientRoot: directory,
+                studioRoot: directory,
+            }), ["node", "pokie", artifact])).resolves.toBe(0);
+        } finally {
+            log.mockRestore();
+        }
+        expect(output.join("\n")).toContain("Available next actions:");
+        expect(output.join("\n")).toContain(`pokie run "${artifact}" --seed demo`);
     });
 });

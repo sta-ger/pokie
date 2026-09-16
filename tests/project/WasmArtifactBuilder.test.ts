@@ -60,7 +60,7 @@ describe("WasmArtifactBuilder", () => {
         const firstOutput = path.join(workDir, "first.wasm");
         const secondOutput = path.join(workDir, "second.wasm");
         fs.writeFileSync(firstSource, JSON.stringify(blueprint));
-        fs.writeFileSync(secondSource, JSON.stringify({...blueprint, manifest: {...blueprint.manifest, id: "wasm-fixture-second"}, paytable: {A: {3: 9}, B: {3: 1}, C: {3: 1}}}));
+        fs.writeFileSync(secondSource, JSON.stringify({...blueprint, manifest: {...blueprint.manifest, id: "wasm-fixture-second"}, reelStrips: [["A", "A", "B", "C"], ["A", "B", "B", "C"], ["A", "B", "C", "C"]], paytable: {A: {3: 9}, B: {3: 1}, C: {3: 1}}}));
         const builder = new WasmArtifactBuilder("1.3.0");
         await builder.build({type: "blueprint", rootPath: firstSource, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, firstOutput);
         await builder.build({type: "blueprint", rootPath: secondSource, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, secondOutput);
@@ -69,7 +69,10 @@ describe("WasmArtifactBuilder", () => {
         const firstRuntime = await loadPokieWasmFileRuntime(firstOutput, {nextRandom: () => 0.25});
         const secondRuntime = await loadPokieWasmFileRuntime(secondOutput, {nextRandom: () => 0.25});
         try {
-            expect((await firstRuntime.createSession("same-seed").play()).gameValue).not.toBe((await secondRuntime.createSession("same-seed").play()).gameValue);
+            const firstRound = await firstRuntime.createSession("same-seed").play({bet: 1});
+            const secondRound = await secondRuntime.createSession("same-seed").play({bet: 1});
+            expect(firstRound.screen).not.toEqual(secondRound.screen);
+            expect(firstRound.winMultiplier).not.toBe(secondRound.winMultiplier);
         } finally {
             firstRuntime.dispose();
             secondRuntime.dispose();
@@ -82,7 +85,7 @@ describe("WasmArtifactBuilder", () => {
         const firstOutput = path.join(workDir, "first.wasm");
         const secondOutput = path.join(workDir, "second.wasm");
         fs.writeFileSync(firstSource, JSON.stringify(blueprint));
-        fs.writeFileSync(secondSource, JSON.stringify({...blueprint, manifest: {...blueprint.manifest, id: "second"}}));
+        fs.writeFileSync(secondSource, JSON.stringify({...blueprint, manifest: {...blueprint.manifest, id: "second"}, paytable: {A: {3: 8}, B: {3: 1}, C: {3: 1}}}));
         const builder = new WasmArtifactBuilder("1.3.0");
         await builder.build({type: "blueprint", rootPath: firstSource, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, firstOutput);
         await builder.build({type: "blueprint", rootPath: secondSource, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, secondOutput);
@@ -121,5 +124,23 @@ describe("WasmArtifactBuilder", () => {
         await expect(builder.build({type: "blueprint", rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, outputPath, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
         expect(fs.existsSync(outputPath)).toBe(false);
         expect(fs.existsSync(`${outputPath}.pokie-wasm.json`)).toBe(false);
+    });
+
+    it.each([["next_random", "nextXrandom"], ["play", "pLay"]])("rejects a hash-consistent module with a non-canonical %s ABI name", async (from, to) => {
+        const sourcePath = path.join(workDir, "fixture.blueprint.json");
+        const outputPath = path.join(workDir, "game.wasm");
+        fs.writeFileSync(sourcePath, JSON.stringify(blueprint));
+        await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, outputPath);
+        const bytes = fs.readFileSync(outputPath);
+        const offset = bytes.indexOf(Buffer.from(from));
+        expect(offset).toBeGreaterThanOrEqual(0);
+        bytes.write(to, offset, "utf8");
+        fs.writeFileSync(outputPath, bytes);
+        const manifest = JSON.parse(fs.readFileSync(`${outputPath}.pokie-wasm.json`, "utf8"));
+        manifest.artifact.sha256 = `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
+        manifest.artifact.bytes = bytes.length;
+        fs.writeFileSync(`${outputPath}.pokie-wasm.json`, JSON.stringify(manifest));
+
+        await expect(new ProjectTargetResolver().resolve(outputPath)).rejects.toThrow(/module or game configuration does not match/i);
     });
 });

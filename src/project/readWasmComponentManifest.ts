@@ -8,6 +8,7 @@ import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompat
 import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
 import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
 import {describeWasmSidecarFailure} from "./WasmProductContract.js";
+import {readCanonicalPokieWasmModule} from "../wasm/PokieWasmCanonicalModule.js";
 
 export type WasmComponentManifestReadResult =
     | {readonly supported: true; readonly manifest: PokieWasmComponentManifest}
@@ -15,9 +16,7 @@ export type WasmComponentManifestReadResult =
 
 function hasBoundWasmConfiguration(bytes: Buffer, configurationHash: string): boolean {
     try {
-        const sections = WebAssembly.Module.customSections(new WebAssembly.Module(new Uint8Array(bytes)), "pokie.game.v1");
-        return sections.length === 1 &&
-            `sha256:${crypto.createHash("sha256").update(Buffer.from(sections[0])).digest("hex")}` === configurationHash;
+        return `sha256:${crypto.createHash("sha256").update(readCanonicalPokieWasmModule(new Uint8Array(bytes)).modelBytes).digest("hex")}` === configurationHash;
     } catch {
         return false;
     }

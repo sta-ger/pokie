@@ -521,6 +521,10 @@ export class ArtifactBuilderRegistry {
         const target = plan.target.kind as ArtifactTargetType;
         const destination = this.checkDestination(target, destinationPath, source.rootPath);
         if (!destination.available) throw new ArtifactBuildConflictError(destination.message ?? "The destination is unavailable.");
+        const wasmEvidenceRoot = target === "wasm" ? `${destinationPath}.pokie` : undefined;
+        if (wasmEvidenceRoot !== undefined && fs.existsSync(wasmEvidenceRoot)) {
+            throw new ArtifactBuildConflictError(`WASM conversion evidence companion "${wasmEvidenceRoot}" already exists. Choose a new output path or remove that companion explicitly before building.`);
+        }
         // PAR's imported Blueprint is staged alongside the requested output,
         // before any downstream builder gets a chance to create a directory.
         // Create the explicit output parent at this shared boundary so every
@@ -566,7 +570,7 @@ export class ArtifactBuilderRegistry {
             // lives in an adjacent operation-owned companion, never under the
             // module path as though that file were a directory.
             const durableDirectory = target === "wasm"
-                ? `${result.outputPath}.pokie/par-import`
+                ? path.join(wasmEvidenceRoot!, "par-import")
                 : path.join(result.outputPath, ".pokie", "par-import");
             const durableBlueprint = path.join(durableDirectory, "imported.blueprint.json");
             const durableEvidence = path.join(durableDirectory, "conversion-evidence.json");

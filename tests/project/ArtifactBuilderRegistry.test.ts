@@ -218,6 +218,25 @@ describe("ArtifactBuilderRegistry", () => {
             }
         });
 
+        it("refuses an occupied PAR-to-WASM evidence companion without touching it", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-wasm-evidence-conflict-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const destination = path.join(directory, "game.wasm");
+            const evidence = `${destination}.pokie`;
+            const source: PokieProject = {type: "parWorkbook", rootPath: workbookPath, capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook, provenance: "test PAR workbook"} as PokieProject;
+            try {
+                fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+                fs.mkdirSync(evidence);
+                fs.writeFileSync(path.join(evidence, "preserve.txt"), "pre-existing evidence");
+                await expect(registry.build("wasm", source, destination)).rejects.toThrow(/evidence companion.*already exists/i);
+                expect(fs.readFileSync(path.join(evidence, "preserve.txt"), "utf8")).toBe("pre-existing evidence");
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
         it("removes only PAR-to-WASM files owned by a cancelled publication", async () => {
             const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-wasm-cancel-"));
             const workbookPath = path.join(directory, "source.xlsx");
