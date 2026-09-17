@@ -44,8 +44,9 @@ export function wasmProjectCapabilities(manifest: Pick<PokieWasmComponentManifes
     const declaresReplay = manifest.capabilities.includes(POKIE_WASM_RUNTIME_REPLAY_DECLARATION);
     if (declaresPlay) capabilities.push(WASM_RUNTIME_PLAY_CAPABILITY);
     if (declaresSerialize) capabilities.push(WASM_RUNTIME_SERIALIZE_CAPABILITY);
+    if (declaresReplay) capabilities.push(WASM_RUNTIME_REPLAY_CAPABILITY);
     if (declaresPlay && declaresSerialize && declaresReplay) {
-        capabilities.push(WASM_RUNTIME_REPLAY_CAPABILITY, WASM_RUNTIME_EXECUTE_CAPABILITY);
+        capabilities.push(WASM_RUNTIME_EXECUTE_CAPABILITY);
     }
     if (manifest.capabilities.includes(POKIE_WASM_ARTIFACT_INSPECT_DECLARATION)) capabilities.push(WASM_ARTIFACT_INSPECT_CAPABILITY);
     return capabilities;
@@ -55,8 +56,9 @@ export function wasmProjectCapabilities(manifest: Pick<PokieWasmComponentManifes
 // module (ProjectTargetResolver stamping a resolved PokieProject, describeUnsupportedProjectOperation when it
 // looks for an alternative type) reads this map rather than re-deciding "does this type support that
 // capability" independently. Resolver refines WASM through wasmProjectCapabilities after integrity validation:
-// canonical artifacts grant the narrow portable runtime capability while legacy sidecar-only files remain
-// manifest-inspection only.
+// canonical identity grants no operation, declared play/serialize/replay/artifact capabilities are added
+// individually, and wasm.runtime.execute represents the complete play/serialize/replay bundle. Legacy sidecar-only
+// files are the only inspection-only WASM components.
 //
 // "outcomeLibrary" and "stakeAdapter" are the two ProjectType values that carry more than one capability today
 // — both already have their own canonical outcome-source reader (OutcomeLibraryBundleReading /

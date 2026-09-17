@@ -28,8 +28,8 @@ export const BUILD_OPERATION: PokieOperation = "build";
 export const SIM_OPERATION: PokieOperation = "sim";
 export const REPLAY_OPERATION: PokieOperation = "replay";
 // Studio Play drives a live round just like the CLI simulation/replay paths,
-// but names its own user action so an inspection-only component explains the
-// unavailable Play control rather than a different runtime surface.
+// but names its own user action so a legacy sidecar-only component, or a
+// canonical component without runtime.play, gets the precise unavailable-control diagnostic.
 export const PLAY_OPERATION: PokieOperation = "play";
 export const VALIDATE_OPERATION: PokieOperation = "validate";
 // Interactively edits an existing Blueprint Project's own canonical GameBlueprint (see "pokie edit") --
@@ -53,7 +53,8 @@ export const PAR_EXPORT_OPERATION: PokieOperation = "par.export";
 export const WASM_EXPORT_OPERATION: PokieOperation = "wasm.export";
 // Reads back a resolved "wasm" project's own PokieWasmComponentManifest (see readWasmComponentManifest) —
 // requires WASM_MANIFEST_READ_CAPABILITY. Both legacy and canonical components expose metadata; canonical
-// execution is separately gated by WASM_RUNTIME_EXECUTE_CAPABILITY.
+// execution is separately gated by its declared per-operation capability, while WASM_RUNTIME_EXECUTE_CAPABILITY
+// denotes only the complete play/serialize/replay bundle.
 export const WASM_INSPECT_OPERATION: PokieOperation = "wasm.inspect";
 // Statically assesses a "tsPackage" project's own source for Node built-in API usage/declared dependencies
 // that would block a hypothetical WASM build (see assessWasmPackagingPreflight) — requires

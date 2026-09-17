@@ -18,9 +18,10 @@ export function wasmComponentManifestSidecarPath(wasmFilePath: string): string {
     return `${wasmFilePath}.pokie-wasm.json`;
 }
 
-// Recognizes a ".wasm" file carrying a sidecar PokieWasmComponentManifest -- the read-only half of the WASM
-// compatibility boundary this module defines (see docs/wasm-compatibility-boundary.md). Canonical components
-// are integrity-checked against their module bytes; legacy sidecar-only components remain metadata-only.
+// Recognizes a ".wasm" file carrying a sidecar PokieWasmComponentManifest (see
+// docs/wasm-compatibility-boundary.md). Canonical components are integrity-checked against their module bytes;
+// that grants canonical identity, after which ProjectCapabilities derives only their declared operations.
+// Legacy sidecar-only components remain metadata-only.
 // Three distinct outcomes:
 //   - no sidecar file at all -> undefined (not recognized; ProjectTargetResolver's own WASM_FILE_EXTENSION
 //     fallback reports the missing POKIE component contract diagnostic, so an ordinary ".wasm" file is
@@ -31,9 +32,9 @@ export function wasmComponentManifestSidecarPath(wasmFilePath: string): string {
 //   - sidecar present, well-shaped, but assessWasmComponentCompatibility rejects its schemaVersion -> throws
 //     ProjectTargetUnsupportedError naming exactly what's incompatible -- a clear incompatibility diagnostic,
 //     not a generic "unrecognized" report.
-//   - sidecar present, well-shaped, and compatible -> recognized. ProjectTargetResolver then stamps only
-//     shared WASM capability model onto the resolved project: canonical artifacts are portable-runtime
-//     executable while legacy sidecar-only artifacts stay inspection-only.
+//   - sidecar present, well-shaped, and compatible -> recognized. ProjectTargetResolver then stamps the shared
+//     WASM capability model: canonical artifacts receive only declared play/serialize/replay/artifact operations
+//     (with wasm.runtime.execute for the complete bundle), while legacy sidecar-only artifacts stay inspection-only.
 export class WasmProjectTargetAdapter implements ProjectTargetTypeAdapter {
     public readonly type = "wasm";
     public readonly targetKind = "file";

@@ -80,12 +80,19 @@ outcomes:
 | Sidecar present, well-shaped, but `assessWasmComponentCompatibility` rejects its `schemaVersion` | `resolve()` throws `ProjectTargetUnsupportedError` naming exactly which contract version was declared vs. required — a clear incompatibility diagnostic. |
 | Sidecar present, well-shaped, and compatible | Resolves as a `"wasm"` `PokieProject`. |
 
-Every compatible WASM project carries `WASM_MANIFEST_READ_CAPABILITY` (`"wasm.manifest.read"`). A canonical
-integrity-bound artifact additionally carries `WASM_RUNTIME_EXECUTE_CAPABILITY` (`"wasm.runtime.execute"`) and
-can be inspected, validated, instantiated, played, simulated, and replayed through the portable runtime. A
-legacy sidecar-only component deliberately retains only manifest inspection so Studio and the CLI can explain the
-migration boundary without falsely advertising execution. Neither kind grants `WASM_EXPORT_CAPABILITY`: WASM is
-an output of the explicit Blueprint/PAR matrix edges, never a source for another artifact conversion.
+Every compatible WASM project carries `WASM_MANIFEST_READ_CAPABILITY` (`"wasm.manifest.read"`). Integrity-bound
+canonical artifacts additionally carry `WASM_CANONICAL_ARTIFACT_CAPABILITY` (`"wasm.canonical"`): that proves the
+module bytes and manifest have one canonical identity, but authorizes no runtime operation by itself. The manifest's
+declared `runtime.play`, `runtime.serialize`, `runtime.replay`, and `artifact.inspect` operations grant their
+matching capabilities independently after that integrity check. The complete portable play/serialize/replay
+declaration set additionally grants `WASM_RUNTIME_EXECUTE_CAPABILITY` (`"wasm.runtime.execute"`). Consumers must
+use the relevant declared per-operation capability, not treat canonical identity or the aggregate bundle as a
+substitute for it.
+
+A legacy sidecar-only component deliberately retains only manifest inspection so Studio and the CLI can explain the
+migration boundary without falsely advertising execution. A resolved WASM artifact never grants
+`WASM_EXPORT_CAPABILITY`, because it is an output rather than a conversion source; the authored `blueprint` and
+`parWorkbook` project types grant `wasm.export` for the explicit Blueprint/PAR matrix edges.
 
 `readWasmComponentManifest(project)` reads component id/version, serialization format ids, host bindings, and
 declared capabilities. Canonical resolution also verifies the module/manifest integrity binding before runtime

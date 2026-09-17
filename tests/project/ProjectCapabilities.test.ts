@@ -10,6 +10,10 @@ import {
     STAKE_ADAPTER_EXPORT_CAPABILITY,
     WASM_EXPORT_CAPABILITY,
     WASM_MANIFEST_READ_CAPABILITY,
+    WASM_RUNTIME_EXECUTE_CAPABILITY,
+    WASM_RUNTIME_PLAY_CAPABILITY,
+    WASM_RUNTIME_REPLAY_CAPABILITY,
+    WASM_RUNTIME_SERIALIZE_CAPABILITY,
 } from "../../src/project/ProjectCapability.js";
 import {PROJECT_TYPE_CAPABILITIES, wasmProjectCapabilities} from "../../src/project/ProjectCapabilities.js";
 
@@ -55,5 +59,28 @@ describe("PROJECT_TYPE_CAPABILITIES", () => {
         expect(wasmProjectCapabilities({...manifest, serialization: {...manifest.serialization, state: "other.state.v1"}} as never)).toEqual(["wasm.manifest.read"]);
         expect(wasmProjectCapabilities({...manifest, host: {rng: "other.rng.v1", services: []}} as never)).toEqual(["wasm.manifest.read"]);
         expect(wasmProjectCapabilities({...manifest, host: {rng: "pokie.rng.v1", services: ["pokie.clock.v1"]}} as never)).toEqual(["wasm.manifest.read"]);
+    });
+
+    it("keeps canonical WASM declarations independent and reserves runtime.execute for the complete bundle", () => {
+        const manifest = {
+            artifact: {format: "pokie.wasm.v1" as const},
+            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+            host: {rng: "pokie.rng.v1", services: []},
+            capabilities: ["runtime.replay"],
+        };
+
+        expect(wasmProjectCapabilities(manifest as never)).toEqual([
+            WASM_MANIFEST_READ_CAPABILITY,
+            "wasm.canonical",
+            WASM_RUNTIME_REPLAY_CAPABILITY,
+        ]);
+        expect(wasmProjectCapabilities({...manifest, capabilities: ["runtime.play", "runtime.serialize", "runtime.replay"]} as never)).toEqual([
+            WASM_MANIFEST_READ_CAPABILITY,
+            "wasm.canonical",
+            WASM_RUNTIME_PLAY_CAPABILITY,
+            WASM_RUNTIME_SERIALIZE_CAPABILITY,
+            WASM_RUNTIME_REPLAY_CAPABILITY,
+            WASM_RUNTIME_EXECUTE_CAPABILITY,
+        ]);
     });
 });
