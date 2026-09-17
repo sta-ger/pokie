@@ -42,9 +42,12 @@ import {useDeploymentManager} from "../../hooks/useDeploymentManager";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {usePlaySession} from "../../hooks/usePlaySession";
 import {useProjectContext} from "../../hooks/useProjectContext";
+import {useProjectJobs} from "../../hooks/useProjectJobs";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useSimulationPoll} from "../../hooks/useSimulationPoll";
 import {ErrorState} from "../common/ErrorState";
+import {JobProgressCard} from "../common/JobProgressCard";
+import {JobResultCard} from "../common/JobResultCard";
 import {LoadingState} from "../common/LoadingState";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {AppShellLayout} from "../layout/AppShellLayout";
@@ -425,6 +428,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact"
             ? header.projectRoot
             : undefined;
+    const [projectGeneration, setProjectGeneration] = useState(0);
+    useEffect(() => {
+        setProjectGeneration((previous) => previous + 1);
+    }, [projectKey]);
+    const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
     // The resolved ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
     // own content needs its capabilities without caring whether the project is game-backed, canonical-
     // reader-backed, or an exchange-only artifact (see GameModelTab's `editable`/ExportDeployTab's
@@ -900,7 +908,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const hasActiveOperation =
         (simulation.job !== undefined && isSimulationActive(simulation.job)) ||
         (replay.job !== undefined && isReplayActive(replay.job)) ||
-        deployment.runLoading;
+        deployment.runLoading ||
+        commonJobs.jobs.some((job) => job.status === "queued" || job.status === "running" || job.status === "cancelling");
 
     const activeTabDescriptor = ALL_PROJECT_TABS.find((tab) => tab.value === activeTab);
     const activeTabLabel = activeTabDescriptor?.label ?? "Overview";
@@ -944,7 +953,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             return;
         }
         const reasons = [
-            hasActiveOperation ? "an active simulation, replay, or deployment" : undefined,
+            hasActiveOperation ? "active Studio operations" : undefined,
             gameModelDirty ? "unsaved Game Model changes" : undefined,
         ].filter((reason): reason is string => reason !== undefined);
         confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, closeProjectAndReturnToProjects);
@@ -1027,6 +1036,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         <Alert color="blue" variant="light" mb="sm">
                             {migration.message}
                         </Alert>
+                    )}
+                    {commonJobs.jobs.map((job) =>
+                        job.status === "queued" || job.status === "running" || job.status === "cancelling"
+                            ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
+                            : <JobResultCard job={job} key={job.id} />,
                     )}
                     {!activeTabSupported && activeTabDescriptor !== undefined && (
                         <>
