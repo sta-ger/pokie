@@ -2,7 +2,7 @@ import {Anchor, Badge, Button, Collapse, Group, SegmentedControl, Text, Title} f
 import {useDisclosure} from "@mantine/hooks";
 import {useCallback, useEffect, useRef, useState} from "react";
 import {useNavigate} from "react-router-dom";
-import {checkBlueprintSource, loadBlueprint, openProject, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
+import {checkBlueprintSource, loadBlueprint, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
 import type {ParSheetConversionEvidence, StudioProjectRegistryView} from "../../api/types";
 import {useAllowNextDesignNavigation} from "../../context/DesignNavigationGuardContext";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -23,6 +23,7 @@ import type {BuiltBlueprintSnapshot} from "../../domain/interpret/Home";
 import {useBlueprintEditor, type BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {useConfirmedProjectOpen} from "../../hooks/useOpenProject";
 import {ErrorState} from "../common/ErrorState";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
@@ -119,6 +120,7 @@ export function BlueprintEditorPage({
     isVisible?: boolean;
 } = {}) {
     const fetchImpl = useStudioApi();
+    const openWithConfirmation = useConfirmedProjectOpen();
     const navigate = useNavigate();
     const allowNextDesignNavigation = useAllowNextDesignNavigation();
     const confirm = useConfirm();
@@ -917,7 +919,7 @@ export function BlueprintEditorPage({
                     // concrete Blueprint file the save confirmed and, for a loaded CLI Blueprint, the
                     // source Home must register while opening.
                     const workspaceOpenRequestId = ++workspaceOpenRequestIdRef.current;
-                    openProject(fetchImpl, view.path)
+                    openWithConfirmation(view.path)
                         .then(({context}) => {
                             if (workspaceOpenRequestId !== workspaceOpenRequestIdRef.current) {
                                 return;

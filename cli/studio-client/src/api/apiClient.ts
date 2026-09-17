@@ -66,6 +66,14 @@ export async function listProjectJobs(fetchImpl: FetchLike): Promise<StudioJobVi
     return Array.isArray(body.jobs) ? body.jobs as StudioJobView[] : [];
 }
 
+/** Discovers retained Design/project-opening jobs before a project context exists. */
+export async function listHomeSourceJobs(fetchImpl: FetchLike, sourcePath: string): Promise<StudioJobView[]> {
+    const response = await fetchImpl(`/api/home/jobs?sourcePath=${encodeURIComponent(sourcePath)}`, {cache: "no-store"});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to list Home Studio jobs"));
+    const body = await response.json() as {jobs?: unknown};
+    return Array.isArray(body.jobs) ? body.jobs as StudioJobView[] : [];
+}
+
 export async function getProjectJob(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioJobView> {
     const response = await fetchImpl(`/api/project/jobs/${encodeURIComponent(id)}`, {cache: "no-store", signal});
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to load Studio job"));

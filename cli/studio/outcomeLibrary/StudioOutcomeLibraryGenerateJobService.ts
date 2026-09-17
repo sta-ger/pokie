@@ -11,6 +11,7 @@ import {
 } from "./StudioOutcomeLibraryGenerateService.js";
 import type {ValidatedOutcomeLibraryGenerateRequest} from "./validateOutcomeLibraryGenerateRequest.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
+import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 import type {StudioJobRecoveryView, StudioJobView} from "../jobs/StudioJobView.js";
 
 export type StudioOutcomeLibraryCheckpointView = {
@@ -95,6 +96,7 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     public start(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest, resumedId?: string): StudioOutcomeLibraryGenerateJobView {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const wasmDiagnostic = this.generateService.wasmBoundaryDiagnostic?.(projectRoot);
         if (wasmDiagnostic !== undefined) throw new Error(wasmDiagnostic);
         this.trimTerminalJobs();
@@ -159,10 +161,12 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     public isDestinationActive(projectRoot: string, destination: string): boolean {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         return this.activeDestinationOwners.has(path.resolve(projectRoot, destination));
     }
 
     public getStatusForProject(projectRoot: string, id: string): StudioOutcomeLibraryGenerateJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.jobs.get(id);
         if (record?.projectRoot === projectRoot) return this.toView(record);
         const persisted = this.readCheckpoint(projectRoot, id);
@@ -173,6 +177,7 @@ export class StudioOutcomeLibraryGenerateJobService {
 
     /** Includes persisted cancellation checkpoints, so a fresh Studio process can offer recovery. */
     public listForProject(projectRoot: string): readonly StudioOutcomeLibraryGenerateJobView[] {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const visible = new Map<string, StudioOutcomeLibraryGenerateJobView>();
         for (const record of this.jobs.values()) {
             if (record.projectRoot === projectRoot) visible.set(record.id, this.toView(record));
@@ -201,6 +206,7 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     public cancelForProject(projectRoot: string, id: string): StudioOutcomeLibraryGenerateJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.jobs.get(id);
         if (record === undefined || record.projectRoot !== projectRoot) {
             const common = this.jobService?.cancel(projectRoot, id);
@@ -230,6 +236,7 @@ export class StudioOutcomeLibraryGenerateJobService {
 
     /** Abort active work for a project which Studio is about to leave. */
     public async cancelActiveForProject(projectRoot: string): Promise<void> {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const active: JobRecord[] = [];
         for (const record of this.jobs.values()) {
             if (record.projectRoot === projectRoot && (record.status === "queued" || record.status === "running")) {
@@ -243,6 +250,7 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     public async resumeForProject(projectRoot: string, id: string): Promise<StudioOutcomeLibraryGenerateJobView | undefined> {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const wasmDiagnostic = this.generateService.wasmBoundaryDiagnostic?.(projectRoot);
         if (wasmDiagnostic !== undefined) throw new Error(wasmDiagnostic);
         const persisted = this.readCheckpoint(projectRoot, id);

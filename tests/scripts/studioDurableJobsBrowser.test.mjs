@@ -13,7 +13,6 @@ import {spawn} from "node:child_process";
 import {existsSync} from "node:fs";
 import {mkdtemp, rm} from "node:fs/promises";
 import {createServer} from "node:net";
-import os from "node:os";
 import {dirname, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 import WebSocket from "ws";
@@ -27,6 +26,16 @@ let profile;
 
 const pause = (milliseconds) => new Promise((resolvePause) => setTimeout(resolvePause, milliseconds));
 const hasBrowserArtifacts = existsSync(resolve(root, "dist/cli/pokie.js")) && existsSync(resolve(root, "dist/cli/studio-client/index.html"));
+
+// This is a coverage contract, not an optional demonstration.  A machine
+// without the compiled Studio bundle or Chromium must fail clearly so a green
+// result always means the real browser workflow actually ran.
+if (!hasBrowserArtifacts) {
+    throw new Error("studioDurableJobsBrowser requires dist/cli/pokie.js and dist/cli/studio-client/index.html; build Studio before running this contract.");
+}
+if (!existsSync(browserBinary)) {
+    throw new Error(`studioDurableJobsBrowser requires Chromium at ${browserBinary}; set CHROMIUM_PATH to a runnable Chromium binary.`);
+}
 
 async function freePort() {
     const server = createServer();
@@ -132,6 +141,12 @@ async function run() {
 
     const active = await post(baseUrl, "/api/project/simulations", {rounds: 1_000_000, seed: "durable-browser-active"});
     assert.equal(active.status, 202);
+    await waitFor(async () => {
+        const job = await (await fetch(`${baseUrl}/api/project/jobs/${active.body.id}`)).json();
+        return job.status === "running";
+    }, "active durable simulation");
+    await cdp.send("Page.reload", {ignoreCache: true});
+    await waitFor(async () => (await text()).includes("simulation: running"), "active job reattachment after reload");
     const conflict = await post(baseUrl, "/api/project/simulations", {rounds: 1_000_001, seed: "durable-browser-conflict"});
     assert.equal(conflict.status, 409);
     assert.equal(conflict.body.activeJobId, active.body.id);
@@ -171,21 +186,14 @@ async function run() {
     await waitFor(async () => (await text()).includes("simulation: recovery-required"), "restart recovery card");
 }
 
-if (hasBrowserArtifacts) {
-    try {
-        await run();
-        console.log("PASS real Chromium Studio durable jobs workflow");
-    } finally {
-        cdp?.close();
-        await terminate(chromium);
-        await terminate(studio);
-        if (profile !== undefined) await rm(profile, {recursive: true, force: true});
-    }
-} else {
-    // The controller's independent browser pass supplies these compiled
-    // artifacts. The bounded source-test correction run deliberately does
-    // not build them, so it cannot replace that machine-owned verification.
-    console.log("SKIP real Chromium Studio durable jobs workflow: compiled Studio artifacts are unavailable.");
+try {
+    await run();
+    console.log("PASS real Chromium Studio durable jobs workflow");
+} finally {
+    cdp?.close();
+    await terminate(chromium);
+    await terminate(studio);
+    if (profile !== undefined) await rm(profile, {recursive: true, force: true});
 }
 
 if (typeof test === "function") test("runs the real Chromium Studio durable jobs workflow", () => undefined);

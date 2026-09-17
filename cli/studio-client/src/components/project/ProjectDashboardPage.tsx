@@ -16,7 +16,7 @@ import {
     validateProject,
     ProjectTransitionConflict,
 } from "../../api/apiClient";
-import type {GamePackageInspectionReport, RoundArtifactJson, StudioProjectCapability, StudioSimulationReportListEntry} from "../../api/types";
+import type {GamePackageInspectionReport, RoundArtifactJson, StudioJobView, StudioProjectCapability, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {
@@ -435,6 +435,23 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setProjectGeneration((previous) => previous + 1);
     }, [projectKey]);
     const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
+    const handleJobRecoveryAction = useCallback((job: StudioJobView): void => {
+        // A retained terminal record deliberately does not replay a request in
+        // the background.  Send the user to the operation's live form, where
+        // captured parameters/provenance remain visible and a fresh request is
+        // explicitly confirmed.
+        if (job.recovery?.action === "new-session" || job.operation.startsWith("play-")) {
+            setActiveTab("play");
+        } else if (job.operation.includes("simulation")) {
+            setActiveTab("simulation");
+        } else if (job.operation.includes("replay")) {
+            setActiveTab("replay");
+        } else if (job.operation.includes("certification")) {
+            setActiveTab("certification");
+        } else {
+            setActiveTab("exportDeploy");
+        }
+    }, [setActiveTab]);
     // The resolved ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
     // own content needs its capabilities without caring whether the project is game-backed, canonical-
     // reader-backed, or an exchange-only artifact (see GameModelTab's `editable`/ExportDeployTab's
@@ -1066,7 +1083,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     {commonJobs.jobs.map((job) =>
                         job.status === "queued" || job.status === "running" || job.status === "cancelling"
                             ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
-                            : <JobResultCard job={job} onRecover={commonJobs.recover} onOpenOutput={openJobOutput} key={job.id} />,
+                            : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} key={job.id} />,
                     )}
                     {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
                     {!activeTabSupported && activeTabDescriptor !== undefined && (

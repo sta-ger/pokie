@@ -1,7 +1,18 @@
 import {Alert, Anchor, Button, Group, Stack, Text} from "@mantine/core";
 import type {StudioJobView} from "../../api/types.js";
 
-export function JobResultCard({job, onRecover, onOpenOutput}: {job: StudioJobView; onRecover?: (id: string) => void; onOpenOutput?: (path: string) => void}) {
+function recoveryActionLabel(action: NonNullable<StudioJobView["recovery"]>["action"]): string {
+    if (action === "new-session") return "Start new session";
+    if (action === "rebuild") return "Rebuild";
+    return "Retry";
+}
+
+export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput}: {
+    job: StudioJobView;
+    onRecover?: (id: string) => void;
+    onRecoveryAction?: (job: StudioJobView) => void;
+    onOpenOutput?: (path: string) => void;
+}) {
     if (job.status === "queued" || job.status === "running" || job.status === "cancelling") return null;
     let color: "green" | "orange" | "red" = "red";
     if (job.status === "completed") color = "green";
@@ -25,8 +36,16 @@ export function JobResultCard({job, onRecover, onOpenOutput}: {job: StudioJobVie
                     </Group>
                 ))}
                 {job.recovery !== undefined && <Text size="xs">Next: {job.recovery.action} — {job.recovery.reason}</Text>}
-                {job.recovery?.action === "resume" && onRecover !== undefined &&
-                    <Group gap="xs"><Button size="xs" variant="light" onClick={() => onRecover(job.id)}>Resume</Button></Group>}
+                {job.recovery !== undefined && (
+                    <Group gap="xs">
+                        {job.recovery.action === "resume" && onRecover !== undefined &&
+                            <Button size="xs" variant="light" onClick={() => onRecover(job.id)}>Resume</Button>}
+                        {job.recovery.action !== "resume" && onRecoveryAction !== undefined &&
+                            <Button size="xs" variant="light" onClick={() => onRecoveryAction(job)}>
+                                {recoveryActionLabel(job.recovery.action)}
+                            </Button>}
+                    </Group>
+                )}
             </Stack>
         </Alert>
     );

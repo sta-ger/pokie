@@ -27,6 +27,7 @@ import {
 } from "pokie";
 import crypto from "crypto";
 import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
+import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {InMemoryStudioSimulationRepository} from "./InMemoryStudioSimulationRepository.js";
 import type {StudioSimulationJobRecord} from "./StudioSimulationJobRecord.js";
@@ -147,6 +148,7 @@ export class StudioSimulationService {
     // through" convention handleOutcomeSourceSample already uses for the sample route. Undefined here means
     // "run the ordinary ParallelSimulationRunner path" (see run()), exactly as before this parameter existed.
     public start(projectRoot: string, request: ValidatedSimulationRequest, outcomeSourceProject?: PokieProject): StudioSimulationStartResult {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         // This service is also used directly, outside StudioServer's HTTP
         // guard. A resolved component, or an actual unresolved WASM file, has
         // no runnable branch. A package directory named `game.wasm` remains a
@@ -237,6 +239,7 @@ export class StudioSimulationService {
     // request from Project A must never cancel a coincidentally-known job after Studio has moved to
     // Project B.
     public cancelForProject(projectRoot: string, id: string): StudioSimulationJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
         if (!record || record.projectRoot !== projectRoot) {
             const common = this.jobService?.cancel(projectRoot, id);
@@ -263,6 +266,7 @@ export class StudioSimulationService {
     // leaving it running would only waste CPU, never remain usable). A no-op when nothing is active
     // for that project.
     public cancelActiveForProject(projectRoot: string): void {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.findActiveByProjectRoot(projectRoot);
         if (record) this.cancelActiveRecord(record);
     }
@@ -278,6 +282,7 @@ export class StudioSimulationService {
     // tracked by the repository for retention purposes (see StudioSimulationRepository). Always
     // scoped to one projectRoot — never includes another project's jobs.
     public listReports(projectRoot: string): StudioSimulationReportListEntry[] {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const entries = new Map<string, StudioSimulationReportListEntry>();
         for (const record of this.repository.listTerminalByProjectRoot(projectRoot)) {
             const entry = this.toReportListEntry(record);

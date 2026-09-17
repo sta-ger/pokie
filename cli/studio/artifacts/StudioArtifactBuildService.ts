@@ -30,6 +30,7 @@ import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
 import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPlan.js";
 import {resolveStudioProjectSource} from "./StudioArtifactConversionPlanningService.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
+import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 import type {StudioJobView} from "../jobs/StudioJobView.js";
 
 export type StudioArtifactBuildStartResult =
@@ -440,6 +441,7 @@ export class StudioArtifactBuildService {
     }
 
     public cancelForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.jobs.get(id);
         if (record === undefined || record.projectRoot !== projectRoot) {
             const common = this.jobService?.cancel(projectRoot, id);
@@ -454,6 +456,7 @@ export class StudioArtifactBuildService {
     }
 
     public cancelActiveForProject(projectRoot: string): void {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         for (const record of this.jobs.values()) {
             if (record.projectRoot === projectRoot && (record.status === "queued" || record.status === "running")) {
                 this.jobService?.cancel(projectRoot, record.id);
@@ -479,6 +482,7 @@ export class StudioArtifactBuildService {
         outDir?: string,
         preparedStakeOperation?: PreparedStakeProjectionOperation,
     ): StudioArtifactBuildStartResult {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         this.trimTerminalJobs();
         const common = this.jobService?.start({
             projectId: projectRoot,

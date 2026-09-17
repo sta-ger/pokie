@@ -108,11 +108,11 @@ export class StudioCertificationService {
         }));
 
         try {
-            // The package builder intentionally owns its inner sampling loop.
-            // Its public API has no progress hook, so retain an honest initial
-            // sample snapshot rather than inventing per-sample progress.
             onProgress?.("Sampling evidence", "samples", 0, sampleCount, `Building evidence for ${modes.length} mode${modes.length === 1 ? "" : "s"}.`);
-            const result = await this.builder.buildFromBundle(resolvedBundle.resolvedPath, modeInputs, resolvedOutDir.resolvedPath, {signal});
+            const result = await this.builder.buildFromBundle(resolvedBundle.resolvedPath, modeInputs, resolvedOutDir.resolvedPath, {
+                signal,
+                onSample: (completed, total) => onProgress?.("Sampling evidence", "samples", completed, total, `Verified ${completed} of ${total} certification samples.`),
+            });
             onProgress?.("Validating publication", "build stages", 3, 3, "Checking the atomically published certification manifest.");
             const errors = result.issues.filter((issue) => issue.severity === "error");
             const warnings = result.issues.filter((issue) => issue.severity !== "error");

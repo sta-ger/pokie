@@ -197,13 +197,18 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         let publication: PublishedDirectoryOwnership | undefined;
         try {
             const modeEntries: CertificationEvidenceBundleModeEntry[] = [];
+            const totalSamples = modes.reduce((total, mode) => total + mode.sampleCount, 0);
+            let completedSamples = 0;
             for (const modeInput of modes) {
                 assertNotCancelled(options);
                 // Safe: checked to exist against sourceManifest.modes above.
                 const sourceEntry = sourceManifest.modes.find((entry) => entry.modeName === modeInput.modeName)!;
                 // Safe: captured for every requested mode in readModeIndexes above.
                 const capturedIndex = initialIndexes.get(modeInput.modeName)!;
-                modeEntries.push(this.sampleMode(bundleDir, modeInput, sourceEntry, capturedIndex, stagingDir));
+                modeEntries.push(this.sampleMode(bundleDir, modeInput, sourceEntry, capturedIndex, stagingDir, () => {
+                    completedSamples++;
+                    options?.onSample?.(completedSamples, totalSamples);
+                }));
             }
 
             const driftIssue = await this.detectSourceBundleDrift(bundleDir, modes, initialManifestHash, initialIndexes);
@@ -365,6 +370,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         sourceEntry: OutcomeLibraryBundleManifestModeEntry,
         index: OutcomeLibraryBundleModeIndex,
         stagingDir: string,
+        onSample: () => void,
     ): CertificationEvidenceBundleModeEntry {
         const randomSource = this.randomSourceFactory(modeInput.seed);
         const outcomesFilePath = path.join(bundleDir, index.outcomesFile);
@@ -385,6 +391,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
                 artifact: outcome.artifact,
             };
             lines.push(`${JSON.stringify(toCanonicalJson(record))}\n`);
+            onSample();
         }
 
         const samplesFile = `samples_${modeInput.modeName}.jsonl`;

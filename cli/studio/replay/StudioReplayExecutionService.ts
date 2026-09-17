@@ -33,6 +33,7 @@ import {
     WeightedOutcomeRandomSource,
 } from "pokie";
 import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
+import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 import crypto from "crypto";
 import {InMemoryStudioReplayRepository} from "./InMemoryStudioReplayRepository.js";
 import type {StudioReplayJobRecord} from "./StudioReplayJobRecord.js";
@@ -135,6 +136,7 @@ export class StudioReplayExecutionService {
     // parameter of the same name (see that doc comment for why this service never re-resolves
     // `projectRoot`'s own type itself).
     public start(projectRoot: string, request: ValidatedReplayRequest, outcomeSourceProject?: PokieProject): StudioReplayStartResult {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         // Keep the no-job WASM boundary inside the shared lifecycle as well as
         // StudioServer. A direct caller must not be able to queue work that
         // can only fail after attempting runtime preparation.
@@ -202,6 +204,7 @@ export class StudioReplayExecutionService {
     // start(). Returns undefined for an unknown id or one belonging to a different project (same
     // isolation reasoning as getStatus()).
     public cancel(projectRoot: string, id: string): StudioReplayJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
         if (!record || record.projectRoot !== projectRoot) {
             const common = this.jobService?.cancel(projectRoot, id);
@@ -225,6 +228,7 @@ export class StudioReplayExecutionService {
     // the project just left doesn't keep running its chunk loop unseen and unreachable. A no-op when
     // nothing is active for that project.
     public cancelActiveForProject(projectRoot: string): void {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.findActiveByProjectRoot(projectRoot);
         if (record) this.cancelActiveRecord(record);
     }
@@ -236,6 +240,7 @@ export class StudioReplayExecutionService {
     }
 
     public listJobs(projectRoot: string): StudioReplayListEntry[] {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const entries = new Map<string, StudioReplayListEntry>();
         for (const record of this.repository.listByProjectRoot(projectRoot)) entries.set(record.id, this.toListEntry(record));
         for (const job of this.jobService?.list(projectRoot) ?? []) {
