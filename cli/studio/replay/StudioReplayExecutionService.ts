@@ -193,6 +193,7 @@ export class StudioReplayExecutionService {
     // StudioSimulationService.getReport(): this can never be used to probe whether some other project
     // has a replay with a given id.
     public getStatus(projectRoot: string, id: string): StudioReplayJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
         if (record?.projectRoot === projectRoot) return this.toJobView(record);
         const common = this.jobService?.get(projectRoot, id);
@@ -267,6 +268,7 @@ export class StudioReplayExecutionService {
     // failed/cancelled replay has no descriptor to download, same as a failed/cancelled simulation
     // having no report (see StudioSimulationService.getReport()).
     public getDownload(projectRoot: string, id: string): GetReplayDownloadResult {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
         if (record?.projectRoot === projectRoot) {
             if (!record.descriptor) return {status: "not-ready", jobStatus: record.status};

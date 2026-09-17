@@ -537,23 +537,21 @@ export class StudioServer implements StudioServerHandling {
     }
 
     // Called from both project-switch points (handleHomeOpenProject, /api/projects/close) *before*
-    // this.currentContext is mutated — a no-op unless currentContext is still "project" at the time of
-    // the call. StudioSimulationService/StudioReplayExecutionService jobs are otherwise only ever stopped
-    // on full Studio shutdown (see stop() above) — they're scoped by projectRoot so a job for a project
-    // you've switched away from is never *reachable* through this project's own routes again, but
-    // "unreachable" isn't "stopped": without this, its chunk loop would keep running in the background
-    // indefinitely, wasting CPU for a result nothing can ever read.
+    // this.currentContext is mutated.  A project context identifies the older
+    // compatibility executors; Home still has common Design/opening executors
+    // that a confirmed transition must explicitly cancel.  Merely making
+    // those Home jobs invisible by changing the context would strand real
+    // publishing work behind a finished confirmation.
     private async cancelActiveJobsForOldProject(excludeJobId?: string): Promise<void> {
-        if (this.currentContext.mode !== "project") {
-            return;
+        if (this.currentContext.mode === "project") {
+            const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
+            this.simulationService.cancelActiveForProject(projectId);
+            this.replayService.cancelActiveForProject(projectId);
+            this.artifactBuildService.cancelActiveForProject(projectId);
+            await this.outcomeLibraryGenerateJobService.cancelActiveForProject(projectId);
         }
-        const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
-        this.simulationService.cancelActiveForProject(projectId);
-        this.replayService.cancelActiveForProject(projectId);
-        this.artifactBuildService.cancelActiveForProject(projectId);
-        await this.outcomeLibraryGenerateJobService.cancelActiveForProject(projectId);
         for (const job of this.activeCommonJobs()) {
-            if (job.id !== excludeJobId) this.jobService.cancel(projectId, job.id);
+            if (job.id !== excludeJobId) this.jobService.cancel(job.projectId, job.id);
         }
     }
 
@@ -574,8 +572,15 @@ export class StudioServer implements StudioServerHandling {
         // in flight.  Keep that accepted operation visible/protected until it
         // reaches a terminal record instead of letting a second Home action
         // silently replace it.
-        const opening = this.jobService.list().filter((job) => job.operation === "project-open-materialization" && (job.status === "queued" || job.status === "running" || job.status === "cancelling"));
-        return [...new Map([...scoped, ...opening].map((job) => [job.id, job])).values()];
+        const allActive = this.jobService.list().filter((job) => job.status === "queued" || job.status === "running" || job.status === "cancelling");
+        // Home has no project context to use as an implicit filter.  In
+        // particular, a Design build/import/export can still be publishing
+        // when a user opens a different project from Home.  Leaving it out
+        // here made that durable record undiscoverable to the transition
+        // guard, even though its source-scoped list and controls remained
+        // available.  One server owns all of these executors, so every active
+        // durable operation must receive the same explicit leave decision.
+        return [...new Map([...scoped, ...allActive].map((job) => [job.id, job])).values()];
     }
 
     /** The HTTP boundary, rather than the browser alone, protects active work. */

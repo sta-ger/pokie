@@ -398,6 +398,7 @@ export class StudioArtifactBuildService {
 
     /** Consume a preview-issued operation, rejecting stale or cross-project handles. */
     public async startPreparedStakeProjection(projectRoot: string, preparedOperationId: string): Promise<StudioPreparedStakeProjectionStartResult> {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const prepared = this.preparedStakeOperations.get(preparedOperationId);
         if (prepared === undefined || prepared.projectRoot !== projectRoot) return {status: "stale"};
 
@@ -429,11 +430,13 @@ export class StudioArtifactBuildService {
 
     /** Returns the destination bound by a preview without exposing its operation. */
     public preparedStakeProjectionDestination(projectRoot: string, preparedOperationId: string): string | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const prepared = this.preparedStakeOperations.get(preparedOperationId);
         return prepared?.projectRoot === projectRoot ? prepared.operation.destinationPath : undefined;
     }
 
     public getStatusForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.jobs.get(id);
         if (record?.projectRoot === projectRoot) return this.toJobView(record);
         const common = this.jobService?.get(projectRoot, id);

@@ -70,8 +70,14 @@ async function connect(devtoolsPort) {
     });
     let nextId = 0;
     const pending = new Map();
+    const eventWaiters = new Map();
     socket.on("message", (raw) => {
         const response = JSON.parse(raw.toString());
+        if (response.id === undefined) {
+            const waiter = eventWaiters.get(response.method)?.shift();
+            waiter?.(response);
+            return;
+        }
         const request = pending.get(response.id);
         if (request === undefined) return;
         pending.delete(response.id);
@@ -84,7 +90,12 @@ async function connect(devtoolsPort) {
     });
     await send("Page.enable");
     await send("Runtime.enable");
-    return {send, close: () => socket.close()};
+    const waitForEvent = (method) => new Promise((resolveEvent) => {
+        const waiters = eventWaiters.get(method) ?? [];
+        waiters.push(resolveEvent);
+        eventWaiters.set(method, waiters);
+    });
+    return {send, waitForEvent, close: () => socket.close()};
 }
 
 async function post(baseUrl, pathname, body) {
@@ -201,18 +212,26 @@ async function run() {
     assert.equal(typeof secondProjectRoot, "string");
     assert.notEqual(resolve(secondProjectRoot), resolve(projectRoot));
 
-    // Capture the old project's real HTTP response before the server changes
-    // context, but only consume its body after the A -> B transition.  This
-    // is the stale list response a browser can receive while project switching;
-    // after reload the client must render B's discovery only, never this A job.
-    const staleListResponse = await fetch(`${baseUrl}/api/project/jobs`);
-    assert.equal(staleListResponse.status, 200);
+    // Hold an actual Chromium list response at the network boundary while the
+    // server transitions A -> B.  This is deliberately not a Node-side fetch:
+    // the browser has the stale project-A payload in flight, then receives it
+    // only after B is current.  The client reload below must render B's fresh
+    // discovery rather than that retained A response.
+    await cdp.send("Fetch.enable", {patterns: [{urlPattern: "*://*/api/project/jobs", requestStage: "Response"}]});
+    const staleResponsePaused = cdp.waitForEvent("Fetch.requestPaused");
+    await cdp.send("Runtime.evaluate", {
+        expression: "window.__pokieDurableStaleList = fetch('/api/project/jobs', {cache: 'no-store'}).then((response) => response.json());",
+        awaitPromise: false,
+    });
+    const staleResponse = await staleResponsePaused;
     const unconfirmedSwitch = await post(baseUrl, "/api/home/projects/open", {projectRoot: secondProjectRoot});
     assert.equal(unconfirmedSwitch.status, 409);
     assert.deepEqual(unconfirmedSwitch.body.operations, ["simulation"]);
     const confirmedSwitch = await post(baseUrl, "/api/home/projects/open", {projectRoot: secondProjectRoot, confirmActiveJobs: true});
     assert.equal(confirmedSwitch.status, 200);
-    const staleList = await staleListResponse.json();
+    await cdp.send("Fetch.continueRequest", {requestId: staleResponse.params.requestId});
+    await cdp.send("Fetch.disable");
+    const staleList = await evaluate("window.__pokieDurableStaleList");
     assert(staleList.jobs.some((job) => job.id === switchJob.body.id && job.projectId === projectRoot), "expected the in-flight list to belong to project A");
     const switchedContext = await (await fetch(`${baseUrl}/api/project/context`)).json();
     assert.equal(switchedContext.projectRoot, secondProjectRoot);

@@ -217,6 +217,7 @@ export class StudioSimulationService {
     // different Project exactly like an unknown one so neither its run state nor its safe error text
     // can leak when the user switches Projects.
     public getStatusForProject(projectRoot: string, id: string): StudioSimulationJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
         if (record?.projectRoot === projectRoot) return this.toJobView(record);
         const common = this.jobService?.get(projectRoot, id);
@@ -304,6 +305,7 @@ export class StudioSimulationService {
     // deliberately indistinguishable from the caller's perspective, so this can never be used to probe
     // whether some other project has a simulation with a given id.
     public getReport(projectRoot: string, id: string): GetSimulationReportResult {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
         if (record?.projectRoot === projectRoot) {
             if (!record.report) return {status: "not-ready", jobStatus: record.status};

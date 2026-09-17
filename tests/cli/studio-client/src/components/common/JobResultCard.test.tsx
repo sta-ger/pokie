@@ -22,4 +22,21 @@ describe("JobResultCard", () => {
         fireEvent.click(screen.getByRole("button", {name: "Resume"}));
         expect(recover).toHaveBeenCalledWith("job-1");
     });
+
+    it.each([
+        ["retry", "Retry"],
+        ["rebuild", "Rebuild"],
+        ["new-session", "Start new session"],
+    ] as const)("makes %s recovery an actionable %s control", (action, label) => {
+        const recover = jest.fn();
+        const job = {
+            id: `job-${action}`, projectId: "/project", operation: action === "new-session" ? "play-find-any-win" : "artifact-build", request: {}, conflictKey: action,
+            status: "recovery-required" as const, createdAt: 1,
+            recovery: {action, reason: "Restart recovery requires an explicit new action."},
+        };
+        render(<MantineProvider><JobResultCard job={job} onRecoveryAction={recover} /></MantineProvider>);
+
+        fireEvent.click(screen.getByRole("button", {name: label}));
+        expect(recover).toHaveBeenCalledWith(job);
+    });
 });
