@@ -1233,7 +1233,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                 />
                             )}
                             {activeTab === "exportDeploy" && (
-                                <ExportDeployTab key={projectKey ?? "no-project"} capabilities={headerCapabilities} deployment={deployment} recoveryRequest={recoveryJob?.operation === "artifact-build" || recoveryJob?.operation === "deployment" ? recoveryJob.request : undefined} />
+                                <ExportDeployTab key={projectKey ?? "no-project"} capabilities={headerCapabilities} deployment={deployment} recoveryRequest={recoveryJob?.operation === "artifact-build" || recoveryJob?.operation === "deployment" || recoveryJob?.operation === "outcome-library-generation" ? recoveryJob.request : undefined} />
                             )}
                             {activeTab === "certification" && (
                             // Same reasoning as GameModelTab's own key above -- CertificationTab owns

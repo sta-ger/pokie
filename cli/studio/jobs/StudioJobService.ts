@@ -61,7 +61,13 @@ export class StudioJobService {
     }
 
     public start(input: StudioJobStartInput): StudioJobStartResult {
-        const active = this.repository.list(input.projectId).find((job) => !isStudioJobTerminal(job.status) && job.conflictKey === input.conflictKey);
+        // `projectId` identifies the owner used for discovery and access
+        // control.  It is deliberately not the locking scope: Design sources
+        // and two projects can both address the same publication/delivery
+        // resource.  Adapters encode that resource alone in `conflictKey`, so
+        // an incompatible owner cannot race a write simply by using a
+        // different source identity.
+        const active = this.repository.list().find((job) => !isStudioJobTerminal(job.status) && job.conflictKey === input.conflictKey);
         if (active !== undefined) {
             if (sameRequest(active.request, input.request)) {
                 return {status: "reattached", job: active};

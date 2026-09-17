@@ -2059,7 +2059,7 @@ export class StudioServer implements StudioServerHandling {
         const recovery = {action: "rebuild", reason: "PAR export publication is not resumable after restart. Export the captured source to the captured destination again."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: `design:${sourcePath}`, operation: "design-par-export", request: {sourcePath, destinationPath, overwrite: validated.overwrite, blueprintHash}, conflictKey: `design-par-export:${sourcePath}:${destinationPath}`, recoveryOnRestart: recovery,
+                projectId: `design:${sourcePath}`, operation: "design-par-export", request: {sourcePath, destinationPath, overwrite: validated.overwrite, blueprint: validated.blueprint, blueprintHash}, conflictKey: `design-destination:${destinationPath}`, recoveryOnRestart: recovery,
                 initialProgress: {stage: "Writing workbook", unit: "worksheets", current: "indeterminate", total: "indeterminate", message: "Writing the PAR workbook to its staging destination."},
                 reattachedResponse: (job) => ({statusCode: 409, body: {status: "conflict", path: destinationPath, error: "PAR export is already in progress.", activeJobId: job.id, reattached: true}}),
             },
@@ -2102,7 +2102,7 @@ export class StudioServer implements StudioServerHandling {
         const recovery = {action: "rebuild", reason: "Design build publication is not resumable after restart. Rebuild the captured source and destination."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: `design:${sourcePath}`, operation: "design-build", request: {sourcePath, destinationPath, blueprintHash}, conflictKey: `design-build:${sourcePath}:${destinationPath}`, recoveryOnRestart: recovery,
+                projectId: `design:${sourcePath}`, operation: "design-build", request: {sourcePath, destinationPath, blueprint: validated.blueprint, blueprintHash}, conflictKey: `design-destination:${destinationPath}`, recoveryOnRestart: recovery,
                 initialProgress: {stage: "Building package", unit: "package files", current: "indeterminate", total: "indeterminate", message: "Generating the Design package in its staging destination."},
                 // buildBlueprint treats non-2xx as a transport failure.  An
                 // in-flight exact request is still a normal StudioBuildResult.
@@ -2510,7 +2510,7 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res,
             {
-                projectId: projectRoot, operation: "deployment", request: validated as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment:${projectRoot}:${validated.targetId}:${JSON.stringify(validated.modes)}`, recoveryOnRestart: recovery,
+                projectId: projectRoot, operation: "deployment", request: {...validated, sourceProjectId: projectRoot} as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment-delivery:${validated.targetId}`, recoveryOnRestart: recovery,
                 initialProgress: {stage: "Planning deployment", unit: "pipeline stages", current: 0, total: "indeterminate", message: "Validating artifacts and delivery boundaries."},
                 // runDeployment always resolves its planner view for an
                 // operation outcome.  Keep reconnects in that shape too; a
@@ -3019,8 +3019,8 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res,
             {
-                projectId: projectRoot, operation: "certification-build", request: validated as unknown as Readonly<Record<string, unknown>>,
-                conflictKey: `certification-build:${projectRoot}:${validated.bundleDir}:${validated.outDir}:${JSON.stringify(validated.modes)}`,
+                projectId: projectRoot, operation: "certification-build", request: {...validated, sourceProjectId: projectRoot} as unknown as Readonly<Record<string, unknown>>,
+                conflictKey: `certification-output:${this.canonicalPathIdentity(path.resolve(projectRoot, validated.outDir))}`,
                 recoveryOnRestart: recovery,
                 initialProgress: {stage: "Building evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Writing certification evidence to a staging destination."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", errors: [], warnings: [], activeJobId: job.id, reattached: true}}),

@@ -9,12 +9,13 @@ import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {DocumentationLinks} from "./DocumentationLinks";
 import {ProjectsPanel} from "./ProjectsPanel";
-import type {StudioProjectRegistryView} from "../../api/types";
+import type {StudioJobView, StudioProjectRegistryView} from "../../api/types";
 import {openOutputFolder} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {useHomeSourceJobs} from "../../hooks/useHomeSourceJobs";
 import {JobProgressCard} from "../common/JobProgressCard";
 import {JobResultCard} from "../common/JobResultCard";
+import {useOpenProject} from "../../hooks/useOpenProject";
 
 export type HomeTab = "design" | "projects";
 
@@ -73,7 +74,7 @@ export function HomePage() {
         }
     }, [navigate, tab]);
 
-    const location = useLocation() as {state?: {initialBlueprintPath?: string; initialParSheetPath?: string}};
+    const location = useLocation() as {state?: {initialBlueprintPath?: string; initialParSheetPath?: string; recoveryRequest?: Readonly<Record<string, unknown>>}};
     const initialBlueprintPath = location.state?.initialBlueprintPath;
     const initialParSheetPath = location.state?.initialParSheetPath;
 
@@ -93,9 +94,40 @@ export function HomePage() {
     const [projectRegistryVersion, setProjectRegistryVersion] = useState(0);
     const [justSavedManagedProject, setJustSavedManagedProject] = useState<StudioProjectRegistryView | undefined>(undefined);
     const navigationGuard = useDesignNavigationGuard(isDesignDirty);
+    const openAndNavigate = useOpenProject();
     // Home does not have a current project identity.  The server therefore returns only Design and
     // project-opening records here, including retained terminal records after a reload.
     const homeJobs = useHomeSourceJobs(fetchImpl);
+    const handleHomeRecoveryAction = (job: StudioJobView): void => {
+        // Recovery never silently replays a retained write.  Re-open the
+        // owning workflow with its captured source so the user can inspect
+        // the reconstructed operation and explicitly submit it again.
+        if (job.operation === "project-open-materialization" && typeof job.request.sourcePath === "string") {
+            openAndNavigate(job.request.sourcePath).catch(() => undefined);
+            return;
+        }
+        if (job.operation === "design-par-import" && typeof job.request.path === "string") {
+            navigate("/home/design", {state: {initialParSheetPath: job.request.path}});
+            return;
+        }
+        if ((job.operation === "design-build" || job.operation === "design-par-export") && typeof job.request.sourcePath === "string") {
+            navigate("/home/design", {state: {initialBlueprintPath: job.request.sourcePath, recoveryRequest: job.request}});
+        }
+    };
+
+    const homeJobsPanel = homeJobs.jobs.length === 0 ? undefined : (
+        <Stack gap="xs" mt="lg" aria-label="Home jobs">
+            <Title order={3}>Home jobs</Title>
+            <Text size="sm" c="dimmed">Retained Design and project-opening work stays visible on every Home section after a reload. Cancel active work or reconstruct a server-supported recovery.</Text>
+            {homeJobs.jobs.map((job) =>
+                job.status === "queued" || job.status === "running" || job.status === "cancelling"
+                    ? <JobProgressCard key={job.id} job={job} onCancel={homeJobs.cancel} />
+                    : <JobResultCard key={job.id} job={job} onRecover={homeJobs.recover} onRecoveryAction={handleHomeRecoveryAction} onOpenOutput={(outputPath) => {
+                        openOutputFolder(fetchImpl, outputPath).catch(() => undefined);
+                    }} />,
+            )}
+        </Stack>
+    );
 
     return (
         <AppShellLayout
@@ -109,6 +141,7 @@ export function HomePage() {
                             guided
                             initialPath={initialBlueprintPath}
                             initialParSheetPath={initialParSheetPath}
+                            recoveryRequest={location.state?.recoveryRequest}
                             onDirtyChange={setIsDesignDirty}
                             isVisible={activeTab === "design"}
                             onManagedProjectSaved={(registeredProject) => {
@@ -116,19 +149,6 @@ export function HomePage() {
                                 setProjectRegistryVersion((version) => version + 1);
                             }}
                         />
-                        {homeJobs.jobs.length > 0 && (
-                            <Stack gap="xs" mt="lg" aria-label="Design jobs">
-                                <Title order={3}>Design jobs</Title>
-                                <Text size="sm" c="dimmed">Retained work continues here after a reload. Open its details, cancel active work, or use a server-supported recovery.</Text>
-                                {homeJobs.jobs.map((job) =>
-                                    job.status === "queued" || job.status === "running" || job.status === "cancelling"
-                                        ? <JobProgressCard key={job.id} job={job} onCancel={homeJobs.cancel} />
-                                        : <JobResultCard key={job.id} job={job} onRecover={homeJobs.recover} onOpenOutput={(outputPath) => {
-                                            openOutputFolder(fetchImpl, outputPath).catch(() => undefined);
-                                        }} />,
-                                )}
-                            </Stack>
-                        )}
                     </div>
 
                     <div ref={projectsRef} role="region" aria-labelledby="projects-heading" tabIndex={-1} style={{display: activeTab === "projects" ? undefined : "none"}}>
@@ -147,6 +167,8 @@ export function HomePage() {
                             />
                         </Stack>
                     </div>
+
+                    {homeJobsPanel}
 
                     <DocumentationLinks />
                 </Stack>

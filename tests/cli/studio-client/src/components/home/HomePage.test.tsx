@@ -61,6 +61,34 @@ async function expectActiveSection(name: string): Promise<void> {
 jest.setTimeout(120000);
 
 describe("HomePage", () => {
+    it("keeps retained project-opening recovery visible on Projects and invokes its captured open action", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "open-retained", projectId: "/games/recoverable", operation: "project-open-materialization",
+                request: {sourcePath: "/games/recoverable"}, conflictKey: "project-open:/games/recoverable",
+                status: "recovery-required", createdAt: 1,
+                recovery: {action: "retry", reason: "Reopen the captured project."},
+            }]}}),
+            "/api/home/projects/open": () => ({ok: true, status: 200, body: {context: {mode: "project", projectRoot: "/games/recoverable"}, manifest: {id: "recoverable", name: "Recoverable", version: "1.0.0"}}}),
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/recoverable", game: {id: "recoverable", name: "Recoverable", version: "1.0.0"}, type: "blueprint", capabilities: []}}),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/recoverable", valid: true, generated: false}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+
+        expect(await screen.findByRole("heading", {name: "Home jobs"})).toBeInTheDocument();
+        expect(screen.getByText("project-open-materialization: recovery-required")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Retry"}));
+
+        await waitFor(() => expect(calls.some((call) => call.url === "/api/home/projects/open" && call.init?.body === JSON.stringify({projectRoot: "/games/recoverable"}))).toBe(true));
+    });
+
     it("defaults to Design Game and switches between tabs, keeping aria-current on the active one", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

@@ -308,6 +308,13 @@ describe("StudioJobService executor bridge routes", () => {
             status: 409,
             body: {activeJobId: "bridge-job", recovery: {action: "retry"}},
         });
+        await expect(post(`${baseUrl}/api/home/blueprints/build`, {
+            ...physicalRequest,
+            sourcePath: path.join(physicalRoot, "independent-source.blueprint.json"),
+        })).resolves.toMatchObject({
+            status: 409,
+            body: {activeJobId: "bridge-job", recovery: {action: "retry"}},
+        });
         expect(build).toHaveBeenCalledTimes(1);
 
         release?.({status: "ok", projectRoot: physicalRequest.outDir, manifest: blueprint.manifest, createdFiles: [], buildInfo: {}, warnings: []});

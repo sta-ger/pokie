@@ -42,6 +42,27 @@ describe("StudioJobService", () => {
         ]));
     });
 
+    it("locks a canonical publication resource across owners while exact requests reattach", () => {
+        let nextId = 0;
+        const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `resource-${++nextId}`);
+        const input = {projectId: "design:/source-a", operation: "design-build", request: {sourcePath: "/source-a", destinationPath: "/shared/out"}, conflictKey: "design-destination:/shared/out"};
+        const first = service.start(input);
+        expect(first.status).toBe("created");
+        expect(service.start(input)).toEqual(expect.objectContaining({status: "reattached", job: expect.objectContaining({id: "resource-1"})}));
+        expect(service.start({...input, projectId: "design:/source-b", request: {sourcePath: "/source-b", destinationPath: "/shared/out"}})).toEqual(expect.objectContaining({status: "conflict", activeJobId: "resource-1"}));
+    });
+
+    it("uses resource locks rather than project ownership for certification output and deployment delivery", () => {
+        let nextId = 0;
+        const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `resource-${++nextId}`);
+        const certification = service.start({projectId: "/project-a", operation: "certification-build", request: {sourceProjectId: "/project-a", outDir: "evidence"}, conflictKey: "certification-output:/shared/evidence"});
+        expect(certification.status).toBe("created");
+        expect(service.start({projectId: "/project-b", operation: "certification-build", request: {sourceProjectId: "/project-b", outDir: "evidence"}, conflictKey: "certification-output:/shared/evidence"})).toEqual(expect.objectContaining({status: "conflict", activeJobId: "resource-1"}));
+        const deployment = service.start({projectId: "/project-a", operation: "deployment", request: {sourceProjectId: "/project-a", targetId: "shared-target"}, conflictKey: "deployment-delivery:shared-target"});
+        expect(deployment.status).toBe("created");
+        expect(service.start({projectId: "/project-b", operation: "deployment", request: {sourceProjectId: "/project-b", targetId: "shared-target"}, conflictKey: "deployment-delivery:shared-target"})).toEqual(expect.objectContaining({status: "conflict", activeJobId: "resource-2"}));
+    });
+
     it("keeps cancellation truthful until an executor reports cleanup-safe cancellation", () => {
         const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => "job-2");
         service.start({projectId: "/project-a", operation: "artifact-build", request: {target: "tsPackage"}, conflictKey: "destination:/project-a/out"});

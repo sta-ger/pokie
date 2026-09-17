@@ -239,11 +239,15 @@ async function run() {
     // Change only the hash so the mounted client keeps its request-generation
     // state. A document navigation here would discard the hook that issued A.
     await evaluate(`window.location.hash = ${JSON.stringify(`/project/${encodeURIComponent(secondProjectRoot)}/overview`)}`);
-    await waitFor(async () => (await text()).includes("Overview"), "second project dashboard route");
+    // "Overview" is already rendered for project A, so it cannot establish
+    // that the route/hook has actually switched.  The second source has a
+    // deliberately distinct manifest name; wait for that rendered identity
+    // before allowing the held A list response through.
+    await waitFor(async () => (await text()).includes("Durable Browser Exact"), "project-B dashboard identity");
     await cdp.send("Fetch.continueRequest", {requestId: staleResponse.params.requestId});
     await cdp.send("Fetch.disable");
     await pause(250);
-    assert(!(await hasActiveJobCard("simulation")), "a stale project-A list response leaked into the project-B dashboard");
+    assert(!(await hasActiveJobCard("simulation")), "a stale project-A list response leaked into the project-B dashboard without a reload");
 
     // The exact token is server-authored and is carried into the start request.
     // Cancellation then leaves the validated checkpoint on disk; it is the

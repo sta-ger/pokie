@@ -903,6 +903,34 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     const [artifactDestinations, setArtifactDestinations] = useState<Record<string, string>>({});
     useEffect(() => {
         if (recoveryRequest === undefined) return;
+        // Outcome Library recovery is a form reconstruction, never an
+        // implicit publication.  Preserve every captured generation choice
+        // (including the optional bounded/sample configuration) and let the
+        // normal fresh preflight bind it to the current source before the
+        // user explicitly submits again.
+        if (
+            typeof recoveryRequest.generation === "string" ||
+            typeof recoveryRequest.maxOutcomeSpaceSize === "string" ||
+            typeof recoveryRequest.libraryId === "string"
+        ) {
+            const sample = recoveryRequest.sample;
+            const sampleRecord = sample !== null && typeof sample === "object" ? sample as Readonly<Record<string, unknown>> : undefined;
+            const generation = recoveryRequest.generation === "exact" || recoveryRequest.generation === "sampled" || recoveryRequest.generation === "bounded"
+                ? recoveryRequest.generation
+                : "default";
+            setOutcomeLibraryGenerationOptions((current) => ({
+                ...current,
+                mode: typeof recoveryRequest.mode === "string" ? recoveryRequest.mode : current.mode,
+                stake: typeof recoveryRequest.stake === "number" ? String(recoveryRequest.stake) : current.stake,
+                libraryId: typeof recoveryRequest.libraryId === "string" ? recoveryRequest.libraryId : current.libraryId,
+                configHash: typeof recoveryRequest.configHash === "string" ? recoveryRequest.configHash : current.configHash,
+                outDir: typeof recoveryRequest.outDir === "string" ? recoveryRequest.outDir : current.outDir,
+                maxOutcomeSpaceSize: typeof recoveryRequest.maxOutcomeSpaceSize === "string" ? recoveryRequest.maxOutcomeSpaceSize : current.maxOutcomeSpaceSize,
+                generation,
+                sampleSize: typeof sampleRecord?.sampleSize === "string" ? sampleRecord.sampleSize : current.sampleSize,
+                seed: typeof sampleRecord?.seed === "string" ? sampleRecord.seed : current.seed,
+            }));
+        }
         // An artifact retry must restore the exact target/destination the
         // retained job reserved; Build remains an explicit user click.
         if (typeof recoveryRequest.target === "string" && typeof recoveryRequest.outDir === "string") {

@@ -84,6 +84,7 @@ export function ParSheetImportExportPanel({
     revision,
     onApplyImportedBlueprint,
     initialImportPath,
+    initialExportPath,
 }: {
     blueprint: Record<string, unknown>;
     // The path the current blueprint was last loaded/imported from (BlueprintEditorPage's own
@@ -97,6 +98,8 @@ export function ParSheetImportExportPanel({
     // gives a regular blueprint file, so the user lands straight on Diagnose & map instead of having to
     // re-paste the path they already gave Import Project.
     initialImportPath?: string;
+    /** Restores a retained export destination without publishing it automatically. */
+    initialExportPath?: string;
 }) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
@@ -248,6 +251,12 @@ export function ParSheetImportExportPanel({
     }, [revision]);
 
     const [exportOutcome, setExportOutcome] = useState<ParSheetExportOutcome | undefined>(undefined);
+
+    useEffect(() => {
+        if (initialExportPath === undefined) return;
+        setExportPath(initialExportPath);
+        setActiveStep(3);
+    }, [initialExportPath]);
 
     function invalidateExport(): void {
         exportRequestIdRef.current++;
