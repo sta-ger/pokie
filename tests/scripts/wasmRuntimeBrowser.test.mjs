@@ -1,11 +1,26 @@
 import {createServer} from "http";
 import {readFile} from "fs/promises";
 import path from "path";
-import {spawn} from "child_process";
+import {spawn, spawnSync} from "child_process";
 import {PORTABLE_RUNTIME_BROWSER_FIXTURE as canonicalFixture} from "../fixtures/wasm/portableRuntimeGolden.browser.mjs";
 
 const root = process.cwd();
+preparePortableRuntime();
 const benchmarkConfiguration = readBenchmarkConfiguration(process.argv);
+
+function preparePortableRuntime() {
+    // The browser and Worker must load the portable runtime emitted from this
+    // exact checkout. A changed-tests run does not otherwise materialize dist/
+    // before this standalone browser fixture, which could make it verify a
+    // previous worker protocol instead of the source under review.
+    const compilation = spawnSync(process.execPath, [path.join(root, "node_modules", "typescript", "bin", "tsc"), "--project", "tsconfig.prod.json"], {
+        cwd: root,
+        encoding: "utf8",
+    });
+    if (compilation.status !== 0) {
+        throw new Error(`Could not compile the portable runtime for the Chromium fixture:\n${compilation.stdout}\n${compilation.stderr}`);
+    }
+}
 
 const workerModule = `import {PokieWasmWorkerProtocol} from "/dist/esm/wasm/worker.js";
 const protocol = new PokieWasmWorkerProtocol();
