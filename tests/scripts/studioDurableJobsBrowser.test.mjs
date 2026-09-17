@@ -33,10 +33,10 @@ const browserRequirementFailure = !hasBrowserArtifacts
         : undefined;
 
 // The controller runs this standalone contract after it has created the
-// compiled Studio bundle. Jest's changed-test lane intentionally does not
-// build or launch browsers, so it records the contract as skipped when that
-// controller-owned environment is absent. Direct execution remains strict:
-// a pass there always means the real browser workflow ran.
+// compiled Studio bundle.  A missing bundle or Chromium is never a successful
+// coverage outcome: the Jest wrapper below fails with the same actionable
+// prerequisite diagnostic as direct execution.  Consequently every passing
+// result for this contract means the real browser workflow actually ran.
 
 async function freePort() {
     const server = createServer();
@@ -309,8 +309,8 @@ async function execute() {
 }
 
 if (typeof test === "function") {
-    const browserTest = browserRequirementFailure === undefined ? test : test.skip;
-    browserTest("runs the real Chromium Studio durable jobs workflow", async () => {
+    test("runs the real Chromium Studio durable jobs workflow", async () => {
+        if (browserRequirementFailure !== undefined) throw new Error(browserRequirementFailure);
         await execute();
     }, 12 * 60_000);
 } else {
