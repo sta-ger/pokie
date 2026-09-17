@@ -115,7 +115,9 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
 
         await screen.findByText("simulation: recovery-required");
         await user.click(screen.getByRole("button", {name: "Retry"}));
-        expect(await screen.findByLabelText(/^Rounds/)).toHaveValue(4321);
+        // Mantine NumberInput is a text input so it can preserve intermediate numeric input;
+        // the submitted request below proves the reconstructed form still emits a number.
+        expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("4321");
         expect(screen.getByLabelText("Seed")).toHaveValue("recovered-simulation-seed");
         expect(screen.getByLabelText("Workers")).toHaveValue(2);
         expect(runCalls).toEqual([]);

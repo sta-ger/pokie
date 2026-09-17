@@ -137,7 +137,9 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await screen.findByText("replay: recovery-required");
         await user.click(screen.getByRole("button", {name: "Retry"}));
-        expect(await screen.findByLabelText(/^Target round number in a new replay session/)).toHaveValue(4);
+        // Mantine NumberInput renders its editable control as text; running the recovered form
+        // below verifies that the request is converted back to the numeric round value.
+        expect(await screen.findByLabelText(/^Target round number in a new replay session/)).toHaveValue("4");
         expect(screen.getByLabelText("Seed (optional)")).toHaveValue("recovered-replay-seed");
         expect(replayCalls).toEqual([]);
 
