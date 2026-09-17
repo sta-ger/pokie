@@ -559,7 +559,7 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, {jobs: this.jobService.list(this.currentContext.projectRoot)});
     }
 
-    private handleCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | undefined): void {
+    private async handleCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | undefined): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
@@ -580,8 +580,17 @@ export class StudioServer implements StudioServerHandling {
         }
         if (action === "recover" && method === "POST") {
             const job = this.jobService.get(this.currentContext.projectRoot, id);
-            if (job === undefined) this.sendJson(res, 404, {error: "Studio job not found."});
-            else this.sendJson(res, 409, {status: "recovery-required", job, error: job.recovery?.reason ?? "This operation must be started again from its original action."});
+            if (job === undefined) {
+                this.sendJson(res, 404, {error: "Studio job not found."});
+                return;
+            }
+            if (job.operation === "outcome-library-generation" && job.recovery?.action === "resume") {
+                const recovered = await this.outcomeLibraryGenerateJobService.resumeForProject(this.currentContext.projectRoot, id);
+                const current = this.jobService.get(this.currentContext.projectRoot, id);
+                this.sendJson(res, recovered === undefined || current === undefined ? 409 : 202, current ?? {status: "recovery-required", error: "The Outcome Library checkpoint could not be resumed."});
+                return;
+            }
+            this.sendJson(res, 409, {status: "recovery-required", job, error: job.recovery?.reason ?? "This operation must be started again from its original action."});
             return;
         }
         this.sendJson(res, 405, {error: "Method not allowed."});
@@ -844,7 +853,7 @@ export class StudioServer implements StudioServerHandling {
         }
         const commonJobRoute = (/^\/api\/project\/jobs\/([A-Za-z0-9_-]+)(?:\/(cancel|recover))?$/).exec(url.pathname);
         if (commonJobRoute !== null) {
-            this.handleCommonJob(method, res, commonJobRoute[1], commonJobRoute[2] as "cancel" | "recover" | undefined);
+            await this.handleCommonJob(method, res, commonJobRoute[1], commonJobRoute[2] as "cancel" | "recover" | undefined);
             return;
         }
 
