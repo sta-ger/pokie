@@ -484,7 +484,10 @@ export class StudioArtifactBuildService {
             projectId: projectRoot,
             operation: "artifact-build",
             request: {target, ...(outDir === undefined ? {} : {outDir})},
-            conflictKey: `artifact:${path.resolve(outDir ?? projectRoot, target)}`,
+            // `target` describes the builder, not the resource it locks.
+            // Two builders spelling the same output as "out", "./out", or
+            // an absolute path must share one common durable conflict key.
+            conflictKey: `artifact:${path.resolve(outDir ?? resolveDefaultDestination(projectRoot, target))}`,
             recoveryOnRestart: {action: "rebuild", reason: "Artifact publication cannot safely resume after Studio restarts. Rebuild from the captured target and destination."},
         });
         if (common?.status === "conflict") return {status: "conflict", activeJobId: common.activeJobId};

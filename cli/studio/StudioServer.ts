@@ -2563,7 +2563,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 404, {error: action === "resume" ? "Outcome library checkpoint not found." : "Outcome library generation job not found."});
             return;
         }
-        if (action === "resume" && job.status === "failed" && job.result?.status === "conflict") {
+        if (action === "resume" && job.result?.status === "conflict") {
             this.sendJson(res, 409, {status: "conflict", error: job.result.error, plan: job.result.plan});
             return;
         }

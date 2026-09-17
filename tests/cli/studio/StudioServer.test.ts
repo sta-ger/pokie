@@ -63,6 +63,8 @@ import {StudioPlayService} from "../../../cli/studio/runtime/StudioPlayService.j
 import {InMemoryStudioSimulationRepository} from "../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
+import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {WasmArtifactBuilder} from "../../../src/project/WasmArtifactBuilder.js";
 import {StudioOutcomeLibraryGenerateService} from "../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
@@ -405,6 +407,10 @@ describe("StudioServer", () => {
         fs.writeFileSync(path.join(root, "style.css"), "body { margin: 0; }");
     }
 
+    function createIsolatedJobService(root: string): StudioJobService {
+        return new StudioJobService(new FileStudioJobRepository(path.join(root, ".test-studio-jobs")));
+    }
+
     beforeEach(async () => {
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-test-"));
         writeStudioAssets(studioRoot);
@@ -424,6 +430,7 @@ describe("StudioServer", () => {
             loadGame,
             gamePackageInspector: {inspect},
             gamePackageValidator: {validate},
+            jobService: createIsolatedJobService(studioRoot),
         });
         const address = await server.start();
         baseUrl = `http://${address.host}:${address.port}`;
@@ -473,6 +480,7 @@ describe("StudioServer", () => {
                 if (token === "http-token-4") requestKey = JSON.stringify({mode: "cancel", generation: "exact"});
                 return {
                     ...binding,
+                    requiresBounded: false,
                     requestKey,
                     // A token is server-owned, but it still has to enforce the
                     // same sampled-opt-in eligibility as the compatibility route.
@@ -505,6 +513,7 @@ describe("StudioServer", () => {
             pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
             homeService: new StudioHomeService("1.0.0"), blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0")),
             initialContext: {mode: "project", projectRoot}, outcomeLibraryGenerateService: outcomeService as never,
+            jobService: createIsolatedJobService(projectRoot),
         });
         const replaceServer = (nextServer: StudioServer): void => {
             server = nextServer;
@@ -625,7 +634,7 @@ describe("StudioServer", () => {
         replaceServer(outcomeServer);
         const restartedAddress = await outcomeServer.start();
         outcomeBaseUrl = `http://${restartedAddress.host}:${restartedAddress.port}`;
-        expect(await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`)).toMatchObject({status: 200, body: {jobs: [expect.objectContaining({id: cancelledId, status: "cancelled"})]}});
+        expect(await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`)).toMatchObject({status: 200, body: {jobs: expect.arrayContaining([expect.objectContaining({id: cancelledId, status: "cancelled"})])}});
 
         // Resume rebinding shares the destination owner with ordinary starts.
         // A collision is an actionable Outcome Library conflict, never an
@@ -679,6 +688,7 @@ describe("StudioServer", () => {
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadPokieGame)),
             loadGame: loadPokieGame,
             initialContext: {mode: "project", projectRoot},
+            jobService: createIsolatedJobService(projectRoot),
         }));
         const address = await server.start();
         let realBaseUrl = `http://${address.host}:${address.port}`;
@@ -770,6 +780,7 @@ describe("StudioServer", () => {
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadPokieGame)),
             loadGame: loadPokieGame,
             initialContext: {mode: "project", projectRoot},
+            jobService: createIsolatedJobService(projectRoot),
         });
         const startServer = async (projectRoot: string): Promise<string> => {
             server = createRealServer(projectRoot);
@@ -7372,6 +7383,7 @@ describe("StudioServer", () => {
                 blueprintService: new StudioBlueprintService("1.3.0", artifactStudioRoot, homeService),
                 artifactBuildService,
                 initialContext: {mode: "project", projectRoot: blueprintPath},
+                jobService: createIsolatedJobService(artifactWorkDir),
             });
             const address = await artifactServer.start();
             const projectBaseUrl = `http://${address.host}:${address.port}`;
@@ -7399,14 +7411,14 @@ describe("StudioServer", () => {
 
             const cancelled = await post(`${projectBaseUrl}/api/project/artifacts/build/${job.id}/cancel`);
             expect(cancelled.status).toBe(200);
-            expect(cancelled.body).toMatchObject({id: job.id, status: "running", cancellationRequested: true});
+            expect(cancelled.body).toMatchObject({id: job.id, status: "cancelling", cancellationRequested: true});
 
             let terminalJob: {id: string; status: string; cancellationRequested: boolean; result?: {status: string}} | undefined;
             for (let attempt = 0; attempt < 1200; attempt += 1) {
                 const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
                 expect(response.status).toBe(200);
                 const current = response.body as {id: string; status: string; cancellationRequested: boolean; result?: {status: string}};
-                if (current.status !== "queued" && current.status !== "running") {
+                if (current.status !== "queued" && current.status !== "running" && current.status !== "cancelling") {
                     terminalJob = current;
                     break;
                 }

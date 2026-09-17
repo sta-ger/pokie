@@ -124,6 +124,15 @@ export class StudioJobService {
     }
 
     /**
+     * Refines a retained recovery decision after an operation-specific
+     * checkpoint has been inspected.  Terminal outcome remains immutable;
+     * only its next safe user action may become more conservative.
+     */
+    public setRecovery(id: string, recovery: StudioJobRecoveryView): StudioJobView | undefined {
+        return this.transition(id, (job) => ({...job, recovery}));
+    }
+
+    /**
      * Runs one compatibility executor behind the common durable job record.
      * Reattachment/conflict is resolved before `executor` is called, and the
      * retained AbortController is released only after its terminal state has

@@ -99,13 +99,17 @@ export class StudioOutcomeLibraryGenerateJobService {
         if (wasmDiagnostic !== undefined) throw new Error(wasmDiagnostic);
         this.trimTerminalJobs();
         const destinationKey = this.destinationKey(projectRoot, request);
+        const preflightBinding = this.generateService.getPreflightBinding?.(request.preflightToken);
         const id = resumedId ?? randomUUID();
         const common = this.jobService?.adopt(id, {
             projectId: projectRoot,
             operation: "outcome-library-generation",
-            request: {generation: request.generation, ...(request.outDir === undefined ? {} : {outDir: request.outDir}), ...(request.sample === undefined ? {} : {sampleSize: request.sample.sampleSize.toString(), seed: request.sample.seed})},
+            request: durableRequestIdentity(request, preflightBinding, destinationKey),
             conflictKey: `outcome-library:${destinationKey}`,
-            recoveryOnRestart: {action: "resume", reason: "Resume is available only after Studio validates this exact enumeration checkpoint against its original source, configuration, and destination."},
+            // An interrupted executor has not produced a checkpoint yet.  Do
+            // not advertise resume merely because this operation *could* be
+            // exact: restart reconciliation must guide it to a safe retry.
+            recoveryOnRestart: {action: "retry", reason: "Studio restarted before an exact Outcome Library checkpoint was validated. Retry the captured generation from scratch."},
         });
         if (common?.status === "reattached") {
             const existing = this.jobs.get(common.job.id);
@@ -299,7 +303,12 @@ export class StudioOutcomeLibraryGenerateJobService {
                 }),
             };
             Object.assign(record, {result: cancelledResult, status: "cancelled" as const});
-            this.jobService?.cancelled(record.id, {summary: "Outcome Library generation cancelled before publication."}, {action: cancelledResult.checkpoint === undefined ? "retry" : "resume", reason: cancelledResult.recovery});
+            this.jobService?.cancelled(record.id, {summary: "Outcome Library generation cancelled before publication."}, {
+                action: cancelledResult.checkpoint === undefined ? "retry" : "resume",
+                reason: cancelledResult.checkpoint === undefined
+                    ? cancelledResult.recovery
+                    : "Resume is available only after Studio revalidates this exact checkpoint against its original source, configuration, and destination.",
+            });
             return;
         }
         Object.assign(record, {result, status: result.status === "ok" ? "completed" as const : "failed" as const});
@@ -330,11 +339,15 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     private projectDurableJob(job: StudioJobView): StudioOutcomeLibraryGenerateJobView {
+        const checkpoint = job.recovery?.action === "resume" ? this.readCheckpoint(job.projectId, job.id) : undefined;
+        const recovery = job.recovery?.action === "resume" && checkpoint === undefined
+            ? {action: "retry" as const, reason: "The persisted Outcome Library checkpoint is missing or corrupt. Retry the captured generation from scratch."}
+            : job.recovery;
         return {
             id: job.id,
             status: job.status,
             cancellationRequested: job.status === "cancelling",
-            ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
+            ...(recovery === undefined ? {} : {recovery}),
         };
     }
 
@@ -357,25 +370,26 @@ export class StudioOutcomeLibraryGenerateJobService {
         }
     }
 
-    private persistCheckpoint(projectRoot: string, id: string, request: ValidatedOutcomeLibraryGenerateRequest, checkpoint: ExactEnumerationCheckpoint): StudioOutcomeLibraryCheckpointView {
+    private persistCheckpoint(projectRoot: string, id: string, request: ValidatedOutcomeLibraryGenerateRequest, checkpoint: ExactEnumerationCheckpoint): StudioOutcomeLibraryCheckpointView | undefined {
+        const preflightBinding = this.generateService.getPreflightBinding?.(request.preflightToken);
+        // Sampled/bounded jobs and unbound direct calls have no durable exact
+        // recovery authority.  A generator result alone is not sufficient to
+        // make one resumable after process restart.
+        if (!isResumableExactRequest(request, preflightBinding) || !isExactCheckpoint(checkpoint)) return undefined;
         const filePath = this.checkpointPath(projectRoot, id);
         fs.mkdirSync(path.dirname(filePath), {recursive: true});
         // Keep the in-process service seam usable for direct callers that do
         // not expose Studio preflight state; HTTP jobs always provide it.
-        const preflightBinding = this.generateService.getPreflightBinding?.(request.preflightToken);
         const stored: PersistedCheckpoint = {
             request: toPersistedRequest(request),
             binding: {
                 requestIdentity: requestIdentity(request),
-                requestKey: preflightBinding?.requestKey ?? generationRequestKey(request),
-                gameId: preflightBinding?.gameId ?? "",
-                gameVersion: preflightBinding?.gameVersion ?? "",
-                ...(preflightBinding?.configHash === undefined ? {} : {configHash: preflightBinding.configHash}),
-                destination: preflightBinding?.destination ?? request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR,
-                // Only exact jobs produce resumable checkpoints; a direct
-                // in-process caller without a token is therefore known to
-                // have already passed sampled-opt-in eligibility.
-                requiresBounded: preflightBinding?.requiresBounded ?? false,
+                requestKey: preflightBinding.requestKey,
+                gameId: preflightBinding.gameId,
+                gameVersion: preflightBinding.gameVersion,
+                ...(preflightBinding.configHash === undefined ? {} : {configHash: preflightBinding.configHash}),
+                destination: preflightBinding.destination,
+                requiresBounded: preflightBinding.requiresBounded,
             },
             checkpoint: {
                 processedRawIndex: checkpoint.processedRawIndex.toString(), progressTotal: checkpoint.progressTotal.toString(), sourceEnumerationId: checkpoint.sourceEnumerationId,
@@ -404,7 +418,7 @@ export class StudioOutcomeLibraryGenerateJobService {
                 (checkpoint.recoveryAuthorityId !== undefined && (typeof checkpoint.recoveryAuthorityId !== "string" || !(/^[0-9a-f-]{36}$/i).test(checkpoint.recoveryAuthorityId)))
             ) return undefined;
             if (
-                persisted.binding === undefined ||
+                !isPersistedBinding(persisted.binding) ||
                 requestIdentity(fromPersistedRequest(persisted.request)) !== persisted.binding.requestIdentity ||
                 checkpoint.recoveryAuthorityId !== id ||
                 !isPersistedExactCheckpoint(checkpoint)
@@ -445,6 +459,7 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     private restoreRejectedResume(projectRoot: string, id: string, request: ValidatedOutcomeLibraryGenerateRequest, error: string, plan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")): StudioOutcomeLibraryGenerateJobView {
+        this.jobService?.setRecovery(id, {action: "retry", reason: error});
         const record: JobRecord = {
             id, projectRoot, request, controller: new AbortController(), status: "failed", cancellationRequested: false,
             completion: Promise.resolve(), destinationKey: this.destinationKey(projectRoot, request),
@@ -488,7 +503,7 @@ function fromPersistedCheckpoint(checkpoint: PersistedCheckpoint["checkpoint"]):
 
 /** Reject malformed durable JSON before bigint/map conversion can consume it. */
 function isPersistedExactCheckpoint(checkpoint: PersistedCheckpoint["checkpoint"] & Record<string, unknown>): boolean {
-    return (
+    const fieldsAreValid = (
         typeof checkpoint.processedRawIndex === "string" && (/^[0-9]+$/).test(checkpoint.processedRawIndex) &&
         typeof checkpoint.progressTotal === "string" && (/^[0-9]+$/).test(checkpoint.progressTotal) &&
         typeof checkpoint.sourceEnumerationId === "string" && checkpoint.sourceEnumerationId.length > 0 &&
@@ -500,6 +515,10 @@ function isPersistedExactCheckpoint(checkpoint: PersistedCheckpoint["checkpoint"
             typeof entry.weight === "string" && (/^[0-9]+$/).test(entry.weight),
         )
     );
+    if (!fieldsAreValid) return false;
+    return BigInt(checkpoint.progressTotal) > BigInt(0)
+        && BigInt(checkpoint.processedRawIndex) <= BigInt(checkpoint.progressTotal)
+        && new Set(checkpoint.grids.map((entry) => entry.key)).size === checkpoint.grids.length;
 }
 
 function requestIdentity(request: ValidatedOutcomeLibraryGenerateRequest): string {
@@ -507,14 +526,58 @@ function requestIdentity(request: ValidatedOutcomeLibraryGenerateRequest): strin
         mode: request.mode, stake: request.stake, configHash: request.configHash, libraryId: request.libraryId,
         maxOutcomeSpaceSize: request.maxOutcomeSpaceSize?.toString(), generation: request.generation,
         sample: request.sample === undefined ? undefined : {sampleSize: request.sample.sampleSize.toString(), seed: request.sample.seed},
-        outDir: request.outDir, preflightToken: request.preflightToken,
+        outDir: request.outDir,
     });
 }
 
-function generationRequestKey(request: ValidatedOutcomeLibraryGenerateRequest): string {
-    return JSON.stringify({
-        mode: request.mode, stake: request.stake, configHash: request.configHash, libraryId: request.libraryId,
-        outDir: request.outDir, generation: request.generation, maxOutcomeSpaceSize: request.maxOutcomeSpaceSize?.toString(),
+function durableRequestIdentity(
+    request: ValidatedOutcomeLibraryGenerateRequest,
+    binding: StudioOutcomeLibraryPreflightBinding | undefined,
+    destination: string,
+): Readonly<Record<string, unknown>> {
+    return {
+        mode: request.mode,
+        stake: request.stake,
+        configHash: request.configHash,
+        libraryId: request.libraryId,
+        maxOutcomeSpaceSize: request.maxOutcomeSpaceSize?.toString(),
+        generation: request.generation,
         sample: request.sample === undefined ? undefined : {sampleSize: request.sample.sampleSize.toString(), seed: request.sample.seed},
-    });
+        outDir: request.outDir,
+        destination,
+        preflight: binding === undefined ? undefined : {
+            requestKey: binding.requestKey,
+            gameId: binding.gameId,
+            gameVersion: binding.gameVersion,
+            configHash: binding.configHash,
+            destination: binding.destination,
+            requiresBounded: binding.requiresBounded,
+        },
+    };
+}
+
+function isResumableExactRequest(
+    request: ValidatedOutcomeLibraryGenerateRequest,
+    binding: StudioOutcomeLibraryPreflightBinding | undefined,
+): binding is StudioOutcomeLibraryPreflightBinding {
+    return binding !== undefined && binding.requiresBounded === false && (request.generation === "default" || request.generation === "exact");
+}
+
+function isExactCheckpoint(checkpoint: ExactEnumerationCheckpoint): boolean {
+    return checkpoint.processedRawIndex >= BigInt(0)
+        && checkpoint.processedRawIndex <= checkpoint.progressTotal
+        && checkpoint.progressTotal > BigInt(0)
+        && checkpoint.sourceEnumerationId.length > 0;
+}
+
+function isPersistedBinding(binding: unknown): binding is PersistedRequestBinding {
+    if (typeof binding !== "object" || binding === null) return false;
+    const candidate = binding as Partial<PersistedRequestBinding>;
+    return typeof candidate.requestIdentity === "string"
+        && typeof candidate.requestKey === "string"
+        && typeof candidate.gameId === "string" && candidate.gameId.length > 0
+        && typeof candidate.gameVersion === "string" && candidate.gameVersion.length > 0
+        && (candidate.configHash === undefined || typeof candidate.configHash === "string")
+        && typeof candidate.destination === "string" && candidate.destination.length > 0
+        && typeof candidate.requiresBounded === "boolean";
 }

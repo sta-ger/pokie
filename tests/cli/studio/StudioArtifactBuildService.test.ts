@@ -6,6 +6,8 @@ import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ManagedOutcomeProj
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
+import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
 
 function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
@@ -769,6 +771,9 @@ describe("StudioArtifactBuildService", () => {
                 executePlan: (plan: {target: {kind: ArtifactTargetType}}, source: PokieProject, destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => registry.build(plan.target.kind, source, destination, options),
             } as unknown as ArtifactBuilderRegistry;
             service = new StudioArtifactBuildService("1.3.0", registry, resolver);
+            const durableDirectory = path.join(workDir, "durable-artifact-jobs");
+            const durableJobs = new StudioJobService(new FileStudioJobRepository(durableDirectory));
+            service.attachJobService(durableJobs);
 
             const started = service.start(project.rootPath, "outcomeLibrary", path.join(workDir, "out"));
             if (started.status !== "created") throw new Error("expected artifact job to be created");
@@ -787,7 +792,13 @@ describe("StudioArtifactBuildService", () => {
                 complexityWarning: "Large publish",
             });
 
-            expect(service.cancelForProject(project.rootPath, started.job.id)).toMatchObject({cancellationRequested: true, status: "running"});
+            // Durable exact retries reattach, while another builder targeting
+            // the same canonical output is a resource conflict regardless of
+            // target spelling.
+            expect(service.start(project.rootPath, "outcomeLibrary", path.join(workDir, ".", "out"))).toMatchObject({status: "created", job: {id: started.job.id}});
+            expect(service.start(project.rootPath, "tsPackage", path.join(workDir, "out"))).toEqual({status: "conflict", activeJobId: started.job.id});
+
+            expect(service.cancelForProject(project.rootPath, started.job.id)).toMatchObject({cancellationRequested: true, status: "cancelling"});
             releaseBuild?.();
             await new Promise<void>((resolve) => {
                 setTimeout(() => {
@@ -798,6 +809,10 @@ describe("StudioArtifactBuildService", () => {
                 status: "cancelled",
                 result: {status: "cancelled", plan: {status: "planned", target: {kind: "outcomeLibrary"}}},
             });
+            expect(durableJobs.list(project.rootPath)).toEqual([expect.objectContaining({id: started.job.id, status: "cancelled"})]);
+            const restarted = new StudioArtifactBuildService("1.3.0");
+            restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));
+            expect(restarted.getStatusForProject(project.rootPath, started.job.id)).toMatchObject({status: "cancelled"});
         });
 
         it("cancels a running real Outcome publish through the job workflow without publishing output or registering a managed Project", async () => {

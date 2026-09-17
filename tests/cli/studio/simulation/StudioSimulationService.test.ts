@@ -21,6 +21,8 @@ import {BlueprintProjectMaterializer} from "../../../../cli/materialize/Blueprin
 import {createMaterializingRuntimePackageResolver} from "../../../../cli/materialize/materializeRuntimePackage.js";
 import {StudioSimulationJobView} from "../../../../cli/studio/simulation/StudioSimulationJobView.js";
 import {StudioSimulationService} from "../../../../cli/studio/simulation/StudioSimulationService.js";
+import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function createFakeSession(options: {failOnRound?: number; stopAfterRounds?: number} = {}): GameSessionHandling {
@@ -623,6 +625,8 @@ describe("StudioSimulationService", () => {
 
     it("cancels a queued/running job, stopping further progress", async () => {
         const gate = createControlledYield();
+        const durableDirectory = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-simulation-jobs-")), "jobs");
+        const durableJobs = new StudioJobService(new FileStudioJobRepository(durableDirectory));
         const repository = new InMemoryStudioSimulationRepository();
         const service = new StudioSimulationService(
             repository,
@@ -632,6 +636,7 @@ describe("StudioSimulationService", () => {
             undefined,
             gate.yieldToEventLoop,
         );
+        service.attachJobService(durableJobs);
 
         const result = service.start("/a", {rounds: 25});
         if (result.status !== "created") {
@@ -645,7 +650,7 @@ describe("StudioSimulationService", () => {
         // doc comment on why) — cancel() requests it (aborting the controller) but the record only
         // actually transitions to "cancelled" once the paused chunk loop notices, after release().
         const cancelled = service.cancel(result.job.id);
-        expect(cancelled?.status).toBe("running");
+        expect(cancelled?.status).toBe("cancelling");
 
         gate.release();
         await flushMacrotask();
@@ -654,6 +659,12 @@ describe("StudioSimulationService", () => {
         expect(job?.status).toBe("cancelled");
         // No further chunk ran after the cancel was observed.
         expect(job?.roundsCompleted).toBe(10);
+        expect(durableJobs.list("/a")).toEqual([expect.objectContaining({id: result.job.id, status: "cancelled"})]);
+
+        const restarted = new StudioSimulationService(repository, () => Promise.resolve(createFakeGame(manifest)));
+        restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));
+        expect(restarted.getStatusForProject("/a", result.job.id)).toMatchObject({status: "cancelled"});
+        fs.rmSync(path.dirname(durableDirectory), {recursive: true, force: true});
     });
 
     it("is idempotent when cancelling an already-terminal job", async () => {
