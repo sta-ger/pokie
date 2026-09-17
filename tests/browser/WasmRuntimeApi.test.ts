@@ -8,7 +8,11 @@ describe("browser-safe WASM runtime API", () => {
         const session = runtime.createSession("browser-seed");
         expect(await session.play()).toMatchObject({sequence: 1});
         const state = JSON.parse(JSON.stringify(session.serialize()));
-        expect(await runtime.replay(state, [{}])).toMatchObject([{sequence: 2}]);
+        expect(await runtime.replay(state, [{}])).toMatchObject({
+            rounds: [{sequence: 2}],
+            stateBeforeFinal: {sequence: 1},
+            stateAfter: {sequence: 2},
+        });
         expect(state).toMatchObject({schemaVersion: "pokie.state.v1", seed: "browser-seed", sequence: 1, draws: expect.any(Array), rngState: expect.any(Number)});
         runtime.dispose();
     });
@@ -29,7 +33,7 @@ describe("browser-safe WASM runtime API", () => {
         await expect(session.play()).rejects.toThrow(/does not declare runtime\.play/i);
         expect(() => session.serialize()).toThrow(/does not declare runtime\.serialize/i);
         await expect(runtime.replay({schemaVersion: "pokie.state.v1", seed: "browser-replay-only", draws: [], sequence: 0, credits: 1000}, [{}]))
-            .resolves.toMatchObject([{sequence: 1}]);
+            .resolves.toMatchObject({rounds: [{sequence: 1}], stateAfter: {sequence: 1}});
         runtime.dispose();
     });
 });
