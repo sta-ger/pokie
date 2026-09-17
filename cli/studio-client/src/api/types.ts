@@ -1,5 +1,24 @@
 export type StudioContext = {mode: "home"} | {mode: "project"; projectRoot: string};
 
+/** Mirrors the server-owned durable Studio job contract. */
+export type StudioJobStatus = "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
+export type StudioJobView = {
+    id: string;
+    projectId: string;
+    operation: string;
+    request: Record<string, unknown>;
+    conflictKey: string;
+    status: StudioJobStatus;
+    createdAt: number;
+    startedAt?: number;
+    completedAt?: number;
+    durationMs?: number;
+    progress?: {stage: string; unit: string; current: number | string; total: number | string; message?: string};
+    result?: {summary: string; outputs?: {path?: string; downloadPath?: string; label: string}[]; provenance?: Record<string, unknown>; warnings?: string[]; detail?: Record<string, unknown>};
+    error?: string;
+    recovery?: {action: "resume" | "retry" | "rebuild" | "new-session"; reason: string};
+};
+
 export type RecentProjectEntry = {
     projectRoot: string;
     name: string;

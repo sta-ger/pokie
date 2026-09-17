@@ -36,6 +36,7 @@ import type {StudioSimulationReportListEntry} from "./StudioSimulationReportList
 import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
 import {toStudioSimulationJobView} from "./toStudioSimulationJobView.js";
 import type {ValidatedSimulationRequest} from "./validateSimulationRequest.js";
+import {StudioJobService} from "../jobs/StudioJobService.js";
 
 const DEFAULT_CHUNK_SIZE = 1000;
 
@@ -87,6 +88,7 @@ export class StudioSimulationService {
     private readonly onCompleted: (record: StudioSimulationJobRecord) => void;
     private readonly pokieVersion: string | undefined;
     private readonly loadWasmRuntime: typeof loadPokieWasmFileRuntime;
+    private jobService: StudioJobService | undefined;
 
     constructor(
         repository: StudioSimulationRepository = new InMemoryStudioSimulationRepository(),
@@ -125,6 +127,10 @@ export class StudioSimulationService {
         this.onCompleted = onCompleted;
         this.pokieVersion = pokieVersion;
         this.loadWasmRuntime = loadWasmRuntime;
+    }
+
+    public attachJobService(jobService: StudioJobService): void {
+        this.jobService = jobService;
     }
 
     // Returns immediately with a "queued" job — the actual simulation runs in the background (see
@@ -167,6 +173,13 @@ export class StudioSimulationService {
             modeName: request.modeName,
         };
         this.repository.save(record);
+        this.jobService?.adopt(record.id, {
+            projectId: projectRoot,
+            operation: "simulation",
+            request: {rounds: request.rounds, ...(request.seed === undefined ? {} : {seed: request.seed}), workers: request.workers ?? 1, ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            conflictKey: `simulation:${projectRoot}`,
+            recoveryOnRestart: {action: "retry", reason: "A simulation cannot safely resume after Studio restarts. Run it again with these captured parameters."},
+        });
 
         // Deferred via queueMicrotask rather than called directly: run() sets record.status to
         // "running" before its own first await (calling createParallelSimulationRunner/.run()
@@ -322,7 +335,7 @@ export class StudioSimulationService {
             this.cancelRecord(record);
             return;
         }
-        record.status = "running";
+        this.markRunning(record);
 
         let runtime;
         try {
@@ -345,6 +358,7 @@ export class StudioSimulationService {
                 onProgress: (roundsCompleted) => {
                     record.roundsCompleted = roundsCompleted;
                     record.durationMs = this.now() - record.startedAt;
+                    this.jobService?.progress(record.id, {stage: "simulation", unit: "rounds", current: roundsCompleted, total: record.rounds});
                 },
             });
             const result = await runner.run();
@@ -402,7 +416,7 @@ export class StudioSimulationService {
             this.cancelRecord(record);
             return;
         }
-        record.status = "running";
+        this.markRunning(record);
         const seed = record.seed ?? crypto.randomUUID();
         let runtime;
         let disposeSession: (() => void) | undefined;
@@ -428,6 +442,7 @@ export class StudioSimulationService {
                 }
                 record.roundsCompleted += chunk;
                 record.durationMs = this.now() - record.startedAt;
+                this.jobService?.progress(record.id, {stage: "simulation", unit: "rounds", current: record.roundsCompleted, total: record.rounds});
                 remaining -= chunk;
                 if (remaining > 0) await this.yieldToEventLoop();
             }
@@ -507,7 +522,7 @@ export class StudioSimulationService {
             this.cancelRecord(record);
             return;
         }
-        record.status = "running";
+        this.markRunning(record);
 
         const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
         const randomSource: WeightedOutcomeRandomSource = new SecureWeightedOutcomeRandomSource();
@@ -559,6 +574,7 @@ export class StudioSimulationService {
 
                 record.roundsCompleted += chunkRounds;
                 record.durationMs = this.now() - record.startedAt;
+                this.jobService?.progress(record.id, {stage: "simulation", unit: "rounds", current: record.roundsCompleted, total: record.rounds});
                 roundsRemaining -= chunkRounds;
                 if (roundsRemaining > 0) {
                     await this.yieldToEventLoop();
@@ -636,5 +652,18 @@ export class StudioSimulationService {
         record.durationMs = this.now() - record.startedAt;
         record.completedAt = record.startedAt + record.durationMs;
         this.repository.save(record);
+        if (record.status === "completed") {
+            this.jobService?.complete(record.id, {summary: "Simulation completed.", detail: {rounds: record.roundsCompleted, reportAvailable: record.report !== undefined}});
+        } else if (record.status === "cancelled") {
+            this.jobService?.cancelled(record.id, {summary: "Simulation cancelled after the last completed round.", detail: {rounds: record.roundsCompleted}}, {action: "retry", reason: "Run the simulation again with the captured parameters."});
+        } else if (record.status === "failed") {
+            this.jobService?.fail(record.id, record.error ?? "Simulation failed.", {action: "retry", reason: "Correct the reported problem and run the simulation again."});
+        }
+    }
+
+    private markRunning(record: StudioSimulationJobRecord): void {
+        record.status = "running";
+        this.jobService?.markRunning(record.id);
+        this.jobService?.progress(record.id, {stage: "preparing", unit: "rounds", current: record.roundsCompleted, total: record.rounds});
     }
 }

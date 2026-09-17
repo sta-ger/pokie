@@ -1,0 +1,50 @@
+import {useCallback, useEffect, useRef, useState} from "react";
+import {getProjectJob, listProjectJobs, type FetchLike} from "../api/apiClient.js";
+import type {StudioJobView} from "../api/types.js";
+
+const active = (job: StudioJobView): boolean => job.status === "queued" || job.status === "running" || job.status === "cancelling";
+
+/**
+ * Discovers jobs from the server on every mount. `generation` is supplied by
+ * the dashboard's project transition owner: both it and projectId are checked
+ * before committing list or poll responses, so an old project cannot leak into
+ * a new dashboard while a fetch is in flight.
+ */
+export function useProjectJobs(fetchImpl: FetchLike, projectId: string | undefined, generation: number) {
+    const [jobs, setJobs] = useState<StudioJobView[]>([]);
+    const current = useRef({projectId, generation});
+
+    useEffect(() => {
+        current.current = {projectId, generation};
+    }, [generation, projectId]);
+
+    const refresh = useCallback(async () => {
+        const identity = {projectId, generation};
+        if (identity.projectId === undefined) {
+            setJobs([]);
+            return;
+        }
+        const discovered = await listProjectJobs(fetchImpl);
+        if (current.current.projectId === identity.projectId && current.current.generation === identity.generation) setJobs(discovered);
+    }, [fetchImpl, generation, projectId]);
+
+    useEffect(() => {
+        refresh().catch(() => {
+            if (current.current.projectId === projectId && current.current.generation === generation) setJobs([]);
+        });
+    }, [generation, projectId, refresh]);
+
+    useEffect(() => {
+        if (!jobs.some(active) || projectId === undefined) return undefined;
+        const identity = {projectId, generation};
+        const timer = window.setTimeout(() => {
+            Promise.all(jobs.filter(active).map((job) => getProjectJob(fetchImpl, job.id))).then((updates) => {
+                if (current.current.projectId !== identity.projectId || current.current.generation !== identity.generation) return;
+                setJobs((previous) => previous.map((job) => updates.find((update) => update.id === job.id) ?? job));
+            }).catch(() => undefined);
+        }, 500);
+        return () => window.clearTimeout(timer);
+    }, [fetchImpl, generation, jobs, projectId]);
+
+    return {jobs, refresh};
+}

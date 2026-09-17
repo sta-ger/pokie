@@ -53,10 +53,30 @@ import type {
     StudioSimulationJobView,
     StudioSimulationReportDetail,
     StudioSimulationReportListEntry,
+    StudioJobView,
     StudioStakeEngineExportModeInput,
     StudioStakeEngineExportValidateView,
     StudioStakeEngineExportView,
 } from "./types";
+
+export async function listProjectJobs(fetchImpl: FetchLike): Promise<StudioJobView[]> {
+    const response = await fetchImpl("/api/project/jobs", {cache: "no-store"});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to list Studio jobs"));
+    const body = await response.json() as {jobs?: unknown};
+    return Array.isArray(body.jobs) ? body.jobs as StudioJobView[] : [];
+}
+
+export async function getProjectJob(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioJobView> {
+    const response = await fetchImpl(`/api/project/jobs/${encodeURIComponent(id)}`, {cache: "no-store", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to load Studio job"));
+    return await response.json() as StudioJobView;
+}
+
+export async function cancelProjectJob(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioJobView> {
+    const response = await fetchImpl(`/api/project/jobs/${encodeURIComponent(id)}/cancel`, {method: "POST", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to cancel Studio job"));
+    return await response.json() as StudioJobView;
+}
 
 // Same minimal Fetch subset as cli/client/apiClient.ts's FetchLike — kept structurally compatible
 // with the real global `fetch` so tests can inject a trivial fake instead of needing jsdom/network.

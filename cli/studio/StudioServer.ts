@@ -127,6 +127,10 @@ import {validateStakeEngineExportRequest, StakeEngineExportRequestInput} from ".
 import {validateStakeEngineExportValidateRequest, StakeEngineExportValidateRequestInput} from "./stakeengine/validateStakeEngineExportValidateRequest.js";
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioServerHandling} from "./StudioServerHandling.js";
+import {FileStudioJobRepository} from "./jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "./jobs/StudioJobService.js";
+import type {StudioJobView} from "./jobs/StudioJobView.js";
+import {PokiePathResolver} from "../paths/PokiePathResolver.js";
 
 function describeIncompleteOutcomeSourceProvenance(recorded: unknown): string | undefined {
     if (typeof recorded !== "object" || recorded === null) {
@@ -287,6 +291,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly fairnessService: StudioFairnessService;
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
     private readonly artifactBuildService: StudioArtifactBuildService;
+    private readonly jobService: StudioJobService;
     // The persistent Studio project registry -- see StudioServerOptions.projectRegistrationService's own
     // doc comment for the default's FileStudioProjectRegistry-vs-app-data-unresolved fallback story.
     private readonly projectRegistrationService: StudioProjectRegistrationService;
@@ -307,6 +312,11 @@ export class StudioServer implements StudioServerHandling {
     constructor(options: StudioServerOptions) {
         this.host = options.host ?? DEFAULT_HOST;
         this.port = options.port ?? DEFAULT_PORT;
+        const jobDirectory = path.join(
+            new PokiePathResolver().resolveAppDataDirectory() ?? path.join(process.cwd(), ".pokie"),
+            "studio-jobs",
+        );
+        this.jobService = options.jobService ?? new StudioJobService(new FileStudioJobRepository(jobDirectory));
         this.configuredTrustedOrigins = new Set((options.trustedOrigins ?? []).map((origin) => this.normalizeTrustedOrigin(origin)));
         this.pokieVersion = options.pokieVersion;
         this.studioRoot = path.resolve(options.studioRoot);
@@ -351,6 +361,7 @@ export class StudioServer implements StudioServerHandling {
                 (record) => this.recordOutcomeSourceSimulation(record),
                 this.pokieVersion,
             );
+        this.simulationService.attachJobService(this.jobService);
         this.replayService =
             options.replayService ??
             // Legacy construction shape: new StudioReplayExecutionService(undefined, loadCurrentProjectGame)
@@ -528,6 +539,46 @@ export class StudioServer implements StudioServerHandling {
         this.replayService.cancelActiveForProject(this.currentContext.projectRoot);
         this.artifactBuildService.cancelActiveForProject(this.currentContext.projectRoot);
         await this.outcomeLibraryGenerateJobService.cancelActiveForProject(this.currentContext.projectRoot);
+        for (const job of this.activeCommonJobs()) this.jobService.cancel(this.currentContext.projectRoot, job.id);
+    }
+
+    private activeCommonJobs(): readonly StudioJobView[] {
+        return this.currentContext.mode === "project"
+            ? this.jobService.list(this.currentContext.projectRoot).filter((job) => job.status === "queued" || job.status === "running" || job.status === "cancelling")
+            : [];
+    }
+
+    private handleListJobs(res: ServerResponse): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        this.sendJson(res, 200, {jobs: this.jobService.list(this.currentContext.projectRoot)});
+    }
+
+    private handleCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | undefined): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        if (action === undefined && method === "GET") {
+            const job = this.jobService.get(this.currentContext.projectRoot, id);
+            this.sendJson(res, job === undefined ? 404 : 200, job ?? {error: "Studio job not found."});
+            return;
+        }
+        if (action === "cancel" && method === "POST") {
+            const job = this.jobService.cancel(this.currentContext.projectRoot, id);
+            if (job?.operation === "simulation") this.simulationService.cancelForProject(this.currentContext.projectRoot, id);
+            this.sendJson(res, job === undefined ? 404 : 202, job ?? {error: "Studio job not found."});
+            return;
+        }
+        if (action === "recover" && method === "POST") {
+            const job = this.jobService.get(this.currentContext.projectRoot, id);
+            if (job === undefined) this.sendJson(res, 404, {error: "Studio job not found."});
+            else this.sendJson(res, 409, {status: "recovery-required", job, error: job.recovery?.reason ?? "This operation must be started again from its original action."});
+            return;
+        }
+        this.sendJson(res, 405, {error: "Method not allowed."});
     }
 
     // Every field is a primitive already safe to expose — no stack traces, env vars, tokens, or service
@@ -758,6 +809,12 @@ export class StudioServer implements StudioServerHandling {
             // Simulation/Replay jobs for the project being left are cancelled too — see
             // cancelActiveJobsForOldProject()'s own doc comment for why this can't just rely on their
             // existing projectRoot scoping alone.
+            const confirmation = url.searchParams.get("confirmActiveJobs") === "true";
+            const activeJobs = this.activeCommonJobs();
+            if (activeJobs.length > 0 && !confirmation) {
+                this.sendJson(res, 409, {status: "active-jobs", jobs: activeJobs, error: "Confirm leaving this project before cancelling its active operations."});
+                return;
+            }
             this.cancelRuntimePreparation();
             this.playService.reset();
             // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
@@ -772,6 +829,16 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "GET" && url.pathname === "/api/project/context") {
             this.sendJson(res, 200, this.projectDashboard ?? {status: "empty"});
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/jobs") {
+            this.handleListJobs(res);
+            return;
+        }
+        const commonJobRoute = (/^\/api\/project\/jobs\/([A-Za-z0-9_-]+)(?:\/(cancel|recover))?$/).exec(url.pathname);
+        if (commonJobRoute !== null) {
+            this.handleCommonJob(method, res, commonJobRoute[1], commonJobRoute[2] as "cancel" | "recover" | undefined);
             return;
         }
 
