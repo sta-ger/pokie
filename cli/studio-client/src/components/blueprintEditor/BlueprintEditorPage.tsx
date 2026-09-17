@@ -108,6 +108,7 @@ export function BlueprintEditorPage({
     guided = false,
     initialPath,
     initialParSheetPath,
+    recoverParImport = false,
     recoveryRequest,
     onDirtyChange,
     onManagedProjectSaved,
@@ -116,6 +117,8 @@ export function BlueprintEditorPage({
     guided?: boolean;
     initialPath?: string;
     initialParSheetPath?: string;
+    /** A retained job restores its path for inspection but must not re-run Import automatically. */
+    recoverParImport?: boolean;
     recoveryRequest?: Readonly<Record<string, unknown>>;
     onDirtyChange?: (dirty: boolean) => void;
     onManagedProjectSaved?: (registeredProject?: StudioProjectRegistryView) => void;
@@ -1253,7 +1256,8 @@ export function BlueprintEditorPage({
                     blueprintPath={blueprintPath}
                     revision={revision}
                     onApplyImportedBlueprint={handleApplyImportedBlueprint}
-                    initialImportPath={initialParSheetPath}
+                    initialImportPath={recoverParImport ? undefined : initialParSheetPath}
+                    initialImportFieldPath={recoverParImport ? initialParSheetPath : undefined}
                     initialExportPath={typeof recoveryRequest?.destinationPath === "string" && recoveryRequest.blueprint !== undefined ? recoveryRequest.destinationPath : undefined}
                 />
             </Collapse>

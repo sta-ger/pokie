@@ -147,6 +147,71 @@ describe("StudioJobService executor bridge routes", () => {
         expect(failedJobs.signal("failed-job")).toBeUndefined();
     });
 
+    it("locks a certification output resource while exact retries reattach without a second build", async () => {
+        let release: ((value: unknown) => void) | undefined;
+        let started: (() => void) | undefined;
+        const running = new Promise<void>((resolve) => {
+            started = resolve;
+        });
+        const build = jest.fn(() => new Promise<unknown>((resolve) => {
+            release = resolve;
+            started?.();
+        }));
+        const baseUrl = await start({build} as unknown as StudioCertificationService);
+        const request = {bundleDir: "bundle-a", outDir: "shared-certification", modes: [{modeName: "base", seed: "seed", sampleCount: 1}]};
+
+        const first = post(`${baseUrl}/api/project/certification/build`, request);
+        await running;
+        await expect(post(`${baseUrl}/api/project/certification/build`, request)).resolves.toMatchObject({
+            status: 200,
+            body: {status: "error", activeJobId: "bridge-job", reattached: true},
+        });
+        await expect(post(`${baseUrl}/api/project/certification/build`, {...request, bundleDir: "bundle-b"})).resolves.toMatchObject({
+            status: 409,
+            body: {activeJobId: "bridge-job", recovery: {action: "retry"}},
+        });
+        expect(build).toHaveBeenCalledTimes(1);
+        expect(jobs.list(projectRoot)).toMatchObject([{conflictKey: `certification-output:${path.join(projectRoot, "shared-certification")}`}]);
+
+        release?.({status: "ok", manifest: {generatedBy: "test"}, files: [], warnings: []});
+        await expect(first).resolves.toMatchObject({status: 200, body: {status: "ok"}});
+    });
+
+    it("locks a deployment delivery resource while exact retries reattach without a second delivery", async () => {
+        let release: ((value: unknown) => void) | undefined;
+        let started: (() => void) | undefined;
+        const running = new Promise<void>((resolve) => {
+            started = resolve;
+        });
+        const plan = {status: "available", source: {kind: "outcomeLibrary", capabilities: []}, target: {kind: "outcomeLibrary", capabilities: []}, steps: []};
+        const run = jest.fn(() => new Promise<unknown>((resolve) => {
+            release = resolve;
+            started?.();
+        }));
+        const baseUrl = await start(
+            {} as StudioCertificationService,
+            jobs,
+            {deploymentService: {run} as unknown as StudioDeploymentService},
+        );
+        const request = {targetId: "shared-delivery", publish: false};
+
+        const first = post(`${baseUrl}/api/project/deployment/runs`, request);
+        await running;
+        await expect(post(`${baseUrl}/api/project/deployment/runs`, request)).resolves.toMatchObject({
+            status: 200,
+            body: {status: "unavailable", activeJobId: "bridge-job", reattached: true},
+        });
+        await expect(post(`${baseUrl}/api/project/deployment/runs`, {...request, publish: true})).resolves.toMatchObject({
+            status: 409,
+            body: {activeJobId: "bridge-job", recovery: {action: "retry"}},
+        });
+        expect(run).toHaveBeenCalledTimes(1);
+        expect(jobs.list(projectRoot)).toMatchObject([{conflictKey: "deployment-delivery:shared-delivery"}]);
+
+        release?.({status: "ok", plan, view: {plan, delivery: {delivered: false}}});
+        await expect(first).resolves.toMatchObject({status: 200, body: {plan, delivery: {delivered: false}}});
+    });
+
     it("preserves a deployment executor's settled delivery outcome when common-job cancellation aborts it", async () => {
         let receivedSignal: AbortSignal | undefined;
         let started: (() => void) | undefined;

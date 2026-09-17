@@ -92,6 +92,38 @@ function stepperStep(label: string, description: string): RegExp {
 }
 
 describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
+    it("restores a retained simulation request and runs it only after an explicit submission", async () => {
+        const user = userEvent.setup();
+        const recoveryRequest = {rounds: 4321, seed: "recovered-simulation-seed", workers: 2};
+        const runCalls: unknown[] = [];
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "retained-simulation", projectId: "/games/a", operation: "simulation", request: recoveryRequest,
+                conflictKey: "simulation:/games/a", status: "recovery-required", createdAt: 1,
+                recovery: {action: "retry", reason: "Run the retained simulation again."},
+            }]}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/simulations": (call: FakeCall) => {
+                runCalls.push(JSON.parse(call.init?.body ?? "{}"));
+                return {ok: true, status: 201, body: jobFor("new-simulation", {status: "queued", roundsCompleted: 0, ...recoveryRequest})};
+            },
+            "/api/project/simulations/new-simulation": () => ({ok: true, status: 200, body: jobFor("new-simulation", {status: "cancelled", roundsCompleted: 0, ...recoveryRequest})}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        await screen.findByText("simulation: recovery-required");
+        await user.click(screen.getByRole("button", {name: "Retry"}));
+        expect(await screen.findByLabelText(/^Rounds/)).toHaveValue(4321);
+        expect(screen.getByLabelText("Seed")).toHaveValue("recovered-simulation-seed");
+        expect(screen.getByLabelText("Workers")).toHaveValue(2);
+        expect(runCalls).toEqual([]);
+
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        await waitFor(() => expect(runCalls).toEqual([recoveryRequest]));
+    });
+
     it("keeps a 150-run library to a 50-row render window while every run remains reachable", async () => {
         const user = userEvent.setup();
         let openedLastRun = false;

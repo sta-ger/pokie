@@ -30,6 +30,27 @@ async function goToPlayTab(user: ReturnType<typeof userEvent.setup>): Promise<vo
 }
 
 describe("ProjectDashboardPage - Play", () => {
+    it("starts a fresh Play session only after the retained scenario recovery action is explicitly chosen", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "retained-play-search", projectId: "/games/a", operation: "play-find-any-win", request: {sessionId: "expired-session"},
+                conflictKey: "play:/games/a:expired-session", status: "recovery-required", createdAt: 1,
+                recovery: {action: "new-session", reason: "Scenario search needs a new Play session."},
+            }]}}),
+            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor({sessionId: "recovered-session"})}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        await screen.findByText("play-find-any-win: recovery-required");
+        expect(calls.filter((call) => call.url === "/api/project/play/session")).toHaveLength(0);
+        await user.click(screen.getByRole("button", {name: "Start new session"}));
+        await screen.findByRole("button", {name: "Spin"});
+        expect(calls.filter((call) => call.url === "/api/project/play/session")).toHaveLength(1);
+    });
+
     it("creates a real session directly through Studio's own API -- never the Runtime tab's server-start route -- with no host/port/server URL shown", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({

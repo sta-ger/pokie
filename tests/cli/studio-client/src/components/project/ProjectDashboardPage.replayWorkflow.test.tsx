@@ -114,6 +114,38 @@ function dimensionRow(label: string): HTMLElement {
 }
 
 describe("ProjectDashboardPage - Replay & Debug workflow", () => {
+    it("restores a retained replay request and reproduces it only after the user explicitly loads and runs it", async () => {
+        const user = userEvent.setup();
+        const recoveryRequest = {round: 4, seed: "recovered-replay-seed"};
+        const replayCalls: unknown[] = [];
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "retained-replay", projectId: "/games/a", operation: "replay", request: recoveryRequest,
+                conflictKey: "replay:/games/a", status: "recovery-required", createdAt: 1,
+                recovery: {action: "retry", reason: "Run the retained replay again."},
+            }]}}),
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method !== "POST") return {ok: true, status: 200, body: []};
+                replayCalls.push(JSON.parse(call.init.body ?? "{}"));
+                return {ok: true, status: 201, body: jobFor("new-replay", {status: "queued", completedRounds: 0, ...recoveryRequest})};
+            },
+            "/api/project/replays/new-replay": () => ({ok: true, status: 200, body: jobFor("new-replay", {status: "cancelled", completedRounds: 0, ...recoveryRequest})}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        await screen.findByText("replay: recovery-required");
+        await user.click(screen.getByRole("button", {name: "Retry"}));
+        expect(await screen.findByLabelText(/^Target round number in a new replay session/)).toHaveValue(4);
+        expect(screen.getByLabelText("Seed (optional)")).toHaveValue("recovered-replay-seed");
+        expect(replayCalls).toEqual([]);
+
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
+        await waitFor(() => expect(replayCalls).toEqual([recoveryRequest]));
+    });
+
     it("keeps a 250-replay history to a 50-row render window while every replay remains inspectable", async () => {
         const user = userEvent.setup();
         let inspectedLastReplay = false;

@@ -74,7 +74,7 @@ export function HomePage() {
         }
     }, [navigate, tab]);
 
-    const location = useLocation() as {state?: {initialBlueprintPath?: string; initialParSheetPath?: string; recoveryRequest?: Readonly<Record<string, unknown>>}};
+    const location = useLocation() as {state?: {initialBlueprintPath?: string; initialParSheetPath?: string; recoverParImport?: boolean; recoveryRequest?: Readonly<Record<string, unknown>>}};
     const initialBlueprintPath = location.state?.initialBlueprintPath;
     const initialParSheetPath = location.state?.initialParSheetPath;
 
@@ -107,7 +107,7 @@ export function HomePage() {
             return;
         }
         if (job.operation === "design-par-import" && typeof job.request.path === "string") {
-            navigate("/home/design", {state: {initialParSheetPath: job.request.path}});
+            navigate("/home/design", {state: {initialParSheetPath: job.request.path, recoverParImport: true, recoveryRequest: job.request}});
             return;
         }
         if ((job.operation === "design-build" || job.operation === "design-par-export") && typeof job.request.sourcePath === "string") {
@@ -141,6 +141,7 @@ export function HomePage() {
                             guided
                             initialPath={initialBlueprintPath}
                             initialParSheetPath={initialParSheetPath}
+                            recoverParImport={location.state?.recoverParImport}
                             recoveryRequest={location.state?.recoveryRequest}
                             onDirtyChange={setIsDesignDirty}
                             isVisible={activeTab === "design"}

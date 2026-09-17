@@ -84,6 +84,7 @@ export function ParSheetImportExportPanel({
     revision,
     onApplyImportedBlueprint,
     initialImportPath,
+    initialImportFieldPath,
     initialExportPath,
 }: {
     blueprint: Record<string, unknown>;
@@ -98,6 +99,8 @@ export function ParSheetImportExportPanel({
     // gives a regular blueprint file, so the user lands straight on Diagnose & map instead of having to
     // re-paste the path they already gave Import Project.
     initialImportPath?: string;
+    /** Restores a retained import path without invoking a second import until the user submits it. */
+    initialImportFieldPath?: string;
     /** Restores a retained export destination without publishing it automatically. */
     initialExportPath?: string;
 }) {
@@ -193,6 +196,20 @@ export function ParSheetImportExportPanel({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialImportPath]);
+
+    // Recovery is deliberately different from Home's fresh "Import Project" shortcut: a retained
+    // write must show its captured input but never silently execute again.  Resetting the old import
+    // result also prevents a prior tab visit from making this new request look already submitted.
+    const restoredImportPathRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        if (initialImportFieldPath === undefined || initialImportFieldPath === restoredImportPathRef.current) return;
+        restoredImportPathRef.current = initialImportFieldPath;
+        setImportPath(initialImportFieldPath);
+        invalidateImport();
+        setActiveStep(0);
+        // This recovery path only responds to a new retained source path.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialImportFieldPath]);
 
     const importResult = importView.status === "ok" ? importView : undefined;
     const importOutcome = importResult ? describeParSheetImportOutcome(importResult) : undefined;
