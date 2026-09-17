@@ -96,8 +96,11 @@ describe("StudioCertificationService", () => {
         it("builds a certification bundle from a real source bundle and returns its manifest/files", async () => {
             await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"), ["base"]);
             const service = new StudioCertificationService(CERTIFICATION_TEST_POKIE_VERSION);
+            const progress: Array<{stage: string; unit: string; current: number | "indeterminate"; total: number | "indeterminate"; message: string}> = [];
 
-            const view = await service.build(tmpRoot, "bundle", [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}], "certification");
+            const view = await service.build(tmpRoot, "bundle", [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}], "certification", {
+                onProgress: (stage, unit, current, total, message) => progress.push({stage, unit, current, total, message}),
+            });
 
             expect(view.status).toBe("ok");
             if (view.status !== "ok") throw new Error("expected ok");
@@ -107,6 +110,11 @@ describe("StudioCertificationService", () => {
             expect(view.manifest.evidenceContentHash).toMatch(/^sha256:/);
             expect(view.files.length).toBeGreaterThan(0);
             expect(fs.existsSync(path.join(tmpRoot, "certification", "manifest.json"))).toBe(true);
+            expect(progress).toEqual(expect.arrayContaining([
+                expect.objectContaining({stage: "Resolving inputs", unit: "build stages", current: 0, total: 3}),
+                expect.objectContaining({stage: "Sampling evidence", unit: "samples", current: 0, total: 5}),
+                expect.objectContaining({stage: "Validating publication", unit: "build stages", current: 3, total: 3}),
+            ]));
         });
 
         it("returns a failure view without deleting a late caller claim, then builds after retry", async () => {

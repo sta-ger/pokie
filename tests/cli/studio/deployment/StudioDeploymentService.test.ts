@@ -184,10 +184,17 @@ describe("StudioDeploymentService", () => {
 
     it("returns target-not-found for an unregistered targetId", async () => {
         const service = new StudioDeploymentService(undefined, () => stubTarget());
+        const progress: Array<{stage: string; unit: string; current: number | "indeterminate"; total: number | "indeterminate"; message: string}> = [];
 
-        const result = await service.run("/project", runRequest({targetId: "does-not-exist"}));
+        const result = await service.run("/project", runRequest({targetId: "does-not-exist"}), {
+            onProgress: (stage, unit, current, total, message) => progress.push({stage, unit, current, total, message}),
+        });
 
         expect(result).toMatchObject({status: "target-not-found", plan: {status: "unavailable", source: {canonicalLocation: "/project/base.json"}, diagnostic: {code: "unrecognized-source"}}});
+        expect(progress).toEqual([
+            expect.objectContaining({stage: "Planning deployment", unit: "pipeline stages", current: 0, total: 5}),
+            expect.objectContaining({stage: "Validating deployment", unit: "pipeline stages", current: 1, total: 5}),
+        ]);
     });
 
     it("resolves selector-less Build/Export runs on the server before preparing their planner input", async () => {

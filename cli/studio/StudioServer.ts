@@ -2468,7 +2468,10 @@ export class StudioServer implements StudioServerHandling {
                     body: {...this.deploymentPlannerTerminalView("load-error", "Deployment is already in progress for this exact request.", undefined, validated), activeJobId: job.id, reattached: true},
                 }),
             },
-            ({signal}) => this.deploymentService.run(projectRoot, validated, signal),
+            ({signal, progress}) => this.deploymentService.run(projectRoot, validated, {
+                signal,
+                onProgress: (stage, unit, current, total, message) => progress({stage, unit, current, total, message}),
+            }),
             (result, cancelled) => {
                 // The deployment executor is the authority for a cancellation
                 // that reached one of its delivery boundaries.  Its result can
@@ -2927,7 +2930,10 @@ export class StudioServer implements StudioServerHandling {
                 initialProgress: {stage: "Validating evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Checking certification evidence and provenance."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "load-error", error: "Certification validation is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
-            ({signal}) => this.certificationService.validateSourceBundle(projectRoot, validated.bundleDir, signal),
+            ({signal, progress}) => this.certificationService.validateSourceBundle(projectRoot, validated.bundleDir, {
+                signal,
+                onProgress: (stage, unit, current, total, message) => progress({stage, unit, current, total, message}),
+            }),
             (result, cancelled) => {
                 if (cancelled) return {status: "cancelled", result: {summary: "Certification source validation cancelled after executor cleanup."}, recovery: {action: "retry", reason: "Retry the captured validation."}};
                 if (result.status === "ok") return {status: "completed", result: {summary: "Certification source validation completed.", outputs: [{path: validated.bundleDir, label: "Validated source bundle"}], provenance: {projectRoot, bundleDir: validated.bundleDir}}};
@@ -2968,7 +2974,10 @@ export class StudioServer implements StudioServerHandling {
                 initialProgress: {stage: "Building evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Writing certification evidence to a staging destination."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", errors: [], warnings: [], activeJobId: job.id, reattached: true}}),
             },
-            ({signal}) => this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, signal),
+            ({signal, progress}) => this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, {
+                signal,
+                onProgress: (stage, unit, current, total, message) => progress({stage, unit, current, total, message}),
+            }),
             (result, cancelled) => {
                 if (cancelled) return {status: "cancelled", result: {summary: "Certification evidence build cancelled after staging cleanup."}, recovery};
                 if (result.status === "ok") return {status: "completed", result: {summary: "Certification evidence build completed.", outputs: result.files.map((file) => ({path: file, label: "Certification evidence"})), provenance: {bundleDir: validated.bundleDir, manifest: result.manifest}, detail: {outDir: validated.outDir}}};
