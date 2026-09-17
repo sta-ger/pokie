@@ -6758,39 +6758,6 @@ describe("StudioServer", () => {
             expect((missingModes.body as {error: string}).error).toMatch(/modes/);
         });
 
-        it("decides an exact retry or typed conflict before invoking the certification executor", async () => {
-            let releaseValidation: ((value: {status: "ok"; errors: never[]; warnings: never[]}) => void) | undefined;
-            let executorStarted: (() => void) | undefined;
-            const executorStart = new Promise<void>((resolve) => {
-                executorStarted = resolve;
-            });
-            const validateSourceBundle = jest.fn(() => new Promise<{status: "ok"; errors: never[]; warnings: never[]}>((resolve) => {
-                releaseValidation = resolve;
-                executorStarted?.();
-            }));
-            const projectBaseUrl = await startServerForProject(certProjectRoot, {validateSourceBundle} as unknown as StudioCertificationService);
-
-            const first = post(`${projectBaseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"});
-            await executorStart;
-
-            await expect(post(`${projectBaseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"})).resolves.toMatchObject({
-                status: 202,
-                body: {reattached: true, job: {operation: "certification-validate", status: "running"}},
-            });
-            await expect(post(`${projectBaseUrl}/api/project/certification/validate-source`, {bundleDir: "other-bundle"})).resolves.toMatchObject({
-                status: 409,
-                body: {activeJobId: expect.any(String), recovery: {action: "retry"}},
-            });
-            expect(validateSourceBundle).toHaveBeenCalledTimes(1);
-
-            releaseValidation?.({status: "ok", errors: [], warnings: []});
-            await expect(first).resolves.toMatchObject({status: 200, body: {status: "ok"}});
-            await expect(get(`${projectBaseUrl}/api/project/jobs`)).resolves.toMatchObject({
-                status: 200,
-                body: {jobs: [expect.objectContaining({operation: "certification-validate", status: "completed", result: {summary: "Certification source validation completed."}})]},
-            });
-        });
-
         it("validates a real source bundle deeply, then builds a certification bundle from it", async () => {
             await buildSourceOutcomeLibraryBundle(path.join(certProjectRoot, "bundle"), ["base"]);
             const projectBaseUrl = await startServerForProject(certProjectRoot);

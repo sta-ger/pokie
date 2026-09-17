@@ -2754,7 +2754,11 @@ export class StudioServer implements StudioServerHandling {
             res,
             {
                 projectId: projectRoot, operation: "certification-validate", request: {bundleDir: validated.bundleDir},
-                conflictKey: `certification-validate:${projectRoot}:${validated.bundleDir}`,
+                // Deep validation has one project-scoped executor slot.  The
+                // request is still retained verbatim for exact reattachment,
+                // while a different source bundle is a typed conflict before
+                // another validator can allocate its own domain work.
+                conflictKey: `certification-validate:${projectRoot}`,
                 recoveryOnRestart: {action: "retry", reason: "Deep validation is not resumable after restart. Retry the captured validation."},
             },
             () => this.certificationService.validateSourceBundle(projectRoot, validated.bundleDir),

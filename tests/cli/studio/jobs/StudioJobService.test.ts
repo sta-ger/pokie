@@ -40,6 +40,36 @@ describe("StudioJobService", () => {
         expect(service.cancel("/project-a", "job-2")).toEqual(expect.objectContaining({status: "cancelled"}));
     });
 
+    it("owns queued, running, cancelling, and every executor terminal record", async () => {
+        let nextId = 0;
+        const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `job-lifecycle-${++nextId}`);
+        const input = {projectId: "/project-a", operation: "certification-build", request: {bundleDir: "bundle"}, conflictKey: "certification:/project-a"};
+
+        const queued = service.start(input);
+        if (queued.status !== "created") throw new Error("expected a queued Studio job");
+        expect(queued.job).toMatchObject({status: "queued"});
+        expect(service.markRunning(queued.job.id)).toMatchObject({status: "running"});
+        expect(service.cancel("/project-a", queued.job.id)).toMatchObject({status: "cancelling"});
+        expect(service.cancelled(queued.job.id, {summary: "executor cleanup completed"})).toMatchObject({status: "cancelled"});
+        expect(service.signal(queued.job.id)).toBeUndefined();
+
+        await expect(service.execute(
+            {...input, conflictKey: "certification:/project-a/completed"},
+            () => Promise.resolve("completed DTO"),
+            (value) => ({status: "completed", result: {summary: value}}),
+        )).resolves.toMatchObject({status: "executed", value: "completed DTO"});
+        expect(service.get("/project-a", "job-lifecycle-2")).toMatchObject({status: "completed", result: {summary: "completed DTO"}});
+        expect(service.signal("job-lifecycle-2")).toBeUndefined();
+
+        await expect(service.execute(
+            {...input, conflictKey: "certification:/project-a/failed"},
+            () => Promise.reject(new Error("executor exploded")),
+            () => ({status: "completed", result: {summary: "unreachable"}}),
+        )).rejects.toThrow("executor exploded");
+        expect(service.get("/project-a", "job-lifecycle-3")).toMatchObject({status: "failed", error: "executor exploded"});
+        expect(service.signal("job-lifecycle-3")).toBeUndefined();
+    });
+
     it("bridges exact reattachment before execution and persists cancellation only after cleanup", async () => {
         const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => "job-bridge");
         let release: (() => void) | undefined;
