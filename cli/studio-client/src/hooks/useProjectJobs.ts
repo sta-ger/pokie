@@ -30,7 +30,13 @@ export function useProjectJobs(fetchImpl: FetchLike, projectId: string | undefin
         }
         const discovered = await listProjectJobs(fetchImpl);
         if (current.current.projectId === identity.projectId && current.current.generation === identity.generation) {
-            setJobs(discovered.filter((job) => job.projectId === identity.projectId));
+            // The server has already scoped this response to its canonical
+            // project identity.  `projectId` here is the routed/display path,
+            // which may be a symlink alias of that identity; filtering the
+            // response against it would hide exactly the durable jobs that
+            // list/detail/cancel are intentionally able to share through an
+            // alias.  Generation still rejects a response from a prior route.
+            setJobs(discovered);
         }
     }, [fetchImpl, generation, projectId]);
 
@@ -57,7 +63,6 @@ export function useProjectJobs(fetchImpl: FetchLike, projectId: string | undefin
         if (identity.projectId === undefined) return;
         cancelProjectJob(fetchImpl, id).then((job) => {
             if (current.current.projectId !== identity.projectId || current.current.generation !== identity.generation) return;
-            if (job.projectId !== identity.projectId) return;
             setJobs((previous) => previous.map((existing) => existing.id === id ? job : existing));
         }).catch(() => undefined);
     }, [fetchImpl, generation, projectId]);
@@ -67,7 +72,6 @@ export function useProjectJobs(fetchImpl: FetchLike, projectId: string | undefin
         if (identity.projectId === undefined) return;
         recoverProjectJob(fetchImpl, id).then((job) => {
             if (current.current.projectId !== identity.projectId || current.current.generation !== identity.generation) return;
-            if (job.projectId !== identity.projectId) return;
             setJobs((previous) => previous.map((existing) => existing.id === id ? job : existing));
         }).catch(() => undefined);
     }, [fetchImpl, generation, projectId]);

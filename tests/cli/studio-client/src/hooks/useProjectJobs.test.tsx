@@ -20,6 +20,16 @@ describe("useProjectJobs", () => {
         await waitFor(() => expect(result.current.jobs).toEqual([expect.objectContaining({id: "job-a", status: "completed"})]));
     });
 
+    it("keeps the server-scoped canonical job when the routed project path is a symlink alias", async () => {
+        const canonicalProjectId = "/real/projects/game";
+        const fetchImpl: FetchLike = (url) => {
+            expect(url).toBe("/api/project/jobs");
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({jobs: [job("job-canonical", canonicalProjectId, "completed")]})});
+        };
+        const {result} = renderHook(() => useProjectJobs(fetchImpl, "/aliases/game", 1));
+        await waitFor(() => expect(result.current.jobs).toEqual([expect.objectContaining({id: "job-canonical", projectId: canonicalProjectId})]));
+    });
+
     it("rejects an old project's delayed list response after a genuine project change", async () => {
         let releaseFirst: (() => void) | undefined;
         const fetchImpl: FetchLike = () => new Promise((resolve) => {
