@@ -117,10 +117,10 @@ describe("StudioJobService executor bridge routes", () => {
         const executorStarted = new Promise<void>((resolve) => {
             buildStarted = resolve;
         });
-        const build = jest.fn((_project: string, _bundle: string, _modes: unknown, _out: string, signal?: AbortSignal) => new Promise<{status: "load-error"; error: string}>((resolve) => {
-            executorSignal = signal;
+        const build = jest.fn((_project: string, _bundle: string, _modes: unknown, _out: string, options?: {signal?: AbortSignal}) => new Promise<{status: "load-error"; error: string}>((resolve) => {
+            executorSignal = options?.signal;
             buildStarted?.();
-            signal?.addEventListener("abort", () => {
+            options?.signal?.addEventListener("abort", () => {
                 cleanupStarted?.();
                 resolve({status: "load-error", error: "cleanup completed"});
             }, {once: true});
@@ -154,10 +154,10 @@ describe("StudioJobService executor bridge routes", () => {
             started = resolve;
         });
         const plan = {status: "available", source: {kind: "outcomeLibrary", capabilities: []}, target: {kind: "outcomeLibrary", capabilities: []}, steps: []};
-        const run = jest.fn((_root: string, _request: unknown, signal?: AbortSignal) => new Promise<unknown>((resolve) => {
-            receivedSignal = signal;
+        const run = jest.fn((_root: string, _request: unknown, options?: {signal?: AbortSignal}) => new Promise<unknown>((resolve) => {
+            receivedSignal = options?.signal;
             started?.();
-            signal?.addEventListener("abort", () => resolve({
+            options?.signal?.addEventListener("abort", () => resolve({
                 status: "cancelled",
                 deliveryOutcome: "delivered",
                 plan,

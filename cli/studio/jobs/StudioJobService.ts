@@ -172,8 +172,16 @@ export class StudioJobService {
     public cancel(projectId: string, id: string): StudioJobView | undefined {
         const job = this.get(projectId, id);
         if (job === undefined || isStudioJobTerminal(job.status)) return job;
+        // Publish the request before notifying the executor. An AbortSignal
+        // listener may settle synchronously enough for its async continuation
+        // to persist a terminal record before this HTTP handler responds; in
+        // that case returning the terminal state falsely says cancellation was
+        // already complete, even though the caller has only just requested
+        // cleanup. The durable cancelling transition is therefore the visible
+        // hand-off boundary, and executor cleanup owns the terminal state.
+        const cancelling = this.transition(id, (current) => ({...current, status: "cancelling"}));
         this.executions.get(id)?.controller.abort();
-        return this.transition(id, (current) => ({...current, status: "cancelling"}));
+        return cancelling;
     }
 
     /**

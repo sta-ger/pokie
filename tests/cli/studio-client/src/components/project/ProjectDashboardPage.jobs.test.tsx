@@ -35,7 +35,11 @@ describe("ProjectDashboardPage durable jobs", () => {
 
         await user.click(screen.getByRole("button", {name: "Close project"}));
 
-        expect((await screen.findAllByText(/certification-evidence-build/)).length).toBeGreaterThan(1);
+        // The local warning identifies the active operation before any close
+        // request can be sent. The card is intentionally not part of this
+        // assertion: Mantine's alert title is an accessible label rather than
+        // a second rendered text node in every supported version.
+        expect(await screen.findByText(/active Studio operations \(certification-evidence-build\)/i)).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Confirm"}));
         expect(await screen.findByText(/Active operations: certification-evidence-build/)).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Confirm"}));

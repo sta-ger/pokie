@@ -260,11 +260,18 @@ async function waitForTerminal(service: StudioReplayExecutionService, projectRoo
 }
 
 async function waitFor(condition: () => boolean, message: string): Promise<void> {
-    for (let i = 0; i < 2000; i++) {
+    // Resolver preparation includes real XLSX I/O.  A fixed number of
+    // setImmediate turns is not a timeout: under parallel test contention it
+    // can be exhausted before that I/O gets a chance to settle. Keep yielding
+    // to the event loop, but bound the observable wait by elapsed time.
+    const deadline = Date.now() + 20_000;
+    for (;;) {
         if (condition()) return;
-        await flushMacrotask();
+        if (Date.now() >= deadline) throw new Error(message);
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 5);
+        });
     }
-    throw new Error(message);
 }
 
 // A controllable substitute for the real setImmediate-based yieldToEventLoop: each call queues its own

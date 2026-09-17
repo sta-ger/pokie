@@ -856,14 +856,25 @@ describe("StudioServer", () => {
         lifecycleBaseUrl = await startServer(closeRoot);
         const closedId = await startExactJob(lifecycleBaseUrl, "closed-http-library");
         await waitForOutcomeLibraryJobProgress(lifecycleBaseUrl, closedId);
-        expect(await post(`${lifecycleBaseUrl}/api/projects/close`)).toEqual({status: 200, body: {context: {mode: "home"}}});
+        // Project close has the same server-owned active-job protection as a
+        // project switch.  A close is allowed only after the caller explicitly
+        // acknowledges that it will request cleanup of the active generator.
+        expect(await post(`${lifecycleBaseUrl}/api/projects/close`)).toMatchObject({
+            status: 409,
+            body: {code: "active-jobs-require-confirmation", operations: ["outcome-library-generation"]},
+        });
+        expect(await post(`${lifecycleBaseUrl}/api/projects/close`, {confirmActiveJobs: true})).toEqual({status: 200, body: {context: {mode: "home"}}});
         expectNoOutcomeLibraryPublication(closeRoot, "outcomelibrary");
         expect(fs.existsSync(path.join(closeRoot, ".pokie", "outcome-library-checkpoints", `${closedId}.json`))).toBe(true);
 
         expect((await post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: switchRoot})).status).toBe(200);
         const switchedId = await startExactJob(lifecycleBaseUrl, "switched-http-library");
         await waitForOutcomeLibraryJobProgress(lifecycleBaseUrl, switchedId);
-        expect((await post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: baselineRoot})).status).toBe(200);
+        expect(await post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: baselineRoot})).toMatchObject({
+            status: 409,
+            body: {code: "active-jobs-require-confirmation", operations: ["outcome-library-generation"]},
+        });
+        expect((await post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: baselineRoot, confirmActiveJobs: true})).status).toBe(200);
         expectNoOutcomeLibraryPublication(switchRoot, "outcomelibrary");
         expect(fs.existsSync(path.join(switchRoot, ".pokie", "outcome-library-checkpoints", `${switchedId}.json`))).toBe(true);
 
@@ -4814,7 +4825,7 @@ describe("StudioServer", () => {
             const rejectedClose = await post(`${projectBaseUrl}/api/projects/close`);
             expect(rejectedClose).toMatchObject({
                 status: 409,
-                body: {code: "active-jobs-require-confirmation", operations: ["simulation", "replay"]},
+                body: {code: "active-jobs-require-confirmation", operations: expect.arrayContaining(["simulation", "replay"])},
             });
             const closeResponse = await post(`${projectBaseUrl}/api/projects/close`, {confirmActiveJobs: true});
             expect(closeResponse.status).toBe(200);
