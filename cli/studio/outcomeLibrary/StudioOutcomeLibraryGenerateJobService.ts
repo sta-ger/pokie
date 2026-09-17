@@ -10,6 +10,7 @@ import {
     type StudioOutcomeLibraryPreflightBinding,
 } from "./StudioOutcomeLibraryGenerateService.js";
 import type {ValidatedOutcomeLibraryGenerateRequest} from "./validateOutcomeLibraryGenerateRequest.js";
+import {StudioJobService} from "../jobs/StudioJobService.js";
 
 export type StudioOutcomeLibraryCheckpointView = {
     readonly id: string;
@@ -81,9 +82,14 @@ export class StudioOutcomeLibraryGenerateJobService {
     /** One atomic bundle writer owns a resolved destination at a time. */
     private readonly activeDestinationOwners = new Map<string, string>();
     private readonly generateService: StudioOutcomeLibraryGenerateService;
+    private jobService: StudioJobService | undefined;
 
     constructor(generateService: StudioOutcomeLibraryGenerateService) {
         this.generateService = generateService;
+    }
+
+    public attachJobService(jobService: StudioJobService): void {
+        this.jobService = jobService;
     }
 
     public start(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest, resumedId?: string): StudioOutcomeLibraryGenerateJobView {
@@ -105,6 +111,13 @@ export class StudioOutcomeLibraryGenerateJobService {
         };
         this.jobs.set(record.id, record);
         this.activeDestinationOwners.set(destinationKey, record.id);
+        this.jobService?.adopt(record.id, {
+            projectId: projectRoot,
+            operation: "outcome-library-generation",
+            request: {generation: request.generation, ...(request.outDir === undefined ? {} : {outDir: request.outDir}), ...(request.sample === undefined ? {} : {sampleSize: request.sample.sampleSize.toString(), seed: request.sample.seed})},
+            conflictKey: `outcome-library:${destinationKey}`,
+            recoveryOnRestart: {action: "resume", reason: "Resume is available only after Studio validates this exact enumeration checkpoint against its original source, configuration, and destination."},
+        });
         record.completion = new Promise<void>((resolve) => {
             queueMicrotask(resolve);
         }).then(() => this.run(record)).catch((error: unknown) => {
@@ -119,6 +132,7 @@ export class StudioOutcomeLibraryGenerateJobService {
                     plan: createUnresolvedRuntimePlan(record.projectRoot, "outcomeLibrary"),
                 },
             });
+            this.jobService?.fail(record.id, error instanceof Error ? error.message : String(error), {action: "retry", reason: "Correct the reported generation problem and run it again."});
         }).finally(() => {
             // Generation owns staging/partial-output cleanup and only resolves once that is
             // complete. Release the destination after that terminal boundary, never on abort.
@@ -231,17 +245,22 @@ export class StudioOutcomeLibraryGenerateJobService {
 
     private async run(record: JobRecord): Promise<void> {
         record.status = "running";
+        this.jobService?.markRunning(record.id);
+        this.jobService?.progress(record.id, {stage: "preparing", unit: "raw combinations", current: "0", total: "0"});
         const result = await this.generateService.generate(record.projectRoot, {
             ...record.request,
             signal: record.controller.signal,
             onProgress: (processedRawIndex, progressTotal) => {
                 record.progress = {processedRawIndex: processedRawIndex.toString(), progressTotal: progressTotal.toString()};
+                this.jobService?.progress(record.id, {stage: record.lifecycleStage ?? "generation", unit: "raw combinations", current: processedRawIndex.toString(), total: progressTotal.toString()});
             },
         }, (stage) => {
             record.lifecycleStage = stage;
+            this.jobService?.progress(record.id, {stage, unit: "raw combinations", current: record.progress?.processedRawIndex ?? "0", total: record.progress?.progressTotal ?? "0"});
         }, (emittedOutcomes) => {
             if (record.progress !== undefined) record.progress.emittedOutcomes = emittedOutcomes.toString();
             else record.progress = {processedRawIndex: "0", progressTotal: "0", emittedOutcomes: emittedOutcomes.toString()};
+            this.jobService?.progress(record.id, {stage: record.lifecycleStage ?? "generation", unit: "emitted outcomes", current: emittedOutcomes.toString(), total: record.progress.progressTotal});
         });
         if (result.status === "cancelled") {
             const cancelledResult: StudioOutcomeLibraryGenerateJobResultView = {
@@ -255,9 +274,20 @@ export class StudioOutcomeLibraryGenerateJobService {
                 }),
             };
             Object.assign(record, {result: cancelledResult, status: "cancelled" as const});
+            this.jobService?.cancelled(record.id, {summary: "Outcome Library generation cancelled before publication."}, {action: cancelledResult.checkpoint === undefined ? "retry" : "resume", reason: cancelledResult.recovery});
             return;
         }
         Object.assign(record, {result, status: result.status === "ok" ? "completed" as const : "failed" as const});
+        if (result.status === "ok") {
+            this.jobService?.complete(record.id, {
+                summary: "Outcome Library generation completed.",
+                outputs: [{path: result.bundleDir, label: "Outcome Library bundle"}],
+                detail: {status: result.status},
+            });
+        } else {
+            const message = "error" in result ? result.error : "Outcome Library generation failed validation.";
+            this.jobService?.fail(record.id, message, {action: "retry", reason: "Correct the reported generation problem and run it again."});
+        }
         if (result.status === "ok") this.removeCheckpoint(record.projectRoot, record.id);
     }
 

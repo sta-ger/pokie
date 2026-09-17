@@ -385,6 +385,7 @@ export class StudioServer implements StudioServerHandling {
             new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion, undefined, undefined, undefined, this.roundRecorder);
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, loadCurrentProjectGame);
         this.outcomeLibraryGenerateJobService = new StudioOutcomeLibraryGenerateJobService(this.outcomeLibraryGenerateService);
+        this.outcomeLibraryGenerateJobService.attachJobService(this.jobService);
         this.deploymentService = options.deploymentService ?? StudioDeploymentService.withPokieVersion(
             this.pokieVersion,
             async (projectRoot) => {
@@ -573,6 +574,7 @@ export class StudioServer implements StudioServerHandling {
             if (job?.operation === "simulation") this.simulationService.cancelForProject(this.currentContext.projectRoot, id);
             if (job?.operation === "replay") this.replayService.cancel(this.currentContext.projectRoot, id);
             if (job?.operation === "artifact-build") this.artifactBuildService.cancelForProject(this.currentContext.projectRoot, id);
+            if (job?.operation === "outcome-library-generation") this.outcomeLibraryGenerateJobService.cancelForProject(this.currentContext.projectRoot, id);
             this.sendJson(res, job === undefined ? 404 : 202, job ?? {error: "Studio job not found."});
             return;
         }
