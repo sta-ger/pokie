@@ -53,7 +53,11 @@ describe("residual public CLI surface", () => {
             .flatMap((command) => command.getCommanderCommand().commands.map((verb) => `${command.getName()} ${verb.name()}`))
             .sort();
 
-        expect(coverage.initialInventory.rootCommands).toEqual(commandNames);
+        // This coverage map is immutable P7 evidence.  P8 adds the public
+        // portable-artifact runner, so compare the historical command tree to
+        // its historical portion rather than rewriting the completed audit.
+        expect(coverage.initialInventory.rootCommands).toEqual(commandNames.filter((name) => name !== "run"));
+        expect(commandNames).toContain("run");
         expect(coverage.initialInventory.nestedVerbs).toEqual(nestedVerbs);
         for (const command of publicCommands) {
             const help = command.getCommanderCommand().helpInformation();
@@ -64,6 +68,8 @@ describe("residual public CLI surface", () => {
         for (const maintainedDocsPath of MAINTAINED_DOCS_PATHS) {
             expect(fs.readFileSync(maintainedDocsPath, "utf8")).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
         }
+        expect(docs).toContain("## `pokie run <artifact.wasm>`");
+        expect(docs).toContain("pokie run game.wasm --seed demo");
         expect(fs.readFileSync(MAINTAINED_DOCS_PATHS[1], "utf8")).toContain("cli.md#pokie-export-configjson---to-outcomes---out-dir---dry-run");
     });
 

@@ -56,6 +56,7 @@ const PRODUCT_MODEL_DIR = path.join(__dirname, "..", "..", "docs", "evidence", "
 const REGISTRY_PATH = path.join(PRODUCT_MODEL_DIR, "artifact-registry.json");
 const MATRIX_PATH = path.join(PRODUCT_MODEL_DIR, "CAPABILITY-MATRIX.md");
 const PRODUCT_MODEL_PATH = path.join(PRODUCT_MODEL_DIR, "PRODUCT-MODEL.md");
+const CLI_DOCS_PATH = path.join(__dirname, "..", "..", "docs", "cli.md");
 
 function readRegistry(): ProductModelRegistry {
     return JSON.parse(fs.readFileSync(REGISTRY_PATH, "utf-8")) as ProductModelRegistry;
@@ -741,7 +742,7 @@ describe("PC-05 product-model contract", () => {
         }).map((command) => command.getName());
         const publicRoutes = registeredRoutes.filter((route) => route !== "__studio");
         expect(registeredRoutes).toEqual(expect.arrayContaining(["__studio"]));
-        expect(publicRoutes.sort()).toEqual([
+        const historicalPublicRoutes = [
             "build",
             "certification",
             "client",
@@ -763,10 +764,26 @@ describe("PC-05 product-model contract", () => {
             "serve",
             "sim",
             "validate",
-        ].sort());
-        for (const route of publicRoutes) {
+        ].sort();
+        expect(publicRoutes.sort()).toEqual([...historicalPublicRoutes, "run"].sort());
+
+        // CAPABILITY-MATRIX.md is completed PC-05 evidence, not a mutable
+        // current-route registry. P8's canonical WASM runner is documented
+        // and registered as a distinct current public route without rewriting
+        // that historical record.
+        for (const route of historicalPublicRoutes) {
             expect(routeInventory).toContain(`\`${route}\``);
         }
+        const run = registerCliCommands({
+            version: "test-version",
+            pokiePackageRoot: "/fake/pokie/root",
+            clientRoot: "/fake/pokie/root/dist/cli/client",
+            studioRoot: "/fake/pokie/root/dist/cli/studio-client",
+        }).find((command) => command.getName() === "run");
+        expect(run?.getCommanderCommand().helpInformation()).toContain("Usage: run [options] <artifact.wasm>");
+        const cliDocs = fs.readFileSync(CLI_DOCS_PATH, "utf-8");
+        expect(cliDocs).toContain("## `pokie run <artifact.wasm>`");
+        expect(cliDocs).toContain("pokie run game.wasm --seed demo");
         for (const route of ["certification build", "certification verify", "fairness seed-commit", "fairness commit", "fairness reveal", "fairness verify", "par export", "par import", "reel generate"]) {
             expect(routeInventory).toContain(`\`${route}\``);
         }

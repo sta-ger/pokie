@@ -32,6 +32,16 @@ Canonical WASM artifacts also support deterministic `pokie sim game.wasm --round
 
 `npx pokie game.wasm` deliberately routes to ordinary inspection instead of requiring a local project, compiler, package install, or adapter path. It prints the executable validate/run actions available from the normal artifact navigation. A missing, stale, swapped, malformed, or incompatible manifest is rejected before the component can be treated as runnable.
 
+## `pokie run <artifact.wasm>`
+
+Runs one deterministic round from a canonical POKIE WASM artifact using the portable host. It needs no package installation, compiler, local server, or browser-only setup:
+
+```sh
+pokie run game.wasm --seed demo
+```
+
+`--seed` defaults to `pokie-wasm-cli`. The command prints the played round's sequence, draw, and seed. Use [`pokie validate`](#pokie-validate-project) first when a component has not yet been checked, and use [`pokie inspect`](#pokie-inspect-packageroot) for its manifest, capabilities, and available next actions.
+
 ## `pokie --help` / `pokie -h`
 
 Prints the general usage line, the full list of commands with their descriptions, and the next workflow choices,
@@ -3620,9 +3630,9 @@ Each step builds on the same `<packageRoot>`:
 
 ## What's next
 
-All 21 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
-`edit`/`export`/`fairness`/`generate`/`import`/`init`/`inspect`/`reel`/`replay`/`report`/`sample`/`serve`/`sim`/
-`validate`) are shipped today, built on the same [game package](game-packages.md) primitives (`loadPokieGame`,
+All 22 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
+`edit`/`export`/`fairness`/`generate`/`import`/`init`/`inspect`/`par`/`reel`/`replay`/`report`/`run`/`sample`/
+`serve`/`sim`/`validate`) are shipped today, built on the same [game package](game-packages.md) primitives (`loadPokieGame`,
 `isPokieGame`, `PokieGameContractValidationRule`). [POKIE Studio](#pokie) already
 covers most of these workflows with a real GUI, not just the CLI: designing/building a game (Home's Design Game
 tab, including PAR Sheet import/export and reel strip generation), and, once a project is open, inspection/
