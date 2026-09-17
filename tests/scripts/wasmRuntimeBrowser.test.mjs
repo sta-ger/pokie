@@ -1,32 +1,40 @@
 import {createServer} from "http";
-import {readFile} from "fs/promises";
+import {mkdirSync, mkdtempSync, rmSync} from "fs";
+import {readFile, rm} from "fs/promises";
 import path from "path";
 import {spawn, spawnSync} from "child_process";
 import {PORTABLE_RUNTIME_BROWSER_FIXTURE as canonicalFixture} from "../fixtures/wasm/portableRuntimeGolden.browser.mjs";
 
 const root = process.cwd();
-preparePortableRuntime();
+const portableRuntimeDirectory = preparePortableRuntime();
 const benchmarkConfiguration = readBenchmarkConfiguration(process.argv);
 
 function preparePortableRuntime() {
     // The browser and Worker must load the portable runtime emitted from this
     // exact checkout. A changed-tests run does not otherwise materialize dist/
     // before this standalone browser fixture, which could make it verify a
-    // previous worker protocol instead of the source under review.
-    const compilation = spawnSync(process.execPath, [path.join(root, "node_modules", "typescript", "bin", "tsc"), "--project", "tsconfig.prod.json"], {
+    // previous worker protocol instead of the source under review. Compile to
+    // an isolated cache directory too: other focused checks may legitimately
+    // build or package dist/ while this fixture is waiting for Chromium.
+    const cacheDirectory = path.join(root, "node_modules", ".cache", "pokie-tmp");
+    mkdirSync(cacheDirectory, {recursive: true});
+    const outputDirectory = mkdtempSync(path.join(cacheDirectory, "wasm-browser-runtime-"));
+    const compilation = spawnSync(process.execPath, [path.join(root, "node_modules", "typescript", "bin", "tsc"), "--project", "tsconfig.prod.json", "--outDir", outputDirectory], {
         cwd: root,
         encoding: "utf8",
     });
     if (compilation.status !== 0) {
+        rmSync(outputDirectory, {recursive: true, force: true});
         throw new Error(`Could not compile the portable runtime for the Chromium fixture:\n${compilation.stdout}\n${compilation.stderr}`);
     }
+    return outputDirectory;
 }
 
-const workerModule = `import {PokieWasmWorkerProtocol} from "/dist/esm/wasm/worker.js";
+const workerModule = `import {PokieWasmWorkerProtocol} from "/runtime/wasm/worker.js";
 const protocol = new PokieWasmWorkerProtocol();
 self.onmessage = async ({data}) => self.postMessage(await protocol.handle(data));`;
 const page = `<!doctype html><script type="module">
-    import {instantiatePokieWasm, SeededPokieWasmHost} from "/dist/esm/wasm/browser.js";
+    import {instantiatePokieWasm, SeededPokieWasmHost} from "/runtime/wasm/browser.js";
     const fixture = ${JSON.stringify(canonicalFixture)};
     const benchmarkConfiguration = ${JSON.stringify(benchmarkConfiguration)};
     const decode = (value) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
@@ -152,10 +160,10 @@ const server = createServer(async (request, response) => {
         response.setHeader("Content-Type", "text/javascript");
         return response.end(workerModule);
     }
-    if (request.url?.startsWith("/dist/")) {
+    if (request.url?.startsWith("/runtime/")) {
         try {
-            const file = path.resolve(root, `.${request.url}`);
-            if (!file.startsWith(path.join(root, "dist"))) throw new Error("invalid path");
+            const file = path.resolve(portableRuntimeDirectory, `.${request.url.slice("/runtime".length)}`);
+            if (!file.startsWith(portableRuntimeDirectory)) throw new Error("invalid path");
             response.setHeader("Content-Type", "text/javascript");
             return response.end(await readFile(file));
         } catch {
@@ -172,8 +180,8 @@ if (address === null || typeof address === "string") throw new Error("Browser fi
 const chromium = process.env.CHROMIUM_PATH ?? "/snap/bin/chromium";
 const includeMeasurements = process.argv.includes("--benchmark");
 const portableRuntimeBytes = await collectPortableRuntimeBytes([
-    path.join(root, "dist", "esm", "wasm", "browser.js"),
-    path.join(root, "dist", "esm", "wasm", "worker.js"),
+    path.join(portableRuntimeDirectory, "wasm", "browser.js"),
+    path.join(portableRuntimeDirectory, "wasm", "worker.js"),
 ]);
 const browser = spawn(chromium, ["--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--remote-debugging-pipe"], {stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"]});
 let requestId = 0;
@@ -223,6 +231,7 @@ try {
     browser.kill();
     await browserClosed;
     await new Promise((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+    await rm(portableRuntimeDirectory, {recursive: true, force: true});
 }
 console.log("PASS real Chromium shipped browser API and worker protocol fixture");
 
