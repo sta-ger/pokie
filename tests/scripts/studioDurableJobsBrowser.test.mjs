@@ -96,6 +96,27 @@ async function post(baseUrl, pathname, body) {
     return {status: response.status, body: await response.json()};
 }
 
+// A one-million-stop exact space is deliberately large enough that the
+// generator reaches an observable cursor before cancellation, while remaining
+// small enough for the resumed real-browser contract to finish in a bounded
+// test lane.  Keeping the source in this harness also proves that recovery is
+// bound to a real, distinct project -- not whichever starter project happens
+// to be open when Studio restarts.
+function resumableExactBlueprint() {
+    const symbols = ["A", "K", "Q", "J"];
+    const strip = Array.from({length: 16}, (_unused, index) => symbols[index % symbols.length]);
+    return {
+        manifest: {id: "durable-browser-exact", name: "Durable Browser Exact", version: "1.0.0"},
+        reels: 5,
+        rows: 3,
+        symbols,
+        availableBets: [1],
+        paylines: [[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2]],
+        paytable: {A: {"3": 10, "4": 20, "5": 40}, K: {"3": 6, "4": 12, "5": 24}, Q: {"3": 4, "4": 8, "5": 16}, J: {"3": 2, "4": 4, "5": 8}},
+        reelStrips: [strip, strip, strip, strip, strip],
+    };
+}
+
 async function run() {
     const studioPort = await freePort();
     const devtoolsPort = await freePort();
@@ -162,28 +183,97 @@ async function run() {
 
     const switchJob = await post(baseUrl, "/api/project/simulations", {rounds: 1_000_000, seed: "durable-browser-switch"});
     assert.equal(switchJob.status, 202);
-    const unconfirmedSwitch = await post(baseUrl, "/api/home/projects/open", {projectRoot});
+    await waitFor(async () => {
+        const job = await (await fetch(`${baseUrl}/api/project/jobs/${switchJob.body.id}`)).json();
+        return job.status === "running";
+    }, "active job before a genuine project switch");
+
+    // Create a separate source without changing the current project.  The
+    // subsequent open must be a genuine A -> B transition, not an accidental
+    // reopen of A (which would not exercise stale-response isolation).
+    const savedSecondProject = await post(baseUrl, "/api/home/blueprints/save-managed", {
+        blueprint: resumableExactBlueprint(),
+        operationId: "durable-browser-second-project",
+    });
+    assert.equal(savedSecondProject.status, 201);
+    assert.equal(savedSecondProject.body.status, "ok");
+    const secondProjectRoot = savedSecondProject.body.path;
+    assert.equal(typeof secondProjectRoot, "string");
+    assert.notEqual(resolve(secondProjectRoot), resolve(projectRoot));
+
+    // Capture the old project's real HTTP response before the server changes
+    // context, but only consume its body after the A -> B transition.  This
+    // is the stale list response a browser can receive while project switching;
+    // after reload the client must render B's discovery only, never this A job.
+    const staleListResponse = await fetch(`${baseUrl}/api/project/jobs`);
+    assert.equal(staleListResponse.status, 200);
+    const unconfirmedSwitch = await post(baseUrl, "/api/home/projects/open", {projectRoot: secondProjectRoot});
     assert.equal(unconfirmedSwitch.status, 409);
     assert.deepEqual(unconfirmedSwitch.body.operations, ["simulation"]);
-    const confirmedSwitch = await post(baseUrl, "/api/home/projects/open", {projectRoot, confirmActiveJobs: true});
+    const confirmedSwitch = await post(baseUrl, "/api/home/projects/open", {projectRoot: secondProjectRoot, confirmActiveJobs: true});
     assert.equal(confirmedSwitch.status, 200);
+    const staleList = await staleListResponse.json();
+    assert(staleList.jobs.some((job) => job.id === switchJob.body.id && job.projectId === projectRoot), "expected the in-flight list to belong to project A");
+    const switchedContext = await (await fetch(`${baseUrl}/api/project/context`)).json();
+    assert.equal(switchedContext.projectRoot, secondProjectRoot);
     await cdp.send("Page.reload", {ignoreCache: true});
-    await waitFor(async () => (await text()).includes("simulation: cancelled"), "confirmed switch cancellation result");
+    await waitFor(async () => (await text()).includes("Overview"), "second project dashboard after switch");
+    assert(!(await text()).includes("simulation: running"), "a stale project-A list response leaked into the project-B dashboard");
+
+    // The exact token is server-authored and is carried into the start request.
+    // Cancellation then leaves the validated checkpoint on disk; it is the
+    // only interrupted operation this contract is allowed to resume.
+    const exactRequest = {generation: "exact", maxOutcomeSpaceSize: "2000000", libraryId: "durable-browser-resume"};
+    const exactEstimate = await post(baseUrl, "/api/project/outcome-libraries/generate/estimate", exactRequest);
+    assert.equal(exactEstimate.status, 200);
+    assert.equal(exactEstimate.body.status, "ok");
+    assert.equal(exactEstimate.body.strategy, "exact");
+    const exactStart = await post(baseUrl, "/api/project/outcome-libraries/generate/jobs", {
+        ...exactRequest,
+        preflightToken: exactEstimate.body.preflightToken,
+    });
+    assert.equal(exactStart.status, 202);
+    const exactJobId = exactStart.body.job.id;
+    await waitFor(async () => {
+        const job = await (await fetch(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${exactJobId}`)).json();
+        return job.status === "running" && Number(job.progress?.processedRawIndex ?? 0) > 0;
+    }, "observable exact-enumeration progress", 180_000);
+    const exactCancelling = await post(baseUrl, `/api/project/outcome-libraries/generate/jobs/${exactJobId}/cancel`, {});
+    assert.equal(exactCancelling.status, 200);
+    await waitFor(async () => {
+        const job = await (await fetch(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${exactJobId}`)).json();
+        return job.status === "cancelled" && job.result?.checkpoint?.id === exactJobId;
+    }, "validated exact-enumeration checkpoint", 180_000);
 
     // A process death has no executor left to clean up. The next Studio owns
-    // the persisted record, reconciles it to recovery-required, and renders
-    // the retained terminal card only after the project is opened again.
+    // the persisted records, reconciles the non-resumable simulation to
+    // recovery-required, and keeps the independently validated exact
+    // checkpoint available for its sole legal resume path.
     const interrupted = await post(baseUrl, "/api/project/simulations", {rounds: 1_000_000, seed: "durable-browser-restart"});
     assert.equal(interrupted.status, 202);
+    await waitFor(async () => {
+        const job = await (await fetch(`${baseUrl}/api/project/jobs/${interrupted.body.id}`)).json();
+        return job.status === "running";
+    }, "non-resumable job before restart");
     await terminate(studio);
     studio = spawn(process.execPath, ["dist/cli/pokie.js", "studio", "--no-open", "--host", "127.0.0.1", "--port", String(studioPort)], {cwd: root, env: environment, stdio: "ignore"});
     await waitFor(async () => {
         try { return (await fetch(`${baseUrl}/api/context`)).ok; } catch { return false; }
     }, "restarted Studio HTTP server");
-    const reopened = await post(baseUrl, "/api/home/projects/open", {projectRoot});
+    const reopened = await post(baseUrl, "/api/home/projects/open", {projectRoot: secondProjectRoot});
     assert.equal(reopened.status, 200);
     await cdp.send("Page.reload", {ignoreCache: true});
     await waitFor(async () => (await text()).includes("simulation: recovery-required"), "restart recovery card");
+    await waitFor(async () => (await text()).includes("outcome-library-generation: cancelled") && (await text()).includes("Resume"), "retained exact-checkpoint resume action");
+    const exactResume = await post(baseUrl, `/api/project/outcome-libraries/generate/jobs/${exactJobId}/resume`, {});
+    assert.equal(exactResume.status, 202);
+    assert.equal(exactResume.body.job.id, exactJobId);
+    await waitFor(async () => {
+        const job = await (await fetch(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${exactJobId}`)).json();
+        return job.status === "completed" && job.result?.status === "ok";
+    }, "validated exact-checkpoint resume completion", 180_000);
+    await cdp.send("Page.reload", {ignoreCache: true});
+    await waitFor(async () => (await text()).includes("outcome-library-generation: completed"), "resumed terminal result reopening");
 }
 
 try {
