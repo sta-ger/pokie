@@ -14,7 +14,9 @@ This is the complete Studio API inventory, not a list of only the routes that ha
 need a job first. `StudioLongRunningOperationInventory.contract.test.ts` extracts every
 literal method/path guard from `StudioServer` and requires it to appear below. Parameterised
 routes and the extension route are listed explicitly as well. When a route is added, its
-classification and its concrete reason must be added in the same change.
+classification and its concrete reason must be added in the same change. The contract test also
+parses the table below: each route family must have exactly one lifecycle classification and a
+non-empty, concrete reason, so a route cannot be "covered" only by nearby prose.
 
 `Common job` means the route creates, observes, cancels, or recovers the durable server-owned
 lifecycle described above. Compatibility routes retain their established response DTOs, but first
