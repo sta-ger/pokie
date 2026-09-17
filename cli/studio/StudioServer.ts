@@ -130,7 +130,7 @@ import type {StudioContext} from "./StudioContext.js";
 import type {StudioServerHandling} from "./StudioServerHandling.js";
 import {FileStudioJobRepository} from "./jobs/FileStudioJobRepository.js";
 import {StudioJobService, type StudioJobExecutorContext, type StudioJobExecutorTerminal} from "./jobs/StudioJobService.js";
-import type {StudioJobView} from "./jobs/StudioJobView.js";
+import type {StudioJobProgressView, StudioJobView} from "./jobs/StudioJobView.js";
 import {PokiePathResolver} from "../paths/PokiePathResolver.js";
 
 function describeIncompleteOutcomeSourceProvenance(recorded: unknown): string | undefined {
@@ -647,6 +647,8 @@ export class StudioServer implements StudioServerHandling {
             readonly request: Readonly<Record<string, unknown>>;
             readonly conflictKey: string;
             readonly recoveryOnRestart: NonNullable<StudioJobView["recoveryOnRestart"]>;
+            /** The first honest domain-specific snapshot before the executor can refine it. */
+            readonly initialProgress?: StudioJobProgressView;
             /** Keeps a compatibility route in its own DTO family on exact retries. */
             readonly reattachedResponse?: (job: StudioJobView) => {readonly statusCode: number; readonly body: unknown};
         },
@@ -667,10 +669,9 @@ export class StudioServer implements StudioServerHandling {
                 disconnect?.res.once("close", cancel);
                 try {
                     // Not every established domain API has a progress callback.
-                    // Do not manufacture a percentage for those operations: this
-                    // is deliberately an indeterminate, server-owned execution
-                    // stage which remains useful after a reload or restart.
-                    context.progress({stage: "Executing", unit: "work", current: "indeterminate", total: "indeterminate", message: `${input.operation} is running.`});
+                    // Keep those snapshots domain-specific and indeterminate,
+                    // rather than claiming a made-up percentage of generic work.
+                    context.progress(input.initialProgress ?? {stage: "Executing", unit: "work", current: "indeterminate", total: "indeterminate", message: `${input.operation} is running.`});
                     return await executor(context);
                 } finally {
                     disconnect?.req.off("aborted", cancel);
@@ -742,7 +743,7 @@ export class StudioServer implements StudioServerHandling {
             }
             if (job.operation === "outcome-library-generation" && job.recovery?.action === "resume") {
                 const recovered = await this.outcomeLibraryGenerateJobService.resumeForProject(this.currentContext.projectRoot, id);
-                const current = this.jobService.get(this.currentContext.projectRoot, id);
+                const current = this.jobService.get(projectId, id);
                 this.sendJson(res, recovered === undefined || current === undefined ? 409 : 202, current ?? {status: "recovery-required", error: "The Outcome Library checkpoint could not be resumed."});
                 return;
             }
@@ -1478,15 +1479,17 @@ export class StudioServer implements StudioServerHandling {
                 res,
                 {
                     projectId: sourcePath, operation: "project-open-materialization", request: {sourcePath}, conflictKey: `project-open:${sourcePath}`, recoveryOnRestart: recovery,
+                    initialProgress: {stage: "Resolving project", unit: "opening stages", current: 0, total: 3, message: "Resolving the requested project source."},
                     reattachedResponse: (job) => ({statusCode: 409, body: {error: "Project opening is already in progress.", activeJobId: job.id, reattached: true}}),
                 },
-                async ({job, signal}) => {
+                async ({job, signal, progress}) => {
                     preparation = this.beginRuntimePreparation();
                     const abortPreparation = () => preparation?.controller.abort();
                     signal.addEventListener("abort", abortPreparation, {once: true});
                     try {
                     // Preserve the established Home executor argument/DTO contract;
                     // `sourcePath` above is only the durable canonical job identity.
+                        progress({stage: "Materializing runtime", unit: "opening stages", current: 1, total: 3, message: "Loading the project and materializing any required runtime."});
                         const dashboard = await this.homeService.openProject(validated.projectRoot, {
                             signal: preparation.controller.signal,
                             isCurrent: () => this.isCurrentRuntimePreparation(preparation!),
@@ -1498,6 +1501,7 @@ export class StudioServer implements StudioServerHandling {
                             return dashboard;
                         }
 
+                        progress({stage: "Registering project", unit: "opening stages", current: 2, total: 3, message: "Saving the opened-project record."});
                         await this.projectRegistrationService.recordOpened(
                             dashboard.projectRoot,
                             dashboard.status === "loaded" ? dashboard.game.name : path.basename(dashboard.projectRoot),
@@ -1509,6 +1513,7 @@ export class StudioServer implements StudioServerHandling {
                         if (signal.aborted || !this.isCurrentRuntimePreparation(preparation)) {
                             throw new Error("Project opening was superseded by a newer request.");
                         }
+                        progress({stage: "Publishing dashboard", unit: "opening stages", current: 3, total: 3, message: "Switching Studio to the opened project."});
                         this.playService.reset();
                         this.roundRecorder.clearAll();
                         await this.cancelActiveJobsForOldProject(job.id);
@@ -1960,6 +1965,7 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res, {
                 projectId: `design:${sourcePath}`, operation: "design-par-import", request: {path: sourcePath, sourceContentHash}, conflictKey: `design-par-import:${sourcePath}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Reading workbook", unit: "worksheets", current: "indeterminate", total: "indeterminate", message: "Reading the source PAR workbook before validation."},
                 // importParSheet has always resolved a StudioParSheetImportView
                 // for domain outcomes.  Keep an exact retry in that DTO family
                 // rather than making a harmless reconnect look like transport
@@ -2000,6 +2006,7 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res, {
                 projectId: `design:${sourcePath}`, operation: "design-par-export", request: {sourcePath, destinationPath, overwrite: validated.overwrite, blueprintHash}, conflictKey: `design-par-export:${sourcePath}:${destinationPath}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Writing workbook", unit: "worksheets", current: "indeterminate", total: "indeterminate", message: "Writing the PAR workbook to its staging destination."},
                 reattachedResponse: (job) => ({statusCode: 409, body: {status: "conflict", path: destinationPath, error: "PAR export is already in progress.", activeJobId: job.id, reattached: true}}),
             },
             ({signal}) => this.blueprintService.exportParSheet(validated.blueprint, destinationPath, validated.overwrite, sourcePath, signal),
@@ -2043,6 +2050,7 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res, {
                 projectId: `design:${sourcePath}`, operation: "design-build", request: {sourcePath, destinationPath, blueprintHash}, conflictKey: `design-build:${sourcePath}:${destinationPath}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Building package", unit: "package files", current: "indeterminate", total: "indeterminate", message: "Generating the Design package in its staging destination."},
                 // buildBlueprint treats non-2xx as a transport failure.  An
                 // in-flight exact request is still a normal StudioBuildResult.
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Design build is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
@@ -2451,6 +2459,7 @@ export class StudioServer implements StudioServerHandling {
             res,
             {
                 projectId: projectRoot, operation: "deployment", request: validated as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment:${projectRoot}:${validated.targetId}:${JSON.stringify(validated.modes)}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Planning deployment", unit: "pipeline stages", current: 0, total: "indeterminate", message: "Validating artifacts and delivery boundaries."},
                 // runDeployment always resolves its planner view for an
                 // operation outcome.  Keep reconnects in that shape too; a
                 // bare 409 would be mistaken for a failed HTTP request.
@@ -2915,6 +2924,7 @@ export class StudioServer implements StudioServerHandling {
                 // another validator can allocate its own domain work.
                 conflictKey: `certification-validate:${projectRoot}`,
                 recoveryOnRestart: {action: "retry", reason: "Deep validation is not resumable after restart. Retry the captured validation."},
+                initialProgress: {stage: "Validating evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Checking certification evidence and provenance."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "load-error", error: "Certification validation is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
             ({signal}) => this.certificationService.validateSourceBundle(projectRoot, validated.bundleDir, signal),
@@ -2955,6 +2965,7 @@ export class StudioServer implements StudioServerHandling {
                 projectId: projectRoot, operation: "certification-build", request: validated as unknown as Readonly<Record<string, unknown>>,
                 conflictKey: `certification-build:${projectRoot}:${validated.bundleDir}:${validated.outDir}:${JSON.stringify(validated.modes)}`,
                 recoveryOnRestart: recovery,
+                initialProgress: {stage: "Building evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Writing certification evidence to a staging destination."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", errors: [], warnings: [], activeJobId: job.id, reattached: true}}),
             },
             ({signal}) => this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, signal),
@@ -3623,11 +3634,12 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res, {
                 projectId: projectRoot, operation: "play-find-any-win", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until a winning round is settled."},
                 // The Play client uses 409 exclusively for no-active-project.
                 // Preserve its normal result union for exact reattachment.
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
-            ({signal}) => this.playService.findAnyWin(sessionId, {signal}),
+            ({signal, progress}) => this.playService.findAnyWin(sessionId, {signal, onProgress: (current, total) => progress({stage: "Searching rounds", unit: "attempted spins", current, total, message: "Waiting for a winning settled round."})}),
             (result, cancelled) => {
                 if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "any-win", result.status === "cancelled" ? result.session : undefined), recovery};
                 if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "any-win", session: result.session}}};
@@ -3664,9 +3676,10 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res, {
                 projectId: projectRoot, operation: "play-find-symbol-win", request: {sessionId, symbolId: validated.symbolId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until the requested symbol win is settled."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
-            ({signal}) => this.playService.findSymbolWin(sessionId, validated.symbolId, {signal}),
+            ({signal, progress}) => this.playService.findSymbolWin(sessionId, validated.symbolId, {signal, onProgress: (current, total) => progress({stage: "Searching rounds", unit: "attempted spins", current, total, message: "Waiting for the requested symbol win."})}),
             (result, cancelled) => {
                 if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "symbol-win", result.status === "cancelled" ? result.session : undefined, validated.symbolId), recovery};
                 if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId, session: result.session}}};
@@ -3695,9 +3708,10 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res, {
                 projectId: projectRoot, operation: "play-find-free-games", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until a free-games round is settled."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
-            ({signal}) => this.playService.findFreeGames(sessionId, {signal}),
+            ({signal, progress}) => this.playService.findFreeGames(sessionId, {signal, onProgress: (current, total) => progress({stage: "Searching rounds", unit: "attempted spins", current, total, message: "Waiting for a free-games settled round."})}),
             (result, cancelled) => {
                 if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "free-games", result.status === "cancelled" ? result.session : undefined), recovery};
                 if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "free-games", session: result.session}}};

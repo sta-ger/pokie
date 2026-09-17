@@ -53,7 +53,11 @@ import {describeRuntimePackageLoadError} from "../../commands/internal/describeL
 import type {StudioRuntimeSessionView} from "./StudioRuntimeSessionView.js";
 
 export type StudioPlaySessionResult = {status: "ok"; session: StudioRuntimeSessionView} | {status: "failed"; error: string};
-export type StudioPlaySessionOptions = {readonly signal?: AbortSignal};
+export type StudioPlaySessionOptions = {
+    readonly signal?: AbortSignal;
+    /** Called only after a real round has settled; optional for direct callers. */
+    readonly onProgress?: (attemptedSpins: number, maximumSpins: number) => void;
+};
 export type StudioWasmRuntimeLoading = typeof loadPokieWasmFileRuntime;
 
 // The two shapes an active Play session can take, discriminated by "kind" -- a "runtime" session (a real
@@ -455,7 +459,7 @@ export class StudioPlayService {
             sessionId,
             "find-any-win",
             (session) => !new PlayUntilAnyWinStrategy().canPlayNextSimulationRound(session),
-            (artifact) => artifact.totalWin > 0, options.signal,
+            (artifact) => artifact.totalWin > 0, options.signal, options.onProgress,
         );
     }
 
@@ -488,7 +492,7 @@ export class StudioPlayService {
             sessionId,
             "find-symbol-win",
             (session) => !new PlayUntilSymbolWinStrategy(symbolId).canPlayNextSimulationRound(session as unknown as VideoSlotSessionHandling<string>),
-            (artifact) => artifact.wins.some((win) => win.symbolId === symbolId), options.signal,
+            (artifact) => artifact.wins.some((win) => win.symbolId === symbolId), options.signal, options.onProgress,
         );
     }
 
@@ -521,7 +525,7 @@ export class StudioPlayService {
             sessionId,
             "find-free-games",
             (session) => !new PlayFreeGamesStrategy().canPlayNextSimulationRound(session as unknown as VideoSlotWithFreeGamesSessionHandling),
-            (artifact) => (artifact.featureEvents ?? []).some((event) => event.type === "freeGamesTriggered"), options.signal,
+            (artifact) => (artifact.featureEvents ?? []).some((event) => event.type === "freeGamesTriggered"), options.signal, options.onProgress,
         );
     }
 
@@ -686,6 +690,7 @@ export class StudioPlayService {
         matchesLiveSession: (session: GameSessionHandling) => boolean,
         matchesArtifact: (artifact: RoundArtifactJson) => boolean,
         signal?: AbortSignal,
+        onProgress?: (attemptedSpins: number, maximumSpins: number) => void,
     ): Promise<StudioPlaySpinResult> {
         let lastSettledSession: StudioRuntimeSessionView | undefined;
         for (let attempt = 0; attempt < this.maxFindScenarioSpins; attempt++) {
@@ -706,6 +711,7 @@ export class StudioPlayService {
                 return round;
             }
             lastSettledSession = round.session;
+            onProgress?.(attempt + 1, this.maxFindScenarioSpins);
 
             let matched: boolean;
             if (active.kind === "runtime") {

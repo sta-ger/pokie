@@ -15,7 +15,11 @@ export function useProjectJobs(fetchImpl: FetchLike, projectId: string | undefin
     const current = useRef({projectId, generation});
 
     useEffect(() => {
+        const projectChanged = current.current.projectId !== projectId;
         current.current = {projectId, generation};
+        // A genuine workspace change must never leave the previous project's
+        // retained cards visible while the new discovery request is in flight.
+        if (projectChanged) setJobs([]);
     }, [generation, projectId]);
 
     const refresh = useCallback(async () => {
@@ -25,7 +29,9 @@ export function useProjectJobs(fetchImpl: FetchLike, projectId: string | undefin
             return;
         }
         const discovered = await listProjectJobs(fetchImpl);
-        if (current.current.projectId === identity.projectId && current.current.generation === identity.generation) setJobs(discovered);
+        if (current.current.projectId === identity.projectId && current.current.generation === identity.generation) {
+            setJobs(discovered.filter((job) => job.projectId === identity.projectId));
+        }
     }, [fetchImpl, generation, projectId]);
 
     useEffect(() => {
@@ -40,7 +46,7 @@ export function useProjectJobs(fetchImpl: FetchLike, projectId: string | undefin
         const timer = window.setTimeout(() => {
             Promise.all(jobs.filter(active).map((job) => getProjectJob(fetchImpl, job.id))).then((updates) => {
                 if (current.current.projectId !== identity.projectId || current.current.generation !== identity.generation) return;
-                setJobs((previous) => previous.map((job) => updates.find((update) => update.id === job.id) ?? job));
+                setJobs((previous) => previous.map((job) => updates.find((update) => update.id === job.id && update.projectId === identity.projectId) ?? job));
             }).catch(() => undefined);
         }, 500);
         return () => window.clearTimeout(timer);
@@ -51,6 +57,7 @@ export function useProjectJobs(fetchImpl: FetchLike, projectId: string | undefin
         if (identity.projectId === undefined) return;
         cancelProjectJob(fetchImpl, id).then((job) => {
             if (current.current.projectId !== identity.projectId || current.current.generation !== identity.generation) return;
+            if (job.projectId !== identity.projectId) return;
             setJobs((previous) => previous.map((existing) => existing.id === id ? job : existing));
         }).catch(() => undefined);
     }, [fetchImpl, generation, projectId]);
@@ -60,6 +67,7 @@ export function useProjectJobs(fetchImpl: FetchLike, projectId: string | undefin
         if (identity.projectId === undefined) return;
         recoverProjectJob(fetchImpl, id).then((job) => {
             if (current.current.projectId !== identity.projectId || current.current.generation !== identity.generation) return;
+            if (job.projectId !== identity.projectId) return;
             setJobs((previous) => previous.map((existing) => existing.id === id ? job : existing));
         }).catch(() => undefined);
     }, [fetchImpl, generation, projectId]);
