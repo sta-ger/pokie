@@ -768,9 +768,13 @@ export class StudioReplayExecutionService {
         record.completedAt = record.startedAt + record.durationMs;
         this.repository.save(record);
         if (record.status === "completed") {
-            this.jobService?.complete(record.id, {summary: "Replay completed.", detail: {round: record.round, descriptorAvailable: record.descriptor !== undefined}});
+            this.jobService?.complete(record.id, {
+                summary: "Replay completed.",
+                provenance: {replayId: record.id, projectRoot: record.projectRoot},
+                detail: {replayId: record.id, round: record.round, descriptorAvailable: record.descriptor !== undefined},
+            });
         } else if (record.status === "cancelled") {
-            this.jobService?.cancelled(record.id, {summary: "Replay cancelled after the last completed round.", detail: {rounds: record.completedRounds}}, {action: "retry", reason: "Run the replay again with the captured parameters."});
+            this.jobService?.cancelled(record.id, {summary: "Replay cancelled after the last completed round.", provenance: {replayId: record.id, projectRoot: record.projectRoot}, detail: {replayId: record.id, rounds: record.completedRounds}}, {action: "retry", reason: "Run the replay again with the captured parameters."});
         } else if (record.status === "failed") {
             this.jobService?.fail(record.id, record.error ?? "Replay failed.", {action: "retry", reason: "Correct the reported problem and run the replay again."});
         }

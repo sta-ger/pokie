@@ -4811,7 +4811,12 @@ describe("StudioServer", () => {
             });
             expect(JSON.stringify(diagnostics.body)).not.toContain("\\n    at ");
 
-            const closeResponse = await post(`${projectBaseUrl}/api/projects/close`);
+            const rejectedClose = await post(`${projectBaseUrl}/api/projects/close`);
+            expect(rejectedClose).toMatchObject({
+                status: 409,
+                body: {code: "active-jobs-require-confirmation", operations: ["simulation", "replay"]},
+            });
+            const closeResponse = await post(`${projectBaseUrl}/api/projects/close`, {confirmActiveJobs: true});
             expect(closeResponse.status).toBe(200);
 
             // cancel() only requests cancellation (aborts the controller) — the records transition to

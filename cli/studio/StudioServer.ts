@@ -555,6 +555,20 @@ export class StudioServer implements StudioServerHandling {
             : [];
     }
 
+    /** The HTTP boundary, rather than the browser alone, protects active work. */
+    private rejectUnconfirmedProjectTransition(res: ServerResponse, confirmed: boolean): boolean {
+        const jobs = this.activeCommonJobs();
+        if (confirmed || jobs.length === 0) return false;
+        const operations = [...new Set(jobs.map((job) => job.operation))];
+        this.sendJson(res, 409, {
+            error: `Active Studio jobs require explicit confirmation before changing projects: ${operations.join(", ")}.`,
+            code: "active-jobs-require-confirmation",
+            operations,
+            activeJobs: jobs.map((job) => ({id: job.id, operation: job.operation})),
+        });
+        return true;
+    }
+
     /** A durable job key must not split when the same source is addressed via a symlink. */
     private canonicalPathIdentity(rawPath: string): string {
         const resolved = path.resolve(rawPath);
@@ -644,6 +658,10 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.jobService.execute(
             input,
             async (context) => {
+                // Executors that cannot expose a measurable inner loop still
+                // publish an honest, durable indeterminate snapshot.  Domain
+                // executors may refine it with their own semantic unit/stage.
+                context.progress({stage: "Preparing", unit: "work", current: 0, total: "unknown", message: `Preparing ${input.operation}.`});
                 const cancel = () => this.jobService.cancel(input.projectId, context.job.id);
                 disconnect?.req.once("aborted", cancel);
                 disconnect?.res.once("close", cancel);
@@ -953,6 +971,9 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "POST" && url.pathname === "/api/projects/close") {
+            const body = await this.readJsonBody(req);
+            const confirmed = (body as {confirmActiveJobs?: unknown} | undefined)?.confirmActiveJobs === true;
+            if (this.rejectUnconfirmedProjectTransition(res, confirmed)) return;
             // Simulation/Replay jobs for the project being left are cancelled too — see
             // cancelActiveJobsForOldProject()'s own doc comment for why this can't just rely on their
             // existing projectRoot scoping alone.
@@ -1430,6 +1451,8 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
+
+        if (this.rejectUnconfirmedProjectTransition(res, validated.confirmActiveJobs)) return;
 
         const sourcePath = this.canonicalPathIdentity(validated.projectRoot);
         const recovery = {action: "retry", reason: "Runtime materialization is not resumable after restart. Reopen the same project to retry."} as const;

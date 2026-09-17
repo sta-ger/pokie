@@ -663,9 +663,13 @@ export class StudioSimulationService {
         record.completedAt = record.startedAt + record.durationMs;
         this.repository.save(record);
         if (record.status === "completed") {
-            this.jobService?.complete(record.id, {summary: "Simulation completed.", detail: {rounds: record.roundsCompleted, reportAvailable: record.report !== undefined}});
+            this.jobService?.complete(record.id, {
+                summary: "Simulation completed.",
+                provenance: {simulationId: record.id, projectRoot: record.projectRoot},
+                detail: {simulationId: record.id, rounds: record.roundsCompleted, reportAvailable: record.report !== undefined},
+            });
         } else if (record.status === "cancelled") {
-            this.jobService?.cancelled(record.id, {summary: "Simulation cancelled after the last completed round.", detail: {rounds: record.roundsCompleted}}, {action: "retry", reason: "Run the simulation again with the captured parameters."});
+            this.jobService?.cancelled(record.id, {summary: "Simulation cancelled after the last completed round.", provenance: {simulationId: record.id, projectRoot: record.projectRoot}, detail: {simulationId: record.id, rounds: record.roundsCompleted}}, {action: "retry", reason: "Run the simulation again with the captured parameters."});
         } else if (record.status === "failed") {
             this.jobService?.fail(record.id, record.error ?? "Simulation failed.", {action: "retry", reason: "Correct the reported problem and run the simulation again."});
         }

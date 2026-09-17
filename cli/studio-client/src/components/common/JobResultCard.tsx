@@ -1,7 +1,7 @@
-import {Alert, Anchor, Stack, Text} from "@mantine/core";
+import {Alert, Anchor, Button, Group, Stack, Text} from "@mantine/core";
 import type {StudioJobView} from "../../api/types.js";
 
-export function JobResultCard({job}: {job: StudioJobView}) {
+export function JobResultCard({job, onRecover}: {job: StudioJobView; onRecover?: (id: string) => void}) {
     if (job.status === "queued" || job.status === "running" || job.status === "cancelling") return null;
     let color: "green" | "orange" | "red" = "red";
     if (job.status === "completed") color = "green";
@@ -13,12 +13,16 @@ export function JobResultCard({job}: {job: StudioJobView}) {
                 <Text size="sm">{job.result?.summary ?? job.error ?? job.recovery?.reason ?? "No additional result is available."}</Text>
                 {job.durationMs !== undefined && <Text size="xs">Duration: {job.durationMs}ms</Text>}
                 {job.result?.warnings?.map((warning) => <Text size="xs" c="orange" key={warning}>{warning}</Text>)}
-                {job.status === "completed" && job.result?.outputs?.map((output) =>
+                {job.result?.provenance !== undefined &&
+                    <details><summary>Inspect provenance</summary><Text size="xs">{JSON.stringify(job.result.provenance)}</Text></details>}
+                {job.result?.outputs?.map((output) =>
                     output.downloadPath === undefined
                         ? <Text size="xs" key={output.label}>{output.label}: {output.path}</Text>
                         : <Anchor size="xs" href={output.downloadPath} key={output.label}>{output.label}</Anchor>,
                 )}
                 {job.recovery !== undefined && <Text size="xs">Next: {job.recovery.action} — {job.recovery.reason}</Text>}
+                {job.recovery?.action === "resume" && onRecover !== undefined &&
+                    <Group gap="xs"><Button size="xs" variant="light" onClick={() => onRecover(job.id)}>Resume</Button></Group>}
             </Stack>
         </Alert>
     );

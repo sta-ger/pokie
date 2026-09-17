@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from "react";
-import {cancelProjectJob, getProjectJob, listProjectJobs, type FetchLike} from "../api/apiClient.js";
+import {cancelProjectJob, getProjectJob, listProjectJobs, recoverProjectJob, type FetchLike} from "../api/apiClient.js";
 import type {StudioJobView} from "../api/types.js";
 
 const active = (job: StudioJobView): boolean => job.status === "queued" || job.status === "running" || job.status === "cancelling";
@@ -55,5 +55,14 @@ export function useProjectJobs(fetchImpl: FetchLike, projectId: string | undefin
         }).catch(() => undefined);
     }, [fetchImpl, generation, projectId]);
 
-    return {jobs, refresh, cancel};
+    const recover = useCallback((id: string): void => {
+        const identity = {projectId, generation};
+        if (identity.projectId === undefined) return;
+        recoverProjectJob(fetchImpl, id).then((job) => {
+            if (current.current.projectId !== identity.projectId || current.current.generation !== identity.generation) return;
+            setJobs((previous) => previous.map((existing) => existing.id === id ? job : existing));
+        }).catch(() => undefined);
+    }, [fetchImpl, generation, projectId]);
+
+    return {jobs, refresh, cancel, recover};
 }

@@ -1,8 +1,9 @@
 import {useCallback} from "react";
 import {useNavigate} from "react-router-dom";
-import {openProject} from "../api/apiClient";
+import {openProject, ProjectTransitionConflict} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
 import {useGuardedAction} from "../context/DesignNavigationGuardContext";
+import {useConfirm} from "./useConfirm";
 
 // Shared by the Projects registry list, the Open by path form, and the guided editor's own "Open in
 // Studio" button (Blueprint-Build) -- the one explicit Home -> Project transition, see
@@ -20,10 +21,23 @@ export function useOpenProject(): (projectRoot: string) => Promise<void> {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
     const guardedAction = useGuardedAction();
+    const confirm = useConfirm();
     return useCallback(
         (projectRoot: string) =>
             guardedAction(async () => {
-                const {context} = await openProject(fetchImpl, projectRoot);
+                let opened;
+                try {
+                    opened = await openProject(fetchImpl, projectRoot);
+                } catch (error) {
+                    if (!(error instanceof ProjectTransitionConflict)) throw error;
+                    opened = await new Promise<Awaited<ReturnType<typeof openProject>>>((resolve, reject) => {
+                        const operations = error.operations.join(", ") || "active Studio operations";
+                        confirm(`Active operations: ${operations}. Open another project and cancel them after cleanup?`, () => {
+                            openProject(fetchImpl, projectRoot, true).then(resolve, reject);
+                        }, () => reject(new Error("Project switch cancelled.")));
+                    });
+                }
+                const {context} = opened;
                 // Project identity belongs in the history entry, not only in the server's mutable
                 // current-project context. This lets a Back/Forward navigation restore the project
                 // whose state the entry represents before its dashboard can become interactive. The
@@ -31,6 +45,6 @@ export function useOpenProject(): (projectRoot: string) => Promise<void> {
                 // runtime package), so its returned context is the authoritative route identity.
                 navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`);
             }),
-        [fetchImpl, navigate, guardedAction],
+        [fetchImpl, navigate, guardedAction, confirm],
     );
 }

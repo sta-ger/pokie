@@ -13,6 +13,7 @@ import {
     listReplays,
     listReports,
     validateProject,
+    ProjectTransitionConflict,
 } from "../../api/apiClient";
 import type {GamePackageInspectionReport, RoundArtifactJson, StudioProjectCapability, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -910,6 +911,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         (replay.job !== undefined && isReplayActive(replay.job)) ||
         deployment.runLoading ||
         commonJobs.jobs.some((job) => job.status === "queued" || job.status === "running" || job.status === "cancelling");
+    const activeOperationNames = [...new Set(commonJobs.jobs
+        .filter((job) => job.status === "queued" || job.status === "running" || job.status === "cancelling")
+        .map((job) => job.operation))];
 
     const activeTabDescriptor = ALL_PROJECT_TABS.find((tab) => tab.value === activeTab);
     const activeTabLabel = activeTabDescriptor?.label ?? "Overview";
@@ -933,18 +937,25 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [closeError, setCloseError] = useState<string>();
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
     const closeGuard = useDoubleSubmitGuard();
-    const closeProjectAndReturnToProjects = (): void => {
+    const closeProjectAndReturnToProjects = (confirmActiveJobs = false): void => {
         if (!closeGuard.begin()) {
             return;
         }
         setCloseError(undefined);
-        closeProject(fetchImpl)
+        closeProject(fetchImpl, confirmActiveJobs)
             .then(() => {
                 // Closing a workspace returns to the list it came from, where the user can reopen it
                 // or choose another project.  Starting a new game remains an explicit Home choice.
                 navigate("/home/projects");
             })
-            .catch((error: unknown) => setCloseError(errorMessage(error)))
+            .catch((error: unknown) => {
+                if (error instanceof ProjectTransitionConflict && !confirmActiveJobs) {
+                    const operations = error.operations.length > 0 ? error.operations : activeOperationNames;
+                    confirm(`Active operations: ${operations.join(", ")}. Close the project and cancel them after cleanup?`, () => closeProjectAndReturnToProjects(true));
+                    return;
+                }
+                setCloseError(errorMessage(error));
+            })
             .finally(() => closeGuard.end());
     };
     const handleClose = (): void => {
@@ -953,7 +964,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             return;
         }
         const reasons = [
-            hasActiveOperation ? "active Studio operations" : undefined,
+            hasActiveOperation ? `active Studio operations (${activeOperationNames.join(", ") || "loading"})` : undefined,
             gameModelDirty ? "unsaved Game Model changes" : undefined,
         ].filter((reason): reason is string => reason !== undefined);
         confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, closeProjectAndReturnToProjects);
@@ -1040,7 +1051,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     {commonJobs.jobs.map((job) =>
                         job.status === "queued" || job.status === "running" || job.status === "cancelling"
                             ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
-                            : <JobResultCard job={job} key={job.id} />,
+                            : <JobResultCard job={job} onRecover={commonJobs.recover} key={job.id} />,
                     )}
                     {!activeTabSupported && activeTabDescriptor !== undefined && (
                         <>
