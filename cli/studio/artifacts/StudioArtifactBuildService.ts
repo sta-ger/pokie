@@ -22,6 +22,7 @@ import {
 } from "pokie";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
 import type {StudioArtifactBuildJobView, StudioArtifactBuildProgressView} from "./StudioArtifactBuildJobView.js";
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
@@ -101,7 +102,6 @@ export class StudioArtifactBuildService {
     // A Stake preview is an executable capability decision. Retain the exact
     // operation server-side so Build never repeats its library lookup.
     private readonly preparedStakeOperations = new Map<string, PreparedStakeOperationRecord>();
-    private nextJobId = 1;
     private nextPreparedStakeOperationId = 1;
     private jobService: StudioJobService | undefined;
 
@@ -470,7 +470,10 @@ export class StudioArtifactBuildService {
     ): StudioArtifactBuildJobView {
         this.trimTerminalJobs();
         const record: StudioArtifactBuildJobRecord = {
-            id: String(this.nextJobId++),
+            // Compatibility URLs treat this as an opaque string.  Prefix it
+            // so an artifact service restart cannot collide with a retained
+            // common job id from another operation family.
+            id: `artifact-${crypto.randomUUID()}`,
             projectRoot,
             target,
             status: "queued",
