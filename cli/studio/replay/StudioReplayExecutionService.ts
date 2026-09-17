@@ -263,13 +263,14 @@ export class StudioReplayExecutionService {
     // having no report (see StudioSimulationService.getReport()).
     public getDownload(projectRoot: string, id: string): GetReplayDownloadResult {
         const record = this.repository.get(id);
-        if (!record || record.projectRoot !== projectRoot) {
-            return {status: "not-found"};
+        if (record?.projectRoot === projectRoot) {
+            if (!record.descriptor) return {status: "not-ready", jobStatus: record.status};
+            return {status: "ok", descriptor: record.descriptor};
         }
-        if (!record.descriptor) {
-            return {status: "not-ready", jobStatus: record.status};
-        }
-        return {status: "ok", descriptor: record.descriptor};
+        const job = this.jobService?.get(projectRoot, id);
+        if (job?.operation !== "replay") return {status: "not-found"};
+        const descriptor = descriptorFromDurableDetail(job);
+        return descriptor === undefined ? {status: "not-ready", jobStatus: job.status} : {status: "ok", descriptor};
     }
 
     private toListEntry(record: StudioReplayJobRecord): StudioReplayListEntry {
@@ -770,8 +771,9 @@ export class StudioReplayExecutionService {
         if (record.status === "completed") {
             this.jobService?.complete(record.id, {
                 summary: "Replay completed.",
+                outputs: [{label: "Replay descriptor", downloadPath: `/api/project/replays/${encodeURIComponent(record.id)}/download`}],
                 provenance: {replayId: record.id, projectRoot: record.projectRoot},
-                detail: {replayId: record.id, round: record.round, descriptorAvailable: record.descriptor !== undefined},
+                detail: {replayId: record.id, round: record.round, descriptor: record.descriptor},
             });
         } else if (record.status === "cancelled") {
             this.jobService?.cancelled(record.id, {summary: "Replay cancelled after the last completed round.", provenance: {replayId: record.id, projectRoot: record.projectRoot}, detail: {replayId: record.id, rounds: record.completedRounds}}, {action: "retry", reason: "Run the replay again with the captured parameters."});
@@ -811,8 +813,16 @@ export class StudioReplayExecutionService {
             startedAt: new Date(job.startedAt ?? job.createdAt).toISOString(),
             completedRounds: typeof job.progress?.current === "number" ? job.progress.current : Number(job.progress?.current ?? 0),
             durationMs: job.durationMs ?? 0,
+            ...(descriptorFromDurableDetail(job) === undefined ? {} : {descriptor: descriptorFromDurableDetail(job)}),
             ...(job.error === undefined ? {} : {error: job.error}),
             ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
         };
     }
+}
+
+function descriptorFromDurableDetail(job: StudioJobView): ReplayDescriptor | undefined {
+    const descriptor = job.result?.detail?.descriptor;
+    return typeof descriptor === "object" && descriptor !== null && "sessionId" in descriptor && "round" in descriptor
+        ? descriptor as ReplayDescriptor
+        : undefined;
 }

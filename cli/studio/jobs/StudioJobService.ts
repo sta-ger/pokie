@@ -155,6 +155,11 @@ export class StudioJobService {
         const context: StudioJobExecutorContext = {job, signal, progress: (progress) => this.progress(job.id, progress)};
         try {
             const value = await executor(context);
+            // A domain executor may have supplied finer-grained snapshots while it
+            // worked.  Once it returns, though, the only truthful remaining work
+            // is committing its terminal record.  Persist that boundary instead
+            // of leaving a reconnecting client on a misleading "running" stage.
+            this.progress(job.id, {stage: "Finalizing", unit: "work", current: "indeterminate", total: "indeterminate", message: "Persisting the terminal result."});
             this.persistExecutorTerminal(job.id, terminalForResult(value, signal.aborted));
             return {status: "executed", job: this.repository.get(job.id) ?? job, value};
         } catch (error) {

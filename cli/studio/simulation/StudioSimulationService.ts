@@ -278,14 +278,21 @@ export class StudioSimulationService {
     // tracked by the repository for retention purposes (see StudioSimulationRepository). Always
     // scoped to one projectRoot — never includes another project's jobs.
     public listReports(projectRoot: string): StudioSimulationReportListEntry[] {
-        const entries: StudioSimulationReportListEntry[] = [];
+        const entries = new Map<string, StudioSimulationReportListEntry>();
         for (const record of this.repository.listTerminalByProjectRoot(projectRoot)) {
             const entry = this.toReportListEntry(record);
             if (entry) {
-                entries.push(entry);
+                entries.set(entry.id, entry);
             }
         }
-        return entries;
+        // The compatibility repository is intentionally process-local.  A
+        // retained common job therefore becomes the authoritative projection
+        // after restart, including the report needed by the old Reports URL.
+        for (const job of this.jobService?.list(projectRoot) ?? []) {
+            const entry = this.reportListEntryFromDurableJob(job);
+            if (entry !== undefined && !entries.has(entry.id)) entries.set(entry.id, entry);
+        }
+        return Array.from(entries.values());
     }
 
     // "not-found" covers both a genuinely unknown id AND an id that belongs to a different project —
@@ -293,13 +300,15 @@ export class StudioSimulationService {
     // whether some other project has a simulation with a given id.
     public getReport(projectRoot: string, id: string): GetSimulationReportResult {
         const record = this.repository.get(id);
-        if (!record || record.projectRoot !== projectRoot) {
-            return {status: "not-found"};
+        if (record?.projectRoot === projectRoot) {
+            if (!record.report) return {status: "not-ready", jobStatus: record.status};
+            return {status: "ok", report: record.report, statistics: record.statistics};
         }
-        if (!record.report) {
-            return {status: "not-ready", jobStatus: record.status};
-        }
-        return {status: "ok", report: record.report, statistics: record.statistics};
+        const job = this.jobService?.get(projectRoot, id);
+        if (job?.operation !== "simulation") return {status: "not-found"};
+        const report = reportFromDurableDetail(job);
+        if (report === undefined) return {status: "not-ready", jobStatus: job.status};
+        return {status: "ok", report, statistics: statisticsFromDurableDetail(job)};
     }
 
     private toReportListEntry(record: StudioSimulationJobRecord): StudioSimulationReportListEntry | undefined {
@@ -665,8 +674,9 @@ export class StudioSimulationService {
         if (record.status === "completed") {
             this.jobService?.complete(record.id, {
                 summary: "Simulation completed.",
+                outputs: [{label: "Simulation report", downloadPath: `/api/project/reports/${encodeURIComponent(record.id)}/download?format=json`}],
                 provenance: {simulationId: record.id, projectRoot: record.projectRoot},
-                detail: {simulationId: record.id, rounds: record.roundsCompleted, reportAvailable: record.report !== undefined},
+                detail: {simulationId: record.id, rounds: record.roundsCompleted, report: record.report, statistics: record.statistics},
             });
         } else if (record.status === "cancelled") {
             this.jobService?.cancelled(record.id, {summary: "Simulation cancelled after the last completed round.", provenance: {simulationId: record.id, projectRoot: record.projectRoot}, detail: {simulationId: record.id, rounds: record.roundsCompleted}}, {action: "retry", reason: "Run the simulation again with the captured parameters."});
@@ -707,8 +717,47 @@ export class StudioSimulationService {
             startedAt: new Date(job.startedAt ?? job.createdAt).toISOString(),
             roundsCompleted: typeof job.progress?.current === "number" ? job.progress.current : Number(job.progress?.current ?? 0),
             durationMs: job.durationMs ?? 0,
+            ...(reportFromDurableDetail(job) === undefined ? {} : {report: reportFromDurableDetail(job)}),
+            ...(statisticsFromDurableDetail(job) === undefined ? {} : {statistics: statisticsFromDurableDetail(job)}),
             ...(job.error === undefined ? {} : {error: job.error}),
             ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
         };
     }
+
+    private reportListEntryFromDurableJob(job: StudioJobView): StudioSimulationReportListEntry | undefined {
+        if (job.operation !== "simulation" || job.status !== "completed") return undefined;
+        const report = reportFromDurableDetail(job);
+        if (report === undefined) return undefined;
+        return {
+            id: job.id,
+            status: "completed",
+            game: {id: report.game.id, version: report.game.version},
+            requestedRounds: report.requestedRounds,
+            actualRounds: report.rounds,
+            ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
+            workers: report.workers ?? (typeof job.request.workers === "number" ? job.request.workers : 1),
+            rtp: report.rtp,
+            hitFrequency: report.hitFrequency,
+            maxWin: report.maxWin,
+            startedAt: new Date(job.startedAt ?? job.createdAt).toISOString(),
+            completedAt: new Date(job.completedAt ?? job.createdAt).toISOString(),
+            durationMs: job.durationMs ?? 0,
+            hasWarnings: (report.warnings?.length ?? 0) > 0,
+            ...(typeof job.request.modeName === "string" ? {modeName: job.request.modeName} : {}),
+        };
+    }
+}
+
+function durableDetail(job: StudioJobView): Readonly<Record<string, unknown>> | undefined {
+    return job.result?.detail !== undefined && typeof job.result.detail === "object" ? job.result.detail : undefined;
+}
+
+function reportFromDurableDetail(job: StudioJobView): SimulationReport | undefined {
+    const report = durableDetail(job)?.report;
+    return typeof report === "object" && report !== null && "game" in report && "rounds" in report ? report as SimulationReport : undefined;
+}
+
+function statisticsFromDurableDetail(job: StudioJobView): StudioSimulationStatisticsView | undefined {
+    const statistics = durableDetail(job)?.statistics;
+    return typeof statistics === "object" && statistics !== null ? statistics as StudioSimulationStatisticsView : undefined;
 }

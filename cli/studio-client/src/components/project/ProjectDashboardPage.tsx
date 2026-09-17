@@ -9,6 +9,7 @@ import {
     getReport,
     inspectProject,
     inspectReplayArtifact,
+    openOutputFolder,
     listRecentSpins,
     listReplays,
     listReports,
@@ -936,6 +937,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
 
     const [closeError, setCloseError] = useState<string>();
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
+    const [jobOutputNotice, setJobOutputNotice] = useState<string>();
     const closeGuard = useDoubleSubmitGuard();
     const closeProjectAndReturnToProjects = (confirmActiveJobs = false): void => {
         if (!closeGuard.begin()) {
@@ -979,6 +981,19 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             .writeText(projectKey)
             .then(() => setCopyPathNotice("Project path copied."))
             .catch(() => setCopyPathNotice("Couldn't copy the project path. Open Advanced details to select it."));
+    }
+
+    function openJobOutput(outputPath: string): void {
+        setJobOutputNotice(undefined);
+        openOutputFolder(fetchImpl, outputPath)
+            .then((result) => {
+                if (result.status === "ok") {
+                    setJobOutputNotice("Opened job output.");
+                    return;
+                }
+                setJobOutputNotice(result.status === "unavailable" ? result.reason : result.message);
+            })
+            .catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
     }
 
     if (header.status === "empty") {
@@ -1051,8 +1066,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     {commonJobs.jobs.map((job) =>
                         job.status === "queued" || job.status === "running" || job.status === "cancelling"
                             ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
-                            : <JobResultCard job={job} onRecover={commonJobs.recover} key={job.id} />,
+                            : <JobResultCard job={job} onRecover={commonJobs.recover} onOpenOutput={openJobOutput} key={job.id} />,
                     )}
+                    {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
                     {!activeTabSupported && activeTabDescriptor !== undefined && (
                         <>
                             <ErrorState message={describeUnsupportedTabMessage(activeTabDescriptor)} />

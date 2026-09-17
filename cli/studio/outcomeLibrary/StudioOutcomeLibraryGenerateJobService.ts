@@ -316,7 +316,10 @@ export class StudioOutcomeLibraryGenerateJobService {
             this.jobService?.complete(record.id, {
                 summary: "Outcome Library generation completed.",
                 outputs: [{path: result.bundleDir, label: "Outcome Library bundle"}],
-                detail: {status: result.status},
+                // Preserve the operation-specific result in the single
+                // durable authority.  The old in-process record can then be
+                // discarded without making a retained terminal job opaque.
+                detail: {status: result.status, result},
             });
         } else {
             const message = "error" in result ? result.error : "Outcome Library generation failed validation.";
@@ -347,6 +350,7 @@ export class StudioOutcomeLibraryGenerateJobService {
             id: job.id,
             status: job.status,
             cancellationRequested: job.status === "cancelling",
+            ...(outcomeLibraryResultFromDurableJob(job) === undefined ? {} : {result: outcomeLibraryResultFromDurableJob(job)}),
             ...(recovery === undefined ? {} : {recovery}),
         };
     }
@@ -481,6 +485,11 @@ export class StudioOutcomeLibraryGenerateJobService {
         const binding = this.generateService.getPreflightBinding?.(request.preflightToken);
         return path.resolve(projectRoot, binding?.destination ?? request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR);
     }
+}
+
+function outcomeLibraryResultFromDurableJob(job: StudioJobView): StudioOutcomeLibraryGenerateJobView["result"] | undefined {
+    const result = job.result?.detail?.result;
+    return typeof result === "object" && result !== null && "status" in result ? result as StudioOutcomeLibraryGenerateJobView["result"] : undefined;
 }
 
 function toPersistedRequest(request: ValidatedOutcomeLibraryGenerateRequest): PersistedRequest {

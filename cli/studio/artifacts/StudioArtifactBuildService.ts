@@ -548,7 +548,11 @@ export class StudioArtifactBuildService {
             this.jobService?.complete(record.id, {
                 summary: "Artifact build completed.",
                 outputs: [{path: resultView.outputPath, label: "Built artifact"}],
-                detail: {target: record.target, outputKind: resultView.outputKind},
+                // The old job map is only a live-executor convenience.  Keep
+                // the compatibility DTO in the common durable record so an
+                // Artifact Build card and legacy route remain useful after a
+                // Studio process restart.
+                detail: {target: record.target, outputKind: resultView.outputKind, result: resultView},
             });
         } else if (status === "cancelled") {
             this.jobService?.cancelled(record.id, {summary: "Artifact build cancelled after staging cleanup."}, {action: "rebuild", reason: "Rebuild the artifact from its captured target and destination."});
@@ -578,11 +582,13 @@ export class StudioArtifactBuildService {
     }
 
     private projectDurableJob(job: StudioJobView): StudioArtifactBuildJobView {
+        const result = artifactResultFromDurableJob(job);
         return {
             id: job.id,
             target: job.request.target as ArtifactTargetType,
             status: job.status,
             cancellationRequested: job.status === "cancelling",
+            ...(result === undefined ? {} : {result}),
             ...(job.error === undefined ? {} : {error: job.error}),
             ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
         };
@@ -798,6 +804,11 @@ export class StudioArtifactBuildService {
             return {conversionEvidencePath};
         }
     }
+}
+
+function artifactResultFromDurableJob(job: StudioJobView): StudioArtifactBuildView | undefined {
+    const result = job.result?.detail?.result;
+    return typeof result === "object" && result !== null && "status" in result ? result as StudioArtifactBuildView : undefined;
 }
 
 function terminalStatusFor(result: StudioArtifactBuildView): "completed" | "failed" | "cancelled" {

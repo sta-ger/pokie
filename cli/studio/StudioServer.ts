@@ -666,6 +666,11 @@ export class StudioServer implements StudioServerHandling {
                 disconnect?.req.once("aborted", cancel);
                 disconnect?.res.once("close", cancel);
                 try {
+                    // Not every established domain API has a progress callback.
+                    // Do not manufacture a percentage for those operations: this
+                    // is deliberately an indeterminate, server-owned execution
+                    // stage which remains useful after a reload or restart.
+                    context.progress({stage: "Executing", unit: "work", current: "indeterminate", total: "indeterminate", message: `${input.operation} is running.`});
                     return await executor(context);
                 } finally {
                     disconnect?.req.off("aborted", cancel);

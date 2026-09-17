@@ -15,6 +15,7 @@ export function JobProgressCard({job, onCancel}: {job: StudioJobView; onCancel?:
                 <div>
                     <Text size="sm">{job.status === "cancelling" ? "Cancellation requested; waiting for cleanup." : progress?.stage ?? "Queued"}</Text>
                     {progress !== undefined && <Text size="xs">{progress.current} / {progress.total} {progress.unit}{progress.message === undefined ? "" : ` · ${progress.message}`}</Text>}
+                    {progress === undefined && job.status !== "queued" && <Text size="xs">Progress is indeterminate while this operation prepares its next safe boundary.</Text>}
                 </div>
                 {job.status !== "cancelling" && onCancel !== undefined && <Button size="xs" variant="light" color="red" onClick={() => onCancel(job.id)}>Cancel</Button>}
             </Group>
