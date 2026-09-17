@@ -1933,7 +1933,11 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res, {
                 projectId: `design:${sourcePath}`, operation: "design-par-import", request: {path: sourcePath, sourceContentHash}, conflictKey: `design-par-import:${sourcePath}`, recoveryOnRestart: recovery,
-                reattachedResponse: (job) => ({statusCode: 409, body: {error: "PAR import is already in progress.", activeJobId: job.id, reattached: true}}),
+                // importParSheet has always resolved a StudioParSheetImportView
+                // for domain outcomes.  Keep an exact retry in that DTO family
+                // rather than making a harmless reconnect look like transport
+                // failure to the Design client.
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "load-error", error: "PAR import is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
             ({signal}) => this.blueprintService.importParSheet(sourcePath, signal),
             (result, cancelled) => {
@@ -2012,7 +2016,9 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res, {
                 projectId: `design:${sourcePath}`, operation: "design-build", request: {sourcePath, destinationPath, blueprintHash}, conflictKey: `design-build:${sourcePath}:${destinationPath}`, recoveryOnRestart: recovery,
-                reattachedResponse: (job) => ({statusCode: 409, body: {status: "error", error: "Design build is already in progress.", activeJobId: job.id, reattached: true}}),
+                // buildBlueprint treats non-2xx as a transport failure.  An
+                // in-flight exact request is still a normal StudioBuildResult.
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Design build is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
             ({signal}) => this.blueprintService.build(validated.blueprint, destinationPath, sourcePath, signal),
             (result, cancelled) => {
@@ -2418,12 +2424,23 @@ export class StudioServer implements StudioServerHandling {
             res,
             {
                 projectId: projectRoot, operation: "deployment", request: validated as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment:${projectRoot}:${validated.targetId}:${JSON.stringify(validated.modes)}`, recoveryOnRestart: recovery,
-                reattachedResponse: (job) => ({statusCode: 409, body: {error: "Deployment is already in progress.", activeJobId: job.id, reattached: true}}),
+                // runDeployment always resolves its planner view for an
+                // operation outcome.  Keep reconnects in that shape too; a
+                // bare 409 would be mistaken for a failed HTTP request.
+                reattachedResponse: (job) => ({
+                    statusCode: 200,
+                    body: {...this.deploymentPlannerTerminalView("load-error", "Deployment is already in progress for this exact request.", undefined, validated), activeJobId: job.id, reattached: true},
+                }),
             },
             ({signal}) => this.deploymentService.run(projectRoot, validated, signal),
             (result, cancelled) => {
-                if (cancelled) return {status: "cancelled", result: {summary: "Deployment cancelled after its last settled delivery boundary.", detail: {targetId: validated.targetId, publish: validated.publish}}, recovery};
+                // The deployment executor is the authority for a cancellation
+                // that reached one of its delivery boundaries.  Its result can
+                // honestly say delivered, not-delivered, or outcome-unknown;
+                // do not replace that fact merely because the common signal was
+                // also aborted while it was unwinding.
                 if (result.status === "cancelled") return {status: "cancelled", result: this.deploymentCancellationResult(validated, result), recovery};
+                if (cancelled) return {status: "cancelled", result: {summary: "Deployment cancelled after its last settled delivery boundary.", provenance: {targetId: validated.targetId}, detail: {targetId: validated.targetId, publish: validated.publish, deliveryOutcome: "outcome-unknown"}}, recovery};
                 if (result.status === "ok") return {status: "completed", result: {
                     summary: "Deployment completed.", outputs: [{label: "Deployment delivery"}],
                     provenance: {source: result.view.plan.source, targetId: validated.targetId}, detail: {targetId: validated.targetId, publish: validated.publish, delivery: result.view.delivery},
@@ -2871,7 +2888,7 @@ export class StudioServer implements StudioServerHandling {
                 // another validator can allocate its own domain work.
                 conflictKey: `certification-validate:${projectRoot}`,
                 recoveryOnRestart: {action: "retry", reason: "Deep validation is not resumable after restart. Retry the captured validation."},
-                reattachedResponse: (job) => ({statusCode: 409, body: {error: "Certification validation is already in progress.", activeJobId: job.id, reattached: true}}),
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "load-error", error: "Certification validation is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
             ({signal}) => this.certificationService.validateSourceBundle(projectRoot, validated.bundleDir, signal),
             (result, cancelled) => {
@@ -2911,7 +2928,7 @@ export class StudioServer implements StudioServerHandling {
                 projectId: projectRoot, operation: "certification-build", request: validated as unknown as Readonly<Record<string, unknown>>,
                 conflictKey: `certification-build:${projectRoot}:${validated.bundleDir}:${validated.outDir}:${JSON.stringify(validated.modes)}`,
                 recoveryOnRestart: recovery,
-                reattachedResponse: (job) => ({statusCode: 409, body: {error: "Certification evidence build is already in progress.", activeJobId: job.id, reattached: true}}),
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", errors: [], warnings: [], activeJobId: job.id, reattached: true}}),
             },
             ({signal}) => this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, signal),
             (result, cancelled) => {
@@ -3579,7 +3596,9 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res, {
                 projectId: projectRoot, operation: "play-find-any-win", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
-                reattachedResponse: (job) => ({statusCode: 409, body: {error: "Scenario search is already in progress.", activeJobId: job.id, reattached: true}}),
+                // The Play client uses 409 exclusively for no-active-project.
+                // Preserve its normal result union for exact reattachment.
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
             ({signal}) => this.playService.findAnyWin(sessionId, {signal}),
             (result, cancelled) => {
@@ -3618,7 +3637,7 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res, {
                 projectId: projectRoot, operation: "play-find-symbol-win", request: {sessionId, symbolId: validated.symbolId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
-                reattachedResponse: (job) => ({statusCode: 409, body: {error: "Scenario search is already in progress.", activeJobId: job.id, reattached: true}}),
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
             ({signal}) => this.playService.findSymbolWin(sessionId, validated.symbolId, {signal}),
             (result, cancelled) => {
@@ -3649,7 +3668,7 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res, {
                 projectId: projectRoot, operation: "play-find-free-games", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
-                reattachedResponse: (job) => ({statusCode: 409, body: {error: "Scenario search is already in progress.", activeJobId: job.id, reattached: true}}),
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
             ({signal}) => this.playService.findFreeGames(sessionId, {signal}),
             (result, cancelled) => {

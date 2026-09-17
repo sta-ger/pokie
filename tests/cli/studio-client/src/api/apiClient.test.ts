@@ -7,6 +7,7 @@ import {
     closeProject,
     createPlaySession,
     exportParSheet,
+    findAnyWinPlaySession,
     cancelOutcomeLibraryGeneration,
     estimateOutcomeLibraryGeneration,
     FetchLike,
@@ -1297,6 +1298,19 @@ describe("studio-client apiClient", () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "error", error: "unexpected failure"}}));
 
             expect(await spinPlaySession(fetchImpl, "session-1")).toEqual({status: "error", message: "unexpected failure"});
+        });
+
+        it("keeps an exact scenario-search reattachment in the Play error union, never no-active-project", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: true,
+                status: 200,
+                body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: "job-1", reattached: true},
+            }));
+
+            expect(await findAnyWinPlaySession(fetchImpl, "session-1")).toEqual({
+                status: "error",
+                message: "Scenario search is already in progress for this exact request.",
+            });
         });
     });
 });
