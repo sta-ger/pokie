@@ -18,6 +18,7 @@ import {
     isWasmComponentFile,
     StakeProjectionExportService,
     type PreparedStakeProjectionOperation,
+    wasmComponentManifestSidecarPath,
 } from "pokie";
 import path from "path";
 import fs from "fs";
@@ -290,10 +291,6 @@ export class StudioArtifactBuildService {
             const result = target === "stakeAdapter"
                 ? await this.stakeProjection.executeOperation(operation!, options)
                 : await this.registry.executePlan(plan, project, destination, options);
-            // executePlan's terminal writer has returned, but Studio has one
-            // more publication boundary: project registration.  Honour the
-            // same signal before exposing any registry entry or success DTO.
-            assertArtifactBuildNotCancelled(options);
             // Blueprint -> Outcome and Blueprint -> Stake both return the exact managed Outcome Project
             // the registry generated or reopened. Register it with Studio before reporting success; no
             // Studio-only outcome-path index is maintained here.
@@ -309,6 +306,12 @@ export class StudioArtifactBuildService {
             ]);
             const registeredRoots: string[] = [];
             try {
+                // The registry writer has completed, but this build is still
+                // inside Studio's publication transaction until every owned
+                // project has been registered.  Keep this boundary inside the
+                // rollback owner so cancellation cannot strand a module or
+                // one of its companion publications.
+                assertArtifactBuildNotCancelled(options);
                 const provenance = await this.parImportRegistrationProvenance(result.conversionEvidencePath);
                 for (const projectRoot of managedProjectRoots) {
                     assertArtifactBuildNotCancelled(options);
@@ -670,6 +673,16 @@ export class StudioArtifactBuildService {
                 await fs.promises.rm(projectRoot, {recursive: true, force: true}).catch(() => undefined);
             }
             await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
+        }
+        if (plan.target.kind === "wasm" && !outputDestinationExisted) {
+            // WASM publication has a file module plus integrity and PAR
+            // companions. They are allocated together by this operation, so
+            // no partially published component may survive failed Studio
+            // registration or post-writer cancellation.
+            await Promise.all([
+                fs.promises.rm(wasmComponentManifestSidecarPath(result.outputPath), {force: true}),
+                fs.promises.rm(`${result.outputPath}.pokie`, {recursive: true, force: true}),
+            ]).catch(() => undefined);
         }
     }
 

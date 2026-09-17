@@ -366,6 +366,52 @@ describe("StudioArtifactBuildService", () => {
             expect(fs.existsSync(`${result.outputPath}.pokie-wasm.json`)).toBe(true);
         });
 
+        it("rolls back every PAR-to-WASM publication when Studio registration fails", async () => {
+            const workbookPath = path.join(workDir, "source.par.xlsx");
+            const outputPath = path.join(workDir, "failed-game.wasm");
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+            service = new StudioArtifactBuildService(
+                "1.3.0",
+                undefined,
+                undefined,
+                () => Promise.reject(new Error("Studio registry unavailable")),
+            );
+
+            await expect(service.build(workbookPath, "wasm", outputPath)).resolves.toMatchObject({
+                status: "error",
+                message: "Studio registry unavailable",
+            });
+
+            expect(fs.existsSync(workbookPath)).toBe(true);
+            expect(fs.existsSync(outputPath)).toBe(false);
+            expect(fs.existsSync(`${outputPath}.pokie-wasm.json`)).toBe(false);
+            expect(fs.existsSync(`${outputPath}.pokie`)).toBe(false);
+        });
+
+        it("rolls back every PAR-to-WASM publication when cancellation arrives after the writer completes", async () => {
+            const workbookPath = path.join(workDir, "source.par.xlsx");
+            const outputPath = path.join(workDir, "cancelled-game.wasm");
+            const controller = new AbortController();
+            const registry = new ArtifactBuilderRegistry("1.3.0");
+            const cancellationAtPostWriterBoundary = {
+                preparePlan: (...args: Parameters<ArtifactBuilderRegistry["preparePlan"]>) => registry.preparePlan(...args),
+                executePlan: async (...args: Parameters<ArtifactBuilderRegistry["executePlan"]>) => {
+                    const result = await registry.executePlan(...args);
+                    controller.abort();
+                    return result;
+                },
+            } as unknown as ArtifactBuilderRegistry;
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+            service = new StudioArtifactBuildService("1.3.0", cancellationAtPostWriterBoundary);
+
+            await expect(service.build(workbookPath, "wasm", outputPath, {signal: controller.signal})).resolves.toMatchObject({status: "cancelled"});
+
+            expect(fs.existsSync(workbookPath)).toBe(true);
+            expect(fs.existsSync(outputPath)).toBe(false);
+            expect(fs.existsSync(`${outputPath}.pokie-wasm.json`)).toBe(false);
+            expect(fs.existsSync(`${outputPath}.pokie`)).toBe(false);
+        });
+
         it("builds PAR Blueprints into an explicit nested destination whose parent is absent", async () => {
             const workbookPath = path.join(workDir, "source.xlsx");
             const destination = path.join(workDir, "missing", "blueprints", "imported.blueprint.json");
