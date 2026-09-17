@@ -1089,7 +1089,14 @@ describe("StudioServer", () => {
         const firstOpen = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./first"});
         await firstLoadStarted;
 
-        const secondOpen = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./second"});
+        // Home cannot silently replace visible work.  The server exposes the
+        // active durable opening first; a confirmed retry owns the superseding
+        // transition and leaves the old opening unable to publish.
+        expect(await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./second"})).toMatchObject({
+            status: 409,
+            body: {code: "active-jobs-require-confirmation", operations: ["project-open-materialization"]},
+        });
+        const secondOpen = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./second", confirmActiveJobs: true});
         await secondLoadStarted;
         completeLoads.get("./second")?.(createFakeGame(secondManifest));
 
@@ -1239,7 +1246,11 @@ describe("StudioServer", () => {
 
         const opening = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./late"});
         await lateLoadStarted;
-        expect(await post(`${baseUrl}/api/projects/close`)).toEqual({status: 200, body: {context: {mode: "home"}}});
+        expect(await post(`${baseUrl}/api/projects/close`)).toMatchObject({
+            status: 409,
+            body: {code: "active-jobs-require-confirmation", operations: ["project-open-materialization"]},
+        });
+        expect(await post(`${baseUrl}/api/projects/close`, {confirmActiveJobs: true})).toEqual({status: 200, body: {context: {mode: "home"}}});
 
         completeLoads.get("./late")?.(createFakeGame(manifest));
         expect(await opening).toEqual({status: 409, body: {error: "Project opening was superseded by a newer request."}});
@@ -1299,7 +1310,11 @@ describe("StudioServer", () => {
         try {
             const opening = post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: wasmFile});
             await descriptionStarted;
-            expect(await post(`${lifecycleBaseUrl}/api/projects/close`)).toEqual({status: 200, body: {context: {mode: "home"}}});
+            expect(await post(`${lifecycleBaseUrl}/api/projects/close`)).toMatchObject({
+                status: 409,
+                body: {code: "active-jobs-require-confirmation", operations: ["project-open-materialization"]},
+            });
+            expect(await post(`${lifecycleBaseUrl}/api/projects/close`, {confirmActiveJobs: true})).toEqual({status: 200, body: {context: {mode: "home"}}});
             releaseDescription?.();
 
             expect(await opening).toEqual({status: 409, body: {error: "Project opening was superseded by a newer request."}});

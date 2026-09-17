@@ -30,6 +30,18 @@ describe("StudioJobService", () => {
         expect(restarted.get("/project-b", "job-1")).toBeUndefined();
     });
 
+    it("lists retained jobs across projects when Home must protect an opening operation", () => {
+        let nextId = 0;
+        const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `job-${++nextId}`);
+        service.start({projectId: "/project-a", operation: "project-open-materialization", request: {sourcePath: "/project-a"}, conflictKey: "open:/project-a"});
+        service.start({projectId: "/project-b", operation: "simulation", request: {rounds: 10}, conflictKey: "simulation:/project-b"});
+
+        expect(service.list()).toEqual(expect.arrayContaining([
+            expect.objectContaining({projectId: "/project-a", operation: "project-open-materialization"}),
+            expect.objectContaining({projectId: "/project-b", operation: "simulation"}),
+        ]));
+    });
+
     it("keeps cancellation truthful until an executor reports cleanup-safe cancellation", () => {
         const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => "job-2");
         service.start({projectId: "/project-a", operation: "artifact-build", request: {target: "tsPackage"}, conflictKey: "destination:/project-a/out"});

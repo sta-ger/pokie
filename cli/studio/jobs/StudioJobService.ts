@@ -51,7 +51,8 @@ export class StudioJobService {
         this.reconcileInterruptedJobs();
     }
 
-    public list(projectId: string): readonly StudioJobView[] {
+    /** Lists every retained job, or only one project when an identity is supplied. */
+    public list(projectId?: string): readonly StudioJobView[] {
         return this.repository.list(projectId);
     }
     public get(projectId: string, id: string): StudioJobView | undefined {
